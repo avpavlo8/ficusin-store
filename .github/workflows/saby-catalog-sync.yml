@@ -194,6 +194,8 @@ jobs:
                   headers={
                       "X-Ficusin-GitHub-OIDC": oidc_token,
                       "Content-Type": "application/json",
+                      "Accept": "application/json",
+                      "User-Agent": "Ficusin-Saby-Sync/1.0",
                   },
                   method="POST",
               )
