@@ -35,6 +35,7 @@ jobs:
 
           state = "failure"
           description = "Saby diagnostic failed"
+          context = "saby/catalog/failed"
 
           def load_json(request):
               with urllib.request.urlopen(request, timeout=30) as response:
@@ -97,13 +98,15 @@ jobs:
                   raise RuntimeError("no balances")
 
               state = "success"
-              description = (
-                  f"records={len(items)} prices={priced} "
-                  f"balances={balanced} images={pictured}"
+              description = "Saby catalog fields verified"
+              context = (
+                  f"saby/catalog/r{len(items)}-p{priced}-"
+                  f"b{balanced}-i{pictured}"
               )
           except Exception:
               state = "failure"
               description = "Saby diagnostic failed; inspect Actions log"
+              context = "saby/catalog/failed"
 
           repository = os.environ["GITHUB_REPOSITORY"]
           commit_sha = os.environ["GITHUB_SHA"]
@@ -112,7 +115,7 @@ jobs:
               data=json.dumps({
                   "state": state,
                   "description": description,
-                  "context": "saby/catalog",
+                  "context": context,
               }).encode("utf-8"),
               headers={
                   "Accept": "application/vnd.github+json",
