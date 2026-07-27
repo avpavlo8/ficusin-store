@@ -308,7 +308,16 @@ export async function POST(request: Request) {
         const productId = productIds.get(String(item.id));
         if (!productId) return [];
         const images = (item.images ?? [])
-          .filter((image) => /^https:\/\//i.test(image))
+          .map((image) => {
+            try {
+              const url = new URL(image.trim(), "https://api.sbis.ru");
+              if (url.protocol === "http:") url.protocol = "https:";
+              return url.protocol === "https:" ? url.toString() : "";
+            } catch {
+              return "";
+            }
+          })
+          .filter(Boolean)
           .slice(0, 8);
         return [
           env.DB.prepare("DELETE FROM product_media WHERE product_id = ?").bind(
