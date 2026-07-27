@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  statuses: write
 
 concurrency:
   group: saby-catalog-sync
@@ -30,6 +31,7 @@ jobs:
 
     steps:
       - name: Send current Saby catalog to the store
+        id: sync
         shell: bash
         run: |
           python3 - <<'PY'
@@ -151,4 +153,43 @@ jobs:
 
           print("Saby catalog sync completed")
           print("Records sent:", len(public_catalog))
+          PY
+
+      - name: Report safe sync status
+        if: always()
+        shell: bash
+        env:
+          SYNC_OUTCOME: ${{ steps.sync.outcome }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          success = os.environ.get("SYNC_OUTCOME") == "success"
+          request = urllib.request.Request(
+              "https://api.github.com/repos/"
+              + os.environ["GITHUB_REPOSITORY"]
+              + "/statuses/"
+              + os.environ["GITHUB_SHA"],
+              data=json.dumps({
+                  "state": "success" if success else "failure",
+                  "description": (
+                      "Saby catalog delivered to the store"
+                      if success
+                      else "Saby catalog sync failed"
+                  ),
+                  "context": "saby/store-sync",
+              }).encode("utf-8"),
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=30):
+              pass
           PY
