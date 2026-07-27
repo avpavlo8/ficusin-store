@@ -1,12 +1,6 @@
 import {
-  createPayment,
-  isYooKassaConfigured,
-} from "../../../lib/integrations/yookassa";
-import { notifyNewOrder } from "../../../lib/integrations/telegram";
-import type { IntegrationEnv } from "../../../lib/integrations/types";
-import {
   calculatePvzDelivery,
-  isCdekConfigured,
+  getOffices,
 } from "../../../lib/integrations/cdek";
 
 const catalog = new Map([
@@ -20,35 +14,32 @@ const catalog = new Map([
   ["anthurium-mini", { name: "Антуриум Мини", price: 1990 }],
 ]);
 
-const deliveryFees: Record<string, number> = { pickup: 0, courier: 490, cdek: 690, post: 590 };
-const deliveryLabels: Record<string, string> = {
-  pickup: "Самовывоз в Рязани",
-  courier: "Курьер по Рязани",
-  cdek: "СДЭК по России",
-  post: "Почта России",
-};
+const deliveryFees: Record<string, number> = { pickup: 0, courier: 490, post: 590 };
 
 type OrderPayload = {
   customer?: { name?: string; phone?: string; email?: string; address?: string; comment?: string };
   delivery?: string;
   items?: Array<{ id?: string; quantity?: number }>;
-  cdek?: { cityCode?: number; officeCode?: string; officeAddress?: string };
+  cdek?: {
+    cityCode?: number;
+    cityName?: string;
+    officeCode?: string;
+  };
 };
 
 export async function POST(request: Request) {
   try {
     const { env } = await import("cloudflare:workers");
-    const integrationEnv = env as unknown as IntegrationEnv;
     const payload = (await request.json()) as OrderPayload;
     const customer = payload.customer;
     const delivery = payload.delivery ?? "";
     if (!customer?.name?.trim() || !customer.phone?.trim() || !customer.email?.trim()) {
       return Response.json({ error: "Заполните имя, телефон и email" }, { status: 400 });
     }
-    if (!(delivery in deliveryFees)) {
+    if (!(delivery in deliveryFees) && delivery !== "cdek") {
       return Response.json({ error: "Выберите способ получения" }, { status: 400 });
     }
-    if (delivery !== "pickup" && !customer.address?.trim()) {
+    if (delivery !== "pickup" && delivery !== "cdek" && !customer.address?.trim()) {
       return Response.json({ error: "Укажите адрес или пункт выдачи" }, { status: 400 });
     }
 
@@ -93,28 +84,40 @@ export async function POST(request: Request) {
     if (!items.length) return Response.json({ error: "Корзина пуста" }, { status: 400 });
 
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    let deliveryFee = deliveryFees[delivery];
+    let deliveryFee = deliveryFees[delivery] ?? 0;
+    let deliveryAddress = customer.address?.trim() ?? "";
+    let cdekCityCode: number | null = null;
+    let cdekCityName: string | null = null;
+    let cdekOfficeCode: string | null = null;
+    let cdekTariffCode: number | null = null;
     if (delivery === "cdek") {
-      if (!isCdekConfigured(integrationEnv)) {
-        return Response.json({ error: "Расчёт СДЭК временно недоступен" }, { status: 503 });
+      cdekCityCode = Number(payload.cdek?.cityCode);
+      cdekOfficeCode = payload.cdek?.officeCode?.trim() ?? "";
+      if (!Number.isInteger(cdekCityCode) || cdekCityCode <= 0 || !cdekOfficeCode) {
+        return Response.json(
+          { error: "Выберите город и пункт выдачи СДЭК" },
+          { status: 400 },
+        );
       }
-      if (
-        !Number.isInteger(payload.cdek?.cityCode) ||
-        !payload.cdek?.officeCode?.trim()
-      ) {
-        return Response.json({ error: "Выберите пункт выдачи СДЭК" }, { status: 400 });
-      }
-      const quote = await calculatePvzDelivery(integrationEnv, {
-        cityCode: Number(payload.cdek.cityCode),
-        weightGrams: items.reduce(
-          (sum, item) => sum + item.quantity * 2000,
-          0,
+      const [quote, offices] = await Promise.all([
+        calculatePvzDelivery(
+          cdekCityCode,
+          items.reduce((sum, item) => sum + item.quantity, 0),
         ),
-        lengthCm: 30,
-        widthCm: 30,
-        heightCm: 60,
-      });
+        getOffices(cdekCityCode),
+      ]);
+      const office = offices.find((item) => item.code === cdekOfficeCode);
+      if (!office) {
+        return Response.json(
+          { error: "Выбранный пункт СДЭК больше недоступен" },
+          { status: 400 },
+        );
+      }
       deliveryFee = quote.price;
+      cdekTariffCode = quote.tariffCode;
+      cdekCityName = office.location.city || payload.cdek?.cityName?.trim() || "";
+      deliveryAddress =
+        office.location.address_full || office.location.address || office.name;
     }
     const total = subtotal + deliveryFee;
     const orderNumber = `ZR-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
@@ -122,12 +125,14 @@ export async function POST(request: Request) {
     const insertOrder = await env.DB.prepare(`
       INSERT INTO orders (
         order_number, customer_name, phone, email, address, comment,
-        delivery_method, delivery_fee, subtotal, total, payment_status, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        delivery_method, delivery_fee, cdek_city_code, cdek_city_name,
+        cdek_office_code, cdek_tariff_code, subtotal, total, payment_status, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       orderNumber, customer.name.trim(), customer.phone.trim(), customer.email.trim(),
-      customer.address?.trim() ?? "", customer.comment?.trim() ?? "", delivery,
-      deliveryFee, subtotal, total, "payment_provider_pending", "new"
+      deliveryAddress, customer.comment?.trim() ?? "", delivery,
+      deliveryFee, cdekCityCode, cdekCityName, cdekOfficeCode, cdekTariffCode,
+      subtotal, total, "payment_provider_pending", "new"
     ).run();
 
     const orderId = Number(insertOrder.meta.last_row_id);
@@ -139,55 +144,7 @@ export async function POST(request: Request) {
       )
     );
 
-    let paymentUrl: string | undefined;
-    let paymentStatus = "payment_provider_pending";
-    let paymentError: string | undefined;
-
-    if (isYooKassaConfigured(integrationEnv)) {
-      try {
-        const payment = await createPayment(integrationEnv, {
-          orderNumber,
-          amount: total,
-          description: `Заказ ${orderNumber} в магазине Фикусин`,
-          returnUrl: `${new URL(request.url).origin}/?payment=return&order=${encodeURIComponent(orderNumber)}`,
-          email: customer.email.trim(),
-          items: items.map((item) => ({
-            description: item.name,
-            quantity: item.quantity,
-            unitPrice: item.price,
-          })),
-          delivery: {
-            description: deliveryLabels[delivery],
-            price: deliveryFee,
-          },
-        });
-        paymentUrl = payment.confirmation?.confirmation_url;
-        paymentStatus = payment.status;
-      } catch (error) {
-        paymentError =
-          error instanceof Error ? error.message : "Не удалось создать платёж";
-      }
-    }
-
-    try {
-      await notifyNewOrder(integrationEnv, {
-        orderNumber,
-        customerName: customer.name.trim(),
-        phone: customer.phone.trim(),
-        email: customer.email.trim(),
-        address: customer.address?.trim() ?? "",
-        deliveryLabel: deliveryLabels[delivery],
-        total,
-        items,
-      });
-    } catch (error) {
-      console.error("Не удалось отправить заказ в Telegram", error);
-    }
-
-    return Response.json(
-      { orderNumber, paymentStatus, paymentUrl, paymentError },
-      { status: 201 },
-    );
+    return Response.json({ orderNumber, paymentStatus: "payment_provider_pending" }, { status: 201 });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Не удалось сохранить заказ" },
