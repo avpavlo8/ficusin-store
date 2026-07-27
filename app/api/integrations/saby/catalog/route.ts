@@ -32,6 +32,15 @@ const EXPECTED_WORKFLOW =
 
 let cachedJwks: { value: Jwks; expiresAt: number } | undefined;
 
+class SyncAuthError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 function decodeBase64Url(value: string) {
   const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
   const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
@@ -50,7 +59,9 @@ async function getGithubJwks(): Promise<Jwks> {
   const response = await fetch(
     "https://token.actions.githubusercontent.com/.well-known/jwks",
   );
-  if (!response.ok) throw new Error("Не удалось проверить подпись GitHub");
+  if (!response.ok) {
+    throw new SyncAuthError("jwks-fetch", "Не удалось проверить подпись GitHub");
+  }
   const value = (await response.json()) as Jwks;
   cachedJwks = { value, expiresAt: Date.now() + 60 * 60 * 1000 };
   return value;
@@ -58,30 +69,41 @@ async function getGithubJwks(): Promise<Jwks> {
 
 async function verifyGithubToken(token: string) {
   const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Некорректный токен GitHub");
+  if (parts.length !== 3) {
+    throw new SyncAuthError("jwt-format", "Некорректный токен GitHub");
+  }
   const [encodedHeader, encodedPayload, encodedSignature] = parts;
   const header = decodeJson<{ alg?: string; kid?: string }>(encodedHeader);
   if (header.alg !== "RS256" || !header.kid) {
-    throw new Error("Неподдерживаемая подпись GitHub");
+    throw new SyncAuthError("jwt-header", "Неподдерживаемая подпись GitHub");
   }
 
   const jwks = await getGithubJwks();
   const jwk = jwks.keys.find((key) => key.kid === header.kid);
-  if (!jwk) throw new Error("Ключ подписи GitHub не найден");
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"],
-  );
+  if (!jwk) {
+    throw new SyncAuthError("jwks-kid", "Ключ подписи GitHub не найден");
+  }
+  let key: CryptoKey;
+  try {
+    key = await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+  } catch {
+    throw new SyncAuthError("jwk-import", "Ключ GitHub имеет неверный формат");
+  }
   const valid = await crypto.subtle.verify(
     "RSASSA-PKCS1-v1_5",
     key,
     decodeBase64Url(encodedSignature),
     new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`),
   );
-  if (!valid) throw new Error("Подпись GitHub не прошла проверку");
+  if (!valid) {
+    throw new SyncAuthError("jwt-signature", "Подпись GitHub не прошла проверку");
+  }
 
   const claims = decodeJson<GithubClaims>(encodedPayload);
   const now = Math.floor(Date.now() / 1000);
@@ -96,7 +118,10 @@ async function verifyGithubToken(token: string) {
     claims.ref !== EXPECTED_REF ||
     claims.workflow_ref !== EXPECTED_WORKFLOW
   ) {
-    throw new Error("GitHub Actions не имеет доступа к синхронизации");
+    throw new SyncAuthError(
+      "jwt-claims",
+      "GitHub Actions не имеет доступа к синхронизации",
+    );
   }
 }
 
@@ -121,7 +146,16 @@ export async function POST(request: Request) {
     await verifyGithubToken(suppliedToken);
   } catch (error) {
     console.error("Отклонена синхронизация Saby", error);
-    return Response.json({ error: "Доступ запрещён" }, { status: 403 });
+    return Response.json(
+      { error: "Доступ запрещён" },
+      {
+        status: 403,
+        headers: {
+          "X-Saby-Sync-Error":
+            error instanceof SyncAuthError ? error.code : "auth-error",
+        },
+      },
+    );
   }
 
   const { env } = await import("cloudflare:workers");
