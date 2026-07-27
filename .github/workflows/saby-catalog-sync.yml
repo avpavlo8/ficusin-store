@@ -151,6 +151,23 @@ jobs:
               if not oidc_token:
                   raise RuntimeError("no OIDC token")
 
+              payload_part = oidc_token.split(".")[1]
+              payload_part += "=" * (-len(payload_part) % 4)
+              import base64
+              claims = json.loads(
+                  base64.urlsafe_b64decode(payload_part.encode("ascii"))
+              )
+              audience = claims.get("aud")
+              audiences = audience if isinstance(audience, list) else [audience]
+              flags = "".join([
+                  "i1" if claims.get("iss") == "https://token.actions.githubusercontent.com" else "i0",
+                  "a1" if "ficusin-store-saby-sync" in audiences else "a0",
+                  "r1" if claims.get("repository") == "avpavlo8/ficusin-store" else "r0",
+                  "f1" if claims.get("ref") == "refs/heads/main" else "f0",
+                  "w1" if claims.get("workflow_ref") == "avpavlo8/ficusin-store/.github/workflows/saby-catalog-sync.yml@refs/heads/main" else "w0",
+              ])
+              report("saby/oidc-" + flags, "success")
+
               allowed_fields = (
                   "id",
                   "article",
