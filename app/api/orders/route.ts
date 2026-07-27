@@ -3,6 +3,7 @@ import {
   getOffices,
 } from "../../../lib/integrations/cdek";
 import { sendTelegramOrder } from "../../../lib/integrations/telegram";
+import { normalizeRussianPhone } from "../../../lib/phone";
 
 const catalog = new Map([
   ["strelitzia-nicolai", { name: "Стрелиция Николая", price: 6490 }],
@@ -34,8 +35,15 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as OrderPayload;
     const customer = payload.customer;
     const delivery = payload.delivery ?? "";
-    if (!customer?.name?.trim() || !customer.phone?.trim() || !customer.email?.trim()) {
+    const normalizedPhone = normalizeRussianPhone(customer?.phone ?? "");
+    if (!customer?.name?.trim() || !customer.email?.trim()) {
       return Response.json({ error: "Заполните имя, телефон и email" }, { status: 400 });
+    }
+    if (!normalizedPhone) {
+      return Response.json(
+        { error: "Введите корректный российский номер телефона" },
+        { status: 400 },
+      );
     }
     if (!(delivery in deliveryFees) && delivery !== "cdek") {
       return Response.json({ error: "Выберите способ получения" }, { status: 400 });
@@ -130,7 +138,7 @@ export async function POST(request: Request) {
         cdek_office_code, cdek_tariff_code, subtotal, total, payment_status, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      orderNumber, customer.name.trim(), customer.phone.trim(), customer.email.trim(),
+      orderNumber, customer.name.trim(), normalizedPhone, customer.email.trim(),
       deliveryAddress, customer.comment?.trim() ?? "", delivery,
       deliveryFee, cdekCityCode, cdekCityName, cdekOfficeCode, cdekTariffCode,
       subtotal, total, "payment_provider_pending", "new"
@@ -149,7 +157,7 @@ export async function POST(request: Request) {
       await sendTelegramOrder({
         orderNumber,
         customerName: customer.name.trim(),
-        phone: customer.phone.trim(),
+        phone: normalizedPhone,
         email: customer.email.trim(),
         address: deliveryAddress,
         comment: customer.comment?.trim() ?? "",
