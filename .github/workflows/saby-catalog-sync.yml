@@ -184,6 +184,25 @@ jobs:
                   for item in catalog_items
               ]
 
+              image_values = [
+                  image
+                  for item in public_catalog
+                  for image in (item.get("images") or [])
+                  if isinstance(image, str) and image.strip()
+              ]
+              image_shape = {
+                  "h": sum(image.startswith("https://") for image in image_values),
+                  "p": sum(image.startswith("http://") for image in image_values),
+                  "s": sum(image.startswith("//") for image in image_values),
+                  "r": sum(image.startswith("/") and not image.startswith("//") for image in image_values),
+              }
+              image_shape["o"] = len(image_values) - sum(image_shape.values())
+              report(
+                  "saby/images-"
+                  + "-".join(f"{key}{value}" for key, value in image_shape.items()),
+                  "success",
+              )
+
               stage = "store"
               sync_request = urllib.request.Request(
                   os.environ["FICUSIN_SYNC_URL"],
