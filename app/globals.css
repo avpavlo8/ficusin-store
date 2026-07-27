@@ -148,13 +148,14 @@ footer small { grid-column: 1/-1; margin-top: 45px; padding-top: 22px; border-to
 .cart-summary p { color: #737b74; font-size: 12px; }
 .cart-summary .primary-button { width: 100%; }
 .toast { position: fixed; left: 50%; bottom: 28px; z-index: 100; padding: 14px 22px; background: var(--green); color: white; border-radius: 12px; transform: translateX(-50%); box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+.catalog-status { grid-column: 1 / -1; margin: 0; padding: 34px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); color: var(--green); text-align: center; }
+.catalog-status-error { color: #80513e; }
 
 .checkout form { padding: 26px 0 50px; }
 fieldset { margin: 0 0 32px; padding: 0; border: 0; }
 legend { margin-bottom: 15px; color: var(--green); font: 400 24px Georgia, serif; }
 label { display: grid; gap: 7px; margin-bottom: 15px; font-size: 13px; font-weight: 700; }
 input, textarea { width: 100%; padding: 14px 15px; border: 1px solid var(--line); border-radius: 10px; background: white; outline: none; }
-select { width: 100%; padding: 14px 15px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); outline: none; }
 input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(23,63,50,.08); }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .delivery-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 15px; }
@@ -169,13 +170,6 @@ input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px 
 .checkout-total .total { margin-top: 12px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 22px; }
 .payment-note { margin-bottom: 18px; padding: 16px; border-radius: 12px; background: #f5e7df; color: #6c3d2c; }
 .payment-note p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }
-.cdek-picker { margin: 14px 0; padding: 16px; display: grid; gap: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; }
-.inline-field { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.inline-field button, .cdek-results button { padding: 0 15px; border: 1px solid var(--green); border-radius: 9px; background: var(--green); color: white; cursor: pointer; }
-.cdek-results { display: grid; gap: 6px; }
-.cdek-results button { min-height: 42px; background: var(--cream); color: var(--green); text-align: left; }
-.cdek-quote { margin: 0; padding: 12px; border-radius: 9px; background: #e7efe9; color: var(--green); font-weight: 700; }
-.form-error { margin: 0; color: #9b3b2f; font-size: 13px; }
 .primary-button.full { width: 100%; }
 .primary-button:disabled { opacity: .55; cursor: wait; }
 .legal-note { margin-top: 13px; color: #788078; text-align: center; font-size: 11px; }
