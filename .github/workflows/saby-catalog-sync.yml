@@ -205,6 +205,13 @@ jobs:
               print("Saby catalog sync completed")
           except urllib.error.HTTPError as error:
               safe_code = error.headers.get("X-Saby-Sync-Error")
+              if not safe_code:
+                  try:
+                      safe_code = json.loads(
+                          error.read().decode("utf-8", errors="replace")
+                      ).get("code")
+                  except Exception:
+                      safe_code = None
               suffix = safe_code or f"http{error.code}"
               report(f"saby/store-sync/{stage}-{suffix}", "failure")
               raise SystemExit(f"Sync failed at {stage}: {suffix}") from None
