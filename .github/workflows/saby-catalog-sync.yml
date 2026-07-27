@@ -202,6 +202,34 @@ jobs:
                   + "-".join(f"{key}{value}" for key, value in image_shape.items()),
                   "success",
               )
+              relative_image = next(
+                  (image for image in image_values if image.startswith("/")),
+                  None,
+              )
+              probe_codes = []
+              if relative_image:
+                  for base in ("https://api.sbis.ru", "https://online.sbis.ru"):
+                      try:
+                          probe_request = urllib.request.Request(
+                              base + relative_image,
+                              headers={
+                                  "Range": "bytes=0-0",
+                                  "User-Agent": "Ficusin-Saby-Sync/1.0",
+                              },
+                          )
+                          with urllib.request.urlopen(probe_request, timeout=20) as probe:
+                              probe_codes.append(str(probe.status))
+                      except urllib.error.HTTPError as probe_error:
+                          probe_codes.append(str(probe_error.code))
+                      except Exception:
+                          probe_codes.append("x")
+                  report(
+                      "saby/image-probe-api"
+                      + probe_codes[0]
+                      + "-online"
+                      + probe_codes[1],
+                      "success",
+                  )
 
               stage = "store"
               sync_request = urllib.request.Request(
