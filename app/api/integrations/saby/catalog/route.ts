@@ -146,13 +146,14 @@ export async function POST(request: Request) {
     await verifyGithubToken(suppliedToken);
   } catch (error) {
     console.error("Отклонена синхронизация Saby", error);
+    const code =
+      error instanceof SyncAuthError ? error.code : "auth-error";
     return Response.json(
-      { error: "Доступ запрещён" },
+      { error: "Доступ запрещён", code },
       {
         status: 403,
         headers: {
-          "X-Saby-Sync-Error":
-            error instanceof SyncAuthError ? error.code : "auth-error",
+          "X-Saby-Sync-Error": code,
         },
       },
     );
