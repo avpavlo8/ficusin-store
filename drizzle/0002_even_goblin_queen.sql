@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `telegram_notified_at` text;
