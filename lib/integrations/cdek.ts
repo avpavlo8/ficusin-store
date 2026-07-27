@@ -1,5 +1,4 @@
-import type { IntegrationEnv } from "./types";
-import { requireSetting } from "./types";
+import { getCdekCredentials } from "./credentials";
 
 type CdekToken = { access_token: string; expires_in: number };
 
@@ -8,12 +7,13 @@ export type CdekCity = {
   city: string;
   region?: string;
   country?: string;
-  postal_codes?: string[];
+  country_code?: string;
 };
 
 export type CdekOffice = {
   code: string;
   name: string;
+  type?: string;
   location: {
     city: string;
     address: string;
@@ -32,115 +32,105 @@ type CdekTariff = {
   period_max: number;
 };
 
-const getBaseUrl = (env: IntegrationEnv) =>
-  (env.CDEK_API_URL?.trim() || "https://api.cdek.ru/v2").replace(/\/$/, "");
+const BASE_URL = "https://api.cdek.ru/v2";
+const FROM_CITY_CODE = 159;
+let tokenCache: { token: string; expiresAt: number } | null = null;
 
-async function getToken(env: IntegrationEnv): Promise<string> {
+async function getToken(): Promise<string> {
+  if (tokenCache && tokenCache.expiresAt > Date.now()) return tokenCache.token;
+  const credentials = await getCdekCredentials();
   const body = new URLSearchParams({
     grant_type: "client_credentials",
-    client_id: requireSetting(env, "CDEK_CLIENT_ID"),
-    client_secret: requireSetting(env, "CDEK_CLIENT_SECRET"),
+    client_id: credentials.clientId,
+    client_secret: credentials.clientSecret,
   });
-  const response = await fetch(`${getBaseUrl(env)}/oauth/token`, {
+  const response = await fetch(`${BASE_URL}/oauth/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "Ficusin-Store/1.0",
+    },
     body,
   });
-  if (!response.ok) {
-    throw new Error(`СДЭК не выдал токен: ${response.status}`);
-  }
-  return ((await response.json()) as CdekToken).access_token;
+  if (!response.ok) throw new Error(`СДЭК не выдал токен: ${response.status}`);
+  const data = (await response.json()) as CdekToken;
+  tokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + Math.max(60, data.expires_in - 120) * 1000,
+  };
+  return data.access_token;
 }
 
-async function cdekFetch<T>(
-  env: IntegrationEnv,
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const token = await getToken(env);
-  const response = await fetch(`${getBaseUrl(env)}${path}`, {
+async function cdekFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${await getToken()}`,
+      Accept: "application/json",
       "Content-Type": "application/json",
+      "User-Agent": "Ficusin-Store/1.0",
       ...init?.headers,
     },
   });
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Ошибка СДЭК ${response.status}: ${body}`);
+    throw new Error(`СДЭК временно недоступен (${response.status})`);
   }
   return (await response.json()) as T;
 }
 
-export function isCdekConfigured(env: IntegrationEnv) {
-  return Boolean(env.CDEK_CLIENT_ID && env.CDEK_CLIENT_SECRET);
+export async function findCities(city: string): Promise<CdekCity[]> {
+  const params = new URLSearchParams({
+    city,
+    country_codes: "RU",
+    size: "20",
+  });
+  const cities = await cdekFetch<CdekCity[]>(`/location/cities?${params}`);
+  return cities.filter((item) => item.country_code === "RU" || !item.country_code);
 }
 
-export async function findCities(
-  env: IntegrationEnv,
-  city: string,
-): Promise<CdekCity[]> {
-  const params = new URLSearchParams({ city, size: "20" });
-  return cdekFetch<CdekCity[]>(env, `/location/cities?${params}`);
-}
-
-export async function getOffices(
-  env: IntegrationEnv,
-  cityCode: number,
-): Promise<CdekOffice[]> {
+export async function getOffices(cityCode: number): Promise<CdekOffice[]> {
   const params = new URLSearchParams({
     city_code: String(cityCode),
     type: "PVZ",
     is_handout: "true",
   });
-  return cdekFetch<CdekOffice[]>(env, `/deliverypoints?${params}`);
+  const offices = await cdekFetch<CdekOffice[]>(`/deliverypoints?${params}`);
+  return offices
+    .filter((office) => office.location?.address)
+    .sort((a, b) => a.location.address.localeCompare(b.location.address, "ru"));
 }
 
-export async function calculatePvzDelivery(
-  env: IntegrationEnv,
-  input: {
-    cityCode: number;
-    weightGrams: number;
-    lengthCm: number;
-    widthCm: number;
-    heightCm: number;
-  },
-) {
+export async function calculatePvzDelivery(cityCode: number, itemCount: number) {
+  const packages = Array.from(
+    { length: Math.max(1, Math.min(10, Math.ceil(itemCount))) },
+    () => ({ weight: 2500, length: 35, width: 35, height: 60 }),
+  );
   const result = await cdekFetch<{ tariff_codes: CdekTariff[] }>(
-    env,
     "/calculator/tarifflist",
     {
       method: "POST",
       body: JSON.stringify({
         type: 1,
         currency: 1,
-        from_location: {
-          code: Number(requireSetting(env, "CDEK_FROM_CITY_CODE")),
-        },
-        to_location: { code: input.cityCode },
-        packages: [
-          {
-            weight: Math.max(1, Math.round(input.weightGrams)),
-            length: Math.max(1, Math.round(input.lengthCm)),
-            width: Math.max(1, Math.round(input.widthCm)),
-            height: Math.max(1, Math.round(input.heightCm)),
-          },
-        ],
+        from_location: { code: FROM_CITY_CODE },
+        to_location: { code: cityCode },
+        packages,
       }),
     },
   );
-
   const tariffs = result.tariff_codes
-    .filter((tariff) => tariff.delivery_sum > 0)
+    .filter(
+      (tariff) =>
+        tariff.delivery_sum > 0 &&
+        (tariff.delivery_mode === 2 || tariff.delivery_mode === 4),
+    )
     .sort((a, b) => a.delivery_sum - b.delivery_sum);
-  const preferred = tariffs.find((tariff) => tariff.delivery_mode === 3) ?? tariffs[0];
-  if (!preferred) throw new Error("СДЭК не нашёл доступный тариф");
-
+  const preferred = tariffs[0];
+  if (!preferred) throw new Error("СДЭК не нашёл доставку до пункта выдачи");
   return {
     tariffCode: preferred.tariff_code,
     tariffName: preferred.tariff_name,
-    price: preferred.delivery_sum,
+    price: Math.ceil(preferred.delivery_sum),
     daysMin: preferred.period_min,
     daysMax: preferred.period_max,
   };
