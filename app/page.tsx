@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { normalizeRussianPhone } from "../lib/phone";
 
 type Product = {
   id: string;
@@ -253,10 +254,24 @@ export default function Home() {
     event.preventDefault();
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
+    const phoneInput = event.currentTarget.elements.namedItem(
+      "phone",
+    ) as HTMLInputElement;
+    const phone = normalizeRussianPhone(String(form.get("phone") ?? ""));
+    if (!phone) {
+      phoneInput.setCustomValidity(
+        "Введите российский номер: 9151234567, 79151234567 или 89151234567",
+      );
+      phoneInput.reportValidity();
+      setSubmitting(false);
+      return;
+    }
+    phoneInput.setCustomValidity("");
+    phoneInput.value = phone;
     const payload = {
       customer: {
         name: String(form.get("name") ?? ""),
-        phone: String(form.get("phone") ?? ""),
+        phone,
         email: String(form.get("email") ?? ""),
         address: String(form.get("address") ?? ""),
         comment: String(form.get("comment") ?? ""),
@@ -502,7 +517,7 @@ export default function Home() {
           </div>
         ) : (
           <form onSubmit={submitOrder}>
-            <fieldset><legend>Контактные данные</legend><div className="field-grid"><label>Имя<input name="name" required placeholder="Александр" /></label><label>Телефон<input name="phone" required inputMode="tel" placeholder="+7 900 000-00-00" /></label></div><label>Email для чека<input name="email" required type="email" placeholder="mail@example.ru" /></label></fieldset>
+            <fieldset><legend>Контактные данные</legend><div className="field-grid"><label>Имя<input name="name" required placeholder="Александр" /></label><label>Телефон<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={18} placeholder="+7 900 000-00-00" onInput={(event) => event.currentTarget.setCustomValidity("")} onBlur={(event) => { const normalized = normalizeRussianPhone(event.currentTarget.value); if (normalized) event.currentTarget.value = normalized; }} /></label></div><label>Email для чека<input name="email" required type="email" placeholder="mail@example.ru" /></label></fieldset>
             <fieldset>
               <legend>Получение</legend>
               <div className="delivery-options">
