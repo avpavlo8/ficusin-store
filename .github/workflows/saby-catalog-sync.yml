@@ -1,4 +1,5 @@
 name: Sync Saby catalog
+# Product image paths are resolved to public Saby media URLs by the store.
 
 on:
   workflow_dispatch:
