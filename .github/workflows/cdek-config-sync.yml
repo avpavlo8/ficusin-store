@@ -1,0 +1,74 @@
+name: Sync CDEK credentials
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cdek-config-sync.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      CDEK_CLIENT_ID: ${{ secrets.CDEK_CLIENT_ID }}
+      CDEK_CLIENT_SECRET: ${{ secrets.CDEK_CLIENT_SECRET }}
+      CDEK_CONFIG_PUBLIC_KEY: |
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA00EZzjTqhVJYKJye2y0C
+        OCtzYZZgJIti653o9OydrY916CvC4TFp/5FBT45CLRZ4XxEny+iCsfz/JzvdozBv
+        uWLe87u3Q7cgezXzDgt/C0vAJ10nwlVi59XK68hnB4NFjQnOYjVPIiWIGoZ1stEv
+        LGVasSoOBGnz77XRjnQUi3HxO3nj2dgYXVjjh5lKT3DLOXVTgIozH0CUfHRiAAcG
+        znZ4v/+5tGu0j4VhmU3eh5qKLj9F1ftYUCnvFoIP8vOEWHBeFGE6xAB72U/MVhb+
+        O/Bs3JMBywElOazMo25ZdnzwSbHdeI1O22qtnjgS99Am90wdtR6kW+crSfn0iOeZ
+        uQIDAQAB
+        -----END PUBLIC KEY-----
+    steps:
+      - name: Encrypt credentials
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const crypto = require("crypto");
+          const clientId = (process.env.CDEK_CLIENT_ID || "").trim();
+          const clientSecret = (process.env.CDEK_CLIENT_SECRET || "").trim();
+          if (!clientId || !clientSecret) {
+            throw new Error("CDEK secrets are missing");
+          }
+          const key = crypto.randomBytes(32);
+          const iv = crypto.randomBytes(12);
+          const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+          const clear = Buffer.from(JSON.stringify({ clientId, clientSecret }));
+          const ciphertext = Buffer.concat([cipher.update(clear), cipher.final()]);
+          const envelope = {
+            encryptedKey: crypto.publicEncrypt({
+              key: process.env.CDEK_CONFIG_PUBLIC_KEY,
+              oaepHash: "sha256",
+              padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+            }, key).toString("base64"),
+            iv: iv.toString("base64"),
+            ciphertext: ciphertext.toString("base64"),
+            tag: cipher.getAuthTag().toString("base64"),
+          };
+          fs.writeFileSync("cdek-config.json", JSON.stringify(envelope));
+          NODE
+
+      - name: Send protected configuration to the store
+        shell: bash
+        run: |
+          oidc_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=ficusin-store-cdek-config")"
+          oidc_token="$(OIDC_RESPONSE="${oidc_response}" node -e \
+            'process.stdout.write(JSON.parse(process.env.OIDC_RESPONSE).value)')"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${oidc_token}" \
+            -H "Content-Type: application/json" \
+            --data-binary @cdek-config.json \
+            "https://ryazan-plants.avpavlomail.chatgpt.site/api/integrations/config/cdek"
