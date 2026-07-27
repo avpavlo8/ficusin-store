@@ -135,9 +135,8 @@ const chunks = <T,>(items: T[], size: number) => {
 
 export async function POST(request: Request) {
   const suppliedToken = request.headers
-    .get("Authorization")
-    ?.replace(/^Bearer\s+/i, "")
-    .trim();
+    .get("X-Ficusin-GitHub-OIDC")
+    ?.trim();
   if (!suppliedToken) {
     return Response.json({ error: "Доступ запрещён" }, { status: 401 });
   }
