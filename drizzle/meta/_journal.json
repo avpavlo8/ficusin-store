@@ -15,6 +15,13 @@
       "when": 1785158021582,
       "tag": "0001_bumpy_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785173759555,
+      "tag": "0002_even_goblin_queen",
+      "breakpoints": true
     }
   ]
 }
