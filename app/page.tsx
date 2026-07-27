@@ -16,12 +16,26 @@ type Product = {
 };
 
 type Cart = Record<string, number>;
+type CdekCity = { code: number; city: string; region?: string };
+type CdekOffice = {
+  code: string;
+  name: string;
+  location: { city: string; address: string; address_full?: string };
+  work_time?: string;
+};
+type CdekQuote = {
+  tariffCode: number;
+  tariffName: string;
+  price: number;
+  daysMin: number;
+  daysMax: number;
+};
 
 const categories = ["Все растения", "Крупные", "Неприхотливые", "Цветущие", "Ампельные"];
 const deliveryOptions = [
   { id: "pickup", title: "Самовывоз в Рязани", detail: "из магазина, бесплатно", fee: 0 },
   { id: "courier", title: "Курьер по Рязани", detail: "в согласованный день", fee: 490 },
-  { id: "cdek", title: "СДЭК по России", detail: "бережная упаковка", fee: 690 },
+  { id: "cdek", title: "СДЭК по России", detail: "до выбранного пункта выдачи", fee: null },
   { id: "post", title: "Почта России", detail: "для населённых пунктов без СДЭК", fee: 590 },
 ];
 
@@ -42,6 +56,14 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+  const [cdekCityQuery, setCdekCityQuery] = useState("");
+  const [cdekCities, setCdekCities] = useState<CdekCity[]>([]);
+  const [cdekCity, setCdekCity] = useState<CdekCity | null>(null);
+  const [cdekOffices, setCdekOffices] = useState<CdekOffice[]>([]);
+  const [cdekOfficeCode, setCdekOfficeCode] = useState("");
+  const [cdekQuote, setCdekQuote] = useState<CdekQuote | null>(null);
+  const [cdekLoading, setCdekLoading] = useState(false);
+  const [cdekError, setCdekError] = useState("");
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -99,6 +121,44 @@ export default function Home() {
     };
   }, [cartOpen, checkoutOpen, menuOpen]);
 
+  useEffect(() => {
+    if (
+      delivery !== "cdek" ||
+      cdekCityQuery.trim().length < 2 ||
+      cdekCityQuery.trim() === cdekCity?.city
+    ) {
+      setCdekCities([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setCdekLoading(true);
+        setCdekError("");
+        const response = await fetch(
+          `/api/delivery/cdek?action=cities&city=${encodeURIComponent(cdekCityQuery.trim())}`,
+          { signal: controller.signal },
+        );
+        const data = (await response.json()) as {
+          cities?: CdekCity[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error || "Не удалось найти город");
+        setCdekCities(data.cities ?? []);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          setCdekError(error instanceof Error ? error.message : "Не удалось найти город");
+        }
+      } finally {
+        setCdekLoading(false);
+      }
+    }, 350);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [delivery, cdekCityQuery, cdekCity]);
+
   const filtered = useMemo(
     () =>
       products.filter((product) => {
@@ -118,7 +178,54 @@ export default function Home() {
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
-  const total = subtotal + deliveryOption.fee;
+  const deliveryFee = delivery === "cdek" ? (cdekQuote?.price ?? 0) : (deliveryOption.fee ?? 0);
+  const total = subtotal + deliveryFee;
+
+  async function chooseCdekCity(city: CdekCity) {
+    setCdekCity(city);
+    setCdekCityQuery(city.city);
+    setCdekCities([]);
+    setCdekOffices([]);
+    setCdekOfficeCode("");
+    setCdekQuote(null);
+    setCdekLoading(true);
+    setCdekError("");
+    try {
+      const [officesResponse, quoteResponse] = await Promise.all([
+        fetch(`/api/delivery/cdek?action=offices&cityCode=${city.code}`),
+        fetch("/api/delivery/cdek", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cityCode: city.code, itemCount: cartCount }),
+        }),
+      ]);
+      const officesData = (await officesResponse.json()) as {
+        offices?: CdekOffice[];
+        error?: string;
+      };
+      const quoteData = (await quoteResponse.json()) as {
+        quote?: CdekQuote;
+        error?: string;
+      };
+      if (!officesResponse.ok) {
+        throw new Error(officesData.error || "Не удалось загрузить пункты выдачи");
+      }
+      if (!quoteResponse.ok || !quoteData.quote) {
+        throw new Error(quoteData.error || "Не удалось рассчитать доставку");
+      }
+      if (!officesData.offices?.length) {
+        throw new Error("В этом городе нет доступных пунктов выдачи");
+      }
+      setCdekOffices(officesData.offices);
+      setCdekQuote(quoteData.quote);
+    } catch (error) {
+      setCdekError(
+        error instanceof Error ? error.message : "Не удалось рассчитать доставку",
+      );
+    } finally {
+      setCdekLoading(false);
+    }
+  }
 
   function addToCart(id: string) {
     const product = products.find((item) => item.id === id);
@@ -155,6 +262,14 @@ export default function Home() {
         comment: String(form.get("comment") ?? ""),
       },
       delivery,
+      cdek:
+        delivery === "cdek"
+          ? {
+              cityCode: cdekCity?.code,
+              cityName: cdekCity?.city,
+              officeCode: cdekOfficeCode,
+            }
+          : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
     };
 
@@ -345,7 +460,7 @@ export default function Home() {
         </div>
         <div className="delivery-grid">
           {deliveryOptions.map((item, index) => (
-            <article key={item.id}><span>0{index + 1}</span><h3>{item.title}</h3><p>{item.detail}</p><b>{item.fee ? `от ${money(item.fee)}` : "Бесплатно"}</b></article>
+            <article key={item.id}><span>0{index + 1}</span><h3>{item.title}</h3><p>{item.detail}</p><b>{item.id === "cdek" ? "По тарифу СДЭК" : item.fee ? `от ${money(item.fee)}` : "Бесплатно"}</b></article>
           ))}
         </div>
       </section>
@@ -388,11 +503,114 @@ export default function Home() {
         ) : (
           <form onSubmit={submitOrder}>
             <fieldset><legend>Контактные данные</legend><div className="field-grid"><label>Имя<input name="name" required placeholder="Александр" /></label><label>Телефон<input name="phone" required inputMode="tel" placeholder="+7 900 000-00-00" /></label></div><label>Email для чека<input name="email" required type="email" placeholder="mail@example.ru" /></label></fieldset>
-            <fieldset><legend>Получение</legend><div className="delivery-options">{deliveryOptions.map((item) => <label className={delivery === item.id ? "selected" : ""} key={item.id}><input type="radio" name="delivery" value={item.id} checked={delivery === item.id} onChange={() => setDelivery(item.id)} /><span><b>{item.title}</b><small>{item.detail}</small></span><strong>{item.fee ? money(item.fee) : "0 ₽"}</strong></label>)}</div><label>Адрес или пункт выдачи<input name="address" required={delivery !== "pickup"} placeholder={delivery === "pickup" ? "Не нужен для самовывоза" : "Город, улица, дом или пункт СДЭК"} /></label></fieldset>
+            <fieldset>
+              <legend>Получение</legend>
+              <div className="delivery-options">
+                {deliveryOptions.map((item) => (
+                  <label className={delivery === item.id ? "selected" : ""} key={item.id}>
+                    <input
+                      type="radio"
+                      name="delivery"
+                      value={item.id}
+                      checked={delivery === item.id}
+                      onChange={() => setDelivery(item.id)}
+                    />
+                    <span><b>{item.title}</b><small>{item.detail}</small></span>
+                    <strong>
+                      {item.id === "cdek"
+                        ? cdekQuote
+                          ? money(cdekQuote.price)
+                          : "Рассчитать"
+                        : item.fee
+                          ? money(item.fee)
+                          : "0 ₽"}
+                    </strong>
+                  </label>
+                ))}
+              </div>
+              {delivery === "cdek" ? (
+                <div className="cdek-picker">
+                  <label>
+                    Город получения
+                    <input
+                      value={cdekCityQuery}
+                      onChange={(event) => {
+                        setCdekCityQuery(event.target.value);
+                        setCdekCity(null);
+                        setCdekOffices([]);
+                        setCdekOfficeCode("");
+                        setCdekQuote(null);
+                      }}
+                      autoComplete="off"
+                      placeholder="Начните вводить город"
+                    />
+                  </label>
+                  {!!cdekCities.length && (
+                    <div className="cdek-suggestions" role="listbox" aria-label="Найденные города">
+                      {cdekCities.map((city) => (
+                        <button
+                          type="button"
+                          key={city.code}
+                          onClick={() => chooseCdekCity(city)}
+                        >
+                          <b>{city.city}</b>
+                          <span>{city.region || "Россия"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {cdekLoading && <p className="cdek-status">Получаем данные СДЭК…</p>}
+                  {cdekError && <p className="cdek-status error">{cdekError}</p>}
+                  {!!cdekOffices.length && (
+                    <label>
+                      Пункт выдачи
+                      <select
+                        value={cdekOfficeCode}
+                        onChange={(event) => setCdekOfficeCode(event.target.value)}
+                        required
+                      >
+                        <option value="">Выберите адрес</option>
+                        {cdekOffices.map((office) => (
+                          <option key={office.code} value={office.code}>
+                            {office.location.address}
+                            {office.work_time ? ` · ${office.work_time}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {cdekQuote && (
+                    <div className="cdek-quote">
+                      <b>{money(cdekQuote.price)}</b>
+                      <span>
+                        {cdekQuote.daysMin === cdekQuote.daysMax
+                          ? `${cdekQuote.daysMin} дн.`
+                          : `${cdekQuote.daysMin}–${cdekQuote.daysMax} дн.`}
+                      </span>
+                      <small>Предварительный расчёт по габаритам растений</small>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <label>
+                  {delivery === "pickup" ? "Самовывоз" : "Адрес доставки"}
+                  <input
+                    name="address"
+                    required={delivery !== "pickup"}
+                    disabled={delivery === "pickup"}
+                    placeholder={
+                      delivery === "pickup"
+                        ? "Рязань, Новосёлов, 40А"
+                        : "Город, улица, дом, квартира"
+                    }
+                  />
+                </label>
+              )}
+            </fieldset>
             <fieldset><legend>Комментарий</legend><label><textarea name="comment" rows={3} placeholder="Удобное время, пожелания к заказу" /></label></fieldset>
-            <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{money(deliveryOption.fee)}</span></div><div className="total"><strong>Итого</strong><strong>{money(total)}</strong></div></div>
+            <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekQuote ? "после выбора ПВЗ" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{money(total)}</strong></div></div>
             <div className="payment-note"><b>Онлайн-оплата готовится</b><p>Платёжный сервис пока не выбран. Заказ сохранится, но деньги списываться не будут.</p></div>
-            <button className="primary-button full" disabled={submitting}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
+            <button className="primary-button full" disabled={submitting || (delivery === "cdek" && (!cdekQuote || !cdekOfficeCode))}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
             <p className="legal-note">Нажимая кнопку, вы соглашаетесь с обработкой персональных данных.</p>
           </form>
         )}
