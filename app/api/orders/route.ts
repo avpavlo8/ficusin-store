@@ -2,6 +2,7 @@ import {
   calculatePvzDelivery,
   getOffices,
 } from "../../../lib/integrations/cdek";
+import { sendTelegramOrder } from "../../../lib/integrations/telegram";
 
 const catalog = new Map([
   ["strelitzia-nicolai", { name: "Стрелиция Николая", price: 6490 }],
@@ -143,6 +144,33 @@ export async function POST(request: Request) {
         ).bind(orderId, item.id, item.name, item.price, item.quantity)
       )
     );
+
+    try {
+      await sendTelegramOrder({
+        orderNumber,
+        customerName: customer.name.trim(),
+        phone: customer.phone.trim(),
+        email: customer.email.trim(),
+        address: deliveryAddress,
+        comment: customer.comment?.trim() ?? "",
+        deliveryMethod: delivery,
+        deliveryFee,
+        subtotal,
+        total,
+        items: items.map((item) => ({
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+      });
+      await env.DB.prepare(
+        "UPDATE orders SET telegram_notified_at = CURRENT_TIMESTAMP WHERE id = ?",
+      )
+        .bind(orderId)
+        .run();
+    } catch (error) {
+      console.error("Не удалось отправить заказ в Telegram", error);
+    }
 
     return Response.json({ orderNumber, paymentStatus: "payment_provider_pending" }, { status: 201 });
   } catch (error) {
