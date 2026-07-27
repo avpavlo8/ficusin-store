@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  statuses: write
 
 jobs:
   sync:
@@ -72,3 +73,12 @@ jobs:
             -H "Content-Type: application/json" \
             --data-binary @cdek-config.json \
             "https://ryazan-plants.avpavlomail.chatgpt.site/api/integrations/config/cdek"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data '{"state":"success","context":"cdek/config-synced","description":"CDEK credentials securely synced"}' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
