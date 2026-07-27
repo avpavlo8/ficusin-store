@@ -109,7 +109,7 @@ export default function Home() {
         const searchable = `${product.name} ${product.latin}`.toLowerCase();
         return inCategory && searchable.includes(query.toLowerCase().trim());
       }),
-    [category, query],
+    [products, category, query],
   );
 
   const cartLines = products
