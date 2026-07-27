@@ -204,8 +204,10 @@ jobs:
               report(f"saby/store-sync/success-r{len(public_catalog)}", "success")
               print("Saby catalog sync completed")
           except urllib.error.HTTPError as error:
-              report(f"saby/store-sync/{stage}-http{error.code}", "failure")
-              raise SystemExit(f"Sync failed at {stage}: HTTP {error.code}") from None
+              safe_code = error.headers.get("X-Saby-Sync-Error")
+              suffix = safe_code or f"http{error.code}"
+              report(f"saby/store-sync/{stage}-{suffix}", "failure")
+              raise SystemExit(f"Sync failed at {stage}: {suffix}") from None
           except Exception:
               report(f"saby/store-sync/{stage}-error", "failure")
               raise SystemExit(f"Sync failed at {stage}") from None
