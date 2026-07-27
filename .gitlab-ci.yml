@@ -1,0 +1,22 @@
+image: node:22-bookworm-slim
+
+stages:
+  - verify
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+verify:
+  stage: verify
+  script:
+    - npm ci --prefer-offline --no-audit
+    - npm run lint
+    - npm test
+
