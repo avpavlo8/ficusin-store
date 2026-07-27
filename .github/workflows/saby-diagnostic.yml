@@ -1,0 +1,102 @@
+name: Saby catalog diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/saby-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-saby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+      SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+      SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+      SABY_POINT_ID: "278"
+      SABY_PRICE_LIST_ID: "6"
+
+    steps:
+      - name: Verify catalog access without exposing business data
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          required = (
+              "SABY_APP_CLIENT_ID",
+              "SABY_APP_SECRET",
+              "SABY_SECRET_KEY",
+              "SABY_POINT_ID",
+              "SABY_PRICE_LIST_ID",
+          )
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing required GitHub secrets or settings")
+
+          def load_json(request):
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  raise SystemExit(f"Saby request failed with HTTP {error.code}") from None
+
+          auth_request = urllib.request.Request(
+              "https://online.sbis.ru/oauth/service/",
+              data=json.dumps({
+                  "app_client_id": os.environ["SABY_APP_CLIENT_ID"],
+                  "app_secret": os.environ["SABY_APP_SECRET"],
+                  "secret_key": os.environ["SABY_SECRET_KEY"],
+              }).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          token = load_json(auth_request).get("token")
+          if not token:
+              raise SystemExit("Saby authentication did not return a token")
+
+          params = urllib.parse.urlencode({
+              "pointId": os.environ["SABY_POINT_ID"],
+              "priceListId": os.environ["SABY_PRICE_LIST_ID"],
+              "withBalance": "true",
+              "withBarcode": "true",
+              "page": 0,
+              "pageSize": 25,
+          })
+          catalog_request = urllib.request.Request(
+              "https://api.sbis.ru/retail/v2/nomenclature/list?" + params,
+              headers={"X-SBISAccessToken": token},
+          )
+          catalog = load_json(catalog_request)
+          items = (
+              catalog.get("nomenclatures")
+              or catalog.get("items")
+              or catalog.get("products")
+              or []
+          )
+          if not items:
+              raise SystemExit("Saby returned no catalog records")
+
+          priced = sum(item.get("cost") is not None for item in items)
+          balanced = sum(item.get("balance") is not None for item in items)
+          pictured = sum(bool(item.get("images")) for item in items)
+
+          print("Saby authentication: OK")
+          print(f"Catalog records checked: {len(items)}")
+          print(f"Records containing price: {priced}")
+          print(f"Records containing balance: {balanced}")
+          print(f"Records containing images: {pictured}")
+
+          if priced == 0:
+              raise SystemExit("No price fields were returned")
+          if balanced == 0:
+              raise SystemExit("No balance fields were returned")
+          PY
