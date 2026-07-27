@@ -133,6 +133,23 @@ const chunks = <T,>(items: T[], size: number) => {
   return result;
 };
 
+function resolveSabyImage(value: string) {
+  try {
+    let url = new URL(value.trim(), "https://online.sbis.ru");
+    const encodedParams = url.searchParams.get("params");
+    if (url.pathname === "/img" && encodedParams) {
+      const photoUrl = decodeJson<{ PhotoURL?: string }>(
+        encodedParams,
+      ).PhotoURL?.trim();
+      if (photoUrl) url = new URL(photoUrl);
+    }
+    if (url.protocol === "http:") url.protocol = "https:";
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function POST(request: Request) {
   const suppliedToken = request.headers
     .get("X-Ficusin-GitHub-OIDC")
@@ -308,15 +325,7 @@ export async function POST(request: Request) {
         const productId = productIds.get(String(item.id));
         if (!productId) return [];
         const images = (item.images ?? [])
-          .map((image) => {
-            try {
-              const url = new URL(image.trim(), "https://api.sbis.ru");
-              if (url.protocol === "http:") url.protocol = "https:";
-              return url.protocol === "https:" ? url.toString() : "";
-            } catch {
-              return "";
-            }
-          })
+          .map(resolveSabyImage)
           .filter(Boolean)
           .slice(0, 8);
         return [
