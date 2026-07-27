@@ -10,8 +10,15 @@ export type CdekCredentials = {
   clientSecret: string;
 };
 
+export type TelegramCredentials = {
+  botToken: string;
+};
+
 const textDecoder = new TextDecoder();
-let cached: { credentials: CdekCredentials; expiresAt: number } | null = null;
+const cached = new Map<
+  string,
+  { credentials: unknown; expiresAt: number }
+>();
 
 async function getRuntimeEnv() {
   const { env } = await import("cloudflare:workers");
@@ -36,7 +43,7 @@ function pemToBytes(pem: string) {
   );
 }
 
-async function decryptEnvelope(envelope: EncryptedEnvelope) {
+async function decryptEnvelope<T>(envelope: EncryptedEnvelope) {
   const env = await getRuntimeEnv();
   const privateKeyPem = env.INTEGRATION_SECRETS_PRIVATE_KEY?.trim();
   if (!privateKeyPem) throw new Error("Ключ защищённых интеграций не настроен");
@@ -69,34 +76,53 @@ async function decryptEnvelope(envelope: EncryptedEnvelope) {
     aesKey,
     encrypted,
   );
-  return JSON.parse(textDecoder.decode(clear)) as CdekCredentials;
+  return JSON.parse(textDecoder.decode(clear)) as T;
 }
 
-export async function getCdekCredentials() {
-  if (cached && cached.expiresAt > Date.now()) return cached.credentials;
-
+async function getEncryptedCredentials<T>(provider: "cdek" | "telegram") {
+  const current = cached.get(provider);
+  if (current && current.expiresAt > Date.now()) {
+    return current.credentials as T;
+  }
   const env = await getRuntimeEnv();
   const row = await env.DB.prepare(
     "SELECT encrypted_payload FROM integration_credentials WHERE provider = ? LIMIT 1",
   )
-    .bind("cdek")
+    .bind(provider)
     .first<{ encrypted_payload: string }>();
   if (!row?.encrypted_payload) {
-    throw new Error("Доступ к СДЭК ещё не передан сайту");
+    throw new Error(`Доступ к интеграции ${provider} ещё не передан сайту`);
   }
 
-  const credentials = await decryptEnvelope(
+  const credentials = await decryptEnvelope<T>(
     JSON.parse(row.encrypted_payload) as EncryptedEnvelope,
   );
+  cached.set(provider, {
+    credentials,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+  return credentials;
+}
+
+export async function getCdekCredentials() {
+  const credentials = await getEncryptedCredentials<CdekCredentials>("cdek");
   if (!credentials.clientId?.trim() || !credentials.clientSecret?.trim()) {
     throw new Error("Данные доступа к СДЭК неполные");
   }
-  cached = { credentials, expiresAt: Date.now() + 10 * 60 * 1000 };
+  return credentials;
+}
+
+export async function getTelegramCredentials() {
+  const credentials =
+    await getEncryptedCredentials<TelegramCredentials>("telegram");
+  if (!credentials.botToken?.trim()) {
+    throw new Error("Токен Telegram-бота не настроен");
+  }
   return credentials;
 }
 
 export async function storeEncryptedCredentials(
-  provider: "cdek",
+  provider: "cdek" | "telegram",
   envelope: EncryptedEnvelope,
 ) {
   const env = await getRuntimeEnv();
@@ -113,5 +139,5 @@ export async function storeEncryptedCredentials(
   )
     .bind(provider, JSON.stringify(envelope))
     .run();
-  cached = null;
+  cached.delete(provider);
 }
