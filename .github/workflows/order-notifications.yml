@@ -1,5 +1,5 @@
 name: Send new orders to Telegram
-# Verification trigger after TELEGRAM_BOT_TOKEN configuration.
+# Telegram order delivery is verified and runs every five minutes.
 
 on:
   workflow_dispatch:
