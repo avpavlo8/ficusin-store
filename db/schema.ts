@@ -312,6 +312,10 @@ export const orders = sqliteTable(
     comment: text("comment").notNull().default(""),
     deliveryMethod: text("delivery_method").notNull(),
     deliveryFee: real("delivery_fee").notNull(),
+    cdekCityCode: integer("cdek_city_code"),
+    cdekCityName: text("cdek_city_name"),
+    cdekOfficeCode: text("cdek_office_code"),
+    cdekTariffCode: integer("cdek_tariff_code"),
     subtotal: real("subtotal").notNull(),
     discountBps: integer("discount_bps").notNull().default(0),
     discountAmount: real("discount_amount").notNull().default(0),
@@ -364,6 +368,12 @@ export const syncRuns = sqliteTable(
   },
   (table) => [index("sync_runs_source_idx").on(table.source, table.startedAt)],
 );
+
+export const integrationCredentials = sqliteTable("integration_credentials", {
+  provider: text("provider").primaryKey(),
+  encryptedPayload: text("encrypted_payload").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
 
 export const priceImports = sqliteTable(
   "price_imports",
