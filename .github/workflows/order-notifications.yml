@@ -1,5 +1,5 @@
 name: Send new orders to Telegram
-# Telegram order delivery is verified and runs every five minutes.
+# Telegram order delivery recovery run.
 
 on:
   workflow_dispatch:
