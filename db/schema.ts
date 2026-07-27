@@ -320,6 +320,7 @@ export const orders = sqliteTable(
     paymentStatus: text("payment_status").notNull().default("payment_provider_pending"),
     status: text("status").notNull().default("new"),
     sabyOrderId: text("saby_order_id"),
+    telegramNotifiedAt: text("telegram_notified_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [
