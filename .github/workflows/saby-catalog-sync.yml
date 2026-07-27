@@ -1,0 +1,154 @@
+name: Sync Saby catalog
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+  push:
+    paths:
+      - ".github/workflows/saby-catalog-sync.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: saby-catalog-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+      SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+      SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+      SABY_POINT_ID: "278"
+      SABY_PRICE_LIST_ID: "6"
+      FICUSIN_SYNC_URL: "https://ryazan-plants.avpavlomail.chatgpt.site/api/integrations/saby/catalog"
+
+    steps:
+      - name: Send current Saby catalog to the store
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          def request_json(request):
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+
+          required = (
+              "SABY_APP_CLIENT_ID",
+              "SABY_APP_SECRET",
+              "SABY_SECRET_KEY",
+              "ACTIONS_ID_TOKEN_REQUEST_URL",
+              "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+          )
+          if any(not os.environ.get(name) for name in required):
+              raise SystemExit("Required sync credentials are unavailable")
+
+          auth_request = urllib.request.Request(
+              "https://online.sbis.ru/oauth/service/",
+              data=json.dumps({
+                  "app_client_id": os.environ["SABY_APP_CLIENT_ID"],
+                  "app_secret": os.environ["SABY_APP_SECRET"],
+                  "secret_key": os.environ["SABY_SECRET_KEY"],
+              }).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          saby_token = request_json(auth_request).get("token")
+          if not saby_token:
+              raise SystemExit("Saby authentication did not return a token")
+
+          catalog_items = []
+          for page in range(20):
+              params = urllib.parse.urlencode({
+                  "pointId": os.environ["SABY_POINT_ID"],
+                  "priceListId": os.environ["SABY_PRICE_LIST_ID"],
+                  "withBalance": "true",
+                  "withBarcode": "true",
+                  "noStopList": "true",
+                  "pageSize": 1000,
+                  "page": page,
+              })
+              request = urllib.request.Request(
+                  "https://api.sbis.ru/retail/v2/nomenclature/list?" + params,
+                  headers={"X-SBISAccessToken": saby_token},
+              )
+              result = request_json(request)
+              items = (
+                  result.get("nomenclatures")
+                  or result.get("items")
+                  or result.get("result")
+                  or []
+              )
+              catalog_items.extend(items)
+              outcome = result.get("outcome")
+              has_more = (
+                  outcome is True
+                  or isinstance(outcome, dict) and bool(outcome.get("hasMore"))
+              )
+              if not items or not has_more:
+                  break
+          else:
+              raise SystemExit("Saby pagination limit exceeded")
+
+          if not catalog_items:
+              raise SystemExit("Saby returned an empty catalog")
+
+          oidc_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+          separator = "&" if "?" in oidc_url else "?"
+          oidc_request = urllib.request.Request(
+              oidc_url + separator + urllib.parse.urlencode({
+                  "audience": "ficusin-store-saby-sync",
+              }),
+              headers={
+                  "Authorization":
+                      "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
+              },
+          )
+          oidc_token = request_json(oidc_request).get("value")
+          if not oidc_token:
+              raise SystemExit("GitHub did not return an OIDC token")
+
+          allowed_fields = (
+              "id",
+              "article",
+              "name",
+              "description",
+              "cost",
+              "balance",
+              "images",
+              "published",
+              "isParent",
+          )
+          public_catalog = [
+              {key: item.get(key) for key in allowed_fields if key in item}
+              for item in catalog_items
+          ]
+
+          sync_request = urllib.request.Request(
+              os.environ["FICUSIN_SYNC_URL"],
+              data=json.dumps(
+                  {"items": public_catalog},
+                  ensure_ascii=False,
+              ).encode("utf-8"),
+              headers={
+                  "Authorization": "Bearer " + oidc_token,
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          response = request_json(sync_request)
+          if not response.get("ok"):
+              raise SystemExit("The store rejected the catalog update")
+
+          print("Saby catalog sync completed")
+          print("Records sent:", len(public_catalog))
+          PY
