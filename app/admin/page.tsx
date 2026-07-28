@@ -135,8 +135,21 @@ export default async function AdminPage() {
         </header>
 
         <div className="admin-alert">
-          <div><strong>Следующий шаг — подключить Saby</strong><p>После добавления служебного доступа каталог, цены и остатки появятся здесь автоматически.</p></div>
-          <span>Не подключено</span>
+          <div>
+            <strong>
+              {data.lastSync?.status === "success"
+                ? "Каталог Saby синхронизирован"
+                : "Ожидается первая синхронизация Saby"}
+            </strong>
+            <p>
+              {data.lastSync?.status === "success"
+                ? `Обновлено позиций: ${data.lastSync.items_updated}. Цены и остатки будут обновляться автоматически.`
+                : "После первого запуска товары, цены и остатки появятся здесь автоматически."}
+            </p>
+          </div>
+          <span>
+            {data.lastSync?.status === "success" ? "Подключено" : "Ожидает запуска"}
+          </span>
         </div>
 
         <div className="admin-stats">
@@ -179,7 +192,7 @@ export default async function AdminPage() {
           <section className="admin-block" id="integrations">
             <div className="admin-block-heading"><div><p className="eyebrow">Обмен данными</p><h2>Интеграции</h2></div></div>
             <div className="integration-list">
-              <article><span className="integration-logo">S</span><div><strong>Saby Retail</strong><small>Цены, остатки и заказы</small></div><b>Ожидает доступа</b></article>
+              <article><span className="integration-logo">S</span><div><strong>Saby Retail</strong><small>Каталог, цены и остатки</small></div><b>{data.lastSync?.status === "success" ? "Подключено" : "Ожидает запуска"}</b></article>
               <article><span className="integration-logo">C</span><div><strong>СДЭК</strong><small>Расчёт доставки и ПВЗ</small></div><b>Не подключено</b></article>
               <article><span className="integration-logo">₽</span><div><strong>Онлайн-оплата</strong><small>Провайдер ещё не выбран</small></div><b>Не подключено</b></article>
             </div>
