@@ -20,14 +20,30 @@ function getDatabaseCertificate() {
     .trim();
 }
 
+function shouldVerifyDatabaseCertificate() {
+  const value = process.env.DATABASE_SSL_VERIFY?.trim().toLowerCase();
+  return value !== "false" && value !== "0";
+}
+
 const certificate = getDatabaseCertificate();
+const verifyDatabaseCertificate = shouldVerifyDatabaseCertificate();
+const ssl = verifyDatabaseCertificate
+  ? certificate
+    ? { ca: certificate, rejectUnauthorized: true }
+    : undefined
+  : { rejectUnauthorized: false };
+
+if (!verifyDatabaseCertificate) {
+  process.stderr.write(
+    "WARNING: PostgreSQL TLS certificate verification is disabled.\n",
+  );
+}
+
 const sql = postgres(connectionString, {
   max: 1,
   connect_timeout: 20,
   idle_timeout: 5,
-  ...(certificate
-    ? { ssl: { ca: certificate, rejectUnauthorized: true } }
-    : {}),
+  ...(ssl ? { ssl } : {}),
 });
 
 try {
