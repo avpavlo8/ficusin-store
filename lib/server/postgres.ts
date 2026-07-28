@@ -18,6 +18,11 @@ function getDatabaseCertificate() {
     .trim();
 }
 
+function shouldVerifyDatabaseCertificate() {
+  const value = process.env.DATABASE_SSL_VERIFY?.trim().toLowerCase();
+  return value !== "false" && value !== "0";
+}
+
 export function getPostgres() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -26,14 +31,19 @@ export function getPostgres() {
 
   if (!globalThis.ficusinPostgres) {
     const certificate = getDatabaseCertificate();
+    const verifyDatabaseCertificate = shouldVerifyDatabaseCertificate();
+    const ssl = verifyDatabaseCertificate
+      ? certificate
+        ? { ca: certificate, rejectUnauthorized: true }
+        : undefined
+      : { rejectUnauthorized: false };
+
     globalThis.ficusinPostgres = postgres(connectionString, {
       max: 10,
       idle_timeout: 20,
       connect_timeout: 20,
       prepare: true,
-      ...(certificate
-        ? { ssl: { ca: certificate, rejectUnauthorized: true } }
-        : {}),
+      ...(ssl ? { ssl } : {}),
     });
   }
 
