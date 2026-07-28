@@ -131,7 +131,6 @@ export default function Home() {
       cdekCityQuery.trim().length < 2 ||
       cdekCityQuery.trim() === cdekCity?.city
     ) {
-      setCdekCities([]);
       return;
     }
     const controller = new AbortController();
@@ -555,6 +554,7 @@ export default function Home() {
                       onChange={(event) => {
                         setCdekCityQuery(event.target.value);
                         setCdekCity(null);
+                        setCdekCities([]);
                         setCdekOffices([]);
                         setCdekOfficeCode("");
                         setCdekQuote(null);
