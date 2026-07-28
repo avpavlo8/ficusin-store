@@ -5,6 +5,10 @@
 .wrangler
 dist
 node_modules
+frontend/dist
+frontend/node_modules
+.cache
+.tools
 .env*
 !.env.example
 *.log

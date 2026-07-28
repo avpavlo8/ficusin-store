@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -20,6 +21,7 @@
 # misc
 .DS_Store
 *.pem
+/backend/api
 
 # debug
 npm-debug.log*
@@ -37,7 +39,12 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 *.tsbuildinfo
+__pycache__/
+*.pyc
+frontend/vite.config.js
+frontend/vite.config.d.ts
 /dist/
+**/dist/
 /.wrangler/
 /.sites-runtime/
 /outputs/

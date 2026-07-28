@@ -1,0 +1,345 @@
+openapi: 3.1.0
+info:
+  title: Ficusin Store API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: API is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    const: ok
+  /catalog:
+    get:
+      operationId: listCatalog
+      responses:
+        "200":
+          description: Available products
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [products]
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+  /auth/register:
+    post:
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Registration"
+      responses:
+        "201":
+          description: Account and session created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ValidationError"
+  /auth/login:
+    post:
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Session created
+        "401":
+          $ref: "#/components/responses/ValidationError"
+  /auth/logout:
+    post:
+      operationId: logout
+      responses:
+        "200":
+          description: Session deleted
+  /auth/me:
+    get:
+      operationId: currentUser
+      responses:
+        "200":
+          description: Current customer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/ValidationError"
+  /account/orders:
+    get:
+      operationId: accountOrders
+      responses:
+        "200":
+          description: Current customer's latest orders
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders]
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderSummary"
+        "401":
+          $ref: "#/components/responses/ValidationError"
+  /delivery/cdek:
+    get:
+      operationId: cdekLocations
+      parameters:
+        - in: query
+          name: action
+          required: true
+          schema:
+            type: string
+            enum: [cities, offices]
+        - in: query
+          name: city
+          schema:
+            type: string
+        - in: query
+          name: cityCode
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Matching CDEK locations
+    post:
+      operationId: cdekQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cityCode, itemCount]
+              properties:
+                cityCode:
+                  type: integer
+                itemCount:
+                  type: integer
+      responses:
+        "200":
+          description: Delivery quote
+  /orders:
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Order saved and queued for payment
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /admin/dashboard:
+    get:
+      operationId: adminDashboard
+      description: Requires an authenticated customer whose email is listed in ADMIN_EMAILS.
+      responses:
+        "200":
+          description: Store totals, latest orders and latest synchronization runs
+        "401":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ValidationError"
+  /integrations/saby/catalog:
+    post:
+      operationId: synchronizeSabyCatalog
+      description: >
+        Replaces current Saby prices, balances and product media. The request
+        must carry a GitHub Actions OIDC token issued for the repository,
+        main branch and the Saby workflow.
+      parameters:
+        - in: header
+          name: X-Ficusin-GitHub-OIDC
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  maxItems: 2000
+                  items:
+                    $ref: "#/components/schemas/SabyCatalogItem"
+      responses:
+        "200":
+          description: Catalog synchronized
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ValidationError"
+components:
+  responses:
+    ValidationError:
+      description: Request cannot be completed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    Product:
+      type: object
+      required: [id, name, latin, category, price, image, light, size, stock]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        latin:
+          type: string
+        category:
+          type: string
+        price:
+          type: number
+        image:
+          type: string
+        light:
+          type: string
+        size:
+          type: string
+        stock:
+          type: integer
+    Registration:
+      type: object
+      required: [fullName, phone, email, password, accountType, consent]
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+        accountType:
+          type: string
+          enum: [retail, wholesale]
+        companyName:
+          type: string
+        inn:
+          type: string
+        kpp:
+          type: string
+        legalAddress:
+          type: string
+        consent:
+          type: boolean
+    User:
+      type: object
+      required:
+        [id, email, phone, fullName, accountType, wholesaleStatus, retailDiscountBps]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        phone:
+          type: string
+        fullName:
+          type: string
+        accountType:
+          type: string
+          enum: [retail, wholesale]
+        wholesaleStatus:
+          type: string
+        retailDiscountBps:
+          type: integer
+    OrderSummary:
+      type: object
+      required: [orderNumber, deliveryMethod, total, status, createdAt, itemsCount]
+      properties:
+        orderNumber:
+          type: string
+        deliveryMethod:
+          type: string
+        total:
+          type: number
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        itemsCount:
+          type: integer
+    SabyCatalogItem:
+      type: object
+      required: [id, name, cost]
+      properties:
+        id:
+          oneOf:
+            - type: string
+            - type: number
+        article:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        cost:
+          oneOf:
+            - type: string
+            - type: number
+        balance:
+          oneOf:
+            - type: string
+            - type: number
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+        published:
+          type: boolean
+        isParent:
+          type: boolean
