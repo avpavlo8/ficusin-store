@@ -1,11 +1,20 @@
 import { getPayment } from "../../../../lib/integrations/yookassa";
 import type { IntegrationEnv } from "../../../../lib/integrations/types";
+import { getRuntimeEnv } from "../../../../lib/server/runtime-db";
 
 type YooKassaNotification = {
   type?: string;
   event?: string;
   object?: { id?: string };
 };
+
+function getYooKassaEnv(): IntegrationEnv {
+  return {
+    YOOKASSA_SHOP_ID: process.env.YOOKASSA_SHOP_ID,
+    YOOKASSA_SECRET_KEY: process.env.YOOKASSA_SECRET_KEY,
+    YOOKASSA_VAT_CODE: process.env.YOOKASSA_VAT_CODE,
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -15,8 +24,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Некорректное уведомление" }, { status: 400 });
     }
 
-    const { env } = await import("cloudflare:workers");
-    const payment = await getPayment(env as unknown as IntegrationEnv, paymentId);
+    const payment = await getPayment(getYooKassaEnv(), paymentId);
     const orderNumber = payment.metadata?.order_number;
     if (!orderNumber) {
       return Response.json({ error: "В платеже нет номера заказа" }, { status: 400 });
@@ -29,6 +37,7 @@ export async function POST(request: Request) {
           ? "cancelled"
           : payment.status;
     const orderStatus = payment.status === "succeeded" ? "confirmed" : "new";
+    const env = getRuntimeEnv();
 
     await env.DB.prepare(
       `UPDATE orders
