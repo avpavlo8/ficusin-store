@@ -1,3 +1,5 @@
+import { getRuntimeEnv } from "../server/runtime-db";
+
 type EncryptedEnvelope = {
   encryptedKey: string;
   iv: string;
@@ -20,11 +22,6 @@ const cached = new Map<
   { credentials: unknown; expiresAt: number }
 >();
 
-async function getRuntimeEnv() {
-  const { env } = await import("cloudflare:workers");
-  return env;
-}
-
 function fromBase64(value: string) {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -44,7 +41,7 @@ function pemToBytes(pem: string) {
 }
 
 async function decryptEnvelope<T>(envelope: EncryptedEnvelope) {
-  const env = await getRuntimeEnv();
+  const env = getRuntimeEnv();
   const privateKeyPem = env.INTEGRATION_SECRETS_PRIVATE_KEY?.trim();
   if (!privateKeyPem) throw new Error("Ключ защищённых интеграций не настроен");
 
@@ -84,7 +81,7 @@ async function getEncryptedCredentials<T>(provider: "cdek" | "telegram") {
   if (current && current.expiresAt > Date.now()) {
     return current.credentials as T;
   }
-  const env = await getRuntimeEnv();
+  const env = getRuntimeEnv();
   const row = await env.DB.prepare(
     "SELECT encrypted_payload FROM integration_credentials WHERE provider = ? LIMIT 1",
   )
@@ -125,7 +122,7 @@ export async function storeEncryptedCredentials(
   provider: "cdek" | "telegram",
   envelope: EncryptedEnvelope,
 ) {
-  const env = await getRuntimeEnv();
+  const env = getRuntimeEnv();
   const fields = ["encryptedKey", "iv", "ciphertext", "tag"] as const;
   if (fields.some((field) => !envelope[field] || envelope[field].length > 4096)) {
     throw new Error("Некорректный защищённый пакет");
