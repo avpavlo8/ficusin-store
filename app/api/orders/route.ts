@@ -4,17 +4,8 @@ import {
 } from "../../../lib/integrations/cdek";
 import { sendTelegramOrder } from "../../../lib/integrations/telegram";
 import { normalizeRussianPhone } from "../../../lib/phone";
-
-const catalog = new Map([
-  ["strelitzia-nicolai", { name: "Стрелиция Николая", price: 6490 }],
-  ["ficus-burgundy", { name: "Фикус Бургунди", price: 3290 }],
-  ["epipremnum-aureum", { name: "Эпипремнум золотистый", price: 1890 }],
-  ["anthurium-terracotta", { name: "Антуриум Терракота", price: 2790 }],
-  ["monstera-deliciosa", { name: "Монстера Делициоза", price: 4590 }],
-  ["ficus-compacta", { name: "Фикус Компакта", price: 2390 }],
-  ["pothos-neon", { name: "Эпипремнум Неон", price: 2190 }],
-  ["anthurium-mini", { name: "Антуриум Мини", price: 1990 }],
-]);
+import { getStoreUser } from "../../../lib/server/auth";
+import { getRuntimeEnv } from "../../../lib/server/runtime-db";
 
 const deliveryFees: Record<string, number> = { pickup: 0, courier: 490, post: 590 };
 
@@ -31,7 +22,8 @@ type OrderPayload = {
 
 export async function POST(request: Request) {
   try {
-    const { env } = await import("cloudflare:workers");
+    const env = getRuntimeEnv();
+    const signedInUser = await getStoreUser();
     const payload = (await request.json()) as OrderPayload;
     const customer = payload.customer;
     const delivery = payload.delivery ?? "";
@@ -60,7 +52,7 @@ export async function POST(request: Request) {
         SELECT
           p.name,
           pv.base_price_minor,
-          COALESCE(SUM(MAX(i.available_qty - i.reserved_qty, 0)), 0) AS stock
+          COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0) AS stock
         FROM products p
         JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
         LEFT JOIN inventory i ON i.variant_id = pv.id
@@ -86,9 +78,9 @@ export async function POST(request: Request) {
         };
       }
 
-      const demoProduct = catalog.get(item.id);
-      if (!demoProduct) throw new Error("В корзине найден неизвестный товар");
-      return { id: item.id, ...demoProduct, quantity };
+      throw new Error(
+        "Товар больше не доступен. Обновите страницу и проверьте корзину",
+      );
     }));
     if (!items.length) return Response.json({ error: "Корзина пуста" }, { status: 400 });
 
@@ -133,12 +125,13 @@ export async function POST(request: Request) {
 
     const insertOrder = await env.DB.prepare(`
       INSERT INTO orders (
-        order_number, customer_name, phone, email, address, comment,
+        order_number, customer_id, customer_name, phone, email, address, comment,
         delivery_method, delivery_fee, cdek_city_code, cdek_city_name,
         cdek_office_code, cdek_tariff_code, subtotal, total, payment_status, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      orderNumber, customer.name.trim(), normalizedPhone, customer.email.trim(),
+      orderNumber, signedInUser?.id ?? null,
+      customer.name.trim(), normalizedPhone, customer.email.trim(),
       deliveryAddress, customer.comment?.trim() ?? "", delivery,
       deliveryFee, cdekCityCode, cdekCityName, cdekOfficeCode, cdekTariffCode,
       subtotal, total, "payment_provider_pending", "new"
