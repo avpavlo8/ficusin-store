@@ -1,7 +1,21 @@
+import fs from "node:fs";
+import path from "node:path";
 import postgres from "postgres";
 
 declare global {
   var ficusinPostgres: ReturnType<typeof postgres> | undefined;
+}
+
+function getDatabaseCertificate() {
+  const bundledCertificate = path.join(process.cwd(), "timeweb", "ca.crt");
+  if (fs.existsSync(bundledCertificate)) {
+    return fs.readFileSync(bundledCertificate, "utf8").trim();
+  }
+
+  return process.env.DATABASE_SSL_CA
+    ?.replaceAll("\\n", "\n")
+    .replace(/^["']|["']$/g, "")
+    .trim();
 }
 
 export function getPostgres() {
@@ -11,9 +25,7 @@ export function getPostgres() {
   }
 
   if (!globalThis.ficusinPostgres) {
-    const certificate = process.env.DATABASE_SSL_CA
-      ?.replaceAll("\\n", "\n")
-      .trim();
+    const certificate = getDatabaseCertificate();
     globalThis.ficusinPostgres = postgres(connectionString, {
       max: 10,
       idle_timeout: 20,

@@ -1,4 +1,5 @@
-import fs from "node:fs/promises";
+import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import postgres from "postgres";
 
@@ -7,9 +8,19 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
 
-const certificate = process.env.DATABASE_SSL_CA
-  ?.replaceAll("\\n", "\n")
-  .trim();
+function getDatabaseCertificate() {
+  const bundledCertificate = path.join(process.cwd(), "timeweb", "ca.crt");
+  if (fs.existsSync(bundledCertificate)) {
+    return fs.readFileSync(bundledCertificate, "utf8").trim();
+  }
+
+  return process.env.DATABASE_SSL_CA
+    ?.replaceAll("\\n", "\n")
+    .replace(/^["']|["']$/g, "")
+    .trim();
+}
+
+const certificate = getDatabaseCertificate();
 const sql = postgres(connectionString, {
   max: 1,
   connect_timeout: 20,
@@ -28,7 +39,7 @@ try {
   `;
 
   const directory = path.join(process.cwd(), "timeweb", "migrations");
-  const files = (await fs.readdir(directory))
+  const files = (await fsPromises.readdir(directory))
     .filter((name) => name.endsWith(".sql"))
     .sort();
 
@@ -38,7 +49,10 @@ try {
     `;
     if (existing) continue;
 
-    const migration = await fs.readFile(path.join(directory, name), "utf8");
+    const migration = await fsPromises.readFile(
+      path.join(directory, name),
+      "utf8",
+    );
     await sql.begin(async (transaction) => {
       await transaction.unsafe(migration);
       await transaction`
