@@ -7,10 +7,16 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
 
+const certificate = process.env.DATABASE_SSL_CA
+  ?.replaceAll("\\n", "\n")
+  .trim();
 const sql = postgres(connectionString, {
   max: 1,
   connect_timeout: 20,
   idle_timeout: 5,
+  ...(certificate
+    ? { ssl: { ca: certificate, rejectUnauthorized: true } }
+    : {}),
 });
 
 try {
