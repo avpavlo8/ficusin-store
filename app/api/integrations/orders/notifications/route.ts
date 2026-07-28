@@ -1,3 +1,5 @@
+import { getRuntimeEnv } from "../../../../../lib/server/runtime-db";
+
 type GithubClaims = {
   iss?: string;
   aud?: string | string[];
@@ -164,7 +166,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { env } = await import("cloudflare:workers");
+  const env = getRuntimeEnv();
   const body = (await request.json()) as {
     action?: "list" | "ack";
     orderNumbers?: string[];
