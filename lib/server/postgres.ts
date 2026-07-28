@@ -11,11 +11,17 @@ export function getPostgres() {
   }
 
   if (!globalThis.ficusinPostgres) {
+    const certificate = process.env.DATABASE_SSL_CA
+      ?.replaceAll("\\n", "\n")
+      .trim();
     globalThis.ficusinPostgres = postgres(connectionString, {
       max: 10,
       idle_timeout: 20,
       connect_timeout: 20,
       prepare: true,
+      ...(certificate
+        ? { ssl: { ca: certificate, rejectUnauthorized: true } }
+        : {}),
     });
   }
 
