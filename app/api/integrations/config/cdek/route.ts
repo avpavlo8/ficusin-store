@@ -37,7 +37,7 @@ async function verifyGithubToken(token: string) {
   ).then((response) => response.json())) as { jwks_uri: string };
   const keys = (await fetch(configuration.jwks_uri).then((response) =>
     response.json(),
-  )) as { keys: JsonWebKey[] };
+  )) as { keys: Array<JsonWebKey & { kid?: string }> };
   const jwk = keys.keys.find((key) => key.kid === header.kid);
   if (!jwk) throw new Error("Ключ автоматизации не найден");
   const publicKey = await crypto.subtle.importKey(
