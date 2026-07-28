@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireChatGPTUser } from "../chatgpt-auth";
+import { getRuntimeEnv, type RuntimeResult } from "../../lib/server/runtime-db";
+import { requireStoreUser } from "../../lib/server/auth";
 
 export const dynamic = "force-dynamic";
-
-const OWNER_EMAIL = "avpavlomail@gmail.com";
+export const runtime = "nodejs";
 
 type DashboardData = {
   products: number;
@@ -39,7 +39,7 @@ async function loadDashboard(): Promise<DashboardData> {
   };
 
   try {
-    const { env } = await import("cloudflare:workers");
+    const env = getRuntimeEnv();
     const [
       products,
       variants,
@@ -64,7 +64,7 @@ async function loadDashboard(): Promise<DashboardData> {
       ),
     ]);
 
-    const count = (result: D1Result) =>
+    const count = (result: RuntimeResult) =>
       Number((result.results?.[0] as { count?: number } | undefined)?.count ?? 0);
 
     return {
@@ -91,11 +91,17 @@ const money = (value: number) =>
   }).format(value);
 
 export default async function AdminPage() {
-  const user = await requireChatGPTUser("/admin");
-  if (user.email.toLowerCase() !== OWNER_EMAIL) redirect("/");
+  const user = await requireStoreUser("/admin");
+  const adminEmails = new Set(
+    (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!adminEmails.has(user.email.toLowerCase())) redirect("/account");
 
   const data = await loadDashboard();
-  const initials = user.displayName
+  const initials = user.fullName
     .split(" ")
     .slice(0, 2)
     .map((part) => part.charAt(0))
@@ -126,11 +132,11 @@ export default async function AdminPage() {
         <header className="admin-topbar">
           <div>
             <p className="eyebrow">Панель управления</p>
-            <h1>Добрый день, Александр</h1>
+            <h1>Добрый день, {user.fullName.split(" ")[0]}</h1>
           </div>
           <div className="admin-user">
             <span>{initials || "АП"}</span>
-            <div><strong>{user.displayName}</strong><small>Владелец</small></div>
+            <div><strong>{user.fullName}</strong><small>Владелец</small></div>
           </div>
         </header>
 
