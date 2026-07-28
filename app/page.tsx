@@ -336,7 +336,7 @@ export default function Home() {
           <button className="icon-button search-button" onClick={() => document.getElementById("search")?.focus()} aria-label="Поиск">
             <span aria-hidden="true">⌕</span>
           </button>
-          <a className="account-button" href="/account" aria-label="Открыть личный кабинет">
+          <a className="account-button" href="/login" aria-label="Войти в личный кабинет">
             <span aria-hidden="true">◯</span>
             <span>Кабинет</span>
           </a>
@@ -487,8 +487,8 @@ export default function Home() {
         <div className="footer-brand"><a className="brand" href="#top"><span className="brand-mark">⌇</span><span>Фикусин</span></a><p>Комнатные растения в Рязани<br />с доставкой по России</p></div>
         <div><h3>Магазин</h3><a href="#catalog">Каталог</a><a href="#delivery">Доставка</a><a href="#care">Уход</a></div>
         <div><h3>Контакты</h3><a href="tel:+79156151100">+7 915 615-11-00</a><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">@ficusin62</a><span>Рязань, Новосёлов, 40А</span></div>
-        <div><h3>Режим работы</h3><span>Ежедневно</span><span>10:00–20:00</span></div>
-        <small>© 2026 Фикусин · Реквизиты и политика будут добавлены перед запуском</small>
+        <div><h3>Покупателям</h3><a href="/delivery-and-returns">Доставка и возврат</a><a href="/offer">Публичная оферта</a><a href="/privacy">Персональные данные</a><a href="/requisites">Реквизиты</a></div>
+        <small>© 2026 Фикусин · Ежедневно 08:00–20:00 · ИП Павловский А. В. · ИНН 620201228029 · ОГРНИП 324620000031276</small>
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
@@ -629,14 +629,14 @@ export default function Home() {
             <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekQuote ? "после выбора ПВЗ" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{money(total)}</strong></div></div>
             <div className="payment-note"><b>Онлайн-оплата готовится</b><p>Платёжный сервис пока не выбран. Заказ сохранится, но деньги списываться не будут.</p></div>
             <button className="primary-button full" disabled={submitting || (delivery === "cdek" && (!cdekQuote || !cdekOfficeCode))}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
-            <p className="legal-note">Нажимая кнопку, вы соглашаетесь с обработкой персональных данных.</p>
+            <label className="consent-check"><input type="checkbox" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
           </form>
         )}
       </aside>
 
       <aside className={`mobile-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
         <button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">×</button>
-        <a href="/account">Личный кабинет</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
+        <a href="/login">Войти</a><a href="/register">Регистрация</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
       </aside>
     </main>
   );
