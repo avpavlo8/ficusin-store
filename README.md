@@ -1,18 +1,4 @@
-# Фикусин
-
-Исходный код интернет-магазина комнатных растений «Фикусин».
-
-Сейчас репозиторий содержит рабочий прототип каталога, корзины, оформления
-заказа, личного кабинета и административной панели. Прототип использует
-временную инфраструктуру Sites и не является готовой производственной
-системой.
-
-Производственная версия переводится на PostgreSQL, S3 и собственную
-авторизацию. Выбранная инфраструктура и порядок миграции описаны в
-[`docs/production-platform.md`](docs/production-platform.md), а модель магазина
-— в [`docs/commerce-architecture.md`](docs/commerce-architecture.md).
-
-## Текущий прототип
+# vinext-starter
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
