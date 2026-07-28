@@ -1,3 +1,5 @@
+import { getRuntimeEnv } from "../../../../../lib/server/runtime-db";
+
 type SabyCatalogItem = {
   id?: number | string;
   article?: string;
@@ -175,7 +177,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { env } = await import("cloudflare:workers");
+  const env = getRuntimeEnv();
   let syncRunId: number | undefined;
 
   try {
