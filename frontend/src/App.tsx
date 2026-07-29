@@ -602,12 +602,11 @@ export default function Home() {
                     maxLength={18}
                     placeholder="+7 900 000-00-00"
                     value={checkoutProfile.phone}
-                    onInput={(event) => {
+                    onChange={(event) => {
                       event.currentTarget.setCustomValidity("");
                       const value = formatRussianPhoneInput(event.currentTarget.value);
                       setCheckoutProfile((current) => ({ ...current, phone: value }));
                     }}
-                    onChange={() => undefined}
                   />
                 </label>
               </div>
