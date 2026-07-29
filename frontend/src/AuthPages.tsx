@@ -142,11 +142,11 @@ function AuthPage() {
       <section className="auth-shell auth-shell-compact">
         <div className="auth-intro">
           <p className="eyebrow">Личный кабинет</p>
-          <h1>{step === "phone" ? "Вход и регистрация" : "Введите код из смс"}</h1>
+          <h1>{step === "phone" ? "Вход и регистрация" : "Подтвердите номер"}</h1>
           <p>
             {step === "phone"
-              ? "Укажите номер телефона — пароль не нужен, вход по коду из смс."
-              : `Код отправлен на ${phone}.`}
+              ? "Укажите номер телефона — пароль не нужен, вам позвонят с кодом."
+              : `Вам позвонят на ${phone}. Введите последние 4 цифры номера, с которого поступит звонок.`}
           </p>
         </div>
 
@@ -172,7 +172,7 @@ function AuthPage() {
             </label>
             {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="primary-button full" disabled={submitting}>
-              {submitting ? "Отправляем код…" : "Получить код"}
+              {submitting ? "Звоним…" : "Получить звонок"}
             </button>
           </form>
         )}
@@ -180,7 +180,7 @@ function AuthPage() {
         {step === "code" && (
           <form className="auth-form" onSubmit={submitCode}>
             <label>
-              Код из смс
+              Последние 4 цифры номера
               <input
                 name="code"
                 inputMode="numeric"
@@ -240,10 +240,10 @@ function AuthPage() {
             </button>
             <p className="auth-switch">
               {cooldown > 0 ? (
-                <>Новый код можно запросить через {cooldown} с.</>
+                <>Новый звонок можно запросить через {cooldown} с.</>
               ) : (
                 <button type="button" className="text-link" onClick={() => void requestCode(phone)}>
-                  Отправить код ещё раз
+                  Позвонить ещё раз
                 </button>
               )}
               {" · "}
@@ -406,8 +406,8 @@ export function AccountPage() {
               </div>
             )}
           </section>
-        </div>
-      </section>
+      </div>
+    </section>
     </main>
   );
 }

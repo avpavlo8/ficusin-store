@@ -21,7 +21,7 @@ type recordingAuthService struct {
 		user         *auth.User
 }
 
-func (service *recordingAuthService) RequestCode(_ context.Context, phone string) error {
+func (service *recordingAuthService) RequestCode(_ context.Context, phone, _ string) error {
 		service.phone = phone
 		return service.requestErr
 }

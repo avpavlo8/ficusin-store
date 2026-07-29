@@ -35,11 +35,11 @@ type Auth struct {
 }
 
 // SMS holds settings for the SMS.ru gateway used to deliver OTP login
-// codes. If APIKey is empty, codes are only logged (useful for local
-// development) and never actually sent.
+// codes over a call (no sender name registration required). If APIKey is
+// empty, codes are only logged (useful for local development) and no call
+// is actually placed.
 type SMS struct {
 		APIKey string
-		Sender string
 }
 
 // YooKassa holds credentials for the YooKassa payment gateway.
@@ -76,7 +76,6 @@ func Load() (Config, error) {
 								},
 					SMS: SMS{
 									APIKey: strings.TrimSpace(os.Getenv("SMSRU_API_KEY")),
-									Sender: strings.TrimSpace(os.Getenv("SMSRU_SENDER")),
 								},
 					YooKassa: YooKassa{
 									ShopID:    strings.TrimSpace(os.Getenv("YOOKASSA_SHOP_ID")),
