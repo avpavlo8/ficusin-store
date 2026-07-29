@@ -51,6 +51,32 @@ func createOrderHandler(
 		email := strings.ToLower(strings.TrimSpace(body.Customer.Email))
 		address := strings.TrimSpace(body.Customer.Address)
 		delivery := strings.TrimSpace(body.Delivery)
+
+		var customerID *int64
+		if cookie, err := request.Cookie(auth.CookieName); err == nil {
+			user, lookupErr := authentication.UserByToken(request.Context(), cookie.Value)
+			if lookupErr != nil {
+				logger.Error("order session lookup failed", "error", lookupErr)
+			} else if user != nil {
+				customerID = &user.ID
+				if name == "" {
+					name = strings.Join(
+						nonEmptyStrings(user.LastName, user.FullName, user.Patronymic),
+						" ",
+					)
+				}
+				if phone == "" {
+					phone = user.Phone
+				}
+				if email == "" {
+					email = strings.ToLower(strings.TrimSpace(user.Email))
+				}
+				if address == "" {
+					address = strings.TrimSpace(user.DeliveryAddress)
+				}
+			}
+		}
+
 		switch {
 		case name == "" || email == "":
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Заполните имя, телефон и email"})
@@ -68,15 +94,6 @@ func createOrderHandler(
 			return
 		}
 
-		var customerID *int64
-		if cookie, err := request.Cookie(auth.CookieName); err == nil {
-			user, lookupErr := authentication.UserByToken(request.Context(), cookie.Value)
-			if lookupErr != nil {
-				logger.Error("order session lookup failed", "error", lookupErr)
-			} else if user != nil {
-				customerID = &user.ID
-			}
-		}
 		items := make([]order.ItemInput, 0, len(body.Items))
 		for _, item := range body.Items {
 			items = append(items, order.ItemInput{
@@ -110,4 +127,14 @@ func createOrderHandler(
 		}
 		writeJSON(response, http.StatusCreated, created)
 	})
+}
+
+func nonEmptyStrings(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
