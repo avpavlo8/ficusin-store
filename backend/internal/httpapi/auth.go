@@ -42,10 +42,12 @@ type authHandlers struct {
 
 type requestCodeBody struct {
 	Phone string `json:"phone"`
+	Flow  string `json:"flow"`
 }
 
 type verifyCodeBody struct {
 	Phone           string `json:"phone"`
+	Flow            string `json:"flow"`
 	CheckID         string `json:"checkId"`
 	FullName        string `json:"fullName"`
 	LastName        string `json:"lastName"`
@@ -67,8 +69,16 @@ func (handlers authHandlers) requestCode(response http.ResponseWriter, request *
 	}
 
 	phone := auth.NormalizeRussianPhone(body.Phone)
+	flow := strings.TrimSpace(body.Flow)
+	if flow == "" {
+		flow = "login"
+	}
 	if phone == "" {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Проверьте номер телефона"})
+		return
+	}
+	if flow != "login" && flow != "register" {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный сценарий авторизации"})
 		return
 	}
 
@@ -130,9 +140,19 @@ func (handlers authHandlers) verifyCode(response http.ResponseWriter, request *h
 			Error: "Звонок не подтверждён вовремя. Запросите номер ещё раз",
 		})
 		return
+	case errors.Is(err, auth.ErrAccountNotFound):
+		writeJSON(response, http.StatusNotFound, errorResponse{
+			Error: "Пользователь с таким номером не найден. Зарегистрируйтесь",
+		})
+		return
+	case errors.Is(err, auth.ErrAccountExists):
+		writeJSON(response, http.StatusConflict, errorResponse{
+			Error: "Пользователь с таким номером уже зарегистрирован. Войдите",
+		})
+		return
 	case errors.Is(err, auth.ErrRegistrationDetailsRequired):
 		writeJSON(response, http.StatusUnprocessableEntity, errorResponse{
-			Error: "Укажите имя и тип аккаунта, чтобы завершить регистрацию",
+			Error: "Заполните обязательные поля регистрации",
 		})
 		return
 	case err != nil:
@@ -242,12 +262,20 @@ func decodeJSONWithLimit(request *http.Request, destination any, limit int64) er
 // requires the first time a phone number registers; here we just
 // validate whatever was actually provided.
 func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration, string) {
+	flow := strings.TrimSpace(body.Flow)
 	fullName := strings.TrimSpace(body.FullName)
 	lastName := strings.TrimSpace(body.LastName)
 	patronymic := strings.TrimSpace(body.Patronymic)
 	email := strings.ToLower(strings.TrimSpace(body.Email))
 	deliveryAddress := strings.TrimSpace(body.DeliveryAddress)
 	accountType := strings.TrimSpace(body.AccountType)
+	if flow == "" {
+		if fullName != "" {
+			flow = "register"
+		} else {
+			flow = "login"
+		}
+	}
 	if accountType == "" {
 		accountType = "retail"
 	}
@@ -256,6 +284,10 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 	kpp := digitsOnly.ReplaceAllString(body.KPP, "")
 
 	switch {
+	case flow != "login" && flow != "register":
+		return auth.Registration{}, "Некорректный сценарий авторизации"
+	case flow == "register" && fullName == "":
+		return auth.Registration{}, "Укажите имя"
 	case fullName != "" && (len([]rune(fullName)) < 2 || len([]rune(fullName)) > 120):
 		return auth.Registration{}, "Проверьте имя"
 	case email != "" && (!emailPattern.MatchString(email) || len(email) > 254):
@@ -269,6 +301,7 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 	}
 
 	return auth.Registration{
+		Flow:            flow,
 		FullName:        fullName,
 		LastName:        lastName,
 		Patronymic:      patronymic,
