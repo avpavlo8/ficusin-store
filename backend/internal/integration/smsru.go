@@ -92,7 +92,7 @@ func (client *SMSRUClient) CallCheckStatus(ctx context.Context, checkID string) 
 		Status      string `json:"status"`
 		StatusCode  int    `json:"status_code"`
 		StatusText  string `json:"status_text"`
-		CheckStatus string `json:"check_status"`
+		CheckStatus int    `json:"check_status"`
 	}
 	if err := client.get(ctx, "https://sms.ru/callcheck/status", values, &result); err != nil {
 		return false, false, err
@@ -101,14 +101,14 @@ func (client *SMSRUClient) CallCheckStatus(ctx context.Context, checkID string) 
 		return false, false, fmt.Errorf("SMS.ru error: %s (status_code=%d)", result.StatusText, result.StatusCode)
 	}
 	switch result.CheckStatus {
-	case "401":
+	case 401:
 		return true, false, nil
-	case "400":
+	case 400:
 		return false, false, nil
-	case "402":
+	case 402:
 		return false, true, nil
 	default:
-		return false, false, fmt.Errorf("unexpected SMS.ru check_status: %s", result.CheckStatus)
+		return false, false, fmt.Errorf("unexpected SMS.ru check_status: %d", result.CheckStatus)
 	}
 }
 
