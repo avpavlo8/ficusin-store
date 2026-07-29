@@ -331,6 +331,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .account-type-options span { display: grid; gap: 7px; }
 .account-type-options small { color: #778078; font-size: 11px; font-weight: 400; line-height: 1.45; }
 .wholesale-note { margin: 0; padding: 14px 16px; border-radius: 11px; background: var(--cream); color: #687269; font-size: 12px; line-height: 1.5; }
+.wholesale-fields { display: grid; }
+.profile-prefill { margin: -4px 0 16px; color: #5f7165; font-size: 12px; }
 .auth-call-number { margin: 0 0 26px; padding: 20px; display: grid; gap: 6px; text-align: center; border-radius: 14px; background: var(--cream); }
 .auth-call-number b { color: var(--green); font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
 .auth-call-number small { color: #778078; font-size: 12px; }
