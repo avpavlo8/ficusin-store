@@ -7,6 +7,7 @@ import (
 		"errors"
 		"io"
 		"log/slog"
+		"net"
 		"net/http"
 		"regexp"
 		"strings"
@@ -23,10 +24,10 @@ var (
 	)
 
 type authService interface {
-		RequestCode(context.Context, string) error
-		VerifyCode(context.Context, string, string, auth.Registration, string) (string, time.Time, error)
-		Logout(context.Context, string) error
-		UserByToken(context.Context, string) (*auth.User, error)
+	RequestCode(context.Context, string, string) error
+	VerifyCode(context.Context, string, string, auth.Registration, string) (string, time.Time, error)
+	Logout(context.Context, string) error
+	UserByToken(context.Context, string) (*auth.User, error)
 }
 
 type authHandlers struct {
@@ -67,7 +68,7 @@ func (handlers authHandlers) requestCode(response http.ResponseWriter, request *
 					return
 				}
 
-		err := handlers.service.RequestCode(request.Context(), phone)
+		err := handlers.service.RequestCode(request.Context(), phone, clientIP(request))
 		if errors.Is(err, auth.ErrRequestTooSoon) {
 					writeJSON(response, http.StatusTooManyRequests, errorResponse{
 									Error: "Код уже отправлен. Подождите немного перед повторным запросом",
@@ -96,7 +97,7 @@ func (handlers authHandlers) verifyCode(response http.ResponseWriter, request *h
 		code := strings.TrimSpace(body.Code)
 		if phone == "" || code == "" {
 					writeJSON(response, http.StatusBadRequest, errorResponse{
-									Error: "Введите телефон и код из смс",
+									Error: "Введите телефон и код",
 								})
 					return
 				}
@@ -167,7 +168,7 @@ func (handlers authHandlers) logout(response http.ResponseWriter, request *http.
 func (handlers authHandlers) me(response http.ResponseWriter, request *http.Request) {
 		cookie, err := request.Cookie(auth.CookieName)
 		if err != nil {
-					writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+					writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизацию"})
 					return
 				}
 
@@ -253,7 +254,7 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 				case accountType != "retail" && accountType != "wholesale":
 					return auth.Registration{}, "Некорректный тип аккаунта"
 				case companyName != "" && inn != "" && innLengthInvalid(inn):
-					return auth.Registration{}, "Проверьте ИНН организации"
+					return auth.Registration{}, "Проверьте INN организации"
 				case kpp != "" && len(kpp) != 9:
 					return auth.Registration{}, "КПП должен содержать 9 цифр"
 				}
@@ -275,4 +276,22 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 
 func innLengthInvalid(inn string) bool {
 		return len(inn) != 10 && len(inn) != 12
+}
+
+// clientIP returns the end user's IP address, preferring the first
+// X-Forwarded-For entry set by Timeweb's reverse proxy over
+// RemoteAddr (which would otherwise be the proxy's own address).
+func clientIP(request *http.Request) string {
+		if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
+				if first, _, found := strings.Cut(forwarded, ","); found {
+						forwarded = first
+				}
+				if ip := strings.TrimSpace(forwarded); ip != "" {
+						return ip
+				}
+		}
+		if host, _, err := net.SplitHostPort(request.RemoteAddr); err == nil {
+				return host
+		}
+		return request.RemoteAddr
 }
