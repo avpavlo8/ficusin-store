@@ -17,6 +17,24 @@ type Product = {
   stock?: number;
 };
 
+type StoreUser = {
+  id: number;
+  email: string;
+  phone: string;
+  fullName: string;
+  lastName: string;
+  patronymic: string;
+  deliveryAddress: string;
+  accountType: "retail" | "wholesale";
+};
+
+type CheckoutProfile = {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+};
+
 type Cart = Record<string, number>;
 type CdekCity = { code: number; city: string; region?: string };
 type CdekOffice = {
@@ -66,6 +84,13 @@ export default function Home() {
   const [cdekQuote, setCdekQuote] = useState<CdekQuote | null>(null);
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
+  const [user, setUser] = useState<StoreUser | null>(null);
+  const [checkoutProfile, setCheckoutProfile] = useState<CheckoutProfile>({
+    name: "",
+    phone: "",
+    email: "",
+    address: "",
+  });
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -79,6 +104,35 @@ export default function Home() {
       }
     });
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" })
+      .then(async (response) => {
+        if (response.status === 401) return null;
+        if (!response.ok) throw new Error("Не удалось загрузить профиль");
+        return (await response.json()) as { user: StoreUser };
+      })
+      .then((result) => {
+        if (cancelled || !result?.user) return;
+        const profile = result.user;
+        setUser(profile);
+        setCheckoutProfile({
+          name: [profile.lastName, profile.fullName, profile.patronymic]
+            .filter(Boolean)
+            .join(" "),
+          phone: profile.phone,
+          email: profile.email,
+          address: profile.deliveryAddress,
+        });
+      })
+      .catch(() => {
+        // Checkout remains available to guests if profile loading fails.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -333,9 +387,13 @@ export default function Home() {
           <button className="icon-button search-button" onClick={() => document.getElementById("search")?.focus()} aria-label="Поиск">
             <span aria-hidden="true">⌕</span>
           </button>
-          <a className="account-button" href="/login" aria-label="Войти в личный кабинет">
+          <a
+            className="account-button"
+            href={user ? "/account" : "/login"}
+            aria-label={user ? "Открыть личный кабинет" : "Войти или зарегистрироваться"}
+          >
             <span aria-hidden="true">◯</span>
-            <span>Кабинет</span>
+            <span>{user ? "Кабинет" : "Войти"}</span>
           </a>
           <button className="cart-button" onClick={() => setCartOpen(true)} aria-label={`Корзина, товаров: ${cartCount}`}>
             <span aria-hidden="true">Корзина</span>
@@ -517,7 +575,57 @@ export default function Home() {
           </div>
         ) : (
           <form onSubmit={submitOrder}>
-            <fieldset><legend>Контактные данные</legend><div className="field-grid"><label>Имя<input name="name" required placeholder="Александр" /></label><label>Телефон<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={18} placeholder="+7 900 000-00-00" onInput={(event) => { event.currentTarget.setCustomValidity(""); event.currentTarget.value = formatRussianPhoneInput(event.currentTarget.value); }} /></label></div><label>Email для чека<input name="email" required type="email" placeholder="mail@example.ru" /></label></fieldset>
+            <fieldset>
+              <legend>Контактные данные</legend>
+              {user && <p className="profile-prefill">Данные заполнены из личного кабинета</p>}
+              <div className="field-grid">
+                <label>
+                  Имя
+                  <input
+                    name="name"
+                    required
+                    placeholder="Александр"
+                    autoComplete="name"
+                    value={checkoutProfile.name}
+                    onChange={(event) =>
+                      setCheckoutProfile((current) => ({ ...current, name: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Телефон
+                  <input
+                    name="phone"
+                    required
+                    inputMode="tel"
+                    autoComplete="tel"
+                    maxLength={18}
+                    placeholder="+7 900 000-00-00"
+                    value={checkoutProfile.phone}
+                    onInput={(event) => {
+                      event.currentTarget.setCustomValidity("");
+                      const value = formatRussianPhoneInput(event.currentTarget.value);
+                      setCheckoutProfile((current) => ({ ...current, phone: value }));
+                    }}
+                    onChange={() => undefined}
+                  />
+                </label>
+              </div>
+              <label>
+                Email для чека
+                <input
+                  name="email"
+                  required
+                  type="email"
+                  autoComplete="email"
+                  placeholder="mail@example.ru"
+                  value={checkoutProfile.email}
+                  onChange={(event) =>
+                    setCheckoutProfile((current) => ({ ...current, email: event.target.value }))
+                  }
+                />
+              </label>
+            </fieldset>
             <fieldset>
               <legend>Получение</legend>
               <div className="delivery-options">
@@ -614,6 +722,11 @@ export default function Home() {
                     name="address"
                     required={delivery !== "pickup"}
                     disabled={delivery === "pickup"}
+                    autoComplete="street-address"
+                    value={checkoutProfile.address}
+                    onChange={(event) =>
+                      setCheckoutProfile((current) => ({ ...current, address: event.target.value }))
+                    }
                     placeholder={
                       delivery === "pickup"
                         ? "Рязань, Новосёлов, 40А"
@@ -634,7 +747,11 @@ export default function Home() {
 
       <aside className={`mobile-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
         <button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">×</button>
-        <a href="/login">Войти</a><a href="/register">Регистрация</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
+        {user ? (
+          <a href="/account">Личный кабинет</a>
+        ) : (
+          <><a href="/login">Войти</a><a href="/register">Регистрация</a></>
+        )}<a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
       </aside>
     </main>
   );
