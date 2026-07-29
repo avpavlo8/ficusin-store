@@ -15,6 +15,7 @@ type Config struct {
 		MigrationsDir         string
 		IntegrationPrivateKey string
 		TelegramChatID        string
+		TelegramBotToken      string
 		AdminEmails           []string
 }
 
@@ -85,6 +86,7 @@ func Load() (Config, error) {
 					MigrationsDir:         strings.TrimSpace(os.Getenv("MIGRATIONS_DIR")),
 					IntegrationPrivateKey: strings.TrimSpace(os.Getenv("INTEGRATION_SECRETS_PRIVATE_KEY")),
 					TelegramChatID:        defaultString(os.Getenv("TELEGRAM_ORDER_CHAT_ID"), "-5430918511"),
+					TelegramBotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 					AdminEmails:           splitList(os.Getenv("ADMIN_EMAILS")),
 				}, nil
 }
