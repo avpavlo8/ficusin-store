@@ -51,8 +51,8 @@ func main() {
 	}
 
 	catalogRepository := catalog.NewPostgresRepository(pool)
-	codeSender := integration.NewSMSRUClient(cfg.SMS.APIKey)
-	authService := auth.NewService(pool, cfg.Auth.SessionDays, codeSender)
+	callChecker := integration.NewSMSRUClient(cfg.SMS.APIKey)
+	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
 	orderRepository := order.NewPostgresRepository(pool)
 	credentialStore, err := integration.NewCredentialStore(pool, cfg.IntegrationPrivateKey)
 	if err != nil {
