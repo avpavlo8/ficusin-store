@@ -121,6 +121,15 @@ func (service *Service) ConfirmCall(
 		return "", time.Time{}, true, nil
 	}
 
+	flow := registration.Flow
+	if flow == "" {
+		if registration.FullName != "" {
+			flow = "register"
+		} else {
+			flow = "login"
+		}
+	}
+
 	var customerID int64
 	err = service.pool.QueryRow(ctx, `
 		SELECT id FROM customers WHERE phone = $1 LIMIT 1
@@ -129,10 +138,15 @@ func (service *Service) ConfirmCall(
 		return "", time.Time{}, false, fmt.Errorf("find customer: %w", err)
 	}
 	if isNoRows(err) {
+		if flow != "register" {
+			return "", time.Time{}, false, ErrAccountNotFound
+		}
 		customerID, err = service.createCustomer(ctx, phone, registration)
 		if err != nil {
 			return "", time.Time{}, false, err
 		}
+	} else if flow == "register" {
+		return "", time.Time{}, false, ErrAccountExists
 	}
 
 	if _, err := service.pool.Exec(ctx, `
