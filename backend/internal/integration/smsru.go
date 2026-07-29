@@ -6,20 +6,23 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
-// SMSRUClient authorizes users via SMS.ru's call-based OTP ("Отправить
-// четырехзначный авторизационный код звонком", https://sms.ru/api/code_call):
-// SMS.ru calls the phone from a random number and the last four digits of
-// that number are the code. This avoids registering (and paying a monthly
-// fee for) an alphanumeric sender name with every mobile operator, which
-// SMS.ru now requires for ordinary text messages.
+// SMSRUClient authorizes users via SMS.ru's "call from the user" flow
+// (https://sms.ru/api/call): we ask SMS.ru for a phone number, the user
+// calls it from their own phone (the call is free and gets dropped
+// automatically), and we poll SMS.ru to see whether that call came in.
 //
-// If no API key is configured, RequestCall only logs a fake code instead of
-// making a network call, which is convenient for local development. It
-// satisfies the auth.CodeSender interface.
+// This replaces the older "we call the user" flow
+// (https://sms.ru/api/code_call), which SMS.ru's own documentation now
+// marks as deprecated ("Данный функционал устарел и скоро будет выведен
+// из обращения") and which, in practice, stopped reliably placing calls
+// even though it kept returning status "OK" and charging the balance.
+//
+// If no API key is configured, RequestCallCheck fabricates a check
+// instead of calling SMS.ru, and CallCheckStatus reports it confirmed on
+// the first poll — convenient for local development.
 type SMSRUClient struct {
 	apiKey     string
 	httpClient *http.Client
@@ -32,57 +35,97 @@ func NewSMSRUClient(apiKey string) *SMSRUClient {
 	}
 }
 
-// RequestCall asks SMS.ru to call phone and returns the four-digit code the
-// user must read back to us (the last four digits of the calling number).
-// ip should be the end user's IP address, not the server's — it lets
-// SMS.ru rate-limit abusive callers; pass "-1" if it isn't available.
-func (client *SMSRUClient) RequestCall(ctx context.Context, phone, ip string) (string, error) {
+// RequestCallCheck registers phone with SMS.ru and returns the number the
+// user must call from their own phone to authenticate (both the raw
+// digits and a human-formatted version), plus a check_id used to poll the
+// call's status afterwards. The user has 5 minutes to place the call.
+func (client *SMSRUClient) RequestCallCheck(
+	ctx context.Context,
+	phone string,
+) (checkID, callPhone, callPhonePretty string, err error) {
 	if client.apiKey == "" {
-		fmt.Printf("[dev] OTP call-code for %s: 0000\n", phone)
-		return "0000", nil
-	}
-
-	if ip == "" {
-		ip = "-1"
+		fmt.Printf("[dev] call-check for %s: pretend to call +7 (800) 000-00-00\n", phone)
+		return "dev-check", "78000000000", "+7 (800) 000-00-00", nil
 	}
 
 	values := url.Values{}
 	values.Set("api_id", client.apiKey)
 	values.Set("phone", phone)
-	values.Set("ip", ip)
 	values.Set("json", "1")
 
-	request, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		"https://sms.ru/code/call",
-		strings.NewReader(values.Encode()),
-	)
-	if err != nil {
-		return "", err
+	var result struct {
+		Status          string `json:"status"`
+		StatusCode      int    `json:"status_code"`
+		StatusText      string `json:"status_text"`
+		CheckID         string `json:"check_id"`
+		CallPhone       string `json:"call_phone"`
+		CallPhonePretty string `json:"call_phone_pretty"`
 	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := client.get(ctx, "https://sms.ru/callcheck/add", values, &result); err != nil {
+		return "", "", "", err
+	}
+	if result.Status != "OK" {
+		return "", "", "", fmt.Errorf("SMS.ru error: %s (status_code=%d)", result.StatusText, result.StatusCode)
+	}
+	if result.CheckID == "" || result.CallPhone == "" {
+		return "", "", "", fmt.Errorf("SMS.ru callcheck/add response missing check_id/call_phone")
+	}
+	return result.CheckID, result.CallPhone, result.CallPhonePretty, nil
+}
+
+// CallCheckStatus reports whether the user has already called the number
+// we gave them for checkID. confirmed becomes true once the call has come
+// in. expired becomes true once the 5-minute window has elapsed (or the
+// checkID is otherwise no longer valid), at which point the caller should
+// request a new number instead of continuing to poll this one.
+func (client *SMSRUClient) CallCheckStatus(ctx context.Context, checkID string) (confirmed, expired bool, err error) {
+	if client.apiKey == "" {
+		return true, false, nil
+	}
+
+	values := url.Values{}
+	values.Set("api_id", client.apiKey)
+	values.Set("check_id", checkID)
+	values.Set("json", "1")
+
+	var result struct {
+		Status      string `json:"status"`
+		StatusCode  int    `json:"status_code"`
+		StatusText  string `json:"status_text"`
+		CheckStatus string `json:"check_status"`
+	}
+	if err := client.get(ctx, "https://sms.ru/callcheck/status", values, &result); err != nil {
+		return false, false, err
+	}
+	if result.Status != "OK" {
+		return false, false, fmt.Errorf("SMS.ru error: %s (status_code=%d)", result.StatusText, result.StatusCode)
+	}
+	switch result.CheckStatus {
+	case "401":
+		return true, false, nil
+	case "400":
+		return false, false, nil
+	case "402":
+		return false, true, nil
+	default:
+		return false, false, fmt.Errorf("unexpected SMS.ru check_status: %s", result.CheckStatus)
+	}
+}
+
+func (client *SMSRUClient) get(ctx context.Context, endpoint string, values url.Values, out any) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+values.Encode(), nil)
+	if err != nil {
+		return err
+	}
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("request call: %w", err)
+		return fmt.Errorf("request %s: %w", endpoint, err)
 	}
 	defer response.Body.Close()
 
-	var result struct {
-		Status     string `json:"status"`
-		StatusCode int    `json:"status_code"`
-		StatusText string `json:"status_text"`
-		Code       string `json:"code"`
+	if err := json.NewDecoder(response.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode SMS.ru response: %w", err)
 	}
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode SMS.ru response: %w", err)
-	}
-	if result.Status != "OK" {
-		return "", fmt.Errorf("SMS.ru error: %s (status_code=%d)", result.StatusText, result.StatusCode)
-	}
-	if result.Code == "" {
-		return "", fmt.Errorf("SMS.ru call response missing code")
-	}
-	return result.Code, nil
+	return nil
 }
