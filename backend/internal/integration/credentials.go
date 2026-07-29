@@ -29,6 +29,10 @@ type encryptedEnvelope struct {
 	Tag          string `json:"tag"`
 }
 
+func (store *CredentialStore) Configured() bool {
+	return store != nil && store.privateKey != nil
+}
+
 func NewCredentialStore(pool *pgxpool.Pool, privateKeyPEM string) (*CredentialStore, error) {
 	privateKeyPEM = strings.ReplaceAll(strings.TrimSpace(privateKeyPEM), `\n`, "\n")
 	if privateKeyPEM == "" {
