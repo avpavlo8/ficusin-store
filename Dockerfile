@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ficusin
 
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=backend /out/ficusin-api /app/ficusin-api
@@ -25,5 +25,6 @@ ENV PORT=3000
 ENV STATIC_DIR=/app/web
 ENV MIGRATIONS_DIR=/app/migrations
 EXPOSE 3000
+HEALTHCHECK --interval=5s --timeout=3s --start-period=30s --retries=5 CMD curl -fsS http://127.0.0.1:3000/api/v1/health || exit 1
 USER 65532:65532
 ENTRYPOINT ["/app/ficusin-api"]
