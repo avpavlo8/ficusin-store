@@ -51,9 +51,9 @@ func main() {
 	}
 
 	catalogRepository := catalog.NewPostgresRepository(pool)
-		codeSender := integration.NewSMSRUClient(cfg.SMS.APIKey, cfg.SMS.Sender)
-		authService := auth.NewService(pool, cfg.Auth.SessionDays, codeSender)
-		orderRepository := order.NewPostgresRepository(pool)
+	codeSender := integration.NewSMSRUClient(cfg.SMS.APIKey)
+	authService := auth.NewService(pool, cfg.Auth.SessionDays, codeSender)
+	orderRepository := order.NewPostgresRepository(pool)
 	credentialStore, err := integration.NewCredentialStore(pool, cfg.IntegrationPrivateKey)
 	if err != nil {
 		logger.Error("integration credentials configuration failed", "error", err)
