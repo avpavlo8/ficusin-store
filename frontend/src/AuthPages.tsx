@@ -23,6 +23,34 @@ type AccountOrder = {
   itemsCount: number;
 };
 
+type AuthFlow = "login" | "register";
+
+type RegistrationDraft = {
+  fullName: string;
+  lastName: string;
+  patronymic: string;
+  email: string;
+  deliveryAddress: string;
+  accountType: "retail" | "wholesale";
+  companyName: string;
+  inn: string;
+  kpp: string;
+  legalAddress: string;
+};
+
+const emptyRegistration: RegistrationDraft = {
+  fullName: "",
+  lastName: "",
+  patronymic: "",
+  email: "",
+  deliveryAddress: "",
+  accountType: "retail",
+  companyName: "",
+  inn: "",
+  kpp: "",
+  legalAddress: "",
+};
+
 const orderStatusLabels: Record<string, string> = {
   new: "Новый",
   confirmed: "Подтверждён",
@@ -39,6 +67,7 @@ const money = new Intl.NumberFormat("ru-RU", {
 });
 
 const RESEND_COOLDOWN_SECONDS = 45;
+const POLL_INTERVAL_MS = 3000;
 
 function AuthHeader() {
   return (
@@ -52,22 +81,25 @@ function AuthHeader() {
   );
 }
 
-const POLL_INTERVAL_MS = 3000;
-
-function AuthPage() {
-  const [step, setStep] = useState<"phone" | "waiting">("phone");
+function AuthPage({ flow }: { flow: AuthFlow }) {
+  const isRegistration = flow === "register";
+  const [step, setStep] = useState<"form" | "waiting">("form");
   const [phone, setPhone] = useState("");
   const [checkId, setCheckId] = useState("");
   const [callPhonePretty, setCallPhonePretty] = useState("");
+  const [registration, setRegistration] = useState<RegistrationDraft>(emptyRegistration);
   const [accountType, setAccountType] = useState<"retail" | "wholesale">("retail");
-  const [fullName, setFullName] = useState("");
-  const [callConfirmed, setCallConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
-  const pollStateRef = useRef({ phone: "", checkId: "", fullName: "", accountType: "retail" as "retail" | "wholesale" });
-  pollStateRef.current = { phone, checkId, fullName, accountType };
+  const pollStateRef = useRef({
+    phone: "",
+    checkId: "",
+    flow,
+    registration: emptyRegistration,
+  });
+  pollStateRef.current = { phone, checkId, flow, registration };
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -84,11 +116,6 @@ function AuthPage() {
     );
   }
 
-  // Polls in the background while we wait for the user to place the call.
-  // Existing customers log in the moment SMS.ru confirms the call, with no
-  // further action needed. New customers additionally need a name and
-  // account type, which the user submits explicitly via submitDetails —
-  // this loop only flips callConfirmed so the form can prompt for them.
   useEffect(() => {
     if (step !== "waiting") return;
     let cancelled = false;
@@ -99,28 +126,24 @@ function AuthPage() {
         const response = await fetch("/api/v1/auth/verify-code", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
           body: JSON.stringify({
             phone: current.phone,
             checkId: current.checkId,
-            fullName: current.fullName,
-            accountType: current.accountType,
+            flow: current.flow,
+            ...(current.flow === "register" ? current.registration : {}),
           }),
         });
-        if (cancelled) return;
-        if (response.status === 202) return;
-        if (response.status === 422) {
-          setCallConfirmed(true);
+        if (cancelled || response.status === 202) return;
+        const data = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          setError(data.error || "Не удалось подтвердить звонок");
+          setStep("form");
           return;
         }
-        if (response.status === 401) {
-          setError("Звонок не подтверждён вовремя. Запросите номер ещё раз");
-          return;
-        }
-        if (response.ok) {
-          completeLogin();
-        }
+        completeLogin();
       } catch {
-        // transient network hiccup — the next tick will retry
+        // A short network failure is retried on the next polling tick.
       }
     }
 
@@ -132,14 +155,14 @@ function AuthPage() {
     };
   }, [step]);
 
-  async function requestCall(targetPhone: string) {
+  async function requestCall(targetPhone: string, registrationDraft = registration) {
     setError("");
     setSubmitting(true);
     try {
       const response = await fetch("/api/v1/auth/request-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: targetPhone }),
+        body: JSON.stringify({ phone: targetPhone, flow }),
       });
       const data = (await response.json()) as {
         error?: string;
@@ -149,9 +172,14 @@ function AuthPage() {
       if (!response.ok || !data.checkId || !data.callPhonePretty) {
         throw new Error(data.error || "Не удалось подготовить звонок");
       }
+      pollStateRef.current = {
+        phone: targetPhone,
+        checkId: data.checkId,
+        flow,
+        registration: registrationDraft,
+      };
       setCheckId(data.checkId);
       setCallPhonePretty(data.callPhonePretty);
-      setCallConfirmed(false);
       setCooldown(RESEND_COOLDOWN_SECONDS);
       setStep("waiting");
     } catch (caught) {
@@ -161,45 +189,35 @@ function AuthPage() {
     }
   }
 
-  async function submitPhone(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const normalized = normalizeRussianPhone(String(form.get("phone") ?? ""));
     if (!normalized) {
-      const input = phoneInputRef.current;
-      input?.setCustomValidity("Введите российский номер телефона");
-      input?.reportValidity();
+      phoneInputRef.current?.setCustomValidity("Введите российский номер телефона");
+      phoneInputRef.current?.reportValidity();
       return;
     }
     phoneInputRef.current?.setCustomValidity("");
     setPhone(normalized);
-    await requestCall(normalized);
-  }
 
-  async function submitDetails(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setSubmitting(true);
-    try {
-      const response = await fetch("/api/v1/auth/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, checkId, fullName, accountType }),
-      });
-      if (response.status === 202) {
-        setError("Пока не видим звонок. Позвоните на указанный номер и попробуйте ещё раз");
-        return;
-      }
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error || "Не удалось подтвердить звонок");
-      }
-      completeLogin();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось подтвердить звонок");
-    } finally {
-      setSubmitting(false);
+    let registrationDraft = registration;
+    if (isRegistration) {
+      registrationDraft = {
+        fullName: String(form.get("fullName") ?? "").trim(),
+        lastName: String(form.get("lastName") ?? "").trim(),
+        patronymic: String(form.get("patronymic") ?? "").trim(),
+        email: String(form.get("email") ?? "").trim(),
+        deliveryAddress: String(form.get("deliveryAddress") ?? "").trim(),
+        accountType,
+        companyName: String(form.get("companyName") ?? "").trim(),
+        inn: String(form.get("inn") ?? "").trim(),
+        kpp: String(form.get("kpp") ?? "").trim(),
+        legalAddress: String(form.get("legalAddress") ?? "").trim(),
+      };
+      setRegistration(registrationDraft);
     }
+    await requestCall(normalized, registrationDraft);
   }
 
   return (
@@ -208,18 +226,43 @@ function AuthPage() {
       <section className="auth-shell auth-shell-compact">
         <div className="auth-intro">
           <p className="eyebrow">Личный кабинет</p>
-          <h1>{step === "phone" ? "Вход и регистрация" : "Позвоните для входа"}</h1>
+          <h1>
+            {step === "waiting"
+              ? "Подтвердите номер звонком"
+              : isRegistration
+                ? "Регистрация"
+                : "Вход"}
+          </h1>
           <p>
-            {step === "phone"
-              ? "Укажите номер телефона — пароль не нужен, вы подтвердите его звонком."
-              : callConfirmed
-                ? "Звонок принят! Укажите имя и тип аккаунта, чтобы завершить вход."
-                : `Позвоните с ${phone} на номер ${callPhonePretty}. Звонок бесплатный — мы сами его сбросим.`}
+            {step === "waiting"
+              ? "Позвоните с номера " + phone + " на " + callPhonePretty +
+                ". Звонок бесплатный — сервис автоматически его сбросит."
+              : isRegistration
+                ? "Заполните профиль один раз. При следующих заказах данные подставятся автоматически."
+                : "Введите телефон, указанный при регистрации. Пароль не нужен."}
           </p>
         </div>
 
-        {step === "phone" && (
-          <form className="auth-form" onSubmit={submitPhone}>
+        {step === "form" && (
+          <form className="auth-form" onSubmit={submit}>
+            {isRegistration && (
+              <>
+                <div className="field-grid">
+                  <label>
+                    Фамилия
+                    <input name="lastName" autoComplete="family-name" required maxLength={80} />
+                  </label>
+                  <label>
+                    Имя
+                    <input name="fullName" autoComplete="given-name" required minLength={2} maxLength={80} />
+                  </label>
+                </div>
+                <label>
+                  Отчество
+                  <input name="patronymic" autoComplete="additional-name" maxLength={80} />
+                </label>
+              </>
+            )}
             <label>
               Телефон
               <input
@@ -232,86 +275,115 @@ function AuthPage() {
                 placeholder="+7 900 000-00-00"
                 onInput={(event) => {
                   event.currentTarget.setCustomValidity("");
-                  event.currentTarget.value = formatRussianPhoneInput(
-                    event.currentTarget.value,
-                  );
+                  event.currentTarget.value = formatRussianPhoneInput(event.currentTarget.value);
                 }}
               />
             </label>
+            {isRegistration && (
+              <>
+                <label>
+                  Email
+                  <input name="email" type="email" autoComplete="email" required maxLength={254} />
+                </label>
+                <label>
+                  Адрес доставки
+                  <input
+                    name="deliveryAddress"
+                    autoComplete="street-address"
+                    placeholder="Город, улица, дом, квартира"
+                  />
+                </label>
+                <fieldset>
+                  <legend>Тип покупателя</legend>
+                  <div className="account-type-options">
+                    <label className={accountType === "retail" ? "selected" : ""}>
+                      <input
+                        type="radio"
+                        name="accountType"
+                        checked={accountType === "retail"}
+                        onChange={() => setAccountType("retail")}
+                      />
+                      <span>
+                        <b>Розничный</b>
+                        <small>Заказ от 1 штуки и накопительная скидка</small>
+                      </span>
+                    </label>
+                    <label className={accountType === "wholesale" ? "selected" : ""}>
+                      <input
+                        type="radio"
+                        name="accountType"
+                        checked={accountType === "wholesale"}
+                        onChange={() => setAccountType("wholesale")}
+                      />
+                      <span>
+                        <b>Оптовый</b>
+                        <small>Заказ партиями и оплата по реквизитам</small>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+                {accountType === "wholesale" && (
+                  <div className="wholesale-fields">
+                    <label>
+                      Название организации
+                      <input name="companyName" required maxLength={160} />
+                    </label>
+                    <div className="field-grid">
+                      <label>
+                        ИНН
+                        <input name="inn" required inputMode="numeric" minLength={10} maxLength={12} />
+                      </label>
+                      <label>
+                        КПП
+                        <input name="kpp" inputMode="numeric" minLength={9} maxLength={9} />
+                      </label>
+                    </div>
+                    <label>
+                      Юридический адрес
+                      <input name="legalAddress" required maxLength={300} />
+                    </label>
+                  </div>
+                )}
+                <label className="consent-check">
+                  <input type="checkbox" required />
+                  <span>
+                    Я принимаю <a href="/offer" target="_blank">оферту</a> и даю
+                    согласие на обработку данных по{" "}
+                    <a href="/privacy" target="_blank">политике конфиденциальности</a>.
+                  </span>
+                </label>
+              </>
+            )}
             {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="primary-button full" disabled={submitting}>
-              {submitting ? "Готовим номер…" : "Получить номер для звонка"}
+              {submitting
+                ? "Готовим номер…"
+                : isRegistration
+                  ? "Зарегистрироваться"
+                  : "Войти"}
             </button>
+            <p className="auth-switch">
+              {isRegistration ? (
+                <>Уже зарегистрированы? <a href="/login">Войти</a></>
+              ) : (
+                <>Нет аккаунта? <a href="/register">Зарегистрироваться</a></>
+              )}
+            </p>
           </form>
         )}
 
         {step === "waiting" && (
-          <form className="auth-form" onSubmit={submitDetails}>
-            {!callConfirmed && (
-              <p className="auth-call-number" aria-live="polite">
-                <b>{callPhonePretty}</b>
-                <small>Ожидаем звонок…</small>
-              </p>
-            )}
-            <label>
-              Имя и фамилия
-              <input
-                name="fullName"
-                autoComplete="name"
-                required
-                minLength={2}
-                maxLength={120}
-                value={fullName}
-                onChange={(event) => setFullName(event.currentTarget.value)}
-              />
-              <small>Нужно только при первом входе — остальное можно заполнить позже в кабинете</small>
-            </label>
-            <fieldset>
-              <legend>Тип покупателя</legend>
-              <div className="account-type-options">
-                <label className={accountType === "retail" ? "selected" : ""}>
-                  <input
-                    type="radio"
-                    name="accountType"
-                    checked={accountType === "retail"}
-                    onChange={() => setAccountType("retail")}
-                  />
-                  <span>
-                    <b>Розничный</b>
-                    <small>Заказ от 1 штуки и накопительная скидка</small>
-                  </span>
-                </label>
-                <label className={accountType === "wholesale" ? "selected" : ""}>
-                  <input
-                    type="radio"
-                    name="accountType"
-                    checked={accountType === "wholesale"}
-                    onChange={() => setAccountType("wholesale")}
-                  />
-                  <span>
-                    <b>Оптовый</b>
-                    <small>Реквизиты можно указать позже в кабинете</small>
-                  </span>
-                </label>
-              </div>
-            </fieldset>
-            <label className="consent-check">
-              <input type="checkbox" required />
-              <span>
-                Я принимаю <a href="/offer" target="_blank">оферту</a> и даю
-                согласие на обработку данных по{" "}
-                <a href="/privacy" target="_blank">политике конфиденциальности</a>.
-              </span>
-            </label>
+          <div className="auth-form">
+            <p className="auth-call-number" aria-live="polite">
+              <b>{callPhonePretty}</b>
+              <small>Ожидаем звонок и автоматически завершим {isRegistration ? "регистрацию" : "вход"}…</small>
+            </p>
             {error && <p className="auth-error" role="alert">{error}</p>}
-            <button className="primary-button full" disabled={submitting}>
-              {submitting ? "Проверяем…" : "Подтвердить и войти"}
-            </button>
             <p className="auth-switch">
               {cooldown > 0 ? (
                 <>Новый номер можно запросить через {cooldown} с.</>
               ) : (
-                <button type="button" className="text-link" onClick={() => void requestCall(phone)}>
+                <button type="button" className="text-link" onClick={() => void requestCall(phone, registration)}>
                   Получить новый номер
                 </button>
               )}
@@ -320,22 +392,27 @@ function AuthPage() {
                 type="button"
                 className="text-link"
                 onClick={() => {
-                  setStep("phone");
+                  setStep("form");
                   setError("");
                 }}
               >
-                Изменить номер
+                Изменить данные
               </button>
             </p>
-          </form>
+          </div>
         )}
       </section>
     </main>
   );
 }
 
-export const LoginPage = AuthPage;
-export const RegisterPage = AuthPage;
+export function LoginPage() {
+  return <AuthPage flow="login" />;
+}
+
+export function RegisterPage() {
+  return <AuthPage flow="register" />;
+}
 
 export function AccountPage() {
   const [user, setUser] = useState<StoreUser | null>(null);
@@ -408,8 +485,8 @@ export function AccountPage() {
       <AuthHeader />
       <section className="account-shell">
         <aside className="account-sidebar">
-          <div className="account-avatar">{user.fullName.trim().charAt(0).toUpperCase() || "Ф"}</div>
-          <h1>{user.fullName}</h1>
+          <div className="account-avatar">{(user.lastName || user.fullName).trim().charAt(0).toUpperCase() || "Ф"}</div>
+          <h1>{[user.lastName, user.fullName, user.patronymic].filter(Boolean).join(" ")}</h1>
           <p>
             {user.phone}
             {user.email ? <><br />{user.email}</> : null}

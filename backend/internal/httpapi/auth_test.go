@@ -220,3 +220,69 @@ func TestVerifyCallFailureDoesNotLeakInternalError(t *testing.T) {
 		t.Fatal("internal error leaked to client")
 	}
 }
+
+func TestVerifyCallKeepsLoginSeparateFromRegistration(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/verify-code",
+		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","flow":"login"}`),
+	)
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+	if service.registration.Flow != "login" {
+		t.Fatalf("flow = %q, want login", service.registration.Flow)
+	}
+}
+
+func TestVerifyCallReturnsNotFoundForUnknownLogin(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{confirmErr: auth.ErrAccountNotFound}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/verify-code",
+		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","flow":"login"}`),
+	)
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
+func TestVerifyCallReturnsConflictForDuplicateRegistration(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{confirmErr: auth.ErrAccountExists}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/auth/verify-code",
+		strings.NewReader(`{
+			"phone":"9156151100",
+			"checkId":"check-id",
+			"flow":"register",
+			"fullName":"Александр",
+			"accountType":"retail"
+		}`),
+	)
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}

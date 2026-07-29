@@ -6,6 +6,7 @@ const CookieName = "ficusin_session"
 
 var (
 		ErrAccountExists               = errors.New("account already exists")
+		ErrAccountNotFound             = errors.New("account not found")
 		ErrInvalidCredentials          = errors.New("invalid credentials")
 		ErrInvalidCode                 = errors.New("invalid or expired code")
 		ErrTooManyAttempts             = errors.New("too many attempts")
@@ -30,6 +31,7 @@ type User struct {
 // completes OTP verification. Only FullName, Phone and AccountType are
 // required; everything else can be filled in later from the account page.
 type Registration struct {
+		Flow            string
 		FullName        string
 		LastName        string
 		Patronymic      string
