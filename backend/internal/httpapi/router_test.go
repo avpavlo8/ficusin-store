@@ -23,18 +23,18 @@ type catalogStub struct {
 
 type authStub struct{}
 
-func (authStub) RequestCode(context.Context, string, string) error {
-		return nil
+func (authStub) RequestCall(context.Context, string) (string, string, string, error) {
+		return "check-id", "78000000000", "+7 (800) 000-00-00", nil
 }
 
-func (authStub) VerifyCode(
+func (authStub) ConfirmCall(
 		context.Context,
 		string,
 		string,
 		auth.Registration,
 		string,
-	) (string, time.Time, error) {
-		return "token", time.Now().Add(time.Hour), nil
+	) (string, time.Time, bool, error) {
+		return "token", time.Now().Add(time.Hour), false, nil
 }
 
 func (authStub) Logout(context.Context, string) error {
