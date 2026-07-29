@@ -52,14 +52,22 @@ function AuthHeader() {
   );
 }
 
+const POLL_INTERVAL_MS = 3000;
+
 function AuthPage() {
-  const [step, setStep] = useState<"phone" | "code">("phone");
+  const [step, setStep] = useState<"phone" | "waiting">("phone");
   const [phone, setPhone] = useState("");
+  const [checkId, setCheckId] = useState("");
+  const [callPhonePretty, setCallPhonePretty] = useState("");
   const [accountType, setAccountType] = useState<"retail" | "wholesale">("retail");
+  const [fullName, setFullName] = useState("");
+  const [callConfirmed, setCallConfirmed] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
+  const pollStateRef = useRef({ phone: "", checkId: "", fullName: "", accountType: "retail" as "retail" | "wholesale" });
+  pollStateRef.current = { phone, checkId, fullName, accountType };
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -69,7 +77,62 @@ function AuthPage() {
     return () => window.clearInterval(timer);
   }, [cooldown]);
 
-  async function requestCode(targetPhone: string) {
+  function completeLogin() {
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    window.location.assign(
+      returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/account",
+    );
+  }
+
+  // Polls in the background while we wait for the user to place the call.
+  // Existing customers log in the moment SMS.ru confirms the call, with no
+  // further action needed. New customers additionally need a name and
+  // account type, which the user submits explicitly via submitDetails —
+  // this loop only flips callConfirmed so the form can prompt for them.
+  useEffect(() => {
+    if (step !== "waiting") return;
+    let cancelled = false;
+
+    async function poll() {
+      const current = pollStateRef.current;
+      try {
+        const response = await fetch("/api/v1/auth/verify-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: current.phone,
+            checkId: current.checkId,
+            fullName: current.fullName,
+            accountType: current.accountType,
+          }),
+        });
+        if (cancelled) return;
+        if (response.status === 202) return;
+        if (response.status === 422) {
+          setCallConfirmed(true);
+          return;
+        }
+        if (response.status === 401) {
+          setError("Звонок не подтверждён вовремя. Запросите номер ещё раз");
+          return;
+        }
+        if (response.ok) {
+          completeLogin();
+        }
+      } catch {
+        // transient network hiccup — the next tick will retry
+      }
+    }
+
+    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [step]);
+
+  async function requestCall(targetPhone: string) {
     setError("");
     setSubmitting(true);
     try {
@@ -78,14 +141,21 @@ function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: targetPhone }),
       });
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error || "Не удалось отправить код");
+      const data = (await response.json()) as {
+        error?: string;
+        checkId?: string;
+        callPhonePretty?: string;
+      };
+      if (!response.ok || !data.checkId || !data.callPhonePretty) {
+        throw new Error(data.error || "Не удалось подготовить звонок");
       }
+      setCheckId(data.checkId);
+      setCallPhonePretty(data.callPhonePretty);
+      setCallConfirmed(false);
       setCooldown(RESEND_COOLDOWN_SECONDS);
-      setStep("code");
+      setStep("waiting");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось отправить код");
+      setError(caught instanceof Error ? caught.message : "Не удалось подготовить звонок");
     } finally {
       setSubmitting(false);
     }
@@ -103,35 +173,31 @@ function AuthPage() {
     }
     phoneInputRef.current?.setCustomValidity("");
     setPhone(normalized);
-    await requestCode(normalized);
+    await requestCall(normalized);
   }
 
-  async function submitCode(event: FormEvent<HTMLFormElement>) {
+  async function submitDetails(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setSubmitting(true);
-    const form = new FormData(event.currentTarget);
     try {
       const response = await fetch("/api/v1/auth/verify-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone,
-          code: form.get("code"),
-          fullName: form.get("fullName"),
-          accountType,
-        }),
+        body: JSON.stringify({ phone, checkId, fullName, accountType }),
       });
+      if (response.status === 202) {
+        setError("Пока не видим звонок. Позвоните на указанный номер и попробуйте ещё раз");
+        return;
+      }
       const data = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(data.error || "Не удалось подтвердить код");
+        throw new Error(data.error || "Не удалось подтвердить звонок");
       }
-      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-      window.location.assign(
-        returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/account",
-      );
+      completeLogin();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось подтвердить код");
+      setError(caught instanceof Error ? caught.message : "Не удалось подтвердить звонок");
+    } finally {
       setSubmitting(false);
     }
   }
@@ -142,11 +208,13 @@ function AuthPage() {
       <section className="auth-shell auth-shell-compact">
         <div className="auth-intro">
           <p className="eyebrow">Личный кабинет</p>
-          <h1>{step === "phone" ? "Вход и регистрация" : "Подтвердите номер"}</h1>
+          <h1>{step === "phone" ? "Вход и регистрация" : "Позвоните для входа"}</h1>
           <p>
             {step === "phone"
-              ? "Укажите номер телефона — пароль не нужен, вам позвонят с кодом."
-              : `Вам позвонят на ${phone}. Введите последние 4 цифры номера, с которого поступит звонок.`}
+              ? "Укажите номер телефона — пароль не нужен, вы подтвердите его звонком."
+              : callConfirmed
+                ? "Звонок принят! Укажите имя и тип аккаунта, чтобы завершить вход."
+                : `Позвоните с ${phone} на номер ${callPhonePretty}. Звонок бесплатный — мы сами его сбросим.`}
           </p>
         </div>
 
@@ -172,29 +240,30 @@ function AuthPage() {
             </label>
             {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="primary-button full" disabled={submitting}>
-              {submitting ? "Звоним…" : "Получить звонок"}
+              {submitting ? "Готовим номер…" : "Получить номер для звонка"}
             </button>
           </form>
         )}
 
-        {step === "code" && (
-          <form className="auth-form" onSubmit={submitCode}>
-            <label>
-              Последние 4 цифры номера
-              <input
-                name="code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                required
-                maxLength={4}
-                pattern="\d{4}"
-                placeholder="0000"
-                autoFocus
-              />
-            </label>
+        {step === "waiting" && (
+          <form className="auth-form" onSubmit={submitDetails}>
+            {!callConfirmed && (
+              <p className="auth-call-number" aria-live="polite">
+                <b>{callPhonePretty}</b>
+                <small>Ожидаем звонок…</small>
+              </p>
+            )}
             <label>
               Имя и фамилия
-              <input name="fullName" autoComplete="name" required minLength={2} maxLength={120} />
+              <input
+                name="fullName"
+                autoComplete="name"
+                required
+                minLength={2}
+                maxLength={120}
+                value={fullName}
+                onChange={(event) => setFullName(event.currentTarget.value)}
+              />
               <small>Нужно только при первом входе — остальное можно заполнить позже в кабинете</small>
             </label>
             <fieldset>
@@ -240,10 +309,10 @@ function AuthPage() {
             </button>
             <p className="auth-switch">
               {cooldown > 0 ? (
-                <>Новый звонок можно запросить через {cooldown} с.</>
+                <>Новый номер можно запросить через {cooldown} с.</>
               ) : (
-                <button type="button" className="text-link" onClick={() => void requestCode(phone)}>
-                  Позвонить ещё раз
+                <button type="button" className="text-link" onClick={() => void requestCall(phone)}>
+                  Получить новый номер
                 </button>
               )}
               {" · "}
@@ -406,8 +475,8 @@ export function AccountPage() {
               </div>
             )}
           </section>
-      </div>
-    </section>
+        </div>
+      </section>
     </main>
   );
 }
