@@ -155,7 +155,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
     };
   }, [step]);
 
-  async function requestCall(targetPhone: string) {
+  async function requestCall(targetPhone: string, registrationDraft = registration) {
     setError("");
     setSubmitting(true);
     try {
@@ -172,6 +172,12 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
       if (!response.ok || !data.checkId || !data.callPhonePretty) {
         throw new Error(data.error || "Не удалось подготовить звонок");
       }
+      pollStateRef.current = {
+        phone: targetPhone,
+        checkId: data.checkId,
+        flow,
+        registration: registrationDraft,
+      };
       setCheckId(data.checkId);
       setCallPhonePretty(data.callPhonePretty);
       setCooldown(RESEND_COOLDOWN_SECONDS);
@@ -195,8 +201,9 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
     phoneInputRef.current?.setCustomValidity("");
     setPhone(normalized);
 
+    let registrationDraft = registration;
     if (isRegistration) {
-      setRegistration({
+      registrationDraft = {
         fullName: String(form.get("fullName") ?? "").trim(),
         lastName: String(form.get("lastName") ?? "").trim(),
         patronymic: String(form.get("patronymic") ?? "").trim(),
@@ -207,9 +214,10 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
         inn: String(form.get("inn") ?? "").trim(),
         kpp: String(form.get("kpp") ?? "").trim(),
         legalAddress: String(form.get("legalAddress") ?? "").trim(),
-      });
+      };
+      setRegistration(registrationDraft);
     }
-    await requestCall(normalized);
+    await requestCall(normalized, registrationDraft);
   }
 
   return (
@@ -375,7 +383,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
               {cooldown > 0 ? (
                 <>Новый номер можно запросить через {cooldown} с.</>
               ) : (
-                <button type="button" className="text-link" onClick={() => void requestCall(phone)}>
+                <button type="button" className="text-link" onClick={() => void requestCall(phone, registration)}>
                   Получить новый номер
                 </button>
               )}
