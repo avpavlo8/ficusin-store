@@ -252,7 +252,7 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 	var user User
 	err := service.pool.QueryRow(ctx, `
 		SELECT
-			c.id, c.email, c.phone, c.full_name, c.last_name, c.patronymic,
+			c.id, COALESCE(c.email, ''), c.phone, c.full_name, c.last_name, c.patronymic,
 			c.delivery_address, c.account_type, c.wholesale_status,
 			c.retail_discount_bps
 				FROM auth_sessions s
