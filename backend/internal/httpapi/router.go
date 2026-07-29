@@ -43,8 +43,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
-	mux.HandleFunc("POST /api/v1/auth/register", authAPI.register)
-	mux.HandleFunc("POST /api/v1/auth/login", authAPI.login)
+	mux.HandleFunc("POST /api/v1/auth/request-code", authAPI.requestCode)
+	mux.HandleFunc("POST /api/v1/auth/verify-code", authAPI.verifyCode)
 	mux.HandleFunc("POST /api/v1/auth/logout", authAPI.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", authAPI.me)
 	mux.Handle(
