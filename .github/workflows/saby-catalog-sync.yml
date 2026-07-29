@@ -1,0 +1,27 @@
+name: Saby catalog sync
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+  statuses: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync Saby catalog
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+          SABY_PRICE_LIST_ID: ${{ vars.SABY_PRICE_LIST_ID }}
+          FICUSIN_SYNC_URL: ${{ vars.FICUSIN_SYNC_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/sync-saby.py
