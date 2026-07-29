@@ -40,3 +40,20 @@ func TestBoundedInteger(t *testing.T) {
 		t.Fatalf("boundedInteger() = %d, want 30", actual)
 	}
 }
+
+func TestLoadReadsTelegramEnvironment(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgresql://localhost/ficusin")
+	t.Setenv("TELEGRAM_BOT_TOKEN", " secret-token ")
+	t.Setenv("TELEGRAM_ORDER_CHAT_ID", " -5430918511 ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.TelegramBotToken != "secret-token" {
+		t.Fatalf("TelegramBotToken = %q, want %q", cfg.TelegramBotToken, "secret-token")
+	}
+	if cfg.TelegramChatID != "-5430918511" {
+		t.Fatalf("TelegramChatID = %q, want %q", cfg.TelegramChatID, "-5430918511")
+	}
+}
