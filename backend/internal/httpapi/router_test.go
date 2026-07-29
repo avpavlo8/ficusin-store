@@ -23,7 +23,7 @@ type catalogStub struct {
 
 type authStub struct{}
 
-func (authStub) RequestCode(context.Context, string) error {
+func (authStub) RequestCode(context.Context, string, string) error {
 		return nil
 }
 
