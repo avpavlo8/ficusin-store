@@ -200,11 +200,7 @@ func (service *Service) createCustomer(
 		wholesaleStatus,
 	).Scan(&customerID)
 	if isUniqueViolation(err) {
-		if scanErr := service.pool.QueryRow(ctx, `
-			SELECT id FROM customers WHERE phone = $1
-		`, phone).Scan(&customerID); scanErr == nil {
-			return customerID, nil
-		}
+		return 0, ErrAccountExists
 	}
 	if err != nil {
 		return 0, fmt.Errorf("insert customer: %w", err)
