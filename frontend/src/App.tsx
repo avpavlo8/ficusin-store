@@ -26,6 +26,7 @@ type StoreUser = {
   patronymic: string;
   deliveryAddress: string;
   accountType: "retail" | "wholesale";
+  adminRole?: "manager" | "owner";
 };
 
 type CheckoutProfile = {
@@ -241,6 +242,7 @@ export default function Home() {
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
   const deliveryFee = delivery === "cdek" ? (cdekQuote?.price ?? 0) : (deliveryOption.fee ?? 0);
   const total = subtotal + deliveryFee;
+  const isAdmin = user?.adminRole === "manager" || user?.adminRole === "owner";
 
   async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);
@@ -395,11 +397,17 @@ export default function Home() {
           </button>
           <a
             className="account-button"
-            href={user ? "/account" : "/login"}
-            aria-label={user ? "Открыть личный кабинет" : "Войти или зарегистрироваться"}
+            href={isAdmin ? "/admin" : user ? "/account" : "/login"}
+            aria-label={
+              isAdmin
+                ? "Открыть админку"
+                : user
+                  ? "Открыть личный кабинет"
+                  : "Войти или зарегистрироваться"
+            }
           >
             <span aria-hidden="true">◯</span>
-            <span>{user ? "Кабинет" : "Войти"}</span>
+            <span>{isAdmin ? "Админка" : user ? "Кабинет" : "Войти"}</span>
           </a>
           <button className="cart-button" onClick={() => setCartOpen(true)} aria-label={`Корзина, товаров: ${cartCount}`}>
             <span aria-hidden="true">Корзина</span>
@@ -751,7 +759,9 @@ export default function Home() {
 
       <aside className={`mobile-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
         <button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">×</button>
-        {user ? (
+        {isAdmin ? (
+          <a href="/admin">Админка</a>
+        ) : user ? (
           <a href="/account">Личный кабинет</a>
         ) : (
           <><a href="/login">Войти</a><a href="/register">Регистрация</a></>

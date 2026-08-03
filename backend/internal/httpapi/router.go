@@ -30,16 +30,17 @@ type Dependencies struct {
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	authAPI := authHandlers{
-		logger:       logger,
-		service:      dependencies.Auth,
-		cookieSecure: dependencies.CookieSecure,
-	}
-	cdekAPI := cdekHandlers{logger: logger, service: dependencies.CDEK}
 	adminEmails := make(map[string]struct{}, len(dependencies.AdminEmails))
 	for _, email := range dependencies.AdminEmails {
 		adminEmails[strings.ToLower(email)] = struct{}{}
 	}
+	authAPI := authHandlers{
+		logger:       logger,
+		service:      dependencies.Auth,
+		cookieSecure: dependencies.CookieSecure,
+		ownerEmails:  adminEmails,
+	}
+	cdekAPI := cdekHandlers{logger: logger, service: dependencies.CDEK}
 	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin, adminEmails)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
