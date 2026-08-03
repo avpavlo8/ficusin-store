@@ -94,6 +94,17 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [collection, setCollection] = useState("");
   const [query, setQuery] = useState("");
+  // The tree starts closed so the catalog opens on the products, not on a
+  // wall of category names; expanded nodes are remembered while browsing.
+  const [treeOpen, setTreeOpen] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+  const toggleCategory = (id: number) =>
+    setExpandedCategories((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(window.localStorage.getItem("ficusin-favorites") || "[]") as string[]);
@@ -142,6 +153,9 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("cart") === "1") setCartOpen(true);
+    // Search started from a page that has no product list of its own.
+    const incomingQuery = params.get("q");
+    if (incomingQuery) setQuery(incomingQuery);
   }, []);
 
   useEffect(() => {
@@ -276,15 +290,20 @@ export default function Home() {
     }
     return result;
   }, [categories, selectedCategory]);
+  const searchTerm = query.trim().toLowerCase();
+  // A search is deliberately global: while the box has text we ignore the
+  // selected category and collection, otherwise typing a plant name while
+  // standing in the wrong section silently returns nothing.
   const filtered = useMemo(
     () =>
       products.filter((product) => {
+        const searchable = `${product.name} ${product.latin} ${product.category}`.toLowerCase();
+        if (searchTerm) return searchable.includes(searchTerm);
         const inSection = !selectedCategory || (!!product.categoryId && categoryIDs.has(product.categoryId));
         const inCollection = !selectedCollection || product[selectedCollection.field] === selectedCollection.value;
-        const searchable = `${product.name} ${product.latin} ${product.category}`.toLowerCase();
-        return inSection && inCollection && searchable.includes(query.toLowerCase().trim());
+        return inSection && inCollection;
       }),
-    [products, selectedCategory, categoryIDs, selectedCollection, query],
+    [products, selectedCategory, categoryIDs, selectedCollection, searchTerm],
   );
 
   const cartLines = products
@@ -482,17 +501,52 @@ export default function Home() {
       <section className="catalog-section" id="catalog">
         <div className="catalog-layout">
           <aside className="category-tree" aria-label="Категории каталога">
-            <h2>Каталог</h2>
-            {roots.map((root) => {
+            <button
+              className="category-tree-toggle"
+              aria-expanded={treeOpen}
+              onClick={() => setTreeOpen((value) => !value)}
+            >
+              <span>Каталог</span>
+              <span aria-hidden="true">{treeOpen ? "−" : "+"}</span>
+            </button>
+            {treeOpen && roots.map((root) => {
               const levelTwo = childrenOf(root.id);
               const visible = levelTwo.length === 1 && childrenOf(levelTwo[0].id).length ? childrenOf(levelTwo[0].id) : levelTwo;
+              const rootOpen = expandedCategories.has(root.id);
               return <div className="category-root" key={root.id}>
-                <button className={selectedCategory === root.id ? "active" : ""} onClick={() => { setSelectedCategory(root.id); setCatalogSection(root.slug); setCollection(""); }}>{root.name}</button>
-                {visible.length > 0 && <div className="category-children">
-                  {visible.map((child) => <div key={child.id}>
-                    <button className={selectedCategory === child.id ? "active" : ""} onClick={() => { setSelectedCategory(child.id); setCollection(""); }}>{child.name}</button>
-                    {childrenOf(child.id).map((leaf) => <button className={selectedCategory === leaf.id ? "active leaf" : "leaf"} onClick={() => { setSelectedCategory(leaf.id); setCollection(""); }} key={leaf.id}>{leaf.name}</button>)}
-                  </div>)}
+                <button
+                  className={selectedCategory === root.id ? "active" : ""}
+                  aria-expanded={visible.length > 0 ? rootOpen : undefined}
+                  onClick={() => {
+                    setSelectedCategory(root.id);
+                    setCatalogSection(root.slug);
+                    setCollection("");
+                    if (visible.length > 0) toggleCategory(root.id);
+                  }}
+                >
+                  <span>{root.name}</span>
+                  {visible.length > 0 && <span className="category-caret" aria-hidden="true">{rootOpen ? "−" : "+"}</span>}
+                </button>
+                {visible.length > 0 && rootOpen && <div className="category-children">
+                  {visible.map((child) => {
+                    const leaves = childrenOf(child.id);
+                    const childOpen = expandedCategories.has(child.id);
+                    return <div key={child.id}>
+                      <button
+                        className={selectedCategory === child.id ? "active" : ""}
+                        aria-expanded={leaves.length > 0 ? childOpen : undefined}
+                        onClick={() => {
+                          setSelectedCategory(child.id);
+                          setCollection("");
+                          if (leaves.length > 0) toggleCategory(child.id);
+                        }}
+                      >
+                        <span>{child.name}</span>
+                        {leaves.length > 0 && <span className="category-caret" aria-hidden="true">{childOpen ? "−" : "+"}</span>}
+                      </button>
+                      {childOpen && leaves.map((leaf) => <button className={selectedCategory === leaf.id ? "active leaf" : "leaf"} onClick={() => { setSelectedCategory(leaf.id); setCollection(""); }} key={leaf.id}>{leaf.name}</button>)}
+                    </div>;
+                  })}
                 </div>}
               </div>;
             })}
@@ -791,7 +845,7 @@ export default function Home() {
         <button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">×</button>
         {user ? (
           <><a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
-          {(user.adminRole === "manager" || user.adminRole === "owner") && <a href="/admin">Админка</a>}</>
+          {(user.adminRole === "manager" || user.adminRole === "owner") && <a href="/admin">Панель управления</a>}</>
         ) : (
           <><a href="/login">Войти</a><a href="/register">Регистрация</a></>
         )}<a href="/favorites" onClick={() => setMenuOpen(false)}>Избранное ({favorites.size})</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
