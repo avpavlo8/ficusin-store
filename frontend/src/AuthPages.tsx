@@ -14,6 +14,9 @@ type RegistrationDraft = {
   inn: string;
   kpp: string;
   legalAddress: string;
+  // The server refuses to register anyone without this and writes the
+  // agreement to the database, so it has to travel with the form.
+  consent: boolean;
 };
 
 const emptyRegistration: RegistrationDraft = {
@@ -27,6 +30,7 @@ const emptyRegistration: RegistrationDraft = {
   inn: "",
   kpp: "",
   legalAddress: "",
+  consent: false,
 };
 
 const RESEND_COOLDOWN_SECONDS = 45;
@@ -177,6 +181,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
         inn: String(form.get("inn") ?? "").trim(),
         kpp: String(form.get("kpp") ?? "").trim(),
         legalAddress: String(form.get("legalAddress") ?? "").trim(),
+        consent: form.get("consent") === "on",
       };
       setRegistration(registrationDraft);
     }
@@ -308,7 +313,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
                   </div>
                 )}
                 <label className="consent-check">
-                  <input type="checkbox" required />
+                  <input type="checkbox" name="consent" required />
                   <span>
                     Я принимаю <a href="/offer" target="_blank">оферту</a> и даю
                     согласие на обработку данных по{" "}
