@@ -57,6 +57,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"GET /api/v1/account/orders",
 		accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
+	mux.HandleFunc("PUT /api/v1/account/profile", authAPI.updateProfile)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
 	mux.Handle(

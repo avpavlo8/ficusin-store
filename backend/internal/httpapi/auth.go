@@ -31,6 +31,7 @@ type authService interface {
 		registration auth.Registration,
 		userAgent string,
 	) (token string, expiresAt time.Time, pending bool, err error)
+	UpdateProfile(ctx context.Context, customerID int64, profile auth.Profile) error
 	Logout(context.Context, string) error
 	UserByToken(context.Context, string) (*auth.User, error)
 }
@@ -215,10 +216,108 @@ func (handlers authHandlers) me(response http.ResponseWriter, request *http.Requ
 		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
 		return
 	}
+	handlers.applyOwnerRole(user)
+	writeJSON(response, http.StatusOK, map[string]any{"user": user})
+}
+
+// applyOwnerRole grants the owner role to accounts listed in ADMIN_EMAILS,
+// which is what keeps the admin link visible after a profile edit changes
+// the email address.
+func (handlers authHandlers) applyOwnerRole(user *auth.User) {
 	if _, owner := handlers.ownerEmails[strings.ToLower(user.Email)]; owner {
 		user.AdminRole = admin.RoleOwner
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"user": user})
+}
+
+type profileBody struct {
+	FullName        string `json:"fullName"`
+	LastName        string `json:"lastName"`
+	Patronymic      string `json:"patronymic"`
+	Email           string `json:"email"`
+	DeliveryAddress string `json:"deliveryAddress"`
+}
+
+// updateProfile saves the details a customer edits in their account page.
+// Only the name is required, so someone who signed up with just a phone
+// number can fill the rest in whenever they like.
+func (handlers authHandlers) updateProfile(response http.ResponseWriter, request *http.Request) {
+	cookie, err := request.Cookie(auth.CookieName)
+	if err != nil {
+		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+		return
+	}
+
+	user, err := handlers.service.UserByToken(request.Context(), cookie.Value)
+	if err != nil {
+		handlers.logger.Error("profile session lookup failed", "error", err)
+		writeJSON(response, http.StatusInternalServerError, errorResponse{
+			Error: "Не удалось сохранить профиль",
+		})
+		return
+	}
+	if user == nil {
+		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+		return
+	}
+
+	var body profileBody
+	if err := decodeJSON(request, &body); err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные формы"})
+		return
+	}
+
+	profile := auth.Profile{
+		FullName:        strings.TrimSpace(body.FullName),
+		LastName:        strings.TrimSpace(body.LastName),
+		Patronymic:      strings.TrimSpace(body.Patronymic),
+		Email:           strings.ToLower(strings.TrimSpace(body.Email)),
+		DeliveryAddress: strings.TrimSpace(body.DeliveryAddress),
+	}
+	switch {
+	case len([]rune(profile.FullName)) < 2 || len([]rune(profile.FullName)) > 120:
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Проверьте имя"})
+		return
+	case len([]rune(profile.LastName)) > 120 || len([]rune(profile.Patronymic)) > 120:
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Проверьте фамилию и отчество"})
+		return
+	case profile.Email != "" &&
+		(!emailPattern.MatchString(profile.Email) || len(profile.Email) > 254):
+		writeJSON(response, http.StatusBadRequest, errorResponse{
+			Error: "Проверьте электронную почту",
+		})
+		return
+	case len([]rune(profile.DeliveryAddress)) > 500:
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Адрес слишком длинный"})
+		return
+	}
+
+	err = handlers.service.UpdateProfile(request.Context(), user.ID, profile)
+	switch {
+	case errors.Is(err, auth.ErrEmailTaken):
+		writeJSON(response, http.StatusConflict, errorResponse{
+			Error: "Эта почта уже привязана к другому аккаунту",
+		})
+		return
+	case errors.Is(err, auth.ErrAccountNotFound):
+		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+		return
+	case err != nil:
+		handlers.logger.Error("update profile failed", "error", err, "customer_id", user.ID)
+		writeJSON(response, http.StatusInternalServerError, errorResponse{
+			Error: "Не удалось сохранить профиль",
+		})
+		return
+	}
+
+	updated, err := handlers.service.UserByToken(request.Context(), cookie.Value)
+	if err != nil || updated == nil {
+		// The save itself succeeded, so report it and let the page reload
+		// the profile on its own rather than showing a misleading error.
+		writeJSON(response, http.StatusOK, map[string]any{"user": user})
+		return
+	}
+	handlers.applyOwnerRole(updated)
+	writeJSON(response, http.StatusOK, map[string]any{"user": updated})
 }
 
 func (handlers authHandlers) setSessionCookie(
