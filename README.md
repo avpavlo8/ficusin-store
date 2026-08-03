@@ -40,8 +40,20 @@ cd backend && go test ./... && go vet ./...
 docker build -t ficusin-store .
 ```
 
-Архитектурные правила и порядок переноса описаны в
-[`docs/split-architecture.md`](docs/split-architecture.md).
+## Документация
 
-В репозитории нет второго серверного runtime: production-сборка и локальная
+Перед изменением проекта прочитайте [`AGENTS.md`](AGENTS.md).
+
+- [Продукт и бизнес-правила](docs/PRODUCT.md)
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Модель данных](docs/DATA_MODEL.md)
+- [Контракт API](docs/openapi.yaml)
+- [Интеграции](docs/INTEGRATIONS.md)
+- [Развёртывание](docs/DEPLOYMENT.md)
+- [Дорожная карта](docs/ROADMAP.md)
+- [Журнал решений](docs/DECISIONS.md)
+- [Нерешённые вопросы](docs/OPEN_QUESTIONS.md)
+- [История разделения frontend/backend](docs/split-architecture.md)
+
+В репозитории нет второго server runtime: production-сборка и локальная
 разработка используют один и тот же Go API и один React-клиент.
