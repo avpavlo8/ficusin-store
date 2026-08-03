@@ -135,6 +135,17 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
     }
     return value;
   };
+  const orderedItems = (() => {
+    const result: Category[] = [];
+    const append = (parentId?: number) => {
+      items
+        .filter((item) => item.parentId === parentId)
+        .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "ru"))
+        .forEach((item) => { result.push(item); append(item.id); });
+    };
+    append(undefined);
+    return result;
+  })();
   const create = async () => {
     try {
       await api("/api/v1/admin/categories", { method: "POST", body: JSON.stringify({ name, slug, parentId: parentId ? Number(parentId) : null, sortOrder: items.length * 10 }) });
@@ -153,8 +164,8 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
     catch (error) { onError((error as Error).message); }
   };
   return <><PageHeading eyebrow="Структура каталога" title="Категории" text="Три уровня: раздел, группа и вид растения. Категории с товарами защищены от удаления." />
-    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{items.filter((item) => depth(item) < 2).map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
-    <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Категория</th><th>Slug</th><th>Товары</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong style={{ paddingLeft: depth(item) * 24 }}>{depth(item) > 0 ? "↳ " : ""}{item.name}</strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <><button className="admin-action" onClick={() => rename(item)}>Переименовать</button><button className="text-button danger" onClick={() => remove(item)}>Удалить</button></>}</td></tr>)}</tbody></table></div>
+    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.filter((item) => depth(item) < 2).map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Категория</th><th>Slug</th><th>Товары</th><th /></tr></thead><tbody>{orderedItems.map((item) => <tr key={item.id}><td><strong style={{ paddingLeft: depth(item) * 24 }}>{depth(item) > 0 ? "↳ " : ""}{item.name}</strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <><button className="admin-action" onClick={() => rename(item)}>Переименовать</button><button className="text-button danger" onClick={() => remove(item)}>Удалить</button></>}</td></tr>)}</tbody></table></div>
   </>;
 }
 
