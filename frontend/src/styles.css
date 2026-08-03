@@ -705,3 +705,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
   .catalog-result-bar { align-items: flex-start; flex-direction: column; }
   .catalog-result-bar > div:last-child { width: 100%; justify-content: space-between; }
 }
+
+.pdp-buy .pdp-favorite {
+  flex: 0 0 52px;
+  width: 52px;
+  padding: 0;
+  border: 1px solid var(--green);
+  background: transparent;
+  color: var(--green);
+  font-size: 25px;
+}
+.pdp-buy .pdp-favorite.active { border-color: var(--terracotta); background: var(--terracotta); color: #fff; }
