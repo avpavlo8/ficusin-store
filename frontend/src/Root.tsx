@@ -1,6 +1,7 @@
 import App from "./App";
 import AdminPage from "./AdminPage";
 import ProductPage from "./ProductPage";
+import FavoritesPage from "./FavoritesPage";
 import { AccountPage, LoginPage, RegisterPage } from "./AuthPages";
 import {
   DeliveryPage,
@@ -23,6 +24,8 @@ export default function Root() {
       return <AccountPage />;
     case "/admin":
       return <AdminPage />;
+    case "/favorites":
+      return <FavoritesPage />;
     case "/offer":
       return <OfferPage />;
     case "/privacy":
