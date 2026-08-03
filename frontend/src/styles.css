@@ -336,6 +336,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .auth-call-number { margin: 0 0 26px; padding: 20px; display: grid; gap: 6px; text-align: center; border-radius: 14px; background: var(--cream); }
 .auth-call-number b { color: var(--green); font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
 .auth-call-number small { color: #778078; font-size: 12px; }
+.account-profile { margin-top: 34px; }
+.account-profile .auth-form { max-width: 520px; }
+.account-profile input:disabled { color: #8a938b; background: var(--cream); cursor: not-allowed; }
+.auth-saved { margin: 0; color: var(--green); font-size: 13px; font-weight: 600; }
 .auth-error { margin: 15px 0; padding: 13px 15px; border-radius: 10px; background: #f5e1d8; color: #8b3f28; font-size: 13px; }
 .auth-switch { margin: 20px 0 0; color: #6c756d; text-align: center; font-size: 13px; }
 .auth-switch a { color: var(--green); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }

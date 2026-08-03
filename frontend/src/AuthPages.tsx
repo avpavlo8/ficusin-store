@@ -414,11 +414,33 @@ export function RegisterPage() {
   return <AuthPage flow="register" />;
 }
 
+type ProfileForm = {
+  fullName: string;
+  lastName: string;
+  patronymic: string;
+  email: string;
+  deliveryAddress: string;
+};
+
+function profileFormFrom(user: StoreUser): ProfileForm {
+  return {
+    fullName: user.fullName,
+    lastName: user.lastName,
+    patronymic: user.patronymic,
+    email: user.email,
+    deliveryAddress: user.deliveryAddress,
+  };
+}
+
 export function AccountPage() {
   const [user, setUser] = useState<StoreUser | null>(null);
   const [orders, setOrders] = useState<AccountOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [profile, setProfile] = useState<ProfileForm | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileSaved, setProfileSaved] = useState(false);
 
   useEffect(() => {
     async function loadAccount() {
@@ -435,6 +457,7 @@ export function AccountPage() {
         }
         const result = (await response.json()) as { user: StoreUser };
         setUser(result.user);
+        setProfile(profileFormFrom(result.user));
 
         const ordersResponse = await fetch("/api/v1/account/orders", {
           credentials: "same-origin",
@@ -454,6 +477,42 @@ export function AccountPage() {
     }
     void loadAccount();
   }, []);
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile) return;
+    setProfileError("");
+    setProfileSaved(false);
+    setSavingProfile(true);
+    try {
+      const response = await fetch("/api/v1/account/profile", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      if (response.status === 401) {
+        window.location.assign("/login?returnTo=/account");
+        return;
+      }
+      const data = (await response.json()) as { user?: StoreUser; error?: string };
+      if (!response.ok || !data.user) {
+        throw new Error(data.error || "Не удалось сохранить профиль");
+      }
+      setUser(data.user);
+      setProfile(profileFormFrom(data.user));
+      setProfileSaved(true);
+    } catch (caught) {
+      setProfileError(caught instanceof Error ? caught.message : "Не удалось сохранить профиль");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  function updateProfileField(field: keyof ProfileForm, value: string) {
+    setProfileSaved(false);
+    setProfile((current) => (current ? { ...current, [field]: value } : current));
+  }
 
   async function logout() {
     await fetch("/api/v1/auth/logout", { method: "POST" });
@@ -493,8 +552,8 @@ export function AccountPage() {
           </p>
           <nav aria-label="Разделы личного кабинета">
             <a className="active" href="#orders">Мои заказы</a>
-            <span>Адреса доставки <small>скоро</small></span>
-            <span>Избранное <small>скоро</small></span>
+            <a href="#profile">Мои данные</a>
+            <a href="/favorites">Избранное</a>
           </nav>
           <button className="signout-link" type="button" onClick={() => void logout()}>
             Выйти из аккаунта
@@ -552,6 +611,83 @@ export function AccountPage() {
               </div>
             )}
           </section>
+
+          {profile && (
+            <section id="profile" className="account-profile">
+              <div className="account-title">
+                <div>
+                  <p className="eyebrow">Мои данные</p>
+                  <h2>Профиль</h2>
+                </div>
+              </div>
+              <form className="auth-form" onSubmit={saveProfile}>
+                <label>
+                  Имя
+                  <input
+                    required
+                    minLength={2}
+                    maxLength={120}
+                    autoComplete="given-name"
+                    value={profile.fullName}
+                    onChange={(event) => updateProfileField("fullName", event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  Фамилия
+                  <input
+                    maxLength={120}
+                    autoComplete="family-name"
+                    value={profile.lastName}
+                    onChange={(event) => updateProfileField("lastName", event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  Отчество
+                  <input
+                    maxLength={120}
+                    autoComplete="additional-name"
+                    value={profile.patronymic}
+                    onChange={(event) => updateProfileField("patronymic", event.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  Электронная почта
+                  <input
+                    type="email"
+                    maxLength={254}
+                    autoComplete="email"
+                    value={profile.email}
+                    onChange={(event) => updateProfileField("email", event.currentTarget.value)}
+                  />
+                  <small>Нужна для чеков и уведомлений о заказе</small>
+                </label>
+                <label>
+                  Адрес доставки
+                  <input
+                    maxLength={500}
+                    autoComplete="street-address"
+                    value={profile.deliveryAddress}
+                    onChange={(event) =>
+                      updateProfileField("deliveryAddress", event.currentTarget.value)
+                    }
+                  />
+                  <small>Подставим его при оформлении заказа</small>
+                </label>
+                <label>
+                  Телефон
+                  <input value={user.phone} readOnly disabled />
+                  <small>Телефон — логин аккаунта, изменить его нельзя</small>
+                </label>
+                {profileError && <p className="auth-error" role="alert">{profileError}</p>}
+                {profileSaved && !profileError && (
+                  <p className="auth-saved" role="status">Данные сохранены</p>
+                )}
+                <button className="primary-button full" disabled={savingProfile}>
+                  {savingProfile ? "Сохраняем…" : "Сохранить"}
+                </button>
+              </form>
+            </section>
+          )}
         </div>
       </section>
     </main>
