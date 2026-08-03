@@ -85,7 +85,8 @@ func TestVerifyCallNormalizesInputAndSetsCookie(t *testing.T) {
 		"checkId": "check-id",
 		"fullName": " Александр ",
 		"email": " TEST@EXAMPLE.COM ",
-		"accountType": "retail"
+		"accountType": "retail",
+		"consent": true
 	}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -121,7 +122,8 @@ func TestVerifyCallRejectsInvalidWholesaleDetails(t *testing.T) {
 		"fullName": "Александр",
 		"accountType": "wholesale",
 		"companyName": "Фикусин",
-		"inn": "123"
+		"inn": "123",
+		"consent": true
 	}`))
 	response := httptest.NewRecorder()
 
@@ -251,7 +253,7 @@ func TestVerifyCallFailureDoesNotLeakInternalError(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/verify-code",
-		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","fullName":"Александр","accountType":"retail"}`),
+		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","fullName":"Александр","accountType":"retail","consent":true}`),
 	)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -318,7 +320,8 @@ func TestVerifyCallReturnsConflictForDuplicateRegistration(t *testing.T) {
 			"checkId":"check-id",
 			"flow":"register",
 			"fullName":"Александр",
-			"accountType":"retail"
+			"accountType":"retail",
+			"consent":true
 		}`),
 	)
 	response := httptest.NewRecorder()
