@@ -247,12 +247,15 @@ function AddressField({ value, onChange }: { value: string; onChange: (value: st
       skipNextLookup.current = false;
       return;
     }
-    if (value.trim().length < 3) {
-      setSuggestions([]);
-      return;
-    }
     const controller = new AbortController();
+    // Everything, including clearing stale hits, happens on the debounce
+    // timer: updating state straight from the effect body would restart the
+    // render pass on every keystroke.
     const timer = window.setTimeout(() => {
+      if (value.trim().length < 3) {
+        setSuggestions([]);
+        return;
+      }
       fetch(`/api/v1/address/suggest?q=${encodeURIComponent(value)}`, { signal: controller.signal })
         .then((response) => response.json())
         .then((data: { suggestions?: string[] }) => {
