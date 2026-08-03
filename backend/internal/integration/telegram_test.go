@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -36,8 +37,6 @@ func TestTelegramClientUsesEnvironmentToken(t *testing.T) {
 
 	err = client.SendOrder(context.Background(), TelegramOrder{
 		OrderNumber:    "ZR-TEST",
-		CustomerName:   "Покупатель",
-		Phone:          "+79156151100",
 		DeliveryMethod: "pickup",
 		Items: []TelegramOrderItem{{
 			Name: "Фикус", Price: 1000, Quantity: 1,
@@ -53,6 +52,51 @@ func TestTelegramClientUsesEnvironmentToken(t *testing.T) {
 	}
 	if received.Text == "" {
 		t.Fatal("Telegram message is empty")
+	}
+}
+
+// The message must never carry personal data: Telegram is a foreign
+// service, and sending contacts there would be a cross-border transfer.
+func TestTelegramMessageOmitsPersonalData(t *testing.T) {
+	t.Parallel()
+
+	var received struct {
+		Text string `json:"text"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if err := json.NewDecoder(request.Body).Decode(&received); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client, err := NewTelegramClient(nil, "-5430918511", "secret-token")
+	if err != nil {
+		t.Fatalf("NewTelegramClient() error = %v", err)
+	}
+	client.apiBaseURL = server.URL
+	client.httpClient = server.Client()
+
+	if err := client.SendOrder(context.Background(), TelegramOrder{
+		OrderNumber:    "ZR-TEST",
+		DeliveryMethod: "cdek",
+		DeliveryCity:   "Рязань",
+		Items:          []TelegramOrderItem{{Name: "Фикус", Price: 1000, Quantity: 1}},
+		Subtotal:       1000,
+		Total:          1200,
+	}); err != nil {
+		t.Fatalf("SendOrder() error = %v", err)
+	}
+
+	for _, forbidden := range []string{"Покупатель:", "Телефон", "Email", "Адрес:"} {
+		if strings.Contains(received.Text, forbidden) {
+			t.Fatalf("Telegram message contains %q:\n%s", forbidden, received.Text)
+		}
+	}
+	if !strings.Contains(received.Text, "ZR-TEST") {
+		t.Fatalf("Telegram message lost the order number:\n%s", received.Text)
 	}
 }
 
