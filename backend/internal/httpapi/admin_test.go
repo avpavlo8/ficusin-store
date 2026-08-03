@@ -20,7 +20,7 @@ func (stub adminAuthStub) RequestCall(context.Context, string) (string, string, 
 	return "", "", "", nil
 }
 
-func (stub adminAuthStub) ConfirmCall(context.Context, string, string, auth.Registration, string) (string, time.Time, bool, error) {
+func (stub adminAuthStub) ConfirmCall(context.Context, string, string, auth.Registration, auth.ClientMeta) (string, time.Time, bool, error) {
 	return "", time.Time{}, false, nil
 }
 
@@ -98,7 +98,7 @@ func TestAdminManagerCannotAssignRoles(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPatch, "/api/v1/admin/customers/2", `{"adminRole":"manager"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com", nil)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
@@ -114,7 +114,7 @@ func TestAdminOwnerCanAssignRoles(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPatch, "/api/v1/admin/customers/2", `{"adminRole":"manager"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, "", "owner@example.com", []string{"owner@example.com"})).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
@@ -130,7 +130,7 @@ func TestAdminOwnerCannotCreateAnotherOwner(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPatch, "/api/v1/admin/customers/2", `{"adminRole":"owner"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, "", "owner@example.com", []string{"owner@example.com"})).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
@@ -146,7 +146,7 @@ func TestAdminManagerCanBulkSync(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPost, "/api/v1/admin/products/sync", `{"productIds":[1,2],"fields":["price"]}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com", nil)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
@@ -162,7 +162,7 @@ func TestAdminManagerCanSyncOneProduct(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPost, "/api/v1/admin/products/sync", `{"productIds":[1],"fields":["price"]}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com", nil)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
@@ -178,7 +178,7 @@ func TestAdminManagerCanCreateCategory(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPost, "/api/v1/admin/categories", `{"name":"Аглаонема","slug":"aglaonema"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com", nil)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
@@ -194,20 +194,35 @@ func TestUnknownRoleCannotReadCustomers(t *testing.T) {
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodGet, "/api/v1/admin/customers", "")
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, "unknown", "unknown@example.com", nil)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(repository, "unknown", "unknown@example.com")).ServeHTTP(response, request)
 
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 }
 
-func adminDependencies(repository adminRepository, role, email string, ownerEmails []string) Dependencies {
+func adminDependencies(repository adminRepository, role, email string) Dependencies {
 	return Dependencies{
-		Catalog:     catalogStub{},
-		Auth:        adminAuthStub{user: &auth.User{ID: 1, Email: email, FullName: "Тест", AdminRole: role}},
-		Orders:      orderStub{},
-		Admin:       repository,
-		AdminEmails: ownerEmails,
+		Catalog: catalogStub{},
+		Auth:    adminAuthStub{user: &auth.User{ID: 1, Email: email, FullName: "Тест", AdminRole: role}},
+		Orders:  orderStub{},
+		Admin:   repository,
+	}
+}
+
+// Admin rights come from admin_users only. Listing an address in
+// ADMIN_EMAILS must not by itself open the panel: nothing verifies an
+// email, and the account holder can change theirs from the profile page.
+func TestAdminEmailAloneGrantsNothing(t *testing.T) {
+	t.Parallel()
+
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodGet, "/api/v1/admin/customers", "")
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, "", "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
 }
 

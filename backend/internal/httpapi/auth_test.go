@@ -54,7 +54,7 @@ func (service *recordingAuthService) ConfirmCall(
 	_ context.Context,
 	phone, checkID string,
 	registration auth.Registration,
-	_ string,
+	_ auth.ClientMeta,
 ) (string, time.Time, bool, error) {
 	service.phone = phone
 	service.checkID = checkID
@@ -208,19 +208,20 @@ func TestMeReturnsUser(t *testing.T) {
 	}
 }
 
-func TestMeReturnsEffectiveOwnerRole(t *testing.T) {
+// The role travels with the account as stored, and is never inferred from
+// the email address on the profile.
+func TestMeReturnsStoredRole(t *testing.T) {
 	t.Parallel()
 
 	service := &recordingAuthService{user: &auth.User{
-		ID: 42, Email: "Owner@Example.com", FullName: "Александр",
+		ID: 42, Email: "Owner@Example.com", FullName: "Александр", AdminRole: "owner",
 	}}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
 	response := httptest.NewRecorder()
-	dependencies := testDependencies(catalogStub{}, service)
-	dependencies.AdminEmails = []string{"owner@example.com"}
 
-	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK ||
 		!strings.Contains(response.Body.String(), `"adminRole":"owner"`) {

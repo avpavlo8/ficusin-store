@@ -25,6 +25,18 @@ type avatarBody struct {
 	Image string `json:"image"`
 }
 
+// detectImageMime reads the file's own signature. http.DetectContentType
+// recognises the three formats we accept and answers with something
+// harmless ("application/octet-stream", "text/plain; charset=utf-8") for
+// anything else, which the allow-list then rejects.
+func detectImageMime(image []byte) string {
+	detected := http.DetectContentType(image)
+	if base, _, found := strings.Cut(detected, ";"); found {
+		return strings.TrimSpace(base)
+	}
+	return detected
+}
+
 func (handlers authHandlers) uploadAvatar(response http.ResponseWriter, request *http.Request) {
 	user, ok := handlers.sessionUser(response, request, "Не удалось сохранить фото")
 	if !ok {
@@ -37,15 +49,9 @@ func (handlers authHandlers) uploadAvatar(response http.ResponseWriter, request 
 		return
 	}
 
-	mime, payload, found := strings.Cut(strings.TrimPrefix(body.Image, "data:"), ";base64,")
+	_, payload, found := strings.Cut(strings.TrimPrefix(body.Image, "data:"), ";base64,")
 	if !found {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Неподдерживаемый формат файла"})
-		return
-	}
-	if _, allowed := allowedAvatarMimes[mime]; !allowed {
-		writeJSON(response, http.StatusUnsupportedMediaType, errorResponse{
-			Error: "Подойдёт JPEG, PNG или WebP",
-		})
 		return
 	}
 	image, err := base64.StdEncoding.DecodeString(payload)
@@ -56,6 +62,17 @@ func (handlers authHandlers) uploadAvatar(response http.ResponseWriter, request 
 	if len(image) == 0 || len(image) > maximumAvatarBytes {
 		writeJSON(response, http.StatusRequestEntityTooLarge, errorResponse{
 			Error: "Файл слишком большой — выберите изображение поменьше",
+		})
+		return
+	}
+	// The type claimed in the data URL is whatever the sender typed, so it
+	// decides nothing: the type is read from the bytes themselves. Storing
+	// the claimed type would let someone save a script under an image
+	// content type and have it served back from our own origin.
+	mime := detectImageMime(image)
+	if _, allowed := allowedAvatarMimes[mime]; !allowed {
+		writeJSON(response, http.StatusUnsupportedMediaType, errorResponse{
+			Error: "Подойдёт JPEG, PNG или WebP",
 		})
 		return
 	}
@@ -102,10 +119,18 @@ func (handlers authHandlers) avatar(response http.ResponseWriter, request *http.
 		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фото не загружено"})
 		return
 	}
-	if mime == "" {
-		mime = "image/jpeg"
+	// Pictures stored before the signature check landed carry whatever type
+	// was claimed at upload, so the bytes decide here too.
+	if _, allowed := allowedAvatarMimes[mime]; !allowed {
+		mime = detectImageMime(image)
+	}
+	if _, allowed := allowedAvatarMimes[mime]; !allowed {
+		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фото не загружено"})
+		return
 	}
 	response.Header().Set("Content-Type", mime)
+	response.Header().Set("X-Content-Type-Options", "nosniff")
+	response.Header().Set("Content-Disposition", "inline")
 	// Private: the picture is served from the session, never from a shared
 	// cache. The URL carries the upload timestamp, so the browser may keep
 	// its own copy until the customer uploads a new one.
@@ -152,6 +177,5 @@ func (handlers authHandlers) writeCurrentUser(response http.ResponseWriter, requ
 		writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
-	handlers.applyOwnerRole(user)
 	writeJSON(response, http.StatusOK, map[string]any{"user": user})
 }
