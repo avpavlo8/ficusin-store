@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { StoreHeader } from "./StoreHeader";
 
 type CatalogProduct = { id: string; name: string; latin: string; price: number; image: string; size: string; stock: number };
 type Variant = { id: number; sku: string; label: string; price: number; stock: number; heightCm?: number; potDiameterCm?: number; wholesaleMinQty: number };
@@ -54,11 +55,11 @@ export default function ProductPage({ slug }: { slug: string }) {
     setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
 
-  if (error) return <main className="product-page"><Header cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
-  if (!product) return <main className="product-page"><Header cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
+  if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
+  if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
   return <main className="product-page">
-    <Header cartCount={cartCount} favoritesCount={favorites.size} />
+    <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} />
     <nav className="breadcrumbs"><a href="/">Главная</a><span>→</span><a href="/#catalog">Каталог</a><span>→</span><b>{product.name}</b></nav>
     <section className="pdp-main">
       <div className="pdp-gallery"><div className="pdp-thumbs">{product.images.map((image, index) => <button className={activeImage === index ? "active" : ""} onClick={() => setActiveImage(index)} key={`${image}-${index}`}><img src={image} alt="" /></button>)}</div><div className="pdp-image"><img src={product.images[activeImage] || product.images[0]} alt={product.name} /></div></div>
@@ -76,6 +77,3 @@ export default function ProductPage({ slug }: { slug: string }) {
   </main>;
 }
 
-function Header({ cartCount, favoritesCount }: { cartCount: number; favoritesCount: number }) {
-  return <><div className="announcement"><span>Бережно упакуем каждое растение</span><span>Доставка по Рязани и всей России</span></div><header className="header"><a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a><nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/#care">Уход</a><a href="/#delivery">Доставка</a></nav><div className="header-actions"><a className="account-button" href="/account"><span>◯</span><span>Кабинет</span></a><a className="favorites-button" href="/?favorites=1" aria-label={`Избранное, товаров: ${favoritesCount}`}><span>♡</span><b>{favoritesCount}</b></a><a className="cart-button" href="/?cart=1"><span>Корзина</span><b>{cartCount}</b></a></div></header></>;
-}
