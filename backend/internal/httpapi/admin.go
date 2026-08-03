@@ -203,6 +203,29 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Минимум для опта должен быть не меньше 1"})
 		return
 	}
+	if update.CatalogSection != nil && !slices.Contains([]string{"plants", "soil", "fertilizer", "pots", "accessories"}, *update.CatalogSection) {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный раздел каталога"})
+		return
+	}
+	optionalAttributes := []struct {
+		value   *string
+		allowed []string
+	}{
+		{update.PlantKind, []string{"aglaonema", "alocasia", "pineapple", "bonsai"}},
+		{update.LightLevel, []string{"sunny", "diffused", "low_light"}},
+		{update.Watering, []string{"frequent", "moderate", "rare"}},
+		{update.HeightClass, []string{"low", "medium", "high"}},
+		{update.CareLevel, []string{"easy", "medium", "demanding"}},
+		{update.Placement, []string{"bathroom", "bedroom", "office", "nursery"}},
+		{update.PetSafety, []string{"safe", "caution"}},
+		{update.GrowthHabit, []string{"compact", "upright", "trailing", "climbing"}},
+	}
+	for _, attribute := range optionalAttributes {
+		if attribute.value != nil && *attribute.value != "" && !slices.Contains(attribute.allowed, *attribute.value) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное значение характеристики товара"})
+			return
+		}
+	}
 	product, err := handlers.repository.UpdateProduct(request.Context(), actor, id, update)
 	if err != nil {
 		handlers.failed(response, "update admin product", err)

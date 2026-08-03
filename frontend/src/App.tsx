@@ -15,6 +15,15 @@ type Product = {
   light: string;
   size: string;
   stock?: number;
+  catalogSection: string;
+  plantKind?: string;
+  lightLevel?: string;
+  watering?: string;
+  heightClass?: string;
+  careLevel?: string;
+  placement?: string;
+  petSafety?: string;
+  growthHabit?: string;
 };
 
 type StoreUser = {
@@ -52,7 +61,30 @@ type CdekQuote = {
   daysMax: number;
 };
 
-const categories = ["Все растения", "Крупные", "Неприхотливые", "Цветущие", "Ампельные"];
+const catalogSections = [
+  { value: "plants", label: "Растения", icon: "⌁", text: "Живые растения для дома" },
+  { value: "soil", label: "Грунт", icon: "◒", text: "Для посадки и пересадки" },
+  { value: "fertilizer", label: "Удобрения", icon: "✦", text: "Питание и укрепление" },
+  { value: "pots", label: "Кашпо и горшки", icon: "◡", text: "Дом для каждого растения" },
+  { value: "accessories", label: "Аксессуары", icon: "⌇", text: "Уход, опоры и инструменты" },
+];
+const plantKinds = [
+  { value: "", label: "Все растения" },
+  { value: "aglaonema", label: "Аглаонема" },
+  { value: "alocasia", label: "Алоказия" },
+  { value: "pineapple", label: "Ананас" },
+  { value: "bonsai", label: "Бонсай" },
+];
+const collections: Array<{ id: string; title: string; text: string; field: keyof Product; value: string; icon: string }> = [
+  { id: "sunny", title: "Для солнечной стороны", text: "Любят много света", field: "lightLevel", value: "sunny", icon: "☀" },
+  { id: "low-light", title: "Для затемнённых мест", text: "Комфортно вдали от окна", field: "lightLevel", value: "low_light", icon: "◐" },
+  { id: "bathroom", title: "В ванную комнату", text: "Подходят для влажных помещений", field: "placement", value: "bathroom", icon: "≈" },
+  { id: "rare-water", title: "Редкий полив", text: "Прощают забывчивость", field: "watering", value: "rare", icon: "♢" },
+  { id: "easy", title: "Лёгкий уход", text: "Почти не требуют заботы", field: "careLevel", value: "easy", icon: "✓" },
+  { id: "pets", title: "Для дома с питомцами", text: "Безопасный выбор", field: "petSafety", value: "safe", icon: "♡" },
+  { id: "tall", title: "Высокие растения", text: "Зелёный акцент в интерьере", field: "heightClass", value: "high", icon: "↟" },
+  { id: "trailing", title: "Ампельные растения", text: "Красиво ниспадают с полок", field: "growthHabit", value: "trailing", icon: "⌇" },
+];
 const deliveryOptions = [
   { id: "pickup", title: "Самовывоз в Рязани", detail: "из магазина, бесплатно", fee: 0 },
   { id: "courier", title: "Курьер по Рязани", detail: "в согласованный день", fee: 490 },
@@ -67,8 +99,18 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
-  const [category, setCategory] = useState("Все растения");
+  const [catalogSection, setCatalogSection] = useState("plants");
+  const [plantKind, setPlantKind] = useState("");
+  const [collection, setCollection] = useState("");
   const [query, setQuery] = useState("");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(window.localStorage.getItem("ficusin-favorites") || "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
   const [cart, setCart] = useState<Cart>({});
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -108,9 +150,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("cart") === "1") {
-      setCartOpen(true);
-    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("cart") === "1") setCartOpen(true);
+    if (params.get("favorites") === "1") setFavoritesOnly(true);
   }, []);
 
   useEffect(() => {
@@ -221,17 +263,18 @@ export default function Home() {
     };
   }, [delivery, cdekCityQuery, cdekCity]);
 
+  const selectedCollection = collections.find((item) => item.id === collection);
   const filtered = useMemo(
     () =>
       products.filter((product) => {
-        const inCategory =
-          category === "Все растения" ||
-          product.category === category ||
-          product.category === "Растения";
-        const searchable = `${product.name} ${product.latin}`.toLowerCase();
-        return inCategory && searchable.includes(query.toLowerCase().trim());
+        const inSection = (product.catalogSection || "plants") === catalogSection;
+        const inKind = catalogSection !== "plants" || !plantKind || product.plantKind === plantKind;
+        const inCollection = !selectedCollection || product[selectedCollection.field] === selectedCollection.value;
+        const inFavorites = !favoritesOnly || favorites.has(product.id);
+        const searchable = `${product.name} ${product.latin} ${product.category}`.toLowerCase();
+        return inSection && inKind && inCollection && inFavorites && searchable.includes(query.toLowerCase().trim());
       }),
-    [products, category, query],
+    [products, catalogSection, plantKind, selectedCollection, favoritesOnly, favorites, query],
   );
 
   const cartLines = products
@@ -288,6 +331,16 @@ export default function Home() {
     } finally {
       setCdekLoading(false);
     }
+  }
+
+  function toggleFavorite(id: string) {
+    setFavorites((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      window.localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
+      return next;
+    });
   }
 
   function addToCart(id: string) {
@@ -409,6 +462,13 @@ export default function Home() {
             <span aria-hidden="true">◯</span>
             <span>{isAdmin ? "Админка" : user ? "Кабинет" : "Войти"}</span>
           </a>
+          <button
+            className={`favorites-button ${favoritesOnly ? "active" : ""}`}
+            onClick={() => { setFavoritesOnly((value) => !value); document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" }); }}
+            aria-label={`Избранное, товаров: ${favorites.size}`}
+          >
+            <span aria-hidden="true">♡</span><b>{favorites.size}</b>
+          </button>
           <button className="cart-button" onClick={() => setCartOpen(true)} aria-label={`Корзина, товаров: ${cartCount}`}>
             <span aria-hidden="true">Корзина</span>
             <b>{cartCount}</b>
@@ -417,72 +477,68 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="hero" id="top">
-        <div className="hero-copy">
-          <p className="eyebrow">Растения с характером</p>
-          <h1>Живые растения<br />для дома и души</h1>
-          <p className="hero-text">Подберём зелёного жителя под ваш интерьер и образ жизни. Доставим курьером по Рязани, СДЭК или Почтой России.</p>
-          <div className="hero-actions">
-            <a className="primary-button" href="#catalog">Выбрать растение <span>→</span></a>
-            <a className="text-link" href="#help">Помочь с выбором</a>
-          </div>
-          <div className="trust-row">
-            <span>✓ Проверяем перед отправкой</span>
-            <span>✓ Поддержка после покупки</span>
-          </div>
+      <section className="catalog-hero" id="top">
+        <div>
+          <p className="eyebrow">Всё для зелёного дома</p>
+          <h1>Каталог Фикусин</h1>
+          <p>Растения, кашпо и всё необходимое для ухода — с актуальными ценами и остатками.</p>
         </div>
-        <div className="hero-visual">
-          <img src="/assets/hero-monstera.png" alt="Большая монстера в терракотовом кашпо" />
-          <div className="hero-note">
-            <span>Монстера Делициоза</span>
-            <strong>от 4 590 ₽</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="category-strip" aria-label="Категории растений">
-        {categories.slice(1).map((item, index) => (
-          <button key={item} onClick={() => { setCategory(item); document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" }); }}>
-            <span>{["⌁", "☀", "✿", "⌇"][index]}</span>
-            {item}
-          </button>
-        ))}
+        <label className="catalog-search-large">
+          <span aria-hidden="true">⌕</span>
+          <input id="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти растение, грунт или кашпо" />
+          {query && <button onClick={() => setQuery("")} aria-label="Очистить поиск">×</button>}
+        </label>
       </section>
 
       <section className="catalog-section" id="catalog">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Каталог</p>
-            <h2>Найдите своё растение</h2>
-          </div>
-          <p>Каталог, цены и наличие обновляются из Saby автоматически.</p>
+        <div className="catalog-departments" aria-label="Разделы каталога">
+          {catalogSections.map((item) => (
+            <button
+              key={item.value}
+              className={catalogSection === item.value ? "catalog-department active" : "catalog-department"}
+              onClick={() => { setCatalogSection(item.value); setPlantKind(""); setCollection(""); setFavoritesOnly(false); }}
+            >
+              <span>{item.icon}</span><strong>{item.label}</strong><small>{item.text}</small>
+            </button>
+          ))}
         </div>
 
-        <div className="catalog-toolbar">
-          <div className="filters" role="group" aria-label="Фильтр по категории">
-            {categories.map((item) => (
-              <button className={category === item ? "active" : ""} key={item} onClick={() => setCategory(item)}>{item}</button>
-            ))}
+        {catalogSection === "plants" && (
+          <>
+            <div className="plant-kind-filter" role="group" aria-label="Виды растений">
+              {plantKinds.map((item) => (
+                <button key={item.value || "all"} className={!collection && plantKind === item.value ? "active" : ""} onClick={() => { setPlantKind(item.value); setCollection(""); }}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="collection-section">
+              <div className="section-heading compact"><div><p className="eyebrow">Подборки</p><h2>Подберите растение под себя</h2></div><p>Характеристики заполняет менеджер — одно растение может входить сразу в несколько подборок.</p></div>
+              <div className="collection-grid">
+                {collections.map((item) => (
+                  <button key={item.id} className={collection === item.id ? "collection-card active" : "collection-card"} onClick={() => { setCollection(collection === item.id ? "" : item.id); setPlantKind(""); }}>
+                    <span>{item.icon}</span><strong>{item.title}</strong><small>{item.text}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="catalog-result-bar">
+          <div><p className="eyebrow">{favoritesOnly ? "Избранное" : catalogSections.find((item) => item.value === catalogSection)?.label}</p><h2>{selectedCollection?.title || plantKinds.find((item) => item.value === plantKind)?.label || "Все товары"}</h2></div>
+          <div>
+            {favoritesOnly && <button className="clear-filter" onClick={() => setFavoritesOnly(false)}>Показать все</button>}
+            <span>{filtered.length} товаров</span>
           </div>
-          <label className="search-field">
-            <span aria-hidden="true">⌕</span>
-            <input id="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по названию" />
-          </label>
         </div>
 
         <div className="product-grid" id="new">
-          {catalogLoading && (
-            <p className="catalog-status" role="status">
-              Загружаем актуальные товары из Saby…
-            </p>
-          )}
-          {!catalogLoading && catalogError && (
-            <p className="catalog-status catalog-status-error" role="alert">
-              {catalogError}. Обновите страницу через несколько секунд.
-            </p>
-          )}
+          {catalogLoading && <p className="catalog-status" role="status">Загружаем актуальные товары из Saby…</p>}
+          {!catalogLoading && catalogError && <p className="catalog-status catalog-status-error" role="alert">{catalogError}. Обновите страницу через несколько секунд.</p>}
           {filtered.map((product) => (
             <article className="product-card" key={product.id}>
+              <button className={`favorite-button ${favorites.has(product.id) ? "active" : ""}`} onClick={() => toggleFavorite(product.id)} aria-label={favorites.has(product.id) ? `Убрать ${product.name} из избранного` : `Добавить ${product.name} в избранное`}>{favorites.has(product.id) ? "♥" : "♡"}</button>
               <a className="product-image" href={`/product/${product.id}`}>
                 <img src={product.image} alt={product.name} />
                 {product.badge && <span className="badge">{product.badge}</span>}
@@ -491,22 +547,12 @@ export default function Home() {
                 <p className="latin">{product.latin}</p>
                 <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
                 <div className="product-meta"><span>{product.light}</span><span>{product.size}</span></div>
-                <div className="product-bottom">
-                  <strong>{money(product.price)}</strong>
-                  <button
-                    onClick={() => addToCart(product.id)}
-                    disabled={product.stock === 0}
-                  >
-                    {product.stock === 0 ? "Нет в наличии" : "В корзину"}
-                  </button>
-                </div>
+                <div className="product-bottom"><strong>{money(product.price)}</strong><button onClick={() => addToCart(product.id)} disabled={product.stock === 0}>{product.stock === 0 ? "Нет в наличии" : "В корзину"}</button></div>
               </div>
             </article>
           ))}
           {!catalogLoading && !catalogError && filtered.length === 0 && (
-            <p className="empty-state">
-              По вашему запросу ничего не найдено. Попробуйте другую категорию.
-            </p>
+            <div className="empty-state"><strong>{favoritesOnly ? "В избранном пока пусто" : "Ничего не найдено"}</strong><span>{favoritesOnly ? "Нажимайте на сердечко в карточках, чтобы сохранить товары." : "Попробуйте другую подборку или измените запрос."}</span></div>
           )}
         </div>
       </section>
@@ -765,7 +811,7 @@ export default function Home() {
           <a href="/account">Личный кабинет</a>
         ) : (
           <><a href="/login">Войти</a><a href="/register">Регистрация</a></>
-        )}<a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
+        )}<a href="/?favorites=1" onClick={() => setMenuOpen(false)}>Избранное ({favorites.size})</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
       </aside>
     </main>
   );
