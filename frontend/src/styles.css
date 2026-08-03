@@ -72,18 +72,18 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .search-field span { font-size: 22px; }
 .search-field input { width: 100%; height: 44px; border: 0; outline: 0; background: transparent; }
 .product-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 34px 18px; }
-.product-card { min-width: 0; }
-.product-image { position: relative; aspect-ratio: 1/1.08; overflow: hidden; border-radius: 20px; background: var(--cream); }
+.product-card { min-width: 0; display: flex; flex-direction: column; }
+.product-image { display: block; flex: none; position: relative; aspect-ratio: 1/1.08; overflow: hidden; border-radius: 20px; background: var(--cream); }
 .product-image img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
 .product-card:hover .product-image img { transform: scale(1.035); }
 .badge { position: absolute; left: 14px; top: 14px; padding: 7px 11px; border-radius: 99px; background: var(--terracotta); color: white; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .favorite { position: absolute; right: 14px; top: 14px; width: 38px; height: 38px; border: 0; border-radius: 50%; background: rgba(255,255,255,.88); font-size: 22px; cursor: pointer; }
-.product-info { padding: 18px 5px 0; }
+.product-info { flex: 1; padding: 18px 5px 0; display: flex; flex-direction: column; }
 .latin { margin-bottom: 7px; color: #778077; font: italic 13px Georgia, serif; }
 .product-info h3 { margin-bottom: 13px; font: 400 22px Georgia, serif; }
 .product-meta { min-height: 22px; display: flex; flex-wrap: wrap; gap: 7px; }
 .product-meta span { padding: 5px 8px; background: var(--cream); border-radius: 5px; color: #657068; font-size: 11px; }
-.product-bottom { margin-top: 17px; display: flex; justify-content: space-between; align-items: center; }
+.product-bottom { margin-top: auto; padding-top: 17px; display: flex; justify-content: space-between; align-items: center; }
 .product-bottom strong { color: var(--green); font-size: 18px; }
 .product-bottom button { padding: 10px 15px; border: 1px solid var(--green); border-radius: 11px; background: transparent; color: var(--green); font-weight: 700; cursor: pointer; transition: all .2s ease; }
 .product-bottom button:hover { background: var(--green); color: white; }
