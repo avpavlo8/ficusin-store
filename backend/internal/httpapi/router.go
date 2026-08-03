@@ -12,6 +12,7 @@ import (
 
 type catalogRepository interface {
 	ListAvailable(context.Context) ([]catalog.Product, error)
+	DetailBySlug(context.Context, string) (catalog.ProductDetail, error)
 }
 
 type Dependencies struct {
@@ -39,10 +40,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	for _, email := range dependencies.AdminEmails {
 		adminEmails[strings.ToLower(email)] = struct{}{}
 	}
+	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin, adminEmails)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
+	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
 	mux.HandleFunc("POST /api/v1/auth/request-code", authAPI.requestCode)
 	mux.HandleFunc("POST /api/v1/auth/verify-code", authAPI.verifyCode)
 	mux.HandleFunc("POST /api/v1/auth/logout", authAPI.logout)
@@ -57,10 +60,14 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"POST /api/v1/orders",
 		createOrderHandler(logger, dependencies.Auth, dependencies.OrderCreator),
 	)
-	mux.Handle(
-		"GET /api/v1/admin/dashboard",
-		adminDashboardHandler(logger, dependencies.Auth, dependencies.Admin, adminEmails),
-	)
+	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
+	mux.HandleFunc("GET /api/v1/admin/customers", adminAPI.customers)
+	mux.HandleFunc("PATCH /api/v1/admin/customers/{id}", adminAPI.updateCustomer)
+	mux.HandleFunc("GET /api/v1/admin/orders", adminAPI.orders)
+	mux.HandleFunc("PATCH /api/v1/admin/orders/{id}", adminAPI.updateOrder)
+	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
+	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", adminAPI.updateProduct)
+	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),
