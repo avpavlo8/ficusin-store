@@ -110,23 +110,30 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 
 	receivedIDs := make([]string, 0, len(items))
 	for _, item := range items {
+		productSnapshot, _ := json.Marshal(map[string]any{
+			"name": item.name, "description": item.description, "images": item.images,
+		})
+		variantSnapshot, _ := json.Marshal(map[string]any{"priceMinor": item.costMinor})
 		var productID int64
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO products (
 				saby_id, name, slug, description, search_text, status,
-				saby_updated_at, updated_at
+				saby_snapshot, saby_updated_at, updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, 'published', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			VALUES ($1, $2, $3, $4, $5, 'published', $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 			ON CONFLICT (saby_id) DO UPDATE SET
-				name = EXCLUDED.name,
-				description = EXCLUDED.description,
+				name = CASE WHEN 'name' = ANY(products.override_fields)
+					THEN products.name ELSE EXCLUDED.name END,
+				description = CASE WHEN 'description' = ANY(products.override_fields)
+					THEN products.description ELSE EXCLUDED.description END,
 				search_text = EXCLUDED.search_text,
 				status = 'published',
+				saby_snapshot = EXCLUDED.saby_snapshot,
 				saby_updated_at = CURRENT_TIMESTAMP,
 				updated_at = CURRENT_TIMESTAMP
 			RETURNING id
 		`, item.id, item.name, "saby-"+item.id, item.description,
-			strings.TrimSpace(item.name+" "+item.article)).Scan(&productID); err != nil {
+			strings.TrimSpace(item.name+" "+item.article), productSnapshot).Scan(&productID); err != nil {
 			return fmt.Errorf("upsert Saby product %s: %w", item.id, err)
 		}
 
@@ -141,18 +148,20 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO product_variants (
 				product_id, saby_id, sku, label, base_price_minor,
-				is_active, saby_updated_at, updated_at
+				is_active, saby_snapshot, saby_updated_at, updated_at
 			)
-			VALUES ($1, $2, $3, 'Основной размер', $4, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			VALUES ($1, $2, $3, 'Основной размер', $4, 1, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 			ON CONFLICT (saby_id) DO UPDATE SET
 				product_id = EXCLUDED.product_id,
 				sku = EXCLUDED.sku,
-				base_price_minor = EXCLUDED.base_price_minor,
+				base_price_minor = CASE WHEN 'price' = ANY(product_variants.override_fields)
+					THEN product_variants.base_price_minor ELSE EXCLUDED.base_price_minor END,
 				is_active = 1,
+				saby_snapshot = EXCLUDED.saby_snapshot,
 				saby_updated_at = CURRENT_TIMESTAMP,
 				updated_at = CURRENT_TIMESTAMP
 			RETURNING id
-		`, productID, item.id, sku, item.costMinor).Scan(&variantID); err != nil {
+		`, productID, item.id, sku, item.costMinor, variantSnapshot).Scan(&variantID); err != nil {
 			return fmt.Errorf("upsert Saby variant %s: %w", item.id, err)
 		}
 
@@ -169,16 +178,22 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			return fmt.Errorf("upsert Saby inventory %s: %w", item.id, err)
 		}
 
-		if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE product_id = $1", productID); err != nil {
-			return fmt.Errorf("replace Saby media %s: %w", item.id, err)
+		var photoOverridden bool
+		if err := tx.QueryRow(ctx, `SELECT 'photo' = ANY(override_fields) FROM products WHERE id = $1`, productID).Scan(&photoOverridden); err != nil {
+			return fmt.Errorf("check Saby media override %s: %w", item.id, err)
 		}
-		for index, image := range item.images {
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO product_media (
-					product_id, object_key, alt_text, sort_order, is_primary
-				) VALUES ($1, $2, $3, $4, $5)
-			`, productID, image, item.name, index, boolToInt(index == 0)); err != nil {
-				return fmt.Errorf("insert Saby media %s: %w", item.id, err)
+		if !photoOverridden {
+			if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE product_id = $1", productID); err != nil {
+				return fmt.Errorf("replace Saby media %s: %w", item.id, err)
+			}
+			for index, image := range item.images {
+				if _, err := tx.Exec(ctx, `
+					INSERT INTO product_media (
+						product_id, object_key, alt_text, sort_order, is_primary
+					) VALUES ($1, $2, $3, $4, $5)
+				`, productID, image, item.name, index, boolToInt(index == 0)); err != nil {
+					return fmt.Errorf("insert Saby media %s: %w", item.id, err)
+				}
 			}
 		}
 		receivedIDs = append(receivedIDs, item.id)

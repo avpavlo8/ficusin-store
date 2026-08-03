@@ -1,5 +1,6 @@
 import App from "./App";
 import AdminPage from "./AdminPage";
+import ProductPage from "./ProductPage";
 import { AccountPage, LoginPage, RegisterPage } from "./AuthPages";
 import {
   DeliveryPage,
@@ -9,7 +10,11 @@ import {
 } from "./LegalPages";
 
 export default function Root() {
-  switch (window.location.pathname.replace(/\/+$/, "") || "/") {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path.startsWith("/product/")) {
+    return <ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />;
+  }
+  switch (path) {
     case "/login":
       return <LoginPage />;
     case "/register":

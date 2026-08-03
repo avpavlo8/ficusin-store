@@ -264,7 +264,18 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 		SELECT
 			c.id, COALESCE(c.email, ''), c.phone, c.full_name, c.last_name, c.patronymic,
 			c.delivery_address, c.account_type, c.wholesale_status,
-			c.retail_discount_bps
+			c.retail_discount_bps,
+			COALESCE((
+				SELECT au.role
+				FROM admin_users au
+				WHERE au.is_active = TRUE
+				  AND (au.customer_id = c.id OR (
+					au.customer_id IS NULL AND c.email IS NOT NULL
+					AND LOWER(au.email) = LOWER(c.email)
+				  ))
+				ORDER BY (au.customer_id = c.id) DESC
+				LIMIT 1
+			), '')
 				FROM auth_sessions s
 					JOIN customers c ON c.id = s.customer_id
 						WHERE s.token_hash = $1
@@ -282,6 +293,7 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 		&user.AccountType,
 		&user.WholesaleStatus,
 		&user.RetailDiscountBPS,
+		&user.AdminRole,
 	)
 	if isNoRows(err) {
 		return nil, nil

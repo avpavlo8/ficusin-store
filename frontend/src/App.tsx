@@ -107,6 +107,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("cart") === "1") {
+      setCartOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" })
       .then(async (response) => {
@@ -469,14 +475,13 @@ export default function Home() {
           )}
           {filtered.map((product) => (
             <article className="product-card" key={product.id}>
-              <div className="product-image">
+              <a className="product-image" href={`/product/${product.id}`}>
                 <img src={product.image} alt={product.name} />
                 {product.badge && <span className="badge">{product.badge}</span>}
-                <button className="favorite" aria-label={`Добавить ${product.name} в избранное`}>♡</button>
-              </div>
+              </a>
               <div className="product-info">
                 <p className="latin">{product.latin}</p>
-                <h3>{product.name}</h3>
+                <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
                 <div className="product-meta"><span>{product.light}</span><span>{product.size}</span></div>
                 <div className="product-bottom">
                   <strong>{money(product.price)}</strong>

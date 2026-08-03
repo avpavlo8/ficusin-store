@@ -2,13 +2,101 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresRepository struct {
 	pool *pgxpool.Pool
+}
+
+func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug string) (ProductDetail, error) {
+	var detail ProductDetail
+	var productID int64
+	err := repository.pool.QueryRow(ctx, `
+		SELECT id, slug, name, latin_name, short_description, description, care_instructions
+		FROM products WHERE slug = $1 AND status = 'published' LIMIT 1
+	`, slug).Scan(&productID, &detail.ID, &detail.Name, &detail.Latin,
+		&detail.ShortDescription, &detail.Description, &detail.CareInstructions)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProductDetail{}, ErrNotFound
+	}
+	if err != nil {
+		return ProductDetail{}, fmt.Errorf("query product detail: %w", err)
+	}
+
+	mediaRows, err := repository.pool.Query(ctx, `
+		SELECT object_key FROM product_media WHERE product_id = $1
+		ORDER BY is_primary DESC, sort_order, id
+	`, productID)
+	if err != nil {
+		return ProductDetail{}, fmt.Errorf("query product media: %w", err)
+	}
+	detail.Images = []string{}
+	for mediaRows.Next() {
+		var image string
+		if err := mediaRows.Scan(&image); err != nil {
+			mediaRows.Close()
+			return ProductDetail{}, err
+		}
+		detail.Images = append(detail.Images, image)
+	}
+	if err := mediaRows.Err(); err != nil {
+		mediaRows.Close()
+		return ProductDetail{}, fmt.Errorf("read product media: %w", err)
+	}
+	mediaRows.Close()
+	if len(detail.Images) == 0 {
+		detail.Images = append(detail.Images, "/assets/hero-monstera.png")
+	}
+
+	variantRows, err := repository.pool.Query(ctx, `
+		SELECT pv.id, pv.sku, pv.label, pv.base_price_minor,
+			COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0)::INTEGER,
+			pv.height_cm, pv.pot_diameter_cm, pv.wholesale_min_qty
+		FROM product_variants pv LEFT JOIN inventory i ON i.variant_id = pv.id
+		WHERE pv.product_id = $1 AND pv.is_active = 1
+		GROUP BY pv.id ORDER BY pv.id
+	`, productID)
+	if err != nil {
+		return ProductDetail{}, fmt.Errorf("query product variants: %w", err)
+	}
+	detail.Variants = []Variant{}
+	for variantRows.Next() {
+		var variant Variant
+		var priceMinor int64
+		if err := variantRows.Scan(&variant.ID, &variant.SKU, &variant.Label, &priceMinor,
+			&variant.Stock, &variant.HeightCM, &variant.PotDiameterCM,
+			&variant.WholesaleMinQty); err != nil {
+			variantRows.Close()
+			return ProductDetail{}, err
+		}
+		variant.Price = float64(priceMinor) / 100
+		detail.Variants = append(detail.Variants, variant)
+	}
+	if err := variantRows.Err(); err != nil {
+		variantRows.Close()
+		return ProductDetail{}, fmt.Errorf("read product variants: %w", err)
+	}
+	variantRows.Close()
+
+	available, err := repository.ListAvailable(ctx)
+	if err != nil {
+		return ProductDetail{}, err
+	}
+	detail.Recommendations = []Product{}
+	for _, item := range available {
+		if item.ID != slug {
+			detail.Recommendations = append(detail.Recommendations, item)
+			if len(detail.Recommendations) == 4 {
+				break
+			}
+		}
+	}
+	return detail, nil
 }
 
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
