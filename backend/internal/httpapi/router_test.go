@@ -46,6 +46,18 @@ func (authStub) UpdateProfile(context.Context, int64, auth.Profile) error {
 	return nil
 }
 
+func (authStub) SaveAvatar(context.Context, int64, []byte, string) error {
+	return nil
+}
+
+func (authStub) DeleteAvatar(context.Context, int64) error {
+	return nil
+}
+
+func (authStub) Avatar(context.Context, int64) ([]byte, string, error) {
+	return nil, "", nil
+}
+
 func (authStub) Logout(context.Context, string) error {
 	return nil
 }
@@ -57,6 +69,10 @@ func (authStub) UserByToken(context.Context, string) (*auth.User, error) {
 type orderStub struct{}
 
 func (orderStub) ListForCustomer(context.Context, int64, int) ([]order.Summary, error) {
+	return nil, nil
+}
+
+func (orderStub) DetailForCustomer(context.Context, int64, string) (*order.Detail, error) {
 	return nil, nil
 }
 

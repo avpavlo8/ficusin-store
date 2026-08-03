@@ -33,6 +33,18 @@ func (service *recordingAuthService) UpdateProfile(
 	return service.profileErr
 }
 
+func (service *recordingAuthService) SaveAvatar(context.Context, int64, []byte, string) error {
+	return nil
+}
+
+func (service *recordingAuthService) DeleteAvatar(context.Context, int64) error {
+	return nil
+}
+
+func (service *recordingAuthService) Avatar(context.Context, int64) ([]byte, string, error) {
+	return nil, "", nil
+}
+
 func (service *recordingAuthService) RequestCall(_ context.Context, phone string) (string, string, string, error) {
 	service.phone = phone
 	return "check-id", "78000000000", "+7 (800) 000-00-00", service.requestErr

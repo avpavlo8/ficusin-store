@@ -27,6 +27,9 @@ type Dependencies struct {
 	AdminEmails  []string
 	CookieSecure bool
 	StaticDir    string
+	// YandexSuggestKey enables address autocomplete; empty simply turns the
+	// suggestions off and leaves the address field as plain text.
+	YandexSuggestKey string
 }
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
@@ -58,6 +61,17 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
 	mux.HandleFunc("PUT /api/v1/account/profile", authAPI.updateProfile)
+	mux.HandleFunc("PUT /api/v1/account/avatar", authAPI.uploadAvatar)
+	mux.HandleFunc("DELETE /api/v1/account/avatar", authAPI.deleteAvatar)
+	mux.HandleFunc("GET /api/v1/account/avatar", authAPI.avatar)
+	mux.Handle(
+		"GET /api/v1/account/orders/{orderNumber}",
+		accountOrderHandler(logger, dependencies.Auth, dependencies.Orders),
+	)
+	mux.Handle(
+		"GET /api/v1/address/suggest",
+		addressSuggestHandler(logger, dependencies.YandexSuggestKey),
+	)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
 	mux.Handle(
