@@ -1,217 +1,18 @@
 openapi: 3.1.0
 info:
   title: Ficusin Store API
-  version: 1.0.0
+  version: 1.1.0
+  description: Public contract of the Go API currently deployed by Ficusin Store.
 servers:
   - url: /api/v1
-paths:
-  /health:
-    get:
-      operationId: health
-      responses:
-        "200":
-          description: API is ready
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status]
-                properties:
-                  status:
-                    const: ok
-  /catalog:
-    get:
-      operationId: listCatalog
-      responses:
-        "200":
-          description: Available products
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [products]
-                properties:
-                  products:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Product"
-  /auth/register:
-    post:
-      operationId: register
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Registration"
-      responses:
-        "201":
-          description: Account and session created
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "409":
-          $ref: "#/components/responses/ValidationError"
-  /auth/login:
-    post:
-      operationId: login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [identifier, password]
-              properties:
-                identifier:
-                  type: string
-                password:
-                  type: string
-      responses:
-        "200":
-          description: Session created
-        "401":
-          $ref: "#/components/responses/ValidationError"
-  /auth/logout:
-    post:
-      operationId: logout
-      responses:
-        "200":
-          description: Session deleted
-  /auth/me:
-    get:
-      operationId: currentUser
-      responses:
-        "200":
-          description: Current customer
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [user]
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
-        "401":
-          $ref: "#/components/responses/ValidationError"
-  /account/orders:
-    get:
-      operationId: accountOrders
-      responses:
-        "200":
-          description: Current customer's latest orders
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [orders]
-                properties:
-                  orders:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/OrderSummary"
-        "401":
-          $ref: "#/components/responses/ValidationError"
-  /delivery/cdek:
-    get:
-      operationId: cdekLocations
-      parameters:
-        - in: query
-          name: action
-          required: true
-          schema:
-            type: string
-            enum: [cities, offices]
-        - in: query
-          name: city
-          schema:
-            type: string
-        - in: query
-          name: cityCode
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Matching CDEK locations
-    post:
-      operationId: cdekQuote
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [cityCode, itemCount]
-              properties:
-                cityCode:
-                  type: integer
-                itemCount:
-                  type: integer
-      responses:
-        "200":
-          description: Delivery quote
-  /orders:
-    post:
-      operationId: createOrder
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "201":
-          description: Order saved and queued for payment
-        "400":
-          $ref: "#/components/responses/ValidationError"
-  /admin/dashboard:
-    get:
-      operationId: adminDashboard
-      description: Requires an authenticated customer whose email is listed in ADMIN_EMAILS.
-      responses:
-        "200":
-          description: Store totals, latest orders and latest synchronization runs
-        "401":
-          $ref: "#/components/responses/ValidationError"
-        "403":
-          $ref: "#/components/responses/ValidationError"
-  /integrations/saby/catalog:
-    post:
-      operationId: synchronizeSabyCatalog
-      description: >
-        Replaces current Saby prices, balances and product media. The request
-        must carry a GitHub Actions OIDC token issued for the repository,
-        main branch and the Saby workflow.
-      parameters:
-        - in: header
-          name: X-Ficusin-GitHub-OIDC
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [items]
-              properties:
-                items:
-                  type: array
-                  maxItems: 2000
-                  items:
-                    $ref: "#/components/schemas/SabyCatalogItem"
-      responses:
-        "200":
-          description: Catalog synchronized
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/ValidationError"
-        "403":
-          $ref: "#/components/responses/ValidationError"
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: ficusin_session
   responses:
-    ValidationError:
+    Error:
       description: Request cannot be completed
       content:
         application/json:
@@ -228,118 +29,392 @@ components:
       type: object
       required: [id, name, latin, category, price, image, light, size, stock]
       properties:
-        id:
-          type: string
-        name:
-          type: string
-        latin:
-          type: string
-        category:
-          type: string
-        price:
-          type: number
-        image:
-          type: string
-        light:
-          type: string
-        size:
-          type: string
-        stock:
-          type: integer
-    Registration:
+        id: { type: string }
+        name: { type: string }
+        latin: { type: string }
+        category: { type: string }
+        price: { type: number, minimum: 0 }
+        image: { type: string }
+        light: { type: string }
+        size: { type: string }
+        stock: { type: integer, minimum: 0 }
+    AuthFlow:
+      type: string
+      enum: [login, register]
+    RequestCallInput:
       type: object
-      required: [fullName, phone, email, password, accountType, consent]
+      additionalProperties: false
+      required: [phone, flow]
       properties:
-        fullName:
-          type: string
         phone:
           type: string
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 10
-          maxLength: 128
+          description: Russian phone; server normalizes it to +7XXXXXXXXXX.
+        flow:
+          $ref: "#/components/schemas/AuthFlow"
+    RequestCallResult:
+      type: object
+      required: [ok, checkId, callPhone, callPhonePretty]
+      properties:
+        ok: { type: boolean, const: true }
+        checkId: { type: string }
+        callPhone: { type: string }
+        callPhonePretty: { type: string }
+    VerifyCallInput:
+      type: object
+      additionalProperties: false
+      required: [phone, checkId, flow]
+      properties:
+        phone: { type: string }
+        checkId: { type: string }
+        flow:
+          $ref: "#/components/schemas/AuthFlow"
+        fullName: { type: string, minLength: 2, maxLength: 120 }
+        lastName: { type: string }
+        patronymic: { type: string }
+        email: { type: string, format: email, maxLength: 254 }
+        deliveryAddress: { type: string }
         accountType:
           type: string
           enum: [retail, wholesale]
-        companyName:
-          type: string
-        inn:
-          type: string
-        kpp:
-          type: string
-        legalAddress:
-          type: string
-        consent:
-          type: boolean
+        companyName: { type: string }
+        inn: { type: string, pattern: "^(\\d{10}|\\d{12})$" }
+        kpp: { type: string, pattern: "^\\d{9}$" }
+        legalAddress: { type: string }
+      description: Registration fields are used only when flow=register.
     User:
       type: object
       required:
-        [id, email, phone, fullName, accountType, wholesaleStatus, retailDiscountBps]
+        - id
+        - email
+        - phone
+        - fullName
+        - lastName
+        - patronymic
+        - deliveryAddress
+        - accountType
+        - wholesaleStatus
+        - retailDiscountBps
       properties:
-        id:
-          type: integer
-          format: int64
-        email:
-          type: string
-        phone:
-          type: string
-        fullName:
-          type: string
+        id: { type: integer, format: int64 }
+        email: { type: string }
+        phone: { type: string }
+        fullName: { type: string }
+        lastName: { type: string }
+        patronymic: { type: string }
+        deliveryAddress: { type: string }
         accountType:
           type: string
           enum: [retail, wholesale]
-        wholesaleStatus:
+        wholesaleStatus: { type: string }
+        retailDiscountBps: { type: integer, minimum: 0 }
+    OrderItemInput:
+      type: object
+      additionalProperties: false
+      required: [id, quantity]
+      properties:
+        id: { type: string }
+        quantity: { type: integer, minimum: 1 }
+    CustomerInput:
+      type: object
+      additionalProperties: false
+      required: [name, phone, email, address, comment]
+      properties:
+        name: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email }
+        address: { type: string }
+        comment: { type: string }
+    CDEKInput:
+      type: object
+      additionalProperties: false
+      properties:
+        cityCode: { type: integer }
+        cityName: { type: string }
+        officeCode: { type: string }
+    CreateOrderInput:
+      type: object
+      additionalProperties: false
+      required: [customer, delivery, items]
+      properties:
+        customer:
+          $ref: "#/components/schemas/CustomerInput"
+        delivery:
           type: string
-        retailDiscountBps:
-          type: integer
+          enum: [pickup, courier, cdek, post]
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+        cdek:
+          $ref: "#/components/schemas/CDEKInput"
+    OrderCreated:
+      type: object
+      required: [orderNumber, paymentStatus]
+      properties:
+        orderNumber: { type: string }
+        paymentStatus: { type: string }
     OrderSummary:
       type: object
       required: [orderNumber, deliveryMethod, total, status, createdAt, itemsCount]
       properties:
-        orderNumber:
-          type: string
-        deliveryMethod:
-          type: string
-        total:
-          type: number
-        status:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        itemsCount:
-          type: integer
+        orderNumber: { type: string }
+        deliveryMethod: { type: string }
+        total: { type: number }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        itemsCount: { type: integer }
     SabyCatalogItem:
       type: object
       required: [id, name, cost]
       properties:
         id:
           oneOf:
-            - type: string
-            - type: number
-        article:
-          type: string
-        name:
-          type: string
-        description:
-          type: string
+            - { type: string }
+            - { type: number }
+        article: { type: string }
+        name: { type: string }
+        description: { type: string }
         cost:
           oneOf:
-            - type: string
-            - type: number
+            - { type: string }
+            - { type: number }
         balance:
           oneOf:
-            - type: string
-            - type: number
+            - { type: string }
+            - { type: number }
         images:
           type: array
-          items:
+          items: { type: string, format: uri }
+        published: { type: boolean }
+        isParent: { type: boolean }
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: API is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+  /catalog:
+    get:
+      operationId: listCatalog
+      responses:
+        "200":
+          description: Available products
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [products]
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+        "500":
+          $ref: "#/components/responses/Error"
+  /auth/request-code:
+    post:
+      operationId: requestAuthCall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestCallInput"
+      responses:
+        "200":
+          description: Phone number to call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestCallResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /auth/verify-code:
+    post:
+      operationId: verifyAuthCall
+      description: Returns 202 while the incoming call is not confirmed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyCallInput"
+      responses:
+        "200":
+          description: Session created and HttpOnly cookie set
+        "202":
+          description: Call is still pending
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Login account was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Registration account already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /auth/logout:
+    post:
+      operationId: logout
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Session deleted and cookie cleared
+  /auth/me:
+    get:
+      operationId: currentUser
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current customer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Error"
+  /account/orders:
+    get:
+      operationId: accountOrders
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current customer's latest orders
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders]
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderSummary"
+        "401":
+          $ref: "#/components/responses/Error"
+  /delivery/cdek:
+    get:
+      operationId: cdekLocations
+      parameters:
+        - in: query
+          name: action
+          required: true
+          schema:
             type: string
-            format: uri
-        published:
-          type: boolean
-        isParent:
-          type: boolean
+            enum: [cities, offices]
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: cityCode
+          schema: { type: integer }
+      responses:
+        "200": { description: Matching CDEK locations }
+        "400":
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: cdekQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [cityCode, itemCount]
+              properties:
+                cityCode: { type: integer, minimum: 1 }
+                itemCount: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: Delivery quote }
+        "400":
+          $ref: "#/components/responses/Error"
+  /orders:
+    post:
+      operationId: createOrder
+      description: Guest and authenticated checkout. Profile values fill empty customer fields for a valid session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderInput"
+      responses:
+        "201":
+          description: Order saved; Telegram delivery may continue asynchronously
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderCreated"
+        "400":
+          $ref: "#/components/responses/Error"
+  /admin/dashboard:
+    get:
+      operationId: adminDashboard
+      description: Requires a valid session and an email listed in ADMIN_EMAILS.
+      security:
+        - sessionCookie: []
+      responses:
+        "200": { description: Store totals, latest orders and synchronization runs }
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /integrations/saby/catalog:
+    post:
+      operationId: synchronizeSabyCatalog
+      description: Requires a repository, branch and workflow-bound GitHub Actions OIDC token.
+      parameters:
+        - in: header
+          name: X-Ficusin-GitHub-OIDC
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  maxItems: 2000
+                  items:
+                    $ref: "#/components/schemas/SabyCatalogItem"
+      responses:
+        "200": { description: Catalog synchronized }
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
