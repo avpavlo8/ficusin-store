@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StoreHeader } from "./StoreHeader";
+import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
 
 export type StoreUser = {
   id: number;
@@ -526,6 +526,8 @@ function FavoritesSection() {
     next.delete(id);
     setFavorites(next);
     localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
+    // Tell the header to re-read the counter without a page reload.
+    window.dispatchEvent(new Event(STORAGE_EVENT));
   };
 
   return <>
