@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 )
 
@@ -38,6 +39,7 @@ type authHandlers struct {
 	logger       *slog.Logger
 	service      authService
 	cookieSecure bool
+	ownerEmails  map[string]struct{}
 }
 
 type requestCodeBody struct {
@@ -212,6 +214,9 @@ func (handlers authHandlers) me(response http.ResponseWriter, request *http.Requ
 	if user == nil {
 		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
 		return
+	}
+	if _, owner := handlers.ownerEmails[strings.ToLower(user.Email)]; owner {
+		user.AdminRole = admin.RoleOwner
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"user": user})
 }
