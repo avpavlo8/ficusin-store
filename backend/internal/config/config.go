@@ -16,6 +16,7 @@ type Config struct {
 		IntegrationPrivateKey string
 		TelegramChatID        string
 		TelegramBotToken      string
+		YandexSuggestKey      string
 		AdminEmails           []string
 }
 
@@ -87,6 +88,7 @@ func Load() (Config, error) {
 					IntegrationPrivateKey: strings.TrimSpace(os.Getenv("INTEGRATION_SECRETS_PRIVATE_KEY")),
 					TelegramChatID:        defaultString(os.Getenv("TELEGRAM_ORDER_CHAT_ID"), "-5430918511"),
 					TelegramBotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+					YandexSuggestKey:      strings.TrimSpace(os.Getenv("YANDEX_SUGGEST_API_KEY")),
 					AdminEmails:           splitList(os.Getenv("ADMIN_EMAILS")),
 				}, nil
 }

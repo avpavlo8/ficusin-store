@@ -28,6 +28,18 @@ func (stub adminAuthStub) UpdateProfile(context.Context, int64, auth.Profile) er
 	return nil
 }
 
+func (stub adminAuthStub) SaveAvatar(context.Context, int64, []byte, string) error {
+	return nil
+}
+
+func (stub adminAuthStub) DeleteAvatar(context.Context, int64) error {
+	return nil
+}
+
+func (stub adminAuthStub) Avatar(context.Context, int64) ([]byte, string, error) {
+	return nil, "", nil
+}
+
 func (stub adminAuthStub) Logout(context.Context, string) error {
 	return nil
 }

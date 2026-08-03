@@ -14,6 +14,33 @@ type Summary struct {
 	ItemsCount     int       `json:"itemsCount"`
 }
 
+// Detail is a single order opened from the account page: the summary plus
+// everything the customer needs to check what they ordered and where it is
+// going.
+type Detail struct {
+	OrderNumber    string    `json:"orderNumber"`
+	DeliveryMethod string    `json:"deliveryMethod"`
+	Address        string    `json:"address"`
+	Comment        string    `json:"comment"`
+	CustomerName   string    `json:"customerName"`
+	Phone          string    `json:"phone"`
+	Email          string    `json:"email"`
+	Status         string    `json:"status"`
+	PaymentStatus  string    `json:"paymentStatus"`
+	DeliveryFee    float64   `json:"deliveryFee"`
+	Subtotal       float64   `json:"subtotal"`
+	Total          float64   `json:"total"`
+	CreatedAt      time.Time `json:"createdAt"`
+	Items          []Item    `json:"items"`
+}
+
+type Item struct {
+	ProductName string  `json:"productName"`
+	UnitPrice   float64 `json:"unitPrice"`
+	Quantity    int     `json:"quantity"`
+}
+
 type Repository interface {
 	ListForCustomer(context.Context, int64, int) ([]Summary, error)
+	DetailForCustomer(ctx context.Context, customerID int64, orderNumber string) (*Detail, error)
 }

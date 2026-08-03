@@ -101,6 +101,7 @@ export default function AdminPage() {
           {can("customers.read") && <Nav active={section === "customers"} onClick={() => setSection("customers")} icon="○">Клиенты</Nav>}
         </nav>
         <div className="admin-role"><small>Ваша роль</small><strong>{roleLabel(data.role)}</strong></div>
+        <a className="admin-store-link" href="/account">← Личный кабинет</a>
         <a className="admin-store-link" href="/">← Вернуться в магазин</a>
       </aside>
       <section className="admin-main">
