@@ -70,6 +70,10 @@ func (stub *adminRepositoryStub) SyncProducts(context.Context, admin.Actor, admi
 	stub.syncCalls++
 	return admin.SyncResult{Updated: 1, Skipped: []int64{}}, nil
 }
+func(stub *adminRepositoryStub) ListCategories(context.Context)([]admin.Category,error){return []admin.Category{},nil}
+func(stub *adminRepositoryStub) CreateCategory(context.Context,admin.Actor,admin.CategoryCreate)(admin.Category,error){return admin.Category{},nil}
+func(stub *adminRepositoryStub) UpdateCategory(context.Context,admin.Actor,int64,admin.CategoryUpdate)(admin.Category,error){return admin.Category{},nil}
+func(stub *adminRepositoryStub) DeleteCategory(context.Context,admin.Actor,int64)error{return nil}
 
 func TestAdminManagerCannotAssignRoles(t *testing.T) {
 	t.Parallel()
