@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,6 +38,12 @@ type CreateInput struct {
 	Items      []ItemInput
 	CDEK       CDEKInput
 	CustomerID *int64
+	// Consent is the agreement to the privacy policy and the offer that the
+	// checkout form collects. It is recorded alongside the order so the
+	// agreement can be evidenced later.
+	Consent   bool
+	ClientIP  string
+	UserAgent string
 }
 
 type CustomerInput struct {
@@ -76,10 +83,33 @@ func invalid(message string) error {
 }
 
 type purchasableItem struct {
-	ID       string
-	Name     string
-	Price    float64
-	Quantity int
+	ID        string
+	VariantID int64
+	Name      string
+	Price     float64
+	Quantity  int
+}
+
+// mergeItems collapses repeated products into a single line. Without this a
+// cart holding the same plant twice would be checked against stock twice
+// with the smaller number each time, and would print two identical rows on
+// the order.
+func mergeItems(requested []ItemInput) []ItemInput {
+	merged := make([]ItemInput, 0, len(requested))
+	position := make(map[string]int, len(requested))
+	for _, item := range requested {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		if index, seen := position[id]; seen {
+			merged[index].Quantity += item.Quantity
+			continue
+		}
+		position[id] = len(merged)
+		merged = append(merged, ItemInput{ID: id, Quantity: item.Quantity})
+	}
+	return merged
 }
 
 func NewService(
@@ -92,31 +122,29 @@ func NewService(
 }
 
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
+	if !input.Consent {
+		return Created{}, invalid("Подтвердите согласие на обработку персональных данных")
+	}
+
 	transaction, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Created{}, fmt.Errorf("begin order: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
 
-	items := make([]purchasableItem, 0, len(input.Items))
-	for _, requested := range input.Items {
+	requestedItems := mergeItems(input.Items)
+	items := make([]purchasableItem, 0, len(requestedItems))
+	for _, requested := range requestedItems {
 		var item purchasableItem
 		var priceMinor int64
-		var stock int
 		err := transaction.QueryRow(ctx, `
-			SELECT
-				p.slug,
-				p.name,
-				pv.base_price_minor,
-				COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0)::INTEGER
+			SELECT p.slug, p.name, pv.id, pv.base_price_minor
 			FROM products p
 			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
-			LEFT JOIN inventory i ON i.variant_id = pv.id
 			WHERE p.slug = $1 AND p.status = 'published'
-			GROUP BY p.id, pv.id
 			ORDER BY pv.id
 			LIMIT 1
-		`, requested.ID).Scan(&item.ID, &item.Name, &priceMinor, &stock)
+		`, requested.ID).Scan(&item.ID, &item.Name, &item.VariantID, &priceMinor)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Created{}, invalid("Товар больше не доступен. Обновите страницу")
 		}
@@ -124,8 +152,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("load order product: %w", err)
 		}
 		item.Quantity = max(1, min(20, requested.Quantity))
-		if stock < item.Quantity {
-			return Created{}, invalid(fmt.Sprintf("%s: доступно только %d шт.", item.Name, stock))
+		if err := reserveStock(ctx, transaction, item); err != nil {
+			return Created{}, err
 		}
 		item.Price = float64(priceMinor) / 100
 		items = append(items, item)
@@ -216,11 +244,23 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	for _, item := range items {
 		if _, err := transaction.Exec(ctx, `
 			INSERT INTO order_items (
-				order_id, product_id, product_name, unit_price, quantity
-			) VALUES ($1, $2, $3, $4, $5)
-		`, orderID, item.ID, item.Name, item.Price, item.Quantity); err != nil {
+				order_id, product_id, variant_id, product_name, unit_price, quantity
+			) VALUES ($1, $2, $3, $4, $5, $6)
+		`, orderID, item.ID, item.VariantID, item.Name, item.Price, item.Quantity); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
+	}
+	// The agreement is written in the same transaction as the order, so an
+	// order can never exist without the record of the consent behind it.
+	if err := consent.Record(ctx, transaction, consent.Event{
+		CustomerID: input.CustomerID,
+		OrderID:    &orderID,
+		Event:      consent.EventOrder,
+		Phone:      input.Customer.Phone,
+		IPAddress:  input.ClientIP,
+		UserAgent:  input.UserAgent,
+	}); err != nil {
+		return Created{}, err
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Created{}, fmt.Errorf("commit order: %w", err)
@@ -232,11 +272,13 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			Name: item.Name, Price: item.Price, Quantity: item.Quantity,
 		})
 	}
+	notificationCity := ""
+	if cityName != nil {
+		notificationCity = *cityName
+	}
 	if err := service.notifier.SendOrder(ctx, integration.TelegramOrder{
-		OrderNumber: orderNumber, CustomerName: input.Customer.Name,
-		Phone: input.Customer.Phone, Email: input.Customer.Email,
-		Address: deliveryAddress, Comment: input.Customer.Comment,
-		DeliveryMethod: input.Delivery, DeliveryFee: deliveryFee,
+		OrderNumber: orderNumber, DeliveryMethod: input.Delivery,
+		DeliveryCity: notificationCity, DeliveryFee: deliveryFee,
 		Subtotal: subtotal, Total: total, Items: notificationItems,
 	}); err == nil {
 		_, _ = service.pool.Exec(ctx, `
@@ -251,6 +293,67 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	return Created{OrderNumber: orderNumber, PaymentStatus: "payment_provider_pending"}, nil
+}
+
+// reserveStock claims the requested quantity for one variant. The
+// inventory rows are locked first, so two customers racing for the last
+// plant queue up instead of both succeeding: the second one finds the
+// stock already taken and gets a clear message.
+func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) error {
+	rows, err := transaction.Query(ctx, `
+		SELECT id, GREATEST(available_qty - reserved_qty, 0)
+		FROM inventory
+		WHERE variant_id = $1
+		ORDER BY id
+		FOR UPDATE
+	`, item.VariantID)
+	if err != nil {
+		return fmt.Errorf("lock inventory: %w", err)
+	}
+	type slot struct {
+		id   int64
+		free int
+	}
+	slots := make([]slot, 0, 4)
+	available := 0
+	for rows.Next() {
+		var current slot
+		if err := rows.Scan(&current.id, &current.free); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan inventory: %w", err)
+		}
+		available += current.free
+		slots = append(slots, current)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read inventory: %w", err)
+	}
+
+	if available < item.Quantity {
+		if available == 0 {
+			return invalid(fmt.Sprintf("%s: товар закончился", item.Name))
+		}
+		return invalid(fmt.Sprintf("%s: доступно только %d шт.", item.Name, available))
+	}
+
+	remaining := item.Quantity
+	for _, current := range slots {
+		if remaining == 0 {
+			break
+		}
+		take := min(current.free, remaining)
+		if take == 0 {
+			continue
+		}
+		if _, err := transaction.Exec(ctx, `
+			UPDATE inventory SET reserved_qty = reserved_qty + $2 WHERE id = $1
+		`, current.id, take); err != nil {
+			return fmt.Errorf("reserve inventory: %w", err)
+		}
+		remaining -= take
+	}
+	return nil
 }
 
 func newOrderNumber() (string, error) {

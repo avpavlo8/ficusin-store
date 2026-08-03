@@ -430,6 +430,10 @@ export default function Home() {
             }
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
+      // The checkbox is required in the markup, so reaching this point
+      // means it was ticked. The server records the agreement against the
+      // order — that record is the only evidence of it we would ever have.
+      consent: form.get("consent") === "on",
     };
 
     try {
@@ -837,7 +841,7 @@ export default function Home() {
             <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekQuote ? "после выбора ПВЗ" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{money(total)}</strong></div></div>
             <div className="payment-note"><b>Онлайн-оплата готовится</b><p>Платёжный сервис пока не выбран. Заказ сохранится, но деньги списываться не будут.</p></div>
             <button className="primary-button full" disabled={submitting || (delivery === "cdek" && (!cdekQuote || !cdekOfficeCode))}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
-            <label className="consent-check"><input type="checkbox" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
+            <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
           </form>
         )}
       </aside>

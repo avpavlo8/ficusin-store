@@ -54,7 +54,7 @@ func (service *recordingAuthService) ConfirmCall(
 	_ context.Context,
 	phone, checkID string,
 	registration auth.Registration,
-	_ string,
+	_ auth.ClientMeta,
 ) (string, time.Time, bool, error) {
 	service.phone = phone
 	service.checkID = checkID
@@ -85,7 +85,8 @@ func TestVerifyCallNormalizesInputAndSetsCookie(t *testing.T) {
 		"checkId": "check-id",
 		"fullName": " Александр ",
 		"email": " TEST@EXAMPLE.COM ",
-		"accountType": "retail"
+		"accountType": "retail",
+		"consent": true
 	}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -121,7 +122,8 @@ func TestVerifyCallRejectsInvalidWholesaleDetails(t *testing.T) {
 		"fullName": "Александр",
 		"accountType": "wholesale",
 		"companyName": "Фикусин",
-		"inn": "123"
+		"inn": "123",
+		"consent": true
 	}`))
 	response := httptest.NewRecorder()
 
@@ -208,19 +210,20 @@ func TestMeReturnsUser(t *testing.T) {
 	}
 }
 
-func TestMeReturnsEffectiveOwnerRole(t *testing.T) {
+// The role travels with the account as stored, and is never inferred from
+// the email address on the profile.
+func TestMeReturnsStoredRole(t *testing.T) {
 	t.Parallel()
 
 	service := &recordingAuthService{user: &auth.User{
-		ID: 42, Email: "Owner@Example.com", FullName: "Александр",
+		ID: 42, Email: "Owner@Example.com", FullName: "Александр", AdminRole: "owner",
 	}}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
 	response := httptest.NewRecorder()
-	dependencies := testDependencies(catalogStub{}, service)
-	dependencies.AdminEmails = []string{"owner@example.com"}
 
-	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK ||
 		!strings.Contains(response.Body.String(), `"adminRole":"owner"`) {
@@ -250,7 +253,7 @@ func TestVerifyCallFailureDoesNotLeakInternalError(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/auth/verify-code",
-		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","fullName":"Александр","accountType":"retail"}`),
+		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","fullName":"Александр","accountType":"retail","consent":true}`),
 	)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -317,7 +320,8 @@ func TestVerifyCallReturnsConflictForDuplicateRegistration(t *testing.T) {
 			"checkId":"check-id",
 			"flow":"register",
 			"fullName":"Александр",
-			"accountType":"retail"
+			"accountType":"retail",
+			"consent":true
 		}`),
 	)
 	response := httptest.NewRecorder()

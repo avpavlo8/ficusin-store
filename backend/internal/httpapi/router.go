@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
@@ -24,7 +23,6 @@ type Dependencies struct {
 	CDEK         cdekService
 	Admin        adminRepository
 	Saby         sabySyncService
-	AdminEmails  []string
 	CookieSecure bool
 	StaticDir    string
 	// YandexSuggestKey enables address autocomplete; empty simply turns the
@@ -34,25 +32,31 @@ type Dependencies struct {
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	adminEmails := make(map[string]struct{}, len(dependencies.AdminEmails))
-	for _, email := range dependencies.AdminEmails {
-		adminEmails[strings.ToLower(email)] = struct{}{}
-	}
 	authAPI := authHandlers{
 		logger:       logger,
 		service:      dependencies.Auth,
 		cookieSecure: dependencies.CookieSecure,
-		ownerEmails:  adminEmails,
 	}
 	cdekAPI := cdekHandlers{logger: logger, service: dependencies.CDEK}
-	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin, adminEmails)
+	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin)
+
+	// Nothing behind these three routes is free for us: a call costs money
+	// at SMS.ru, an order pings a person, and every address suggestion is
+	// billed by Yandex against our key. Without a ceiling a single script
+	// could drain all three.
+	callLimiter := newRateLimiter(5, 10*time.Minute)
+	orderLimiter := newRateLimiter(10, time.Hour)
+	suggestLimiter := newRateLimiter(60, time.Minute)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
-	mux.HandleFunc("POST /api/v1/auth/request-code", authAPI.requestCode)
+	mux.HandleFunc("POST /api/v1/auth/request-code", callLimiter.guard(
+		"Слишком много запросов звонка. Попробуйте через несколько минут",
+		authAPI.requestCode,
+	))
 	mux.HandleFunc("POST /api/v1/auth/verify-code", authAPI.verifyCode)
 	mux.HandleFunc("POST /api/v1/auth/logout", authAPI.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", authAPI.me)
@@ -68,16 +72,16 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"GET /api/v1/account/orders/{orderNumber}",
 		accountOrderHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
-	mux.Handle(
-		"GET /api/v1/address/suggest",
-		addressSuggestHandler(logger, dependencies.YandexSuggestKey),
-	)
+	mux.HandleFunc("GET /api/v1/address/suggest", suggestLimiter.guard(
+		"Слишком много запросов. Введите адрес вручную",
+		addressSuggestHandler(logger, dependencies.YandexSuggestKey).ServeHTTP,
+	))
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
-	mux.Handle(
-		"POST /api/v1/orders",
-		createOrderHandler(logger, dependencies.Auth, dependencies.OrderCreator),
-	)
+	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
+		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
+		createOrderHandler(logger, dependencies.Auth, dependencies.OrderCreator).ServeHTTP,
+	))
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
 	mux.HandleFunc("GET /api/v1/admin/customers", adminAPI.customers)
 	mux.HandleFunc("PATCH /api/v1/admin/customers/{id}", adminAPI.updateCustomer)
@@ -100,7 +104,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		handler = spaFallback(mux, dependencies.StaticDir)
 	}
 
-	return requestLogger(logger, recoverPanics(logger, handler))
+	return requestLogger(
+		logger,
+		securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)),
+	)
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

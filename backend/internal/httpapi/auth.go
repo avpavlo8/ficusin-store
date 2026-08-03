@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 )
 
@@ -29,7 +28,7 @@ type authService interface {
 		ctx context.Context,
 		phone, checkID string,
 		registration auth.Registration,
-		userAgent string,
+		meta auth.ClientMeta,
 	) (token string, expiresAt time.Time, pending bool, err error)
 	UpdateProfile(ctx context.Context, customerID int64, profile auth.Profile) error
 	SaveAvatar(ctx context.Context, customerID int64, image []byte, mime string) error
@@ -43,7 +42,6 @@ type authHandlers struct {
 	logger       *slog.Logger
 	service      authService
 	cookieSecure bool
-	ownerEmails  map[string]struct{}
 }
 
 type requestCodeBody struct {
@@ -65,6 +63,9 @@ type verifyCodeBody struct {
 	INN             string `json:"inn"`
 	KPP             string `json:"kpp"`
 	LegalAddress    string `json:"legalAddress"`
+	// Consent mirrors the checkbox on the registration form. It matters
+	// only when registering; a returning customer agreed once already.
+	Consent bool `json:"consent"`
 }
 
 func (handlers authHandlers) requestCode(response http.ResponseWriter, request *http.Request) {
@@ -138,9 +139,14 @@ func (handlers authHandlers) verifyCode(response http.ResponseWriter, request *h
 		phone,
 		checkID,
 		registration,
-		request.UserAgent(),
+		auth.ClientMeta{UserAgent: request.UserAgent(), IPAddress: clientIP(request)},
 	)
 	switch {
+	case errors.Is(err, auth.ErrConsentRequired):
+		writeJSON(response, http.StatusUnprocessableEntity, errorResponse{
+			Error: "Подтвердите согласие на обработку персональных данных",
+		})
+		return
 	case errors.Is(err, auth.ErrInvalidCode):
 		writeJSON(response, http.StatusUnauthorized, errorResponse{
 			Error: "Звонок не подтверждён вовремя. Запросите номер ещё раз",
@@ -219,17 +225,7 @@ func (handlers authHandlers) me(response http.ResponseWriter, request *http.Requ
 		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
 		return
 	}
-	handlers.applyOwnerRole(user)
 	writeJSON(response, http.StatusOK, map[string]any{"user": user})
-}
-
-// applyOwnerRole grants the owner role to accounts listed in ADMIN_EMAILS,
-// which is what keeps the admin link visible after a profile edit changes
-// the email address.
-func (handlers authHandlers) applyOwnerRole(user *auth.User) {
-	if _, owner := handlers.ownerEmails[strings.ToLower(user.Email)]; owner {
-		user.AdminRole = admin.RoleOwner
-	}
 }
 
 type profileBody struct {
@@ -373,6 +369,8 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 		return auth.Registration{}, "Некорректный сценарий авторизации"
 	case flow == "register" && fullName == "":
 		return auth.Registration{}, "Укажите имя"
+	case flow == "register" && !body.Consent:
+		return auth.Registration{}, "Подтвердите согласие на обработку персональных данных"
 	case fullName != "" && (len([]rune(fullName)) < 2 || len([]rune(fullName)) > 120):
 		return auth.Registration{}, "Проверьте имя"
 	case email != "" && (!emailPattern.MatchString(email) || len(email) > 254):
@@ -398,6 +396,7 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 		INN:             inn,
 		KPP:             kpp,
 		LegalAddress:    strings.TrimSpace(body.LegalAddress),
+		Consent:         body.Consent,
 	}, ""
 }
 

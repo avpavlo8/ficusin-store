@@ -16,18 +16,21 @@ type TelegramCredentials struct {
 	BotToken string `json:"botToken"`
 }
 
+// TelegramOrder is deliberately free of personal data. Telegram is a
+// foreign service, so sending a customer's name, phone, email or address
+// there would be a cross-border transfer of personal data. The message is
+// only a heads-up that an order arrived; the contacts live in the admin
+// panel, where they never leave our own infrastructure.
 type TelegramOrder struct {
 	OrderNumber    string
-	CustomerName   string
-	Phone          string
-	Email          string
-	Address        string
-	Comment        string
 	DeliveryMethod string
-	DeliveryFee    float64
-	Subtotal       float64
-	Total          float64
-	Items          []TelegramOrderItem
+	// DeliveryCity is the city of a CDEK pick-up point. It says nothing
+	// about a particular person, and the manager needs it to judge urgency.
+	DeliveryCity string
+	DeliveryFee  float64
+	Subtotal     float64
+	Total        float64
+	Items        []TelegramOrderItem
 }
 
 type TelegramOrderItem struct {
@@ -102,25 +105,19 @@ func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder
 			html.EscapeString(money(item.Price*float64(item.Quantity))),
 		))
 	}
+	receiving := deliveryLabels[order.DeliveryMethod]
+	if order.DeliveryCity != "" {
+		receiving += ", " + order.DeliveryCity
+	}
 	lines = append(lines,
 		"",
 		"<b>Товары:</b> "+html.EscapeString(money(order.Subtotal)),
 		"<b>Доставка:</b> "+html.EscapeString(money(order.DeliveryFee)),
 		"<b>Итого:</b> "+html.EscapeString(money(order.Total)),
-		"<b>Получение:</b> "+html.EscapeString(deliveryLabels[order.DeliveryMethod]),
-	)
-	if order.Address != "" {
-		lines = append(lines, "<b>Адрес:</b> "+html.EscapeString(order.Address))
-	}
-	lines = append(lines,
+		"<b>Получение:</b> "+html.EscapeString(receiving),
 		"",
-		"<b>Покупатель:</b> "+html.EscapeString(order.CustomerName),
-		"<b>Телефон:</b> "+html.EscapeString(order.Phone),
-		"<b>Email:</b> "+html.EscapeString(order.Email),
+		"Контакты покупателя — в панели управления.",
 	)
-	if order.Comment != "" {
-		lines = append(lines, "<b>Комментарий:</b> "+html.EscapeString(truncateRunes(order.Comment, 500)))
-	}
 	message := truncateRunes(strings.Join(lines, "\n"), 4000)
 	body, err := json.Marshal(map[string]any{
 		"chat_id":                  client.chatID,

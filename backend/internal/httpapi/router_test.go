@@ -37,7 +37,7 @@ func (authStub) ConfirmCall(
 	string,
 	string,
 	auth.Registration,
-	string,
+	auth.ClientMeta,
 ) (string, time.Time, bool, error) {
 	return "token", time.Now().Add(time.Hour), false, nil
 }

@@ -33,6 +33,10 @@ type createOrderBody struct {
 		CityName   string `json:"cityName"`
 		OfficeCode string `json:"officeCode"`
 	} `json:"cdek"`
+	// Consent mirrors the checkbox under the checkout form. The browser
+	// marks it required, but the server has to see it too — that flag is
+	// the only thing we can later show as evidence of the agreement.
+	Consent bool `json:"consent"`
 }
 
 func createOrderHandler(
@@ -78,6 +82,11 @@ func createOrderHandler(
 		}
 
 		switch {
+		case !body.Consent:
+			writeJSON(response, http.StatusBadRequest, errorResponse{
+				Error: "Подтвердите согласие на обработку персональных данных",
+			})
+			return
 		case name == "" || email == "":
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Заполните имя, телефон и email"})
 			return
@@ -112,6 +121,9 @@ func createOrderHandler(
 				OfficeCode: strings.TrimSpace(body.CDEK.OfficeCode),
 			},
 			CustomerID: customerID,
+			Consent:    true,
+			ClientIP:   clientIP(request),
+			UserAgent:  request.UserAgent(),
 		})
 		var validationError *order.ValidationError
 		if errors.As(err, &validationError) {

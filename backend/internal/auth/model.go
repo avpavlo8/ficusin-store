@@ -13,7 +13,16 @@ var (
 	ErrRegistrationDetailsRequired = errors.New("registration details required")
 	ErrRequestTooSoon              = errors.New("code was requested too recently")
 	ErrEmailTaken                  = errors.New("email already belongs to another account")
+	ErrConsentRequired             = errors.New("consent to data processing is required")
 )
+
+// ClientMeta describes where a request came from. It is stored alongside
+// the consent record so an agreement can be tied to a moment and a device
+// later on.
+type ClientMeta struct {
+	UserAgent string
+	IPAddress string
+}
 
 // Profile carries the fields a signed-in customer may edit from their
 // account page.
@@ -59,4 +68,8 @@ type Registration struct {
 	INN             string
 	KPP             string
 	LegalAddress    string
+	// Consent is the registration form's agreement to the privacy policy
+	// and the offer. Registration is refused without it, and the agreement
+	// is written to consent_events together with the new account.
+	Consent bool
 }

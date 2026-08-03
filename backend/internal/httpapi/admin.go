@@ -30,19 +30,17 @@ type adminRepository interface {
 }
 
 type adminHandlers struct {
-	logger      *slog.Logger
-	auth        authService
-	repository  adminRepository
-	ownerEmails map[string]struct{}
+	logger     *slog.Logger
+	auth       authService
+	repository adminRepository
 }
 
 func newAdminHandlers(
 	logger *slog.Logger,
 	authentication authService,
 	repository adminRepository,
-	ownerEmails map[string]struct{},
 ) adminHandlers {
-	return adminHandlers{logger: logger, auth: authentication, repository: repository, ownerEmails: ownerEmails}
+	return adminHandlers{logger: logger, auth: authentication, repository: repository}
 }
 
 func (handlers adminHandlers) dashboard(response http.ResponseWriter, request *http.Request) {
@@ -319,10 +317,11 @@ func (handlers adminHandlers) authorize(
 		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
 		return nil, admin.Actor{}, false
 	}
+	// The role comes from admin_users and nothing else. It used to be
+	// granted by matching the account's email against a list, but nobody
+	// verifies an email address here, and the account owner can change it
+	// from the profile page — so that match proved nothing.
 	role := user.AdminRole
-	if _, owner := handlers.ownerEmails[strings.ToLower(user.Email)]; owner {
-		role = admin.RoleOwner
-	}
 	if !admin.Can(role, permission) {
 		writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав"})
 		return nil, admin.Actor{}, false
