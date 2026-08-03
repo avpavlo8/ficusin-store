@@ -257,7 +257,11 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 	rows, err := repository.pool.Query(ctx, `
 		SELECT p.id, COALESCE(p.saby_id, ''), p.slug, p.name, p.latin_name,
 			p.short_description, p.description, p.care_instructions, p.status,
-			p.is_featured <> 0,
+			p.is_featured <> 0, p.catalog_section, COALESCE(p.plant_kind, ''),
+			COALESCE(p.light_level, ''), COALESCE(p.watering, ''),
+			COALESCE(p.height_class, ''), COALESCE(p.care_level, ''),
+			COALESCE(p.placement, ''), COALESCE(p.pet_safety, ''),
+			COALESCE(p.growth_habit, ''),
 			COALESCE((SELECT object_key FROM product_media WHERE product_id = p.id
 				ORDER BY is_primary DESC, sort_order LIMIT 1), ''),
 			COALESCE(pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
@@ -285,8 +289,10 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		var item Product
 		if err := rows.Scan(&item.ID, &item.SabyID, &item.Slug, &item.Name,
 			&item.LatinName, &item.ShortDescription, &item.Description,
-			&item.CareInstructions, &item.Status, &item.Featured, &item.Image,
-			&item.Price, &item.Stock, &item.SKU, &item.VariantLabel, &item.HeightCM,
+			&item.CareInstructions, &item.Status, &item.Featured,
+			&item.CatalogSection, &item.PlantKind, &item.LightLevel, &item.Watering,
+			&item.HeightClass, &item.CareLevel, &item.Placement, &item.PetSafety,
+			&item.GrowthHabit, &item.Image, &item.Price, &item.Stock, &item.SKU, &item.VariantLabel, &item.HeightCM,
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.OverrideFields, &item.SabyUpdatedAt); err != nil {
@@ -329,6 +335,25 @@ func (repository *PostgresRepository) UpdateProduct(
 		update.CareInstructions, update.Status, update.Featured, productFields)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product: %w", err)
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE products SET
+			catalog_section = COALESCE(NULLIF($2, ''), catalog_section),
+			plant_kind = CASE WHEN $3::text IS NULL THEN plant_kind ELSE NULLIF($3, '') END,
+			light_level = CASE WHEN $4::text IS NULL THEN light_level ELSE NULLIF($4, '') END,
+			watering = CASE WHEN $5::text IS NULL THEN watering ELSE NULLIF($5, '') END,
+			height_class = CASE WHEN $6::text IS NULL THEN height_class ELSE NULLIF($6, '') END,
+			care_level = CASE WHEN $7::text IS NULL THEN care_level ELSE NULLIF($7, '') END,
+			placement = CASE WHEN $8::text IS NULL THEN placement ELSE NULLIF($8, '') END,
+			pet_safety = CASE WHEN $9::text IS NULL THEN pet_safety ELSE NULLIF($9, '') END,
+			growth_habit = CASE WHEN $10::text IS NULL THEN growth_habit ELSE NULLIF($10, '') END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, update.CatalogSection, update.PlantKind, update.LightLevel, update.Watering,
+		update.HeightClass, update.CareLevel, update.Placement, update.PetSafety,
+		update.GrowthHabit)
+	if err != nil {
+		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE product_variants SET label = COALESCE($2, label),
@@ -546,7 +571,12 @@ func productAuditData(ctx context.Context, query interface {
 	err := query.QueryRow(ctx, `
 		SELECT jsonb_build_object(
 			'name', p.name, 'description', p.description, 'status', p.status,
-			'featured', p.is_featured, 'priceMinor', pv.base_price_minor,
+			'featured', p.is_featured, 'catalogSection', p.catalog_section,
+			'plantKind', p.plant_kind, 'lightLevel', p.light_level,
+			'watering', p.watering, 'heightClass', p.height_class,
+			'careLevel', p.care_level, 'placement', p.placement,
+			'petSafety', p.pet_safety, 'growthHabit', p.growth_habit,
+			'priceMinor', pv.base_price_minor,
 			'variantLabel', pv.label, 'wholesaleMinQty', pv.wholesale_min_qty
 		) FROM products p LEFT JOIN LATERAL (
 			SELECT * FROM product_variants WHERE product_id = p.id ORDER BY is_active DESC, id LIMIT 1
