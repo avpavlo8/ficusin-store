@@ -62,10 +62,10 @@ func (limiter *rateLimiter) allow(key string) bool {
 	return true
 }
 
-// limit wraps a handler so a single client cannot flood it. The message is
+// guard wraps a handler so a single client cannot flood it. The message is
 // written in the caller's own words because these responses reach the
 // customer.
-func (limiter *rateLimiter) limit(message string, next http.HandlerFunc) http.HandlerFunc {
+func (limiter *rateLimiter) guard(message string, next http.HandlerFunc) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		if !limiter.allow(clientIP(request)) {
 			writeJSON(response, http.StatusTooManyRequests, errorResponse{Error: message})

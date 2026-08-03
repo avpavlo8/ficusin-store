@@ -53,7 +53,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
-	mux.HandleFunc("POST /api/v1/auth/request-code", callLimiter.limit(
+	mux.HandleFunc("POST /api/v1/auth/request-code", callLimiter.guard(
 		"Слишком много запросов звонка. Попробуйте через несколько минут",
 		authAPI.requestCode,
 	))
@@ -72,13 +72,13 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"GET /api/v1/account/orders/{orderNumber}",
 		accountOrderHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
-	mux.HandleFunc("GET /api/v1/address/suggest", suggestLimiter.limit(
+	mux.HandleFunc("GET /api/v1/address/suggest", suggestLimiter.guard(
 		"Слишком много запросов. Введите адрес вручную",
 		addressSuggestHandler(logger, dependencies.YandexSuggestKey).ServeHTTP,
 	))
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
-	mux.HandleFunc("POST /api/v1/orders", orderLimiter.limit(
+	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
 		createOrderHandler(logger, dependencies.Auth, dependencies.OrderCreator).ServeHTTP,
 	))
