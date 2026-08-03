@@ -140,6 +140,38 @@ function orderCategoryTree(items: Category[]): { item: Category; depth: number }
   return result;
 }
 
+// The category list is long, so a product card shows only the current
+// choice and reveals the tree on demand instead of an always-open list.
+function CategoryPicker({ categories, value, onChange }: {
+  categories: Category[];
+  value?: number;
+  onChange: (value?: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ordered = orderCategoryTree(categories);
+  const selected = categories.find((item) => item.id === value);
+  return <div className="category-picker">
+    <button type="button" className="category-picker-toggle" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <span>{selected ? selected.name : "Не указано"}</span>
+      <span aria-hidden="true">{open ? "−" : "+"}</span>
+    </button>
+    {open && <div className="category-picker-list">
+      <button type="button" className={value ? "" : "active"} onClick={() => { onChange(undefined); setOpen(false); }}>Не указано</button>
+      {ordered.map(({ item, depth }) => (
+        <button
+          type="button"
+          key={item.id}
+          className={value === item.id ? "active" : ""}
+          style={{ paddingLeft: 12 + depth * 18 }}
+          onClick={() => { onChange(item.id); setOpen(false); }}
+        >
+          {item.name}
+        </button>
+      ))}
+    </div>}
+  </div>;
+}
+
 function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Category[]>([]);
   const [name, setName] = useState("");
@@ -147,9 +179,26 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
   const [parentId, setParentId] = useState("");
   const load = useCallback(() => api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setItems(data.categories)).catch((error) => onError(error.message)), [onError]);
   useEffect(() => { void load(); }, [load]);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const ordered = orderCategoryTree(items);
   const orderedItems = ordered.map((entry) => entry.item);
   const depth = (item: Category) => ordered.find((entry) => entry.item.id === item.id)?.depth ?? 0;
+  // Only rows whose whole chain of parents is expanded are shown; the tree
+  // therefore starts collapsed to the root sections.
+  const visibleItems = orderedItems.filter((item) => {
+    let parent = item.parentId;
+    while (parent) {
+      if (!expanded.has(parent)) return false;
+      parent = items.find((candidate) => candidate.id === parent)?.parentId ?? null;
+    }
+    return true;
+  });
+  const toggle = (id: number) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
   const create = async () => {
     try {
       await api("/api/v1/admin/categories", { method: "POST", body: JSON.stringify({ name, slug, parentId: parentId ? Number(parentId) : null, sortOrder: items.length * 10 }) });
@@ -169,7 +218,19 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
   };
   return <><PageHeading eyebrow="Структура каталога" title="Категории" text="Три уровня: раздел, группа и вид растения. Категории с товарами защищены от удаления." />
     {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.filter((item) => depth(item) < 2).map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
-    <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Категория</th><th>Slug</th><th>Товары</th><th /></tr></thead><tbody>{orderedItems.map((item) => <tr key={item.id}><td><strong style={{ paddingLeft: depth(item) * 24 }}>{depth(item) > 0 ? "↳ " : ""}{item.name}</strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <><button className="admin-action" onClick={() => rename(item)}>Переименовать</button><button className="text-button danger" onClick={() => remove(item)}>Удалить</button></>}</td></tr>)}</tbody></table></div>
+    <div className="admin-toolbar category-expand">
+      <button className="admin-action" onClick={() => setExpanded(new Set(items.map((item) => item.id)))}>Раскрыть всё</button>
+      <button className="admin-action" onClick={() => setExpanded(new Set())}>Свернуть всё</button>
+    </div>
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Категория</th><th>Slug</th><th>Товары</th><th /></tr></thead><tbody>{visibleItems.map((item) => {
+      const hasChildren = items.some((candidate) => candidate.parentId === item.id);
+      return <tr key={item.id}><td><strong style={{ paddingLeft: depth(item) * 24 }}>
+        {hasChildren
+          ? <button className="category-toggle" aria-expanded={expanded.has(item.id)} onClick={() => toggle(item.id)}>{expanded.has(item.id) ? "−" : "+"}</button>
+          : <span className="category-toggle placeholder" aria-hidden="true" />}
+        {item.name}
+      </strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <><button className="admin-action" onClick={() => rename(item)}>Переименовать</button><button className="text-button danger" onClick={() => remove(item)}>Удалить</button></>}</td></tr>;
+    })}</tbody></table></div>
   </>;
 }
 
@@ -238,7 +299,7 @@ function CustomerDialog({ customer, owner, onClose, onSaved, onError }: { custom
     <label>Тип<select value={form.accountType} onChange={(event) => setForm({ ...form, accountType: event.target.value })}><option value="retail">Розница</option><option value="wholesale">Опт</option></select></label>
     <label>Статус опта<select value={form.wholesaleStatus} onChange={(event) => setForm({ ...form, wholesaleStatus: event.target.value })}><option value="not_requested">Не запрашивал</option><option value="pending">На проверке</option><option value="approved">Одобрен</option><option value="rejected">Отклонён</option></select></label>
     {owner && <><label>Скидка, %<input type="number" min="0" max="100" step="0.01" value={form.retailDiscountBps / 100} onChange={(event) => setForm({ ...form, retailDiscountBps: Math.round(Number(event.target.value) * 100) })} /></label>
-    {form.adminRole === "owner" ? <label>Роль в админке<input value="Владелец — назначен через секрет" disabled /></label> : <label>Роль в админке<select value={form.adminRole} onChange={(event) => setForm({ ...form, adminRole: event.target.value as Role })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>}
+    {form.adminRole === "owner" ? <label>Роль в панели управления<input value="Владелец — назначен через секрет" disabled /></label> : <label>Роль в панели управления<select value={form.adminRole} onChange={(event) => setForm({ ...form, adminRole: event.target.value as Role })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>}
     <label className="admin-checkbox"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />Аккаунт активен</label></>}
   </div><section className="customer-orders"><h3>Заказы клиента</h3>{orders.length === 0 ? <p>Заказов пока нет.</p> : orders.slice(0, 10).map((order) => <article key={order.id}><div><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleDateString("ru-RU")}</small></div><span>{money.format(order.total)}</span><b>{statusLabels[order.status] || order.status}</b></article>)}</section><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" onClick={save}>Сохранить</button></div></Dialog>;
 }
@@ -312,7 +373,7 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">Уход<textarea rows={4} value={form.careInstructions} onChange={(event) => setForm({ ...form, careInstructions: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
-    <label className="wide">Категория<select value={form.categoryId || ""} onChange={(event) => setForm({ ...form, categoryId: event.target.value ? Number(event.target.value) : undefined })}><option value="">Не указано</option>{orderCategoryTree(categories).map(({ item, depth }) => <option key={item.id} value={item.id}>{`${"— ".repeat(depth)}${item.name}`}</option>)}</select></label>
+    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId) => setForm({ ...form, categoryId })} /></div>
     <label>Освещённость<select value={form.lightLevel || ""} onChange={(event) => setForm({ ...form, lightLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.lightLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Полив<select value={form.watering || ""} onChange={(event) => setForm({ ...form, watering: event.target.value })}><option value="">Не указано</option>{catalogOptions.watering.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Высота<select value={form.heightClass || ""} onChange={(event) => setForm({ ...form, heightClass: event.target.value })}><option value="">Не указано</option>{catalogOptions.heightClass.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

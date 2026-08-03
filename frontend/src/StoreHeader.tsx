@@ -18,8 +18,27 @@ export function AccountMenu({ user }: { user: StoreUser | null }) {
   const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
   if (!staff) return <a className="account-button" href="/account"><span>◯</span><span>{name}</span></a>;
   return <details className="account-menu"><summary className="account-button"><span>◯</span><span>{name}</span></summary>
-    <div><a href="/account">Личный профиль</a><a href="/admin">Админка</a></div>
+    <div><a href="/account">Личный профиль</a><a href="/admin">Панель управления</a></div>
   </details>;
+}
+
+// Pages without their own product list (a product card, the account area)
+// still show the search box: submitting it hands the query to the catalog,
+// which is the only page that can display results.
+function CatalogSearchForm() {
+  const [value, setValue] = useState("");
+  return <form
+    className="header-search"
+    onSubmit={(event) => {
+      event.preventDefault();
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
+    }}
+  >
+    <span aria-hidden="true">⌕</span>
+    <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="Поиск по каталогу" />
+  </form>;
 }
 
 export function StoreHeader({ cartCount = 0, favoritesCount = 0, query, onQueryChange }: { cartCount?: number; favoritesCount?: number; query?: string; onQueryChange?: (value: string) => void }) {
@@ -28,7 +47,9 @@ export function StoreHeader({ cartCount = 0, favoritesCount = 0, query, onQueryC
     <header className="header"><a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a>
       <nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/#care">Уход</a><a href="/#delivery">Доставка</a></nav>
       <div className="header-actions">
-        {onQueryChange && <label className="header-search"><span>⌕</span><input value={query || ""} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск по каталогу" /></label>}
+        {onQueryChange
+          ? <label className="header-search"><span>⌕</span><input value={query || ""} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск по каталогу" /></label>
+          : <CatalogSearchForm />}
         <AccountMenu user={user} />
         <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favoritesCount}`}><span>♥</span><b>{favoritesCount}</b></a>
         <a className="cart-button" href="/?cart=1"><span>Корзина</span><b>{cartCount}</b></a>

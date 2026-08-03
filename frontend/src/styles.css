@@ -739,6 +739,21 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .catalog-content { min-width: 0; }
 .category-tree { padding: 22px; position: sticky; top: 105px; border: 1px solid var(--line); border-radius: 18px; background: #fff; }
 .category-tree h2 { margin: 0 0 18px; color: var(--green); font: 400 28px Georgia,serif; }
+.category-tree-toggle { width: 100%; margin: 0 0 6px; padding: 4px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; background: transparent; color: var(--green); font: 400 28px Georgia,serif; text-align: left; cursor: pointer; }
+.category-tree-toggle span:last-child { font: 600 20px system-ui,sans-serif; }
+.category-root > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.category-children > div > button:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.category-caret { color: #8a938b; font-weight: 600; }
+.category-toggle { width: 22px; height: 22px; margin-right: 8px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: #58645c; font-weight: 700; line-height: 1; cursor: pointer; }
+.category-toggle.placeholder { border-color: transparent; background: transparent; }
+.category-expand { gap: 8px; }
+.category-picker { position: relative; }
+.category-picker-toggle { width: 100%; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: inherit; text-align: left; cursor: pointer; }
+.category-picker-list { max-height: 260px; margin-top: 6px; padding: 6px; display: grid; overflow: auto; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.category-picker-list button { padding: 8px 12px; border: 0; border-radius: 7px; background: transparent; color: #58645c; text-align: left; font-size: 13px; cursor: pointer; }
+.category-picker-list button:hover, .category-picker-list button.active { background: #edf2ec; color: var(--green); }
+.admin-field { display: grid; gap: 6px; }
+.admin-field-label { font-size: 13px; font-weight: 600; }
 .category-root { border-top: 1px solid var(--line); }
 .category-root > button { width: 100%; padding: 14px 4px; border: 0; background: transparent; color: var(--green); text-align: left; font-weight: 800; cursor: pointer; }
 .category-children { max-height: 390px; padding: 0 0 11px 10px; overflow: auto; }
