@@ -36,7 +36,9 @@ type Product = {
   sku: string; variantLabel: string; heightCm?: number; potDiameterCm?: number;
   packageLengthCm?: number; packageWidthCm?: number; packageHeightCm?: number;
   packageWeightGrams?: number; wholesaleMinQty: number; overrideFields: string[];
-  sabyUpdatedAt?: string;
+  catalogSection: string; plantKind?: string; lightLevel?: string; watering?: string;
+  heightClass?: string; careLevel?: string; placement?: string; petSafety?: string;
+  growthHabit?: string; sabyUpdatedAt?: string;
 };
 
 const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 });
@@ -50,6 +52,18 @@ const statusLabels: Record<string, string> = {
   shipped: "Отправлен", completed: "Завершён", cancelled: "Отменён",
   draft: "Черновик", published: "Опубликован", archived: "В архиве",
 };
+
+const catalogOptions = {
+  catalogSection: [["plants", "Растения"], ["soil", "Грунт"], ["fertilizer", "Удобрения"], ["pots", "Кашпо и горшки"], ["accessories", "Аксессуары"]],
+  plantKind: [["aglaonema", "Аглаонема"], ["alocasia", "Алоказия"], ["pineapple", "Ананас"], ["bonsai", "Бонсай"]],
+  lightLevel: [["sunny", "Солнечная сторона"], ["diffused", "Яркий рассеянный свет"], ["low_light", "Затемнённое место"]],
+  watering: [["frequent", "Частый"], ["moderate", "Умеренный"], ["rare", "Редкий"]],
+  heightClass: [["low", "Низкий"], ["medium", "Средний"], ["high", "Высокий"]],
+  careLevel: [["easy", "Почти не требует ухода"], ["medium", "Обычный уход"], ["demanding", "Капризный"]],
+  placement: [["bathroom", "Ванная"], ["bedroom", "Спальня"], ["office", "Офис"], ["nursery", "Детская"]],
+  petSafety: [["safe", "Безопасно для питомцев"], ["caution", "Требует осторожности"]],
+  growthHabit: [["compact", "Компактный"], ["upright", "Прямостоячий"], ["trailing", "Ампельный"], ["climbing", "Вьющийся"]],
+} satisfies Record<string, string[][]>;
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -221,7 +235,10 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
         variantLabel: form.variantLabel, heightCm: form.heightCm, potDiameterCm: form.potDiameterCm,
         packageLengthCm: form.packageLengthCm, packageWidthCm: form.packageWidthCm,
         packageHeightCm: form.packageHeightCm, packageWeightGrams: form.packageWeightGrams,
-        wholesaleMinQty: form.wholesaleMinQty,
+        wholesaleMinQty: form.wholesaleMinQty, catalogSection: form.catalogSection,
+        plantKind: form.plantKind || "", lightLevel: form.lightLevel || "", watering: form.watering || "",
+        heightClass: form.heightClass || "", careLevel: form.careLevel || "", placement: form.placement || "",
+        petSafety: form.petSafety || "", growthHabit: form.growthHabit || "",
       }) }); onSaved(result.product);
     } catch (error) { onError((error as Error).message); }
   };
@@ -234,6 +251,15 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">Уход<textarea rows={4} value={form.careInstructions} onChange={(event) => setForm({ ...form, careInstructions: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
+    <label>Раздел каталога<select value={form.catalogSection || "plants"} onChange={(event) => setForm({ ...form, catalogSection: event.target.value })}>{catalogOptions.catalogSection.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Вид растения<select value={form.plantKind || ""} onChange={(event) => setForm({ ...form, plantKind: event.target.value })}><option value="">Не указано</option>{catalogOptions.plantKind.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Освещённость<select value={form.lightLevel || ""} onChange={(event) => setForm({ ...form, lightLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.lightLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Полив<select value={form.watering || ""} onChange={(event) => setForm({ ...form, watering: event.target.value })}><option value="">Не указано</option>{catalogOptions.watering.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Высота<select value={form.heightClass || ""} onChange={(event) => setForm({ ...form, heightClass: event.target.value })}><option value="">Не указано</option>{catalogOptions.heightClass.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Сложность ухода<select value={form.careLevel || ""} onChange={(event) => setForm({ ...form, careLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.careLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Подходит для<select value={form.placement || ""} onChange={(event) => setForm({ ...form, placement: event.target.value })}><option value="">Не указано</option>{catalogOptions.placement.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Для питомцев<select value={form.petSafety || ""} onChange={(event) => setForm({ ...form, petSafety: event.target.value })}><option value="">Не указано</option>{catalogOptions.petSafety.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Форма роста<select value={form.growthHabit || ""} onChange={(event) => setForm({ ...form, growthHabit: event.target.value })}><option value="">Не указано</option>{catalogOptions.growthHabit.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
     <label>Оптовый минимум<input type="number" min="1" value={form.wholesaleMinQty} onChange={(event) => setForm({ ...form, wholesaleMinQty: Number(event.target.value) })} /></label>
     <label>Высота растения, см<input type="number" value={number(form.heightCm)} onChange={(event) => setNumeric("heightCm", event.target.value)} /></label>
