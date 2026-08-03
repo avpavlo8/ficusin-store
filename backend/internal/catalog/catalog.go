@@ -16,7 +16,16 @@ type Product struct {
 	Image    string  `json:"image"`
 	Light    string  `json:"light"`
 	Size     string  `json:"size"`
-	Stock    int     `json:"stock"`
+	Stock          int     `json:"stock"`
+	CatalogSection string  `json:"catalogSection"`
+	PlantKind      string  `json:"plantKind,omitempty"`
+	LightLevel     string  `json:"lightLevel,omitempty"`
+	Watering       string  `json:"watering,omitempty"`
+	HeightClass    string  `json:"heightClass,omitempty"`
+	CareLevel      string  `json:"careLevel,omitempty"`
+	Placement      string  `json:"placement,omitempty"`
+	PetSafety      string  `json:"petSafety,omitempty"`
+	GrowthHabit    string  `json:"growthHabit,omitempty"`
 }
 
 type ProductDetail struct {
@@ -28,7 +37,16 @@ type ProductDetail struct {
 	CareInstructions string    `json:"careInstructions"`
 	Images           []string  `json:"images"`
 	Variants         []Variant `json:"variants"`
-	Recommendations  []Product `json:"recommendations"`
+	Recommendations []Product `json:"recommendations"`
+	CatalogSection string    `json:"catalogSection"`
+	PlantKind      string    `json:"plantKind,omitempty"`
+	LightLevel     string    `json:"lightLevel,omitempty"`
+	Watering       string    `json:"watering,omitempty"`
+	HeightClass    string    `json:"heightClass,omitempty"`
+	CareLevel      string    `json:"careLevel,omitempty"`
+	Placement      string    `json:"placement,omitempty"`
+	PetSafety      string    `json:"petSafety,omitempty"`
+	GrowthHabit    string    `json:"growthHabit,omitempty"`
 }
 
 type Variant struct {
