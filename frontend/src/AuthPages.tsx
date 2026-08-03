@@ -225,7 +225,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
       <AuthHeader />
       <section className="auth-shell auth-shell-compact">
         <div className="auth-intro">
-          <p className="eyebrow">Личный кабинет</p>
+          <p className="eyebrow">Профиль покупателя</p>
           <h1>
             {step === "waiting"
               ? "Подтвердите номер звонком"
@@ -503,7 +503,7 @@ export function AccountPage() {
         <div className="account-content">
           <div className="account-title">
             <div>
-              <p className="eyebrow">Личный кабинет</p>
+              <p className="eyebrow">Профиль покупателя</p>
               <h2>Мои заказы</h2>
             </div>
             <span>{user.accountType === "wholesale" ? "Оптовый клиент" : "Розничный клиент"}</span>
