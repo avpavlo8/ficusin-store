@@ -28,7 +28,7 @@ type Product = {
   categoryId?: number;
 };
 
-type Category = { id: number; parentId?: number; name: string; slug: string; sortOrder: number };
+type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
 
 type StoreUser = {
   id: number;
