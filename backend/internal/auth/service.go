@@ -240,6 +240,45 @@ func (service *Service) createCustomer(
 	return customerID, nil
 }
 
+// UpdateProfile saves the fields a customer may edit from their account
+// page. Phone and account type stay read-only: the phone identifies the
+// account, and switching to wholesale goes through the reviewed-details
+// flow instead. The caller re-reads the profile afterwards so the response
+// matches what /auth/me would return, admin role included.
+func (service *Service) UpdateProfile(
+	ctx context.Context,
+	customerID int64,
+	profile Profile,
+) error {
+	tag, err := service.pool.Exec(ctx, `
+		UPDATE customers SET
+			full_name = $2,
+			last_name = $3,
+			patronymic = $4,
+			email = NULLIF($5, ''),
+			delivery_address = $6,
+			updated_at = CURRENT_TIMESTAMP
+				WHERE id = $1 AND is_active = TRUE
+	`,
+		customerID,
+		profile.FullName,
+		profile.LastName,
+		profile.Patronymic,
+		profile.Email,
+		profile.DeliveryAddress,
+	)
+	if isUniqueViolation(err) {
+		return ErrEmailTaken
+	}
+	if err != nil {
+		return fmt.Errorf("update customer profile: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAccountNotFound
+	}
+	return nil
+}
+
 func (service *Service) Logout(ctx context.Context, rawToken string) error {
 	if rawToken == "" {
 		return nil

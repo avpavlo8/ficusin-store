@@ -12,7 +12,18 @@ var (
 	ErrTooManyAttempts             = errors.New("too many attempts")
 	ErrRegistrationDetailsRequired = errors.New("registration details required")
 	ErrRequestTooSoon              = errors.New("code was requested too recently")
+	ErrEmailTaken                  = errors.New("email already belongs to another account")
 )
+
+// Profile carries the fields a signed-in customer may edit from their
+// account page.
+type Profile struct {
+	FullName        string
+	LastName        string
+	Patronymic      string
+	Email           string
+	DeliveryAddress string
+}
 
 type User struct {
 	ID                int64  `json:"id"`
