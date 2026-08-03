@@ -92,19 +92,20 @@ func (worker *NotificationWorker) load(
 	ctx context.Context,
 	orderID int64,
 ) (integration.TelegramOrder, error) {
+	// Only non-personal columns are selected: the notification goes to
+	// Telegram, and contacts must not leave our own infrastructure.
 	var notification integration.TelegramOrder
 	if err := worker.pool.QueryRow(ctx, `
 		SELECT
-			order_number, customer_name, phone, email, address, comment,
-			delivery_method, delivery_fee::DOUBLE PRECISION,
+			order_number, delivery_method, COALESCE(cdek_city_name, ''),
+			delivery_fee::DOUBLE PRECISION,
 			subtotal::DOUBLE PRECISION, total::DOUBLE PRECISION
 		FROM orders
 		WHERE id = $1 AND telegram_notified_at IS NULL
 	`, orderID).Scan(
-		&notification.OrderNumber, &notification.CustomerName,
-		&notification.Phone, &notification.Email, &notification.Address,
-		&notification.Comment, &notification.DeliveryMethod,
-		&notification.DeliveryFee, &notification.Subtotal, &notification.Total,
+		&notification.OrderNumber, &notification.DeliveryMethod,
+		&notification.DeliveryCity, &notification.DeliveryFee,
+		&notification.Subtotal, &notification.Total,
 	); err != nil {
 		return integration.TelegramOrder{}, fmt.Errorf("load order: %w", err)
 	}
