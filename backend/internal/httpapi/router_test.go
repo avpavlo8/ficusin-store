@@ -42,6 +42,10 @@ func (authStub) ConfirmCall(
 	return "token", time.Now().Add(time.Hour), false, nil
 }
 
+func (authStub) UpdateProfile(context.Context, int64, auth.Profile) error {
+	return nil
+}
+
 func (authStub) Logout(context.Context, string) error {
 	return nil
 }

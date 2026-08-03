@@ -16,10 +16,21 @@ type recordingAuthService struct {
 	phone        string
 	checkID      string
 	registration auth.Registration
+	profile      auth.Profile
 	requestErr   error
 	confirmErr   error
+	profileErr   error
 	pending      bool
 	user         *auth.User
+}
+
+func (service *recordingAuthService) UpdateProfile(
+	_ context.Context,
+	_ int64,
+	profile auth.Profile,
+) error {
+	service.profile = profile
+	return service.profileErr
 }
 
 func (service *recordingAuthService) RequestCall(_ context.Context, phone string) (string, string, string, error) {
@@ -297,6 +308,119 @@ func TestVerifyCallReturnsConflictForDuplicateRegistration(t *testing.T) {
 			"accountType":"retail"
 		}`),
 	)
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
+func TestUpdateProfileNormalizesAndSaves(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{user: &auth.User{ID: 42, FullName: "Старое"}}
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/account/profile", strings.NewReader(`{
+		"fullName": " Александр ",
+		"lastName": " Павлов ",
+		"email": " TEST@EXAMPLE.COM ",
+		"deliveryAddress": " Рязань, ул. Ленина 1 "
+	}`))
+	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+	if service.profile.FullName != "Александр" || service.profile.LastName != "Павлов" {
+		t.Fatalf("name = %q %q", service.profile.FullName, service.profile.LastName)
+	}
+	if service.profile.Email != "test@example.com" {
+		t.Fatalf("email = %q", service.profile.Email)
+	}
+	if service.profile.DeliveryAddress != "Рязань, ул. Ленина 1" {
+		t.Fatalf("deliveryAddress = %q", service.profile.DeliveryAddress)
+	}
+}
+
+func TestUpdateProfileRejectsMissingName(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{user: &auth.User{ID: 42}}
+	request := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/account/profile",
+		strings.NewReader(`{"fullName":" "}`),
+	)
+	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
+func TestUpdateProfileRejectsInvalidEmail(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{user: &auth.User{ID: 42}}
+	request := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/account/profile",
+		strings.NewReader(`{"fullName":"Александр","email":"not-an-email"}`),
+	)
+	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
+func TestUpdateProfileRequiresSession(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/account/profile",
+		strings.NewReader(`{"fullName":"Александр"}`),
+	)
+	response := httptest.NewRecorder()
+
+	NewRouter(
+		discardLogger(),
+		testDependencies(catalogStub{}, &recordingAuthService{}),
+	).ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d", response.Code)
+	}
+}
+
+func TestUpdateProfileReportsDuplicateEmail(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{
+		user:       &auth.User{ID: 42},
+		profileErr: auth.ErrEmailTaken,
+	}
+	request := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/account/profile",
+		strings.NewReader(`{"fullName":"Александр","email":"taken@example.com"}`),
+	)
+	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).

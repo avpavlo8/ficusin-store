@@ -119,6 +119,27 @@ function Nav({ active, onClick, icon, children }: { active: boolean; onClick: ()
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span>{children}</button>;
 }
 
+// Flattens the category tree into the order it reads in: each parent is
+// followed by its own children, siblings sorted by sortOrder and then by
+// name. Every consumer that lists categories uses this, so the admin sees
+// the same order in the tree, in the parent picker and on a product card.
+function orderCategoryTree(items: Category[]): { item: Category; depth: number }[] {
+  const result: { item: Category; depth: number }[] = [];
+  const append = (parentId: number | null, depth: number) => {
+    items
+      .filter((item) => item.parentId === parentId)
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "ru"))
+      .forEach((item) => { result.push({ item, depth }); append(item.id, depth + 1); });
+  };
+  append(null, 0);
+  // Categories whose parent is missing would otherwise vanish from the list.
+  items
+    .filter((item) => item.parentId !== null && !items.some((parent) => parent.id === item.parentId))
+    .sort((left, right) => left.name.localeCompare(right.name, "ru"))
+    .forEach((item) => result.push({ item, depth: 0 }));
+  return result;
+}
+
 function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Category[]>([]);
   const [name, setName] = useState("");
@@ -126,26 +147,9 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
   const [parentId, setParentId] = useState("");
   const load = useCallback(() => api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setItems(data.categories)).catch((error) => onError(error.message)), [onError]);
   useEffect(() => { void load(); }, [load]);
-  const depth = (item: Category) => {
-    let value = 0;
-    let parent = item.parentId;
-    while (parent && value < 3) {
-      value += 1;
-      parent = items.find((candidate) => candidate.id === parent)?.parentId ?? null;
-    }
-    return value;
-  };
-  const orderedItems = (() => {
-    const result: Category[] = [];
-    const append = (parentId: number | null) => {
-      items
-        .filter((item) => item.parentId === parentId)
-        .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "ru"))
-        .forEach((item) => { result.push(item); append(item.id); });
-    };
-    append(null);
-    return result;
-  })();
+  const ordered = orderCategoryTree(items);
+  const orderedItems = ordered.map((entry) => entry.item);
+  const depth = (item: Category) => ordered.find((entry) => entry.item.id === item.id)?.depth ?? 0;
   const create = async () => {
     try {
       await api("/api/v1/admin/categories", { method: "POST", body: JSON.stringify({ name, slug, parentId: parentId ? Number(parentId) : null, sortOrder: items.length * 10 }) });
@@ -308,7 +312,7 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">Уход<textarea rows={4} value={form.careInstructions} onChange={(event) => setForm({ ...form, careInstructions: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
-    <label className="wide">Категория<select value={form.categoryId || ""} onChange={(event) => setForm({ ...form, categoryId: event.target.value ? Number(event.target.value) : undefined })}><option value="">Не указано</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <label className="wide">Категория<select value={form.categoryId || ""} onChange={(event) => setForm({ ...form, categoryId: event.target.value ? Number(event.target.value) : undefined })}><option value="">Не указано</option>{orderCategoryTree(categories).map(({ item, depth }) => <option key={item.id} value={item.id}>{`${"— ".repeat(depth)}${item.name}`}</option>)}</select></label>
     <label>Освещённость<select value={form.lightLevel || ""} onChange={(event) => setForm({ ...form, lightLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.lightLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Полив<select value={form.watering || ""} onChange={(event) => setForm({ ...form, watering: event.target.value })}><option value="">Не указано</option>{catalogOptions.watering.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Высота<select value={form.heightClass || ""} onChange={(event) => setForm({ ...form, heightClass: event.target.value })}><option value="">Не указано</option>{catalogOptions.heightClass.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -325,7 +329,7 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label>Высота, см<input type="number" value={number(form.packageHeightCm)} onChange={(event) => setNumeric("packageHeightCm", event.target.value)} /></label>
     <label>Вес, г<input type="number" value={number(form.packageWeightGrams)} onChange={(event) => setNumeric("packageWeightGrams", event.target.value)} /></label>
     <label>Статус<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Черновик</option><option value="published">Опубликован</option><option value="archived">Архив</option></select></label>
-    <label className="admin-checkbox"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />Показывать среди избранных</label>
+    <label className="admin-checkbox"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />Поднимать в начало каталога</label>
   </div><p className="admin-hint">Ручные изменения защищены от фоновой синхронизации. Вернуть поле к данным СБИС можно кнопкой «Синхронизировать».</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" onClick={save}>Сохранить</button></div></Dialog>;
 }
 

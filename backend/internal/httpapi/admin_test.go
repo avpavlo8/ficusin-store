@@ -24,6 +24,10 @@ func (stub adminAuthStub) ConfirmCall(context.Context, string, string, auth.Regi
 	return "", time.Time{}, false, nil
 }
 
+func (stub adminAuthStub) UpdateProfile(context.Context, int64, auth.Profile) error {
+	return nil
+}
+
 func (stub adminAuthStub) Logout(context.Context, string) error {
 	return nil
 }
