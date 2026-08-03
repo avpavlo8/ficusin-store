@@ -21,13 +21,13 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 		SELECT id, slug, name, latin_name, short_description, description, care_instructions,
 			catalog_section, COALESCE(plant_kind, ''), COALESCE(light_level, ''),
 			COALESCE(watering, ''), COALESCE(height_class, ''), COALESCE(care_level, ''),
-			COALESCE(placement, ''), COALESCE(pet_safety, ''), COALESCE(growth_habit, '')
+			COALESCE(placement, ''), COALESCE(pet_safety, ''), COALESCE(growth_habit, ''), category_id
 		FROM products WHERE slug = $1 AND status = 'published' LIMIT 1
 	`, slug).Scan(&productID, &detail.ID, &detail.Name, &detail.Latin,
 		&detail.ShortDescription, &detail.Description, &detail.CareInstructions,
 		&detail.CatalogSection, &detail.PlantKind, &detail.LightLevel,
 		&detail.Watering, &detail.HeightClass, &detail.CareLevel,
-		&detail.Placement, &detail.PetSafety, &detail.GrowthHabit)
+		&detail.Placement, &detail.PetSafety, &detail.GrowthHabit, &detail.CategoryID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ProductDetail{}, ErrNotFound
 	}
@@ -122,6 +122,9 @@ func recommendationScore(current ProductDetail, candidate Product) int {
 	if current.CatalogSection == candidate.CatalogSection {
 		score += 6
 	}
+	if current.CategoryID != nil && candidate.CategoryID != nil && *current.CategoryID == *candidate.CategoryID {
+		score += 8
+	}
 	pairs := [][2]string{
 		{current.PlantKind, candidate.PlantKind},
 		{current.LightLevel, candidate.LightLevel},
@@ -148,6 +151,24 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{pool: pool}
 }
 
+func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := repository.pool.Query(ctx, `
+		SELECT id, parent_id, name, slug, sort_order
+		FROM categories WHERE active = 1 ORDER BY sort_order, name
+	`)
+	if err != nil { return nil, fmt.Errorf("query categories: %w", err) }
+	defer rows.Close()
+	result := make([]Category, 0)
+	for rows.Next() {
+		var item Category
+		if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Slug, &item.SortOrder); err != nil {
+			return nil, fmt.Errorf("scan category: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
 func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Product, error) {
 	const query = `
 		SELECT
@@ -171,7 +192,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			p.catalog_section, COALESCE(p.plant_kind, ''), COALESCE(p.light_level, ''),
 			COALESCE(p.watering, ''), COALESCE(p.height_class, ''),
 			COALESCE(p.care_level, ''), COALESCE(p.placement, ''),
-			COALESCE(p.pet_safety, ''), COALESCE(p.growth_habit, '')
+			COALESCE(p.pet_safety, ''), COALESCE(p.growth_habit, ''), p.category_id
 		FROM products p
 		JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
 		LEFT JOIN inventory i ON i.variant_id = pv.id
@@ -210,6 +231,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			&product.Placement,
 			&product.PetSafety,
 			&product.GrowthHabit,
+			&product.CategoryID,
 		); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)
 		}
