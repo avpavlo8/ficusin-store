@@ -67,6 +67,7 @@ func testDependencies(catalog catalogRepository, authentication authService) Dep
 func (stub catalogStub) ListAvailable(context.Context) ([]catalog.Product, error) {
 	return stub.products, stub.err
 }
+func (stub catalogStub) ListCategories(context.Context) ([]catalog.Category,error){ return []catalog.Category{},stub.err }
 
 func (stub catalogStub) DetailBySlug(context.Context, string) (catalog.ProductDetail, error) {
 	return stub.detail, stub.detailErr
