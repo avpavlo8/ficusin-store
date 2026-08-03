@@ -50,6 +50,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := admin.BootstrapOwners(ctx, pool, logger, cfg.AdminEmails); err != nil {
+		logger.Error("administrator bootstrap failed", "error", err)
+		os.Exit(1)
+	}
+
 	catalogRepository := catalog.NewPostgresRepository(pool)
 	callChecker := integration.NewSMSRUClient(cfg.SMS.APIKey)
 	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
@@ -83,7 +88,6 @@ func main() {
 			CDEK:         cdekClient,
 			Admin:        adminRepository,
 			Saby:         sabyService,
-			AdminEmails:  cfg.AdminEmails,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
 
