@@ -154,6 +154,15 @@ type Product struct {
 	CareInstructions   string     `json:"careInstructions"`
 	Status             string     `json:"status"`
 	Featured           bool       `json:"featured"`
+	CatalogSection     string     `json:"catalogSection"`
+	PlantKind          string     `json:"plantKind"`
+	LightLevel         string     `json:"lightLevel"`
+	Watering           string     `json:"watering"`
+	HeightClass        string     `json:"heightClass"`
+	CareLevel          string     `json:"careLevel"`
+	Placement          string     `json:"placement"`
+	PetSafety          string     `json:"petSafety"`
+	GrowthHabit        string     `json:"growthHabit"`
 	Image              string     `json:"image"`
 	Price              float64    `json:"price"`
 	Stock              int        `json:"stock"`
@@ -178,6 +187,15 @@ type ProductUpdate struct {
 	CareInstructions   *string `json:"careInstructions"`
 	Status             *string `json:"status"`
 	Featured           *bool   `json:"featured"`
+	CatalogSection     *string `json:"catalogSection"`
+	PlantKind          *string `json:"plantKind"`
+	LightLevel         *string `json:"lightLevel"`
+	Watering           *string `json:"watering"`
+	HeightClass        *string `json:"heightClass"`
+	CareLevel          *string `json:"careLevel"`
+	Placement          *string `json:"placement"`
+	PetSafety          *string `json:"petSafety"`
+	GrowthHabit        *string `json:"growthHabit"`
 	Image              *string `json:"image"`
 	PriceMinor         *int64  `json:"priceMinor"`
 	VariantLabel       *string `json:"variantLabel"`
