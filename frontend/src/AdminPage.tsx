@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 type Role = "owner" | "manager" | "";
 type Section = "dashboard" | "products" | "categories" | "orders" | "customers";
-type Category = { id: number; parentId?: number; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
+type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
 
 type AdminData = {
   user: { fullName: string };
@@ -124,26 +124,26 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [parentId, setParentId] = useState("");
-  const load = () => api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setItems(data.categories)).catch((error) => onError(error.message));
-  useEffect(load, []);
+  const load = useCallback(() => api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setItems(data.categories)).catch((error) => onError(error.message)), [onError]);
+  useEffect(() => { void load(); }, [load]);
   const depth = (item: Category) => {
     let value = 0;
     let parent = item.parentId;
     while (parent && value < 3) {
       value += 1;
-      parent = items.find((candidate) => candidate.id === parent)?.parentId;
+      parent = items.find((candidate) => candidate.id === parent)?.parentId ?? null;
     }
     return value;
   };
   const orderedItems = (() => {
     const result: Category[] = [];
-    const append = (parentId?: number) => {
+    const append = (parentId: number | null) => {
       items
         .filter((item) => item.parentId === parentId)
         .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "ru"))
         .forEach((item) => { result.push(item); append(item.id); });
     };
-    append(undefined);
+    append(null);
     return result;
   })();
   const create = async () => {
