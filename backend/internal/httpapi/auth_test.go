@@ -185,6 +185,26 @@ func TestMeReturnsUser(t *testing.T) {
 	}
 }
 
+func TestMeReturnsEffectiveOwnerRole(t *testing.T) {
+	t.Parallel()
+
+	service := &recordingAuthService{user: &auth.User{
+		ID: 42, Email: "Owner@Example.com", FullName: "Александр",
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "token"})
+	response := httptest.NewRecorder()
+	dependencies := testDependencies(catalogStub{}, service)
+	dependencies.AdminEmails = []string{"owner@example.com"}
+
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), `"adminRole":"owner"`) {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
 func TestMeRejectsMissingCookie(t *testing.T) {
 	t.Parallel()
 
