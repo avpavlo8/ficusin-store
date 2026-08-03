@@ -3,6 +3,7 @@ import {
   formatRussianPhoneInput,
   normalizeRussianPhone,
 } from "./lib/phone";
+import { AccountMenu } from "./StoreHeader";
 
 type Product = {
   id: string;
@@ -24,7 +25,10 @@ type Product = {
   placement?: string;
   petSafety?: string;
   growthHabit?: string;
+  categoryId?: number;
 };
+
+type Category = { id: number; parentId?: number; name: string; slug: string; sortOrder: number };
 
 type StoreUser = {
   id: number;
@@ -61,20 +65,6 @@ type CdekQuote = {
   daysMax: number;
 };
 
-const catalogSections = [
-  { value: "plants", label: "Растения", icon: "⌁", text: "Живые растения для дома" },
-  { value: "soil", label: "Грунт", icon: "◒", text: "Для посадки и пересадки" },
-  { value: "fertilizer", label: "Удобрения", icon: "✦", text: "Питание и укрепление" },
-  { value: "pots", label: "Кашпо и горшки", icon: "◡", text: "Дом для каждого растения" },
-  { value: "accessories", label: "Аксессуары", icon: "⌇", text: "Уход, опоры и инструменты" },
-];
-const plantKinds = [
-  { value: "", label: "Все растения" },
-  { value: "aglaonema", label: "Аглаонема" },
-  { value: "alocasia", label: "Алоказия" },
-  { value: "pineapple", label: "Ананас" },
-  { value: "bonsai", label: "Бонсай" },
-];
 const collections: Array<{ id: string; title: string; text: string; field: keyof Product; value: string; icon: string }> = [
   { id: "sunny", title: "Для солнечной стороны", text: "Любят много света", field: "lightLevel", value: "sunny", icon: "☀" },
   { id: "low-light", title: "Для затемнённых мест", text: "Комфортно вдали от окна", field: "lightLevel", value: "low_light", icon: "◐" },
@@ -100,10 +90,10 @@ export default function Home() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
   const [catalogSection, setCatalogSection] = useState("plants");
-  const [plantKind, setPlantKind] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [collection, setCollection] = useState("");
   const [query, setQuery] = useState("");
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
       return new Set(JSON.parse(window.localStorage.getItem("ficusin-favorites") || "[]") as string[]);
@@ -152,7 +142,17 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("cart") === "1") setCartOpen(true);
-    if (params.get("favorites") === "1") setFavoritesOnly(true);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/v1/categories", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: { categories?: Category[] }) => {
+        const items = data.categories || [];
+        setCategories(items);
+        const plants = items.find((item) => item.slug === "plants");
+        if (plants) setSelectedCategory(plants.id);
+      }).catch(() => setCategories([]));
   }, []);
 
   useEffect(() => {
@@ -264,17 +264,27 @@ export default function Home() {
   }, [delivery, cdekCityQuery, cdekCity]);
 
   const selectedCollection = collections.find((item) => item.id === collection);
+  const categoryIDs = useMemo(() => {
+    if (!selectedCategory) return new Set<number>();
+    const result = new Set<number>([selectedCategory]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      categories.forEach((item) => {
+        if (item.parentId && result.has(item.parentId) && !result.has(item.id)) { result.add(item.id); changed = true; }
+      });
+    }
+    return result;
+  }, [categories, selectedCategory]);
   const filtered = useMemo(
     () =>
       products.filter((product) => {
-        const inSection = (product.catalogSection || "plants") === catalogSection;
-        const inKind = catalogSection !== "plants" || !plantKind || product.plantKind === plantKind;
+        const inSection = !selectedCategory || (!!product.categoryId && categoryIDs.has(product.categoryId));
         const inCollection = !selectedCollection || product[selectedCollection.field] === selectedCollection.value;
-        const inFavorites = !favoritesOnly || favorites.has(product.id);
         const searchable = `${product.name} ${product.latin} ${product.category}`.toLowerCase();
-        return inSection && inKind && inCollection && inFavorites && searchable.includes(query.toLowerCase().trim());
+        return inSection && inCollection && searchable.includes(query.toLowerCase().trim());
       }),
-    [products, catalogSection, plantKind, selectedCollection, favoritesOnly, favorites, query],
+    [products, selectedCategory, categoryIDs, selectedCollection, query],
   );
 
   const cartLines = products
@@ -285,7 +295,6 @@ export default function Home() {
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
   const deliveryFee = delivery === "cdek" ? (cdekQuote?.price ?? 0) : (deliveryOption.fee ?? 0);
   const total = subtotal + deliveryFee;
-  const isAdmin = user?.adminRole === "manager" || user?.adminRole === "owner";
 
   async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);
@@ -426,6 +435,10 @@ export default function Home() {
     setOrderNumber("");
   }
 
+  const roots = categories.filter((item) => !item.parentId);
+  const childrenOf = (id: number) => categories.filter((item) => item.parentId === id);
+  const selectedCategoryName = categories.find((item) => item.id === selectedCategory)?.name || "Все товары";
+
   return (
     <main>
       <div className="announcement">
@@ -445,30 +458,11 @@ export default function Home() {
           <a href="#delivery">Доставка</a>
         </nav>
         <div className="header-actions">
-          <button className="icon-button search-button" onClick={() => document.getElementById("search")?.focus()} aria-label="Поиск">
-            <span aria-hidden="true">⌕</span>
-          </button>
-          <a
-            className="account-button"
-            href={isAdmin ? "/admin" : user ? "/account" : "/login"}
-            aria-label={
-              isAdmin
-                ? "Открыть админку"
-                : user
-                  ? "Открыть личный кабинет"
-                  : "Войти или зарегистрироваться"
-            }
-          >
-            <span aria-hidden="true">◯</span>
-            <span>{isAdmin ? "Админка" : user ? "Кабинет" : "Войти"}</span>
+          <label className="header-search"><span aria-hidden="true">⌕</span><input id="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по каталогу" /></label>
+          <AccountMenu user={user} />
+          <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites.size}`}>
+            <span aria-hidden="true">♥</span><b>{favorites.size}</b>
           </a>
-          <button
-            className={`favorites-button ${favoritesOnly ? "active" : ""}`}
-            onClick={() => { setFavoritesOnly((value) => !value); document.getElementById("catalog")?.scrollIntoView({ behavior: "smooth" }); }}
-            aria-label={`Избранное, товаров: ${favorites.size}`}
-          >
-            <span aria-hidden="true">♡</span><b>{favorites.size}</b>
-          </button>
           <button className="cart-button" onClick={() => setCartOpen(true)} aria-label={`Корзина, товаров: ${cartCount}`}>
             <span aria-hidden="true">Корзина</span>
             <b>{cartCount}</b>
@@ -483,54 +477,43 @@ export default function Home() {
           <h1>Каталог Фикусин</h1>
           <p>Растения, кашпо и всё необходимое для ухода — с актуальными ценами и остатками.</p>
         </div>
-        <label className="catalog-search-large">
-          <span aria-hidden="true">⌕</span>
-          <input id="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти растение, грунт или кашпо" />
-          {query && <button onClick={() => setQuery("")} aria-label="Очистить поиск">×</button>}
-        </label>
       </section>
 
       <section className="catalog-section" id="catalog">
-        <div className="catalog-departments" aria-label="Разделы каталога">
-          {catalogSections.map((item) => (
-            <button
-              key={item.value}
-              className={catalogSection === item.value ? "catalog-department active" : "catalog-department"}
-              onClick={() => { setCatalogSection(item.value); setPlantKind(""); setCollection(""); setFavoritesOnly(false); }}
-            >
-              <span>{item.icon}</span><strong>{item.label}</strong><small>{item.text}</small>
-            </button>
-          ))}
-        </div>
-
-        {catalogSection === "plants" && (
-          <>
-            <div className="plant-kind-filter" role="group" aria-label="Виды растений">
-              {plantKinds.map((item) => (
-                <button key={item.value || "all"} className={!collection && plantKind === item.value ? "active" : ""} onClick={() => { setPlantKind(item.value); setCollection(""); }}>
-                  {item.label}
-                </button>
-              ))}
-            </div>
+        <div className="catalog-layout">
+          <aside className="category-tree" aria-label="Категории каталога">
+            <h2>Каталог</h2>
+            {roots.map((root) => {
+              const levelTwo = childrenOf(root.id);
+              const visible = levelTwo.length === 1 && childrenOf(levelTwo[0].id).length ? childrenOf(levelTwo[0].id) : levelTwo;
+              return <div className="category-root" key={root.id}>
+                <button className={selectedCategory === root.id ? "active" : ""} onClick={() => { setSelectedCategory(root.id); setCatalogSection(root.slug); setCollection(""); }}>{root.name}</button>
+                {visible.length > 0 && <div className="category-children">
+                  {visible.map((child) => <div key={child.id}>
+                    <button className={selectedCategory === child.id ? "active" : ""} onClick={() => { setSelectedCategory(child.id); setCollection(""); }}>{child.name}</button>
+                    {childrenOf(child.id).map((leaf) => <button className={selectedCategory === leaf.id ? "active leaf" : "leaf"} onClick={() => { setSelectedCategory(leaf.id); setCollection(""); }} key={leaf.id}>{leaf.name}</button>)}
+                  </div>)}
+                </div>}
+              </div>;
+            })}
+          </aside>
+          <div className="catalog-content">
+          {catalogSection === "plants" && <>
             <div className="collection-section">
               <div className="section-heading compact"><div><p className="eyebrow">Подборки</p><h2>Подберите растение под себя</h2></div><p>Характеристики заполняет менеджер — одно растение может входить сразу в несколько подборок.</p></div>
               <div className="collection-grid">
                 {collections.map((item) => (
-                  <button key={item.id} className={collection === item.id ? "collection-card active" : "collection-card"} onClick={() => { setCollection(collection === item.id ? "" : item.id); setPlantKind(""); }}>
+                  <button key={item.id} className={collection === item.id ? "collection-card active" : "collection-card"} onClick={() => setCollection(collection === item.id ? "" : item.id)}>
                     <span>{item.icon}</span><strong>{item.title}</strong><small>{item.text}</small>
                   </button>
                 ))}
               </div>
             </div>
-          </>
-        )}
+          </>}
 
         <div className="catalog-result-bar">
-          <div><p className="eyebrow">{favoritesOnly ? "Избранное" : catalogSections.find((item) => item.value === catalogSection)?.label}</p><h2>{selectedCollection?.title || plantKinds.find((item) => item.value === plantKind)?.label || "Все товары"}</h2></div>
-          <div>
-            {favoritesOnly && <button className="clear-filter" onClick={() => setFavoritesOnly(false)}>Показать все</button>}
-            <span>{filtered.length} товаров</span>
-          </div>
+          <div><p className="eyebrow">Каталог</p><h2>{selectedCollection?.title || selectedCategoryName}</h2></div>
+          <div><span>{filtered.length} товаров</span></div>
         </div>
 
         <div className="product-grid" id="new">
@@ -552,9 +535,10 @@ export default function Home() {
             </article>
           ))}
           {!catalogLoading && !catalogError && filtered.length === 0 && (
-            <div className="empty-state"><strong>{favoritesOnly ? "В избранном пока пусто" : "Ничего не найдено"}</strong><span>{favoritesOnly ? "Нажимайте на сердечко в карточках, чтобы сохранить товары." : "Попробуйте другую подборку или измените запрос."}</span></div>
+            <div className="empty-state"><strong>Ничего не найдено</strong><span>Попробуйте другую категорию, подборку или измените запрос.</span></div>
           )}
         </div>
+        </div></div>
       </section>
 
       <section className="help-section" id="help">
@@ -805,13 +789,12 @@ export default function Home() {
 
       <aside className={`mobile-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
         <button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">×</button>
-        {isAdmin ? (
-          <a href="/admin">Админка</a>
-        ) : user ? (
-          <a href="/account">Личный кабинет</a>
+        {user ? (
+          <><a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
+          {(user.adminRole === "manager" || user.adminRole === "owner") && <a href="/admin">Админка</a>}</>
         ) : (
           <><a href="/login">Войти</a><a href="/register">Регистрация</a></>
-        )}<a href="/?favorites=1" onClick={() => setMenuOpen(false)}>Избранное ({favorites.size})</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
+        )}<a href="/favorites" onClick={() => setMenuOpen(false)}>Избранное ({favorites.size})</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
       </aside>
     </main>
   );
