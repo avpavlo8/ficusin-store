@@ -86,6 +86,8 @@ func main() {
 			AdminEmails:  cfg.AdminEmails,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
+
+			YandexSuggestKey: cfg.YandexSuggestKey,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
