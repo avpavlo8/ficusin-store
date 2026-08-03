@@ -45,7 +45,8 @@ SELECT parent.id,kinds.name,kinds.slug,kinds.sort_order FROM parent CROSS JOIN k
 ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name,parent_id=EXCLUDED.parent_id,sort_order=EXCLUDED.sort_order;
 
 UPDATE products p SET category_id=c.id
-FROM categories c WHERE c.slug = CASE
+FROM categories c
+WHERE p.category_id IS NULL AND c.slug = CASE
  WHEN LOWER(p.name) LIKE 'аглаонема%' THEN 'aglaonema' WHEN LOWER(p.name) LIKE 'алоказия%' THEN 'alocasia'
  WHEN LOWER(p.name) LIKE 'ананас%' THEN 'pineapple' WHEN LOWER(p.name) LIKE 'антуриум%' THEN 'anthurium'
  WHEN LOWER(p.name) LIKE 'асплениум%' THEN 'asplenium' WHEN LOWER(p.name) LIKE 'бамбук%' THEN 'bamboo'
@@ -77,5 +78,4 @@ FROM categories c WHERE c.slug = CASE
  WHEN LOWER(p.name) LIKE 'цикас%' THEN 'cycas' WHEN LOWER(p.name) LIKE 'циртомиум%' THEN 'cyrtomium'
  WHEN LOWER(p.name) LIKE 'шеффлера%' THEN 'schefflera' WHEN LOWER(p.name) LIKE 'эпипремнум%' THEN 'epipremnum'
  WHEN LOWER(p.name) LIKE 'юкка%' THEN 'yucca' WHEN LOWER(p.name) LIKE 'статуэтка%' THEN 'accessories'
- ELSE 'other-indoor-plants' END
-WHERE p.category_id IS NULL;
+ ELSE 'other-indoor-plants' END;
