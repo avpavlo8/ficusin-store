@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { StoreHeader, useStoreUser } from "./StoreHeader";
 
 type Role = "owner" | "manager" | "";
 type Section = "dashboard" | "products" | "categories" | "orders" | "customers";
@@ -83,41 +84,64 @@ export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
   const [section, setSection] = useState<Section>("dashboard");
   const [error, setError] = useState("");
+  // Set when the operator arrives from a dashboard shortcut, so the target
+  // section can open on the right row instead of a blank list.
+  const [focusOrder, setFocusOrder] = useState("");
+  const [wholesaleOnly, setWholesaleOnly] = useState(false);
+  const user = useStoreUser();
 
   useEffect(() => { api<AdminData>("/api/v1/admin/dashboard").then(setData).catch(setError); }, []);
-  if (!data) return <main className="admin-page"><section className="admin-main"><p>{error || "Загружаем панель…"}</p></section></main>;
+
+  const go = (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
+    setFocusOrder(options?.orderNumber || "");
+    setWholesaleOnly(Boolean(options?.wholesaleOnly));
+    setSection(next);
+  };
+
+  if (!data) return <main className="account-page">
+    <StoreHeader />
+    <section className="account-shell"><div className="account-content"><p>{error || "Загружаем панель…"}</p></div></section>
+  </main>;
 
   const can = (permission: string) => data.permissions.includes(permission);
+  const initial = data.user.fullName.trim().charAt(0).toUpperCase() || "Ф";
   return (
-    <main className="admin-page">
-      <aside className="admin-sidebar">
-        <a className="admin-logo" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a>
-        <p>Управление магазином</p>
-        <nav>
-          <Nav active={section === "dashboard"} onClick={() => setSection("dashboard")} icon="⌂">Обзор</Nav>
-          {can("products.read") && <Nav active={section === "products"} onClick={() => setSection("products")} icon="⌁">Товары</Nav>}
-          {can("products.read") && <Nav active={section === "categories"} onClick={() => setSection("categories")} icon="⌘">Категории</Nav>}
-          {can("orders.read") && <Nav active={section === "orders"} onClick={() => setSection("orders")} icon="□">Заказы</Nav>}
-          {can("customers.read") && <Nav active={section === "customers"} onClick={() => setSection("customers")} icon="○">Клиенты</Nav>}
-        </nav>
-        <div className="admin-role"><small>Ваша роль</small><strong>{roleLabel(data.role)}</strong></div>
-        <a className="admin-store-link" href="/account">← Личный кабинет</a>
-        <a className="admin-store-link" href="/">← Вернуться в магазин</a>
-      </aside>
-      <section className="admin-main">
-        {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
-        {section === "dashboard" && <Dashboard data={data} />}
-        {section === "customers" && <Customers can={can} onError={setError} />}
-        {section === "orders" && <Orders onError={setError} />}
-        {section === "products" && <Products can={can} onError={setError} />}
-        {section === "categories" && <Categories canEdit={can("products.edit")} onError={setError} />}
+    <main className="account-page">
+      <StoreHeader />
+      <section className="account-shell">
+        <aside className="account-sidebar">
+          <div className="account-avatar">
+            {user?.avatarUpdatedAt
+              ? <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
+              : <span>{initial}</span>}
+          </div>
+          <h1>{data.user.fullName}</h1>
+          <p>{roleLabel(data.role)}</p>
+          <nav>
+            <Nav active={section === "dashboard"} onClick={() => go("dashboard")}>Обзор</Nav>
+            {can("products.read") && <Nav active={section === "products"} onClick={() => go("products")}>Товары</Nav>}
+            {can("products.read") && <Nav active={section === "categories"} onClick={() => go("categories")}>Категории</Nav>}
+            {can("orders.read") && <Nav active={section === "orders"} onClick={() => go("orders")}>Заказы</Nav>}
+            {can("customers.read") && <Nav active={section === "customers"} onClick={() => go("customers")}>Клиенты</Nav>}
+          </nav>
+          <a className="account-switch" href="/account">Личный кабинет →</a>
+          <a className="account-switch" href="/">Вернуться в магазин →</a>
+        </aside>
+        <div className="account-content">
+          {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
+          {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
+          {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}
+          {section === "orders" && <Orders focusOrder={focusOrder} onError={setError} />}
+          {section === "products" && <Products can={can} onError={setError} />}
+          {section === "categories" && <Categories canEdit={can("products.edit")} onError={setError} />}
+        </div>
       </section>
     </main>
   );
 }
 
-function Nav({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: string; children: React.ReactNode }) {
-  return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span>{children}</button>;
+function Nav({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button className={active ? "active" : ""} onClick={onClick}>{children}</button>;
 }
 
 // Flattens the category tree into the order it reads in: each parent is
@@ -149,8 +173,25 @@ function CategoryPicker({ categories, value, onChange }: {
   onChange: (value?: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const ordered = orderCategoryTree(categories);
   const selected = categories.find((item) => item.id === value);
+  // Only branches the user opened are listed, so the picker shows a handful
+  // of sections instead of every leaf in the catalogue.
+  const visible = ordered.filter(({ item }) => {
+    let parent = item.parentId;
+    while (parent) {
+      if (!expanded.has(parent)) return false;
+      parent = categories.find((candidate) => candidate.id === parent)?.parentId ?? null;
+    }
+    return true;
+  });
+  const toggle = (id: number) => setExpanded((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
   return <div className="category-picker">
     <button type="button" className="category-picker-toggle" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
       <span>{selected ? selected.name : "Не указано"}</span>
@@ -158,17 +199,21 @@ function CategoryPicker({ categories, value, onChange }: {
     </button>
     {open && <div className="category-picker-list">
       <button type="button" className={value ? "" : "active"} onClick={() => { onChange(undefined); setOpen(false); }}>Не указано</button>
-      {ordered.map(({ item, depth }) => (
-        <button
-          type="button"
-          key={item.id}
-          className={value === item.id ? "active" : ""}
-          style={{ paddingLeft: 12 + depth * 18 }}
-          onClick={() => { onChange(item.id); setOpen(false); }}
-        >
-          {item.name}
-        </button>
-      ))}
+      {visible.map(({ item, depth }) => {
+        const hasChildren = categories.some((candidate) => candidate.parentId === item.id);
+        return <div className="category-picker-row" key={item.id} style={{ paddingLeft: depth * 18 }}>
+          {hasChildren
+            ? <button type="button" className="category-toggle" aria-expanded={expanded.has(item.id)} onClick={() => toggle(item.id)}>{expanded.has(item.id) ? "−" : "+"}</button>
+            : <span className="category-toggle placeholder" aria-hidden="true" />}
+          <button
+            type="button"
+            className={value === item.id ? "active" : ""}
+            onClick={() => { onChange(item.id); setOpen(false); }}
+          >
+            {item.name}
+          </button>
+        </div>;
+      })}
     </div>}
   </div>;
 }
@@ -225,51 +270,74 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
     </div>
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Категория</th><th>Slug</th><th>Товары</th><th /></tr></thead><tbody>{visibleItems.map((item) => {
       const hasChildren = items.some((candidate) => candidate.parentId === item.id);
-      return <tr key={item.id}><td><strong style={{ paddingLeft: depth(item) * 24 }}>
+      return <tr key={item.id} className={canEdit ? "clickable" : ""} onClick={() => { if (canEdit) rename(item); }}><td><strong style={{ paddingLeft: depth(item) * 24 }}>
         {hasChildren
-          ? <button className="category-toggle" aria-expanded={expanded.has(item.id)} onClick={() => toggle(item.id)}>{expanded.has(item.id) ? "−" : "+"}</button>
+          ? <button className="category-toggle" aria-expanded={expanded.has(item.id)} onClick={(event) => { event.stopPropagation(); toggle(item.id); }}>{expanded.has(item.id) ? "−" : "+"}</button>
           : <span className="category-toggle placeholder" aria-hidden="true" />}
         {item.name}
-      </strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <><button className="admin-action" onClick={() => rename(item)}>Переименовать</button><button className="text-button danger" onClick={() => remove(item)}>Удалить</button></>}</td></tr>;
+      </strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <button className="text-button danger" onClick={(event) => { event.stopPropagation(); remove(item); }}>Удалить</button>}</td></tr>;
     })}</tbody></table></div>
   </>;
 }
 
 
+// Shares the account page's heading block so both areas read identically.
 function PageHeading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
-  return <header className="admin-topbar"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{text}</p></div></header>;
+  return <div className="account-title"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p className="account-title-note">{text}</p></div></div>;
 }
 
-function Dashboard({ data }: { data: AdminData }) {
+function Dashboard({ data, onNavigate }: {
+  data: AdminData;
+  onNavigate: (section: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => void;
+}) {
   const { dashboard, user } = data;
   return <>
     <PageHeading eyebrow="Панель управления" title={`Добрый день, ${user.fullName.split(" ")[0]}`} text="Состояние магазина на текущий момент" />
     <div className="admin-alert"><div><strong>{dashboard.lastSync?.status === "success" ? "Каталог Saby синхронизирован" : "Ожидается синхронизация Saby"}</strong><p>{dashboard.lastSync ? `Обновлено позиций: ${dashboard.lastSync.itemsUpdated}` : "Данных о последней синхронизации пока нет."}</p></div></div>
     <div className="admin-stats">
-      <article><span>Товары</span><strong>{dashboard.products}</strong><small>{dashboard.variants} вариантов</small></article>
-      <article><span>Заказы</span><strong>{dashboard.orders}</strong><small>за всё время</small></article>
-      <article><span>Клиенты</span><strong>{dashboard.customers}</strong><small>розница и опт</small></article>
-      <article className={dashboard.wholesalePending ? "attention" : ""}><span>Оптовые заявки</span><strong>{dashboard.wholesalePending}</strong><small>ожидают проверки</small></article>
+      <button type="button" onClick={() => onNavigate("products")}><span>Товары</span><strong>{dashboard.products}</strong><small>{dashboard.variants} вариантов</small></button>
+      <button type="button" onClick={() => onNavigate("orders")}><span>Заказы</span><strong>{dashboard.orders}</strong><small>за всё время</small></button>
+      <button type="button" onClick={() => onNavigate("customers")}><span>Клиенты</span><strong>{dashboard.customers}</strong><small>розница и опт</small></button>
+      <button type="button" className={dashboard.wholesalePending ? "attention" : ""} onClick={() => onNavigate("customers", { wholesaleOnly: true })}><span>Оптовые заявки</span><strong>{dashboard.wholesalePending}</strong><small>ожидают проверки</small></button>
     </div>
     <section className="admin-block"><div className="admin-block-heading"><div><p className="eyebrow">Продажи</p><h2>Последние заказы</h2></div></div>
-      <div className="admin-order-list">{dashboard.recentOrders.map((order) => <article key={order.orderNumber}><div><strong>{order.orderNumber}</strong><small>{order.customerName}</small></div><span>{money.format(order.total)}</span><b>{statusLabels[order.status] || order.status}</b></article>)}</div>
+      <div className="admin-order-list">{dashboard.recentOrders.map((order) => (
+        <button type="button" key={order.orderNumber} onClick={() => onNavigate("orders", { orderNumber: order.orderNumber })}>
+          <div><strong>{order.orderNumber}</strong><small>{order.customerName}</small></div>
+          <span>{money.format(order.total)}</span>
+          <b>{statusLabels[order.status] || order.status}</b>
+        </button>
+      ))}</div>
     </section>
   </>;
 }
 
-function Customers({ can, onError }: { can: (permission: string) => boolean; onError: (value: string) => void }) {
+function Customers({ can, wholesaleOnly, onError }: { can: (permission: string) => boolean; wholesaleOnly?: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Customer[]>([]);
   const [query, setQuery] = useState("");
+  const [pendingOnly, setPendingOnly] = useState(Boolean(wholesaleOnly));
   const [editing, setEditing] = useState<Customer | null>(null);
   useEffect(() => { api<{ customers: Customer[] }>("/api/v1/admin/customers").then((data) => setItems(data.customers)).catch((error) => onError(error.message)); }, [onError]);
-  const filtered = useMemo(() => items.filter((item) => `${item.fullName} ${item.lastName} ${item.phone} ${item.email}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  const filtered = useMemo(() => items.filter((item) => {
+    if (pendingOnly && !(item.accountType === "wholesale" && item.wholesaleStatus === "pending")) return false;
+    return `${item.fullName} ${item.lastName} ${item.phone} ${item.email}`.toLowerCase().includes(query.toLowerCase());
+  }), [items, query, pendingOnly]);
+  const openCard = (customer: Customer) => { if (can("customers.edit")) setEditing(customer); };
   return <>
     <PageHeading eyebrow="CRM" title="Клиенты" text="Профили, покупки, адреса, скидки и доступ сотрудников" />
-    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по имени, телефону или email" /><span>{filtered.length} клиентов</span></div>
+    <div className="admin-toolbar">
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по имени, телефону или email" />
+      <label className="admin-checkbox"><input type="checkbox" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} />Только оптовые заявки</label>
+      <span>{filtered.length} клиентов</span>
+    </div>
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Клиент</th><th>Контакты и адрес</th><th>Покупки</th><th>Тип</th><th>Доступ</th><th /></tr></thead><tbody>
-      {filtered.map((customer) => <tr key={customer.id} className={!customer.active ? "muted" : ""}>
+      {filtered.map((customer) => <tr
+        key={customer.id}
+        className={`${!customer.active ? "muted" : ""} ${can("customers.edit") ? "clickable" : ""}`}
+        onClick={() => openCard(customer)}
+      >
         <td><strong>{[customer.lastName, customer.fullName, customer.patronymic].filter(Boolean).join(" ")}</strong><small>с {new Date(customer.createdAt).toLocaleDateString("ru-RU")}</small></td>
-        <td><a href={`tel:${customer.phone}`}>{customer.phone}</a><small>{customer.email || "Email не указан"}</small><small>{customer.deliveryAddress || "Адрес не указан"}</small></td>
+        <td><a href={`tel:${customer.phone}`} onClick={(event) => event.stopPropagation()}>{customer.phone}</a><small>{customer.email || "Email не указан"}</small><small>{customer.deliveryAddress || "Адрес не указан"}</small></td>
         <td><strong>{money.format(customer.lifetimeSpend)}</strong><small>{customer.ordersCount} заказов · скидка {customer.retailDiscountBps / 100}%</small></td>
         <td><span className="admin-pill">{customer.accountType === "wholesale" ? "Опт" : "Розница"}</span><small>{customer.wholesaleStatus}</small></td>
         <td><strong>{roleLabel(customer.adminRole)}</strong><small>{customer.active ? "Активен" : "Заблокирован"}</small></td>
@@ -305,17 +373,26 @@ function CustomerDialog({ customer, owner, onClose, onSaved, onError }: { custom
   </div><section className="customer-orders"><h3>Заказы клиента</h3>{orders.length === 0 ? <p>Заказов пока нет.</p> : orders.slice(0, 10).map((order) => <article key={order.id}><div><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleDateString("ru-RU")}</small></div><span>{money.format(order.total)}</span><b>{statusLabels[order.status] || order.status}</b></article>)}</section><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" onClick={save}>Сохранить</button></div></Dialog>;
 }
 
-function Orders({ onError }: { onError: (value: string) => void }) {
+function Orders({ focusOrder, onError }: { focusOrder?: string; onError: (value: string) => void }) {
   const [items, setItems] = useState<Order[]>([]);
   const [opened, setOpened] = useState<number | null>(null);
-  useEffect(() => { api<{ orders: Order[] }>("/api/v1/admin/orders").then((data) => setItems(data.orders)).catch((error) => onError(error.message)); }, [onError]);
+  useEffect(() => {
+    api<{ orders: Order[] }>("/api/v1/admin/orders").then((data) => {
+      setItems(data.orders);
+      // Arriving from "последние заказы": open the row that was clicked.
+      if (focusOrder) {
+        const match = data.orders.find((order) => order.orderNumber === focusOrder);
+        if (match) setOpened(match.id);
+      }
+    }).catch((error) => onError(error.message));
+  }, [onError, focusOrder]);
   const updateStatus = async (order: Order, status: string) => {
     try { const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status, paymentStatus: "" }) }); setItems((current) => current.map((item) => item.id === order.id ? result.order : item)); }
     catch (error) { onError((error as Error).message); }
   };
   return <><PageHeading eyebrow="Продажи" title="Заказы" text="Состав заказа, контакты, доставка, оплата и текущий статус" />
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Заказ</th><th>Клиент</th><th>Получение</th><th>Сумма</th><th>Статус</th><th /></tr></thead><tbody>{items.map((order) => <Fragment key={order.id}>
-      <tr><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small></td><td><strong>{money.format(order.total)}</strong><small>{order.paymentStatus}</small></td><td><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><button className="admin-action" onClick={() => setOpened(opened === order.id ? null : order.id)}>{opened === order.id ? "Скрыть" : "Состав"}</button></td></tr>
+      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small></td><td><strong>{money.format(order.total)}</strong><small>{order.paymentStatus}</small></td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
       {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}><div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
     </Fragment>)}</tbody></table></div></>;
 }
@@ -331,13 +408,17 @@ function Products({ can, onError }: { can: (permission: string) => boolean; onEr
   const replace = (product: Product) => setItems((current) => current.map((item) => item.id === product.id ? product : item));
   return <><PageHeading eyebrow="Каталог" title="Товары" text="Контент сайта, цены, упаковка, публикация и выборочная синхронизация со СБИС" />
     <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название или артикул" /><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Синхронизировать выбранные</button>}</div>
-    <div className="admin-table-wrap"><table className="admin-table products"><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && filtered.every((item) => selected.includes(item.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((item) => item.id) : [])} /></th><th>Товар</th><th>Цена / остаток</th><th>Публикация</th><th>СБИС</th><th /></tr></thead><tbody>{filtered.map((product) => <tr key={product.id}>
-      <td><input type="checkbox" checked={selected.includes(product.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, product.id] : current.filter((id) => id !== product.id))} /></td>
-      <td><div className="admin-product"><img src={product.image || "/assets/hero-monstera.png"} alt="" /><div><strong>{product.name}</strong><small>{product.sku} · {product.variantLabel}</small><a href={`/product/${product.slug}`} target="_blank">Открыть карточку ↗</a></div></div></td>
+    <div className="admin-table-wrap"><table className="admin-table products"><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && filtered.every((item) => selected.includes(item.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((item) => item.id) : [])} /></th><th>Товар</th><th>Цена / остаток</th><th>Публикация</th><th>СБИС</th><th /></tr></thead><tbody>{filtered.map((product) => <tr
+      key={product.id}
+      className={can("products.edit") ? "clickable" : ""}
+      onClick={() => { if (can("products.edit")) setEditing(product); }}
+    >
+      <td onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selected.includes(product.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, product.id] : current.filter((id) => id !== product.id))} /></td>
+      <td><div className="admin-product"><img src={product.image || "/assets/hero-monstera.png"} alt="" /><div><strong>{product.name}</strong><small>{product.sku} · {product.variantLabel}</small><a href={`/product/${product.slug}`} target="_blank" onClick={(event) => event.stopPropagation()}>Открыть карточку ↗</a></div></div></td>
       <td><strong>{money.format(product.price)}</strong><small>В наличии: {product.stock}</small><small>Опт от {product.wholesaleMinQty} шт.</small></td>
       <td><span className={`admin-pill ${product.status}`}>{statusLabels[product.status] || product.status}</span>{product.overrideFields.length > 0 && <small>Изменено вручную: {product.overrideFields.join(", ")}</small>}</td>
-      <td><strong>{product.sabyId ? "Связан" : "Нет связи"}</strong><small>{product.sabyUpdatedAt ? new Date(product.sabyUpdatedAt).toLocaleString("ru-RU") : "Не синхронизировался"}</small>{can("products.sync") && product.sabyId && <button className="text-button" onClick={() => setSyncing([product.id])}>Синхронизировать</button>}</td>
-      <td>{can("products.edit") && <button className="admin-action" onClick={() => setEditing(product)}>Изменить</button>}</td>
+      <td><strong>{product.sabyId ? "Связан" : "Нет связи"}</strong><small>{product.sabyUpdatedAt ? new Date(product.sabyUpdatedAt).toLocaleString("ru-RU") : "Не синхронизировался"}</small>{can("products.sync") && product.sabyId && <button className="text-button" onClick={(event) => { event.stopPropagation(); setSyncing([product.id]); }}>Синхронизировать</button>}</td>
+      <td><span className="admin-row-arrow" aria-hidden="true">→</span></td>
     </tr>)}</tbody></table></div>
     {editing && <ProductDialog product={editing} onClose={() => setEditing(null)} onSaved={(product) => { replace(product); setEditing(null); }} onError={onError} />}
     {syncing && <SyncDialog count={syncing.length} onClose={() => setSyncing(null)} onSync={async (fields) => { try { await api("/api/v1/admin/products/sync", { method: "POST", body: JSON.stringify({ productIds: syncing, fields }) }); const data = await api<{ products: Product[] }>("/api/v1/admin/products"); setItems(data.products); setSelected([]); setSyncing(null); } catch (error) { onError((error as Error).message); } }} />}
