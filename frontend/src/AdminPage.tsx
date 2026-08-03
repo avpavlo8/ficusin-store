@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 type Role = "owner" | "manager" | "";
-type Section = "dashboard" | "products" | "orders" | "customers";
+type Section = "dashboard" | "products" | "categories" | "orders" | "customers";
+type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
 
 type AdminData = {
   user: { fullName: string };
@@ -39,6 +40,7 @@ type Product = {
   catalogSection: string; plantKind?: string; lightLevel?: string; watering?: string;
   heightClass?: string; careLevel?: string; placement?: string; petSafety?: string;
   growthHabit?: string; sabyUpdatedAt?: string;
+  categoryId?: number;
 };
 
 const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 });
@@ -94,6 +96,7 @@ export default function AdminPage() {
         <nav>
           <Nav active={section === "dashboard"} onClick={() => setSection("dashboard")} icon="⌂">Обзор</Nav>
           {can("products.read") && <Nav active={section === "products"} onClick={() => setSection("products")} icon="⌁">Товары</Nav>}
+          {can("products.read") && <Nav active={section === "categories"} onClick={() => setSection("categories")} icon="⌘">Категории</Nav>}
           {can("orders.read") && <Nav active={section === "orders"} onClick={() => setSection("orders")} icon="□">Заказы</Nav>}
           {can("customers.read") && <Nav active={section === "customers"} onClick={() => setSection("customers")} icon="○">Клиенты</Nav>}
         </nav>
@@ -106,6 +109,7 @@ export default function AdminPage() {
         {section === "customers" && <Customers can={can} onError={setError} />}
         {section === "orders" && <Orders onError={setError} />}
         {section === "products" && <Products can={can} onError={setError} />}
+        {section === "categories" && <Categories canEdit={can("products.edit")} onError={setError} />}
       </section>
     </main>
   );
@@ -114,6 +118,57 @@ export default function AdminPage() {
 function Nav({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: string; children: React.ReactNode }) {
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span>{children}</button>;
 }
+
+function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: string) => void }) {
+  const [items, setItems] = useState<Category[]>([]);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [parentId, setParentId] = useState("");
+  const load = useCallback(() => api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setItems(data.categories)).catch((error) => onError(error.message)), [onError]);
+  useEffect(() => { void load(); }, [load]);
+  const depth = (item: Category) => {
+    let value = 0;
+    let parent = item.parentId;
+    while (parent && value < 3) {
+      value += 1;
+      parent = items.find((candidate) => candidate.id === parent)?.parentId ?? null;
+    }
+    return value;
+  };
+  const orderedItems = (() => {
+    const result: Category[] = [];
+    const append = (parentId: number | null) => {
+      items
+        .filter((item) => item.parentId === parentId)
+        .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "ru"))
+        .forEach((item) => { result.push(item); append(item.id); });
+    };
+    append(null);
+    return result;
+  })();
+  const create = async () => {
+    try {
+      await api("/api/v1/admin/categories", { method: "POST", body: JSON.stringify({ name, slug, parentId: parentId ? Number(parentId) : null, sortOrder: items.length * 10 }) });
+      setName(""); setSlug(""); setParentId(""); load();
+    } catch (error) { onError((error as Error).message); }
+  };
+  const rename = async (item: Category) => {
+    const next = window.prompt("Новое название категории", item.name);
+    if (!next || next === item.name) return;
+    try { await api(`/api/v1/admin/categories/${item.id}`, { method: "PATCH", body: JSON.stringify({ name: next }) }); load(); }
+    catch (error) { onError((error as Error).message); }
+  };
+  const remove = async (item: Category) => {
+    if (!window.confirm(`Удалить категорию «${item.name}»?`)) return;
+    try { await api(`/api/v1/admin/categories/${item.id}`, { method: "DELETE" }); load(); }
+    catch (error) { onError((error as Error).message); }
+  };
+  return <><PageHeading eyebrow="Структура каталога" title="Категории" text="Три уровня: раздел, группа и вид растения. Категории с товарами защищены от удаления." />
+    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.filter((item) => depth(item) < 2).map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
+    <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Категория</th><th>Slug</th><th>Товары</th><th /></tr></thead><tbody>{orderedItems.map((item) => <tr key={item.id}><td><strong style={{ paddingLeft: depth(item) * 24 }}>{depth(item) > 0 ? "↳ " : ""}{item.name}</strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <><button className="admin-action" onClick={() => rename(item)}>Переименовать</button><button className="text-button danger" onClick={() => remove(item)}>Удалить</button></>}</td></tr>)}</tbody></table></div>
+  </>;
+}
+
 
 function PageHeading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
   return <header className="admin-topbar"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{text}</p></div></header>;
@@ -225,6 +280,8 @@ function Products({ can, onError }: { can: (permission: string) => boolean; onEr
 
 function ProductDialog({ product, onClose, onSaved, onError }: { product: Product; onClose: () => void; onSaved: (value: Product) => void; onError: (value: string) => void }) {
   const [form, setForm] = useState(product);
+  const [categories, setCategories] = useState<Category[]>([]);
+  useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
   const number = (value?: number) => Number.isFinite(value) ? value : "";
   const save = async () => {
     try {
@@ -235,7 +292,7 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
         variantLabel: form.variantLabel, heightCm: form.heightCm, potDiameterCm: form.potDiameterCm,
         packageLengthCm: form.packageLengthCm, packageWidthCm: form.packageWidthCm,
         packageHeightCm: form.packageHeightCm, packageWeightGrams: form.packageWeightGrams,
-        wholesaleMinQty: form.wholesaleMinQty, catalogSection: form.catalogSection,
+        wholesaleMinQty: form.wholesaleMinQty, catalogSection: form.catalogSection, categoryId: form.categoryId,
         plantKind: form.plantKind || "", lightLevel: form.lightLevel || "", watering: form.watering || "",
         heightClass: form.heightClass || "", careLevel: form.careLevel || "", placement: form.placement || "",
         petSafety: form.petSafety || "", growthHabit: form.growthHabit || "",
@@ -251,8 +308,7 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">Уход<textarea rows={4} value={form.careInstructions} onChange={(event) => setForm({ ...form, careInstructions: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
-    <label>Раздел каталога<select value={form.catalogSection || "plants"} onChange={(event) => setForm({ ...form, catalogSection: event.target.value })}>{catalogOptions.catalogSection.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Вид растения<select value={form.plantKind || ""} onChange={(event) => setForm({ ...form, plantKind: event.target.value })}><option value="">Не указано</option>{catalogOptions.plantKind.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label className="wide">Категория<select value={form.categoryId || ""} onChange={(event) => setForm({ ...form, categoryId: event.target.value ? Number(event.target.value) : undefined })}><option value="">Не указано</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label>Освещённость<select value={form.lightLevel || ""} onChange={(event) => setForm({ ...form, lightLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.lightLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Полив<select value={form.watering || ""} onChange={(event) => setForm({ ...form, watering: event.target.value })}><option value="">Не указано</option>{catalogOptions.watering.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Высота<select value={form.heightClass || ""} onChange={(event) => setForm({ ...form, heightClass: event.target.value })}><option value="">Не указано</option>{catalogOptions.heightClass.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

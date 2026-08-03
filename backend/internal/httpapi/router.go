@@ -12,6 +12,7 @@ import (
 
 type catalogRepository interface {
 	ListAvailable(context.Context) ([]catalog.Product, error)
+	ListCategories(context.Context) ([]catalog.Category, error)
 	DetailBySlug(context.Context, string) (catalog.ProductDetail, error)
 }
 
@@ -46,6 +47,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
+	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
 	mux.HandleFunc("POST /api/v1/auth/request-code", authAPI.requestCode)
 	mux.HandleFunc("POST /api/v1/auth/verify-code", authAPI.verifyCode)
@@ -69,6 +71,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
 	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", adminAPI.updateProduct)
 	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
+	mux.HandleFunc("GET /api/v1/admin/categories", adminAPI.categories)
+	mux.HandleFunc("POST /api/v1/admin/categories", adminAPI.createCategory)
+	mux.HandleFunc("PATCH /api/v1/admin/categories/{id}", adminAPI.updateCategory)
+	mux.HandleFunc("DELETE /api/v1/admin/categories/{id}", adminAPI.deleteCategory)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),

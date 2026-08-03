@@ -7,6 +7,14 @@ import (
 
 var ErrNotFound = errors.New("product not found")
 
+type Category struct {
+	ID        int64  `json:"id"`
+	ParentID  *int64 `json:"parentId"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	SortOrder int    `json:"sortOrder"`
+}
+
 type Product struct {
 	ID       string  `json:"id"`
 	Name     string  `json:"name"`
@@ -26,6 +34,7 @@ type Product struct {
 	Placement      string  `json:"placement,omitempty"`
 	PetSafety      string  `json:"petSafety,omitempty"`
 	GrowthHabit    string  `json:"growthHabit,omitempty"`
+	CategoryID     *int64  `json:"categoryId,omitempty"`
 }
 
 type ProductDetail struct {
@@ -47,6 +56,7 @@ type ProductDetail struct {
 	Placement      string    `json:"placement,omitempty"`
 	PetSafety      string    `json:"petSafety,omitempty"`
 	GrowthHabit    string    `json:"growthHabit,omitempty"`
+	CategoryID     *int64    `json:"categoryId,omitempty"`
 }
 
 type Variant struct {
@@ -62,5 +72,6 @@ type Variant struct {
 
 type Repository interface {
 	ListAvailable(context.Context) ([]Product, error)
+	ListCategories(context.Context) ([]Category, error)
 	DetailBySlug(context.Context, string) (ProductDetail, error)
 }

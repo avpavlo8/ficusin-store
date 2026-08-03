@@ -24,6 +24,19 @@ func catalogHandler(logger *slog.Logger, repository catalogRepository) http.Hand
 	})
 }
 
+func categoriesHandler(logger *slog.Logger, repository catalogRepository) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		items, err := repository.ListCategories(request.Context())
+		if err != nil {
+			logger.Error("categories request failed", "error", err)
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить категории"})
+			return
+		}
+		response.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+		writeJSON(response, http.StatusOK, map[string]any{"categories": items})
+	})
+}
+
 func productDetailHandler(logger *slog.Logger, repository catalogRepository) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		detail, err := repository.DetailBySlug(request.Context(), request.PathValue("slug"))

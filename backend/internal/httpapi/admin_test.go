@@ -35,6 +35,7 @@ func (stub adminAuthStub) UserByToken(context.Context, string) (*auth.User, erro
 type adminRepositoryStub struct {
 	updateCustomerCalls int
 	syncCalls           int
+	createCategoryCalls int
 }
 
 func (stub *adminRepositoryStub) Dashboard(context.Context) (admin.Dashboard, error) {
@@ -70,6 +71,10 @@ func (stub *adminRepositoryStub) SyncProducts(context.Context, admin.Actor, admi
 	stub.syncCalls++
 	return admin.SyncResult{Updated: 1, Skipped: []int64{}}, nil
 }
+func(stub *adminRepositoryStub) ListCategories(context.Context)([]admin.Category,error){return []admin.Category{},nil}
+func(stub *adminRepositoryStub) CreateCategory(context.Context,admin.Actor,admin.CategoryCreate)(admin.Category,error){stub.createCategoryCalls++;return admin.Category{ID:1,Name:"Аглаонема",Slug:"aglaonema"},nil}
+func(stub *adminRepositoryStub) UpdateCategory(context.Context,admin.Actor,int64,admin.CategoryUpdate)(admin.Category,error){return admin.Category{},nil}
+func(stub *adminRepositoryStub) DeleteCategory(context.Context,admin.Actor,int64)error{return nil}
 
 func TestAdminManagerCannotAssignRoles(t *testing.T) {
 	t.Parallel()
@@ -148,6 +153,22 @@ func TestAdminManagerCanSyncOneProduct(t *testing.T) {
 	}
 	if repository.syncCalls != 1 {
 		t.Fatalf("sync calls = %d, want 1", repository.syncCalls)
+	}
+}
+
+func TestAdminManagerCanCreateCategory(t *testing.T) {
+	t.Parallel()
+
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/categories", `{"name":"Аглаонема","slug":"aglaonema"}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com", nil)).ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	if repository.createCategoryCalls != 1 {
+		t.Fatalf("create category calls = %d, want 1", repository.createCategoryCalls)
 	}
 }
 
