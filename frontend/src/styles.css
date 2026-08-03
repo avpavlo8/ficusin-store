@@ -560,3 +560,148 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+
+/* Catalog-first storefront */
+.catalog-hero {
+  padding: clamp(54px, 7vw, 96px) 5vw 48px;
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(420px, 1.2fr);
+  align-items: end;
+  gap: 7vw;
+  background:
+    radial-gradient(circle at 92% 15%, rgba(212, 113, 73, .13), transparent 30%),
+    linear-gradient(135deg, #f3eee2 0%, #fbf8f1 72%);
+}
+.catalog-hero h1 { margin: 0 0 15px; color: var(--green); font: 400 clamp(50px, 6vw, 82px)/.98 Georgia, serif; letter-spacing: -.04em; }
+.catalog-hero > div > p:last-child { max-width: 650px; color: #526057; font-size: 18px; line-height: 1.6; }
+.catalog-search-large {
+  min-height: 76px;
+  padding: 0 22px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  border: 2px solid var(--green);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(23, 63, 50, .1);
+}
+.catalog-search-large > span { color: var(--green); font-size: 30px; }
+.catalog-search-large input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 18px; }
+.catalog-search-large input::placeholder { color: #7b847e; }
+.catalog-search-large button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--cream); color: var(--green); font-size: 22px; cursor: pointer; }
+.catalog-section { padding-top: 28px; }
+.catalog-departments { margin-bottom: 46px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.catalog-department {
+  min-height: 148px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .2s ease, border-color .2s ease, background .2s ease;
+}
+.catalog-department:hover { transform: translateY(-3px); border-color: rgba(23, 63, 50, .35); }
+.catalog-department.active { border-color: var(--green); background: var(--green); color: #fff; }
+.catalog-department > span { margin-bottom: auto; font-size: 29px; }
+.catalog-department strong { margin: 18px 0 6px; font: 400 20px Georgia, serif; }
+.catalog-department small { opacity: .7; font-size: 12px; line-height: 1.4; }
+.plant-kind-filter { margin-bottom: 50px; display: flex; flex-wrap: wrap; gap: 9px; }
+.plant-kind-filter button, .clear-filter {
+  padding: 11px 18px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: #fff;
+  color: var(--green);
+  font-weight: 700;
+  cursor: pointer;
+}
+.plant-kind-filter button.active { border-color: var(--green); background: var(--green); color: #fff; }
+.collection-section { margin: 0 -5vw 56px; padding: 54px 5vw 58px; background: #f3eee2; }
+.section-heading.compact { margin-bottom: 30px; }
+.section-heading.compact h2 { font-size: clamp(34px, 4vw, 52px); }
+.collection-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.collection-card {
+  min-height: 132px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 14px;
+  align-content: center;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: rgba(255,255,255,.78);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.collection-card > span { grid-row: 1 / 3; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: var(--terracotta); font-size: 22px; }
+.collection-card strong { align-self: end; font-size: 15px; }
+.collection-card small { margin-top: 6px; color: #6c756f; line-height: 1.35; }
+.collection-card:hover, .collection-card.active { border-color: var(--green); background: #fff; }
+.collection-card.active > span { background: var(--green); color: #fff; }
+.catalog-result-bar { margin-bottom: 26px; display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+.catalog-result-bar .eyebrow { margin-bottom: 8px; }
+.catalog-result-bar h2 { font: 400 clamp(34px, 4vw, 50px) Georgia, serif; }
+.catalog-result-bar > div:last-child { display: flex; align-items: center; gap: 14px; color: #78817b; }
+.favorites-button { height: 42px; min-width: 48px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 99px; background: transparent; color: var(--green); cursor: pointer; }
+.favorites-button span { font-size: 25px; line-height: 1; }
+.favorites-button b { font-size: 11px; }
+.favorites-button:hover, .favorites-button.active { background: rgba(23,63,50,.08); }
+.product-card { position: relative; }
+.favorite-button {
+  position: absolute;
+  z-index: 3;
+  top: 13px;
+  right: 13px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.92);
+  color: var(--green);
+  box-shadow: 0 5px 18px rgba(23,63,50,.12);
+  font-size: 23px;
+  cursor: pointer;
+}
+.favorite-button.active { background: var(--terracotta); color: #fff; }
+.empty-state { display: flex; flex-direction: column; gap: 9px; }
+.empty-state strong { font: 400 27px Georgia, serif; }
+.empty-state span { color: #6c756f; }
+
+@media (max-width: 1050px) {
+  .catalog-hero { grid-template-columns: 1fr; gap: 30px; }
+  .catalog-departments { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .favorites-button { min-width: 38px; padding: 0; }
+  .favorites-button b { display: none; }
+  .catalog-hero { padding: 48px 18px 30px; }
+  .catalog-hero h1 { font-size: 49px; }
+  .catalog-hero > div > p:last-child { font-size: 16px; }
+  .catalog-search-large { min-height: 62px; padding: 0 16px; border-radius: 14px; }
+  .catalog-search-large input { font-size: 15px; }
+  .catalog-section { padding-top: 20px; }
+  .catalog-departments { margin-bottom: 30px; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .catalog-department { min-height: 125px; padding: 17px; }
+  .catalog-department:last-child { grid-column: 1 / -1; min-height: 105px; }
+  .catalog-department strong { font-size: 17px; }
+  .plant-kind-filter { margin-bottom: 36px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; }
+  .plant-kind-filter button { flex: none; }
+  .collection-section { margin: 0 -18px 42px; padding: 42px 18px; }
+  .collection-grid { grid-template-columns: 1fr; }
+  .collection-card { min-height: 104px; }
+  .catalog-result-bar { align-items: flex-start; flex-direction: column; }
+  .catalog-result-bar > div:last-child { width: 100%; justify-content: space-between; }
+}
