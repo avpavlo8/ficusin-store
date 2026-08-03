@@ -1,6 +1,24 @@
 import { useEffect, useState } from "react";
 
-export type StoreUser = { fullName: string; adminRole?: "manager" | "owner" };
+export type StoreUser = {
+  fullName: string;
+  adminRole?: "manager" | "owner";
+  // Set once a profile photo exists; the value doubles as a cache buster.
+  avatarUpdatedAt?: string;
+};
+
+function AccountBadge({ user }: { user: StoreUser }) {
+  if (user.avatarUpdatedAt) {
+    return <img
+      className="account-button-photo"
+      src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`}
+      alt=""
+    />;
+  }
+  return <span className="account-button-photo placeholder">
+    {user.fullName.trim().charAt(0).toUpperCase() || "◯"}
+  </span>;
+}
 
 export function useStoreUser() {
   const [user, setUser] = useState<StoreUser | null>(null);
@@ -16,8 +34,8 @@ export function AccountMenu({ user }: { user: StoreUser | null }) {
   if (!user) return <a className="account-button" href="/login"><span>◯</span><span>Войти</span></a>;
   const staff = user.adminRole === "manager" || user.adminRole === "owner";
   const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
-  if (!staff) return <a className="account-button" href="/account"><span>◯</span><span>{name}</span></a>;
-  return <details className="account-menu"><summary className="account-button"><span>◯</span><span>{name}</span></summary>
+  if (!staff) return <a className="account-button" href="/account"><AccountBadge user={user} /><span>{name}</span></a>;
+  return <details className="account-menu"><summary className="account-button"><AccountBadge user={user} /><span>{name}</span></summary>
     <div><a href="/account">Личный профиль</a><a href="/admin">Панель управления</a></div>
   </details>;
 }

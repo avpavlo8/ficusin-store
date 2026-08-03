@@ -40,6 +40,7 @@ type StoreUser = {
   deliveryAddress: string;
   accountType: "retail" | "wholesale";
   adminRole?: "manager" | "owner";
+  avatarUpdatedAt?: string;
 };
 
 type CheckoutProfile = {
@@ -94,9 +95,9 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [collection, setCollection] = useState("");
   const [query, setQuery] = useState("");
-  // The tree starts closed so the catalog opens on the products, not on a
-  // wall of category names; expanded nodes are remembered while browsing.
-  const [treeOpen, setTreeOpen] = useState(false);
+  // The section list is open on arrival; individual branches still start
+  // collapsed so the sidebar stays short.
+  const [treeOpen, setTreeOpen] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const toggleCategory = (id: number) =>
     setExpandedCategories((current) => {

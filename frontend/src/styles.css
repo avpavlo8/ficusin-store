@@ -273,11 +273,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .admin-alert p { margin: 5px 0 0; color: #7c5749; font-size: 13px; }
 .admin-alert > span { padding: 7px 10px; flex: 0 0 auto; border-radius: 99px; background: white; color: #8b4e39; font-size: 11px; font-weight: 700; }
 .admin-stats { margin-bottom: 20px; display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
-.admin-stats article { min-height: 145px; padding: 22px; display: grid; align-content: space-between; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
-.admin-stats article > span { color: #6f776f; font-size: 12px; font-weight: 700; }
-.admin-stats article strong { color: var(--green); font: 400 43px Georgia, serif; }
-.admin-stats article small { color: #8b928c; }
-.admin-stats article.attention { border-color: #d6a18a; background: #fff8f4; }
+.admin-stats article, .admin-stats button { min-height: 145px; padding: 22px; display: grid; align-content: space-between; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.admin-stats article > span, .admin-stats button > span { color: #6f776f; font-size: 12px; font-weight: 700; }
+.admin-stats article strong, .admin-stats button strong { color: var(--green); font: 400 43px Georgia, serif; }
+.admin-stats article small, .admin-stats button small { color: #8b928c; }
+.admin-stats article.attention, .admin-stats button.attention { border-color: #d6a18a; background: #fff8f4; }
 .admin-block { margin-bottom: 20px; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
 .admin-block-heading { margin-bottom: 22px; display: flex; justify-content: space-between; gap: 20px; align-items: end; }
 .admin-block-heading .eyebrow { margin-bottom: 9px; }
@@ -295,8 +295,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .admin-empty span { color: var(--sage); font-size: 45px; }
 .admin-empty p { margin: 8px 0 0; }
 .admin-order-list { display: grid; gap: 8px; }
-.admin-order-list article { padding: 13px 0; display: grid; grid-template-columns: 1fr auto auto; gap: 15px; align-items: center; border-bottom: 1px solid var(--line); }
-.admin-order-list article:last-child { border-bottom: 0; }
+.admin-order-list article, .admin-order-list button { padding: 13px 0; display: grid; grid-template-columns: 1fr auto auto; gap: 15px; align-items: center; border-bottom: 1px solid var(--line); }
+.admin-order-list article:last-child, .admin-order-list button:last-child { border-bottom: 0; }
 .admin-order-list div { display: grid; gap: 4px; }
 .admin-order-list small { color: #7c847d; }
 .admin-order-list span { color: var(--green); font-weight: 700; }
@@ -337,6 +337,27 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .auth-call-number b { color: var(--green); font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
 .auth-call-number small { color: #778078; font-size: 12px; }
 .auth-saved { margin: 0; color: var(--green); font-size: 13px; font-weight: 600; }
+
+/* Панель управления живёт в том же каркасе, что и кабинет: боковое меню
+   там из кнопок, а не ссылок, поэтому повторяем для них те же правила. */
+.account-sidebar nav button { width: 100%; padding: 13px 14px; display: flex; justify-content: space-between; gap: 8px; border: 0; border-radius: 10px; background: transparent; color: inherit; text-align: left; font: inherit; font-size: 14px; cursor: pointer; }
+.account-sidebar nav button:hover { background: var(--cream); }
+.account-sidebar nav button.active { background: var(--cream); color: var(--green); font-weight: 700; }
+.account-title-note { margin: 9px 0 0; color: #707a72; font-size: 13px; }
+.account-content > .account-title { margin-bottom: 26px; }
+
+.admin-table tr.clickable { cursor: pointer; }
+.admin-table tr.clickable:hover td { background: #f7f5f0; }
+.admin-row-arrow { color: var(--green); font-weight: 600; }
+.admin-stats button, .admin-order-list button { cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.admin-stats button:hover { border-color: var(--green); }
+.admin-order-list button { width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.admin-order-list button:hover { background: var(--cream); }
+.category-picker-row { display: flex; align-items: center; gap: 4px; }
+.category-picker-row > button:last-child { flex: 1; }
+
+.account-button-photo { width: 26px; height: 26px; flex: none; overflow: hidden; display: grid; place-items: center; border-radius: 50%; object-fit: cover; }
+.account-button-photo.placeholder { background: var(--green); color: #fff; font-size: 12px; font-weight: 700; }
 
 /* --- Личный кабинет: общий каркас для всех разделов --- */
 .account-avatar { overflow: hidden; display: grid; place-items: center; }
@@ -587,7 +608,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
   .admin-user > div { display: none; }
   .admin-alert { align-items: start; flex-direction: column; }
   .admin-stats { grid-template-columns: 1fr 1fr; }
-  .admin-stats article { min-height: 125px; padding: 17px; }
+  .admin-stats article, .admin-stats button { min-height: 125px; padding: 17px; }
   .admin-modules article { grid-template-columns: 38px 1fr; }
   .admin-modules article b { grid-column: 2; width: max-content; }
   .admin-block { padding: 21px 16px; }
