@@ -272,7 +272,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			pv.package_height_cm, pv.package_weight_grams,
 			COALESCE(pv.wholesale_min_qty, 1),
 			ARRAY(SELECT DISTINCT unnest(p.override_fields || COALESCE(pv.override_fields, '{}'))),
-			p.saby_updated_at
+			p.saby_updated_at, p.category_id
 		FROM products p
 		LEFT JOIN LATERAL (
 			SELECT * FROM product_variants WHERE product_id = p.id
@@ -295,7 +295,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.GrowthHabit, &item.Image, &item.Price, &item.Stock, &item.SKU, &item.VariantLabel, &item.HeightCM,
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
-			&item.OverrideFields, &item.SabyUpdatedAt); err != nil {
+			&item.OverrideFields, &item.SabyUpdatedAt, &item.CategoryID); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		products = append(products, item)
@@ -347,11 +347,12 @@ func (repository *PostgresRepository) UpdateProduct(
 			placement = CASE WHEN $8::text IS NULL THEN placement ELSE NULLIF($8, '') END,
 			pet_safety = CASE WHEN $9::text IS NULL THEN pet_safety ELSE NULLIF($9, '') END,
 			growth_habit = CASE WHEN $10::text IS NULL THEN growth_habit ELSE NULLIF($10, '') END,
+			category_id = COALESCE($11, category_id),
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, id, update.CatalogSection, update.PlantKind, update.LightLevel, update.Watering,
 		update.HeightClass, update.CareLevel, update.Placement, update.PetSafety,
-		update.GrowthHabit)
+		update.GrowthHabit, update.CategoryID)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
@@ -397,6 +398,67 @@ func (repository *PostgresRepository) UpdateProduct(
 		return Product{}, err
 	}
 	return repository.productByID(ctx, id)
+}
+
+func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := repository.pool.Query(ctx, `
+		SELECT c.id, c.parent_id, c.name, c.slug, c.sort_order,
+			(SELECT COUNT(*) FROM products p WHERE p.category_id=c.id)::int,
+			(SELECT COUNT(*) FROM categories ch WHERE ch.parent_id=c.id)::int
+		FROM categories c WHERE c.active=1 ORDER BY c.sort_order,c.name
+	`)
+	if err != nil { return nil, fmt.Errorf("query admin categories: %w", err) }
+	defer rows.Close()
+	result:=make([]Category,0)
+	for rows.Next(){ var c Category; if err:=rows.Scan(&c.ID,&c.ParentID,&c.Name,&c.Slug,&c.SortOrder,&c.ProductsCount,&c.ChildrenCount); err!=nil{return nil,err}; result=append(result,c)}
+	return result,rows.Err()
+}
+
+func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor Actor, input CategoryCreate) (Category,error) {
+	if !Can(actor.Role,PermissionProductsEdit){return Category{},ErrForbidden}
+	input.Name=strings.TrimSpace(input.Name); input.Slug=strings.TrimSpace(input.Slug)
+	var id int64
+	err:=repository.pool.QueryRow(ctx,`
+		INSERT INTO categories(parent_id,name,slug,sort_order) VALUES($1,$2,$3,$4) RETURNING id
+	`,input.ParentID,input.Name,input.Slug,input.SortOrder).Scan(&id)
+	if err!=nil{return Category{},fmt.Errorf("create category: %w",err)}
+	return repository.categoryByID(ctx,id)
+}
+
+func (repository *PostgresRepository) UpdateCategory(ctx context.Context, actor Actor,id int64,input CategoryUpdate)(Category,error){
+	if !Can(actor.Role,PermissionProductsEdit){return Category{},ErrForbidden}
+	_,err:=repository.pool.Exec(ctx,`
+		UPDATE categories SET name=COALESCE(NULLIF(TRIM($2),''),name),
+			slug=COALESCE(NULLIF(TRIM($3),''),slug),sort_order=COALESCE($4,sort_order),updated_at=NOW()
+		WHERE id=$1
+	`,id,input.Name,input.Slug,input.SortOrder)
+	if err!=nil{return Category{},fmt.Errorf("update category: %w",err)}
+	return repository.categoryByID(ctx,id)
+}
+
+func (repository *PostgresRepository) DeleteCategory(ctx context.Context,actor Actor,id int64)error{
+	if !Can(actor.Role,PermissionProductsEdit){return ErrForbidden}
+	var children,products int
+	if err:=repository.pool.QueryRow(ctx,`
+		SELECT (SELECT COUNT(*) FROM categories WHERE parent_id=$1)::int,
+			(SELECT COUNT(*) FROM products WHERE category_id=$1)::int
+	`,id).Scan(&children,&products);err!=nil{return err}
+	if children>0||products>0{return ErrCategoryNotEmpty}
+	command,err:=repository.pool.Exec(ctx,"DELETE FROM categories WHERE id=$1",id)
+	if err!=nil{return fmt.Errorf("delete category: %w",err)}
+	if command.RowsAffected()==0{return pgx.ErrNoRows}
+	return nil
+}
+
+func(repository *PostgresRepository) categoryByID(ctx context.Context,id int64)(Category,error){
+	var c Category
+	err:=repository.pool.QueryRow(ctx,`
+		SELECT c.id,c.parent_id,c.name,c.slug,c.sort_order,
+			(SELECT COUNT(*) FROM products WHERE category_id=c.id)::int,
+			(SELECT COUNT(*) FROM categories WHERE parent_id=c.id)::int
+		FROM categories c WHERE c.id=$1
+	`,id).Scan(&c.ID,&c.ParentID,&c.Name,&c.Slug,&c.SortOrder,&c.ProductsCount,&c.ChildrenCount)
+	return c,err
 }
 
 type sabyProductSnapshot struct {
