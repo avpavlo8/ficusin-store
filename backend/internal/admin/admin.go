@@ -26,6 +26,7 @@ const (
 )
 
 var ErrForbidden = errors.New("admin action is forbidden")
+var ErrCategoryNotEmpty = errors.New("category is not empty")
 
 func ValidRole(role string) bool {
 	switch role {
@@ -177,6 +178,7 @@ type Product struct {
 	WholesaleMinQty    int        `json:"wholesaleMinQty"`
 	OverrideFields     []string   `json:"overrideFields"`
 	SabyUpdatedAt      *time.Time `json:"sabyUpdatedAt"`
+	CategoryID         *int64     `json:"categoryId"`
 }
 
 type ProductUpdate struct {
@@ -206,6 +208,30 @@ type ProductUpdate struct {
 	PackageHeightCM    *int    `json:"packageHeightCm"`
 	PackageWeightGrams *int    `json:"packageWeightGrams"`
 	WholesaleMinQty    *int    `json:"wholesaleMinQty"`
+	CategoryID         *int64  `json:"categoryId"`
+}
+
+type Category struct {
+	ID            int64  `json:"id"`
+	ParentID      *int64 `json:"parentId"`
+	Name          string `json:"name"`
+	Slug          string `json:"slug"`
+	SortOrder     int    `json:"sortOrder"`
+	ProductsCount int    `json:"productsCount"`
+	ChildrenCount int    `json:"childrenCount"`
+}
+
+type CategoryCreate struct {
+	ParentID  *int64 `json:"parentId"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	SortOrder int    `json:"sortOrder"`
+}
+
+type CategoryUpdate struct {
+	Name      *string `json:"name"`
+	Slug      *string `json:"slug"`
+	SortOrder *int    `json:"sortOrder"`
 }
 
 type SyncRequest struct {
@@ -227,4 +253,8 @@ type Repository interface {
 	ListProducts(context.Context) ([]Product, error)
 	UpdateProduct(context.Context, Actor, int64, ProductUpdate) (Product, error)
 	SyncProducts(context.Context, Actor, SyncRequest) (SyncResult, error)
+	ListCategories(context.Context) ([]Category, error)
+	CreateCategory(context.Context, Actor, CategoryCreate) (Category, error)
+	UpdateCategory(context.Context, Actor, int64, CategoryUpdate) (Category, error)
+	DeleteCategory(context.Context, Actor, int64) error
 }
