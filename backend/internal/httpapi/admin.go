@@ -23,6 +23,10 @@ type adminRepository interface {
 	ListProducts(context.Context) ([]admin.Product, error)
 	UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error)
 	SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error)
+	ListCategories(context.Context) ([]admin.Category, error)
+	CreateCategory(context.Context, admin.Actor, admin.CategoryCreate) (admin.Category, error)
+	UpdateCategory(context.Context, admin.Actor, int64, admin.CategoryUpdate) (admin.Category, error)
+	DeleteCategory(context.Context, admin.Actor, int64) error
 }
 
 type adminHandlers struct {
@@ -261,6 +265,39 @@ func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request
 		return
 	}
 	writeJSON(response, http.StatusOK, result)
+}
+
+func (handlers adminHandlers) categories(response http.ResponseWriter, request *http.Request) {
+	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsRead); if !ok{return}
+	items,err:=handlers.repository.ListCategories(request.Context()); if err!=nil{handlers.failed(response,"list categories",err);return}
+	writeJSON(response,http.StatusOK,map[string]any{"categories":items})
+}
+
+func (handlers adminHandlers) createCategory(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit); if !ok{return}
+	var input admin.CategoryCreate
+	if decodeJSON(request,&input)!=nil||strings.TrimSpace(input.Name)==""||strings.TrimSpace(input.Slug)==""{
+		writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Укажите название и slug"});return
+	}
+	item,err:=handlers.repository.CreateCategory(request.Context(),actor,input); if err!=nil{handlers.failed(response,"create category",err);return}
+	writeJSON(response,http.StatusCreated,map[string]any{"category":item})
+}
+
+func (handlers adminHandlers) updateCategory(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit); if !ok{return}
+	id,ok:=pathID(response,request);if !ok{return};var input admin.CategoryUpdate
+	if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректные данные"});return}
+	item,err:=handlers.repository.UpdateCategory(request.Context(),actor,id,input);if err!=nil{handlers.failed(response,"update category",err);return}
+	writeJSON(response,http.StatusOK,map[string]any{"category":item})
+}
+
+func (handlers adminHandlers) deleteCategory(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
+	id,ok:=pathID(response,request);if !ok{return}
+	err:=handlers.repository.DeleteCategory(request.Context(),actor,id)
+	if errors.Is(err,admin.ErrCategoryNotEmpty){writeJSON(response,http.StatusConflict,errorResponse{Error:"Сначала перенесите товары и удалите вложенные категории"});return}
+	if err!=nil{handlers.failed(response,"delete category",err);return}
+	writeJSON(response, http.StatusOK, map[string]any{"deleted": true})
 }
 
 func (handlers adminHandlers) authorize(
