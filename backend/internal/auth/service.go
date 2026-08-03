@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -88,7 +89,7 @@ func (service *Service) ConfirmCall(
 	ctx context.Context,
 	phone, checkID string,
 	registration Registration,
-	userAgent string,
+	meta ClientMeta,
 ) (token string, expiresAt time.Time, pending bool, err error) {
 	var storedCheckID string
 	var consumedAt *time.Time
@@ -141,7 +142,7 @@ func (service *Service) ConfirmCall(
 		if flow != "register" {
 			return "", time.Time{}, false, ErrAccountNotFound
 		}
-		customerID, err = service.createCustomer(ctx, phone, registration)
+		customerID, err = service.createCustomer(ctx, phone, registration, meta)
 		if err != nil {
 			return "", time.Time{}, false, err
 		}
@@ -155,7 +156,7 @@ func (service *Service) ConfirmCall(
 		return "", time.Time{}, false, fmt.Errorf("consume call check: %w", err)
 	}
 
-	token, expiresAt, err = service.createSession(ctx, service.pool, customerID, userAgent)
+	token, expiresAt, err = service.createSession(ctx, service.pool, customerID, meta.UserAgent)
 	if err != nil {
 		return "", time.Time{}, false, err
 	}
@@ -170,10 +171,14 @@ func (service *Service) createCustomer(
 	ctx context.Context,
 	phone string,
 	registration Registration,
+	meta ClientMeta,
 ) (int64, error) {
 	if registration.FullName == "" ||
 		(registration.AccountType != "retail" && registration.AccountType != "wholesale") {
 		return 0, ErrRegistrationDetailsRequired
+	}
+	if !registration.Consent {
+		return 0, ErrConsentRequired
 	}
 
 	wholesaleStatus := "not_requested"
@@ -181,8 +186,16 @@ func (service *Service) createCustomer(
 		wholesaleStatus = "pending"
 	}
 
+	// The account and the evidence of the agreement behind it are written
+	// together, so one can never exist without the other.
+	transaction, err := service.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin registration: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+
 	var customerID int64
-	err := service.pool.QueryRow(ctx, `
+	err = transaction.QueryRow(ctx, `
 		INSERT INTO customers (
 			email, phone, full_name, last_name, patronymic,
 			delivery_address, account_type, wholesale_status, consent_at
@@ -204,6 +217,18 @@ func (service *Service) createCustomer(
 	}
 	if err != nil {
 		return 0, fmt.Errorf("insert customer: %w", err)
+	}
+	if err := consent.Record(ctx, transaction, consent.Event{
+		CustomerID: &customerID,
+		Event:      consent.EventRegistration,
+		Phone:      phone,
+		IPAddress:  meta.IPAddress,
+		UserAgent:  meta.UserAgent,
+	}); err != nil {
+		return 0, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit registration: %w", err)
 	}
 
 	if registration.AccountType == "wholesale" &&
@@ -367,12 +392,7 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 			COALESCE((
 				SELECT au.role
 				FROM admin_users au
-				WHERE au.is_active = TRUE
-				  AND (au.customer_id = c.id OR (
-					au.customer_id IS NULL AND c.email IS NOT NULL
-					AND LOWER(au.email) = LOWER(c.email)
-				  ))
-				ORDER BY (au.customer_id = c.id) DESC
+				WHERE au.is_active = TRUE AND au.customer_id = c.id
 				LIMIT 1
 			), ''),
 			COALESCE(TO_CHAR(c.avatar_updated_at AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISS'), '')
