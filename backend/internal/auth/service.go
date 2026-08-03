@@ -279,6 +279,66 @@ func (service *Service) UpdateProfile(
 	return nil
 }
 
+// SaveAvatar stores a profile picture. The browser downscales and
+// re-encodes the file before sending it, so the bytes that arrive here are
+// already small enough to keep in PostgreSQL alongside the customer row.
+func (service *Service) SaveAvatar(
+	ctx context.Context,
+	customerID int64,
+	image []byte,
+	mime string,
+) error {
+	tag, err := service.pool.Exec(ctx, `
+		UPDATE customers SET
+			avatar_image = $2,
+			avatar_mime = $3,
+			avatar_updated_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+				WHERE id = $1 AND is_active = TRUE
+	`, customerID, image, mime)
+	if err != nil {
+		return fmt.Errorf("save avatar: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAccountNotFound
+	}
+	return nil
+}
+
+func (service *Service) DeleteAvatar(ctx context.Context, customerID int64) error {
+	if _, err := service.pool.Exec(ctx, `
+		UPDATE customers SET
+			avatar_image = NULL,
+			avatar_mime = NULL,
+			avatar_updated_at = NULL,
+			updated_at = CURRENT_TIMESTAMP
+				WHERE id = $1
+	`, customerID); err != nil {
+		return fmt.Errorf("delete avatar: %w", err)
+	}
+	return nil
+}
+
+// Avatar returns the stored picture, or nil bytes when the customer never
+// uploaded one.
+func (service *Service) Avatar(ctx context.Context, customerID int64) ([]byte, string, error) {
+	var image []byte
+	var mime *string
+	err := service.pool.QueryRow(ctx, `
+		SELECT avatar_image, avatar_mime FROM customers WHERE id = $1
+	`, customerID).Scan(&image, &mime)
+	if isNoRows(err) {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("load avatar: %w", err)
+	}
+	if mime == nil {
+		return image, "", nil
+	}
+	return image, *mime, nil
+}
+
 func (service *Service) Logout(ctx context.Context, rawToken string) error {
 	if rawToken == "" {
 		return nil
@@ -314,7 +374,8 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 				  ))
 				ORDER BY (au.customer_id = c.id) DESC
 				LIMIT 1
-			), '')
+			), ''),
+			COALESCE(TO_CHAR(c.avatar_updated_at AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISS'), '')
 				FROM auth_sessions s
 					JOIN customers c ON c.id = s.customer_id
 						WHERE s.token_hash = $1
@@ -333,6 +394,7 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 		&user.WholesaleStatus,
 		&user.RetailDiscountBPS,
 		&user.AdminRole,
+		&user.AvatarUpdatedAt,
 	)
 	if isNoRows(err) {
 		return nil, nil

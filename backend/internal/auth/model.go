@@ -37,6 +37,10 @@ type User struct {
 	WholesaleStatus   string `json:"wholesaleStatus"`
 	RetailDiscountBPS int    `json:"retailDiscountBps"`
 	AdminRole         string `json:"adminRole,omitempty"`
+	// AvatarUpdatedAt is empty when no photo was uploaded. The account page
+	// uses it both to decide whether to show one and to bust the image
+	// cache after a new upload.
+	AvatarUpdatedAt string `json:"avatarUpdatedAt,omitempty"`
 }
 
 // Registration carries the details needed the first time a phone number
