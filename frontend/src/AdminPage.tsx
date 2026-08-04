@@ -99,7 +99,7 @@ export default function AdminPage() {
   };
 
   if (!data) return <main className="account-page">
-    <StoreHeader />
+    <StoreHeader showTabBar={false} />
     <section className="account-shell"><div className="account-content"><p>{error || "Загружаем панель…"}</p></div></section>
   </main>;
 
@@ -107,7 +107,7 @@ export default function AdminPage() {
   const initial = data.user.fullName.trim().charAt(0).toUpperCase() || "Ф";
   return (
     <main className="account-page">
-      <StoreHeader />
+      <StoreHeader showTabBar={false} />
       <section className="account-shell">
         <aside className="account-sidebar">
           <div className="account-avatar">

@@ -3,7 +3,7 @@ import {
   formatRussianPhoneInput,
   normalizeRussianPhone,
 } from "./lib/phone";
-import { AccountMenu } from "./StoreHeader";
+import { StoreHeader } from "./StoreHeader";
 
 type Product = {
   id: string;
@@ -117,7 +117,6 @@ export default function Home() {
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [delivery, setDelivery] = useState("pickup");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
@@ -235,11 +234,9 @@ export default function Home() {
   }, [cart]);
 
   useEffect(() => {
-    document.body.style.overflow = cartOpen || checkoutOpen || menuOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [cartOpen, checkoutOpen, menuOpen]);
+    document.body.classList.toggle("drawer-open", cartOpen || checkoutOpen);
+    return () => document.body.classList.remove("drawer-open");
+  }, [cartOpen, checkoutOpen]);
 
   useEffect(() => {
     if (
@@ -465,35 +462,13 @@ export default function Home() {
 
   return (
     <main>
-      <div className="announcement">
-        <span>Бережно упакуем каждое растение</span>
-        <span>Доставка по Рязани и всей России</span>
-      </div>
-
-      <header className="header">
-        <a className="brand" href="#top" aria-label="Фикусин — на главную">
-          <span className="brand-mark">⌇</span>
-          <span>Фикусин</span>
-        </a>
-        <nav className="desktop-nav" aria-label="Основная навигация">
-          <a href="#catalog">Каталог</a>
-          <a href="#new">Новинки</a>
-          <a href="#care">Уход</a>
-          <a href="#delivery">Доставка</a>
-        </nav>
-        <div className="header-actions">
-          <label className="header-search"><span aria-hidden="true">⌕</span><input id="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по каталогу" /></label>
-          <AccountMenu user={user} />
-          <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites.size}`}>
-            <span aria-hidden="true">♥</span><b>{favorites.size}</b>
-          </a>
-          <button className="cart-button" onClick={() => setCartOpen(true)} aria-label={`Корзина, товаров: ${cartCount}`}>
-            <span aria-hidden="true">Корзина</span>
-            <b>{cartCount}</b>
-          </button>
-          <button className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Открыть меню">☰</button>
-        </div>
-      </header>
+      <StoreHeader
+        query={query}
+        onQueryChange={setQuery}
+        favoritesCount={favorites.size}
+        cartCount={cartCount}
+        onCartClick={() => setCartOpen(true)}
+      />
 
       <section className="catalog-hero" id="top">
         <div>
@@ -650,7 +625,7 @@ export default function Home() {
 
       {notice && <div className="toast" role="status">{notice}</div>}
 
-      {(cartOpen || checkoutOpen || menuOpen) && <button className="overlay" aria-label="Закрыть" onClick={() => { setCartOpen(false); setCheckoutOpen(false); setMenuOpen(false); }} />}
+      {(cartOpen || checkoutOpen) && <button className="overlay" aria-label="Закрыть" onClick={() => { setCartOpen(false); setCheckoutOpen(false); }} />}
 
       <aside className={`drawer ${cartOpen ? "open" : ""}`} aria-hidden={!cartOpen}>
         <div className="drawer-head"><div><p className="eyebrow">Ваш выбор</p><h2>Корзина</h2></div><button onClick={() => setCartOpen(false)} aria-label="Закрыть корзину">×</button></div>
@@ -846,15 +821,6 @@ export default function Home() {
         )}
       </aside>
 
-      <aside className={`mobile-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
-        <button onClick={() => setMenuOpen(false)} aria-label="Закрыть меню">×</button>
-        {user ? (
-          <><a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
-          {(user.adminRole === "manager" || user.adminRole === "owner") && <a href="/admin">Панель управления</a>}</>
-        ) : (
-          <><a href="/login">Войти</a><a href="/register">Регистрация</a></>
-        )}<a href="/favorites" onClick={() => setMenuOpen(false)}>Избранное ({favorites.size})</a><a href="#catalog" onClick={() => setMenuOpen(false)}>Каталог</a><a href="#new" onClick={() => setMenuOpen(false)}>Новинки</a><a href="#care" onClick={() => setMenuOpen(false)}>Уход</a><a href="#delivery" onClick={() => setMenuOpen(false)}>Доставка</a>
-      </aside>
     </main>
   );
 }
