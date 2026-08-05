@@ -18,7 +18,7 @@ import (
 
 type CDEK interface {
 	GetOffices(context.Context, int) ([]integration.CDEKOffice, error)
-	CalculatePVZ(context.Context, int, int) (integration.CDEKQuote, error)
+	CalculatePVZ(context.Context, int, integration.Parcel) ([]integration.CDEKQuote, error)
 }
 
 type Notifier interface {
@@ -63,6 +63,11 @@ type CDEKInput struct {
 	CityCode   int
 	CityName   string
 	OfficeCode string
+	// TariffCode is the option the customer picked at the checkout. The
+	// price is still taken from CDEK's own answer, never from the browser;
+	// this only says which of the offered tariffs to charge for. Zero means
+	// "the cheapest one", which is what the checkout preselects.
+	TariffCode int
 }
 
 type Created struct {
@@ -88,6 +93,20 @@ type purchasableItem struct {
 	Name      string
 	Price     float64
 	Quantity  int
+	Parcel    integration.Parcel
+}
+
+// shippingBox builds the single box the order travels in from the boxes of
+// its items. Quantity matters: three identical plants are three boxes side
+// by side, not one.
+func shippingBox(items []purchasableItem) integration.Parcel {
+	parcels := make([]integration.Parcel, 0, len(items))
+	for _, item := range items {
+		for count := 0; count < item.Quantity; count++ {
+			parcels = append(parcels, integration.ParcelOrDefault(item.Parcel))
+		}
+	}
+	return integration.CombineParcels(parcels)
 }
 
 // mergeItems collapses repeated products into a single line. Without this a
@@ -138,13 +157,19 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		var item purchasableItem
 		var priceMinor int64
 		err := transaction.QueryRow(ctx, `
-			SELECT p.slug, p.name, pv.id, pv.base_price_minor
+			SELECT p.slug, p.name, pv.id, pv.base_price_minor,
+				COALESCE(pv.package_length_cm, 0), COALESCE(pv.package_width_cm, 0),
+				COALESCE(pv.package_height_cm, 0), COALESCE(pv.package_weight_grams, 0)
 			FROM products p
 			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
 			WHERE p.slug = $1 AND p.status = 'published'
 			ORDER BY pv.id
 			LIMIT 1
-		`, requested.ID).Scan(&item.ID, &item.Name, &item.VariantID, &priceMinor)
+		`, requested.ID).Scan(
+			&item.ID, &item.Name, &item.VariantID, &priceMinor,
+			&item.Parcel.LengthCM, &item.Parcel.WidthCM,
+			&item.Parcel.HeightCM, &item.Parcel.WeightGrams,
+		)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Created{}, invalid("Товар больше не доступен. Обновите страницу")
 		}
@@ -163,10 +188,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	subtotal := 0.0
-	itemCount := 0
 	for _, item := range items {
 		subtotal += item.Price * float64(item.Quantity)
-		itemCount += item.Quantity
 	}
 	deliveryFees := map[string]float64{"pickup": 0, "courier": 490, "post": 590}
 	deliveryFee, regularDelivery := deliveryFees[input.Delivery]
@@ -177,9 +200,18 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		if input.CDEK.CityCode <= 0 || strings.TrimSpace(input.CDEK.OfficeCode) == "" {
 			return Created{}, invalid("Выберите город и пункт выдачи СДЭК")
 		}
-		quote, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, itemCount)
+		quotes, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, shippingBox(items))
 		if err != nil {
 			return Created{}, err
+		}
+		// The cheapest tariff comes first, and that is what the checkout
+		// preselects. A customer who chose a faster one is charged for it.
+		quote := quotes[0]
+		for _, option := range quotes {
+			if option.TariffCode == input.CDEK.TariffCode {
+				quote = option
+				break
+			}
 		}
 		offices, err := service.cdek.GetOffices(ctx, input.CDEK.CityCode)
 		if err != nil {
