@@ -66,6 +66,9 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .product-bottom strong { color: var(--green); font-size: 18px; }
 .product-bottom button { padding: 10px 15px; border: 1px solid var(--green); border-radius: 11px; background: transparent; color: var(--green); font-weight: 700; cursor: pointer; transition: all .2s ease; }
 .product-bottom button:hover { background: var(--green); color: white; }
+/* Already in the cart: filled in, so a full catalogue reads at a glance. */
+.product-bottom button.in-cart { background: var(--green); color: white; }
+.product-bottom button.in-cart:hover { background: #123c2f; }
 .empty-state { grid-column: 1/-1; padding: 80px; text-align: center; background: var(--cream); border-radius: 20px; }
 
 .help-section { margin: 0 5vw 110px; padding: 70px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 80px; align-items: center; background: var(--green); color: white; border-radius: 28px; }
@@ -444,6 +447,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .pdp-buy > strong { color: var(--green); font: 400 36px Georgia,serif; }
 .pdp-buy button { padding: 15px 22px; border: 0; border-radius: 10px; background: var(--green); color: white; font-weight: 700; cursor: pointer; }
 .pdp-buy button:disabled { opacity: .5; }
+/* Already in the cart — the opposite fill, so the change is unmistakable. */
+.pdp-buy button.in-cart { border: 1px solid var(--green); background: #edf2ec; color: var(--green); }
 .pdp-benefits { padding: 18px; border-radius: 12px; background: var(--cream); color: #59685e; font-size: 12px; }
 .pdp-benefits p { margin: 7px 0; }
 .pdp-content { padding: 80px 8vw; display: grid; grid-template-columns: 1fr 1fr; gap: 9vw; background: #153a2f; color: #eef4ef; }
