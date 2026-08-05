@@ -12,6 +12,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -44,6 +45,14 @@ type CreateInput struct {
 	Consent   bool
 	ClientIP  string
 	UserAgent string
+	// PaymentMethod is what the customer chose at the checkout. Whether
+	// they were allowed to choose it is decided before we get here.
+	PaymentMethod string
+	// WholesaleApproved gates the invoice option. It comes from the
+	// customer's own record, never from the browser.
+	WholesaleApproved bool
+	// OnlinePaymentReady is false when the shop has no YooKassa keys.
+	OnlinePaymentReady bool
 }
 
 type CustomerInput struct {
@@ -274,6 +283,18 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		return Created{}, invalid("Выберите способ получения")
 	}
 
+	// The browser names a payment method; these rules decide whether it may
+	// have it. An unknown or forbidden choice falls back to paying by card.
+	paymentMethod := strings.TrimSpace(input.PaymentMethod)
+	if !payment.Allowed(
+		paymentMethod,
+		input.Delivery,
+		input.WholesaleApproved,
+		input.OnlinePaymentReady,
+	) {
+		paymentMethod = payment.MethodOnline
+	}
+
 	orderNumber, err := newOrderNumber()
 	if err != nil {
 		return Created{}, err
@@ -289,11 +310,12 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			order_number, customer_id, customer_name, phone, email, address, comment,
 			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
 			cdek_city_code, cdek_city_name,
-			cdek_office_code, cdek_tariff_code, subtotal, total, payment_status, status
+			cdek_office_code, cdek_tariff_code, subtotal, total,
+			payment_method, payment_status, status
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'payment_provider_pending', 'new'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'new'
 		)
 		RETURNING id
 	`,
@@ -301,6 +323,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		input.Customer.Email, deliveryAddress, input.Customer.Comment, input.Delivery,
 		deliveryFee, boolToInt(feePending), boolToInt(input.CDEK.Repack && input.Delivery == "cdek"),
 		cityCode, cityName, officeCode, tariffCode, subtotal, total,
+		paymentMethod, payment.InitialStatus(paymentMethod),
 	).Scan(&orderID)
 	if err != nil {
 		return Created{}, fmt.Errorf("insert order: %w", err)
