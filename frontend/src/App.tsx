@@ -406,10 +406,7 @@ export default function Home() {
           // so the server needs to know what is in it.
           body: JSON.stringify({
             cityCode: city.code,
-            items: cartLines.map((line) => ({
-              id: line.product.id,
-              quantity: line.quantity,
-            })),
+            items: cartLines.map((line) => ({ id: line.id, quantity: line.quantity })),
           }),
         }),
       ]);
