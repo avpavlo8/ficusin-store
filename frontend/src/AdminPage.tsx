@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { StoreHeader, useStoreUser } from "./StoreHeader";
 
 type Role = "owner" | "manager" | "";
-type Section = "dashboard" | "products" | "categories" | "orders" | "customers";
+type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings";
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
 
 type AdminData = {
@@ -132,6 +132,7 @@ export default function AdminPage() {
             {can("products.read") && <Nav active={section === "categories"} onClick={() => go("categories")}>Категории</Nav>}
             {can("orders.read") && <Nav active={section === "orders"} onClick={() => go("orders")}>Заказы</Nav>}
             {can("customers.read") && <Nav active={section === "customers"} onClick={() => go("customers")}>Клиенты</Nav>}
+            {data.role === "owner" && <Nav active={section === "settings"} onClick={() => go("settings")}>Настройки</Nav>}
           </nav>
           <a className="account-switch" href="/account">Личный кабинет →</a>
           <a className="account-switch" href="/">Вернуться в магазин →</a>
@@ -142,6 +143,7 @@ export default function AdminPage() {
           {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}
           {section === "orders" && <Orders focusOrder={focusOrder} onError={setError} />}
           {section === "products" && <Products can={can} onError={setError} />}
+          {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "categories" && <Categories canEdit={can("products.edit")} onError={setError} />}
         </div>
       </section>
@@ -412,6 +414,53 @@ function Orders({ focusOrder, onError }: { focusOrder?: string; onError: (value:
       <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
       {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}>{order.deliveryFeePending && <DeliveryFeeForm order={order} onSubmit={setDeliveryFee} />}<div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
     </Fragment>)}</tbody></table></div></>;
+}
+
+type SettingDefinition = { key: string; title: string; note: string; kind: string };
+
+// The switches the owner flips instead of asking for a redeploy: turning an
+// integration off for a test run, the sender details, how long an unpaid
+// order waits.
+function Settings({ onError }: { onError: (value: string) => void }) {
+  const [definitions, setDefinitions] = useState<SettingDefinition[]>([]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState("");
+
+  useEffect(() => {
+    api<{ definitions: SettingDefinition[]; values: Record<string, string> }>("/api/v1/admin/settings")
+      .then((data) => { setDefinitions(data.definitions); setValues(data.values); })
+      .catch((error) => onError((error as Error).message));
+  }, [onError]);
+
+  const save = async () => {
+    try {
+      const result = await api<{ values: Record<string, string> }>("/api/v1/admin/settings", { method: "PUT", body: JSON.stringify({ values }) });
+      setValues(result.values);
+      setSaved("Настройки сохранены и уже действуют");
+      window.setTimeout(() => setSaved(""), 3000);
+    } catch (error) { onError((error as Error).message); }
+  };
+
+  return <><PageHeading eyebrow="Магазин" title="Настройки" text="Действуют сразу, перезапуск не нужен" />
+    <div className="admin-settings">
+      {definitions.map((definition) => <label key={definition.key} className={definition.kind === "switch" ? "admin-setting switch" : "admin-setting"}>
+        {definition.kind === "switch"
+          ? <input type="checkbox" checked={values[definition.key] !== "0"} onChange={(event) => setValues({ ...values, [definition.key]: event.target.checked ? "1" : "0" })} />
+          : null}
+        <span>
+          <b>{definition.title}</b>
+          <small>{definition.note}</small>
+        </span>
+        {definition.kind !== "switch"
+          ? <input type={definition.kind === "number" ? "number" : "text"} min="0" value={values[definition.key] ?? ""} onChange={(event) => setValues({ ...values, [definition.key]: event.target.value })} />
+          : null}
+      </label>)}
+      <div className="admin-settings-actions">
+        <button className="primary" onClick={save}>Сохранить</button>
+        {saved && <span>{saved}</span>}
+      </div>
+    </div>
+  </>;
 }
 
 // The manager names the delivery price for an order the shop could not

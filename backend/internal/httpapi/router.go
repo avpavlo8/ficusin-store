@@ -34,7 +34,10 @@ type Dependencies struct {
 	Packages packageRepository
 	// Payments is nil when no YooKassa keys are set, which means the shop
 	// simply does not offer card payment.
-	Payments     paymentService
+	Payments paymentService
+	// Settings is nil in tests; the routes then answer 503 and nothing
+	// else in the shop notices.
+	Settings     settingsService
 	CookieSecure bool
 	StaticDir    string
 	// YandexSuggestKey enables address autocomplete; empty simply turns the
@@ -126,6 +129,13 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			dependencies.Payments,
 		).ServeHTTP,
 	))
+	settingsAPI := settingsHandlers{
+		logger:   logger,
+		auth:     dependencies.Auth,
+		settings: dependencies.Settings,
+	}
+	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
+	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
 	mux.HandleFunc("GET /api/v1/admin/customers", adminAPI.customers)
 	mux.HandleFunc("PATCH /api/v1/admin/customers/{id}", adminAPI.updateCustomer)

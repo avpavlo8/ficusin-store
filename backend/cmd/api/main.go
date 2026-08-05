@@ -22,6 +22,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
+	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
 )
 
@@ -83,6 +84,7 @@ func main() {
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
+	shopSettings := settings.NewService(pool, logger)
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
 	// Payments stay nil-safe: without YooKassa keys the shop simply does not
 	// offer card payment, exactly like CDEK without its own keys.
@@ -113,6 +115,7 @@ func main() {
 			Cart:         cart.NewStore(pool),
 			Packages:     catalogRepository,
 			Payments:     paymentService,
+			Settings:     shopSettings,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
 
@@ -123,6 +126,7 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+	go shopSettings.Run(ctx)
 	go notificationWorker.Run(ctx)
 	// The safety net under YooKassa's notifications: a lost one would
 	// otherwise leave a paid order looking unpaid.
