@@ -128,6 +128,9 @@ export default function Home() {
   const [cdekQuote, setCdekQuote] = useState<CdekQuote | null>(null);
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
+  // Pick-up points need API keys. Without them the option is hidden rather
+  // than offered and then failing at the last step of the checkout.
+  const [cdekAvailable, setCdekAvailable] = useState(true);
   const [user, setUser] = useState<StoreUser | null>(null);
   const [checkoutProfile, setCheckoutProfile] = useState<CheckoutProfile>({
     name: "",
@@ -148,6 +151,13 @@ export default function Home() {
       }
     });
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/v1/delivery/cdek?action=status", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: { available?: boolean }) => setCdekAvailable(Boolean(data.available)))
+      .catch(() => setCdekAvailable(false));
   }, []);
 
   useEffect(() => {
@@ -309,6 +319,7 @@ export default function Home() {
     .map((product) => ({ ...product, quantity: cart[product.id] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const availableDelivery = deliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable);
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
   const deliveryFee = delivery === "cdek" ? (cdekQuote?.price ?? 0) : (deliveryOption.fee ?? 0);
   const total = subtotal + deliveryFee;
@@ -609,7 +620,7 @@ export default function Home() {
           <p>Итоговую стоимость и срок менеджер подтвердит после оформления заказа.</p>
         </div>
         <div className="delivery-grid">
-          {deliveryOptions.map((item, index) => (
+          {availableDelivery.map((item, index) => (
             <article key={item.id}><span>0{index + 1}</span><h3>{item.title}</h3><p>{item.detail}</p><b>{item.id === "cdek" ? "По тарифу СДЭК" : item.fee ? `от ${money(item.fee)}` : "Бесплатно"}</b></article>
           ))}
         </div>
@@ -705,7 +716,7 @@ export default function Home() {
             <fieldset>
               <legend>Получение</legend>
               <div className="delivery-options">
-                {deliveryOptions.map((item) => (
+                {availableDelivery.map((item) => (
                   <label className={delivery === item.id ? "selected" : ""} key={item.id}>
                     <input
                       type="radio"
