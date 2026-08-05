@@ -245,3 +245,56 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 
 	return products, nil
 }
+
+// PackageSize is how a single item is boxed, in centimetres and grams. A
+// zero value means the manager has not measured it yet.
+type PackageSize struct {
+	LengthCM    int
+	WidthCM     int
+	HeightCM    int
+	WeightGrams int
+}
+
+// PackageSizes returns the box of each requested product. Products with
+// nothing filled in come back as a zero value, so the caller can decide what
+// to assume rather than being handed a guess.
+func (repository *PostgresRepository) PackageSizes(
+	ctx context.Context,
+	slugs []string,
+) (map[string]PackageSize, error) {
+	sizes := make(map[string]PackageSize, len(slugs))
+	if len(slugs) == 0 {
+		return sizes, nil
+	}
+	rows, err := repository.pool.Query(ctx, `
+		SELECT DISTINCT ON (p.slug)
+			p.slug,
+			COALESCE(pv.package_length_cm, 0),
+			COALESCE(pv.package_width_cm, 0),
+			COALESCE(pv.package_height_cm, 0),
+			COALESCE(pv.package_weight_grams, 0)
+		FROM products p
+		JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
+		WHERE p.slug = ANY($1)
+		ORDER BY p.slug, pv.id
+	`, slugs)
+	if err != nil {
+		return nil, fmt.Errorf("load package sizes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		var size PackageSize
+		if err := rows.Scan(
+			&slug,
+			&size.LengthCM,
+			&size.WidthCM,
+			&size.HeightCM,
+			&size.WeightGrams,
+		); err != nil {
+			return nil, fmt.Errorf("scan package size: %w", err)
+		}
+		sizes[slug] = size
+	}
+	return sizes, rows.Err()
+}
