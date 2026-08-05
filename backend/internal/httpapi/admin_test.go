@@ -52,6 +52,7 @@ type adminRepositoryStub struct {
 	updateCustomerCalls int
 	syncCalls           int
 	createCategoryCalls int
+	deliveryFee         float64
 }
 
 func (stub *adminRepositoryStub) Dashboard(context.Context) (admin.Dashboard, error) {
@@ -69,6 +70,16 @@ func (stub *adminRepositoryStub) UpdateCustomer(context.Context, admin.Actor, in
 
 func (stub *adminRepositoryStub) ListOrders(context.Context) ([]admin.Order, error) {
 	return []admin.Order{}, nil
+}
+
+func (stub *adminRepositoryStub) SetDeliveryFee(
+	_ context.Context,
+	_ admin.Actor,
+	_ int64,
+	fee float64,
+) (admin.Order, error) {
+	stub.deliveryFee = fee
+	return admin.Order{}, nil
 }
 
 func (stub *adminRepositoryStub) UpdateOrderStatus(context.Context, admin.Actor, int64, string, string) (admin.Order, error) {

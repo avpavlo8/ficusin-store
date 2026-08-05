@@ -20,6 +20,7 @@ type adminRepository interface {
 	UpdateCustomer(context.Context, admin.Actor, int64, admin.CustomerUpdate) (admin.Customer, error)
 	ListOrders(context.Context) ([]admin.Order, error)
 	UpdateOrderStatus(context.Context, admin.Actor, int64, string, string) (admin.Order, error)
+	SetDeliveryFee(context.Context, admin.Actor, int64, float64) (admin.Order, error)
 	ListProducts(context.Context) ([]admin.Product, error)
 	UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error)
 	SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error)
@@ -145,16 +146,32 @@ func (handlers adminHandlers) updateOrder(response http.ResponseWriter, request 
 	var body struct {
 		Status        string `json:"status"`
 		PaymentStatus string `json:"paymentStatus"`
+		// DeliveryFee finishes an order the shop could not price itself.
+		// A pointer so that "not sent" and "zero, delivery is free" stay
+		// different things.
+		DeliveryFee *float64 `json:"deliveryFee"`
 	}
 	if decodeJSON(request, &body) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	if body.DeliveryFee != nil {
+		order, err := handlers.repository.SetDeliveryFee(
+			request.Context(), actor, id, *body.DeliveryFee,
+		)
+		if err != nil {
+			handlers.failed(response, "set delivery fee", err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"order": order})
 		return
 	}
 	if body.Status != "" && !slices.Contains([]string{"new", "confirmed", "assembling", "ready", "shipped", "completed", "cancelled"}, body.Status) {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус заказа"})
 		return
 	}
-	if body.PaymentStatus != "" && !slices.Contains([]string{"payment_provider_pending", "pending", "paid", "failed", "refunded"}, body.PaymentStatus) {
+	if body.PaymentStatus != "" && !slices.Contains([]string{"payment_provider_pending", "pending", "paid", "failed", "refunded",
+		"on_delivery", "invoice", "cancelled"}, body.PaymentStatus) {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус оплаты"})
 		return
 	}
