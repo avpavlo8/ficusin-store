@@ -12,6 +12,7 @@ Go отдаёт `/api/v1/*` и статику собранного фронте�
 frontend/   React + TypeScript + Vite
 backend/    Go, HTTP API
 timeweb/    SQL-миграции PostgreSQL
+e2e/        Playwright-тесты вёрстки (iPhone, Android, десктоп)
 docs/       документация и аудиты
 ```
 
@@ -103,8 +104,7 @@ internal/integration/    внешние сервисы: SMS.ru, CDEK, Telegram
   уронит запрос. На этом уже падал `/auth/me`.
 - **`PUT /account/profile` заменяет запись целиком.** Отправка одного поля
   обнулит остальные. Форма шлёт все поля сразу; при ручных запросах помните
-  об этом. Обнуление email отбирает права владельца — роль выдаётся по
-  совпадению email с `ADMIN_EMAILS`.
+  об этом.
 - **Фото профиля уменьшает браузер** до 256×256 JPEG перед отправкой.
   Сервер только проверяет размер и MIME. Файловая система контейнера
   эфемерная — храните в базе, туда же положен аватар.
@@ -120,9 +120,10 @@ internal/integration/    внешние сервисы: SMS.ru, CDEK, Telegram
 
 ## Проверки
 
-CI (`.github/workflows/ci.yml`) гоняет три задачи на push и на PR:
+CI (`.github/workflows/ci.yml`) гоняет четыре задачи на push и на PR:
 
 - `frontend` — `npm ci`, `npm run lint`, `npm run build`
+- `layout` — Playwright-тесты вёрстки на iPhone, Android и десктопе
 - `backend` — `go test ./...`, `go vet ./...`, `go build ./cmd/api`
 - `image` — сборка Docker-образа
 
@@ -131,6 +132,11 @@ CI (`.github/workflows/ci.yml`) гоняет три задачи на push и н
 - **Линтер фронтенда падает на `setState` прямо в теле `useEffect`**
   (правило `react-hooks/set-state-in-effect`). Переносите вызов в обработчик
   или в таймер.
+- **Тесты вёрстки живут в `e2e/`** — отдельный проект со своим
+  `package.json`, ставится через `npm install` (не `ci`, lock-файла нет).
+  Гоняются против собранного бандла на `vite preview`, API замокан в
+  `e2e/tests/helpers.ts` — при изменении формата ответа поправьте моки.
+  Локально: `npm install && npx playwright install && npm test` в `e2e/`.
 - **Интерфейс `authService` в `httpapi` реализуют четыре заглушки в тестах**
   (`router_test.go`, `auth_test.go`, `admin_test.go`, плюс встроенная в
   `orders_test.go`). Добавили метод в интерфейс — обновите все.
