@@ -11,9 +11,7 @@ type Config struct {
 		Database              Database
 		Auth                  Auth
 		SMS                   SMS
-		YooKassa              YooKassa
 		MigrationsDir         string
-		IntegrationPrivateKey string
 		TelegramChatID        string
 		TelegramBotToken      string
 		YandexSuggestKey      string
@@ -64,13 +62,6 @@ type SMS struct {
 		APIKey string
 }
 
-// YooKassa holds credentials for the YooKassa payment gateway.
-type YooKassa struct {
-		ShopID    string
-		SecretKey string
-		ReturnURL string
-}
-
 func Load() (Config, error) {
 		port := strings.TrimSpace(os.Getenv("PORT"))
 		if port == "" {
@@ -99,13 +90,7 @@ func Load() (Config, error) {
 					SMS: SMS{
 									APIKey: strings.TrimSpace(os.Getenv("SMSRU_API_KEY")),
 								},
-					YooKassa: YooKassa{
-									ShopID:    strings.TrimSpace(os.Getenv("YOOKASSA_SHOP_ID")),
-									SecretKey: strings.TrimSpace(os.Getenv("YOOKASSA_SECRET_KEY")),
-									ReturnURL: defaultString(os.Getenv("YOOKASSA_RETURN_URL"), "https://ficusin.ru/orders"),
-								},
 					MigrationsDir:         strings.TrimSpace(os.Getenv("MIGRATIONS_DIR")),
-					IntegrationPrivateKey: strings.TrimSpace(os.Getenv("INTEGRATION_SECRETS_PRIVATE_KEY")),
 					TelegramChatID:        defaultString(os.Getenv("TELEGRAM_ORDER_CHAT_ID"), "-5430918511"),
 					TelegramBotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 					YandexSuggestKey:      strings.TrimSpace(os.Getenv("YANDEX_SUGGEST_API_KEY")),
