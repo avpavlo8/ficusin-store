@@ -9,12 +9,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// OrderNotifier tells a customer their order moved on. It is optional: the
+// panel works the same without notifications configured.
+type OrderNotifier interface {
+	NotifyOrderStatus(ctx context.Context, customerID int64, orderNumber, status string) error
+}
+
 type PostgresRepository struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	notifier OrderNotifier
 }
 
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{pool: pool}
+}
+
+// WithNotifier returns the repository wired to send status notifications.
+func (repository *PostgresRepository) WithNotifier(notifier OrderNotifier) *PostgresRepository {
+	repository.notifier = notifier
+	return repository
 }
 
 func (repository *PostgresRepository) Dashboard(ctx context.Context) (Dashboard, error) {

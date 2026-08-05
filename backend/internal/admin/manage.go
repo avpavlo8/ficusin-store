@@ -302,6 +302,17 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	if err := tx.Commit(ctx); err != nil {
 		return Order{}, fmt.Errorf("commit order update: %w", err)
 	}
+	// Told after the commit, and never at the cost of the update: a
+	// notification that fails to send must not undo a status change.
+	if status != "" && repository.notifier != nil {
+		var customerID *int64
+		var orderNumber string
+		if err := repository.pool.QueryRow(ctx,
+			"SELECT customer_id, order_number FROM orders WHERE id = $1", id,
+		).Scan(&customerID, &orderNumber); err == nil && customerID != nil {
+			_ = repository.notifier.NotifyOrderStatus(ctx, *customerID, orderNumber, status)
+		}
+	}
 	orders, err := repository.ListOrders(ctx)
 	if err != nil {
 		return Order{}, err
