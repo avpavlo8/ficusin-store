@@ -3,7 +3,8 @@ package config
 import (
 		"errors"
 		"os"
-		"strings"
+		"strconv"
+	"strings"
 	)
 
 type Config struct {
@@ -18,6 +19,24 @@ type Config struct {
 		AdminEmails           []string
 		CDEK                  CDEK
 		Push                  Push
+		Payments              Payments
+		SiteURL               string
+}
+
+// Payments holds the YooKassa credentials. Empty values switch card
+// payment off: the checkout then offers only the ways that need no
+// provider, and nothing else breaks.
+type Payments struct {
+		ShopID    string
+		SecretKey string
+		// SendReceipt is on only when YooKassa prints the fiscal receipt.
+		// A shop that punches receipts through its own till leaves this off,
+		// otherwise one sale produces two receipts.
+		SendReceipt bool
+		// TaxSystem and VATCode are the codes from 54-ФЗ. They matter only
+		// when we are the ones sending the receipt.
+		TaxSystem int
+		VATCode   int
 }
 
 // CDEK holds the API credentials for the delivery service. Empty values
@@ -99,6 +118,14 @@ func Load() (Config, error) {
 									ClientID:     strings.TrimSpace(os.Getenv("CDEK_CLIENT_ID")),
 									ClientSecret: strings.TrimSpace(os.Getenv("CDEK_CLIENT_SECRET")),
 								},
+					SiteURL:               defaultString(os.Getenv("SITE_URL"), "https://ficusin.ru"),
+					Payments: Payments{
+									ShopID:      strings.TrimSpace(os.Getenv("YOOKASSA_SHOP_ID")),
+									SecretKey:   strings.TrimSpace(os.Getenv("YOOKASSA_SECRET_KEY")),
+									SendReceipt: strings.TrimSpace(os.Getenv("YOOKASSA_SEND_RECEIPT")) == "1",
+									TaxSystem:   intFromEnv("YOOKASSA_TAX_SYSTEM", 0),
+									VATCode:     intFromEnv("YOOKASSA_VAT_CODE", 1),
+								},
 					Push: Push{
 									PublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),
 									PrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),
@@ -165,4 +192,14 @@ func boundedInteger(value string, fallback, minimum, maximum int) int {
 					return maximum
 				}
 		return parsed
+}
+
+// intFromEnv reads a numeric setting, falling back rather than failing:
+// a typo in an optional code should not stop the shop from starting.
+func intFromEnv(name string, fallback int) int {
+		value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
+		if err != nil {
+				return fallback
+		}
+		return value
 }

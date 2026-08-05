@@ -28,7 +28,7 @@ type Order = {
   id: number; orderNumber: string; customerId?: number; customerName: string;
   phone: string; email: string; address: string; comment: string;
   deliveryMethod: string; deliveryFeePending?: boolean; repackRequested?: boolean;
-  paymentStatus: string; status: string; total: number;
+  paymentMethod?: string; paymentStatus: string; status: string; total: number;
   createdAt: string; items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>;
 };
 
@@ -50,6 +50,14 @@ const roles: Array<{ value: Role; label: string }> = [
   { value: "", label: "Без доступа" }, { value: "manager", label: "Менеджер" },
 ];
 const roleLabel = (role: Role) => role === "owner" ? "Владелец" : roles.find((item) => item.value === role)?.label || "Клиент";
+const paymentLabels: Record<string, string> = {
+  pending: "Ожидает оплаты", paid: "Оплачен", on_delivery: "При получении",
+  invoice: "По счёту", cancelled: "Оплата отменена",
+  payment_provider_pending: "Без онлайн-оплаты", refunded: "Возвращён",
+};
+const paymentMethodLabels: Record<string, string> = {
+  on_delivery: "Оплатит при получении", invoice: "Нужен счёт на организацию",
+};
 const orderStatuses = ["new", "confirmed", "assembling", "ready", "shipped", "completed", "cancelled"];
 const statusLabels: Record<string, string> = {
   new: "Новый", confirmed: "Подтверждён", assembling: "Собирается", ready: "Готов",
@@ -393,7 +401,7 @@ function Orders({ focusOrder, onError }: { focusOrder?: string; onError: (value:
   };
   return <><PageHeading eyebrow="Продажи" title="Заказы" text="Состав заказа, контакты, доставка, оплата и текущий статус" />
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Заказ</th><th>Клиент</th><th>Получение</th><th>Сумма</th><th>Статус</th><th /></tr></thead><tbody>{items.map((order) => <Fragment key={order.id}>
-      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small>{order.paymentStatus}</small></td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
+      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
       {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}><div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
     </Fragment>)}</tbody></table></div></>;
 }

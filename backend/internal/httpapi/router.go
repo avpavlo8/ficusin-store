@@ -31,7 +31,10 @@ type Dependencies struct {
 	Cart cartStore
 	// Packages supplies box dimensions for delivery quotes; nil simply
 	// means every item is quoted at the fallback box size.
-	Packages     packageRepository
+	Packages packageRepository
+	// Payments is nil when no YooKassa keys are set, which means the shop
+	// simply does not offer card payment.
+	Payments     paymentService
 	CookieSecure bool
 	StaticDir    string
 	// YandexSuggestKey enables address autocomplete; empty simply turns the
@@ -100,11 +103,28 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		pushSubscribeHandler(logger, dependencies.Auth, dependencies.Push),
 	)
 	mux.Handle("POST /api/v1/push/unsubscribe", pushUnsubscribeHandler(logger, dependencies.Push))
+	mux.Handle(
+		"GET /api/v1/payments/methods",
+		paymentMethodsHandler(dependencies.Auth, dependencies.Payments),
+	)
+	mux.Handle(
+		"POST /api/v1/payments/orders/{orderNumber}",
+		startPaymentHandler(logger, dependencies.Payments),
+	)
+	mux.Handle(
+		"POST /api/v1/payments/yookassa/webhook",
+		yooKassaWebhookHandler(logger, dependencies.Payments),
+	)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
-		createOrderHandler(logger, dependencies.Auth, dependencies.OrderCreator).ServeHTTP,
+		createOrderHandler(
+			logger,
+			dependencies.Auth,
+			dependencies.OrderCreator,
+			dependencies.Payments,
+		).ServeHTTP,
 	))
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
 	mux.HandleFunc("GET /api/v1/admin/customers", adminAPI.customers)

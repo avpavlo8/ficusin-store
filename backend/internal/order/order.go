@@ -27,6 +27,7 @@ type Detail struct {
 	Email          string    `json:"email"`
 	Status         string    `json:"status"`
 	PaymentStatus  string    `json:"paymentStatus"`
+	PaymentMethod  string    `json:"paymentMethod"`
 	DeliveryFee    float64   `json:"deliveryFee"`
 	// DeliveryFeePending means the shop still owes the customer a price:
 	// the manager works it out and calls back before shipping.

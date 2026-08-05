@@ -51,6 +51,7 @@ type CheckoutProfile = {
 };
 
 type Cart = Record<string, number>;
+type PaymentMethod = { id: string; title: string; note: string };
 type CdekCity = { code: number; city: string; region?: string };
 type CdekOffice = {
   code: string;
@@ -145,6 +146,10 @@ export default function Home() {
   // Every plant is quoted in its own box. For an order of several the
   // customer can ask whether they fit into one — only the packer can tell.
   const [cdekRepack, setCdekRepack] = useState(false);
+  // Which ways to pay this customer may use is decided by the server: it
+  // depends on how they collect and on whether they are a wholesale buyer.
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState("online");
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
   // Pick-up points need API keys. Without them the option is hidden rather
@@ -160,6 +165,31 @@ export default function Home() {
   // Guards the first save: until the server copy has been merged in we must
   // not push the local basket over it.
   const cartSynced = useRef(false);
+
+  // The options depend on the delivery method, so this is asked again
+  // whenever the customer switches between pick-up and shipping.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/v1/payments/methods?delivery=${encodeURIComponent(delivery)}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+    })
+      .then((response) => response.json())
+      .then((data: { methods?: PaymentMethod[] }) => {
+        if (cancelled) return;
+        const methods = data.methods ?? [];
+        setPaymentMethods(methods);
+        setPaymentMethod((current) =>
+          methods.some((item) => item.id === current) ? current : (methods[0]?.id ?? "online"),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentMethods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [delivery]);
 
   useEffect(() => {
     fetch("/api/v1/delivery/cdek?action=status", { cache: "no-store" })
@@ -530,6 +560,7 @@ export default function Home() {
       // means it was ticked. The server records the agreement against the
       // order — that record is the only evidence of it we would ever have.
       consent: form.get("consent") === "on",
+      paymentMethod,
     };
 
     try {
@@ -542,6 +573,24 @@ export default function Home() {
       if (!response.ok || !data.orderNumber) throw new Error(data.error || "Не удалось оформить заказ");
       setOrderNumber(data.orderNumber);
       setCart({});
+      // Paying by card sends the customer straight to the payment page.
+      // If that fails, the order still exists and can be paid from the
+      // account later, so the failure is a notice rather than an error.
+      if (paymentMethod === "online" && !cdekFeePending) {
+        try {
+          const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
+            method: "POST",
+            credentials: "same-origin",
+          });
+          const result = (await payment.json()) as { confirmationUrl?: string };
+          if (result.confirmationUrl) {
+            window.location.assign(result.confirmationUrl);
+            return;
+          }
+        } catch {
+          setNotice("Заказ оформлен. Оплатить можно из личного кабинета");
+        }
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось оформить заказ");
     } finally {
@@ -988,10 +1037,37 @@ export default function Home() {
                 </label>
               )}
             </fieldset>
+            {paymentMethods.length > 0 && (
+              <fieldset>
+                <legend>Оплата</legend>
+                <div className="delivery-options">
+                  {paymentMethods.map((option) => (
+                    <label key={option.id} className={paymentMethod === option.id ? "active" : ""}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={paymentMethod === option.id}
+                        onChange={() => setPaymentMethod(option.id)}
+                      />
+                      <span>
+                        <b>{option.title}</b>
+                        <small>{option.note}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {paymentMethod === "online" && cdekFeePending && (
+                  <p className="cdek-status">
+                    Оплатить можно будет после того, как менеджер рассчитает доставку — ссылка
+                    появится в личном кабинете.
+                  </p>
+                )}
+              </fieldset>
+            )}
             <fieldset><legend>Комментарий</legend><label><textarea name="comment" rows={3} placeholder="Удобное время, пожелания к заказу" /></label></fieldset>
             <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekOfficeCode ? "после выбора ПВЗ" : cdekFeePending ? "рассчитает менеджер" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{cdekFeePending && cdekOfficeCode ? `${money(total)} + доставка` : money(total)}</strong></div></div>
-            <div className="payment-note"><b>Онлайн-оплата готовится</b><p>Платёжный сервис пока не выбран. Заказ сохранится, но деньги списываться не будут.</p></div>
-            <button className="primary-button full" disabled={submitting || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
+            {!paymentMethods.length && <div className="payment-note"><b>Оплата при получении</b><p>Онлайн-оплата пока не подключена. Менеджер свяжется с вами и подскажет, как оплатить заказ.</p></div>}
+            <button className="primary-button full" disabled={submitting || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : paymentMethod === "online" && !cdekFeePending && paymentMethods.length ? "Перейти к оплате" : "Подтвердить заказ"}</button>
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
           </form>
         )}

@@ -75,7 +75,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 	err := repository.pool.QueryRow(ctx, `
 		SELECT
 			id, order_number, delivery_method, address, comment,
-			customer_name, phone, email, status, payment_status,
+			customer_name, phone, email, status, payment_method, payment_status,
 			delivery_fee::DOUBLE PRECISION,
 			delivery_fee_pending = 1, delivery_repack_requested = 1,
 			subtotal::DOUBLE PRECISION,
@@ -93,6 +93,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.Phone,
 		&detail.Email,
 		&detail.Status,
+		&detail.PaymentMethod,
 		&detail.PaymentStatus,
 		&detail.DeliveryFee,
 		&detail.DeliveryFeePending,

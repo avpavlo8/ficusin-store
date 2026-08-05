@@ -73,6 +73,9 @@ const paymentLabels: Record<string, string> = {
   payment_provider_pending: "Ожидает подключения оплаты",
   pending: "Ожидает оплаты",
   paid: "Оплачен",
+  on_delivery: "Оплата при получении",
+  invoice: "Счёт от менеджера",
+  cancelled: "Оплата отменена",
   refunded: "Возвращён",
 };
 
@@ -190,6 +193,22 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
   </>;
   if (!order) return <SectionHeading eyebrow="Заказ" title="Загружаем…" />;
 
+  // Coming back to an unpaid order and paying it later is normal: the card
+  // may have been declined, or the manager has only now priced the delivery.
+  const payOrder = async (number: string) => {
+    try {
+      const response = await fetch(`/api/v1/payments/orders/${number}`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const result = await response.json() as { confirmationUrl?: string; error?: string };
+      if (!response.ok || !result.confirmationUrl) throw new Error(result.error || "Не удалось начать оплату");
+      window.location.assign(result.confirmationUrl);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось начать оплату");
+    }
+  };
+
   return <>
     <a className="text-link account-back-link" href="/account">← Ко всем заказам</a>
     <SectionHeading
@@ -218,6 +237,7 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
       <div><small>Способ получения</small><span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span></div>
       {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
       <div><small>Оплата</small><span>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
+      {order.paymentStatus === "pending" && !order.deliveryFeePending && <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>Оплатить {money.format(order.total)}</button>}
       <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
       {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
     </section>
