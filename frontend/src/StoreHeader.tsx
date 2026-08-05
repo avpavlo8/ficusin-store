@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { InstallHint } from "./InstallHint";
 
 export type StoreUser = {
   fullName: string;
@@ -299,6 +300,9 @@ export function StoreHeader({
       <button className="overlay" aria-label="Закрыть меню" onClick={() => setMenuOpen(false)} />
       <MobileMenu user={user} favorites={favorites} onClose={() => setMenuOpen(false)} />
     </>}
-    {showTabBar && <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} />}
+    {showTabBar && <>
+      <InstallHint />
+      <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} />
+    </>}
   </>;
 }
