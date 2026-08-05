@@ -39,12 +39,16 @@ type createOrderBody struct {
 	// marks it required, but the server has to see it too — that flag is
 	// the only thing we can later show as evidence of the agreement.
 	Consent bool `json:"consent"`
+	// PaymentMethod is the option the customer picked. The server decides
+	// whether they were entitled to it.
+	PaymentMethod string `json:"paymentMethod"`
 }
 
 func createOrderHandler(
 	logger *slog.Logger,
 	authentication authService,
 	creator orderCreator,
+	payments paymentService,
 ) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		var body createOrderBody
@@ -59,12 +63,14 @@ func createOrderHandler(
 		delivery := strings.TrimSpace(body.Delivery)
 
 		var customerID *int64
+		wholesaleApproved := false
 		if cookie, err := request.Cookie(auth.CookieName); err == nil {
 			user, lookupErr := authentication.UserByToken(request.Context(), cookie.Value)
 			if lookupErr != nil {
 				logger.Error("order session lookup failed", "error", lookupErr)
 			} else if user != nil {
 				customerID = &user.ID
+				wholesaleApproved = user.WholesaleStatus == "approved"
 				if name == "" {
 					name = strings.Join(
 						nonEmptyStrings(user.LastName, user.FullName, user.Patronymic),
@@ -124,8 +130,14 @@ func createOrderHandler(
 				TariffCode: body.CDEK.TariffCode,
 				Repack:     body.CDEK.Repack,
 			},
-			CustomerID: customerID,
-			Consent:    true,
+			CustomerID:    customerID,
+			PaymentMethod: strings.TrimSpace(body.PaymentMethod),
+			// Both of these come from our own records, never from the
+			// browser: they are what decides who may pay by invoice and
+			// whether card payment exists at all.
+			WholesaleApproved:  wholesaleApproved,
+			OnlinePaymentReady: available(payments),
+			Consent:            true,
 			ClientIP:   clientIP(request),
 			UserAgent:  request.UserAgent(),
 		})
