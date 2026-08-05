@@ -124,6 +124,9 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	go notificationWorker.Run(ctx)
+	// The safety net under YooKassa's notifications: a lost one would
+	// otherwise leave a paid order looking unpaid.
+	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
 
 	go func() {
 		<-ctx.Done()
