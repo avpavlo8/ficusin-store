@@ -65,7 +65,7 @@ func main() {
 		logger.Error("integration credentials configuration failed", "error", err)
 		os.Exit(1)
 	}
-	cdekClient := integration.NewCDEKClient(credentialStore)
+	cdekClient := integration.NewCDEKClient(credentialStore, cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
 	telegramClient, err := integration.NewTelegramClient(
 		credentialStore,
 		cfg.TelegramChatID,
@@ -86,6 +86,9 @@ func main() {
 	}
 	if pushService == nil {
 		logger.Info("push notifications are off; set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable them")
+	}
+	if !cdekClient.Configured() {
+		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
