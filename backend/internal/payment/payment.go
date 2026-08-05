@@ -193,7 +193,10 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		IdempotenceKey: key,
 		Amount:         amount,
 		Description:    "Заказ " + orderNumber + " — Фикусин",
-		ReturnURL:      service.returnURL + "/order/" + orderNumber,
+		// Back to the shop with the order number in the query, not to a
+		// per-order page: a guest has no account to look at, and a page
+		// showing an order to anyone who knows its number would leak.
+		ReturnURL: service.returnURL + "/?paid=" + orderNumber,
 		Email:          email,
 		Phone:          phone,
 		Items:          items,

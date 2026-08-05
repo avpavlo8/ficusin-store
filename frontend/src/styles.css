@@ -157,6 +157,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .cdek-quote b { font-size: 18px; }
 .cdek-quote span { font-weight: 700; }
 .cdek-quote small { grid-column: 1 / -1; color: #687269; }
+.payment-return { position: fixed; left: 50%; bottom: 24px; z-index: 60; width: min(440px, calc(100vw - 32px)); padding: 20px 22px; transform: translateX(-50%); display: grid; gap: 8px; border-radius: 16px; background: white; box-shadow: 0 24px 60px rgba(23,63,50,.22); }
+.payment-return b { font-size: 17px; }
+.payment-return p { margin: 0; color: #667067; font-size: 13px; line-height: 1.5; }
+.payment-return > div { margin-top: 4px; display: flex; gap: 10px; align-items: center; }
+.payment-return a { padding: 11px 18px; border-radius: 11px; text-decoration: none; }
+.payment-return button { padding: 11px 4px; border: 0; background: none; color: #667067; font: inherit; cursor: pointer; }
 .admin-flag { color: #9a6b25; font-weight: 700; }
 .admin-fee-form { margin-bottom: 16px; padding: 16px; display: grid; gap: 10px; max-width: 460px; border: 1px solid #e3d5b8; border-radius: 12px; background: #fbf3e6; }
 .admin-fee-form p { margin: 0; color: #6b5426; font-size: 13px; }

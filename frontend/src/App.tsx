@@ -150,6 +150,8 @@ export default function Home() {
   // depends on how they collect and on whether they are a wholesale buyer.
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("online");
+  // Set when the customer comes back from the payment page.
+  const [paymentReturn, setPaymentReturn] = useState("");
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
   // Pick-up points need API keys. Without them the option is hidden rather
@@ -204,6 +206,14 @@ export default function Home() {
     // Search started from a page that has no product list of its own.
     const incomingQuery = params.get("q");
     if (incomingQuery) setQuery(incomingQuery);
+    // Back from the payment page. YooKassa returns everyone here, whether
+    // they paid or gave up, so the wording promises nothing about the money —
+    // the order page is what shows the real state.
+    const paidOrder = params.get("paid");
+    if (paidOrder) {
+      setPaymentReturn(paidOrder);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
@@ -772,6 +782,19 @@ export default function Home() {
       </footer>
 
       {notice && <div className="toast" role="status">{notice}</div>}
+      {paymentReturn && (
+        <div className="payment-return" role="status">
+          <b>Заказ {paymentReturn} оформлен</b>
+          <p>
+            Мы получим подтверждение оплаты в течение минуты. Состояние заказа видно
+            {user ? " в личном кабинете" : ", если войти в личный кабинет"}.
+          </p>
+          <div>
+            {user && <a className="primary-button" href={`/account/orders/${paymentReturn}`}>Открыть заказ</a>}
+            <button onClick={() => setPaymentReturn("")}>Продолжить покупки</button>
+          </div>
+        </div>
+      )}
 
       {(cartOpen || checkoutOpen) && <button className="overlay" aria-label="Закрыть" onClick={() => { setCartOpen(false); setCheckoutOpen(false); }} />}
 
