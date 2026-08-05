@@ -158,11 +158,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .order-note { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: #fbf3e6; color: #6b5426; font-size: 13px; line-height: 1.45; }
 .cdek-quote.pending { background: #fbf3e6; }
 .cdek-quote.pending b { font-size: 16px; }
-.cdek-repack { margin: 10px 0 4px; display: grid; gap: 6px; }
-.repack-button { padding: 12px 16px; border: 1px solid var(--green); border-radius: 12px; background: white; color: var(--green); font: inherit; font-weight: 700; cursor: pointer; }
-.repack-button:hover { background: #edf2ec; }
-.repack-button.active { background: var(--green); color: white; }
-.cdek-repack small { color: #687269; font-size: 12px; line-height: 1.45; }
+.cdek-repack { margin: 10px 0 4px; display: grid; gap: 5px; }
+.cdek-repack label { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; }
+.cdek-repack input { width: 18px; height: 18px; flex: none; accent-color: var(--green); }
+.cdek-repack small { padding-left: 28px; color: #687269; font-size: 12px; line-height: 1.45; }
 .cdek-tariffs { margin: 8px 0 4px; display: grid; gap: 8px; }
 .cdek-tariff { padding: 12px 14px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
 .cdek-tariff:has(input:checked) { border-color: var(--green); background: #edf2ec; }
