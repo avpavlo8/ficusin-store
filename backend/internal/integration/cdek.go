@@ -50,6 +50,66 @@ type CDEKQuote struct {
 	DaysMax    int    `json:"daysMax"`
 }
 
+// Parcel is one box, in centimetres and grams.
+//
+// Size matters as much as weight: CDEK bills whichever is larger, the real
+// weight or the volumetric one (length × width × height ÷ 5000). A plant
+// weighs little and takes a lot of room, so the box is almost always what we
+// are paying for — which is why every product carries its own dimensions.
+type Parcel struct {
+	LengthCM    int
+	WidthCM     int
+	HeightCM    int
+	WeightGrams int
+}
+
+// DefaultParcel is used while a product has no dimensions filled in yet.
+// It is a small pot in a snug box: understating the box is cheaper to
+// discover at the counter than overcharging every customer up front.
+var DefaultParcel = Parcel{LengthCM: 40, WidthCM: 25, HeightCM: 25, WeightGrams: 1500}
+
+// ParcelOrDefault substitutes the fallback box for an unmeasured product, so
+// an item with no dimensions still takes up room in the quote instead of
+// silently shipping for free.
+func ParcelOrDefault(parcel Parcel) Parcel {
+	if parcel.LengthCM <= 0 || parcel.WidthCM <= 0 || parcel.HeightCM <= 0 {
+		return DefaultParcel
+	}
+	if parcel.WeightGrams <= 0 {
+		parcel.WeightGrams = DefaultParcel.WeightGrams
+	}
+	return parcel
+}
+
+// CombineParcels puts several boxes into the one that will be shipped.
+//
+// The boxes are stood side by side: each is laid down on its longest side,
+// the shipping box is as long and as tall as the largest of them, and as
+// wide as all of them together. A pineapple in 40×20×20 next to a monstera
+// in 60×20×20 travels as 60×40×20.
+//
+// This overstates nothing and understates nothing badly: boxes really do
+// stand next to each other, and stacking them smarter is the packer's job,
+// not something a price quote should assume.
+func CombineParcels(parcels []Parcel) Parcel {
+	combined := Parcel{}
+	for _, parcel := range parcels {
+		sides := []int{parcel.LengthCM, parcel.WidthCM, parcel.HeightCM}
+		sort.Sort(sort.Reverse(sort.IntSlice(sides)))
+		combined.LengthCM = max(combined.LengthCM, sides[0])
+		combined.WidthCM += sides[1]
+		combined.HeightCM = max(combined.HeightCM, sides[2])
+		combined.WeightGrams += parcel.WeightGrams
+	}
+	if combined.LengthCM <= 0 || combined.WidthCM <= 0 || combined.HeightCM <= 0 {
+		return DefaultParcel
+	}
+	if combined.WeightGrams <= 0 {
+		combined.WeightGrams = DefaultParcel.WeightGrams
+	}
+	return combined
+}
+
 type CDEKClient struct {
 	clientID     string
 	clientSecret string
@@ -111,10 +171,14 @@ func (client *CDEKClient) GetOffices(ctx context.Context, cityCode int) ([]CDEKO
 	return filtered, nil
 }
 
+// CalculatePVZ returns every tariff that ends at a pick-up point, cheapest
+// first. Customers choose for themselves: the cheapest option is often three
+// days slower, and that is not our call to make for them.
 func (client *CDEKClient) CalculatePVZ(
 	ctx context.Context,
-	cityCode, itemCount int,
-) (CDEKQuote, error) {
+	cityCode int,
+	box Parcel,
+) ([]CDEKQuote, error) {
 	type tariff struct {
 		Code         int     `json:"tariff_code"`
 		Name         string  `json:"tariff_name"`
@@ -123,43 +187,51 @@ func (client *CDEKClient) CalculatePVZ(
 		PeriodMin    int     `json:"period_min"`
 		PeriodMax    int     `json:"period_max"`
 	}
-	packages := make([]map[string]int, max(1, min(10, itemCount)))
-	for index := range packages {
-		packages[index] = map[string]int{
-			"weight": 2500,
-			"length": 35,
-			"width":  35,
-			"height": 60,
-		}
-	}
 	body := map[string]any{
 		"type":          1,
 		"currency":      1,
 		"from_location": map[string]int{"code": cdekFromCityCode},
 		"to_location":   map[string]int{"code": cityCode},
-		"packages":      packages,
+		"packages": []map[string]int{{
+			"weight": max(1, box.WeightGrams),
+			"length": max(1, box.LengthCM),
+			"width":  max(1, box.WidthCM),
+			"height": max(1, box.HeightCM),
+		}},
 	}
 	var result struct {
 		Tariffs []tariff `json:"tariff_codes"`
 	}
 	if err := client.request(ctx, http.MethodPost, "/calculator/tarifflist", body, &result); err != nil {
-		return CDEKQuote{}, err
+		return nil, err
 	}
 	sort.Slice(result.Tariffs, func(left, right int) bool {
 		return result.Tariffs[left].DeliverySum < result.Tariffs[right].DeliverySum
 	})
+	quotes := make([]CDEKQuote, 0, len(result.Tariffs))
 	for _, option := range result.Tariffs {
-		if option.DeliverySum > 0 && (option.DeliveryMode == 2 || option.DeliveryMode == 4) {
-			return CDEKQuote{
-				TariffCode: option.Code,
-				TariffName: option.Name,
-				Price:      int(option.DeliverySum + .999999),
-				DaysMin:    option.PeriodMin,
-				DaysMax:    option.PeriodMax,
-			}, nil
+		// Modes 2 and 4 end at a pick-up point; the rest go to the door and
+		// would quote a price for something we did not offer.
+		if option.DeliverySum <= 0 || (option.DeliveryMode != 2 && option.DeliveryMode != 4) {
+			continue
 		}
+		quotes = append(quotes, CDEKQuote{
+			TariffCode: option.Code,
+			TariffName: option.Name,
+			Price:      int(option.DeliverySum + .999999),
+			DaysMin:    option.PeriodMin,
+			DaysMax:    option.PeriodMax,
+		})
 	}
-	return CDEKQuote{}, errors.New("СДЭК не нашёл доставку до пункта выдачи")
+	if len(quotes) == 0 {
+		return nil, errors.New("СДЭК не нашёл доставку до пункта выдачи")
+	}
+	// A dozen near-identical tariffs is a decision, not a choice. Four is
+	// enough to cover "cheapest" through "fastest".
+	if len(quotes) > 4 {
+		quotes = quotes[:4]
+	}
+	return quotes, nil
 }
 
 func (client *CDEKClient) request(
