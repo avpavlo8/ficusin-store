@@ -915,17 +915,17 @@ export default function Home() {
                   )}
                   {cartLines.length > 1 && !!cdekQuotes.length && (
                     <div className="cdek-repack">
-                      <button
-                        type="button"
-                        className={cdekRepack ? "repack-button active" : "repack-button"}
-                        onClick={() => setCdekRepack((current) => !current)}
-                      >
-                        {cdekRepack ? "Отменить запрос" : "Сделать доставку дешевле"}
-                      </button>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={cdekRepack}
+                          onChange={(event) => setCdekRepack(event.target.checked)}
+                        />
+                        Упаковать в одну коробку, если поместятся
+                      </label>
                       <small>
-                        Стоимость рассчитана из отдельной коробки для каждого растения. После
-                        оформления заказа менеджер проверит, можно ли упаковать их в одну коробку —
-                        тогда доставка выйдет дешевле.
+                        Сейчас доставка посчитана по отдельной коробке на каждое растение. Менеджер
+                        проверит, поместятся ли они вместе, и пересчитает — обычно выходит дешевле.
                       </small>
                     </div>
                   )}
