@@ -24,7 +24,14 @@ type TelegramOrder struct {
 	// about a particular person, and the manager needs it to judge urgency.
 	DeliveryCity string
 	DeliveryFee  float64
-	Subtotal     float64
+	// DeliveryFeePending means the price is waiting for the manager: no box
+	// dimensions, CDEK unavailable, or the customer asked to pack the plants
+	// together. Total is short by the delivery until then.
+	DeliveryFeePending bool
+	// RepackRequested is the customer asking whether the plants fit into one
+	// box. It is the one thing in this message that needs an answer.
+	RepackRequested bool
+	Subtotal        float64
 	Total        float64
 	Items        []TelegramOrderItem
 }
@@ -80,11 +87,20 @@ func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder
 	if order.DeliveryCity != "" {
 		receiving += ", " + order.DeliveryCity
 	}
+	deliveryLine := money(order.DeliveryFee)
+	totalLine := money(order.Total) + " без доставки"
+	if !order.DeliveryFeePending {
+		totalLine = money(order.Total)
+	} else if order.RepackRequested {
+		deliveryLine = "покупатель просит упаковать в одну коробку — рассчитайте и сообщите"
+	} else {
+		deliveryLine = "рассчитайте вручную и сообщите покупателю"
+	}
 	lines = append(lines,
 		"",
 		"<b>Товары:</b> "+html.EscapeString(money(order.Subtotal)),
-		"<b>Доставка:</b> "+html.EscapeString(money(order.DeliveryFee)),
-		"<b>Итого:</b> "+html.EscapeString(money(order.Total)),
+		"<b>Доставка:</b> "+html.EscapeString(deliveryLine),
+		"<b>Итого:</b> "+html.EscapeString(totalLine),
 		"<b>Получение:</b> "+html.EscapeString(receiving),
 		"",
 		"Контакты покупателя — в панели управления.",

@@ -8,8 +8,11 @@ func TestCombineParcelsStandsBoxesSideBySide(t *testing.T) {
 	pineapple := Parcel{LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200}
 	monstera := Parcel{LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300}
 
-	box := CombineParcels([]Parcel{pineapple, monstera})
+	box, measured := CombineParcels([]Parcel{pineapple, monstera})
 
+	if !measured {
+		t.Fatal("обе коробки заданы, расчёт должен получиться")
+	}
 	if box.LengthCM != 60 || box.WidthCM != 40 || box.HeightCM != 20 {
 		t.Fatalf("expected 60x40x20, got %dx%dx%d", box.LengthCM, box.WidthCM, box.HeightCM)
 	}
@@ -24,8 +27,8 @@ func TestCombineParcelsLaysEachBoxOnItsLongestSide(t *testing.T) {
 	upright := Parcel{LengthCM: 20, WidthCM: 60, HeightCM: 20, WeightGrams: 1000}
 	flat := Parcel{LengthCM: 20, WidthCM: 20, HeightCM: 60, WeightGrams: 1000}
 
-	first := CombineParcels([]Parcel{upright})
-	second := CombineParcels([]Parcel{flat})
+	first, _ := CombineParcels([]Parcel{upright})
+	second, _ := CombineParcels([]Parcel{flat})
 
 	if first != second {
 		t.Fatalf("orientation changed the box: %+v vs %+v", first, second)
@@ -35,22 +38,20 @@ func TestCombineParcelsLaysEachBoxOnItsLongestSide(t *testing.T) {
 	}
 }
 
-func TestCombineParcelsFallsBackWhenNothingIsFilledIn(t *testing.T) {
-	// Products imported from Saby arrive without dimensions. A quote still
-	// has to come out, and it must not be a zero-sized box.
-	box := CombineParcels([]Parcel{{}, {}})
-
-	if box != DefaultParcel {
-		t.Fatalf("expected the fallback box, got %+v", box)
-	}
-}
-
-func TestCombineParcelsKeepsMeasuredItemsWhenOneIsMissing(t *testing.T) {
+// A guessed box turns into a real number on the checkout page. Better to say
+// the manager will work the price out than to quote something the shop would
+// have to argue about later.
+func TestCombineParcelsRefusesToGuessAnUnmeasuredItem(t *testing.T) {
 	measured := Parcel{LengthCM: 50, WidthCM: 30, HeightCM: 30, WeightGrams: 2000}
 
-	box := CombineParcels([]Parcel{measured, {}})
-
-	if box.LengthCM != 50 || box.WidthCM != 30 || box.HeightCM != 30 {
-		t.Fatalf("empty parcel changed the box: %dx%dx%d", box.LengthCM, box.WidthCM, box.HeightCM)
+	for name, parcels := range map[string][]Parcel{
+		"пустая корзина":     {},
+		"ничего не заполнено": {{}, {}},
+		"одна позиция без габаритов": {measured, {}},
+		"забыли вес":                 {{LengthCM: 40, WidthCM: 20, HeightCM: 20}},
+	} {
+		if _, ok := CombineParcels(parcels); ok {
+			t.Fatalf("%s: расчёт не должен получаться", name)
+		}
 	}
 }

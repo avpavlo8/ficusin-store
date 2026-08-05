@@ -63,22 +63,13 @@ type Parcel struct {
 	WeightGrams int
 }
 
-// DefaultParcel is used while a product has no dimensions filled in yet.
-// It is a small pot in a snug box: understating the box is cheaper to
-// discover at the counter than overcharging every customer up front.
-var DefaultParcel = Parcel{LengthCM: 40, WidthCM: 25, HeightCM: 25, WeightGrams: 1500}
-
-// ParcelOrDefault substitutes the fallback box for an unmeasured product, so
-// an item with no dimensions still takes up room in the quote instead of
-// silently shipping for free.
-func ParcelOrDefault(parcel Parcel) Parcel {
-	if parcel.LengthCM <= 0 || parcel.WidthCM <= 0 || parcel.HeightCM <= 0 {
-		return DefaultParcel
-	}
-	if parcel.WeightGrams <= 0 {
-		parcel.WeightGrams = DefaultParcel.WeightGrams
-	}
-	return parcel
+// Measured reports whether the box has been filled in. An unmeasured product
+// gets no quote at all: a guessed size becomes a real number on the checkout
+// page, and a price we cannot stand behind is worse than saying the manager
+// will work it out.
+func (parcel Parcel) Measured() bool {
+	return parcel.LengthCM > 0 && parcel.WidthCM > 0 &&
+		parcel.HeightCM > 0 && parcel.WeightGrams > 0
 }
 
 // CombineParcels puts several boxes into the one that will be shipped.
@@ -91,9 +82,19 @@ func ParcelOrDefault(parcel Parcel) Parcel {
 // This overstates nothing and understates nothing badly: boxes really do
 // stand next to each other, and stacking them smarter is the packer's job,
 // not something a price quote should assume.
-func CombineParcels(parcels []Parcel) Parcel {
+//
+// One unmeasured item makes the whole shipment unmeasured — it would travel
+// in the same van, and pretending it takes no room would quote a price the
+// shop cannot honour.
+func CombineParcels(parcels []Parcel) (Parcel, bool) {
+	if len(parcels) == 0 {
+		return Parcel{}, false
+	}
 	combined := Parcel{}
 	for _, parcel := range parcels {
+		if !parcel.Measured() {
+			return Parcel{}, false
+		}
 		sides := []int{parcel.LengthCM, parcel.WidthCM, parcel.HeightCM}
 		sort.Sort(sort.Reverse(sort.IntSlice(sides)))
 		combined.LengthCM = max(combined.LengthCM, sides[0])
@@ -101,13 +102,7 @@ func CombineParcels(parcels []Parcel) Parcel {
 		combined.HeightCM = max(combined.HeightCM, sides[2])
 		combined.WeightGrams += parcel.WeightGrams
 	}
-	if combined.LengthCM <= 0 || combined.WidthCM <= 0 || combined.HeightCM <= 0 {
-		return DefaultParcel
-	}
-	if combined.WeightGrams <= 0 {
-		combined.WeightGrams = DefaultParcel.WeightGrams
-	}
-	return combined
+	return combined, true
 }
 
 type CDEKClient struct {
