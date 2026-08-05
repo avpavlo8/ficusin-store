@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-type TelegramCredentials struct {
-	BotToken string `json:"botToken"`
-}
-
 // TelegramOrder is deliberately free of personal data. Telegram is a
 // foreign service, so sending a customer's name, phone, email or address
 // there would be a cross-border transfer of personal data. The message is
@@ -40,55 +36,30 @@ type TelegramOrderItem struct {
 }
 
 type TelegramClient struct {
-	credentials *CredentialStore
-	chatID      string
-	botToken    string
-	apiBaseURL  string
-	httpClient  *http.Client
+	chatID     string
+	botToken   string
+	apiBaseURL string
+	httpClient *http.Client
 }
 
-func NewTelegramClient(
-	credentials *CredentialStore,
-	chatID string,
-	botToken string,
-) (*TelegramClient, error) {
+func NewTelegramClient(chatID, botToken string) (*TelegramClient, error) {
 	chatID = strings.TrimSpace(chatID)
 	botToken = strings.TrimSpace(botToken)
 	if chatID == "" {
 		return nil, errors.New("Telegram chat ID is not configured")
 	}
-	if botToken == "" && (credentials == nil || !credentials.Configured()) {
+	if botToken == "" {
 		return nil, errors.New("Telegram bot token is not configured")
 	}
 	return &TelegramClient{
-		credentials: credentials,
-		chatID:      chatID,
-		botToken:    botToken,
-		apiBaseURL:  "https://api.telegram.org",
-		httpClient:  &http.Client{Timeout: 15 * time.Second},
+		chatID:     chatID,
+		botToken:   botToken,
+		apiBaseURL: "https://api.telegram.org",
+		httpClient: &http.Client{Timeout: 15 * time.Second},
 	}, nil
 }
 
-func (client *TelegramClient) resolveBotToken(ctx context.Context) (string, error) {
-	if client.botToken != "" {
-		return client.botToken, nil
-	}
-	credentials, err := GetCredentials[TelegramCredentials](ctx, client.credentials, "telegram")
-	if err != nil {
-		return "", fmt.Errorf("load Telegram bot token: %w", err)
-	}
-	token := strings.TrimSpace(credentials.BotToken)
-	if token == "" {
-		return "", errors.New("Telegram bot token is empty")
-	}
-	return token, nil
-}
-
 func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder) error {
-	botToken, err := client.resolveBotToken(ctx)
-	if err != nil {
-		return err
-	}
 	deliveryLabels := map[string]string{
 		"pickup":  "Самовывоз в Рязани",
 		"courier": "Курьер по Рязани",
@@ -131,7 +102,7 @@ func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		strings.TrimRight(client.apiBaseURL, "/")+"/bot"+botToken+"/sendMessage",
+		strings.TrimRight(client.apiBaseURL, "/")+"/bot"+client.botToken+"/sendMessage",
 		bytes.NewReader(body),
 	)
 	if err != nil {
