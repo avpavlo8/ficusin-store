@@ -18,6 +18,18 @@ type Config struct {
 		TelegramBotToken      string
 		YandexSuggestKey      string
 		AdminEmails           []string
+		Push                  Push
+}
+
+// Push holds the VAPID key pair that identifies this shop to the browsers'
+// push services. Empty keys simply turn notifications off; nothing else
+// breaks.
+type Push struct {
+		PublicKey  string
+		PrivateKey string
+		// Subject is a mailto: or https: address a push service can use to
+		// reach us if our notifications cause trouble.
+		Subject string
 }
 
 type HTTP struct {
@@ -90,6 +102,11 @@ func Load() (Config, error) {
 					TelegramBotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 					YandexSuggestKey:      strings.TrimSpace(os.Getenv("YANDEX_SUGGEST_API_KEY")),
 					AdminEmails:           splitList(os.Getenv("ADMIN_EMAILS")),
+					Push: Push{
+									PublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),
+									PrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),
+									Subject:    defaultString(os.Getenv("VAPID_SUBJECT"), "mailto:info@ficusin.ru"),
+								},
 				}, nil
 }
 

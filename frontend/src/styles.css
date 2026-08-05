@@ -923,3 +923,30 @@ body.menu-open, body.drawer-open { overflow: hidden; }
   .primary-button, .ghost-button, .admin-primary, .tab-bar > a, .tab-bar > button { min-height: 46px; }
   input, select, textarea { font-size: 16px; }
 }
+
+/* Invitation to keep the shop on the home screen. It floats just above the
+   bottom bar so it never covers what the customer is reading. */
+.install-hint { display: none; }
+
+@media (max-width: 850px) {
+  .install-hint { position: fixed; z-index: 39; right: 10px; bottom: calc(78px + env(safe-area-inset-bottom)); left: 10px; padding: 11px 12px; display: flex; gap: 11px; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(23,63,50,.16); }
+  .install-hint img { width: 38px; height: 38px; flex: none; border-radius: 10px; }
+  .install-hint > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .install-hint strong { color: var(--green); font-size: 13px; font-weight: 700; }
+  .install-hint span { color: #6a746d; font-size: 11px; line-height: 1.35; }
+  .install-hint-action { flex: none; min-height: 38px; padding: 0 15px; border: 0; border-radius: 99px; background: var(--green); color: #fff; font-size: 13px; }
+  .install-hint-close { flex: none; width: 30px; height: 30px; border: 0; background: transparent; color: #8b948d; font-size: 21px; }
+}
+
+/* Order notifications switch, shown in the profile once the browser can
+   actually deliver them. */
+.push-toggle { margin-top: 26px; padding: 17px 18px; display: flex; gap: 16px; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.push-toggle > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.push-toggle strong { color: var(--green); font-size: 14px; }
+.push-toggle span { color: #6a746d; font-size: 12px; line-height: 1.5; }
+.push-toggle-error { color: #a64a3d; font-size: 12px; font-style: normal; }
+.push-toggle button { flex: none; min-height: 42px; }
+
+@media (max-width: 700px) {
+  .push-toggle { align-items: stretch; flex-direction: column; gap: 12px; }
+}

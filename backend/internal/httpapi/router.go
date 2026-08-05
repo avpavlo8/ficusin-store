@@ -23,6 +23,9 @@ type Dependencies struct {
 	CDEK         cdekService
 	Admin        adminRepository
 	Saby         sabySyncService
+	// Push is nil when no VAPID keys are configured, which simply means the
+	// shop sends no notifications.
+	Push         pushService
 	CookieSecure bool
 	StaticDir    string
 	// YandexSuggestKey enables address autocomplete; empty simply turns the
@@ -76,6 +79,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"Слишком много запросов. Введите адрес вручную",
 		addressSuggestHandler(logger, dependencies.YandexSuggestKey).ServeHTTP,
 	))
+	mux.Handle("GET /api/v1/push/key", pushKeyHandler(dependencies.Push))
+	mux.Handle(
+		"POST /api/v1/push/subscribe",
+		pushSubscribeHandler(logger, dependencies.Auth, dependencies.Push),
+	)
+	mux.Handle("POST /api/v1/push/unsubscribe", pushUnsubscribeHandler(logger, dependencies.Push))
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(

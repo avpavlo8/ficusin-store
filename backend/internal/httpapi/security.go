@@ -23,6 +23,8 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"img-src 'self' data: https:; " +
 	"font-src 'self' data:; " +
 	"connect-src 'self'; " +
+	"manifest-src 'self'; " +
+	"worker-src 'self'; " +
 	"form-action 'self'; " +
 	"base-uri 'self'; " +
 	"frame-ancestors 'none'; " +

@@ -17,6 +17,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/migrate"
+	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
@@ -76,7 +77,17 @@ func main() {
 	}
 	orderService := order.NewService(pool, cdekClient, telegramClient, logger)
 	notificationWorker := order.NewNotificationWorker(pool, telegramClient, logger)
-	adminRepository := admin.NewPostgresRepository(pool)
+	pushService, err := notify.NewService(
+		pool, cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Subject, logger,
+	)
+	if err != nil {
+		logger.Error("push notification configuration failed", "error", err)
+		os.Exit(1)
+	}
+	if pushService == nil {
+		logger.Info("push notifications are off; set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable them")
+	}
+	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
@@ -88,6 +99,7 @@ func main() {
 			CDEK:         cdekClient,
 			Admin:        adminRepository,
 			Saby:         sabyService,
+			Push:         pushService,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
 

@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
+import { PushToggle } from "./PushToggle";
 
 export type StoreUser = {
   id: number;
@@ -460,6 +461,7 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
       <button className="primary-button" type="button" onClick={() => { setForm(profileFormFrom(user)); setSaved(false); setEditing(true); }}>
         Изменить
       </button>
+      <PushToggle />
     </> : (
       <form className="auth-form profile-form" onSubmit={save}>
         <label>Имя
