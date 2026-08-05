@@ -57,17 +57,48 @@ type CDEKQuote struct {
 
 type CDEKClient struct {
 	credentials *CredentialStore
-	httpClient  *http.Client
-	mu          sync.Mutex
-	token       string
-	tokenExpiry time.Time
+	// Keys from the environment. They win over the encrypted store, which
+	// needs a private key that is no longer configured anywhere.
+	clientID     string
+	clientSecret string
+	httpClient   *http.Client
+	mu           sync.Mutex
+	token        string
+	tokenExpiry  time.Time
 }
 
-func NewCDEKClient(credentials *CredentialStore) *CDEKClient {
+func NewCDEKClient(credentials *CredentialStore, clientID, clientSecret string) *CDEKClient {
 	return &CDEKClient{
-		credentials: credentials,
-		httpClient:  &http.Client{Timeout: 20 * time.Second},
+		credentials:  credentials,
+		clientID:     strings.TrimSpace(clientID),
+		clientSecret: strings.TrimSpace(clientSecret),
+		httpClient:   &http.Client{Timeout: 20 * time.Second},
 	}
+}
+
+// Configured reports whether delivery by CDEK can work at all. The checkout
+// asks before offering it, so a shop without keys does not send customers
+// down a road that ends in an error.
+func (client *CDEKClient) Configured() bool {
+	if client.clientID != "" && client.clientSecret != "" {
+		return true
+	}
+	return client.credentials.Configured()
+}
+
+// resolveCredentials prefers the environment and falls back to the old
+// encrypted table, so an installation that still has a working private key
+// keeps running untouched.
+func (client *CDEKClient) resolveCredentials(ctx context.Context) (CDEKCredentials, error) {
+	if client.clientID != "" && client.clientSecret != "" {
+		return CDEKCredentials{ClientID: client.clientID, ClientSecret: client.clientSecret}, nil
+	}
+	credentials, err := GetCredentials[CDEKCredentials](ctx, client.credentials, "cdek")
+	if err != nil {
+		return CDEKCredentials{}, fmt.Errorf(
+			"учётные данные СДЭК не настроены: задайте CDEK_CLIENT_ID и CDEK_CLIENT_SECRET (%w)", err)
+	}
+	return credentials, nil
 }
 
 func (client *CDEKClient) FindCities(ctx context.Context, city string) ([]CDEKCity, error) {
@@ -206,7 +237,7 @@ func (client *CDEKClient) accessToken(ctx context.Context) (string, error) {
 	if client.token != "" && time.Now().Before(client.tokenExpiry) {
 		return client.token, nil
 	}
-	credentials, err := GetCredentials[CDEKCredentials](ctx, client.credentials, "cdek")
+	credentials, err := client.resolveCredentials(ctx)
 	if err != nil {
 		return "", err
 	}

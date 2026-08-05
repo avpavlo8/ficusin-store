@@ -11,6 +11,7 @@ import (
 )
 
 type cdekService interface {
+	Configured() bool
 	FindCities(context.Context, string) ([]integration.CDEKCity, error)
 	GetOffices(context.Context, int) ([]integration.CDEKOffice, error)
 	CalculatePVZ(context.Context, int, int) (integration.CDEKQuote, error)
@@ -22,7 +23,21 @@ type cdekHandlers struct {
 }
 
 func (handlers cdekHandlers) get(response http.ResponseWriter, request *http.Request) {
-	switch request.URL.Query().Get("action") {
+	action := request.URL.Query().Get("action")
+	// The checkout asks this first, so it can drop the pick-up option
+	// instead of letting a customer pick a method that cannot be completed.
+	if action == "status" {
+		writeJSON(response, http.StatusOK, map[string]bool{"available": handlers.available()})
+		return
+	}
+	if !handlers.available() {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{
+			Error: "Доставка СДЭК временно недоступна",
+		})
+		return
+	}
+
+	switch action {
 	case "cities":
 		city := strings.TrimSpace(request.URL.Query().Get("city"))
 		if len([]rune(city)) < 2 {
@@ -53,6 +68,12 @@ func (handlers cdekHandlers) get(response http.ResponseWriter, request *http.Req
 }
 
 func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *http.Request) {
+	if !handlers.available() {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{
+			Error: "Доставка СДЭК временно недоступна",
+		})
+		return
+	}
 	var body struct {
 		CityCode  int `json:"cityCode"`
 		ItemCount int `json:"itemCount"`
@@ -71,6 +92,13 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"quote": quote})
+}
+
+// available reports whether pick-up points can be offered at all. A missing
+// service means the shop was assembled without CDEK, which counts as off
+// rather than as a crash.
+func (handlers cdekHandlers) available() bool {
+	return handlers.service != nil && handlers.service.Configured()
 }
 
 func (handlers cdekHandlers) externalError(response http.ResponseWriter, err error) {
