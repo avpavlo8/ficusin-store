@@ -142,6 +142,9 @@ export default function Home() {
   const [cdekOfficeListOpen, setCdekOfficeListOpen] = useState(false);
   const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
   const [cdekTariffCode, setCdekTariffCode] = useState(0);
+  // Every plant is quoted in its own box. For an order of several the
+  // customer can ask whether they fit into one — only the packer can tell.
+  const [cdekRepack, setCdekRepack] = useState(false);
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
   // Pick-up points need API keys. Without them the option is hidden rather
@@ -373,7 +376,15 @@ export default function Home() {
   // may pay more for a faster one.
   const cdekQuote =
     cdekQuotes.find((item) => item.tariffCode === cdekTariffCode) ?? cdekQuotes[0] ?? null;
-  const deliveryFee = delivery === "cdek" ? (cdekQuote?.price ?? 0) : (deliveryOption.fee ?? 0);
+  // Either we have a price we can stand behind, or a person will work it
+  // out. There is no third case worth showing a number for.
+  const cdekFeePending = delivery === "cdek" && (!cdekQuote || cdekRepack);
+  const deliveryFee =
+    delivery === "cdek"
+      ? cdekFeePending
+        ? 0
+        : (cdekQuote?.price ?? 0)
+      : (deliveryOption.fee ?? 0);
   const officeSearch = cdekOfficeQuery.trim().toLowerCase();
   const cdekOfficeMatches = (
     officeSearch
@@ -416,20 +427,26 @@ export default function Home() {
       };
       const quoteData = (await quoteResponse.json()) as {
         quotes?: CdekQuote[];
+        pending?: boolean;
         error?: string;
       };
       if (!officesResponse.ok) {
         throw new Error(officesData.error || "Не удалось загрузить пункты выдачи");
       }
-      if (!quoteResponse.ok || !quoteData.quotes?.length) {
-        throw new Error(quoteData.error || "Не удалось рассчитать доставку");
-      }
       if (!officesData.offices?.length) {
         throw new Error("В этом городе нет доступных пунктов выдачи");
       }
       setCdekOffices(officesData.offices);
-      setCdekQuotes(quoteData.quotes);
-      setCdekTariffCode(quoteData.quotes[0].tariffCode);
+      // No price is not a failure. Some plants have no box measured yet and
+      // CDEK is not always up; either way the order goes through and the
+      // manager works the cost out.
+      if (quoteData.quotes?.length) {
+        setCdekQuotes(quoteData.quotes);
+        setCdekTariffCode(quoteData.quotes[0].tariffCode);
+      } else {
+        setCdekQuotes([]);
+        setCdekTariffCode(0);
+      }
     } catch (error) {
       setCdekError(
         error instanceof Error ? error.message : "Не удалось рассчитать доставку",
@@ -504,7 +521,8 @@ export default function Home() {
               cityCode: cdekCity?.code,
               cityName: cdekCity?.city,
               officeCode: cdekOfficeCode,
-              tariffCode: cdekQuote?.tariffCode ?? 0,
+              tariffCode: cdekRepack ? 0 : (cdekQuote?.tariffCode ?? 0),
+              repack: cdekRepack,
             }
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
@@ -884,7 +902,34 @@ export default function Home() {
                   {selectedOffice && (
                     <p className="cdek-status">Пункт выбран: {selectedOffice.location.address}</p>
                   )}
-                  {cdekQuotes.length > 1 && (
+                  {cdekFeePending && !!cdekOffices.length && (
+                    <div className="cdek-quote pending">
+                      <b>Рассчитает менеджер</b>
+                      <span>после оформления</span>
+                      <small>
+                        {cdekRepack
+                          ? "Менеджер проверит, поместятся ли растения в одну коробку, посчитает доставку и свяжется с вами до отправки."
+                          : "Стоимость доставки менеджер посчитает и сообщит вам до отправки заказа. Оформить заказ можно уже сейчас."}
+                      </small>
+                    </div>
+                  )}
+                  {cartLines.length > 1 && !!cdekQuotes.length && (
+                    <div className="cdek-repack">
+                      <button
+                        type="button"
+                        className={cdekRepack ? "repack-button active" : "repack-button"}
+                        onClick={() => setCdekRepack((current) => !current)}
+                      >
+                        {cdekRepack ? "Отменить запрос" : "Сделать доставку дешевле"}
+                      </button>
+                      <small>
+                        Стоимость рассчитана из отдельной коробки для каждого растения. После
+                        оформления заказа менеджер проверит, можно ли упаковать их в одну коробку —
+                        тогда доставка выйдет дешевле.
+                      </small>
+                    </div>
+                  )}
+                  {!cdekRepack && cdekQuotes.length > 1 && (
                     <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">
                       {cdekQuotes.map((option) => (
                         <label key={option.tariffCode} className="cdek-tariff">
@@ -907,7 +952,7 @@ export default function Home() {
                       ))}
                     </div>
                   )}
-                  {cdekQuote && cdekQuotes.length === 1 && (
+                  {!cdekRepack && cdekQuote && cdekQuotes.length === 1 && (
                     <div className="cdek-quote">
                       <b>{money(cdekQuote.price)}</b>
                       <span>
@@ -941,9 +986,9 @@ export default function Home() {
               )}
             </fieldset>
             <fieldset><legend>Комментарий</legend><label><textarea name="comment" rows={3} placeholder="Удобное время, пожелания к заказу" /></label></fieldset>
-            <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekQuote ? "после выбора ПВЗ" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{money(total)}</strong></div></div>
+            <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekOfficeCode ? "после выбора ПВЗ" : cdekFeePending ? "рассчитает менеджер" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{cdekFeePending && cdekOfficeCode ? `${money(total)} + доставка` : money(total)}</strong></div></div>
             <div className="payment-note"><b>Онлайн-оплата готовится</b><p>Платёжный сервис пока не выбран. Заказ сохранится, но деньги списываться не будут.</p></div>
-            <button className="primary-button full" disabled={submitting || (delivery === "cdek" && (!cdekQuote || !cdekOfficeCode))}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
+            <button className="primary-button full" disabled={submitting || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : "Подтвердить заказ"}</button>
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
           </form>
         )}

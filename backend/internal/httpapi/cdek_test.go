@@ -147,3 +147,34 @@ func (stub packageStub) PackageSizes(
 	}
 	return sizes, nil
 }
+
+// A plant nobody has measured yet must not produce a made-up price. The
+// order still goes through — the manager works the cost out and calls back.
+func TestCDEKAsksTheManagerWhenABoxIsMissing(t *testing.T) {
+	t.Parallel()
+
+	stub := &cdekStub{configured: true}
+	dependencies := testDependencies(catalogStub{}, authStub{})
+	dependencies.CDEK = stub
+	dependencies.Packages = packageStub{
+		"monstera": {LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300},
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(
+		`{"cityCode":44,"items":[{"id":"monstera","quantity":1},{"id":"unmeasured","quantity":1}]}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body)
+	}
+	if !strings.Contains(response.Body.String(), `"pending":true`) {
+		t.Fatalf("ожидали расчёт менеджером, получили: %s", response.Body)
+	}
+	if stub.called {
+		t.Fatal("СДЭК не нужно спрашивать про коробку, которой нет")
+	}
+}

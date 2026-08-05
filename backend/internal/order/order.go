@@ -28,6 +28,10 @@ type Detail struct {
 	Status         string    `json:"status"`
 	PaymentStatus  string    `json:"paymentStatus"`
 	DeliveryFee    float64   `json:"deliveryFee"`
+	// DeliveryFeePending means the shop still owes the customer a price:
+	// the manager works it out and calls back before shipping.
+	DeliveryFeePending bool `json:"deliveryFeePending"`
+	RepackRequested    bool `json:"repackRequested"`
 	Subtotal       float64   `json:"subtotal"`
 	Total          float64   `json:"total"`
 	CreatedAt      time.Time `json:"createdAt"`

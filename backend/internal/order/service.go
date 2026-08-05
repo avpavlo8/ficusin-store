@@ -68,6 +68,10 @@ type CDEKInput struct {
 	// this only says which of the offered tariffs to charge for. Zero means
 	// "the cheapest one", which is what the checkout preselects.
 	TariffCode int
+	// Repack is the customer asking whether the plants could travel in one
+	// box instead of several. Only the person packing them can answer that,
+	// so the price waits for the manager.
+	Repack bool
 }
 
 type Created struct {
@@ -87,6 +91,14 @@ func invalid(message string) error {
 	return &ValidationError{Message: message}
 }
 
+// boolToInt matches how the rest of the schema stores flags: SMALLINT 0/1.
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 type purchasableItem struct {
 	ID        string
 	VariantID int64
@@ -99,11 +111,11 @@ type purchasableItem struct {
 // shippingBox builds the single box the order travels in from the boxes of
 // its items. Quantity matters: three identical plants are three boxes side
 // by side, not one.
-func shippingBox(items []purchasableItem) integration.Parcel {
+func shippingBox(items []purchasableItem) (integration.Parcel, bool) {
 	parcels := make([]integration.Parcel, 0, len(items))
 	for _, item := range items {
 		for count := 0; count < item.Quantity; count++ {
-			parcels = append(parcels, integration.ParcelOrDefault(item.Parcel))
+			parcels = append(parcels, item.Parcel)
 		}
 	}
 	return integration.CombineParcels(parcels)
@@ -196,50 +208,68 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	deliveryAddress := input.Customer.Address
 	var cityCode, tariffCode *int
 	var cityName, officeCode *string
+	// feePending means the price is left for a person to work out. Nothing
+	// about it stops the order: a delivery quote we cannot produce is our
+	// problem, and losing the sale over it would be the worse outcome.
+	feePending := false
 	if input.Delivery == "cdek" {
 		if input.CDEK.CityCode <= 0 || strings.TrimSpace(input.CDEK.OfficeCode) == "" {
 			return Created{}, invalid("Выберите город и пункт выдачи СДЭК")
 		}
-		quotes, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, shippingBox(items))
-		if err != nil {
-			return Created{}, err
-		}
-		// The cheapest tariff comes first, and that is what the checkout
-		// preselects. A customer who chose a faster one is charged for it.
-		quote := quotes[0]
-		for _, option := range quotes {
-			if option.TariffCode == input.CDEK.TariffCode {
-				quote = option
-				break
-			}
-		}
-		offices, err := service.cdek.GetOffices(ctx, input.CDEK.CityCode)
-		if err != nil {
-			return Created{}, err
-		}
-		var selected *integration.CDEKOffice
-		for index := range offices {
-			if offices[index].Code == input.CDEK.OfficeCode {
-				selected = &offices[index]
-				break
-			}
-		}
-		if selected == nil {
-			return Created{}, invalid("Выбранный пункт СДЭК больше недоступен")
-		}
-		deliveryFee = float64(quote.Price)
-		deliveryAddress = selected.Location.AddressFull
-		if deliveryAddress == "" {
-			deliveryAddress = selected.Location.Address
-		}
-		resolvedCityName := selected.Location.City
-		if resolvedCityName == "" {
-			resolvedCityName = input.CDEK.CityName
-		}
 		cityCode = &input.CDEK.CityCode
-		cityName = &resolvedCityName
 		officeCode = &input.CDEK.OfficeCode
-		tariffCode = &quote.TariffCode
+		resolvedCityName := strings.TrimSpace(input.CDEK.CityName)
+
+		// A customer who asked us to pack everything into one box gets no
+		// automatic price: whether the plants fit together is a judgement
+		// only the person packing them can make.
+		box, measured := shippingBox(items)
+		if input.CDEK.Repack || !measured {
+			feePending = true
+		} else if quotes, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, box); err != nil {
+			service.logger.Error("cdek quote failed at checkout", "error", err)
+			feePending = true
+		} else {
+			// The cheapest tariff comes first, and that is what the checkout
+			// preselects. A customer who chose a faster one is charged for it.
+			quote := quotes[0]
+			for _, option := range quotes {
+				if option.TariffCode == input.CDEK.TariffCode {
+					quote = option
+					break
+				}
+			}
+			deliveryFee = float64(quote.Price)
+			tariffCode = &quote.TariffCode
+		}
+
+		// The address of the pick-up point is a convenience for the manager,
+		// not a condition of the order. If CDEK will not tell us right now,
+		// the code of the point is enough to look it up later.
+		deliveryAddress = "Пункт выдачи СДЭК " + input.CDEK.OfficeCode
+		if offices, err := service.cdek.GetOffices(ctx, input.CDEK.CityCode); err != nil {
+			service.logger.Error("cdek offices failed at checkout", "error", err)
+		} else {
+			var selected *integration.CDEKOffice
+			for index := range offices {
+				if offices[index].Code == input.CDEK.OfficeCode {
+					selected = &offices[index]
+					break
+				}
+			}
+			if selected == nil {
+				return Created{}, invalid("Выбранный пункт СДЭК больше недоступен")
+			}
+			if address := selected.Location.AddressFull; address != "" {
+				deliveryAddress = address
+			} else if selected.Location.Address != "" {
+				deliveryAddress = selected.Location.Address
+			}
+			if selected.Location.City != "" {
+				resolvedCityName = selected.Location.City
+			}
+		}
+		cityName = &resolvedCityName
 	} else if !regularDelivery {
 		return Created{}, invalid("Выберите способ получения")
 	}
@@ -257,18 +287,20 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	err = transaction.QueryRow(ctx, `
 		INSERT INTO orders (
 			order_number, customer_id, customer_name, phone, email, address, comment,
-			delivery_method, delivery_fee, cdek_city_code, cdek_city_name,
+			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
+			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total, payment_status, status
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, 'payment_provider_pending', 'new'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'payment_provider_pending', 'new'
 		)
 		RETURNING id
 	`,
 		orderNumber, customerID, input.Customer.Name, input.Customer.Phone,
 		input.Customer.Email, deliveryAddress, input.Customer.Comment, input.Delivery,
-		deliveryFee, cityCode, cityName, officeCode, tariffCode, subtotal, total,
+		deliveryFee, boolToInt(feePending), boolToInt(input.CDEK.Repack && input.Delivery == "cdek"),
+		cityCode, cityName, officeCode, tariffCode, subtotal, total,
 	).Scan(&orderID)
 	if err != nil {
 		return Created{}, fmt.Errorf("insert order: %w", err)

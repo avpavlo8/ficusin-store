@@ -130,6 +130,11 @@ type Order struct {
 	Address        string      `json:"address"`
 	Comment        string      `json:"comment"`
 	DeliveryMethod string      `json:"deliveryMethod"`
+	// DeliveryFeePending marks an order whose delivery price the manager
+	// still has to work out — no box dimensions, CDEK unavailable, or the
+	// customer asked whether the plants fit into one box.
+	DeliveryFeePending bool `json:"deliveryFeePending"`
+	RepackRequested    bool `json:"repackRequested"`
 	PaymentStatus  string      `json:"paymentStatus"`
 	Status         string      `json:"status"`
 	Total          float64     `json:"total"`

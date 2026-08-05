@@ -149,7 +149,8 @@ func (repository *PostgresRepository) UpdateCustomer(
 func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, error) {
 	rows, err := repository.pool.Query(ctx, `
 		SELECT id, order_number, customer_id, customer_name, phone, email, address,
-			comment, delivery_method, payment_status, status,
+			comment, delivery_method, delivery_fee_pending = 1,
+			delivery_repack_requested = 1, payment_status, status,
 			total::DOUBLE PRECISION, created_at
 		FROM orders ORDER BY created_at DESC LIMIT 1000
 	`)
@@ -163,7 +164,8 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		var item Order
 		if err := rows.Scan(&item.ID, &item.OrderNumber, &item.CustomerID,
 			&item.CustomerName, &item.Phone, &item.Email, &item.Address, &item.Comment,
-			&item.DeliveryMethod, &item.PaymentStatus, &item.Status, &item.Total,
+			&item.DeliveryMethod, &item.DeliveryFeePending, &item.RepackRequested,
+			&item.PaymentStatus, &item.Status, &item.Total,
 			&item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan admin order: %w", err)
 		}

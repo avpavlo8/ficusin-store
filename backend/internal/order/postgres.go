@@ -76,7 +76,9 @@ func (repository *PostgresRepository) DetailForCustomer(
 		SELECT
 			id, order_number, delivery_method, address, comment,
 			customer_name, phone, email, status, payment_status,
-			delivery_fee::DOUBLE PRECISION, subtotal::DOUBLE PRECISION,
+			delivery_fee::DOUBLE PRECISION,
+			delivery_fee_pending = 1, delivery_repack_requested = 1,
+			subtotal::DOUBLE PRECISION,
 			total::DOUBLE PRECISION, created_at
 		FROM orders
 		WHERE customer_id = $1 AND order_number = $2
@@ -93,6 +95,8 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.Status,
 		&detail.PaymentStatus,
 		&detail.DeliveryFee,
+		&detail.DeliveryFeePending,
+		&detail.RepackRequested,
 		&detail.Subtotal,
 		&detail.Total,
 		&detail.CreatedAt,
