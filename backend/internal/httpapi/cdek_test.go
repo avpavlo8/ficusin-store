@@ -7,12 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 )
 
 type cdekStub struct {
 	configured bool
 	called     bool
+	box        integration.Parcel
 }
 
 func (stub *cdekStub) Configured() bool { return stub.configured }
@@ -27,9 +29,14 @@ func (stub *cdekStub) GetOffices(context.Context, int) ([]integration.CDEKOffice
 	return nil, nil
 }
 
-func (stub *cdekStub) CalculatePVZ(context.Context, int, int) (integration.CDEKQuote, error) {
+func (stub *cdekStub) CalculatePVZ(
+	_ context.Context,
+	_ int,
+	box integration.Parcel,
+) ([]integration.CDEKQuote, error) {
 	stub.called = true
-	return integration.CDEKQuote{}, nil
+	stub.box = box
+	return []integration.CDEKQuote{{TariffCode: 136, Price: 450}}, nil
 }
 
 // The checkout asks this before drawing the delivery options, so it can hide
@@ -79,7 +86,7 @@ func TestCDEKRefusesWorkWithoutKeys(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek",
-		strings.NewReader(`{"cityCode":44,"itemCount":1}`))
+		strings.NewReader(`{"cityCode":44,"items":[{"id":"ficus","quantity":1}]}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
@@ -90,4 +97,53 @@ func TestCDEKRefusesWorkWithoutKeys(t *testing.T) {
 	if stub.called {
 		t.Fatal("СДЭК не должен вызываться без ключей")
 	}
+}
+
+// The price follows the box, and the box follows the products in the cart.
+// Quoting every order at one hardcoded size was charging Ryazan-to-Moscow
+// customers over 1300 roubles for a parcel that costs a third of that.
+func TestCDEKQuoteUsesTheBoxOfTheProductsInTheCart(t *testing.T) {
+	t.Parallel()
+
+	stub := &cdekStub{configured: true}
+	dependencies := testDependencies(catalogStub{}, authStub{})
+	dependencies.CDEK = stub
+	dependencies.Packages = packageStub{
+		"pineapple": {LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200},
+		"monstera":  {LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300},
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(
+		`{"cityCode":44,"items":[{"id":"pineapple","quantity":1},{"id":"monstera","quantity":1}]}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body)
+	}
+	want := integration.Parcel{LengthCM: 60, WidthCM: 40, HeightCM: 20, WeightGrams: 3500}
+	if stub.box != want {
+		t.Fatalf("box = %+v, want %+v", stub.box, want)
+	}
+	if !strings.Contains(response.Body.String(), `"quotes"`) {
+		t.Fatalf("ответ без списка тарифов: %s", response.Body)
+	}
+}
+
+type packageStub map[string]catalog.PackageSize
+
+func (stub packageStub) PackageSizes(
+	_ context.Context,
+	slugs []string,
+) (map[string]catalog.PackageSize, error) {
+	sizes := make(map[string]catalog.PackageSize, len(slugs))
+	for _, slug := range slugs {
+		if size, found := stub[slug]; found {
+			sizes[slug] = size
+		}
+	}
+	return sizes, nil
 }
