@@ -135,6 +135,7 @@ type Order struct {
 	// customer asked whether the plants fit into one box.
 	DeliveryFeePending bool `json:"deliveryFeePending"`
 	RepackRequested    bool `json:"repackRequested"`
+	PaymentMethod  string      `json:"paymentMethod"`
 	PaymentStatus  string      `json:"paymentStatus"`
 	Status         string      `json:"status"`
 	Total          float64     `json:"total"`
