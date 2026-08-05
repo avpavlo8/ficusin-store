@@ -163,6 +163,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .payment-return > div { margin-top: 4px; display: flex; gap: 10px; align-items: center; }
 .payment-return a { padding: 11px 18px; border-radius: 11px; text-decoration: none; }
 .payment-return button { padding: 11px 4px; border: 0; background: none; color: #667067; font: inherit; cursor: pointer; }
+.admin-settings { display: grid; gap: 12px; max-width: 640px; }
+.admin-setting { padding: 16px 18px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 16px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.admin-setting.switch { grid-template-columns: auto 1fr; }
+.admin-setting b { display: block; font-size: 15px; }
+.admin-setting small { display: block; margin-top: 3px; color: #687269; font-size: 12px; line-height: 1.45; }
+.admin-setting input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--green); }
+.admin-setting input[type=text], .admin-setting input[type=number] { width: 190px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+.admin-settings-actions { margin-top: 4px; display: flex; align-items: center; gap: 14px; }
+.admin-settings-actions button { padding: 11px 20px; border: 0; border-radius: 11px; background: var(--green); color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.admin-settings-actions span { color: #2f7a52; font-size: 13px; }
 .admin-flag { color: #9a6b25; font-weight: 700; }
 .admin-fee-form { margin-bottom: 16px; padding: 16px; display: grid; gap: 10px; max-width: 460px; border: 1px solid #e3d5b8; border-radius: 12px; background: #fbf3e6; }
 .admin-fee-form p { margin: 0; color: #6b5426; font-size: 13px; }
