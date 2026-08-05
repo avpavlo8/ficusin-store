@@ -13,6 +13,9 @@ var orderStatusWording = map[string]string{
 	"shipped":   "Заказ %s передан в доставку",
 	"completed": "Заказ %s получен. Спасибо!",
 	"cancelled": "Заказ %s отменён",
+	// Not a status of the order but news the customer is waiting on: the
+	// delivery they were told a person would price has now been priced.
+	"delivery_priced": "Доставка по заказу %s рассчитана — можно оплатить",
 }
 
 func (service *Service) NotifyOrderStatus(
