@@ -178,3 +178,32 @@ func TestCDEKAsksTheManagerWhenABoxIsMissing(t *testing.T) {
 		t.Fatal("СДЭК не нужно спрашивать про коробку, которой нет")
 	}
 }
+
+// Three of the same plant travel as three boxes standing side by side, not
+// as one. Quoting them as a single box would undercharge every repeat order.
+func TestCDEKQuoteCountsEachCopyOfTheSamePlant(t *testing.T) {
+	t.Parallel()
+
+	stub := &cdekStub{configured: true}
+	dependencies := testDependencies(catalogStub{}, authStub{})
+	dependencies.CDEK = stub
+	dependencies.Packages = packageStub{
+		"pineapple": {LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200},
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(
+		`{"cityCode":44,"items":[{"id":"pineapple","quantity":3}]}`,
+	))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body)
+	}
+	want := integration.Parcel{LengthCM: 40, WidthCM: 60, HeightCM: 20, WeightGrams: 3600}
+	if stub.box != want {
+		t.Fatalf("box = %+v, want %+v", stub.box, want)
+	}
+}

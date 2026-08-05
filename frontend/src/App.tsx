@@ -663,7 +663,7 @@ export default function Home() {
                 <p className="latin">{product.latin}</p>
                 <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
                 <div className="product-meta"><span>{product.light}</span><span>{product.size}</span></div>
-                <div className="product-bottom"><strong>{money(product.price)}</strong><button onClick={() => addToCart(product.id)} disabled={product.stock === 0}>{product.stock === 0 ? "Нет в наличии" : "В корзину"}</button></div>
+                <div className="product-bottom"><strong>{money(product.price)}</strong><button className={cart[product.id] ? "in-cart" : undefined} onClick={() => (cart[product.id] ? setCartOpen(true) : addToCart(product.id))} disabled={product.stock === 0}>{product.stock === 0 ? "Нет в наличии" : cart[product.id] ? `В корзине · ${cart[product.id]} шт.` : "В корзину"}</button></div>
               </div>
             </article>
           ))}
@@ -913,7 +913,10 @@ export default function Home() {
                       </small>
                     </div>
                   )}
-                  {cartLines.length > 1 && !!cdekQuotes.length && (
+                  {/* Three of the same plant are three boxes too, so the
+                      offer depends on how many go in the van, not on how
+                      many lines the cart has. */}
+                  {cartCount > 1 && !!cdekQuotes.length && (
                     <div className="cdek-repack">
                       <label>
                         <input

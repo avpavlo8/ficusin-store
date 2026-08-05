@@ -20,7 +20,7 @@ export default function FavoritesPage() {
         <a className="product-image" href={`/product/${product.id}`}><img src={product.image} alt={product.name} /></a>
         <div className="product-info"><p className="latin">{product.latin}</p><h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
           <div className="product-meta"><span>{product.light}</span><span>{product.size}</span></div>
-          <div className="product-bottom"><strong>{money(product.price)}</strong><button onClick={() => add(product)}>В корзину</button></div>
+          <div className="product-bottom"><strong>{money(product.price)}</strong><button className={cart[product.id] ? "in-cart" : undefined} onClick={() => (cart[product.id] ? window.location.assign("/?cart=1") : add(product))}>{cart[product.id] ? `В корзине · ${cart[product.id]} шт.` : "В корзину"}</button></div>
         </div></article>)}</div>
       {!items.length && <div className="empty-state"><strong>{query ? "Ничего не найдено" : "В избранном пока пусто"}</strong><span>Добавляйте товары красным сердечком в каталоге.</span><a href="/#catalog">Перейти в каталог</a></div>}
     </section>

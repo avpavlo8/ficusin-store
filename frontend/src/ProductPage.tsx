@@ -22,10 +22,11 @@ export default function ProductPage({ slug }: { slug: string }) {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
   });
-  const [cartCount, setCartCount] = useState(() => {
-    try { return Object.values(JSON.parse(localStorage.getItem("ficusin-cart") || "{}") as Record<string, number>).reduce((sum, value) => sum + value, 0); }
-    catch { return 0; }
+  const [cart, setCart] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem("ficusin-cart") || "{}") as Record<string, number>; }
+    catch { return {}; }
   });
+  const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   useEffect(() => {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
@@ -47,11 +48,11 @@ export default function ProductPage({ slug }: { slug: string }) {
 
   const addToCart = () => {
     if (!product || !variant || variant.stock <= 0) return;
-    let cart: Record<string, number> = {};
-    try { cart = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { cart = {}; }
-    cart[product.id] = Math.min(variant.stock, (cart[product.id] || 0) + 1);
-    localStorage.setItem("ficusin-cart", JSON.stringify(cart));
-    setCartCount(Object.values(cart).reduce((sum, value) => sum + value, 0));
+    let stored: Record<string, number> = {};
+    try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; }
+    stored[product.id] = Math.min(variant.stock, (stored[product.id] || 0) + 1);
+    localStorage.setItem("ficusin-cart", JSON.stringify(stored));
+    setCart({ ...stored });
     setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
 
@@ -66,7 +67,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       <div className="pdp-summary"><p className="latin">{product.latin}</p><h1>{product.name}</h1><p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
         {product.variants.length > 1 && <div className="variant-picker"><span>Выберите размер</span>{product.variants.map((item) => <button className={item.id === variant?.id ? "active" : ""} onClick={() => setSelectedID(item.id)} key={item.id}><strong>{item.label}</strong><small>{money(item.price)}</small></button>)}</div>}
         {variant && <div className="pdp-specs">{variant.heightCm && <div><span>Высота</span><strong>{variant.heightCm} см</strong></div>}{variant.potDiameterCm && <div><span>Горшок</span><strong>Ø {variant.potDiameterCm} см</strong></div>}<div><span>Артикул</span><strong>{variant.sku}</strong></div><div><span>Наличие</span><strong>{variant.stock > 0 ? `${variant.stock} шт.` : "Нет"}</strong></div></div>}
-        <div className="pdp-buy"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><button className={favorites.has(product.id) ? "pdp-favorite active" : "pdp-favorite"} onClick={toggleFavorite} aria-label="Добавить в избранное">{favorites.has(product.id) ? "♥" : "♡"}</button><button onClick={addToCart} disabled={!variant || variant.stock <= 0}>{variant?.stock ? "Добавить в корзину" : "Нет в наличии"}</button></div>
+        <div className="pdp-buy"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><button className={favorites.has(product.id) ? "pdp-favorite active" : "pdp-favorite"} onClick={toggleFavorite} aria-label="Добавить в избранное">{favorites.has(product.id) ? "♥" : "♡"}</button><button className={cart[product.id] ? "in-cart" : undefined} onClick={cart[product.id] ? () => window.location.assign("/?cart=1") : addToCart} disabled={!variant || variant.stock <= 0}>{!variant?.stock ? "Нет в наличии" : cart[product.id] ? `В корзине · ${cart[product.id]} шт.` : "Добавить в корзину"}</button></div>
         <div className="pdp-benefits"><p>✓ Проверим растение перед отправкой</p><p>✓ Упакуем с учётом погоды</p><p>✓ Доставка по Рязани и России</p></div>
       </div>
     </section>
