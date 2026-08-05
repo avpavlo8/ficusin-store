@@ -154,6 +154,13 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .cdek-quote b { font-size: 18px; }
 .cdek-quote span { font-weight: 700; }
 .cdek-quote small { grid-column: 1 / -1; color: #687269; }
+.cdek-tariffs { margin: 8px 0 4px; display: grid; gap: 8px; }
+.cdek-tariff { padding: 12px 14px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.cdek-tariff:has(input:checked) { border-color: var(--green); background: #edf2ec; }
+.cdek-tariff input { width: 18px; height: 18px; accent-color: var(--green); }
+.cdek-tariff b { display: block; font-size: 14px; }
+.cdek-tariff small { color: #687269; font-size: 12px; }
+.cdek-tariff strong { font-size: 16px; white-space: nowrap; }
 .checkout-total { padding: 20px 0; border-top: 1px solid var(--line); }
 .checkout-total > div { padding: 6px 0; display: flex; justify-content: space-between; }
 .checkout-total .total { margin-top: 12px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 22px; }

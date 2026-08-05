@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   formatRussianPhoneInput,
   normalizeRussianPhone,
@@ -113,7 +113,18 @@ export default function Home() {
       return new Set();
     }
   });
-  const [cart, setCart] = useState<Cart>({});
+  // The cart is read straight into the initial state. Reading it from an
+  // effect used to lose it: the effect that saves the cart ran first, on the
+  // very first render, and overwrote the stored basket with an empty one
+  // before anything had been read back.
+  const [cart, setCart] = useState<Cart>(() => {
+    try {
+      const saved = window.localStorage.getItem("ficusin-cart");
+      return saved ? (JSON.parse(saved) as Cart) : {};
+    } catch {
+      return {};
+    }
+  });
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [delivery, setDelivery] = useState("pickup");
@@ -125,7 +136,12 @@ export default function Home() {
   const [cdekCity, setCdekCity] = useState<CdekCity | null>(null);
   const [cdekOffices, setCdekOffices] = useState<CdekOffice[]>([]);
   const [cdekOfficeCode, setCdekOfficeCode] = useState("");
-  const [cdekQuote, setCdekQuote] = useState<CdekQuote | null>(null);
+  // Moscow has hundreds of pick-up points. A dropdown of them all is a scroll
+  // through a phone book, so the customer types part of the address instead.
+  const [cdekOfficeQuery, setCdekOfficeQuery] = useState("");
+  const [cdekOfficeListOpen, setCdekOfficeListOpen] = useState(false);
+  const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
+  const [cdekTariffCode, setCdekTariffCode] = useState(0);
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
   // Pick-up points need API keys. Without them the option is hidden rather
@@ -138,20 +154,9 @@ export default function Home() {
     email: "",
     address: "",
   });
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const saved = window.localStorage.getItem("ficusin-cart");
-      if (saved) {
-        try {
-          setCart(JSON.parse(saved));
-        } catch {
-          window.localStorage.removeItem("ficusin-cart");
-        }
-      }
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+  // Guards the first save: until the server copy has been merged in we must
+  // not push the local basket over it.
+  const cartSynced = useRef(false);
 
   useEffect(() => {
     fetch("/api/v1/delivery/cdek?action=status", { cache: "no-store" })
@@ -239,9 +244,52 @@ export default function Home() {
     };
   }, []);
 
+  // A signed-in customer also keeps a copy on the server, so the basket
+  // survives a cleared browser or a switch to another phone. The browser is
+  // the working copy; the server one is merged into it once at sign-in and
+  // only ever cleared by the customer or by placing an order.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetch("/api/v1/account/cart", { credentials: "same-origin", cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { items: {} }))
+      .then((data: { items?: Cart }) => {
+        if (cancelled) return;
+        const stored = data.items || {};
+        setCart((current) => {
+          const merged: Cart = { ...stored };
+          for (const [id, quantity] of Object.entries(current)) {
+            merged[id] = Math.max(merged[id] || 0, quantity);
+          }
+          return merged;
+        });
+        cartSynced.current = true;
+      })
+      .catch(() => {
+        // Keep the local basket and try saving again on the next change.
+        cartSynced.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   useEffect(() => {
     window.localStorage.setItem("ficusin-cart", JSON.stringify(cart));
-  }, [cart]);
+    if (!user || !cartSynced.current) return;
+    // Waiting a moment turns a burst of "+" taps into one request.
+    const timer = window.setTimeout(() => {
+      fetch("/api/v1/account/cart", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: cart }),
+      }).catch(() => {
+        // The browser copy is already saved; nothing is lost.
+      });
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [cart, user]);
 
   useEffect(() => {
     document.body.classList.toggle("drawer-open", cartOpen || checkoutOpen);
@@ -321,7 +369,20 @@ export default function Home() {
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const availableDelivery = deliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable);
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
+  // The cheapest tariff comes first and is what we preselect; the customer
+  // may pay more for a faster one.
+  const cdekQuote =
+    cdekQuotes.find((item) => item.tariffCode === cdekTariffCode) ?? cdekQuotes[0] ?? null;
   const deliveryFee = delivery === "cdek" ? (cdekQuote?.price ?? 0) : (deliveryOption.fee ?? 0);
+  const officeSearch = cdekOfficeQuery.trim().toLowerCase();
+  const cdekOfficeMatches = (
+    officeSearch
+      ? cdekOffices.filter((office) =>
+          `${office.location.address} ${office.name}`.toLowerCase().includes(officeSearch),
+        )
+      : cdekOffices
+  ).slice(0, 12);
+  const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
   const total = subtotal + deliveryFee;
 
   async function chooseCdekCity(city: CdekCity) {
@@ -330,7 +391,9 @@ export default function Home() {
     setCdekCities([]);
     setCdekOffices([]);
     setCdekOfficeCode("");
-    setCdekQuote(null);
+    setCdekOfficeQuery("");
+    setCdekQuotes([]);
+    setCdekTariffCode(0);
     setCdekLoading(true);
     setCdekError("");
     try {
@@ -339,7 +402,15 @@ export default function Home() {
         fetch("/api/v1/delivery/cdek", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cityCode: city.code, itemCount: cartCount }),
+          // The price follows the boxes of the actual plants in the cart,
+          // so the server needs to know what is in it.
+          body: JSON.stringify({
+            cityCode: city.code,
+            items: cartLines.map((line) => ({
+              id: line.product.id,
+              quantity: line.quantity,
+            })),
+          }),
         }),
       ]);
       const officesData = (await officesResponse.json()) as {
@@ -347,20 +418,21 @@ export default function Home() {
         error?: string;
       };
       const quoteData = (await quoteResponse.json()) as {
-        quote?: CdekQuote;
+        quotes?: CdekQuote[];
         error?: string;
       };
       if (!officesResponse.ok) {
         throw new Error(officesData.error || "Не удалось загрузить пункты выдачи");
       }
-      if (!quoteResponse.ok || !quoteData.quote) {
+      if (!quoteResponse.ok || !quoteData.quotes?.length) {
         throw new Error(quoteData.error || "Не удалось рассчитать доставку");
       }
       if (!officesData.offices?.length) {
         throw new Error("В этом городе нет доступных пунктов выдачи");
       }
       setCdekOffices(officesData.offices);
-      setCdekQuote(quoteData.quote);
+      setCdekQuotes(quoteData.quotes);
+      setCdekTariffCode(quoteData.quotes[0].tariffCode);
     } catch (error) {
       setCdekError(
         error instanceof Error ? error.message : "Не удалось рассчитать доставку",
@@ -435,6 +507,7 @@ export default function Home() {
               cityCode: cdekCity?.code,
               cityName: cdekCity?.city,
               officeCode: cdekOfficeCode,
+              tariffCode: cdekQuote?.tariffCode ?? 0,
             }
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
@@ -750,7 +823,9 @@ export default function Home() {
                         setCdekCities([]);
                         setCdekOffices([]);
                         setCdekOfficeCode("");
-                        setCdekQuote(null);
+                        setCdekOfficeQuery("");
+                        setCdekQuotes([]);
+                        setCdekTariffCode(0);
                       }}
                       autoComplete="off"
                       placeholder="Начните вводить город"
@@ -775,22 +850,67 @@ export default function Home() {
                   {!!cdekOffices.length && (
                     <label>
                       Пункт выдачи
-                      <select
-                        value={cdekOfficeCode}
-                        onChange={(event) => setCdekOfficeCode(event.target.value)}
-                        required
-                      >
-                        <option value="">Выберите адрес</option>
-                        {cdekOffices.map((office) => (
-                          <option key={office.code} value={office.code}>
-                            {office.location.address}
-                            {office.work_time ? ` · ${office.work_time}` : ""}
-                          </option>
-                        ))}
-                      </select>
+                      <input
+                        value={cdekOfficeQuery}
+                        onChange={(event) => {
+                          setCdekOfficeQuery(event.target.value);
+                          setCdekOfficeCode("");
+                          setCdekOfficeListOpen(true);
+                        }}
+                        onFocus={() => setCdekOfficeListOpen(true)}
+                        autoComplete="off"
+                        placeholder="Улица или дом — покажем ближайшие пункты"
+                      />
                     </label>
                   )}
-                  {cdekQuote && (
+                  {cdekOfficeListOpen && !!cdekOfficeMatches.length && !cdekOfficeCode && (
+                    <div className="cdek-suggestions" role="listbox" aria-label="Пункты выдачи">
+                      {cdekOfficeMatches.map((office) => (
+                        <button
+                          type="button"
+                          key={office.code}
+                          onClick={() => {
+                            setCdekOfficeCode(office.code);
+                            setCdekOfficeQuery(office.location.address);
+                            setCdekOfficeListOpen(false);
+                          }}
+                        >
+                          <b>{office.location.address}</b>
+                          <span>{office.work_time || office.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!!cdekOffices.length && !cdekOfficeMatches.length && (
+                    <p className="cdek-status">Ничего не нашлось — попробуйте другую улицу</p>
+                  )}
+                  {selectedOffice && (
+                    <p className="cdek-status">Пункт выбран: {selectedOffice.location.address}</p>
+                  )}
+                  {cdekQuotes.length > 1 && (
+                    <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">
+                      {cdekQuotes.map((option) => (
+                        <label key={option.tariffCode} className="cdek-tariff">
+                          <input
+                            type="radio"
+                            name="cdek-tariff"
+                            checked={option.tariffCode === cdekQuote?.tariffCode}
+                            onChange={() => setCdekTariffCode(option.tariffCode)}
+                          />
+                          <span>
+                            <b>{option.tariffName}</b>
+                            <small>
+                              {option.daysMin === option.daysMax
+                                ? `${option.daysMin} дн.`
+                                : `${option.daysMin}–${option.daysMax} дн.`}
+                            </small>
+                          </span>
+                          <strong>{money(option.price)}</strong>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {cdekQuote && cdekQuotes.length === 1 && (
                     <div className="cdek-quote">
                       <b>{money(cdekQuote.price)}</b>
                       <span>
@@ -798,7 +918,7 @@ export default function Home() {
                           ? `${cdekQuote.daysMin} дн.`
                           : `${cdekQuote.daysMin}–${cdekQuote.daysMax} дн.`}
                       </span>
-                      <small>Предварительный расчёт по габаритам растений</small>
+                      <small>Расчёт по габаритам упаковки выбранных растений</small>
                     </div>
                   )}
                 </div>
