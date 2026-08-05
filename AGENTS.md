@@ -10,6 +10,7 @@ Go отдаёт `/api/v1/*` и статику собранного фронте�
 
 ```
 frontend/   React + TypeScript + Vite
+public/     статика и файлы PWA (манифест, sw.js, иконки)
 backend/    Go, HTTP API
 timeweb/    SQL-миграции PostgreSQL
 e2e/        Playwright-тесты вёрстки (iPhone, Android, десктоп)
@@ -38,6 +39,7 @@ Timeweb Cloud App Platform, приложение `229223`. **Мерж в `main`
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ORDER_CHAT_ID` | уведомления о заказах не уходят |
 | `YANDEX_SUGGEST_API_KEY` | поле адреса работает как обычный ввод |
 | `ADMIN_EMAILS` | некому выдать права владельца на пустой базе |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | push-уведомления выключены, кнопка в кабинете не показывается |
 | `INTEGRATION_SECRETS_PRIVATE_KEY` | устаревшая схема шифрования, сейчас не задана |
 
 ## Архитектура бэкенда
@@ -96,6 +98,21 @@ internal/integration/    внешние сервисы: SMS.ru, CDEK, Telegram
   `internal/consent`. Запись идёт в той же транзакции, что и заказ или
   регистрация — заказа без записи о согласии существовать не может. Меняете
   текст оферты или политики — поднимите `consent.Version`.
+
+## PWA и уведомления
+
+Сайт устанавливается на домашний экран: `public/manifest.webmanifest`,
+`public/sw.js`, иконки там же. Правила кэша заданы в service worker и
+намеренно осторожные — `/assets/*` вечно (в имени хэш), страницы только по
+сети, `/api/**` не кэшируется никогда. Меняете стратегию — поднимите
+`VERSION` в `sw.js`, иначе старый воркер останется у людей.
+
+Push сделан на стандартной библиотеке Go без внешних зависимостей:
+`internal/webpush` (RFC 8291 + VAPID), `internal/notify` (подписки и
+рассылка). Тест `TestEncryptedPayloadCanBeReadByTheBrowser` расшифровывает
+сообщение так же, как это делает браузер — если шифрование поедет, тест
+упадёт. На iPhone уведомления приходят только если сайт добавлен на
+домашний экран; это ограничение Safari, а не наше.
 
 ## Частые грабли
 
