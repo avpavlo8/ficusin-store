@@ -720,3 +720,84 @@ func productAuditData(ctx context.Context, query interface {
 	`, id).Scan(&value)
 	return value, err
 }
+
+// SetDeliveryFee finishes an order the shop could not price itself: no box
+// dimensions, CDEK unavailable, or a customer asking whether the plants fit
+// into one box. Once the manager names the price the order becomes payable
+// like any other, and the customer is told.
+func (repository *PostgresRepository) SetDeliveryFee(
+	ctx context.Context,
+	actor Actor,
+	id int64,
+	fee float64,
+) (Order, error) {
+	if !Can(actor.Role, PermissionOrdersEdit) {
+		return Order{}, ErrForbidden
+	}
+	if fee < 0 || fee > 100000 {
+		return Order{}, fmt.Errorf("стоимость доставки вне разумных пределов")
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return Order{}, fmt.Errorf("begin delivery fee update: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var before map[string]any
+	if err := tx.QueryRow(ctx, `
+		SELECT jsonb_build_object('deliveryFee', delivery_fee, 'pending', delivery_fee_pending)
+		FROM orders WHERE id = $1 FOR UPDATE
+	`, id).Scan(&before); err != nil {
+		return Order{}, err
+	}
+	// The total is rebuilt from the goods rather than adjusted, so setting
+	// the fee twice cannot stack two deliveries onto one order.
+	if _, err := tx.Exec(ctx, `
+		UPDATE orders
+		SET delivery_fee = $2,
+			delivery_fee_pending = 0,
+			total = subtotal + $2
+		WHERE id = $1
+	`, id, fee); err != nil {
+		return Order{}, fmt.Errorf("update delivery fee: %w", err)
+	}
+	var after map[string]any
+	if err := tx.QueryRow(ctx, `
+		SELECT jsonb_build_object('deliveryFee', delivery_fee, 'pending', delivery_fee_pending)
+		FROM orders WHERE id = $1
+	`, id).Scan(&after); err != nil {
+		return Order{}, err
+	}
+	if err := insertAudit(
+		ctx, tx, actor, "order.delivery_fee.set", "order", fmt.Sprint(id), before, after,
+	); err != nil {
+		return Order{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Order{}, fmt.Errorf("commit delivery fee: %w", err)
+	}
+	if repository.notifier != nil {
+		var customerID *int64
+		var orderNumber string
+		var paymentStatus string
+		if err := repository.pool.QueryRow(ctx,
+			"SELECT customer_id, order_number, payment_status FROM orders WHERE id = $1", id,
+		).Scan(&customerID, &orderNumber, &paymentStatus); err == nil && customerID != nil {
+			// Only someone who still owes money needs to hear about it.
+			if paymentStatus == "pending" {
+				_ = repository.notifier.NotifyOrderStatus(
+					ctx, *customerID, orderNumber, "delivery_priced",
+				)
+			}
+		}
+	}
+	orders, err := repository.ListOrders(ctx)
+	if err != nil {
+		return Order{}, err
+	}
+	for _, order := range orders {
+		if order.ID == id {
+			return order, nil
+		}
+	}
+	return Order{}, pgx.ErrNoRows
+}
