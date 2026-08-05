@@ -33,6 +33,7 @@ type createOrderBody struct {
 		CityName   string `json:"cityName"`
 		OfficeCode string `json:"officeCode"`
 		TariffCode int    `json:"tariffCode"`
+		Repack     bool   `json:"repack"`
 	} `json:"cdek"`
 	// Consent mirrors the checkbox under the checkout form. The browser
 	// marks it required, but the server has to see it too — that flag is
@@ -121,6 +122,7 @@ func createOrderHandler(
 				CityCode: body.CDEK.CityCode, CityName: strings.TrimSpace(body.CDEK.CityName),
 				OfficeCode: strings.TrimSpace(body.CDEK.OfficeCode),
 				TariffCode: body.CDEK.TariffCode,
+				Repack:     body.CDEK.Repack,
 			},
 			CustomerID: customerID,
 			Consent:    true,

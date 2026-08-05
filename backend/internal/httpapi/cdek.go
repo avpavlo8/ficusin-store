@@ -104,7 +104,6 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 	if handlers.packages != nil && len(slugs) > 0 {
 		loaded, err := handlers.packages.PackageSizes(request.Context(), slugs)
 		if err != nil {
-			// A quote from the fallback box beats no quote at all.
 			handlers.logger.Error("load package sizes failed", "error", err)
 		} else {
 			sizes = loaded
@@ -113,27 +112,30 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 	parcels := make([]integration.Parcel, 0, len(body.Items))
 	for _, item := range body.Items {
 		size := sizes[strings.TrimSpace(item.ID)]
-		parcel := integration.ParcelOrDefault(integration.Parcel{
+		parcel := integration.Parcel{
 			LengthCM:    size.LengthCM,
 			WidthCM:     size.WidthCM,
 			HeightCM:    size.HeightCM,
 			WeightGrams: size.WeightGrams,
-		})
+		}
 		for count := 0; count < max(1, min(20, item.Quantity)); count++ {
 			parcels = append(parcels, parcel)
 		}
 	}
-	if len(parcels) == 0 {
-		parcels = append(parcels, integration.DefaultParcel)
-	}
 
-	quotes, err := handlers.service.CalculatePVZ(
-		request.Context(),
-		body.CityCode,
-		integration.CombineParcels(parcels),
-	)
+	box, measured := integration.CombineParcels(parcels)
+	if !measured {
+		// Some plant has no box filled in. The order still goes through —
+		// the manager works the price out and calls back.
+		writeJSON(response, http.StatusOK, quoteUnavailable)
+		return
+	}
+	quotes, err := handlers.service.CalculatePVZ(request.Context(), body.CityCode, box)
 	if err != nil {
-		handlers.externalError(response, err)
+		// CDEK being down is our problem, not the customer's. Losing the
+		// order over it would be the worse outcome.
+		handlers.logger.Error("cdek quote failed", "error", err)
+		writeJSON(response, http.StatusOK, quoteUnavailable)
 		return
 	}
 	// "quote" stays for the cheapest option: the checkout preselects it, and
@@ -142,6 +144,14 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 		"quote":  quotes[0],
 		"quotes": quotes,
 	})
+}
+
+// quoteUnavailable is the answer whenever a price cannot be produced, for
+// whatever reason. The checkout shows the same sentence either way: the
+// customer does not care which of our systems is having a moment.
+var quoteUnavailable = map[string]any{
+	"pending": true,
+	"message": "Стоимость доставки рассчитает менеджер после оформления заказа",
 }
 
 // available reports whether pick-up points can be offered at all. A missing
