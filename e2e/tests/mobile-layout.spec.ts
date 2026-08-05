@@ -60,7 +60,9 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await expect(menu.getByRole("link", { name: "Каталог" })).toBeVisible();
   await expect(menu.getByRole("link", { name: /Избранное/ })).toBeVisible();
 
-  await page.locator(".overlay").click();
+  // The menu covers the whole screen on a phone, so the close button is the
+  // only way out — there is no strip of backdrop left to tap.
+  await menu.getByRole("button", { name: "Закрыть меню" }).click();
   await expect(menu).toHaveCount(0);
 });
 
