@@ -290,6 +290,15 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 		if err := releaseStock(ctx, tx, id); err != nil {
 			return Order{}, err
 		}
+		// An unfinished payment for a cancelled order is over. Left open it
+		// would keep the reconciliation loop asking YooKassa about it every
+		// minute for nothing.
+		if _, err := tx.Exec(ctx, `
+			UPDATE payments SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+			WHERE order_id = $1 AND status = 'pending'
+		`, id); err != nil {
+			return Order{}, fmt.Errorf("cancel payments: %w", err)
+		}
 	}
 	var after map[string]any
 	if err := tx.QueryRow(ctx, `
