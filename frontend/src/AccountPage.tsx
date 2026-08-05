@@ -37,6 +37,8 @@ type OrderDetail = {
   status: string;
   paymentStatus: string;
   deliveryFee: number;
+  deliveryFeePending?: boolean;
+  repackRequested?: boolean;
   subtotal: number;
   total: number;
   createdAt: string;
@@ -206,7 +208,10 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
     </section>
     <section className="order-totals">
       <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>
-      <div><span>Доставка</span><span>{order.deliveryFee ? money.format(order.deliveryFee) : "—"}</span></div>
+      <div><span>Доставка</span><span>{order.deliveryFeePending ? "рассчитает менеджер" : order.deliveryFee ? money.format(order.deliveryFee) : "—"}</span></div>
+      {order.deliveryFeePending && <p className="order-note">{order.repackRequested
+        ? "Вы просили упаковать растения в одну коробку. Менеджер проверит, поместятся ли они вместе, пересчитает доставку и свяжется с вами."
+        : "Менеджер рассчитает стоимость доставки и свяжется с вами до отправки заказа."}</p>}
       <div className="total"><span>Итого</span><span>{money.format(order.total)}</span></div>
     </section>
     <section className="order-facts">
