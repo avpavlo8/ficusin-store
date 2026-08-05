@@ -21,7 +21,7 @@ Required environment variables:
 - `STATIC_DIR` when the API should also serve a built SPA.
 - `MIGRATIONS_DIR` to apply ordered `.sql` migrations on startup;
 - `AUTH_COOKIE_SECURE` and `AUTH_SESSION_DAYS`;
-- `INTEGRATION_SECRETS_PRIVATE_KEY` for encrypted CDEK/Telegram credentials;
+- `CDEK_CLIENT_ID` / `CDEK_CLIENT_SECRET` for pick-up point delivery;
 - `TELEGRAM_ORDER_CHAT_ID`.
 
 ## Current endpoints

@@ -38,8 +38,8 @@ business layer or public API.
 4. CDEK and Saby.
 5. Admin and account read models.
 6. Verify the split image in a non-production Timeweb deployment.
-7. Enable YooKassa only after the payment account and webhook are ready.
+7. Enable payments only after 54-ФЗ receipts are in place.
 8. Remove Next.js server routes and the legacy Node runtime. Completed.
 
-YooKassa is intentionally disabled in the split runtime and is not a hidden
+Payments are intentionally disabled in the split runtime and are not a hidden
 startup dependency.

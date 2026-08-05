@@ -60,17 +60,8 @@ func main() {
 	callChecker := integration.NewSMSRUClient(cfg.SMS.APIKey)
 	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
 	orderRepository := order.NewPostgresRepository(pool)
-	credentialStore, err := integration.NewCredentialStore(pool, cfg.IntegrationPrivateKey)
-	if err != nil {
-		logger.Error("integration credentials configuration failed", "error", err)
-		os.Exit(1)
-	}
-	cdekClient := integration.NewCDEKClient(credentialStore, cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
-	telegramClient, err := integration.NewTelegramClient(
-		credentialStore,
-		cfg.TelegramChatID,
-		cfg.TelegramBotToken,
-	)
+	cdekClient := integration.NewCDEKClient(cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
+	telegramClient, err := integration.NewTelegramClient(cfg.TelegramChatID, cfg.TelegramBotToken)
 	if err != nil {
 		logger.Error("Telegram configuration failed", "error", err)
 		os.Exit(1)

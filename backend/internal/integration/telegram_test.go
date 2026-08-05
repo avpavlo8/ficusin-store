@@ -28,7 +28,7 @@ func TestTelegramClientUsesEnvironmentToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewTelegramClient(nil, " -5430918511 ", " secret-token ")
+	client, err := NewTelegramClient(" -5430918511 ", " secret-token ")
 	if err != nil {
 		t.Fatalf("NewTelegramClient() error = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestTelegramMessageOmitsPersonalData(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewTelegramClient(nil, "-5430918511", "secret-token")
+	client, err := NewTelegramClient("-5430918511", "secret-token")
 	if err != nil {
 		t.Fatalf("NewTelegramClient() error = %v", err)
 	}
@@ -103,7 +103,7 @@ func TestTelegramMessageOmitsPersonalData(t *testing.T) {
 func TestTelegramClientRejectsMissingCredentials(t *testing.T) {
 	t.Parallel()
 
-	if _, err := NewTelegramClient(nil, "-5430918511", ""); err == nil {
+	if _, err := NewTelegramClient("-5430918511", ""); err == nil {
 		t.Fatal("NewTelegramClient() error = nil, want missing token error")
 	}
 }
@@ -111,7 +111,7 @@ func TestTelegramClientRejectsMissingCredentials(t *testing.T) {
 func TestTelegramClientRejectsMissingChatID(t *testing.T) {
 	t.Parallel()
 
-	if _, err := NewTelegramClient(nil, "", "secret-token"); err == nil {
+	if _, err := NewTelegramClient("", "secret-token"); err == nil {
 		t.Fatal("NewTelegramClient() error = nil, want missing chat ID error")
 	}
 }
