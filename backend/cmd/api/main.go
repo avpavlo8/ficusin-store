@@ -12,6 +12,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
+	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
@@ -94,6 +95,8 @@ func main() {
 			Admin:        adminRepository,
 			Saby:         sabyService,
 			Push:         pushService,
+			Cart:         cart.NewStore(pool),
+			Packages:     catalogRepository,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
 
