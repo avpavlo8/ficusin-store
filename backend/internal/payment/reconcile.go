@@ -11,10 +11,12 @@ import (
 // unfinished payments are asked about.
 const reconcileInterval = time.Minute
 
-// reconcileWindow is how long a pending payment stays interesting. A payment
-// nobody finished within a day was abandoned on the payment page, and asking
-// about it forever would be pointless traffic.
-const reconcileWindow = 24 * time.Hour
+// reconcileWindow is how long a pending payment stays interesting. People
+// pay within minutes of being sent to the payment page; a payment nobody
+// finished in two hours was abandoned there. Asking about it all day would
+// be thousands of pointless requests, and if such a payment is somehow
+// completed later, the notification still brings it in.
+const reconcileWindow = 2 * time.Hour
 
 // ReconcileWorker is the safety net under the notifications.
 //
@@ -50,15 +52,20 @@ func (worker *ReconcileWorker) Run(ctx context.Context) {
 }
 
 func (worker *ReconcileWorker) process(ctx context.Context) {
+	// Only payments that could still matter: a cancelled order has nothing
+	// left to pay for, and asking about it would be traffic for nothing.
 	rows, err := worker.service.pool.Query(ctx, `
-		SELECT provider_payment_id
-		FROM payments
-		WHERE status = $1
-			AND provider_payment_id <> ''
-			AND created_at > CURRENT_TIMESTAMP - $2::INTERVAL
-		ORDER BY id
+		SELECT p.provider_payment_id
+		FROM payments p
+		JOIN orders o ON o.id = p.order_id
+		WHERE p.status = $1
+			AND p.provider_payment_id <> ''
+			AND p.created_at > CURRENT_TIMESTAMP - $2::INTERVAL
+			AND o.status <> 'cancelled'
+			AND o.payment_status <> $3
+		ORDER BY p.id
 		LIMIT 50
-	`, StatusPending, reconcileWindow.String())
+	`, StatusPending, reconcileWindow.String(), StatusPaid)
 	if err != nil {
 		worker.logger.Error("reconcile query failed", "error", err)
 		return
