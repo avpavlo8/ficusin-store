@@ -18,7 +18,15 @@ type Config struct {
 		TelegramBotToken      string
 		YandexSuggestKey      string
 		AdminEmails           []string
+		CDEK                  CDEK
 		Push                  Push
+}
+
+// CDEK holds the API credentials for the delivery service. Empty values
+// switch pick-up points off; the other delivery methods keep working.
+type CDEK struct {
+		ClientID     string
+		ClientSecret string
 }
 
 // Push holds the VAPID key pair that identifies this shop to the browsers'
@@ -102,6 +110,10 @@ func Load() (Config, error) {
 					TelegramBotToken:      strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 					YandexSuggestKey:      strings.TrimSpace(os.Getenv("YANDEX_SUGGEST_API_KEY")),
 					AdminEmails:           splitList(os.Getenv("ADMIN_EMAILS")),
+					CDEK: CDEK{
+									ClientID:     strings.TrimSpace(os.Getenv("CDEK_CLIENT_ID")),
+									ClientSecret: strings.TrimSpace(os.Getenv("CDEK_CLIENT_SECRET")),
+								},
 					Push: Push{
 									PublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),
 									PrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),
