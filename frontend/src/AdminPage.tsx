@@ -399,11 +399,32 @@ function Orders({ focusOrder, onError }: { focusOrder?: string; onError: (value:
     try { const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status, paymentStatus: "" }) }); setItems((current) => current.map((item) => item.id === order.id ? result.order : item)); }
     catch (error) { onError((error as Error).message); }
   };
+  // Finishes an order the shop could not price itself. Once the fee is set,
+  // the customer gets a notification and can pay from their account.
+  const setDeliveryFee = async (order: Order, fee: number) => {
+    try {
+      const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ deliveryFee: fee }) });
+      setItems((current) => current.map((item) => item.id === order.id ? result.order : item));
+    } catch (error) { onError((error as Error).message); }
+  };
   return <><PageHeading eyebrow="Продажи" title="Заказы" text="Состав заказа, контакты, доставка, оплата и текущий статус" />
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Заказ</th><th>Клиент</th><th>Получение</th><th>Сумма</th><th>Статус</th><th /></tr></thead><tbody>{items.map((order) => <Fragment key={order.id}>
       <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
-      {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}><div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
+      {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}>{order.deliveryFeePending && <DeliveryFeeForm order={order} onSubmit={setDeliveryFee} />}<div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
     </Fragment>)}</tbody></table></div></>;
+}
+
+// The manager names the delivery price for an order the shop could not
+// quote. Kept as its own component so the field holds what is being typed
+// without re-rendering the whole order table on every keystroke.
+function DeliveryFeeForm({ order, onSubmit }: { order: Order; onSubmit: (order: Order, fee: number) => void }) {
+  const [value, setValue] = useState("");
+  return <form className="admin-fee-form" onSubmit={(event) => { event.preventDefault(); const fee = Number(value); if (Number.isFinite(fee) && fee >= 0) onSubmit(order, fee); }}>
+    <strong>{order.repackRequested ? "Покупатель просит упаковать в одну коробку" : "Доставку нужно посчитать вручную"}</strong>
+    <p>Укажите стоимость доставки — покупатель получит уведомление и сможет оплатить заказ.</p>
+    <label>Доставка, ₽<input type="number" min="0" step="1" value={value} onChange={(event) => setValue(event.target.value)} placeholder="0" required /></label>
+    <button className="primary" type="submit">Сохранить и уведомить</button>
+  </form>;
 }
 
 function Products({ can, onError }: { can: (permission: string) => boolean; onError: (value: string) => void }) {
