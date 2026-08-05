@@ -20,6 +20,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/migrate"
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
 )
@@ -83,6 +84,20 @@ func main() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
+	// Payments stay nil-safe: without YooKassa keys the shop simply does not
+	// offer card payment, exactly like CDEK without its own keys.
+	paymentService := payment.NewService(
+		pool,
+		integration.NewYooKassaClient(
+			cfg.Payments.ShopID,
+			cfg.Payments.SecretKey,
+			cfg.Payments.SendReceipt,
+			cfg.Payments.TaxSystem,
+			cfg.Payments.VATCode,
+		),
+		cfg.SiteURL,
+		logger,
+	)
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
@@ -97,6 +112,7 @@ func main() {
 			Push:         pushService,
 			Cart:         cart.NewStore(pool),
 			Packages:     catalogRepository,
+			Payments:     paymentService,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
 
