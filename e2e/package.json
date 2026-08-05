@@ -1,0 +1,12 @@
+{
+  "name": "@ficusin/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser tests for the storefront layout, run against the built frontend.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
