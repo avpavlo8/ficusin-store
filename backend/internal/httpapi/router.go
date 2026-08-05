@@ -25,7 +25,13 @@ type Dependencies struct {
 	Saby         sabySyncService
 	// Push is nil when no VAPID keys are configured, which simply means the
 	// shop sends no notifications.
-	Push         pushService
+	Push pushService
+	// Cart is nil in tests that do not exercise the basket; the routes then
+	// behave as they do for a guest.
+	Cart cartStore
+	// Packages supplies box dimensions for delivery quotes; nil simply
+	// means every item is quoted at the fallback box size.
+	Packages     packageRepository
 	CookieSecure bool
 	StaticDir    string
 	// YandexSuggestKey enables address autocomplete; empty simply turns the
@@ -40,7 +46,11 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		service:      dependencies.Auth,
 		cookieSecure: dependencies.CookieSecure,
 	}
-	cdekAPI := cdekHandlers{logger: logger, service: dependencies.CDEK}
+	cdekAPI := cdekHandlers{
+		logger:   logger,
+		service:  dependencies.CDEK,
+		packages: dependencies.Packages,
+	}
 	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin)
 
 	// Nothing behind these three routes is free for us: a call costs money
@@ -67,6 +77,11 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"GET /api/v1/account/orders",
 		accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
+	if dependencies.Cart != nil {
+		cartAPI := cartHandler(logger, dependencies.Auth, dependencies.Cart)
+		mux.Handle("GET /api/v1/account/cart", cartAPI)
+		mux.Handle("PUT /api/v1/account/cart", cartAPI)
+	}
 	mux.HandleFunc("PUT /api/v1/account/profile", authAPI.updateProfile)
 	mux.HandleFunc("PUT /api/v1/account/avatar", authAPI.uploadAvatar)
 	mux.HandleFunc("DELETE /api/v1/account/avatar", authAPI.deleteAvatar)
