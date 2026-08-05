@@ -40,6 +40,11 @@ export const owner = {
 type Session = typeof guest | typeof owner;
 
 export async function mockApi(page: Page, session: Session = guest) {
+  // Playwright checks routes in reverse order of registration, so this
+  // catch-all goes first: anything the page asks for that is not listed
+  // below still gets an answer instead of hanging the test.
+  await page.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
+
   await page.route("**/api/v1/catalog", (route) =>
     route.fulfill({ json: { products: [product, { ...product, id: "saby-2", name: "Фикус Бенджамина" }] } }));
 
@@ -55,9 +60,6 @@ export async function mockApi(page: Page, session: Session = guest) {
 
   await page.route("**/api/v1/account/**", (route) =>
     route.fulfill({ json: { orders: [] } }));
-
-  // Anything else the page reaches for must not hang the test.
-  await page.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
 }
 
 // Nothing may stick out sideways: a horizontal scrollbar on a phone is the
