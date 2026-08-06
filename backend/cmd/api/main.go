@@ -17,6 +17,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/migrate"
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
@@ -133,6 +134,16 @@ func main() {
 	// Parcels are handed to CDEK only when the panel switch is on, so test
 	// orders do not turn into real shipments.
 	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
+	// Letters go out from a queue: a slow mail server must never hold up an
+	// order or a status change.
+	go order.NewLetterWorker(pool, mail.NewSender(mail.Config{
+		Host:     cfg.Mail.Host,
+		Port:     cfg.Mail.Port,
+		Username: cfg.Mail.Username,
+		Password: cfg.Mail.Password,
+		From:     cfg.Mail.From,
+		FromName: cfg.Mail.FromName,
+	}, logger), logger).Run(ctx)
 	go notificationWorker.Run(ctx)
 	// The safety net under YooKassa's notifications: a lost one would
 	// otherwise leave a paid order looking unpaid.
