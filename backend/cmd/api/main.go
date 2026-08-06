@@ -116,6 +116,7 @@ func main() {
 			Packages:     catalogRepository,
 			Payments:     paymentService,
 			Settings:     shopSettings,
+			Refunds:      paymentService,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
 
@@ -127,6 +128,8 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	go shopSettings.Run(ctx)
+	// An unpaid order holds its plants in reserve; this puts them back.
+	go order.NewExpiryWorker(pool, shopSettings, logger).Run(ctx)
 	go notificationWorker.Run(ctx)
 	// The safety net under YooKassa's notifications: a lost one would
 	// otherwise leave a paid order looking unpaid.
