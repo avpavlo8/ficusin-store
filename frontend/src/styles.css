@@ -163,6 +163,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .payment-return > div { margin-top: 4px; display: flex; gap: 10px; align-items: center; }
 .payment-return a { padding: 11px 18px; border-radius: 11px; text-decoration: none; }
 .payment-return button { padding: 11px 4px; border: 0; background: none; color: #667067; font: inherit; cursor: pointer; }
+.admin-refund { margin-bottom: 16px; padding: 14px 16px; display: grid; gap: 8px; max-width: 460px; border: 1px solid #e3c9c0; border-radius: 12px; background: #fbf0ec; }
+.admin-refund button { padding: 10px 16px; justify-self: start; border: 1px solid #9a4f34; border-radius: 10px; background: white; color: #9a4f34; font: inherit; font-weight: 700; cursor: pointer; }
+.admin-refund small { color: #7a5245; font-size: 12px; }
 /* Whether the money arrived is the first thing both sides look for. */
 .payment-state { font-weight: 700; }
 .payment-state.paid { color: #2f7a52; }
