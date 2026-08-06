@@ -77,7 +77,7 @@ test("@phone the cart opens from the bottom bar and keeps its contents", async (
   await page.locator(".tab-bar > *").nth(2).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\?cart=1$/);
-  await expect(page.locator(".drawer.open").getByText("Фикус Бенджамина")).toBeVisible();
+  await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
 });
 
 test("@phone no page scrolls sideways", async ({ page }) => {
