@@ -130,6 +130,9 @@ func main() {
 	go shopSettings.Run(ctx)
 	// An unpaid order holds its plants in reserve; this puts them back.
 	go order.NewExpiryWorker(pool, shopSettings, logger).Run(ctx)
+	// Parcels are handed to CDEK only when the panel switch is on, so test
+	// orders do not turn into real shipments.
+	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
 	go notificationWorker.Run(ctx)
 	// The safety net under YooKassa's notifications: a lost one would
 	// otherwise leave a paid order looking unpaid.
