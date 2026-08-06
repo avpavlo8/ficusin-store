@@ -47,7 +47,8 @@ func Confirmation(order OrderLetter) Letter {
 		"Что в заказе:",
 	}
 	lines = append(lines, itemLines(order)...)
-	lines = append(lines, "", totals(order)...)
+	lines = append(lines, "")
+	lines = append(lines, totals(order)...)
 	if receiving := deliveryWording[order.Delivery]; receiving != "" {
 		lines = append(lines, "", "Получение: "+receiving)
 		if order.Address != "" && order.Delivery != "pickup" {
@@ -129,7 +130,8 @@ func Invoice(order OrderLetter, requisites string) Letter {
 		"Что в заказе:",
 	}
 	lines = append(lines, itemLines(order)...)
-	lines = append(lines, "", totals(order)...)
+	lines = append(lines, "")
+	lines = append(lines, totals(order)...)
 	if requisites != "" {
 		lines = append(lines, "", "Реквизиты для оплаты:", requisites)
 	}
