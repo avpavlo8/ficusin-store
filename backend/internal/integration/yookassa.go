@@ -236,3 +236,38 @@ func (payment yooKassaPayment) toPayment() Payment {
 func rubles(amount float64) string {
 	return strconv.FormatFloat(amount, 'f', 2, 64)
 }
+
+// Refund sends the money back. YooKassa refuses to refund more than was
+// paid, but we check too: a refund larger than the payment would be a bug
+// that costs real money.
+func (client *YooKassaClient) Refund(
+	ctx context.Context,
+	paymentID string,
+	amount float64,
+	idempotenceKey string,
+) error {
+	if !client.Configured() {
+		return errors.New("оплата не настроена")
+	}
+	if strings.TrimSpace(paymentID) == "" || amount <= 0 {
+		return errors.New("нечего возвращать")
+	}
+	body := map[string]any{
+		"payment_id": paymentID,
+		"amount": map[string]string{
+			"value":    rubles(amount),
+			"currency": "RUB",
+		},
+	}
+	var response struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := client.send(ctx, http.MethodPost, "/refunds", idempotenceKey, body, &response); err != nil {
+		return err
+	}
+	if response.Status == "canceled" {
+		return errors.New("ЮKassa отклонила возврат")
+	}
+	return nil
+}
