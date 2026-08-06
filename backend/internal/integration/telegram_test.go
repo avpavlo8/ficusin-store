@@ -115,3 +115,25 @@ func TestTelegramClientRejectsMissingChatID(t *testing.T) {
 		t.Fatal("NewTelegramClient() error = nil, want missing chat ID error")
 	}
 }
+
+// The manager reads this message before packing anything. An unpaid order
+// that looks the same as a paid one is how a plant leaves the shop for free.
+func TestTelegramMessageShowsWhetherTheOrderIsPaid(t *testing.T) {
+	t.Parallel()
+
+	for status, expected := range map[string]string{
+		"pending":     "НЕ ОПЛАЧЕН",
+		"paid":        "Оплачен",
+		"on_delivery": "при получении",
+		"invoice":     "счёт",
+	} {
+		message := orderMessage(TelegramOrder{
+			OrderNumber:   "0001-15",
+			PaymentStatus: status,
+			Items:         []TelegramOrderItem{{Name: "Фикус", Price: 100, Quantity: 1}},
+		})
+		if !strings.Contains(message, expected) {
+			t.Fatalf("статус %s: в сообщении нет %q:\n%s", status, expected, message)
+		}
+	}
+}
