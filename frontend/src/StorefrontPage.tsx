@@ -59,7 +59,12 @@ export default function StorefrontPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const [query, setQuery] = useState("");
+  // The query comes from the URL before the first render, not from an
+  // effect afterwards: setting it later would paint the whole catalogue
+  // and immediately throw it away.
+  const [query, setQuery] = useState(
+    () => new URLSearchParams(window.location.search).get("q") ?? "",
+  );
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [section, setSection] = useState("plants");
   const [collection, setCollection] = useState("");
@@ -107,10 +112,9 @@ export default function StorefrontPage() {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const incoming = params.get("q");
-    if (incoming) setQuery(incoming);
-    if (params.get("cart") === "1") window.location.assign("/?cart=1");
+    if (new URLSearchParams(window.location.search).get("cart") === "1") {
+      window.location.assign("/?cart=1");
+    }
   }, []);
 
   useEffect(() => {
