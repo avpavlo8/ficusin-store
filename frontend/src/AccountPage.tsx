@@ -37,6 +37,7 @@ type OrderDetail = {
   status: string;
   paymentStatus: string;
   deliveryFee: number;
+  trackNumber?: string;
   deliveryFeePending?: boolean;
   repackRequested?: boolean;
   subtotal: number;
@@ -236,6 +237,7 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
     <section className="order-facts">
       <div><small>Способ получения</small><span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span></div>
       {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
+      {order.trackNumber && <div><small>Трек-номер СДЭК</small><span><a href={`https://www.cdek.ru/ru/tracking?order_id=${encodeURIComponent(order.trackNumber)}`} target="_blank" rel="noreferrer">{order.trackNumber}</a></span></div>}
       <div><small>Оплата</small><span className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
       {order.paymentStatus === "pending" && !order.deliveryFeePending && <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>Оплатить {money.format(order.total)}</button>}
       <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
