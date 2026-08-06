@@ -9,6 +9,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -346,6 +347,27 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}); err != nil {
 		return Created{}, err
 	}
+	// The confirmation goes into the outbox inside the same transaction as
+	// the order: a letter promised to a customer should not be lost because
+	// the process restarted a second later.
+	letter := mail.Confirmation(mail.OrderLetter{
+		Number:        orderNumber,
+		CustomerName:  input.Customer.Name,
+		Items:         letterLines(items),
+		Subtotal:      subtotal,
+		DeliveryFee:   deliveryFee,
+		FeePending:    feePending,
+		Total:         total,
+		Delivery:      input.Delivery,
+		Address:       deliveryAddress,
+		PaymentStatus: payment.InitialStatus(paymentMethod),
+		PaymentMethod: paymentMethod,
+	})
+	if _, err := transaction.Exec(ctx, `
+		INSERT INTO outbox (recipient, subject, body) VALUES ($1, $2, $3)
+	`, input.Customer.Email, letter.Subject, letter.Body); err != nil {
+		return Created{}, fmt.Errorf("queue confirmation letter: %w", err)
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Created{}, fmt.Errorf("commit order: %w", err)
 	}
@@ -464,4 +486,15 @@ func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) 
 		return "", fmt.Errorf("count guest orders: %w", err)
 	}
 	return fmt.Sprintf("%s-%d", prefix, placed+1), nil
+}
+
+// letterLines turns the order's contents into what the letter prints.
+func letterLines(items []purchasableItem) []mail.OrderLine {
+	lines := make([]mail.OrderLine, 0, len(items))
+	for _, item := range items {
+		lines = append(lines, mail.OrderLine{
+			Name: item.Name, Price: item.Price, Quantity: item.Quantity,
+		})
+	}
+	return lines
 }

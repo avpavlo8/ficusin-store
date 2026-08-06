@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -257,6 +258,12 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Order{}, fmt.Errorf("commit order update: %w", err)
+	}
+	// A letter about the same milestone. Queued, not sent: the customer
+	// hears about it either way, and a mail server having a bad minute must
+	// not undo a status change.
+	if status != "" {
+		_ = repository.queueStatusLetter(ctx, id, status)
 	}
 	// Told after the commit, and never at the cost of the update: a
 	// notification that fails to send must not undo a status change.
@@ -754,4 +761,36 @@ func (repository *PostgresRepository) SetDeliveryFee(
 		}
 	}
 	return Order{}, pgx.ErrNoRows
+}
+
+// queueStatusLetter writes the letter about a status change into the outbox.
+// Statuses the customer does not need to hear about produce nothing.
+func (repository *PostgresRepository) queueStatusLetter(
+	ctx context.Context,
+	orderID int64,
+	status string,
+) error {
+	var letter mail.OrderLetter
+	var email string
+	if err := repository.pool.QueryRow(ctx, `
+		SELECT order_number, customer_name, COALESCE(email, ''), delivery_method,
+			address, COALESCE(cdek_track_number, '')
+		FROM orders WHERE id = $1
+	`, orderID).Scan(
+		&letter.Number, &letter.CustomerName, &email,
+		&letter.Delivery, &letter.Address, &letter.TrackNumber,
+	); err != nil {
+		return err
+	}
+	if email == "" {
+		return nil
+	}
+	message, worth := mail.StatusChange(letter, status)
+	if !worth {
+		return nil
+	}
+	_, err := repository.pool.Exec(ctx, `
+		INSERT INTO outbox (recipient, subject, body) VALUES ($1, $2, $3)
+	`, email, message.Subject, message.Body)
+	return err
 }

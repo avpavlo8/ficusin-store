@@ -21,6 +21,18 @@ type Config struct {
 		Push                  Push
 		Payments              Payments
 		SiteURL               string
+		Mail                  Mail
+}
+
+// Mail is the SMTP account the shop writes from. An empty host switches
+// letters off, like every other integration here.
+type Mail struct {
+		Host     string
+		Port     int
+		Username string
+		Password string
+		From     string
+		FromName string
 }
 
 // Payments holds the YooKassa credentials. Empty values switch card
@@ -119,6 +131,14 @@ func Load() (Config, error) {
 									ClientSecret: strings.TrimSpace(os.Getenv("CDEK_CLIENT_SECRET")),
 								},
 					SiteURL:               defaultString(os.Getenv("SITE_URL"), "https://ficusin.ru"),
+					Mail: Mail{
+									Host:     strings.TrimSpace(os.Getenv("SMTP_HOST")),
+									Port:     intFromEnv("SMTP_PORT", 465),
+									Username: strings.TrimSpace(os.Getenv("SMTP_USERNAME")),
+									Password: os.Getenv("SMTP_PASSWORD"),
+									From:     strings.TrimSpace(os.Getenv("MAIL_FROM")),
+									FromName: defaultString(os.Getenv("MAIL_FROM_NAME"), "Фикусин"),
+								},
 					Payments: Payments{
 									ShopID:      strings.TrimSpace(os.Getenv("YOOKASSA_SHOP_ID")),
 									SecretKey:   strings.TrimSpace(os.Getenv("YOOKASSA_SECRET_KEY")),
