@@ -191,7 +191,15 @@ export default function StorefrontPage() {
 
   return (
     <main className="storefront">
-      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} />
+      {/* The header search and the bar below it drive the same query: two
+          ways in, one result. Leaving the header on its own search would
+          give the page two boxes that disagree. */}
+      <StoreHeader
+        cartCount={cartCount}
+        favoritesCount={favorites.size}
+        query={query}
+        onQueryChange={setQuery}
+      />
 
       <div className="storefront-search-bar">
         <div className="storefront-search" ref={searchBox}>
