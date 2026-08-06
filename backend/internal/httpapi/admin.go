@@ -21,6 +21,8 @@ type adminRepository interface {
 	ListOrders(context.Context) ([]admin.Order, error)
 	UpdateOrderStatus(context.Context, admin.Actor, int64, string, string) (admin.Order, error)
 	SetDeliveryFee(context.Context, admin.Actor, int64, float64) (admin.Order, error)
+	ListAdminCollections(context.Context) ([]admin.AdminCollection, error)
+	SetCollectionProducts(context.Context, admin.Actor, int64, []int64) error
 	ListProducts(context.Context) ([]admin.Product, error)
 	UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error)
 	SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error)
@@ -419,4 +421,46 @@ func permissionsFor(role string) []string {
 		}
 	}
 	return result
+}
+
+func (handlers adminHandlers) collections(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead); !ok {
+		return
+	}
+	collections, err := handlers.repository.ListAdminCollections(request.Context())
+	if err != nil {
+		handlers.failed(response, "list collections", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"collections": collections})
+}
+
+func (handlers adminHandlers) updateCollection(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var body struct {
+		Products []int64 `json:"products"`
+	}
+	if decodeJSON(request, &body) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный список товаров"})
+		return
+	}
+	if err := handlers.repository.SetCollectionProducts(
+		request.Context(), actor, id, body.Products,
+	); err != nil {
+		handlers.failed(response, "set collection products", err)
+		return
+	}
+	collections, err := handlers.repository.ListAdminCollections(request.Context())
+	if err != nil {
+		handlers.failed(response, "list collections", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"collections": collections})
 }
