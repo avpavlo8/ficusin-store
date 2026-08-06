@@ -163,6 +163,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .payment-return > div { margin-top: 4px; display: flex; gap: 10px; align-items: center; }
 .payment-return a { padding: 11px 18px; border-radius: 11px; text-decoration: none; }
 .payment-return button { padding: 11px 4px; border: 0; background: none; color: #667067; font: inherit; cursor: pointer; }
+/* Whether the money arrived is the first thing both sides look for. */
+.payment-state { font-weight: 700; }
+.payment-state.paid { color: #2f7a52; }
+.payment-state.unpaid { color: #9a4f34; }
 .admin-settings { display: grid; gap: 12px; max-width: 640px; }
 .admin-setting { padding: 16px 18px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 16px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
 .admin-setting.switch { grid-template-columns: auto 1fr; }

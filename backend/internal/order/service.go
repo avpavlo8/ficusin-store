@@ -2,13 +2,10 @@ package order
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
@@ -295,7 +292,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		paymentMethod = payment.MethodOnline
 	}
 
-	orderNumber, err := newOrderNumber()
+	orderNumber, err := newOrderNumber(ctx, transaction, input.CustomerID)
 	if err != nil {
 		return Created{}, err
 	}
@@ -443,14 +440,28 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 	return nil
 }
 
-func newOrderNumber() (string, error) {
-	random := make([]byte, 3)
-	if _, err := rand.Read(random); err != nil {
-		return "", fmt.Errorf("generate order number: %w", err)
+// newOrderNumber builds a number a person can say out loud: the customer's
+// own number and which of their orders this is — 0001-15 is the fifteenth
+// order of customer one. The old ZR-260805-5A61B was unreadable over the
+// phone and told nobody anything.
+//
+// Guests have no customer number, so they share 0000 with a running count of
+// their own. The counting happens inside the order transaction, so two
+// simultaneous orders cannot end up with the same number.
+func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) (string, error) {
+	prefix := "0000"
+	var placed int
+	if customerID != nil {
+		prefix = fmt.Sprintf("%04d", *customerID)
+		if err := transaction.QueryRow(ctx, `
+			SELECT COUNT(*)::INTEGER FROM orders WHERE customer_id = $1
+		`, *customerID).Scan(&placed); err != nil {
+			return "", fmt.Errorf("count customer orders: %w", err)
+		}
+	} else if err := transaction.QueryRow(ctx, `
+		SELECT COUNT(*)::INTEGER FROM orders WHERE customer_id IS NULL
+	`).Scan(&placed); err != nil {
+		return "", fmt.Errorf("count guest orders: %w", err)
 	}
-	return fmt.Sprintf(
-		"ZR-%s-%s",
-		time.Now().Format("060102"),
-		strings.ToUpper(hex.EncodeToString(random)[:5]),
-	), nil
+	return fmt.Sprintf("%s-%d", prefix, placed+1), nil
 }

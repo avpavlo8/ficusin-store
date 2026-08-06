@@ -28,6 +28,10 @@ type TelegramOrder struct {
 	// dimensions, CDEK unavailable, or the customer asked to pack the plants
 	// together. Total is short by the delivery until then.
 	DeliveryFeePending bool
+	// PaymentStatus and PaymentMethod are the first thing a manager needs to
+	// know: an unpaid order must not be packed and sent.
+	PaymentStatus string
+	PaymentMethod string
 	// RepackRequested is the customer asking whether the plants fit into one
 	// box. It is the one thing in this message that needs an answer.
 	RepackRequested bool
@@ -67,6 +71,22 @@ func NewTelegramClient(chatID, botToken string) (*TelegramClient, error) {
 }
 
 func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder) error {
+	message := orderMessage(order)
+	body, err := json.Marshal(map[string]any{
+		"chat_id":                  client.chatID,
+		"text":                     message,
+		"parse_mode":               "HTML",
+		"disable_web_page_preview": true,
+	})
+	if err != nil {
+		return err
+	}
+	return client.post(ctx, body)
+}
+
+// orderMessage is what the manager reads. Contacts never appear here: this
+// goes to a foreign service, and the panel is where personal data stays.
+func orderMessage(order TelegramOrder) string {
 	deliveryLabels := map[string]string{
 		"pickup":  "Самовывоз в Рязани",
 		"courier": "Курьер по Рязани",
@@ -96,8 +116,20 @@ func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder
 	} else {
 		deliveryLine = "рассчитайте вручную и сообщите покупателю"
 	}
+	payment := "❗️ НЕ ОПЛАЧЕН — ждём оплату"
+	switch order.PaymentStatus {
+	case "paid":
+		payment = "✅ Оплачен"
+	case "on_delivery":
+		payment = "💵 Оплата при получении"
+	case "invoice":
+		payment = "🧾 Ждёт счёт на организацию"
+	case "cancelled":
+		payment = "✖️ Оплата отменена"
+	}
 	lines = append(lines,
 		"",
+		"<b>Оплата:</b> "+html.EscapeString(payment),
 		"<b>Товары:</b> "+html.EscapeString(money(order.Subtotal)),
 		"<b>Доставка:</b> "+html.EscapeString(deliveryLine),
 		"<b>Итого:</b> "+html.EscapeString(totalLine),
@@ -105,16 +137,10 @@ func (client *TelegramClient) SendOrder(ctx context.Context, order TelegramOrder
 		"",
 		"Контакты покупателя — в панели управления.",
 	)
-	message := truncateRunes(strings.Join(lines, "\n"), 4000)
-	body, err := json.Marshal(map[string]any{
-		"chat_id":                  client.chatID,
-		"text":                     message,
-		"parse_mode":               "HTML",
-		"disable_web_page_preview": true,
-	})
-	if err != nil {
-		return err
-	}
+	return truncateRunes(strings.Join(lines, "\n"), 4000)
+}
+
+func (client *TelegramClient) post(ctx context.Context, body []byte) error {
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
