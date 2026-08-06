@@ -37,7 +37,10 @@ type Dependencies struct {
 	Payments paymentService
 	// Settings is nil in tests; the routes then answer 503 and nothing
 	// else in the shop notices.
-	Settings     settingsService
+	Settings settingsService
+	// Refunds sends money back for a cancelled order; nil means the panel
+	// says refunds are unavailable.
+	Refunds      refundService
 	CookieSecure bool
 	StaticDir    string
 	// YandexSuggestKey enables address autocomplete; empty simply turns the
@@ -57,7 +60,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		service:  dependencies.CDEK,
 		packages: dependencies.Packages,
 	}
-	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin)
+	adminAPI := newAdminHandlers(
+		logger,
+		dependencies.Auth,
+		dependencies.Admin,
+		dependencies.Refunds,
+	)
 
 	// Nothing behind these three routes is free for us: a call costs money
 	// at SMS.ru, an order pings a person, and every address suggestion is

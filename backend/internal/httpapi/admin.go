@@ -34,14 +34,25 @@ type adminHandlers struct {
 	logger     *slog.Logger
 	auth       authService
 	repository adminRepository
+	// payments is nil when the shop takes no card payments; the refund
+	// button then answers that it is unavailable rather than crashing.
+	payments refundService
+}
+
+// refundService is the slice of the payment service the panel needs.
+type refundService interface {
+	Refund(ctx context.Context, orderID int64) error
 }
 
 func newAdminHandlers(
 	logger *slog.Logger,
 	authentication authService,
 	repository adminRepository,
+	payments refundService,
 ) adminHandlers {
-	return adminHandlers{logger: logger, auth: authentication, repository: repository}
+	return adminHandlers{
+		logger: logger, auth: authentication, repository: repository, payments: payments,
+	}
 }
 
 func (handlers adminHandlers) dashboard(response http.ResponseWriter, request *http.Request) {
@@ -150,9 +161,39 @@ func (handlers adminHandlers) updateOrder(response http.ResponseWriter, request 
 		// A pointer so that "not sent" and "zero, delivery is free" stay
 		// different things.
 		DeliveryFee *float64 `json:"deliveryFee"`
+		// Refund asks to send the customer's money back. Cancelling the
+		// order and returning the money are separate decisions: an order
+		// can be cancelled for a customer who paid at the counter.
+		Refund bool `json:"refund"`
 	}
 	if decodeJSON(request, &body) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	if body.Refund {
+		if handlers.payments == nil {
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{
+				Error: "Возврат недоступен: оплата не настроена",
+			})
+			return
+		}
+		if err := handlers.payments.Refund(request.Context(), id); err != nil {
+			handlers.logger.Error("refund failed", "error", err, "order_id", id)
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		orders, err := handlers.repository.ListOrders(request.Context())
+		if err != nil {
+			handlers.failed(response, "list orders after refund", err)
+			return
+		}
+		for _, item := range orders {
+			if item.ID == id {
+				writeJSON(response, http.StatusOK, map[string]any{"order": item})
+				return
+			}
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
 	if body.DeliveryFee != nil {
