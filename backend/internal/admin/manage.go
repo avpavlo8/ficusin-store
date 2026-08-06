@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -200,64 +201,6 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 	return orders, itemRows.Err()
 }
 
-// releaseStock hands a cancelled order's reservation back to the shelf.
-// stock_released_at guards against a second cancellation freeing the same
-// units twice, which would let us oversell.
-func releaseStock(ctx context.Context, tx pgx.Tx, orderID int64) error {
-	var alreadyReleased bool
-	if err := tx.QueryRow(ctx, `
-		SELECT stock_released_at IS NOT NULL FROM orders WHERE id = $1
-	`, orderID).Scan(&alreadyReleased); err != nil {
-		return fmt.Errorf("read order stock release: %w", err)
-	}
-	if alreadyReleased {
-		return nil
-	}
-	if _, err := tx.Exec(ctx, `
-		SELECT i.id FROM inventory i
-		WHERE i.variant_id IN (
-			SELECT variant_id FROM order_items
-			WHERE order_id = $1 AND variant_id IS NOT NULL
-		)
-		ORDER BY i.id
-		FOR UPDATE
-	`, orderID); err != nil {
-		return fmt.Errorf("lock inventory: %w", err)
-	}
-	// A variant may be stocked in several warehouses, so the quantity is
-	// given back row by row: each row returns at most what it still holds
-	// reserved, and only until the order's quantity is covered.
-	if _, err := tx.Exec(ctx, `
-		WITH taken AS (
-			SELECT variant_id, SUM(quantity)::INTEGER AS quantity
-			FROM order_items
-			WHERE order_id = $1 AND variant_id IS NOT NULL
-			GROUP BY variant_id
-		), allocation AS (
-			SELECT i.id, LEAST(
-				i.reserved_qty,
-				GREATEST(t.quantity - COALESCE(SUM(i.reserved_qty) OVER (
-					PARTITION BY i.variant_id ORDER BY i.id
-					ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-				), 0), 0)
-			) AS give_back
-			FROM inventory i
-			JOIN taken t ON t.variant_id = i.variant_id
-		)
-		UPDATE inventory i SET reserved_qty = i.reserved_qty - a.give_back
-		FROM allocation a
-		WHERE a.id = i.id AND a.give_back > 0
-	`, orderID); err != nil {
-		return fmt.Errorf("release inventory: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE orders SET stock_released_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, orderID); err != nil {
-		return fmt.Errorf("mark stock released: %w", err)
-	}
-	return nil
-}
-
 func (repository *PostgresRepository) UpdateOrderStatus(
 	ctx context.Context,
 	actor Actor,
@@ -287,7 +230,7 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 		return Order{}, fmt.Errorf("update order status: %w", err)
 	}
 	if status == "cancelled" {
-		if err := releaseStock(ctx, tx, id); err != nil {
+		if err := order.ReleaseStock(ctx, tx, id); err != nil {
 			return Order{}, err
 		}
 		// An unfinished payment for a cancelled order is over. Left open it

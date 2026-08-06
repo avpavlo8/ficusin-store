@@ -98,6 +98,7 @@ type provider interface {
 	Configured() bool
 	CreatePayment(context.Context, integration.PaymentRequest) (integration.Payment, error)
 	FetchPayment(context.Context, string) (integration.Payment, error)
+	Refund(ctx context.Context, paymentID string, amount float64, idempotenceKey string) error
 }
 
 type Service struct {
@@ -313,4 +314,50 @@ func idempotenceKey() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buffer), nil
+}
+
+// Refund sends the customer's money back for an order that will not happen.
+// It is deliberately callable only for an order that really was paid: the
+// panel offers the button, but the decision that money moved is made here.
+func (service *Service) Refund(ctx context.Context, orderID int64) error {
+	if !service.Configured() {
+		return errors.New("возврат недоступен: оплата не настроена")
+	}
+	var providerPaymentID string
+	var amount float64
+	err := service.pool.QueryRow(ctx, `
+		SELECT p.provider_payment_id, p.amount::DOUBLE PRECISION
+		FROM payments p
+		JOIN orders o ON o.id = p.order_id
+		WHERE p.order_id = $1 AND p.status = $2 AND o.payment_status = $2
+		ORDER BY p.id DESC
+		LIMIT 1
+	`, orderID, StatusPaid).Scan(&providerPaymentID, &amount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errors.New("по этому заказу нет оплаченного платежа")
+	}
+	if err != nil {
+		return fmt.Errorf("load payment for refund: %w", err)
+	}
+	key, err := idempotenceKey()
+	if err != nil {
+		return err
+	}
+	if err := service.provider.Refund(ctx, providerPaymentID, amount, key); err != nil {
+		return err
+	}
+	// Recorded only after the provider confirms: an order marked refunded
+	// while the money is still with us is worse than one marked late.
+	if _, err := service.pool.Exec(ctx, `
+		UPDATE payments SET status = 'refunded', updated_at = CURRENT_TIMESTAMP
+		WHERE order_id = $1 AND status = $2
+	`, orderID, StatusPaid); err != nil {
+		return fmt.Errorf("mark payment refunded: %w", err)
+	}
+	if _, err := service.pool.Exec(ctx, `
+		UPDATE orders SET payment_status = 'refunded' WHERE id = $1
+	`, orderID); err != nil {
+		return fmt.Errorf("mark order refunded: %w", err)
+	}
+	return nil
 }
