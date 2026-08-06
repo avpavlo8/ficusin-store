@@ -113,6 +113,9 @@ type purchasableItem struct {
 	Price     float64
 	Quantity  int
 	Parcel    integration.Parcel
+	// Preorder means the shelf could not cover this line. The order still
+	// goes through; the manager names the date.
+	Preorder bool
 }
 
 // shippingBox builds the single box the order travels in from the boxes of
@@ -196,9 +199,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("load order product: %w", err)
 		}
 		item.Quantity = max(1, min(20, requested.Quantity))
-		if err := reserveStock(ctx, transaction, item); err != nil {
+		preorder, err := reserveStock(ctx, transaction, item)
+		if err != nil {
 			return Created{}, err
 		}
+		item.Preorder = preorder
 		item.Price = float64(priceMinor) / 100
 		items = append(items, item)
 	}
@@ -207,8 +212,10 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	subtotal := 0.0
+	hasPreorder := false
 	for _, item := range items {
 		subtotal += item.Price * float64(item.Quantity)
+		hasPreorder = hasPreorder || item.Preorder
 	}
 	deliveryFees := map[string]float64{"pickup": 0, "courier": 490, "post": 590}
 	deliveryFee, regularDelivery := deliveryFees[input.Delivery]
@@ -309,11 +316,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
 			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total,
-			payment_method, payment_status, status
+			payment_method, payment_status, has_preorder, status
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'new'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new'
 		)
 		RETURNING id
 	`,
@@ -321,7 +328,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		input.Customer.Email, deliveryAddress, input.Customer.Comment, input.Delivery,
 		deliveryFee, boolToInt(feePending), boolToInt(input.CDEK.Repack && input.Delivery == "cdek"),
 		cityCode, cityName, officeCode, tariffCode, subtotal, total,
-		paymentMethod, payment.InitialStatus(paymentMethod),
+		paymentMethod, payment.InitialStatus(paymentMethod), boolToInt(hasPreorder),
 	).Scan(&orderID)
 	if err != nil {
 		return Created{}, fmt.Errorf("insert order: %w", err)
@@ -329,9 +336,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	for _, item := range items {
 		if _, err := transaction.Exec(ctx, `
 			INSERT INTO order_items (
-				order_id, product_id, variant_id, product_name, unit_price, quantity
-			) VALUES ($1, $2, $3, $4, $5, $6)
-		`, orderID, item.ID, item.VariantID, item.Name, item.Price, item.Quantity); err != nil {
+				order_id, product_id, variant_id, product_name, unit_price, quantity,
+				is_preorder
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, orderID, item.ID, item.VariantID, item.Name, item.Price, item.Quantity,
+			boolToInt(item.Preorder)); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}
@@ -401,11 +410,13 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	return Created{OrderNumber: orderNumber, PaymentStatus: "payment_provider_pending"}, nil
 }
 
-// reserveStock claims the requested quantity for one variant. The
-// inventory rows are locked first, so two customers racing for the last
-// plant queue up instead of both succeeding: the second one finds the
-// stock already taken and gets a clear message.
-func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) error {
+// reserveStock holds what it can and reports what it could not.
+//
+// Nothing on the shelf is no longer a refusal: the plant becomes a
+// pre-order, the shop takes the order and the manager names the date. A
+// shop that says "закончился" loses the sale and never learns anyone
+// wanted it.
+func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {
 	rows, err := transaction.Query(ctx, `
 		SELECT id, GREATEST(available_qty - reserved_qty, 0)
 		FROM inventory
@@ -414,7 +425,7 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 		FOR UPDATE
 	`, item.VariantID)
 	if err != nil {
-		return fmt.Errorf("lock inventory: %w", err)
+		return false, fmt.Errorf("lock inventory: %w", err)
 	}
 	type slot struct {
 		id   int64
@@ -426,24 +437,26 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 		var current slot
 		if err := rows.Scan(&current.id, &current.free); err != nil {
 			rows.Close()
-			return fmt.Errorf("scan inventory: %w", err)
+			return false, fmt.Errorf("scan inventory: %w", err)
 		}
 		available += current.free
 		slots = append(slots, current)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read inventory: %w", err)
+		return false, fmt.Errorf("read inventory: %w", err)
 	}
 
-	if available < item.Quantity {
-		if available == 0 {
-			return invalid(fmt.Sprintf("%s: товар закончился", item.Name))
-		}
-		return invalid(fmt.Sprintf("%s: доступно только %d шт.", item.Name, available))
+	// Nothing free at all: the whole line is a pre-order and no stock moves.
+	if available == 0 {
+		return true, nil
 	}
+	// Partly available is still a pre-order — the parcel waits for the rest,
+	// and the customer is told so rather than being asked to reduce the
+	// quantity at the last step.
+	preorder := available < item.Quantity
 
-	remaining := item.Quantity
+	remaining := min(item.Quantity, available)
 	for _, current := range slots {
 		if remaining == 0 {
 			break
@@ -455,11 +468,11 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 		if _, err := transaction.Exec(ctx, `
 			UPDATE inventory SET reserved_qty = reserved_qty + $2 WHERE id = $1
 		`, current.id, take); err != nil {
-			return fmt.Errorf("reserve inventory: %w", err)
+			return false, fmt.Errorf("reserve inventory: %w", err)
 		}
 		remaining -= take
 	}
-	return nil
+	return preorder, nil
 }
 
 // newOrderNumber builds a number a person can say out loud: the customer's
