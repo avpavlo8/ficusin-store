@@ -72,6 +72,21 @@ func (stub *adminRepositoryStub) ListOrders(context.Context) ([]admin.Order, err
 	return []admin.Order{}, nil
 }
 
+func (stub *adminRepositoryStub) ListAdminCollections(
+	context.Context,
+) ([]admin.AdminCollection, error) {
+	return []admin.AdminCollection{}, nil
+}
+
+func (stub *adminRepositoryStub) SetCollectionProducts(
+	context.Context,
+	admin.Actor,
+	int64,
+	[]int64,
+) error {
+	return nil
+}
+
 func (stub *adminRepositoryStub) SetDeliveryFee(
 	_ context.Context,
 	_ admin.Actor,

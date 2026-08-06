@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { StoreHeader, useStoreUser } from "./StoreHeader";
 
 type Role = "owner" | "manager" | "";
-type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings";
+type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings" | "collections";
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
 
 type AdminData = {
@@ -28,7 +28,7 @@ type Order = {
   id: number; orderNumber: string; customerId?: number; customerName: string;
   phone: string; email: string; address: string; comment: string;
   deliveryMethod: string; deliveryFeePending?: boolean; repackRequested?: boolean;
-  paymentMethod?: string; paymentStatus: string; trackNumber?: string;
+  paymentMethod?: string; paymentStatus: string; trackNumber?: string; hasPreorder?: boolean;
   status: string; total: number;
   createdAt: string; items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>;
 };
@@ -131,6 +131,7 @@ export default function AdminPage() {
             <Nav active={section === "dashboard"} onClick={() => go("dashboard")}>Обзор</Nav>
             {can("products.read") && <Nav active={section === "products"} onClick={() => go("products")}>Товары</Nav>}
             {can("products.read") && <Nav active={section === "categories"} onClick={() => go("categories")}>Категории</Nav>}
+            {can("products.read") && <Nav active={section === "collections"} onClick={() => go("collections")}>Подборки</Nav>}
             {can("orders.read") && <Nav active={section === "orders"} onClick={() => go("orders")}>Заказы</Nav>}
             {can("customers.read") && <Nav active={section === "customers"} onClick={() => go("customers")}>Клиенты</Nav>}
             {data.role === "owner" && <Nav active={section === "settings"} onClick={() => go("settings")}>Настройки</Nav>}
@@ -145,6 +146,7 @@ export default function AdminPage() {
           {section === "orders" && <Orders focusOrder={focusOrder} onError={setError} />}
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
+          {section === "collections" && <Collections onError={setError} />}
           {section === "categories" && <Categories canEdit={can("products.edit")} onError={setError} />}
         </div>
       </section>
@@ -422,9 +424,63 @@ function Orders({ focusOrder, onError }: { focusOrder?: string; onError: (value:
   };
   return <><PageHeading eyebrow="Продажи" title="Заказы" text="Состав заказа, контакты, доставка, оплата и текущий статус" />
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Заказ</th><th>Клиент</th><th>Получение</th><th>Сумма</th><th>Статус</th><th /></tr></thead><tbody>{items.map((order) => <Fragment key={order.id}>
-      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.trackNumber && <small>Трек: {order.trackNumber}</small>}{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
+      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.trackNumber && <small>Трек: {order.trackNumber}</small>}{order.hasPreorder && <small className="admin-flag">Есть позиции под заказ</small>}{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
       {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}>{order.paymentStatus === "paid" && <div className="admin-refund"><button onClick={() => refund(order)}>Вернуть деньги покупателю</button><small>Деньги уйдут обратно на карту через ЮKassa. Отменить возврат нельзя.</small></div>}{order.deliveryFeePending && <DeliveryFeeForm order={order} onSubmit={setDeliveryFee} />}<div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
     </Fragment>)}</tbody></table></div></>;
+}
+
+type AdminCollection = { id: number; slug: string; title: string; note: string; active: boolean; products: number[] };
+
+// Collections are assembled by hand: the manager knows a particular ficus is
+// fussy despite its label, and a rule over attributes never will.
+function Collections({ onError }: { onError: (value: string) => void }) {
+  const [collections, setCollections] = useState<AdminCollection[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [opened, setOpened] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    api<{ collections: AdminCollection[] }>("/api/v1/admin/collections")
+      .then((data) => setCollections(data.collections))
+      .catch((error) => onError((error as Error).message));
+    api<{ products: Product[] }>("/api/v1/admin/products")
+      .then((data) => setProducts(data.products))
+      .catch((error) => onError((error as Error).message));
+  }, [onError]);
+
+  const toggle = async (collection: AdminCollection, productId: number) => {
+    const next = collection.products.includes(productId)
+      ? collection.products.filter((id) => id !== productId)
+      : [...collection.products, productId];
+    try {
+      const result = await api<{ collections: AdminCollection[] }>(`/api/v1/admin/collections/${collection.id}`, { method: "PATCH", body: JSON.stringify({ products: next }) });
+      setCollections(result.collections);
+    } catch (error) { onError((error as Error).message); }
+  };
+
+  const shown = products.filter((item) => `${item.name} ${item.latinName}`.toLowerCase().includes(query.toLowerCase())).slice(0, 60);
+
+  return <><PageHeading eyebrow="Витрина" title="Подборки" text="Вкладки над каталогом: что в них попадает, решаете вы" />
+    <div className="admin-collections">
+      {collections.map((collection) => <div key={collection.id} className="admin-collection">
+        <button className="admin-collection-head" onClick={() => setOpened(opened === collection.id ? null : collection.id)}>
+          <span><b>{collection.title}</b><small>{collection.note}</small></span>
+          <span className="admin-collection-count">{collection.products.length} товаров</span>
+        </button>
+        {opened === collection.id && <div className="admin-collection-body">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти товар" />
+          <div className="admin-collection-list">
+            {shown.map((product) => <label key={product.id}>
+              <input type="checkbox" checked={collection.products.includes(product.id)} onChange={() => toggle(collection, product.id)} />
+              <span>{product.name}</span>
+              <small>{product.stock > 0 ? `${product.stock} шт.` : "под заказ"}</small>
+            </label>)}
+          </div>
+        </div>}
+      </div>)}
+      {!collections.length && <p className="admin-hint">Подборки появятся после первого деплоя миграции.</p>}
+    </div>
+  </>;
 }
 
 type SettingDefinition = { key: string; title: string; note: string; kind: string };

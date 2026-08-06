@@ -1,4 +1,5 @@
 import App from "./App";
+import StorefrontPage from "./StorefrontPage";
 import AdminPage from "./AdminPage";
 import ProductPage from "./ProductPage";
 import FavoritesPage from "./FavoritesPage";
@@ -21,6 +22,11 @@ export default function Root() {
       section="orders"
       orderNumber={decodeURIComponent(path.slice("/account/orders/".length))}
     />;
+  }
+  // The old App still owns the cart drawer and checkout, so it stays behind
+  // ?cart=1 and ?paid=... The storefront is what a visitor lands on.
+  if (path === "/" && !window.location.search) {
+    return <StorefrontPage />;
   }
   switch (path) {
     case "/login":

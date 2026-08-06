@@ -137,6 +137,7 @@ type Order struct {
 	RepackRequested    bool `json:"repackRequested"`
 	PaymentMethod  string      `json:"paymentMethod"`
 	TrackNumber    string      `json:"trackNumber"`
+	HasPreorder    bool        `json:"hasPreorder"`
 	PaymentStatus  string      `json:"paymentStatus"`
 	Status         string      `json:"status"`
 	Total          float64     `json:"total"`

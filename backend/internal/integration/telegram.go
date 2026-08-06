@@ -32,6 +32,8 @@ type TelegramOrder struct {
 	// know: an unpaid order must not be packed and sent.
 	PaymentStatus string
 	PaymentMethod string
+	// HasPreorder means part of the order is not on the shelf yet.
+	HasPreorder bool
 	// RepackRequested is the customer asking whether the plants fit into one
 	// box. It is the one thing in this message that needs an answer.
 	RepackRequested bool
@@ -126,6 +128,9 @@ func orderMessage(order TelegramOrder) string {
 		payment = "🧾 Ждёт счёт на организацию"
 	case "cancelled":
 		payment = "✖️ Оплата отменена"
+	}
+	if order.HasPreorder {
+		lines = append(lines, "", "📦 <b>Есть позиции под заказ</b> — уточните срок поставки")
 	}
 	lines = append(lines,
 		"",

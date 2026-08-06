@@ -153,7 +153,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		SELECT id, order_number, customer_id, customer_name, phone, email, address,
 			comment, delivery_method, delivery_fee_pending = 1,
 			delivery_repack_requested = 1, payment_method, payment_status,
-			COALESCE(cdek_track_number, ''), status,
+			COALESCE(cdek_track_number, ''), has_preorder = 1, status,
 			total::DOUBLE PRECISION, created_at
 		FROM orders ORDER BY created_at DESC LIMIT 1000
 	`)
@@ -169,7 +169,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 			&item.CustomerName, &item.Phone, &item.Email, &item.Address, &item.Comment,
 			&item.DeliveryMethod, &item.DeliveryFeePending, &item.RepackRequested,
 			&item.PaymentMethod, &item.PaymentStatus, &item.TrackNumber,
-			&item.Status, &item.Total,
+			&item.HasPreorder, &item.Status, &item.Total,
 			&item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan admin order: %w", err)
 		}
@@ -793,4 +793,83 @@ func (repository *PostgresRepository) queueStatusLetter(
 		INSERT INTO outbox (recipient, subject, body) VALUES ($1, $2, $3)
 	`, email, message.Subject, message.Body)
 	return err
+}
+
+// AdminCollection is a hand-made set as the panel edits it.
+type AdminCollection struct {
+	ID       int64   `json:"id"`
+	Slug     string  `json:"slug"`
+	Title    string  `json:"title"`
+	Note     string  `json:"note"`
+	Active   bool    `json:"active"`
+	Products []int64 `json:"products"`
+}
+
+func (repository *PostgresRepository) ListAdminCollections(
+	ctx context.Context,
+) ([]AdminCollection, error) {
+	rows, err := repository.pool.Query(ctx, `
+		SELECT c.id, c.slug, c.title, c.note, c.is_active = 1,
+			COALESCE((
+				SELECT ARRAY_AGG(cp.product_id ORDER BY cp.sort_order, cp.product_id)
+				FROM collection_products cp WHERE cp.collection_id = c.id
+			), ARRAY[]::BIGINT[])
+		FROM collections c
+		ORDER BY c.sort_order, c.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query collections: %w", err)
+	}
+	defer rows.Close()
+	result := make([]AdminCollection, 0)
+	for rows.Next() {
+		var item AdminCollection
+		if err := rows.Scan(
+			&item.ID, &item.Slug, &item.Title, &item.Note, &item.Active, &item.Products,
+		); err != nil {
+			return nil, fmt.Errorf("scan collection: %w", err)
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+// SetCollectionProducts replaces the contents of a collection outright. The
+// panel always sends the whole list, so a product removed there disappears
+// here — merging would leave ghosts nobody could delete.
+func (repository *PostgresRepository) SetCollectionProducts(
+	ctx context.Context,
+	actor Actor,
+	collectionID int64,
+	productIDs []int64,
+) error {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return ErrForbidden
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx,
+		"DELETE FROM collection_products WHERE collection_id = $1", collectionID,
+	); err != nil {
+		return fmt.Errorf("clear collection: %w", err)
+	}
+	for index, productID := range productIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO collection_products (collection_id, product_id, sort_order)
+			VALUES ($1, $2, $3)
+			ON CONFLICT DO NOTHING
+		`, collectionID, productID, index); err != nil {
+			return fmt.Errorf("fill collection: %w", err)
+		}
+	}
+	if err := insertAudit(
+		ctx, tx, actor, "collection.products.set", "collection",
+		fmt.Sprint(collectionID), nil, map[string]any{"count": len(productIDs)},
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
