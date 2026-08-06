@@ -76,7 +76,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		SELECT
 			id, order_number, delivery_method, address, comment,
 			customer_name, phone, email, status, payment_method, payment_status,
-			COALESCE(cdek_track_number, ''),
+			COALESCE(cdek_track_number, ''), has_preorder = 1,
 			delivery_fee::DOUBLE PRECISION,
 			delivery_fee_pending = 1, delivery_repack_requested = 1,
 			subtotal::DOUBLE PRECISION,
@@ -97,6 +97,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.PaymentMethod,
 		&detail.PaymentStatus,
 		&detail.TrackNumber,
+		&detail.HasPreorder,
 		&detail.DeliveryFee,
 		&detail.DeliveryFeePending,
 		&detail.RepackRequested,

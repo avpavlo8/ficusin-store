@@ -100,7 +100,7 @@ func (worker *NotificationWorker) load(
 			order_number, delivery_method, COALESCE(cdek_city_name, ''),
 			delivery_fee::DOUBLE PRECISION,
 			delivery_fee_pending = 1, delivery_repack_requested = 1,
-			payment_status, payment_method,
+			payment_status, payment_method, has_preorder = 1,
 			subtotal::DOUBLE PRECISION, total::DOUBLE PRECISION
 		FROM orders
 		WHERE id = $1 AND telegram_notified_at IS NULL
@@ -109,6 +109,7 @@ func (worker *NotificationWorker) load(
 		&notification.DeliveryCity, &notification.DeliveryFee,
 		&notification.DeliveryFeePending, &notification.RepackRequested,
 		&notification.PaymentStatus, &notification.PaymentMethod,
+		&notification.HasPreorder,
 		&notification.Subtotal, &notification.Total,
 	); err != nil {
 		return integration.TelegramOrder{}, fmt.Errorf("load order: %w", err)

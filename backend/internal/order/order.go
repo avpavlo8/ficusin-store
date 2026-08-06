@@ -31,6 +31,7 @@ type Detail struct {
 	// TrackNumber is what the customer types into the CDEK site. It appears
 	// a minute or two after the parcel is registered, not immediately.
 	TrackNumber string `json:"trackNumber"`
+	HasPreorder bool   `json:"hasPreorder"`
 	DeliveryFee    float64   `json:"deliveryFee"`
 	// DeliveryFeePending means the shop still owes the customer a price:
 	// the manager works it out and calls back before shipping.
