@@ -28,6 +28,9 @@ type Detail struct {
 	Status         string    `json:"status"`
 	PaymentStatus  string    `json:"paymentStatus"`
 	PaymentMethod  string    `json:"paymentMethod"`
+	// TrackNumber is what the customer types into the CDEK site. It appears
+	// a minute or two after the parcel is registered, not immediately.
+	TrackNumber string `json:"trackNumber"`
 	DeliveryFee    float64   `json:"deliveryFee"`
 	// DeliveryFeePending means the shop still owes the customer a price:
 	// the manager works it out and calls back before shipping.

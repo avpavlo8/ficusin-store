@@ -315,3 +315,153 @@ func (client *CDEKClient) accessToken(ctx context.Context) (string, error) {
 	client.tokenExpiry = time.Now().Add(time.Duration(max(60, result.ExpiresIn-120)) * time.Second)
 	return client.token, nil
 }
+
+// Shipment is an order handed to CDEK.
+type Shipment struct {
+	// UUID is CDEK's own identifier: the only reliable way to ask about a
+	// shipment later. The tracking number appears a little afterwards.
+	UUID         string
+	TrackNumber  string
+	Status       string
+	StatusReason string
+}
+
+// ShipmentRequest is everything CDEK needs to accept a parcel.
+type ShipmentRequest struct {
+	OrderNumber   string
+	TariffCode    int
+	OfficeCode    string
+	CityCode      int
+	Box           Parcel
+	Items         []ShipmentItem
+	SenderName    string
+	SenderPhone   string
+	SenderAddress string
+	// Recipient details go to CDEK because a courier cannot deliver to
+	// nobody. This is a Russian carrier under a contract, not a foreign
+	// service — unlike Telegram, where contacts must never appear.
+	RecipientName  string
+	RecipientPhone string
+	// PaymentOnDelivery is money CDEK collects at the counter. Zero for an
+	// order already paid on the site.
+	PaymentOnDelivery float64
+}
+
+type ShipmentItem struct {
+	Name     string
+	Price    float64
+	Quantity int
+	// WeightGrams is per unit; CDEK wants a weight for every line.
+	WeightGrams int
+}
+
+// CreateOrder hands a parcel to CDEK and returns its identifier. It is
+// called only for orders the shop is actually ready to ship.
+func (client *CDEKClient) CreateOrder(
+	ctx context.Context,
+	request ShipmentRequest,
+) (Shipment, error) {
+	if !client.Configured() {
+		return Shipment{}, errors.New("СДЭК не настроен")
+	}
+	if request.OfficeCode == "" || request.TariffCode <= 0 {
+		return Shipment{}, errors.New("не хватает пункта выдачи или тарифа")
+	}
+	packages := []map[string]any{{
+		"number": request.OrderNumber,
+		"weight": max(1, request.Box.WeightGrams),
+		"length": max(1, request.Box.LengthCM),
+		"width":  max(1, request.Box.WidthCM),
+		"height": max(1, request.Box.HeightCM),
+		"items":  shipmentItems(request.Items),
+	}}
+	body := map[string]any{
+		"type":            1,
+		"number":          request.OrderNumber,
+		"tariff_code":     request.TariffCode,
+		"from_location":   map[string]any{"code": cdekFromCityCode, "address": request.SenderAddress},
+		"delivery_point":  request.OfficeCode,
+		"packages":        packages,
+		"sender":          map[string]any{"name": request.SenderName, "phones": phones(request.SenderPhone)},
+		"recipient":       map[string]any{"name": request.RecipientName, "phones": phones(request.RecipientPhone)},
+		"comment":         "Заказ " + request.OrderNumber + " с сайта ficusin.ru",
+	}
+	if request.PaymentOnDelivery > 0 {
+		// Only what the customer still owes travels as cash on delivery. An
+		// order paid on the site must never be charged twice.
+		body["delivery_recipient_cost"] = map[string]any{"value": request.PaymentOnDelivery}
+	}
+	var result struct {
+		Entity struct {
+			UUID string `json:"uuid"`
+		} `json:"entity"`
+		Requests []struct {
+			State  string `json:"state"`
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		} `json:"requests"`
+	}
+	if err := client.request(ctx, http.MethodPost, "/orders", body, &result); err != nil {
+		return Shipment{}, err
+	}
+	for _, attempt := range result.Requests {
+		for _, failure := range attempt.Errors {
+			return Shipment{}, fmt.Errorf("СДЭК отказал: %s", failure.Message)
+		}
+	}
+	if result.Entity.UUID == "" {
+		return Shipment{}, errors.New("СДЭК не вернул номер заявки")
+	}
+	return Shipment{UUID: result.Entity.UUID}, nil
+}
+
+// FetchOrder asks what has happened to a shipment. CDEK registers a parcel
+// asynchronously, so the tracking number is often empty on the first ask.
+func (client *CDEKClient) FetchOrder(ctx context.Context, uuid string) (Shipment, error) {
+	if !client.Configured() {
+		return Shipment{}, errors.New("СДЭК не настроен")
+	}
+	var result struct {
+		Entity struct {
+			UUID        string `json:"uuid"`
+			CDEKNumber  string `json:"cdek_number"`
+			Statuses    []struct {
+				Code string `json:"code"`
+				Name string `json:"name"`
+			} `json:"statuses"`
+		} `json:"entity"`
+	}
+	if err := client.request(ctx, http.MethodGet, "/orders/"+url.PathEscape(uuid), nil, &result); err != nil {
+		return Shipment{}, err
+	}
+	shipment := Shipment{UUID: result.Entity.UUID, TrackNumber: result.Entity.CDEKNumber}
+	// Statuses arrive oldest first; the last one is where the parcel is now.
+	if count := len(result.Entity.Statuses); count > 0 {
+		shipment.Status = result.Entity.Statuses[count-1].Code
+		shipment.StatusReason = result.Entity.Statuses[count-1].Name
+	}
+	return shipment, nil
+}
+
+func shipmentItems(items []ShipmentItem) []map[string]any {
+	encoded := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		encoded = append(encoded, map[string]any{
+			"name":        truncateRunes(item.Name, 120),
+			"ware_key":    truncateRunes(item.Name, 20),
+			"payment":     map[string]any{"value": 0},
+			"cost":        item.Price,
+			"weight":      max(1, item.WeightGrams),
+			"amount":      max(1, item.Quantity),
+		})
+	}
+	return encoded
+}
+
+func phones(number string) []map[string]string {
+	if strings.TrimSpace(number) == "" {
+		return []map[string]string{}
+	}
+	return []map[string]string{{"number": number}}
+}
