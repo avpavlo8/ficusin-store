@@ -77,7 +77,9 @@ test("@phone the cart opens from the bottom bar and keeps its contents", async (
   await page.locator(".tab-bar > *").nth(2).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\?cart=1$/);
-  await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
+  // Дольше обычного: после перехода страница грузит каталог заново, и
+  // название растения появляется в корзине только с ним.
+  await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible({ timeout: 15000 });
 });
 
 test("@phone no page scrolls sideways", async ({ page }) => {
