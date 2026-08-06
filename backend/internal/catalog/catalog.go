@@ -35,6 +35,17 @@ type Product struct {
 	PetSafety      string  `json:"petSafety,omitempty"`
 	GrowthHabit    string  `json:"growthHabit,omitempty"`
 	CategoryID     *int64  `json:"categoryId,omitempty"`
+	// Collections are the hand-made sets this product belongs to, by slug.
+	// The storefront filters on them without another request.
+	Collections []string `json:"collections"`
+}
+
+// Collection is one hand-made set as the storefront tab shows it.
+type Collection struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+	Note  string `json:"note"`
+	Count int    `json:"count"`
 }
 
 type ProductDetail struct {

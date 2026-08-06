@@ -192,14 +192,21 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			p.catalog_section, COALESCE(p.plant_kind, ''), COALESCE(p.light_level, ''),
 			COALESCE(p.watering, ''), COALESCE(p.height_class, ''),
 			COALESCE(p.care_level, ''), COALESCE(p.placement, ''),
-			COALESCE(p.pet_safety, ''), COALESCE(p.growth_habit, ''), p.category_id
+			COALESCE(p.pet_safety, ''), COALESCE(p.growth_habit, ''), p.category_id,
+			COALESCE((
+				SELECT ARRAY_AGG(c.slug ORDER BY c.sort_order, c.id)
+				FROM collection_products cp
+				JOIN collections c ON c.id = cp.collection_id AND c.is_active = 1
+				WHERE cp.product_id = p.id
+			), ARRAY[]::TEXT[])
 		FROM products p
 		JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
 		LEFT JOIN inventory i ON i.variant_id = pv.id
 		WHERE p.status = 'published'
 		GROUP BY p.id, pv.id
-		HAVING COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0) > 0
-		ORDER BY p.is_featured DESC, p.name ASC
+		ORDER BY
+			COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0) > 0 DESC,
+			p.is_featured DESC, p.name ASC
 		LIMIT 1000
 	`
 
@@ -232,6 +239,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			&product.PetSafety,
 			&product.GrowthHabit,
 			&product.CategoryID,
+			&product.Collections,
 		); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)
 		}
@@ -297,4 +305,32 @@ func (repository *PostgresRepository) PackageSizes(
 		sizes[slug] = size
 	}
 	return sizes, rows.Err()
+}
+
+// ListCollections returns the hand-made collections the storefront shows as
+// tabs. Empty ones are left out: a tab that leads to nothing is a dead end.
+func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Collection, error) {
+	rows, err := repository.pool.Query(ctx, `
+		SELECT c.slug, c.title, c.note, COUNT(cp.product_id)::INTEGER
+		FROM collections c
+		JOIN collection_products cp ON cp.collection_id = c.id
+		JOIN products p ON p.id = cp.product_id AND p.status = 'published'
+		WHERE c.is_active = 1
+		GROUP BY c.id
+		HAVING COUNT(cp.product_id) > 0
+		ORDER BY c.sort_order, c.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query collections: %w", err)
+	}
+	defer rows.Close()
+	collections := make([]Collection, 0)
+	for rows.Next() {
+		var item Collection
+		if err := rows.Scan(&item.Slug, &item.Title, &item.Note, &item.Count); err != nil {
+			return nil, fmt.Errorf("scan collection: %w", err)
+		}
+		collections = append(collections, item)
+	}
+	return collections, rows.Err()
 }
