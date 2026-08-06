@@ -115,6 +115,7 @@ func main() {
 			Push:         pushService,
 			Cart:         cart.NewStore(pool),
 			Packages:     catalogRepository,
+			Collections:  catalogRepository,
 			Payments:     paymentService,
 			Settings:     shopSettings,
 			Refunds:      paymentService,
