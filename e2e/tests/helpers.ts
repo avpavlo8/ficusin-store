@@ -13,11 +13,40 @@ const product = {
   size: "D12",
   stock: 5,
   catalogSection: "plants",
-  lightLevel: "diffused",
+  lightLevel: "low_light",
   watering: "moderate",
+  heightClass: "low",
   careLevel: "easy",
+  placement: "bathroom",
   petSafety: "safe",
-  categoryId: 1,
+  categoryId: 4,
+};
+
+// Второй вид, другая ветка дерева и другие атрибуты: иначе подборки и
+// каталог нечем отличить друг от друга в проверках.
+const ficus = {
+  ...product,
+  id: "saby-2",
+  name: "Фикус Бенджамина",
+  latin: "Ficus benjamina",
+  price: 2490,
+  stock: 3,
+  lightLevel: "diffused",
+  heightClass: "high",
+  careLevel: "medium",
+  placement: "office",
+  petSafety: "caution",
+  categoryId: 5,
+};
+
+// Ноль на складе — это предзаказ, а не исчезнувшая карточка.
+const monstera = {
+  ...ficus,
+  id: "saby-3",
+  name: "Монстера Делициоза",
+  latin: "Monstera deliciosa",
+  price: 3200,
+  stock: 0,
 };
 
 export const guest = { signedIn: false } as const;
@@ -46,12 +75,18 @@ export async function mockApi(page: Page, session: Session = guest) {
   await page.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
 
   await page.route("**/api/v1/catalog", (route) =>
-    route.fulfill({ json: { products: [product, { ...product, id: "saby-2", name: "Фикус Бенджамина" }] } }));
+    route.fulfill({ json: { products: [product, ficus, monstera] } }));
 
+  // Дерево нарочно трёхуровневое и с пустым разделом — как в настоящей базе.
+  // Пока стенд был плоским, витрина рисовала два уровня и никто этого не
+  // замечал: виды растений просто не показывались.
   await page.route("**/api/v1/categories", (route) =>
     route.fulfill({ json: { categories: [
       { id: 1, parentId: null, name: "Растения", slug: "plants", sortOrder: 1 },
       { id: 2, parentId: null, name: "Кашпо и горшки", slug: "pots", sortOrder: 2 },
+      { id: 3, parentId: 1, name: "Комнатные растения", slug: "indoor", sortOrder: 1 },
+      { id: 4, parentId: 3, name: "Аглаонема", slug: "aglaonema", sortOrder: 1 },
+      { id: 5, parentId: 3, name: "Фикус", slug: "ficus", sortOrder: 2 },
     ] } }));
 
   await page.route("**/api/v1/auth/me", (route) => session.signedIn
