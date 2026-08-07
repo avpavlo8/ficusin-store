@@ -23,6 +23,9 @@ type Product = {
 };
 
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
+// Не Node: так называется узел DOM, и подмена ломает проверку клика мимо
+// подсказок поиска.
+type CategoryNode = { id: number; name: string; count: number; children: CategoryNode[] };
 type Cart = Record<string, number>;
 
 const money = (value: number) =>
@@ -47,7 +50,7 @@ export default function StorefrontPage() {
   );
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [category, setCategory] = useState<number | null>(null);
-  const [opened, setOpened] = useState<number | null>(null);
+  const [opened, setOpened] = useState<Set<number>>(new Set());
   const [preset, setPreset] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sort, setSort] = useState("popular");
@@ -111,31 +114,42 @@ export default function StorefrontPage() {
 
   const searching = query.trim().length > 0;
 
-  // Сколько товаров лежит в ветке дерева вместе со всеми её потомками.
-  const countIn = useMemo(() => {
-    const children = new Map<number, number[]>();
+  // Дерево каталога строится из базы целиком, на любую глубину. Ступень с
+  // единственной веткой и без собственных товаров ничего не решает:
+  // «Растения → Комнатные растения → Фикус» заставляет нажать дважды, чтобы
+  // увидеть ровно то же самое. Такую ступень пропускаем.
+  const tree = useMemo(() => {
+    const kids = new Map<number | null, Category[]>();
     categories.forEach((item) => {
-      if (item.parentId == null) return;
-      children.set(item.parentId, [...(children.get(item.parentId) ?? []), item.id]);
+      const key = item.parentId ?? null;
+      kids.set(key, [...(kids.get(key) ?? []), item]);
     });
     const direct = new Map<number, number>();
     products.forEach((item) => {
       if (item.categoryId == null) return;
       direct.set(item.categoryId, (direct.get(item.categoryId) ?? 0) + 1);
     });
-    const cache = new Map<number, number>();
-    const walk = (id: number): number => {
-      const seen = cache.get(id);
-      if (seen != null) return seen;
-      const total =
-        (direct.get(id) ?? 0) +
-        (children.get(id) ?? []).reduce((sum, child) => sum + walk(child), 0);
-      cache.set(id, total);
-      return total;
+    const order = (list: Category[]) =>
+      [...list].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+    const build = (item: Category): CategoryNode => {
+      let children = order(kids.get(item.id) ?? []);
+      while (children.length === 1 && (direct.get(children[0].id) ?? 0) === 0) {
+        children = order(kids.get(children[0].id) ?? []);
+      }
+      const nodes = children.map(build);
+      return {
+        id: item.id,
+        name: item.name,
+        count: (direct.get(item.id) ?? 0) + nodes.reduce((sum, node) => sum + node.count, 0),
+        children: nodes,
+      };
     };
-    return walk;
+    return order(kids.get(null) ?? []).map(build);
   }, [categories, products]);
 
+  // Ветка считается выбранной вместе со всеми потомками, даже теми, что
+  // пропущены при отрисовке.
   const inBranch = useMemo(() => {
     const parents = new Map(categories.map((item) => [item.id, item.parentId]));
     return (productCategory: number | undefined, branch: number): boolean => {
@@ -147,19 +161,6 @@ export default function StorefrontPage() {
       return false;
     };
   }, [categories]);
-
-  const roots = useMemo(
-    () =>
-      categories
-        .filter((item) => item.parentId == null && countIn(item.id) > 0)
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    [categories, countIn],
-  );
-
-  const childrenOf = (parent: number) =>
-    categories
-      .filter((item) => item.parentId === parent && countIn(item.id) > 0)
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 
   // Поиск сильнее любого фильтра: человек, стоящий в «Фикусах» и набравший
   // «монстера», имеет в виду растение, а не «в этой ветке ничего нет».
@@ -186,6 +187,38 @@ export default function StorefrontPage() {
   const hints = useMemo(
     () => (suggestOpen && searching ? suggestions(products, query) : []),
     [products, query, searching, suggestOpen],
+  );
+
+  const toggle = (id: number) =>
+    setOpened((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const branch = (node: CategoryNode, depth: number) => (
+    <div key={node.id}>
+      <button
+        className={category === node.id ? "active" : ""}
+        style={{ paddingLeft: 10 + depth * 14 }}
+        aria-expanded={node.children.length > 0 ? opened.has(node.id) : undefined}
+        onClick={() => {
+          setQuery("");
+          setCategory(node.id);
+          if (node.children.length > 0) toggle(node.id);
+        }}
+      >
+        <span>
+          {node.children.length > 0 && (
+            <i className={opened.has(node.id) ? "twist open" : "twist"} aria-hidden="true">›</i>
+          )}
+          {node.name}
+        </span>
+        <small>{node.count}</small>
+      </button>
+      {opened.has(node.id) && node.children.map((child) => branch(child, depth + 1))}
+    </div>
   );
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
@@ -267,41 +300,7 @@ export default function StorefrontPage() {
               <span>Весь каталог</span>
               <small>{products.length}</small>
             </button>
-            {roots.map((root) => (
-              <div key={root.id}>
-                <button
-                  className={category === root.id ? "active" : ""}
-                  aria-expanded={opened === root.id}
-                  onClick={() => {
-                    setQuery("");
-                    setCategory(root.id);
-                    setOpened(opened === root.id ? null : root.id);
-                  }}
-                >
-                  <span>
-                    {childrenOf(root.id).length > 0 && (
-                      <i className={opened === root.id ? "twist open" : "twist"} aria-hidden="true">›</i>
-                    )}
-                    {root.name}
-                  </span>
-                  <small>{countIn(root.id)}</small>
-                </button>
-                {opened === root.id &&
-                  childrenOf(root.id).map((child) => (
-                    <button
-                      key={child.id}
-                      className={category === child.id ? "child active" : "child"}
-                      onClick={() => {
-                        setQuery("");
-                        setCategory(child.id);
-                      }}
-                    >
-                      <span>{child.name}</span>
-                      <small>{countIn(child.id)}</small>
-                    </button>
-                  ))}
-              </div>
-            ))}
+            {tree.map((root) => branch(root, 0))}
           </nav>
 
           <label className="storefront-check">
