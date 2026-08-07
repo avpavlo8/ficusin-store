@@ -22,6 +22,7 @@ type Config struct {
 		Payments              Payments
 		SiteURL               string
 		Mail                  Mail
+		Photos                Photos
 }
 
 // Mail is the SMTP account the shop writes from. An empty host switches
@@ -33,6 +34,17 @@ type Mail struct {
 		Password string
 		From     string
 		FromName string
+}
+
+// Photos is the S3-compatible bucket where the shop keeps its own copies of
+// product pictures. Empty keys switch the mirror off: the shop then keeps
+// showing the supplier's links — slower and borrowed, but working.
+type Photos struct {
+		Endpoint  string
+		Region    string
+		Bucket    string
+		AccessKey string
+		SecretKey string
 }
 
 // Payments holds the YooKassa credentials. Empty values switch card
@@ -145,6 +157,13 @@ func Load() (Config, error) {
 									SendReceipt: strings.TrimSpace(os.Getenv("YOOKASSA_SEND_RECEIPT")) == "1",
 									TaxSystem:   intFromEnv("YOOKASSA_TAX_SYSTEM", 0),
 									VATCode:     intFromEnv("YOOKASSA_VAT_CODE", 1),
+								},
+					Photos: Photos{
+									Endpoint:  defaultString(os.Getenv("S3_ENDPOINT"), "https://s3.twcstorage.ru"),
+									Region:    defaultString(os.Getenv("S3_REGION"), "ru-1"),
+									Bucket:    strings.TrimSpace(os.Getenv("S3_BUCKET")),
+									AccessKey: strings.TrimSpace(os.Getenv("S3_ACCESS_KEY")),
+									SecretKey: strings.TrimSpace(os.Getenv("S3_SECRET_KEY")),
 								},
 					Push: Push{
 									PublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),

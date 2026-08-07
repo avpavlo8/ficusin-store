@@ -22,6 +22,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
+	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
@@ -145,6 +146,22 @@ func main() {
 		From:     cfg.Mail.From,
 		FromName: cfg.Mail.FromName,
 	}, logger), logger).Run(ctx)
+	// Снимки товаров приходят от поставщика оригиналами по три тысячи
+	// пикселей. Фоновый перенос кладёт свои копии поменьше в наше хранилище:
+	// покупатель с телефона перестаёт ждать, а витрина — зависеть от чужого
+	// сервера. Без ключей перенос просто не запускается.
+	photoStorage := photos.NewStorage(
+		cfg.Photos.Endpoint,
+		cfg.Photos.Region,
+		cfg.Photos.Bucket,
+		cfg.Photos.AccessKey,
+		cfg.Photos.SecretKey,
+	)
+	if photoStorage.Configured() {
+		go photos.NewMirror(photos.NewPostgresStore(pool), photoStorage, logger).Run(ctx)
+	} else {
+		logger.Info("перенос фотографий выключен; задайте S3_BUCKET, S3_ACCESS_KEY и S3_SECRET_KEY")
+	}
 	go notificationWorker.Run(ctx)
 	// The safety net under YooKassa's notifications: a lost one would
 	// otherwise leave a paid order looking unpaid.

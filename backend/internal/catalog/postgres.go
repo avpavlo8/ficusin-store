@@ -36,8 +36,13 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 	}
 
 	mediaRows, err := repository.pool.Query(ctx, `
-		SELECT object_key FROM product_media WHERE product_id = $1
-		ORDER BY is_primary DESC, sort_order, id
+		-- Своя копия снимка, если она уже перенесена, иначе ссылка
+		-- поставщика: витрина не должна пустеть, пока идёт перенос.
+		SELECT COALESCE(mirror.large_url, media.object_key)
+		FROM product_media media
+		LEFT JOIN media_mirror mirror ON mirror.source_url = media.object_key
+		WHERE media.product_id = $1
+		ORDER BY media.is_primary DESC, media.sort_order, media.id
 	`, productID)
 	if err != nil {
 		return ProductDetail{}, fmt.Errorf("query product media: %w", err)
@@ -179,8 +184,9 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			pv.base_price_minor,
 			COALESCE(
 				(
-					SELECT pm.object_key
+					SELECT COALESCE(mm.card_url, pm.object_key)
 					FROM product_media pm
+					LEFT JOIN media_mirror mm ON mm.source_url = pm.object_key
 					WHERE pm.product_id = p.id
 					ORDER BY pm.is_primary DESC, pm.sort_order ASC
 					LIMIT 1
