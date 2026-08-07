@@ -943,7 +943,9 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 .preset.active .preset-icon { background: rgba(255,255,255,.18); color: white; }
 
 /* Дерево каталога: разделы свёрнуты, вид раскрывается по нажатию на раздел. */
-.storefront-tree { display: grid; gap: 1px; margin-bottom: 14px; }
+/* Под «Растениями» больше шестидесяти видов — без прокрутки список
+   растянул бы страницу вдвое и утопил сетку товаров. */
+.storefront-tree { display: grid; gap: 1px; margin-bottom: 14px; max-height: 58vh; overflow-y: auto; scrollbar-width: thin; }
 .storefront-tree button { width: 100%; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--green); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .storefront-tree button > span { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .storefront-tree button small { flex: none; color: #9aa39a; font-size: 12px; }
