@@ -16,7 +16,10 @@ test("@phone the header keeps search, the menu and the bottom bar everywhere", a
   for (const path of storePages) {
     await page.goto(path);
     await expect(page.locator(".menu-button"), `меню на ${path}`).toBeVisible();
-    await expect(page.locator(".search-toggle"), `поиск на ${path}`).toBeVisible();
+    // На витрине поиск свой, прямо под шапкой; на остальных страницах —
+    // лупа в шапке. Проверяем главное: искать можно с любой страницы.
+    const search = path === "/" ? ".storefront-search input" : ".search-toggle";
+    await expect(page.locator(search), `поиск на ${path}`).toBeVisible();
     await expect(page.locator(".tab-bar"), `нижняя панель на ${path}`).toBeVisible();
     await expect(page.locator(".tab-bar > *")).toHaveCount(4);
   }
@@ -120,7 +123,9 @@ test("@desktop keeps the full header and hides the phone chrome", async ({ page 
   await mockApi(page);
   await page.goto("/");
 
-  await expect(page.locator(".header-search")).toBeVisible();
+  // Витрина носит поиск под шапкой, а не в ней; лупа для телефона здесь
+  // тем более не нужна — её проверяем скрытой ниже.
+  await expect(page.locator(".storefront-search input")).toBeVisible();
   await expect(page.locator(".desktop-nav")).toBeVisible();
   await expect(page.locator(".favorites-button")).toBeVisible();
   await expect(page.locator(".cart-button")).toBeVisible();
