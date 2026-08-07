@@ -245,6 +245,7 @@ export function StoreHeader({
   onQueryChange,
   onCartClick,
   showTabBar = true,
+  showSearch = true,
 }: {
   cartCount?: number;
   favoritesCount?: number;
@@ -254,6 +255,10 @@ export function StoreHeader({
   // navigating away from the catalogue.
   onCartClick?: () => void;
   showTabBar?: boolean;
+  // The storefront carries its own search bar under the header, so it asks
+  // for the header field to step aside. Every other page keeps it: there it
+  // is the only way to search at all.
+  showSearch?: boolean;
 }) {
   const user = useStoreUser();
   // Pages that own the cart and favourites (the catalogue, a product card)
@@ -279,15 +284,17 @@ export function StoreHeader({
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a>
       <nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/#care">Уход</a><a href="/#delivery">Доставка</a></nav>
       <div className="header-actions">
-        {onQueryChange
-          ? <label className="header-search"><span aria-hidden="true">⌕</span><input value={query || ""} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск по каталогу" /></label>
-          : <CatalogSearchForm />}
-        <button
-          className="search-toggle"
-          onClick={() => setSearchOpen((open) => !open)}
-          aria-label="Поиск по каталогу"
-          aria-expanded={searchOpen}
-        ><Icon path={icons.search} /></button>
+        {showSearch && <>
+          {onQueryChange
+            ? <label className="header-search"><span aria-hidden="true">⌕</span><input value={query || ""} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск по каталогу" /></label>
+            : <CatalogSearchForm />}
+          <button
+            className="search-toggle"
+            onClick={() => setSearchOpen((open) => !open)}
+            aria-label="Поиск по каталогу"
+            aria-expanded={searchOpen}
+          ><Icon path={icons.search} /></button>
+        </>}
         <AccountMenu user={user} />
         <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites}`}><span aria-hidden="true">♥</span><b>{favorites}</b></a>
         {onCartClick
@@ -295,7 +302,7 @@ export function StoreHeader({
           : <a className="cart-button" href="/?cart=1" aria-label={cartLabel}><span>Корзина</span><b>{cart}</b></a>}
       </div>
     </header>
-    {searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onClose={() => setSearchOpen(false)} />}
+    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onClose={() => setSearchOpen(false)} />}
     {menuOpen && <>
       <button className="overlay" aria-label="Закрыть меню" onClick={() => setMenuOpen(false)} />
       <MobileMenu user={user} favorites={favorites} onClose={() => setMenuOpen(false)} />
