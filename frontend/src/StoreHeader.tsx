@@ -281,7 +281,7 @@ export function StoreHeader({
         aria-label="Открыть меню"
         aria-expanded={menuOpen}
       >☰</button>
-      <a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a>
+      <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/#care">Уход</a><a href="/#delivery">Доставка</a></nav>
       <div className="header-actions">
         {showSearch && <>
