@@ -24,9 +24,15 @@ export default function Root() {
     />;
   }
   // The old App still owns the cart drawer and checkout, so it stays behind
-  // ?cart=1 and ?paid=... The storefront is what a visitor lands on.
-  if (path === "/" && !window.location.search) {
-    return <StorefrontPage />;
+  // ?cart=1 and ?paid=... Everything else on "/" is the storefront —
+  // including ?q=, which is where the header search on other pages sends
+  // people. Bailing out on any query string at all would have quietly
+  // handed those searches back to the old page.
+  if (path === "/") {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("cart") && !params.has("paid")) {
+      return <StorefrontPage />;
+    }
   }
   switch (path) {
     case "/login":

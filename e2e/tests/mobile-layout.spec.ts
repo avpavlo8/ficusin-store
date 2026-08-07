@@ -16,7 +16,10 @@ test("@phone the header keeps search, the menu and the bottom bar everywhere", a
   for (const path of storePages) {
     await page.goto(path);
     await expect(page.locator(".menu-button"), `меню на ${path}`).toBeVisible();
-    await expect(page.locator(".search-toggle"), `поиск на ${path}`).toBeVisible();
+    // На витрине поиск свой, прямо под шапкой; на остальных страницах —
+    // лупа в шапке. Проверяем главное: искать можно с любой страницы.
+    const search = path === "/" ? ".storefront-search input" : ".search-toggle";
+    await expect(page.locator(search), `поиск на ${path}`).toBeVisible();
     await expect(page.locator(".tab-bar"), `нижняя панель на ${path}`).toBeVisible();
     await expect(page.locator(".tab-bar > *")).toHaveCount(4);
   }
@@ -33,21 +36,23 @@ test("@phone the counters are readable, not hidden", async ({ page }) => {
   await expect(badges.last()).toHaveText("3");
 });
 
-test("@phone the magnifier opens a search field and filters the catalogue", async ({ page }) => {
+// На витрине поиск на виду, отдельная лупа в шапке была бы вторым полем на
+// одном экране — покупателю оставалось бы гадать, какое из них настоящее.
+test("@phone the storefront search filters the catalogue", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await expect(page.getByText("Аглаонема Мария")).toBeVisible();
+  await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toBeVisible();
 
-  await expect(page.locator(".mobile-search")).toHaveCount(0);
-  await page.locator(".search-toggle").click();
+  await expect(page.locator(".search-toggle")).toHaveCount(0);
 
-  const field = page.locator(".mobile-search input");
+  const field = page.locator(".storefront-search input");
   await expect(field).toBeVisible();
-  await expect(field).toBeFocused();
 
   await field.fill("бенджамина");
-  await expect(page.getByText("Фикус Бенджамина")).toBeVisible();
-  await expect(page.getByText("Аглаонема Мария")).toHaveCount(0);
+  // Смотрим в сетку, а не по всей странице: то же название всплывает и в
+  // подсказках под строкой поиска, а проверяем мы выдачу.
+  await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
+  await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toHaveCount(0);
 });
 
 test("@phone the menu opens and lists the sections", async ({ page }) => {
@@ -118,7 +123,9 @@ test("@desktop keeps the full header and hides the phone chrome", async ({ page 
   await mockApi(page);
   await page.goto("/");
 
-  await expect(page.locator(".header-search")).toBeVisible();
+  // Витрина носит поиск под шапкой, а не в ней; лупа для телефона здесь
+  // тем более не нужна — её проверяем скрытой ниже.
+  await expect(page.locator(".storefront-search input")).toBeVisible();
   await expect(page.locator(".desktop-nav")).toBeVisible();
   await expect(page.locator(".favorites-button")).toBeVisible();
   await expect(page.locator(".cart-button")).toBeVisible();
