@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,7 +28,13 @@ func setStaticCaching(response http.ResponseWriter, path string) {
 	}
 }
 
-func spaFallback(api http.Handler, staticDir string, sitemap http.Handler) http.Handler {
+func spaFallback(
+	logger *slog.Logger,
+	api http.Handler,
+	staticDir string,
+	sitemap http.Handler,
+	products productMetaCatalog,
+) http.Handler {
 	files := http.FileServer(http.Dir(staticDir))
 
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -68,6 +75,11 @@ func spaFallback(api http.Handler, staticDir string, sitemap http.Handler) http.
 		if !knownAppRoute(request.URL.Path) {
 			status = http.StatusNotFound
 		}
+		body = withProductMeta(
+			request.Context(), logger, products,
+			siteBase(request), productSlug(request.URL.Path), body,
+		)
+
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		response.Header().Set("Cache-Control", "no-cache")
 		response.WriteHeader(status)
