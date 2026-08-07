@@ -29,7 +29,10 @@ h1, h2, h3, p { margin-top: 0; }
 h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 
 .announcement { min-height: 34px; padding: 9px 5vw; display: flex; justify-content: space-between; gap: 16px; background: var(--green); color: #eef2ea; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
-.header { height: 76px; padding: 0 5vw; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: rgba(251,249,245,.94); position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+/* Шапка выше строки поиска по слою. Пока приоритет был одинаковым,
+   выпадающее меню под именем пряталось за поиском: строка идёт в разметке
+   позже и рисовалась поверх. */
+.header { height: 76px; padding: 0 5vw; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: rgba(251,249,245,.94); position: sticky; top: 0; z-index: 40; border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
 .brand { display: inline-flex; align-items: center; gap: 11px; color: var(--green); font-size: clamp(20px, 1.7vw, 26px); font-weight: 600; letter-spacing: .01em; width: max-content; }
 .brand-mark { width: 30px; height: 38px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 80% 20% 80% 20%; transform: rotate(-18deg); font: 600 21px/1 Georgia, serif; }
 /* Подпись под названием — из макета: она объясняет, чем торгует магазин,
@@ -853,7 +856,7 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 
 /* Витрина: товары с первого экрана, поиск занимает страницу целиком */
 .storefront { padding-bottom: 60px; }
-.storefront-search-bar { position: sticky; top: 0; z-index: 30; padding: 12px 24px; background: var(--cream); border-bottom: 1px solid var(--line); }
+.storefront-search-bar { position: sticky; top: 76px; z-index: 30; padding: 12px 24px; background: var(--cream); border-bottom: 1px solid var(--line); }
 .storefront-search { position: relative; max-width: 720px; margin: 0 auto; }
 .storefront-search input { width: 100%; padding: 13px 40px 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; font-size: 15px; }
 .storefront-search input:focus { outline: none; border-color: var(--green); }
