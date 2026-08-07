@@ -933,20 +933,26 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 .admin-collection-list span { flex: 1; }
 .admin-collection-list small { color: #8b938b; font-size: 12px; }
 
-/* Плашки доверия из макета: четыре обещания магазина одной строкой.
-   Стоят под поиском, где покупатель решает, оставаться ли ему здесь. */
-.trust-row { max-width: 1280px; margin: 16px auto 0; padding: 16px 20px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; border: 1px solid var(--line); border-radius: 14px; background: white; }
-.trust-item { display: flex; align-items: center; gap: 12px; }
-.trust-item span { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--cream); font-size: 17px; }
-.trust-item b { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
-.trust-item small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+/* Подборки: небольшие плитки над сеткой. Нарочно тише каталога — это
+   подсказка, а не второй уровень навигации. */
+.storefront-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.preset { padding: 7px 13px 7px 9px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 99px; background: white; font: inherit; font-size: 13px; color: #4a544b; cursor: pointer; }
+.preset:hover { border-color: var(--green); color: var(--green); }
+.preset-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--cream); color: var(--green); }
+.preset.active { background: var(--green); border-color: var(--green); color: white; }
+.preset.active .preset-icon { background: rgba(255,255,255,.18); color: white; }
 
-@media (max-width: 900px) {
-  .trust-row { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 16px 0; gap: 14px; }
-}
-@media (max-width: 520px) {
-  .trust-row { grid-template-columns: 1fr; }
-}
+/* Дерево каталога: разделы свёрнуты, вид раскрывается по нажатию на раздел. */
+.storefront-tree { display: grid; gap: 1px; margin-bottom: 14px; }
+.storefront-tree button { width: 100%; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--green); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.storefront-tree button > span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.storefront-tree button small { flex: none; color: #9aa39a; font-size: 12px; }
+.storefront-tree button:hover { background: var(--cream); }
+.storefront-tree button.active { background: var(--green); color: white; }
+.storefront-tree button.active small { color: rgba(255,255,255,.65); }
+.storefront-tree .child { padding-left: 26px; font-size: 13px; color: #55605a; }
+.twist { display: inline-block; width: 10px; font-style: normal; transition: transform .18s ease; }
+.twist.open { transform: rotate(90deg); }
 
 /* Карточки витрины под макет: рамка тоньше, скругление мягче, картинка
    лежит на тёплой подложке, а не на белом. */
