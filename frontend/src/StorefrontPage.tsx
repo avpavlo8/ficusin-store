@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
-import { TrustRow } from "./TrustRow";
+import { CollectionStrip, presets } from "./Collections";
 import { searchProducts, suggestions } from "./lib/search";
 
 type Product = {
@@ -17,10 +17,12 @@ type Product = {
   heightClass?: string;
   petSafety?: string;
   careLevel?: string;
-  collections?: string[];
+  placement?: string;
+  watering?: string;
+  categoryId?: number;
 };
 
-type Collection = { slug: string; title: string; note: string; count: number };
+type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
 type Cart = Record<string, number>;
 
 const money = (value: number) =>
@@ -30,48 +32,23 @@ const money = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const sections: Array<[string, string]> = [
-  ["plants", "Растения"],
-  ["pots", "Кашпо и горшки"],
-  ["soil", "Грунт"],
-  ["fertilizer", "Удобрения"],
-  ["accessories", "Аксессуары"],
-];
-
-const lightLabels: Record<string, string> = {
-  sunny: "Солнечная сторона",
-  diffused: "Рассеянный свет",
-  low_light: "Тень",
-};
-
-const sizeLabels: Record<string, string> = {
-  low: "Низкие",
-  medium: "Средние",
-  high: "Высокие",
-};
-
-// The storefront is the home page: products from the first pixel, search in
-// the header, collections as tabs above the grid. Searching replaces the
-// grid rather than adding results somewhere below — the old page put them
-// underneath, where nobody scrolled to find them.
+// Витрина — это главная: товары с первого пикселя, поиск в липкой шапке,
+// слева живое дерево каталога, над сеткой — подборки.
 export default function StorefrontPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // The query comes from the URL before the first render, not from an
-  // effect afterwards: setting it later would paint the whole catalogue
-  // and immediately throw it away.
+  // Запрос читается из адреса до первого рендера, иначе страница успела бы
+  // нарисовать весь каталог и тут же его выбросить.
   const [query, setQuery] = useState(
     () => new URLSearchParams(window.location.search).get("q") ?? "",
   );
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [section, setSection] = useState("plants");
-  const [collection, setCollection] = useState("");
-  const [light, setLight] = useState("");
-  const [size, setSize] = useState("");
-  const [maxPrice, setMaxPrice] = useState(0);
+  const [category, setCategory] = useState<number | null>(null);
+  const [opened, setOpened] = useState<number | null>(null);
+  const [preset, setPreset] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sort, setSort] = useState("popular");
 
@@ -106,10 +83,10 @@ export default function StorefrontPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/v1/collections", { cache: "no-store" })
+    fetch("/api/v1/categories", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data: { collections?: Collection[] }) => setCollections(data.collections ?? []))
-      .catch(() => setCollections([]));
+      .then((data: { categories?: Category[] }) => setCategories(data.categories ?? []))
+      .catch(() => setCategories([]));
   }, []);
 
   useEffect(() => {
@@ -134,8 +111,58 @@ export default function StorefrontPage() {
 
   const searching = query.trim().length > 0;
 
-  // Search wins over every filter. Someone standing in "Кашпо" who types
-  // "фикус" means the plant, not "no results in this section".
+  // Сколько товаров лежит в ветке дерева вместе со всеми её потомками.
+  const countIn = useMemo(() => {
+    const children = new Map<number, number[]>();
+    categories.forEach((item) => {
+      if (item.parentId == null) return;
+      children.set(item.parentId, [...(children.get(item.parentId) ?? []), item.id]);
+    });
+    const direct = new Map<number, number>();
+    products.forEach((item) => {
+      if (item.categoryId == null) return;
+      direct.set(item.categoryId, (direct.get(item.categoryId) ?? 0) + 1);
+    });
+    const cache = new Map<number, number>();
+    const walk = (id: number): number => {
+      const seen = cache.get(id);
+      if (seen != null) return seen;
+      const total =
+        (direct.get(id) ?? 0) +
+        (children.get(id) ?? []).reduce((sum, child) => sum + walk(child), 0);
+      cache.set(id, total);
+      return total;
+    };
+    return walk;
+  }, [categories, products]);
+
+  const inBranch = useMemo(() => {
+    const parents = new Map(categories.map((item) => [item.id, item.parentId]));
+    return (productCategory: number | undefined, branch: number): boolean => {
+      let current = productCategory ?? null;
+      while (current != null) {
+        if (current === branch) return true;
+        current = parents.get(current) ?? null;
+      }
+      return false;
+    };
+  }, [categories]);
+
+  const roots = useMemo(
+    () =>
+      categories
+        .filter((item) => item.parentId == null && countIn(item.id) > 0)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+    [categories, countIn],
+  );
+
+  const childrenOf = (parent: number) =>
+    categories
+      .filter((item) => item.parentId === parent && countIn(item.id) > 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  // Поиск сильнее любого фильтра: человек, стоящий в «Фикусах» и набравший
+  // «монстера», имеет в виду растение, а не «в этой ветке ничего нет».
   const found = useMemo(
     () => (searching ? searchProducts(products, query) : products),
     [products, query, searching],
@@ -143,20 +170,18 @@ export default function StorefrontPage() {
 
   const visible = useMemo(() => {
     let list = found;
-    if (!searching) {
-      list = list.filter((item) => item.catalogSection === section);
-      if (collection) {
-        list = list.filter((item) => (item.collections ?? []).includes(collection));
-      }
+    if (!searching && category != null) {
+      list = list.filter((item) => inBranch(item.categoryId, category));
     }
-    if (light) list = list.filter((item) => item.lightLevel === light);
-    if (size) list = list.filter((item) => item.heightClass === size);
-    if (maxPrice > 0) list = list.filter((item) => item.price <= maxPrice);
+    if (preset) {
+      const rule = presets.find((item) => item.id === preset);
+      if (rule) list = list.filter(rule.match);
+    }
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
     return list;
-  }, [found, searching, section, collection, light, size, maxPrice, inStockOnly, sort]);
+  }, [found, searching, category, inBranch, preset, inStockOnly, sort]);
 
   const hints = useMemo(
     () => (suggestOpen && searching ? suggestions(products, query) : []),
@@ -180,21 +205,10 @@ export default function StorefrontPage() {
       return next;
     });
 
-  const resetFilters = () => {
-    setLight("");
-    setSize("");
-    setMaxPrice(0);
-    setInStockOnly(false);
-    setCollection("");
-  };
-
-  const filtersActive = Boolean(light || size || maxPrice || inStockOnly || collection);
-
   return (
     <main className="storefront">
-      {/* No search in the header here: the bar right below it is the one
-          thing this page is built around, and two boxes on one screen only
-          make the customer wonder which of them works. */}
+      {/* Поиска в шапке здесь нет: строка под ней — то, вокруг чего собрана
+          страница, а два поля на одном экране заставляют гадать. */}
       <StoreHeader
         cartCount={cartCount}
         favoritesCount={favorites.size}
@@ -231,7 +245,7 @@ export default function StorefrontPage() {
                   }}
                 >
                   <b>{hint.name}</b>
-                  <span>{hint.latin || sections.find(([id]) => id === hint.catalogSection)?.[1]}</span>
+                  <span>{hint.latin}</span>
                 </button>
               ))}
             </div>
@@ -239,57 +253,57 @@ export default function StorefrontPage() {
         </div>
       </div>
 
-      <TrustRow />
-
       <section className="storefront-shell">
         <aside className="storefront-side">
           <p className="storefront-side-title">Каталог</p>
-          <nav className="storefront-sections">
-            {sections.map(([id, title]) => (
-              <button
-                key={id}
-                className={!searching && section === id ? "active" : ""}
-                onClick={() => {
-                  setQuery("");
-                  setSection(id);
-                  setCollection("");
-                }}
-              >
-                {title}
-              </button>
+          <nav className="storefront-tree">
+            <button
+              className={category == null ? "active" : ""}
+              onClick={() => {
+                setQuery("");
+                setCategory(null);
+              }}
+            >
+              <span>Весь каталог</span>
+              <small>{products.length}</small>
+            </button>
+            {roots.map((root) => (
+              <div key={root.id}>
+                <button
+                  className={category === root.id ? "active" : ""}
+                  aria-expanded={opened === root.id}
+                  onClick={() => {
+                    setQuery("");
+                    setCategory(root.id);
+                    setOpened(opened === root.id ? null : root.id);
+                  }}
+                >
+                  <span>
+                    {childrenOf(root.id).length > 0 && (
+                      <i className={opened === root.id ? "twist open" : "twist"} aria-hidden="true">›</i>
+                    )}
+                    {root.name}
+                  </span>
+                  <small>{countIn(root.id)}</small>
+                </button>
+                {opened === root.id &&
+                  childrenOf(root.id).map((child) => (
+                    <button
+                      key={child.id}
+                      className={category === child.id ? "child active" : "child"}
+                      onClick={() => {
+                        setQuery("");
+                        setCategory(child.id);
+                      }}
+                    >
+                      <span>{child.name}</span>
+                      <small>{countIn(child.id)}</small>
+                    </button>
+                  ))}
+              </div>
             ))}
           </nav>
 
-          <p className="storefront-side-title">Фильтры</p>
-          <label className="storefront-filter">
-            Свет
-            <select value={light} onChange={(event) => setLight(event.target.value)}>
-              <option value="">любой</option>
-              {Object.entries(lightLabels).map(([id, title]) => (
-                <option key={id} value={id}>{title}</option>
-              ))}
-            </select>
-          </label>
-          <label className="storefront-filter">
-            Размер
-            <select value={size} onChange={(event) => setSize(event.target.value)}>
-              <option value="">любой</option>
-              {Object.entries(sizeLabels).map(([id, title]) => (
-                <option key={id} value={id}>{title}</option>
-              ))}
-            </select>
-          </label>
-          <label className="storefront-filter">
-            Цена до, ₽
-            <input
-              type="number"
-              min="0"
-              step="100"
-              value={maxPrice || ""}
-              onChange={(event) => setMaxPrice(Number(event.target.value) || 0)}
-              placeholder="без ограничений"
-            />
-          </label>
           <label className="storefront-check">
             <input
               type="checkbox"
@@ -298,33 +312,10 @@ export default function StorefrontPage() {
             />
             Только в наличии
           </label>
-          {filtersActive && (
-            <button className="storefront-reset" onClick={resetFilters}>Сбросить фильтры</button>
-          )}
         </aside>
 
         <div className="storefront-main">
-          {!searching && collections.length > 0 && (
-            <div className="storefront-tabs" role="tablist">
-              <button
-                className={collection === "" ? "active" : ""}
-                onClick={() => setCollection("")}
-              >
-                Все
-              </button>
-              {collections.map((item) => (
-                <button
-                  key={item.slug}
-                  className={collection === item.slug ? "active" : ""}
-                  onClick={() => setCollection(item.slug)}
-                  title={item.note}
-                >
-                  {item.title}
-                  <small>{item.count}</small>
-                </button>
-              ))}
-            </div>
-          )}
+          <CollectionStrip products={products} active={preset} onPick={setPreset} />
 
           <div className="storefront-head">
             <p>
@@ -343,13 +334,22 @@ export default function StorefrontPage() {
 
           {!loading && !error && visible.length === 0 && (
             <div className="storefront-empty">
-              <strong>{searching ? "Ничего не нашли" : "В этом разделе пока пусто"}</strong>
+              <strong>{searching ? "Ничего не нашли" : "Здесь пока пусто"}</strong>
               <p>
                 {searching
                   ? "Проверьте написание или поищите короче — например, «фикус» вместо «фикус бенджамина большой»."
-                  : "Загляните в другой раздел или сбросьте фильтры."}
+                  : "Выберите другую ветку каталога или снимите подборку."}
               </p>
-              {searching && <button onClick={() => setQuery("")}>Показать весь каталог</button>}
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setPreset("");
+                  setCategory(null);
+                  setInStockOnly(false);
+                }}
+              >
+                Показать весь каталог
+              </button>
             </div>
           )}
 
