@@ -168,7 +168,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 
 	var handler http.Handler = mux
 	if dependencies.StaticDir != "" {
-		handler = spaFallback(mux, dependencies.StaticDir)
+		handler = spaFallback(mux, dependencies.StaticDir, sitemapHandler(logger, dependencies.Catalog))
 	}
 
 	return requestLogger(

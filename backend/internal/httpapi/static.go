@@ -27,12 +27,19 @@ func setStaticCaching(response http.ResponseWriter, path string) {
 	}
 }
 
-func spaFallback(api http.Handler, staticDir string) http.Handler {
+func spaFallback(api http.Handler, staticDir string, sitemap http.Handler) http.Handler {
 	files := http.FileServer(http.Dir(staticDir))
 
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if strings.HasPrefix(request.URL.Path, "/api/") {
 			api.ServeHTTP(response, request)
+			return
+		}
+
+		// Карту сайта собирает обработчик, а не файл на диске: каталог
+		// меняется каждый день.
+		if request.URL.Path == "/sitemap.xml" && sitemap != nil {
+			sitemap.ServeHTTP(response, request)
 			return
 		}
 
@@ -44,7 +51,8 @@ func spaFallback(api http.Handler, staticDir string) http.Handler {
 		}
 
 		indexPath := filepath.Join(staticDir, "index.html")
-		if _, err := os.Stat(indexPath); err != nil {
+		body, err := os.ReadFile(indexPath)
+		if err != nil {
 			if os.IsNotExist(err) {
 				http.NotFound(response, request)
 				return
@@ -52,6 +60,17 @@ func spaFallback(api http.Handler, staticDir string) http.Handler {
 			http.Error(response, fs.ErrInvalid.Error(), http.StatusInternalServerError)
 			return
 		}
-		http.ServeFile(response, request, indexPath)
+
+		// Приложение рисует страницу в браузере, поэтому выдуманному адресу
+		// отдаётся та же оболочка — но с честным кодом. Иначе поисковик
+		// принимает опечатку в ссылке за настоящую страницу магазина.
+		status := http.StatusOK
+		if !knownAppRoute(request.URL.Path) {
+			status = http.StatusNotFound
+		}
+		response.Header().Set("Content-Type", "text/html; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-cache")
+		response.WriteHeader(status)
+		_, _ = response.Write(body)
 	})
 }
