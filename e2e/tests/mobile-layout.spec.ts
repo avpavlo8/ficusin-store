@@ -33,21 +33,23 @@ test("@phone the counters are readable, not hidden", async ({ page }) => {
   await expect(badges.last()).toHaveText("3");
 });
 
-test("@phone the magnifier opens a search field and filters the catalogue", async ({ page }) => {
+// На витрине поиск на виду, отдельная лупа в шапке была бы вторым полем на
+// одном экране — покупателю оставалось бы гадать, какое из них настоящее.
+test("@phone the storefront search filters the catalogue", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await expect(page.getByText("Аглаонема Мария")).toBeVisible();
+  await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toBeVisible();
 
-  await expect(page.locator(".mobile-search")).toHaveCount(0);
-  await page.locator(".search-toggle").click();
+  await expect(page.locator(".search-toggle")).toHaveCount(0);
 
-  const field = page.locator(".mobile-search input");
+  const field = page.locator(".storefront-search input");
   await expect(field).toBeVisible();
-  await expect(field).toBeFocused();
 
   await field.fill("бенджамина");
-  await expect(page.getByText("Фикус Бенджамина")).toBeVisible();
-  await expect(page.getByText("Аглаонема Мария")).toHaveCount(0);
+  // Смотрим в сетку, а не по всей странице: то же название всплывает и в
+  // подсказках под строкой поиска, а проверяем мы выдачу.
+  await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
+  await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toHaveCount(0);
 });
 
 test("@phone the menu opens and lists the sections", async ({ page }) => {
