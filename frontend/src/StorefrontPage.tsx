@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
+import { TrustRow } from "./TrustRow";
 import { searchProducts, suggestions } from "./lib/search";
 
 type Product = {
@@ -237,6 +238,8 @@ export default function StorefrontPage() {
           )}
         </div>
       </div>
+
+      <TrustRow />
 
       <section className="storefront-shell">
         <aside className="storefront-side">

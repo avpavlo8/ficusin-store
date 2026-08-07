@@ -1,17 +1,25 @@
 :root {
-  --cream: #f5f0e7;
-  --paper: #fbf8f2;
-  --green: #173f32;
-  --green-dark: #0f3026;
-  --terracotta: #c66b45;
+  /* Тёплый светлый фон, белые карточки, тонкие рамки и один глубокий
+     зелёный на все акценты. Оранжевого в палитре больше нет: он спорил с
+     зеленью растений на фотографиях и тянул внимание на себя. */
+  --cream: #f1ece2;
+  --paper: #fbf9f5;
+  --green: #2c4636;
+  --green-dark: #1f3327;
+  /* Терракота осталась переменной, чтобы не переписывать сотню правил, но
+     теперь это тот же зелёный: акцент в магазине один. */
+  --terracotta: #2c4636;
   --sage: #9daa8b;
-  --ink: #242821;
-  --line: #dfd7c9;
+  --ink: #22271f;
+  --line: #e7e2d7;
+  --muted: #7d857b;
+  /* Красный живёт ровно в одном месте — в закрашенном сердце избранного. */
+  --heart: #d8434b;
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--paper); color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
 button, input, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
@@ -20,12 +28,16 @@ img { display: block; max-width: 100%; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 
-.announcement { min-height: 34px; padding: 8px 5vw; display: flex; justify-content: space-between; gap: 16px; background: var(--green); color: #f8f3ea; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
-.header { height: 88px; padding: 0 5vw; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: rgba(245,240,231,.96); position: sticky; top: 0; z-index: 30; border-bottom: 1px solid rgba(23,63,50,.1); backdrop-filter: blur(12px); }
-.brand { display: inline-flex; align-items: center; gap: 12px; color: var(--green); font-size: clamp(22px, 2vw, 30px); font-weight: 600; width: max-content; }
-.brand-mark { width: 36px; height: 46px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 80% 20% 80% 20%; transform: rotate(-18deg); font: 600 26px/1 Georgia, serif; }
+.announcement { min-height: 34px; padding: 9px 5vw; display: flex; justify-content: space-between; gap: 16px; background: var(--green); color: #eef2ea; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+.header { height: 76px; padding: 0 5vw; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: rgba(251,249,245,.94); position: sticky; top: 0; z-index: 30; border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+.brand { display: inline-flex; align-items: center; gap: 11px; color: var(--green); font-size: clamp(20px, 1.7vw, 26px); font-weight: 600; letter-spacing: .01em; width: max-content; }
+.brand-mark { width: 30px; height: 38px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 80% 20% 80% 20%; transform: rotate(-18deg); font: 600 21px/1 Georgia, serif; }
+/* Подпись под названием — из макета: она объясняет, чем торгует магазин,
+   раньше это приходилось угадывать по картинкам. */
+.brand-text { display: grid; gap: 1px; }
+.brand-text small { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 9px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
 .desktop-nav { display: flex; gap: 40px; }
-.desktop-nav a { position: relative; padding: 34px 0 31px; font-size: 16px; }
+.desktop-nav a { position: relative; padding: 28px 0 25px; font-size: 15px; }
 .desktop-nav a::after { content: ""; position: absolute; left: 0; right: 100%; bottom: 23px; height: 2px; background: var(--terracotta); transition: right .25s ease; }
 .desktop-nav a:hover::after { right: 0; }
 .header-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
@@ -33,14 +45,14 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .account-button > span:first-child { font-size: 22px; }
 .account-button:hover { background: rgba(23,63,50,.07); }
 .cart-button { height: 42px; padding: 0 8px 0 16px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--green); border-radius: 99px; background: transparent; cursor: pointer; }
-.cart-button b { min-width: 26px; height: 26px; display: grid; place-items: center; background: var(--terracotta); color: white; border-radius: 50%; font-size: 12px; }
+.cart-button b { min-width: 24px; height: 24px; display: grid; place-items: center; background: var(--green); color: white; border-radius: 50%; font-size: 12px; }
 .menu-button { display: none; }
 
 .hero { min-height: calc(100vh - 122px); display: grid; grid-template-columns: 48% 52%; background: var(--cream); overflow: hidden; }
 .eyebrow { margin-bottom: 18px; color: var(--terracotta); font-size: 12px; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; }
 .hero h1 { max-width: 760px; margin-bottom: 32px; color: var(--green); font-size: clamp(56px, 6.1vw, 94px); font-weight: 400; line-height: .94; letter-spacing: -.045em; }
-.primary-button, .secondary-button { min-height: 58px; padding: 16px 28px; display: inline-flex; align-items: center; justify-content: center; gap: 32px; border: 0; border-radius: 18px; background: var(--green); color: white; font-weight: 700; cursor: pointer; transition: transform .2s ease, background .2s ease; }
-.primary-button:hover, .secondary-button:hover { transform: translateY(-2px); background: var(--green-dark); }
+.primary-button, .secondary-button { min-height: 48px; padding: 13px 24px; display: inline-flex; align-items: center; justify-content: center; gap: 14px; border: 0; border-radius: 10px; background: var(--green); color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .2s ease; }
+.primary-button:hover, .secondary-button:hover { background: var(--green-dark); }
 .text-link { padding-bottom: 5px; border-bottom: 1px solid var(--ink); }
 
 .catalog-section, .delivery-section { padding: 110px 5vw; }
@@ -52,7 +64,7 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .filters button.active { background: var(--green); border-color: var(--green); color: white; }
 .product-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 34px 18px; }
 .product-card { min-width: 0; display: flex; flex-direction: column; }
-.product-image { display: block; flex: none; position: relative; aspect-ratio: 1/1.08; overflow: hidden; border-radius: 20px; background: var(--cream); }
+.product-image { display: block; flex: none; position: relative; aspect-ratio: 1/1.08; overflow: hidden; border-radius: 14px; background: var(--cream); }
 .product-image img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
 .product-card:hover .product-image img { transform: scale(1.035); }
 .badge { position: absolute; left: 14px; top: 14px; padding: 7px 11px; border-radius: 99px; background: var(--terracotta); color: white; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -94,13 +106,14 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .delivery-grid h3 { margin: 40px 0 10px; font: 400 22px Georgia, serif; }
 .delivery-grid p { min-height: 44px; color: #6e776f; line-height: 1.5; font-size: 14px; }
 .delivery-grid b { color: var(--green); font-size: 14px; }
-footer { padding: 70px 5vw 30px; display: grid; grid-template-columns: 2fr repeat(3,1fr); gap: 40px; background: #132f27; color: #f4eee5; }
-footer h3 { margin-bottom: 18px; color: #c8d3cc; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
-footer > div:not(.footer-brand) { display: flex; flex-direction: column; gap: 11px; font-size: 14px; }
-.footer-brand p { margin-top: 22px; color: #aebcb4; line-height: 1.6; }
-footer .brand { color: white; }
-footer .brand-mark { border-color: white; }
-footer small { grid-column: 1/-1; margin-top: 45px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.13); color: #8fa198; }
+/* Подвал светлый, как и вся страница: тёмная плита внизу обрубала её и
+   спорила с фотографиями растений. */
+footer { padding: 56px 5vw 26px; display: grid; grid-template-columns: 2fr repeat(3,1fr); gap: 40px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--line); }
+footer h3 { margin-bottom: 16px; color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+footer > div:not(.footer-brand) { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+footer a:hover { color: var(--green); }
+.footer-brand p { margin-top: 20px; color: var(--muted); line-height: 1.6; }
+footer small { grid-column: 1/-1; margin-top: 38px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); }
 
 .overlay { position: fixed; inset: 0; z-index: 60; border: 0; background: rgba(20,30,25,.48); backdrop-filter: blur(3px); }
 .drawer, .checkout, .mobile-menu { position: fixed; top: 0; right: 0; bottom: 0; z-index: 70; width: min(520px,100%); padding: 30px; display: flex; flex-direction: column; background: var(--paper); transform: translateX(102%); transition: transform .32s ease; box-shadow: -20px 0 60px rgba(15,48,38,.16); }
@@ -919,3 +932,27 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 .admin-collection-list input { width: 16px; height: 16px; accent-color: var(--green); }
 .admin-collection-list span { flex: 1; }
 .admin-collection-list small { color: #8b938b; font-size: 12px; }
+
+/* Плашки доверия из макета: четыре обещания магазина одной строкой.
+   Стоят под поиском, где покупатель решает, оставаться ли ему здесь. */
+.trust-row { max-width: 1280px; margin: 16px auto 0; padding: 16px 20px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.trust-item { display: flex; align-items: center; gap: 12px; }
+.trust-item span { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--cream); font-size: 17px; }
+.trust-item b { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+.trust-item small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+
+@media (max-width: 900px) {
+  .trust-row { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 16px 0; gap: 14px; }
+}
+@media (max-width: 520px) {
+  .trust-row { grid-template-columns: 1fr; }
+}
+
+/* Карточки витрины под макет: рамка тоньше, скругление мягче, картинка
+   лежит на тёплой подложке, а не на белом. */
+.storefront-card { border-radius: 14px; }
+.storefront-image { border-radius: 12px; background: var(--cream); }
+.storefront-buy button { border-radius: 9px; }
+.storefront-fav.active { color: var(--heart); }
+.storefront-search input { border-radius: 10px; }
+.storefront-tabs button { border-radius: 99px; }
