@@ -66,3 +66,64 @@ func TestSitemapSurvivesCatalogFailure(t *testing.T) {
 		t.Error("статические страницы пропали вместе с каталогом")
 	}
 }
+
+type productMetaStub struct {
+	detail catalog.ProductDetail
+	err    error
+}
+
+func (stub productMetaStub) DetailBySlug(context.Context, string) (catalog.ProductDetail, error) {
+	return stub.detail, stub.err
+}
+
+func TestProductMetaFillsTitleAndSchema(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	shell := []byte(`<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body></body></html>`)
+	page := string(withProductMeta(
+		context.Background(), logger,
+		productMetaStub{detail: catalog.ProductDetail{
+			Name:     "Монстера Делициоза",
+			Latin:    "Monstera deliciosa",
+			Images:   []string{"https://example.test/monstera.jpg"},
+			Variants: []catalog.Variant{{Price: 1290, Stock: 3}},
+		}},
+		"https://ficusin.ru", "monstera", shell,
+	))
+	for _, want := range []string{
+		"<title>Монстера Делициоза",
+		`"@type":"Product"`,
+		`"price":"1290.00"`,
+		"schema.org/InStock",
+		`rel="canonical" href="https://ficusin.ru/product/monstera"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("в странице нет %q", want)
+		}
+	}
+}
+
+// Ненайденный товар — обычное дело: ссылка могла устареть. Страница должна
+// открыться с общим заголовком магазина, а не сломаться.
+func TestProductMetaLeavesShellWhenMissing(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	shell := []byte("<html><head><title>Фикусин</title></head></html>")
+	page := withProductMeta(
+		context.Background(), logger,
+		productMetaStub{err: catalog.ErrNotFound},
+		"https://ficusin.ru", "нет-такого", shell,
+	)
+	if string(page) != string(shell) {
+		t.Fatalf("оболочку изменили: %s", page)
+	}
+}
+
+func TestProductSlugFromPath(t *testing.T) {
+	if got := productSlug("/product/monstera-d12"); got != "monstera-d12" {
+		t.Errorf("ожидали monstera-d12, получили %q", got)
+	}
+	for _, path := range []string{"/", "/product/", "/product/a/b", "/favorites"} {
+		if got := productSlug(path); got != "" {
+			t.Errorf("%s не карточка товара, а вернулось %q", path, got)
+		}
+	}
+}

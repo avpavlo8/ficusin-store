@@ -1,10 +1,17 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
+	"errors"
+	"html"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
@@ -95,4 +102,132 @@ func siteBase(request *http.Request) string {
 		scheme = "http"
 	}
 	return scheme + "://" + request.Host
+}
+
+
+// ——— Заголовки карточки товара ———
+//
+// Страница собирается в браузере, поэтому в HTML у всех адресов лежал один
+// заголовок на весь магазин: карточка фикуса в выдаче выглядела так же, как
+// главная. Поисковику этого хватает, чтобы не показать товар по запросу с его
+// названием. Здесь сервер подменяет заголовок, описание и добавляет разметку
+// с ценой и наличием — по ней цену показывают прямо в результатах поиска.
+
+type productMetaCatalog interface {
+	DetailBySlug(context.Context, string) (catalog.ProductDetail, error)
+}
+
+var (
+	titlePattern       = regexp.MustCompile(`(?s)<title>.*?</title>`)
+	descriptionPattern = regexp.MustCompile(`<meta name="description" content="[^"]*"`)
+)
+
+func productSlug(path string) string {
+	if !strings.HasPrefix(path, "/product/") {
+		return ""
+	}
+	slug := strings.TrimPrefix(path, "/product/")
+	if slug == "" || strings.Contains(slug, "/") {
+		return ""
+	}
+	if decoded, err := url.PathUnescape(slug); err == nil {
+		return decoded
+	}
+	return slug
+}
+
+func withProductMeta(
+	ctx context.Context,
+	logger *slog.Logger,
+	repository productMetaCatalog,
+	base, slug string,
+	shell []byte,
+) []byte {
+	if repository == nil || slug == "" {
+		return shell
+	}
+	detail, err := repository.DetailBySlug(ctx, slug)
+	if err != nil {
+		// Ненайденный товар — обычное дело: ссылка могла устареть. Страница
+		// всё равно откроется, просто с общим заголовком магазина.
+		if !errors.Is(err, catalog.ErrNotFound) {
+			logger.Error("product meta failed", "slug", slug, "error", err)
+		}
+		return shell
+	}
+	if detail.Name == "" {
+		return shell
+	}
+
+	title := detail.Name + " — купить с доставкой по России | Фикусин"
+	description := strings.TrimSpace(detail.ShortDescription)
+	if description == "" {
+		description = detail.Name + ": комнатное растение с доставкой по всей России. Бережная упаковка, живые растения из питомников."
+	}
+	image := ""
+	if len(detail.Images) > 0 {
+		image = detail.Images[0]
+	}
+
+	price, available := 0.0, false
+	for _, variant := range detail.Variants {
+		if price == 0 || variant.Price < price {
+			price = variant.Price
+		}
+		if variant.Stock > 0 {
+			available = true
+		}
+	}
+	availability := "https://schema.org/PreOrder"
+	if available {
+		availability = "https://schema.org/InStock"
+	}
+
+	offer := map[string]any{
+		"@type":         "Offer",
+		"priceCurrency": "RUB",
+		"availability":  availability,
+		"url":           base + "/product/" + slug,
+	}
+	if price > 0 {
+		offer["price"] = strconv.FormatFloat(price, 'f', 2, 64)
+	}
+	structured := map[string]any{
+		"@context":    "https://schema.org",
+		"@type":       "Product",
+		"name":        detail.Name,
+		"description": description,
+		"offers":      offer,
+	}
+	if detail.Latin != "" {
+		structured["alternateName"] = detail.Latin
+	}
+	if image != "" {
+		structured["image"] = image
+	}
+	// json.Marshal экранирует «<», поэтому чужое описание не сможет закрыть
+	// тег script и подсунуть свой код.
+	encoded, err := json.Marshal(structured)
+	if err != nil {
+		logger.Error("product schema failed", "slug", slug, "error", err)
+		encoded = nil
+	}
+
+	head := strings.Builder{}
+	head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+"/product/"+slug) + "\">\n")
+	head.WriteString(`<meta property="og:type" content="product">` + "\n")
+	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(title) + "\">\n")
+	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(description) + "\">\n")
+	if image != "" {
+		head.WriteString(`<meta property="og:image" content="` + html.EscapeString(image) + "\">\n")
+	}
+	if encoded != nil {
+		head.WriteString(`<script type="application/ld+json">` + string(encoded) + "</script>\n")
+	}
+
+	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
+	page = descriptionPattern.ReplaceAll(
+		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+"\""),
+	)
+	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
 }
