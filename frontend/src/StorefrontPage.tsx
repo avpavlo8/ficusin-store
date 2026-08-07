@@ -23,7 +23,9 @@ type Product = {
 };
 
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
-type Node = { id: number; name: string; count: number; children: Node[] };
+// Не Node: так называется узел DOM, и подмена ломает проверку клика мимо
+// подсказок поиска.
+type CategoryNode = { id: number; name: string; count: number; children: CategoryNode[] };
 type Cart = Record<string, number>;
 
 const money = (value: number) =>
@@ -130,7 +132,7 @@ export default function StorefrontPage() {
     const order = (list: Category[]) =>
       [...list].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 
-    const build = (item: Category): Node => {
+    const build = (item: Category): CategoryNode => {
       let children = order(kids.get(item.id) ?? []);
       while (children.length === 1 && (direct.get(children[0].id) ?? 0) === 0) {
         children = order(kids.get(children[0].id) ?? []);
@@ -195,7 +197,7 @@ export default function StorefrontPage() {
       return next;
     });
 
-  const branch = (node: Node, depth: number) => (
+  const branch = (node: CategoryNode, depth: number) => (
     <div key={node.id}>
       <button
         className={category === node.id ? "active" : ""}
