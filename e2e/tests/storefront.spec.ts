@@ -65,7 +65,10 @@ test("@desktop товар без остатка идёт как предзака
 
   const card = page.locator(".storefront-card", { hasText: "Монстера Делициоза" });
   await expect(card).toHaveClass(/preorder/);
-  await expect(card.getByText("Под заказ", { exact: false })).toBeVisible();
+  // «Под заказ» на карточке написано дважды — подписью и на кнопке, поэтому
+  // проверяем каждое место отдельно, а не по тексту вообще.
+  await expect(card.locator(".storefront-preorder")).toContainText("срок уточнит менеджер");
+  await expect(card.getByRole("button", { name: "Под заказ" })).toBeVisible();
 
   // Магазин, прячущий то, что кончилось, теряет продажу дважды: покупатель не
   // видит растения и никто не узнаёт, что его хотели.
