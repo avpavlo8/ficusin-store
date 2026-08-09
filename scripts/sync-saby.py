@@ -72,46 +72,83 @@ try:
 
     stage = "saby-catalog"
 
-    def load(with_price_list):
-        # Прайс-лист сужает выдачу до продаваемых позиций с ценой. Он нужен
-        # для витрины, но не годится для справочника: товар, которого в этом
-        # прайс-листе нет, менеджер всё равно должен уметь завести по коду.
-        # Поэтому ходим дважды и склеиваем, отдавая предпочтение позиции с
-        # ценой.
+    # Каталог отдаётся по одному уровню за раз: без folder приходят только
+    # записи корня — папки и то, что лежит рядом с ними. Позиция внутри
+    # «Грунта» или «Горшков» так не появится никогда, за ней нужно
+    # спуститься в раздел отдельным запросом. Поэтому обходим дерево
+    # целиком, а внутри раздела листаем курсором: постраничная навигация
+    # упирается в потолок каталога, курсорная — нет.
+    def request_page(query):
+        request = urllib.request.Request(
+            "https://api.sbis.ru/retail/v2/nomenclature/list?"
+            + urllib.parse.urlencode(query),
+            headers={"X-SBISAccessToken": saby_token},
+        )
+        result = request_json(request)
+        return (
+            result.get("nomenclatures")
+            or result.get("items")
+            or result.get("result")
+            or []
+        )
+
+    def load_section(base_query, folder, seen_folders, depth):
         collected = []
-        for page in range(20):
-            query = {
-                "pointId": os.environ["SABY_POINT_ID"],
-                "withBalance": "true",
-                "withBarcode": "true",
-                "pageSize": 1000,
-                "page": page,
-            }
-            if with_price_list:
-                query["priceListId"] = os.environ["SABY_PRICE_LIST_ID"]
-                query["noStopList"] = "true"
-            request = urllib.request.Request(
-                "https://api.sbis.ru/retail/v2/nomenclature/list?"
-                + urllib.parse.urlencode(query),
-                headers={"X-SBISAccessToken": saby_token},
-            )
-            result = request_json(request)
-            items = (
-                result.get("nomenclatures")
-                or result.get("items")
-                or result.get("result")
-                or []
-            )
-            collected.extend(items)
-            outcome = result.get("outcome")
-            has_more = outcome is True or (
-                isinstance(outcome, dict) and bool(outcome.get("hasMore"))
-            )
-            if not items or not has_more:
+        known = set()
+        position = None
+        for _ in range(200):
+            query = dict(base_query)
+            if folder is not None:
+                query["folder"] = folder
+            if position is not None:
+                query["position"] = position
+                query["order"] = "after"
+            fresh = [
+                item
+                for item in request_page(query)
+                if item.get("hierarchicalId") not in known
+            ]
+            if not fresh:
+                break
+            for item in fresh:
+                known.add(item.get("hierarchicalId"))
+            collected.extend(fresh)
+            position = fresh[-1].get("hierarchicalId")
+            if position is None:
                 break
         else:
             raise RuntimeError("pagination limit")
+
+        if depth >= 8:
+            return collected
+        for item in list(collected):
+            section = item.get("hierarchicalId")
+            if not item.get("isParent") or section is None:
+                continue
+            if section in seen_folders:
+                continue
+            seen_folders.add(section)
+            collected.extend(
+                load_section(base_query, section, seen_folders, depth + 1)
+            )
         return collected
+
+    # Прайс-лист сужает выдачу до продаваемых позиций с ценой. Он нужен
+    # для витрины, но не годится для справочника: товар, которого в этом
+    # прайс-листе нет, менеджер всё равно должен уметь завести по коду.
+    # Поэтому ходим дважды и склеиваем, отдавая предпочтение позиции с
+    # ценой.
+    def load(with_price_list):
+        query = {
+            "pointId": os.environ["SABY_POINT_ID"],
+            "withBalance": "true",
+            "withBarcode": "true",
+            "pageSize": 1000,
+        }
+        if with_price_list:
+            query["priceListId"] = os.environ["SABY_PRICE_LIST_ID"]
+            query["noStopList"] = "true"
+        return load_section(query, None, set(), 0)
 
     by_id = {}
     for item in load(False):
