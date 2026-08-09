@@ -1,8 +1,16 @@
 package saby
 
+// CatalogItem — позиция номенклатуры, как её присылает выгрузка из СБИС.
+//
+// Поля с кодами приняты как any: СБИС отдаёт их то строкой, то числом, и
+// строгий тип уронил бы разбор всей выгрузки из-за одной позиции.
 type CatalogItem struct {
 	ID          any      `json:"id"`
-	Article     string   `json:"article"`
+	Article     any      `json:"article"`
+	Code        any      `json:"code"`
+	ExternalID  any      `json:"externalId"`
+	NomNumber   any      `json:"nomNumber"`
+	Barcode     any      `json:"barcode"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Cost        any      `json:"cost"`
