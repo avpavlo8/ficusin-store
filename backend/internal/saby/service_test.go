@@ -4,18 +4,20 @@ import "testing"
 
 // Код товара в выгрузке зовётся по-разному, а менеджер ищет позицию именно
 // по нему. Берём первое непустое и не придумываем ничего лишнего.
-func TestItemCodeTakesFirstFilled(t *testing.T) {
+// Код товара менеджер видит в СБИС и по нему же ищет позицию. Внутренние
+// идентификаторы за код не выдаём: с ними поиск по коду перестал бы
+// работать вовсе.
+func TestItemCodePrefersHumanNumber(t *testing.T) {
 	cases := []struct {
 		name string
 		item CatalogItem
 		want string
 	}{
-		{"код", CatalogItem{Code: "X1150532", Article: "ART-1"}, "X1150532"},
-		{"внешний номер", CatalogItem{ExternalID: "X1150532"}, "X1150532"},
-		{"номенклатурный номер", CatalogItem{NomNumber: "X1150532"}, "X1150532"},
+		{"номенклатурный номер", CatalogItem{NomNumber: "X1150532", Code: "17460b69-327e-4ec4-aabb-f064710a135a"}, "X1150532"},
+		{"GUID отбрасываем", CatalogItem{Code: "17460b69-327e-4ec4-aabb-f064710a135a"}, ""},
 		{"остался артикул", CatalogItem{Article: "ART-1"}, "ART-1"},
 		{"пусто", CatalogItem{}, ""},
-		{"число вместо строки", CatalogItem{Code: float64(1150532)}, "1150532"},
+		{"число вместо строки", CatalogItem{NomNumber: float64(1150532)}, "1150532"},
 	}
 	for _, item := range cases {
 		if got := itemCode(item.item); got != item.want {
@@ -24,9 +26,20 @@ func TestItemCodeTakesFirstFilled(t *testing.T) {
 	}
 }
 
+func TestLooksLikeGUID(t *testing.T) {
+	if !looksLikeGUID("17460b69-327e-4ec4-aabb-f064710a135a") {
+		t.Error("настоящий GUID не опознан")
+	}
+	for _, value := range []string{"X1150532", "", "17460b69327e4ec4aabbf064710a135a", "17460b69-327e-4ec4-aabb-f064710a135z"} {
+		if looksLikeGUID(value) {
+			t.Errorf("%q принят за GUID", value)
+		}
+	}
+}
+
 func TestNormalizeKeepsCodes(t *testing.T) {
 	items := normalizeItems([]CatalogItem{{
-		ID: "42", Code: "X1150532", Article: "ART-1", Barcode: "4600000000001",
+		ID: "42", NomNumber: "X1150532", Article: "ART-1", Barcode: "4600000000001",
 		Name: "Аглаонема", Cost: 1490.0, Balance: 3.0,
 	}})
 	if len(items) != 1 {

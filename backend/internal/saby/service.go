@@ -342,14 +342,41 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 }
 
 // itemCode — тот самый «код товара», по которому менеджер ищет позицию в
-// СБИС. Называется он в выгрузке по-разному, поэтому берём первое непустое.
+// СБИС (вида X1150532). Лежит он в nomNumber; соседние поля заняты
+// внутренними идентификаторами, поэтому берём их лишь как запасной вариант.
+//
+// Опознаваемые GUID отбрасываем совсем: такой код человеку ни о чём не
+// говорит, а в поиске по коду только мешает — он побеждал бы настоящий
+// номер просто потому, что заполнен.
 func itemCode(item CatalogItem) string {
-	for _, candidate := range []any{item.Code, item.ExternalID, item.NomNumber, item.Article} {
-		if value := valueString(candidate); value != "" {
+	for _, candidate := range []any{item.NomNumber, item.Code, item.ExternalID, item.Article} {
+		value := valueString(candidate)
+		if value != "" && !looksLikeGUID(value) {
 			return value
 		}
 	}
 	return ""
+}
+
+func looksLikeGUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, symbol := range value {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			if symbol != '-' {
+				return false
+			}
+			continue
+		}
+		hex := (symbol >= '0' && symbol <= '9') ||
+			(symbol >= 'a' && symbol <= 'f') ||
+			(symbol >= 'A' && symbol <= 'F')
+		if !hex {
+			return false
+		}
+	}
+	return true
 }
 
 func valueString(value any) string {
