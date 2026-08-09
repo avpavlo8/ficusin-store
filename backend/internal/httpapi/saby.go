@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
@@ -38,11 +39,25 @@ func sabyCatalogSyncHandler(logger *slog.Logger, service sabySyncService) http.H
 
 		var body struct {
 			Items []saby.CatalogItem `json:"items"`
+			// Sample — одна позиция выгрузки целиком, полями и значениями.
+			// Нужна ровно для одного: найти, в каком поле СБИС держит код
+			// товара, который менеджер видит глазами. Уберём, как найдём.
+			Sample map[string]string `json:"sample"`
 		}
 		if err := decodeJSONWithLimit(request, &body, 16<<20); err != nil ||
 			body.Items == nil || len(body.Items) > 2000 {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный каталог"})
 			return
+		}
+		if len(body.Sample) > 0 {
+			// Панель хостинга показывает только текст сообщения, поэтому
+			// поля перечисляем прямо в нём.
+			names := make([]string, 0, len(body.Sample))
+			for name, value := range body.Sample {
+				names = append(names, name+"="+value)
+			}
+			sort.Strings(names)
+			logger.Info("поля выгрузки СБИС: " + strings.Join(names, " | "))
 		}
 		result, err := service.Sync(request.Context(), body.Items)
 		if err != nil {
