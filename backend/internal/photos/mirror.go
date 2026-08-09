@@ -89,7 +89,10 @@ func (mirror *Mirror) Pass(ctx context.Context) (int, error) {
 		if err := mirror.One(ctx, source); err != nil {
 			// Неудача одного снимка не повод бросать остальные: у поставщика
 			// попадаются битые ссылки, и из-за одной очередь встанет навсегда.
-			mirror.logger.Warn("снимок не перенесён", "source", source, "error", err)
+			// Причина идёт в сам текст сообщения, а не в поле: панель хостинга
+			// показывает только текст и поля отбрасывает, а разбираться
+			// вслепую в чужой неудаче невозможно.
+			mirror.logger.Warn("снимок не перенесён: " + err.Error() + " (" + source + ")")
 			if failErr := mirror.store.Fail(ctx, source, err.Error()); failErr != nil {
 				return moved, failErr
 			}
