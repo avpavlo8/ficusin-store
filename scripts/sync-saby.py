@@ -84,7 +84,14 @@ try:
             + urllib.parse.urlencode(query),
             headers={"X-SBISAccessToken": saby_token},
         )
-        result = request_json(request)
+        try:
+            result = request_json(request)
+        except urllib.error.HTTPError as error:
+            print(
+                "saby request failed: %s %s"
+                % (error.code, urllib.parse.urlencode(query))
+            )
+            raise
         return (
             result.get("nomenclatures")
             or result.get("items")
@@ -100,7 +107,9 @@ try:
             query = dict(base_query)
             if folder is not None:
                 query["folder"] = folder
-            if position is not None:
+            if position is None:
+                query["page"] = 0
+            else:
                 query["position"] = position
                 query["order"] = "after"
             fresh = [
