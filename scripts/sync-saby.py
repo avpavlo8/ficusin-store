@@ -177,11 +177,21 @@ try:
         for item in catalog_items
     ]
 
+    # Разовая диагностика: одна позиция целиком, полями и значениями. Ищем,
+    # в каком поле СБИС держит код товара, который менеджер видит глазами
+    # (вида X1150532). Уберём, как найдём. Данные тут каталожные — название,
+    # цена, остаток; ничего личного в номенклатуре не бывает.
+    sample = {
+        str(key): str(value)[:60]
+        for key, value in catalog_items[0].items()
+        if not isinstance(value, (list, dict))
+    }
+
     stage = "store"
     sync_request = urllib.request.Request(
         os.environ["FICUSIN_SYNC_URL"],
         data=json.dumps(
-            {"items": public_catalog}, ensure_ascii=False
+            {"items": public_catalog, "sample": sample}, ensure_ascii=False
         ).encode("utf-8"),
         headers={
             "X-Ficusin-GitHub-OIDC": oidc_token,
