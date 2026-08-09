@@ -276,13 +276,15 @@ func adminRequest(method, target, body string) *http.Request {
 // Товар заводится в магазине, а не в СБИС: панель должна уметь это без
 // всякой связи с чужой системой.
 func TestCreateProductRequiresName(t *testing.T) {
+	t.Parallel()
+
 	repository := &adminRepositoryStub{}
-	router := NewRouter(discardLogger(), adminDependencies(repository, "owner", "owner@example.com"))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/products", strings.NewReader(`{"name":"  "}`))
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("ожидали 400, получили %d", recorder.Code)
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products", `{"name":"  "}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 	if len(repository.createdProducts) != 0 {
 		t.Fatal("товар без названия всё-таки завели")
@@ -290,14 +292,16 @@ func TestCreateProductRequiresName(t *testing.T) {
 }
 
 func TestCreateProductPasses(t *testing.T) {
+	t.Parallel()
+
 	repository := &adminRepositoryStub{}
-	router := NewRouter(discardLogger(), adminDependencies(repository, "owner", "owner@example.com"))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/products",
-		strings.NewReader(`{"name":"Фикус Бенджамина","priceMinor":149000,"stock":3}`))
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("ожидали 201, получили %d", recorder.Code)
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products",
+		`{"name":"Фикус Бенджамина","priceMinor":149000,"stock":3}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
 	}
 	if len(repository.createdProducts) != 1 || repository.createdProducts[0].Name != "Фикус Бенджамина" {
 		t.Fatalf("до хранилища дошло не то: %+v", repository.createdProducts)
@@ -306,14 +310,15 @@ func TestCreateProductPasses(t *testing.T) {
 
 // Пустой список кодов — это опечатка, а не команда «завести всё подряд».
 func TestImportRefusesEmptyList(t *testing.T) {
+	t.Parallel()
+
 	repository := &adminRepositoryStub{}
-	router := NewRouter(discardLogger(), adminDependencies(repository, "owner", "owner@example.com"))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/products/import",
-		strings.NewReader(`{"codes":[]}`))
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("ожидали 400, получили %d", recorder.Code)
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/import", `{"codes":[]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 	if len(repository.importRequests) != 0 {
 		t.Fatal("пустой импорт всё-таки ушёл в хранилище")
@@ -321,17 +326,19 @@ func TestImportRefusesEmptyList(t *testing.T) {
 }
 
 func TestImportPassesCodesAndSection(t *testing.T) {
+	t.Parallel()
+
 	repository := &adminRepositoryStub{}
-	router := NewRouter(discardLogger(), adminDependencies(repository, "owner", "owner@example.com"))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/products/import",
-		strings.NewReader(`{"codes":["X1150532","X1150533"],"categoryId":4,"dryRun":true}`))
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("ожидали 200, получили %d", recorder.Code)
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/import",
+		`{"codes":["X1150532","X1150533"],"categoryId":4,"dryRun":true}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
 	}
 	if len(repository.importRequests) != 1 {
-		t.Fatalf("ожидали один запрос импорта, получили %d", len(repository.importRequests))
+		t.Fatalf("import calls = %d, want 1", len(repository.importRequests))
 	}
 	got := repository.importRequests[0]
 	if len(got.Codes) != 2 || !got.DryRun || got.CategoryID == nil || *got.CategoryID != 4 {
