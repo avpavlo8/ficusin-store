@@ -28,6 +28,7 @@ const (
 	PaymentsEnabled   = "payments.enabled"
 	TelegramEnabled   = "telegram.enabled"
 	AutoCancelHours   = "orders.auto_cancel_hours"
+	SabyStockEnabled  = "saby.stock_enabled"
 )
 
 // Definition is what the panel needs to draw one setting.
@@ -50,6 +51,12 @@ var Definitions = []Definition{
 		Key:   CDEKOrdersEnabled,
 		Title: "Создавать заказы в СДЭК",
 		Note:  "Выключено — доставка считается и пункты выдачи работают, но отправления в СДЭК не создаются и трек-номера не появляются.",
+		Kind:  "switch",
+	},
+	{
+		Key:   SabyStockEnabled,
+		Title: "Списывать остатки в СБИС",
+		Note:  "Выключено — магазин только записывает в журнал, что он сделал бы с настоящим складом: заказ занимает растение, отгрузка списывает. Наружу ничего не уходит, и это стоит проверить до того, как трогать живой склад.",
 		Kind:  "switch",
 	},
 	{
@@ -92,6 +99,7 @@ var defaults = map[string]string{
 	CDEKOrdersEnabled: "0",
 	TelegramEnabled:   "1",
 	AutoCancelHours:   "24",
+	SabyStockEnabled:  "0",
 	CDEKSenderName:    "",
 	CDEKSenderPhone:   "",
 	CDEKSenderAddress: "",

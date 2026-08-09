@@ -344,6 +344,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}
+	// Заказ занял растения на настоящем складе — записываем это в журнал
+	// движений, даже если наружу, в СБИС, оно пока не уходит.
+	if err := RecordMovement(ctx, transaction, orderID, MovementReserve); err != nil {
+		return Created{}, err
+	}
 	// The agreement is written in the same transaction as the order, so an
 	// order can never exist without the record of the consent behind it.
 	if err := consent.Record(ctx, transaction, consent.Event{
