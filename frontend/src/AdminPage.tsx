@@ -40,11 +40,15 @@ type Product = {
   sku: string; variantLabel: string; heightCm?: number; potDiameterCm?: number;
   packageLengthCm?: number; packageWidthCm?: number; packageHeightCm?: number;
   packageWeightGrams?: number; wholesaleMinQty: number; overrideFields: string[];
+  sabyFields: string[]; sabyCode: string;
   catalogSection: string; plantKind?: string; lightLevel?: string; watering?: string;
   heightClass?: string; careLevel?: string; placement?: string; petSafety?: string;
   growthHabit?: string; sabyUpdatedAt?: string;
   categoryId?: number;
 };
+
+// Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
+const sabyFieldLabels: Record<string, string> = { stock: "остаток", price: "цена", name: "название", description: "описание", photo: "фото" };
 
 const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 });
 const roles: Array<{ value: Role; label: string }> = [
@@ -549,11 +553,14 @@ function Products({ can, onError }: { can: (permission: string) => boolean; onEr
   const [selected, setSelected] = useState<number[]>([]);
   const [editing, setEditing] = useState<Product | null>(null);
   const [syncing, setSyncing] = useState<number[] | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const reload = () => api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError((error as Error).message));
   useEffect(() => { api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError(error.message)); }, [onError]);
   const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
   const replace = (product: Product) => setItems((current) => current.map((item) => item.id === product.id ? product : item));
   return <><PageHeading eyebrow="Каталог" title="Товары" text="Контент сайта, цены, упаковка, публикация и выборочная синхронизация со СБИС" />
-    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название или артикул" /><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Синхронизировать выбранные</button>}</div>
+    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название или артикул" /><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Подтянуть из СБИС</button>}{can("products.edit") && <button onClick={() => setImporting(true)}>Импорт из СБИС</button>}{can("products.edit") && <button className="admin-primary" onClick={() => setCreating(true)}>Новый товар</button>}</div>
     <div className="admin-table-wrap"><table className="admin-table products"><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && filtered.every((item) => selected.includes(item.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((item) => item.id) : [])} /></th><th>Товар</th><th>Цена / остаток</th><th>Публикация</th><th>СБИС</th><th /></tr></thead><tbody>{filtered.map((product) => <tr
       key={product.id}
       className={can("products.edit") ? "clickable" : ""}
@@ -563,10 +570,12 @@ function Products({ can, onError }: { can: (permission: string) => boolean; onEr
       <td><div className="admin-product"><img src={product.image || "/assets/hero-monstera.png"} alt="" /><div><strong>{product.name}</strong><small>{product.sku} · {product.variantLabel}</small><a href={`/product/${product.slug}`} target="_blank" onClick={(event) => event.stopPropagation()}>Открыть карточку ↗</a></div></div></td>
       <td><strong>{money.format(product.price)}</strong><small>В наличии: {product.stock}</small><small>Опт от {product.wholesaleMinQty} шт.</small></td>
       <td><span className={`admin-pill ${product.status}`}>{statusLabels[product.status] || product.status}</span>{product.overrideFields.length > 0 && <small>Изменено вручную: {product.overrideFields.join(", ")}</small>}</td>
-      <td><strong>{product.sabyId ? "Связан" : "Нет связи"}</strong><small>{product.sabyUpdatedAt ? new Date(product.sabyUpdatedAt).toLocaleString("ru-RU") : "Не синхронизировался"}</small>{can("products.sync") && product.sabyId && <button className="text-button" onClick={(event) => { event.stopPropagation(); setSyncing([product.id]); }}>Синхронизировать</button>}</td>
+      <td><strong>{product.sabyId ? (product.sabyCode || "Связан") : "Наш товар"}</strong><small>{product.sabyFields.length ? "Берём: " + product.sabyFields.map((field) => sabyFieldLabels[field] || field).join(", ") : "Ничего не берём"}</small><small>{product.sabyUpdatedAt ? new Date(product.sabyUpdatedAt).toLocaleString("ru-RU") : "Не синхронизировался"}</small>{can("products.sync") && product.sabyId && <button className="text-button" onClick={(event) => { event.stopPropagation(); setSyncing([product.id]); }}>Синхронизировать</button>}</td>
       <td><span className="admin-row-arrow" aria-hidden="true">→</span></td>
     </tr>)}</tbody></table></div>
     {editing && <ProductDialog product={editing} onClose={() => setEditing(null)} onSaved={(product) => { replace(product); setEditing(null); }} onError={onError} />}
+    {creating && <NewProductDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} onError={onError} />}
+    {importing && <ImportDialog onClose={() => setImporting(false)} onImported={() => { setImporting(false); reload(); }} onError={onError} />}
     {syncing && <SyncDialog count={syncing.length} onClose={() => setSyncing(null)} onSync={async (fields) => { try { await api("/api/v1/admin/products/sync", { method: "POST", body: JSON.stringify({ productIds: syncing, fields }) }); const data = await api<{ products: Product[] }>("/api/v1/admin/products"); setItems(data.products); setSelected([]); setSyncing(null); } catch (error) { onError((error as Error).message); } }} />}
   </>;
 }
@@ -589,6 +598,8 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
         plantKind: form.plantKind || "", lightLevel: form.lightLevel || "", watering: form.watering || "",
         heightClass: form.heightClass || "", careLevel: form.careLevel || "", placement: form.placement || "",
         petSafety: form.petSafety || "", growthHabit: form.growthHabit || "",
+        sabyFields: form.sabyFields,
+        ...(form.sabyFields.includes("stock") ? {} : { stock: form.stock }),
       }) }); onSaved(result.product);
     } catch (error) { onError((error as Error).message); }
   };
@@ -610,6 +621,7 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label>Для питомцев<select value={form.petSafety || ""} onChange={(event) => setForm({ ...form, petSafety: event.target.value })}><option value="">Не указано</option>{catalogOptions.petSafety.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Форма роста<select value={form.growthHabit || ""} onChange={(event) => setForm({ ...form, growthHabit: event.target.value })}><option value="">Не указано</option>{catalogOptions.growthHabit.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
+    <label>Остаток, шт.<input type="number" min="0" disabled={form.sabyFields.includes("stock")} value={form.stock} onChange={(event) => setForm({ ...form, stock: Number(event.target.value) })} /></label>
     <label>Оптовый минимум<input type="number" min="1" value={form.wholesaleMinQty} onChange={(event) => setForm({ ...form, wholesaleMinQty: Number(event.target.value) })} /></label>
     <label>Высота растения, см<input type="number" value={number(form.heightCm)} onChange={(event) => setNumeric("heightCm", event.target.value)} /></label>
     <label>Диаметр горшка, см<input type="number" value={number(form.potDiameterCm)} onChange={(event) => setNumeric("potDiameterCm", event.target.value)} /></label>
@@ -617,15 +629,83 @@ function ProductDialog({ product, onClose, onSaved, onError }: { product: Produc
     <label>Ширина, см<input type="number" value={number(form.packageWidthCm)} onChange={(event) => setNumeric("packageWidthCm", event.target.value)} /></label>
     <label>Высота, см<input type="number" value={number(form.packageHeightCm)} onChange={(event) => setNumeric("packageHeightCm", event.target.value)} /></label>
     <label>Вес, г<input type="number" value={number(form.packageWeightGrams)} onChange={(event) => setNumeric("packageWeightGrams", event.target.value)} /></label>
+    {form.sabyId && <div className="wide admin-field"><span className="admin-field-label">Что берём из СБИС</span><div className="sync-options">{Object.entries(sabyFieldLabels).map(([field, label]) => <label key={field}><input type="checkbox" checked={form.sabyFields.includes(field)} onChange={(event) => setForm({ ...form, sabyFields: event.target.checked ? [...form.sabyFields, field] : form.sabyFields.filter((item) => item !== field) })} /><span><strong>{label}</strong></span></label>)}</div></div>}
     <label>Статус<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Черновик</option><option value="published">Опубликован</option><option value="archived">Архив</option></select></label>
     <label className="admin-checkbox"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />Поднимать в начало каталога</label>
-  </div><p className="admin-hint">Габариты упаковки определяют стоимость доставки СДЭК: из коробок всех позиций заказа складывается одна общая. Пока поля пусты, товар считается как коробка 40×25×25 см, 1,5 кг.</p><p className="admin-hint">Ручные изменения защищены от фоновой синхронизации. Вернуть поле к данным СБИС можно кнопкой «Синхронизировать».</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" onClick={save}>Сохранить</button></div></Dialog>;
+  </div><p className="admin-hint">Габариты упаковки определяют стоимость доставки СДЭК: из коробок всех позиций заказа складывается одна общая. Пока поля пусты, товар считается как коробка 40×25×25 см, 1,5 кг.</p><p className="admin-hint">Карточка ваша: обмен с СБИС меняет только те поля, что отмечены выше. Остальное берётся оттуда лишь по кнопке «Подтянуть из СБИС» и только один раз.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" onClick={save}>Сохранить</button></div></Dialog>;
+}
+
+// Карточка, заведённая здесь, с СБИС не связана вовсе: ни цена, ни остаток
+// оттуда не придут, пока товар не импортируют по коду.
+function NewProductDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: () => void; onError: (value: string) => void }) {
+  const [form, setForm] = useState({ name: "", latinName: "", shortDescription: "", description: "", image: "", price: 0, stock: 0, catalogSection: "plants" });
+  const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api("/api/v1/admin/products", { method: "POST", body: JSON.stringify({
+        name: form.name, latinName: form.latinName, shortDescription: form.shortDescription,
+        description: form.description, image: form.image, catalogSection: form.catalogSection,
+        categoryId, priceMinor: Math.round(form.price * 100), stock: form.stock,
+      }) });
+      onCreated();
+    } catch (error) { onError((error as Error).message); setSaving(false); }
+  };
+  return <Dialog title="Новый товар" onClose={onClose}><div className="admin-form-grid product-form">
+    <label className="wide">Название<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Фикус Бенджамина" /></label>
+    <label>Латинское название<input value={form.latinName} onChange={(event) => setForm({ ...form, latinName: event.target.value })} /></label>
+    <label>Раздел<select value={form.catalogSection} onChange={(event) => setForm({ ...form, catalogSection: event.target.value })}><option value="plants">Растения</option><option value="pots">Кашпо и горшки</option><option value="soil">Грунт</option><option value="fertilizer">Удобрения</option><option value="accessories">Аксессуары</option></select></label>
+    <label className="wide">Короткое описание<textarea rows={2} value={form.shortDescription} onChange={(event) => setForm({ ...form, shortDescription: event.target.value })} /></label>
+    <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+    <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
+    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+    <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
+    <label>Остаток, шт.<input type="number" min="0" value={form.stock} onChange={(event) => setForm({ ...form, stock: Number(event.target.value) })} /></label>
+  </div><p className="admin-hint">Товар появится на витрине сразу. Остатком такого товара распоряжаетесь вы: СБИС о нём ничего не знает.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={saving || form.name.trim() === ""} onClick={save}>Создать</button></div></Dialog>;
+}
+
+type ImportEntry = { code: string; status: string; name: string; price: number; stock: number; productId?: number; slug: string };
+
+// Импорт ищет по справочнику, который приносит обмен, а не ходит в СБИС в
+// момент нажатия: список из сотни кодов разбирается мгновенно. Обратная
+// сторона — товар, заведённый в СБИС пять минут назад, приедет со следующим
+// обменом.
+function ImportDialog({ onClose, onImported, onError }: { onClose: () => void; onImported: () => void; onError: (value: string) => void }) {
+  const [codes, setCodes] = useState("");
+  const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [preview, setPreview] = useState<ImportEntry[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
+  const send = async (dryRun: boolean) => {
+    setBusy(true);
+    try {
+      const result = await api<{ created: number; entries: ImportEntry[] }>("/api/v1/admin/products/import", {
+        method: "POST", body: JSON.stringify({ codes: [codes], categoryId, dryRun }),
+      });
+      if (dryRun) { setPreview(result.entries); } else { onImported(); return; }
+    } catch (error) { onError((error as Error).message); }
+    setBusy(false);
+  };
+  const found = preview ? preview.filter((entry) => entry.status === "new").length : 0;
+  const labels: Record<string, string> = { new: "Заведём", exists: "Уже есть", missing: "Не найден" };
+  return <Dialog title="Импорт товаров из СБИС" onClose={onClose}>
+    <label className="wide">Коды товаров<textarea rows={6} value={codes} onChange={(event) => { setCodes(event.target.value); setPreview(null); }} placeholder="X1150532&#10;X1150533" /></label>
+    <p className="admin-hint">Вставьте коды из СБИС — через запятую, пробел или с новой строки, как удобно. Подойдёт и артикул, и штрихкод.</p>
+    <div className="admin-field"><span className="admin-field-label">Раздел каталога</span><CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+    {preview && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Код</th><th>Товар</th><th>Цена</th><th>Остаток</th><th>Что будет</th></tr></thead><tbody>{preview.map((entry) => <tr key={entry.code}><td>{entry.code}</td><td>{entry.name || "—"}</td><td>{entry.name ? money.format(entry.price) : "—"}</td><td>{entry.name ? entry.stock : "—"}</td><td><span className={"admin-pill " + entry.status}>{labels[entry.status] || entry.status}</span></td></tr>)}</tbody></table></div>}
+    {preview && found === 0 && <p className="admin-hint">Заводить нечего: ни одного нового товара в списке нет.</p>}
+    <div className="dialog-actions"><button onClick={onClose}>Отмена</button><button disabled={busy || codes.trim() === ""} onClick={() => send(true)}>Проверить</button><button className="primary" disabled={busy || !preview || found === 0} onClick={() => send(false)}>Завести {found > 0 ? found : ""}</button></div>
+  </Dialog>;
 }
 
 function SyncDialog({ count, onClose, onSync }: { count: number; onClose: () => void; onSync: (fields: string[]) => void }) {
-  const options = [{ id: "name", label: "Название" }, { id: "photo", label: "Фото" }, { id: "price", label: "Цена" }, { id: "description", label: "Описание" }, { id: "dimensions", label: "Размеры упаковки", disabled: true }];
+  const options = [{ id: "name", label: "Название" }, { id: "photo", label: "Фото" }, { id: "price", label: "Цена" }, { id: "description", label: "Описание" }];
   const [fields, setFields] = useState(["price"]);
-  return <Dialog title={`Синхронизация: ${count} ${count === 1 ? "товар" : "товаров"}`} onClose={onClose}><p>Выбранные поля будут заменены последними данными, полученными из СБИС.</p><div className="sync-options">{options.map((option) => <label className={option.disabled ? "disabled" : ""} key={option.id}><input type="checkbox" disabled={option.disabled} checked={fields.includes(option.id)} onChange={(event) => setFields((current) => event.target.checked ? [...current, option.id] : current.filter((field) => field !== option.id))} /><span><strong>{option.label}</strong>{option.disabled && <small>СБИС пока не отдаёт эти поля в текущем API</small>}</span></label>)}</div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={fields.length === 0} onClick={() => onSync(fields)}>Синхронизировать</button></div></Dialog>;
+  return <Dialog title={`Подтянуть из СБИС: ${count} ${count === 1 ? "товар" : "товаров"}`} onClose={onClose}><p>Выбранные поля заменятся тем, что лежит в справочнике СБИС. Это разовое действие: дальше товар снова ведёте вы.</p><div className="sync-options">{options.map((option) => <label key={option.id}><input type="checkbox" checked={fields.includes(option.id)} onChange={(event) => setFields((current) => event.target.checked ? [...current, option.id] : current.filter((field) => field !== option.id))} /><span><strong>{option.label}</strong></span></label>)}</div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={fields.length === 0} onClick={() => onSync(fields)}>Синхронизировать</button></div></Dialog>;
 }
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
