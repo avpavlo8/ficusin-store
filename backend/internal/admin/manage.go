@@ -307,6 +307,8 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			pv.package_height_cm, pv.package_weight_grams,
 			COALESCE(pv.wholesale_min_qty, 1),
 			ARRAY(SELECT DISTINCT unnest(p.override_fields || COALESCE(pv.override_fields, '{}'))),
+			p.saby_fields,
+			COALESCE((SELECT source.code FROM saby_nomenclature source WHERE source.saby_id = p.saby_id), ''),
 			p.saby_updated_at, p.category_id
 		FROM products p
 		LEFT JOIN LATERAL (
@@ -330,7 +332,8 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.GrowthHabit, &item.Image, &item.Price, &item.Stock, &item.SKU, &item.VariantLabel, &item.HeightCM,
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
-			&item.OverrideFields, &item.SabyUpdatedAt, &item.CategoryID); err != nil {
+			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
+			&item.SabyUpdatedAt, &item.CategoryID); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		products = append(products, item)
@@ -383,11 +386,12 @@ func (repository *PostgresRepository) UpdateProduct(
 			pet_safety = CASE WHEN $9::text IS NULL THEN pet_safety ELSE NULLIF($9, '') END,
 			growth_habit = CASE WHEN $10::text IS NULL THEN growth_habit ELSE NULLIF($10, '') END,
 			category_id = COALESCE($11, category_id),
+			saby_fields = COALESCE($12, saby_fields),
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, id, update.CatalogSection, update.PlantKind, update.LightLevel, update.Watering,
 		update.HeightClass, update.CareLevel, update.Placement, update.PetSafety,
-		update.GrowthHabit, update.CategoryID)
+		update.GrowthHabit, update.CategoryID, update.SabyFields)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
@@ -408,6 +412,22 @@ func (repository *PostgresRepository) UpdateProduct(
 		update.PackageWeightGrams, update.WholesaleMinQty, variantFields)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product variant: %w", err)
+	}
+	// Остаток правим руками только у товаров, которым СБИС его не приносит:
+	// иначе ближайший обмен молча вернёт прежнее число, и правка исчезнет.
+	if update.Stock != nil {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at)
+			SELECT w.id, pv.id, $2, 0, CURRENT_TIMESTAMP
+			FROM product_variants pv
+			JOIN products p ON p.id = pv.product_id
+			CROSS JOIN (SELECT id FROM warehouses WHERE saby_id = 'saby-ryazan-main') w
+			WHERE pv.product_id = $1 AND NOT ('stock' = ANY(p.saby_fields))
+			ON CONFLICT (warehouse_id, variant_id) DO UPDATE SET
+				available_qty = EXCLUDED.available_qty, synced_at = CURRENT_TIMESTAMP
+		`, id, *update.Stock); err != nil {
+			return Product{}, fmt.Errorf("update product stock: %w", err)
+		}
 	}
 	if update.Image != nil {
 		if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id = $1`, id); err != nil {
@@ -496,22 +516,11 @@ func(repository *PostgresRepository) categoryByID(ctx context.Context,id int64)(
 	return c,err
 }
 
-type sabyProductSnapshot struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Images      []string `json:"images"`
-}
-
-type sabyVariantSnapshot struct {
-	PriceMinor         *int64 `json:"priceMinor"`
-	HeightCM           *int   `json:"heightCm"`
-	PotDiameterCM      *int   `json:"potDiameterCm"`
-	PackageLengthCM    *int   `json:"packageLengthCm"`
-	PackageWidthCM     *int   `json:"packageWidthCm"`
-	PackageHeightCM    *int   `json:"packageHeightCm"`
-	PackageWeightGrams *int   `json:"packageWeightGrams"`
-}
-
+// SyncProducts подтягивает выбранные поля из справочника СБИС.
+//
+// Это разовое действие по кнопке, а не подписка: подтянув описание один раз,
+// товар не начинает получать его при каждом обмене. Постоянную связь задаёт
+// список разрешённых полей у самого товара.
 func (repository *PostgresRepository) SyncProducts(
 	ctx context.Context,
 	actor Actor,
@@ -522,79 +531,86 @@ func (repository *PostgresRepository) SyncProducts(
 	}
 	result := SyncResult{Skipped: []int64{}}
 	for _, id := range request.ProductIDs {
-		var productRaw, variantRaw []byte
+		var name, description string
+		var priceMinor int64
+		var images []string
 		err := repository.pool.QueryRow(ctx, `
-			SELECT p.saby_snapshot, pv.saby_snapshot
-			FROM products p JOIN LATERAL (
-				SELECT * FROM product_variants WHERE product_id = p.id ORDER BY is_active DESC, id LIMIT 1
-			) pv ON TRUE WHERE p.id = $1 AND p.saby_id IS NOT NULL
-		`, id).Scan(&productRaw, &variantRaw)
+			SELECT source.name, source.description, source.price_minor, source.images
+			FROM products p
+			JOIN saby_nomenclature source ON source.saby_id = p.saby_id
+			WHERE p.id = $1
+		`, id).Scan(&name, &description, &priceMinor, &images)
 		if err != nil {
+			// Товар не связан с СБИС или в справочнике его нет — пропускаем,
+			// а не роняем весь список.
 			result.Skipped = append(result.Skipped, id)
 			continue
 		}
-		var productSnapshot sabyProductSnapshot
-		var variantSnapshot sabyVariantSnapshot
-		if json.Unmarshal(productRaw, &productSnapshot) != nil || json.Unmarshal(variantRaw, &variantSnapshot) != nil {
-			result.Skipped = append(result.Skipped, id)
-			continue
-		}
+
 		update := ProductUpdate{}
-		appliedFields := make([]string, 0, len(request.Fields))
+		applied := 0
+		wantPhoto := false
 		for _, field := range request.Fields {
 			switch field {
 			case "name":
-				if productSnapshot.Name != "" {
-					update.Name = &productSnapshot.Name
-					appliedFields = append(appliedFields, field)
+				if name != "" {
+					update.Name = &name
+					applied++
 				}
 			case "description":
-				update.Description = &productSnapshot.Description
-				appliedFields = append(appliedFields, field)
-			case "photo":
-				if len(productSnapshot.Images) > 0 {
-					update.Image = &productSnapshot.Images[0]
-					appliedFields = append(appliedFields, field)
+				if description != "" {
+					update.Description = &description
+					applied++
 				}
 			case "price":
-				if variantSnapshot.PriceMinor != nil {
-					update.PriceMinor = variantSnapshot.PriceMinor
-					appliedFields = append(appliedFields, field)
+				if priceMinor > 0 {
+					update.PriceMinor = &priceMinor
+					applied++
 				}
-			case "dimensions":
-				if variantSnapshot.HeightCM != nil || variantSnapshot.PotDiameterCM != nil ||
-					variantSnapshot.PackageLengthCM != nil || variantSnapshot.PackageWidthCM != nil ||
-					variantSnapshot.PackageHeightCM != nil || variantSnapshot.PackageWeightGrams != nil {
-					update.HeightCM = variantSnapshot.HeightCM
-					update.PotDiameterCM = variantSnapshot.PotDiameterCM
-					update.PackageLengthCM = variantSnapshot.PackageLengthCM
-					update.PackageWidthCM = variantSnapshot.PackageWidthCM
-					update.PackageHeightCM = variantSnapshot.PackageHeightCM
-					update.PackageWeightGrams = variantSnapshot.PackageWeightGrams
-					appliedFields = append(appliedFields, field)
+			case "photo":
+				if len(images) > 0 {
+					wantPhoto = true
+					applied++
 				}
 			}
 		}
-		if len(appliedFields) == 0 {
+		if applied == 0 {
 			result.Skipped = append(result.Skipped, id)
 			continue
 		}
 		if _, err := repository.UpdateProduct(ctx, actor, id, update); err != nil {
 			return result, err
 		}
-		if _, err := repository.pool.Exec(ctx, `
-			UPDATE products SET override_fields = ARRAY(
-				SELECT value FROM unnest(override_fields) value WHERE NOT (value = ANY($2::text[]))
-			) WHERE id = $1;
-			UPDATE product_variants SET override_fields = ARRAY(
-				SELECT value FROM unnest(override_fields) value WHERE NOT (value = ANY($2::text[]))
-			) WHERE product_id = $1
-		`, id, appliedFields); err != nil {
-			return result, fmt.Errorf("release synchronized overrides for product %d: %w", id, err)
+		if wantPhoto {
+			if err := replacePhotos(ctx, repository, id, name, images); err != nil {
+				return result, err
+			}
 		}
 		result.Updated++
 	}
 	return result, nil
+}
+
+// replacePhotos ставит карточке весь набор снимков из СБИС, а не первый:
+// у растения обычно несколько ракурсов, и терять их при подтягивании обидно.
+func replacePhotos(ctx context.Context, repository *PostgresRepository, id int64, name string, images []string) error {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE product_id = $1", id); err != nil {
+		return fmt.Errorf("replace product media: %w", err)
+	}
+	for index, image := range images {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO product_media (product_id, object_key, alt_text, sort_order, is_primary)
+			VALUES ($1, $2, $3, $4, $5)
+		`, id, image, name, index, boolToSmallInt(index == 0)); err != nil {
+			return fmt.Errorf("insert product media: %w", err)
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) productByID(ctx context.Context, id int64) (Product, error) {

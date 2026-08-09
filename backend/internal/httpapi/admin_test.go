@@ -49,6 +49,8 @@ func (stub adminAuthStub) UserByToken(context.Context, string) (*auth.User, erro
 }
 
 type adminRepositoryStub struct {
+	createdProducts []admin.ProductCreate
+	importRequests  []admin.ImportRequest
 	updateCustomerCalls int
 	syncCalls           int
 	createCategoryCalls int
@@ -107,6 +109,16 @@ func (stub *adminRepositoryStub) ListProducts(context.Context) ([]admin.Product,
 
 func (stub *adminRepositoryStub) UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error) {
 	return admin.Product{}, nil
+}
+
+func (stub *adminRepositoryStub) CreateProduct(_ context.Context, _ admin.Actor, input admin.ProductCreate) (admin.Product, error) {
+	stub.createdProducts = append(stub.createdProducts, input)
+	return admin.Product{ID: 7, Name: input.Name, Slug: "fikus"}, nil
+}
+
+func (stub *adminRepositoryStub) ImportProducts(_ context.Context, _ admin.Actor, request admin.ImportRequest) (admin.ImportResult, error) {
+	stub.importRequests = append(stub.importRequests, request)
+	return admin.ImportResult{Created: 1, Entries: []admin.ImportEntry{{Code: "X1150532", Status: "new"}}}, nil
 }
 
 func (stub *adminRepositoryStub) SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error) {
@@ -259,4 +271,77 @@ func adminRequest(method, target, body string) *http.Request {
 		request.Header.Set("Content-Type", "application/json")
 	}
 	return request
+}
+
+// Товар заводится в магазине, а не в СБИС: панель должна уметь это без
+// всякой связи с чужой системой.
+func TestCreateProductRequiresName(t *testing.T) {
+	t.Parallel()
+
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products", `{"name":"  "}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if len(repository.createdProducts) != 0 {
+		t.Fatal("товар без названия всё-таки завели")
+	}
+}
+
+func TestCreateProductPasses(t *testing.T) {
+	t.Parallel()
+
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products",
+		`{"name":"Фикус Бенджамина","priceMinor":149000,"stock":3}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	if len(repository.createdProducts) != 1 || repository.createdProducts[0].Name != "Фикус Бенджамина" {
+		t.Fatalf("до хранилища дошло не то: %+v", repository.createdProducts)
+	}
+}
+
+// Пустой список кодов — это опечатка, а не команда «завести всё подряд».
+func TestImportRefusesEmptyList(t *testing.T) {
+	t.Parallel()
+
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/import", `{"codes":[]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if len(repository.importRequests) != 0 {
+		t.Fatal("пустой импорт всё-таки ушёл в хранилище")
+	}
+}
+
+func TestImportPassesCodesAndSection(t *testing.T) {
+	t.Parallel()
+
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/import",
+		`{"codes":["X1150532","X1150533"],"categoryId":4,"dryRun":true}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if len(repository.importRequests) != 1 {
+		t.Fatalf("import calls = %d, want 1", len(repository.importRequests))
+	}
+	got := repository.importRequests[0]
+	if len(got.Codes) != 2 || !got.DryRun || got.CategoryID == nil || *got.CategoryID != 4 {
+		t.Fatalf("запрос доехал искажённым: %+v", got)
+	}
 }

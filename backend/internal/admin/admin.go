@@ -185,6 +185,10 @@ type Product struct {
 	PackageWeightGrams *int       `json:"packageWeightGrams"`
 	WholesaleMinQty    int        `json:"wholesaleMinQty"`
 	OverrideFields     []string   `json:"overrideFields"`
+	// SabyFields — что этому товару разрешено брать из СБИС. Пусто значит
+	// «ничего»: карточка целиком наша.
+	SabyFields         []string   `json:"sabyFields"`
+	SabyCode           string     `json:"sabyCode"`
 	SabyUpdatedAt      *time.Time `json:"sabyUpdatedAt"`
 	CategoryID         *int64     `json:"categoryId"`
 }
@@ -216,7 +220,46 @@ type ProductUpdate struct {
 	PackageHeightCM    *int    `json:"packageHeightCm"`
 	PackageWeightGrams *int    `json:"packageWeightGrams"`
 	WholesaleMinQty    *int    `json:"wholesaleMinQty"`
+	Stock              *int    `json:"stock"`
+	SabyFields         *[]string `json:"sabyFields"`
 	CategoryID         *int64  `json:"categoryId"`
+}
+
+// ProductCreate — карточка, заведённая в магазине с нуля.
+type ProductCreate struct {
+	Name             string `json:"name"`
+	LatinName        string `json:"latinName"`
+	ShortDescription string `json:"shortDescription"`
+	Description      string `json:"description"`
+	CatalogSection   string `json:"catalogSection"`
+	CategoryID       *int64 `json:"categoryId"`
+	PriceMinor       int64  `json:"priceMinor"`
+	Stock            int    `json:"stock"`
+	Image            string `json:"image"`
+}
+
+// ImportRequest — массовый импорт из справочника СБИС по кодам товаров.
+// DryRun показывает, что произойдёт, ничего не создавая.
+type ImportRequest struct {
+	Codes      []string `json:"codes"`
+	CategoryID *int64   `json:"categoryId"`
+	DryRun     bool     `json:"dryRun"`
+}
+
+// ImportEntry — судьба одного кода: заведён, уже был или не найден.
+type ImportEntry struct {
+	Code      string  `json:"code"`
+	Status    string  `json:"status"`
+	Name      string  `json:"name"`
+	Price     float64 `json:"price"`
+	Stock     int     `json:"stock"`
+	ProductID *int64  `json:"productId"`
+	Slug      string  `json:"slug"`
+}
+
+type ImportResult struct {
+	Created int           `json:"created"`
+	Entries []ImportEntry `json:"entries"`
 }
 
 type Category struct {
@@ -260,6 +303,8 @@ type Repository interface {
 	UpdateOrderStatus(context.Context, Actor, int64, string, string) (Order, error)
 	ListProducts(context.Context) ([]Product, error)
 	UpdateProduct(context.Context, Actor, int64, ProductUpdate) (Product, error)
+	CreateProduct(context.Context, Actor, ProductCreate) (Product, error)
+	ImportProducts(context.Context, Actor, ImportRequest) (ImportResult, error)
 	SyncProducts(context.Context, Actor, SyncRequest) (SyncResult, error)
 	ListCategories(context.Context) ([]Category, error)
 	CreateCategory(context.Context, Actor, CategoryCreate) (Category, error)
