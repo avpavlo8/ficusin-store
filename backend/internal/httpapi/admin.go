@@ -25,6 +25,8 @@ type adminRepository interface {
 	SetCollectionProducts(context.Context, admin.Actor, int64, []int64) error
 	ListProducts(context.Context) ([]admin.Product, error)
 	UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error)
+	CreateProduct(context.Context, admin.Actor, admin.ProductCreate) (admin.Product, error)
+	ImportProducts(context.Context, admin.Actor, admin.ImportRequest) (admin.ImportResult, error)
 	SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error)
 	ListCategories(context.Context) ([]admin.Category, error)
 	CreateCategory(context.Context, admin.Actor, admin.CategoryCreate) (admin.Category, error)
@@ -296,6 +298,58 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 	writeJSON(response, http.StatusOK, map[string]any{"product": product})
 }
 
+func (handlers adminHandlers) createProduct(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	var input admin.ProductCreate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	if strings.TrimSpace(input.Name) == "" {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите название товара"})
+		return
+	}
+	if input.CatalogSection != "" && !slices.Contains(
+		[]string{"plants", "soil", "fertilizer", "pots", "accessories"}, input.CatalogSection) {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный раздел каталога"})
+		return
+	}
+	product, err := handlers.repository.CreateProduct(request.Context(), actor, input)
+	if err != nil {
+		handlers.failed(response, "create admin product", err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"product": product})
+}
+
+// importProducts заводит карточки по списку кодов товаров из СБИС. С
+// dryRun панель показывает, что получится, ничего не создавая: список из
+// сотни кодов стоит сначала увидеть глазами.
+func (handlers adminHandlers) importProducts(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	var body admin.ImportRequest
+	if decodeJSON(request, &body) != nil || len(body.Codes) == 0 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Вставьте коды товаров"})
+		return
+	}
+	if len(body.Codes) > 1000 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "За раз не больше 1000 кодов"})
+		return
+	}
+	result, err := handlers.repository.ImportProducts(request.Context(), actor, body)
+	if err != nil {
+		handlers.failed(response, "import admin products", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
 func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsSync)
 	if !ok {
@@ -306,7 +360,7 @@ func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите от 1 до 500 товаров"})
 		return
 	}
-	allowedFields := []string{"name", "photo", "price", "dimensions", "description"}
+	allowedFields := []string{"name", "photo", "price", "description"}
 	if len(body.Fields) == 0 {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите поля для синхронизации"})
 		return
@@ -393,6 +447,12 @@ func (handlers adminHandlers) failed(response http.ResponseWriter, operation str
 	status := http.StatusServiceUnavailable
 	if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
+	}
+	if errors.Is(err, admin.ErrInvalidInput) {
+		status = http.StatusBadRequest
+	}
+	if errors.Is(err, admin.ErrForbidden) {
+		status = http.StatusForbidden
 	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: "Не удалось выполнить операцию"})
