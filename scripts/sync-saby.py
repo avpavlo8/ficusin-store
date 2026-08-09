@@ -76,8 +76,10 @@ try:
     # записи корня — папки и то, что лежит рядом с ними. Позиция внутри
     # «Грунта» или «Горшков» так не появится никогда, за ней нужно
     # спуститься в раздел отдельным запросом. Поэтому обходим дерево
-    # целиком, а внутри раздела листаем курсором: постраничная навигация
-    # упирается в потолок каталога, курсорная — нет.
+    # целиком и листаем каждый раздел отдельно: потолок в тысячу позиций
+    # считается на каталог, а не на раздел, и по разделам мы в него не
+    # упираемся. Курсорную навигацию СБИС на этом методе не принимает —
+    # position с order отвечают пятисотой.
     def request_page(query):
         request = urllib.request.Request(
             "https://api.sbis.ru/retail/v2/nomenclature/list?"
@@ -102,16 +104,14 @@ try:
     def load_section(base_query, folder, seen_folders, depth):
         collected = []
         known = set()
-        position = None
-        for _ in range(200):
+        for page in range(200):
             query = dict(base_query)
             if folder is not None:
                 query["folder"] = folder
-            if position is None:
-                query["page"] = 0
-            else:
-                query["position"] = position
-                query["order"] = "after"
+            query["page"] = page
+            # Повтор вместо новой страницы означает, что листать больше
+            # нечего: так обмен не зависнет, если page вдруг перестанет
+            # учитываться.
             fresh = [
                 item
                 for item in request_page(query)
@@ -122,9 +122,6 @@ try:
             for item in fresh:
                 known.add(item.get("hierarchicalId"))
             collected.extend(fresh)
-            position = fresh[-1].get("hierarchicalId")
-            if position is None:
-                break
         else:
             raise RuntimeError("pagination limit")
 
