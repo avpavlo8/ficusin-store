@@ -112,7 +112,7 @@ func (mirror *Mirror) Pass(ctx context.Context) (int, error) {
 
 // One переносит один снимок во всех размерах.
 func (mirror *Mirror) One(ctx context.Context, source string) error {
-	raw, err := mirror.download(ctx, source)
+	raw, kind, err := mirror.download(ctx, source)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,8 @@ func (mirror *Mirror) One(ctx context.Context, source string) error {
 	for _, size := range Sizes {
 		ready, prepareErr := Prepare(raw, size.MaxSide)
 		if prepareErr != nil {
-			return prepareErr
+			// Что именно пришло вместо картинки — половина разгадки.
+			return fmt.Errorf("%w (пришло %s, %d байт)", prepareErr, kind, len(raw))
 		}
 		key := Key(source, size)
 		if putErr := mirror.storage.Put(ctx, key, ready, "image/jpeg"); putErr != nil {
@@ -131,37 +132,45 @@ func (mirror *Mirror) One(ctx context.Context, source string) error {
 	return mirror.store.Save(ctx, source, links[SizeCard.Name], links[SizeLarge.Name])
 }
 
-func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, error) {
-	// Только https и только чужая картинка: адрес приходит из чужой системы,
-	// и ходить по нему куда угодно мы не обязаны.
+func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, string, error) {
+	// Только https: адрес приходит из чужой системы, и ходить по нему куда
+	// угодно мы не обязаны.
 	if !strings.HasPrefix(source, "https://") {
-		return nil, errors.New("ссылка не по https")
+		return nil, "", errors.New("ссылка не по https")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	// Браузеру покупателя СБИС снимок отдаёт, а безымянному запросу — нет.
+	// Поэтому представляемся и говорим, откуда пришли: это те же сведения,
+	// что шлёт любая страница магазина, и ничего сверх того.
+	request.Header.Set("User-Agent", "FicusinBot/1.0 (+https://ficusin.ru)")
+	request.Header.Set("Referer", "https://ficusin.ru/")
+	request.Header.Set("Accept", "image/jpeg,image/png;q=0.9,*/*;q=0.1")
+
 	response, err := mirror.client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("снимок не скачан: %w", err)
+		return nil, "", fmt.Errorf("снимок не скачан: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("снимок отдан с кодом %d", response.StatusCode)
+		return nil, "", fmt.Errorf("снимок отдан с кодом %d", response.StatusCode)
 	}
 	// Читаем на байт больше потолка: так видно, что файл его превысил, а не
 	// ровно в него упёрся.
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxSourceBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("снимок не дочитан: %w", err)
+		return nil, "", fmt.Errorf("снимок не дочитан: %w", err)
 	}
 	if len(raw) > maxSourceBytes {
-		return nil, fmt.Errorf("снимок тяжелее %d МБ", maxSourceBytes>>20)
+		return nil, "", fmt.Errorf("снимок тяжелее %d МБ", maxSourceBytes>>20)
 	}
 	if len(raw) == 0 {
-		return nil, errors.New("пустой ответ")
+		return nil, "", errors.New("пустой ответ")
 	}
-	return raw, nil
+	// Заголовку верить нельзя, поэтому смотрим на сами байты.
+	return raw, http.DetectContentType(raw), nil
 }
 
 // Key — имя файла в хранилище. Оно выводится из самой ссылки, поэтому
