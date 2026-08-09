@@ -155,7 +155,7 @@ func TestPassRecordsFailure(t *testing.T) {
 
 func TestDownloadRefusesPlainHTTP(t *testing.T) {
 	worker := NewMirror(newMemoryStore(), NewStorage("https://s3.example", "ru-1", "b", "k", "s"), quiet())
-	if _, err := worker.download(context.Background(), "http://sbis.example/a.jpg"); err == nil {
+	if _, _, err := worker.download(context.Background(), "http://sbis.example/a.jpg"); err == nil {
 		t.Fatal("простой http приняли")
 	}
 }
