@@ -110,26 +110,54 @@ func (mirror *Mirror) Pass(ctx context.Context) (int, error) {
 	return moved, nil
 }
 
-// One переносит один снимок во всех размерах.
+// One переносит один снимок.
 func (mirror *Mirror) One(ctx context.Context, source string) error {
 	raw, kind, err := mirror.download(ctx, source)
 	if err != nil {
 		return err
 	}
+	card, large, err := mirror.copies(ctx, source, raw, kind)
+	if err != nil {
+		return err
+	}
+	return mirror.store.Save(ctx, source, card, large)
+}
+
+// copies кладёт снимок в хранилище и возвращает ссылки на него.
+//
+// Уменьшить получается не всякий: СБИС отдаёт webp, а его стандартная
+// библиотека не читает — нужна сторонняя, которую в этот проект не добавить.
+// Такие снимки копируем как есть. Это не поражение: webp у СБИС весит около
+// ста килобайт, то есть главное — снимок становится нашим и не исчезнет
+// вместе с чужим сервером — мы получаем и без уменьшения.
+func (mirror *Mirror) copies(
+	ctx context.Context,
+	source string,
+	raw []byte,
+	kind string,
+) (string, string, error) {
 	links := make(map[string]string, len(Sizes))
 	for _, size := range Sizes {
 		ready, prepareErr := Prepare(raw, size.MaxSide)
 		if prepareErr != nil {
-			// Что именно пришло вместо картинки — половина разгадки.
-			return fmt.Errorf("%w (пришло %s, %d байт)", prepareErr, kind, len(raw))
+			if !strings.HasPrefix(kind, "image/") {
+				// Пришло не изображение вовсе — вот это уже неудача.
+				return "", "", fmt.Errorf("%w (пришло %s, %d байт)", prepareErr, kind, len(raw))
+			}
+			key := originalKey(source, kind)
+			if putErr := mirror.storage.Put(ctx, key, raw, kind); putErr != nil {
+				return "", "", putErr
+			}
+			link := mirror.storage.PublicURL(key)
+			return link, link, nil
 		}
 		key := Key(source, size)
 		if putErr := mirror.storage.Put(ctx, key, ready, "image/jpeg"); putErr != nil {
-			return putErr
+			return "", "", putErr
 		}
 		links[size.Name] = mirror.storage.PublicURL(key)
 	}
-	return mirror.store.Save(ctx, source, links[SizeCard.Name], links[SizeLarge.Name])
+	return links[SizeCard.Name], links[SizeLarge.Name], nil
 }
 
 func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, string, error) {
@@ -176,6 +204,31 @@ func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, stri
 // Key — имя файла в хранилище. Оно выводится из самой ссылки, поэтому
 // повторный перенос кладёт снимок на то же место, а не плодит копии.
 func Key(source string, size Size) string {
+	return objectKey(source, size.Name, "jpg")
+}
+
+// originalKey — имя для снимка, который мы не смогли уменьшить и положили
+// как есть.
+func originalKey(source, kind string) string {
+	return objectKey(source, "original", extension(kind))
+}
+
+func objectKey(source, name, extension string) string {
 	sum := sha256.Sum256([]byte(source))
-	return "products/" + hex.EncodeToString(sum[:])[:16] + "-" + size.Name + ".jpg"
+	return "products/" + hex.EncodeToString(sum[:])[:16] + "-" + name + "." + extension
+}
+
+func extension(kind string) string {
+	switch {
+	case strings.HasPrefix(kind, "image/webp"):
+		return "webp"
+	case strings.HasPrefix(kind, "image/avif"):
+		return "avif"
+	case strings.HasPrefix(kind, "image/png"):
+		return "png"
+	case strings.HasPrefix(kind, "image/gif"):
+		return "gif"
+	default:
+		return "jpg"
+	}
 }
