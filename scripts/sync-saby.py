@@ -71,39 +71,58 @@ try:
         raise RuntimeError("no Saby token")
 
     stage = "saby-catalog"
-    catalog_items = []
-    for page in range(20):
-        params = urllib.parse.urlencode(
-            {
+
+    def load(with_price_list):
+        # Прайс-лист сужает выдачу до продаваемых позиций с ценой. Он нужен
+        # для витрины, но не годится для справочника: товар, которого в этом
+        # прайс-листе нет, менеджер всё равно должен уметь завести по коду.
+        # Поэтому ходим дважды и склеиваем, отдавая предпочтение позиции с
+        # ценой.
+        collected = []
+        for page in range(20):
+            query = {
                 "pointId": os.environ["SABY_POINT_ID"],
-                "priceListId": os.environ["SABY_PRICE_LIST_ID"],
                 "withBalance": "true",
                 "withBarcode": "true",
-                "noStopList": "true",
                 "pageSize": 1000,
                 "page": page,
             }
-        )
-        request = urllib.request.Request(
-            "https://api.sbis.ru/retail/v2/nomenclature/list?" + params,
-            headers={"X-SBISAccessToken": saby_token},
-        )
-        result = request_json(request)
-        items = (
-            result.get("nomenclatures")
-            or result.get("items")
-            or result.get("result")
-            or []
-        )
-        catalog_items.extend(items)
-        outcome = result.get("outcome")
-        has_more = outcome is True or (
-            isinstance(outcome, dict) and bool(outcome.get("hasMore"))
-        )
-        if not items or not has_more:
-            break
-    else:
-        raise RuntimeError("pagination limit")
+            if with_price_list:
+                query["priceListId"] = os.environ["SABY_PRICE_LIST_ID"]
+                query["noStopList"] = "true"
+            request = urllib.request.Request(
+                "https://api.sbis.ru/retail/v2/nomenclature/list?"
+                + urllib.parse.urlencode(query),
+                headers={"X-SBISAccessToken": saby_token},
+            )
+            result = request_json(request)
+            items = (
+                result.get("nomenclatures")
+                or result.get("items")
+                or result.get("result")
+                or []
+            )
+            collected.extend(items)
+            outcome = result.get("outcome")
+            has_more = outcome is True or (
+                isinstance(outcome, dict) and bool(outcome.get("hasMore"))
+            )
+            if not items or not has_more:
+                break
+        else:
+            raise RuntimeError("pagination limit")
+        return collected
+
+    by_id = {}
+    for item in load(False):
+        key = str(item.get("id"))
+        if key:
+            by_id[key] = item
+    for item in load(True):
+        key = str(item.get("id"))
+        if key:
+            by_id[key] = item
+    catalog_items = list(by_id.values())
     if not catalog_items:
         raise RuntimeError("empty catalog")
 
