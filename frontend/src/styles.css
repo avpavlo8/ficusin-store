@@ -980,3 +980,12 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 .storefront-fav.active { color: var(--heart); }
 .storefront-search input { border-radius: 10px; }
 .storefront-tabs button { border-radius: 99px; }
+
+/* Переключатели в настройках — такие же, как в остальных местах панели.
+   Флажок не показывает состояние с одного взгляда, а бегунок показывает. */
+.admin-setting.switch { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.admin-setting input[type="checkbox"] { appearance: none; margin: 0; flex: none; width: 42px; height: 24px; border-radius: 999px; background: #d9ded6; position: relative; cursor: pointer; transition: background .15s; order: 2; }
+.admin-setting input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.admin-setting input[type="checkbox"]:checked { background: var(--green); }
+.admin-setting input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.admin-setting input[type="checkbox"]:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
