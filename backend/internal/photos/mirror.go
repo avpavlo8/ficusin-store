@@ -30,7 +30,9 @@ type Mirror struct {
 	storage *Storage
 	logger  *slog.Logger
 	client  *http.Client
-	// Batch — сколько снимков берём за проход.
+	// Batch — сколько снимков берём за проход. Шестьдесят за пять минут —
+	// это один запрос в пять секунд: полторы тысячи снимков разбираются за
+	// пару часов, а чужой сервер этого даже не замечает.
 	Batch int
 	// Every — как часто заглядываем, не появилось ли новых.
 	Every time.Duration
@@ -49,8 +51,8 @@ func NewMirror(store Store, storage *Storage, logger *slog.Logger) *Mirror {
 		storage: storage,
 		logger:  logger,
 		client:  &http.Client{Timeout: 60 * time.Second},
-		Batch:   20,
-		Every:   10 * time.Minute,
+		Batch:   60,
+		Every:   5 * time.Minute,
 		Pause:   500 * time.Millisecond,
 	}
 }
