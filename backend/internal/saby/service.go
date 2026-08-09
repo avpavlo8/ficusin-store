@@ -310,10 +310,13 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 	result := make([]normalizedItem, 0, len(items))
 	for _, item := range items {
 		id := valueString(item.ID)
-		cost, costOK := valueFloat(item.Cost)
+		// Цена может отсутствовать: в справочник попадает вся номенклатура
+		// точки, а не только продаваемое из прайс-листа. Такой товар можно
+		// завести в магазин и назначить цену самому.
+		cost, _ := valueFloat(item.Cost)
 		name := strings.TrimSpace(item.Name)
 		if item.IsParent || (item.Published != nil && !*item.Published) ||
-			id == "" || name == "" || !costOK {
+			id == "" || name == "" {
 			continue
 		}
 		balance, _ := valueFloat(item.Balance)

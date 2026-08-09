@@ -61,10 +61,18 @@ func TestNormalizeSkipsUnsellable(t *testing.T) {
 		{ID: "1", Name: "Папка", Cost: 100.0, IsParent: true},
 		{ID: "2", Name: "Снят", Cost: 100.0, Published: &no},
 		{ID: "3", Name: "", Cost: 100.0},
-		{ID: "4", Name: "Без цены"},
 	})
 	if len(items) != 0 {
 		t.Fatalf("ожидали пустой список, получили %d", len(items))
+	}
+}
+
+// Позиция без цены — не мусор: её можно завести в магазин и назначить цену
+// самому, поэтому в справочник она обязана попасть.
+func TestNormalizeKeepsItemsWithoutPrice(t *testing.T) {
+	items := normalizeItems([]CatalogItem{{ID: "7", NomNumber: "X7705223", Name: "Кашпо"}})
+	if len(items) != 1 || items[0].costMinor != 0 || items[0].code != "X7705223" {
+		t.Fatalf("позиция без цены потерялась: %+v", items)
 	}
 }
 

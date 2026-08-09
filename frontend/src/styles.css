@@ -453,11 +453,24 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .dialog-actions button { padding: 11px 18px; border: 1px solid var(--line); border-radius: 8px; background: white; cursor: pointer; }
 .dialog-actions button.primary { border-color: var(--green); background: var(--green); color: white; }
 .dialog-actions button:disabled { opacity: .45; cursor: not-allowed; }
+/* Переключатели вместо галочек: у флажка не видно, включён он или нет,
+   пока не приглядишься, а у бегунка это читается с одного взгляда. */
 .sync-options { margin: 18px 0; display: grid; gap: 8px; }
-.sync-options label { padding: 13px; display: flex; gap: 11px; align-items: start; border: 1px solid var(--line); border-radius: 9px; background: white; }
-.sync-options label.disabled { opacity: .5; }
-.sync-options span { display: grid; gap: 4px; }
+.sync-options label { padding: 12px 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; border: 1px solid var(--line); border-radius: 9px; background: white; cursor: pointer; }
+.sync-options label:hover { border-color: var(--sage); }
+.sync-options span { display: grid; gap: 3px; min-width: 0; }
+.sync-options strong { font-weight: 500; }
 .sync-options small { color: #778079; }
+.sync-options input[type="checkbox"] { appearance: none; margin: 0; flex: none; width: 42px; height: 24px; border-radius: 999px; background: #d9ded6; position: relative; cursor: pointer; transition: background .15s; order: 2; }
+.sync-options input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.sync-options input[type="checkbox"]:checked { background: var(--green); }
+.sync-options input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.sync-options input[type="checkbox"]:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.admin-checkbox { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.admin-checkbox input[type="checkbox"] { appearance: none; margin: 0; flex: none; width: 42px; height: 24px; border-radius: 999px; background: #d9ded6; position: relative; cursor: pointer; transition: background .15s; order: 2; }
+.admin-checkbox input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.admin-checkbox input[type="checkbox"]:checked { background: var(--green); }
+.admin-checkbox input[type="checkbox"]:checked::after { transform: translateX(18px); }
 .customer-orders { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
 .customer-orders h3 { margin: 0 0 12px; color: var(--green); font: 400 22px Georgia,serif; }
 .customer-orders > p { color: #778079; font-size: 12px; }
