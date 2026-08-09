@@ -62,5 +62,5 @@ func ReleaseStock(ctx context.Context, tx pgx.Tx, orderID int64) error {
 	`, orderID); err != nil {
 		return fmt.Errorf("mark stock released: %w", err)
 	}
-	return nil
+	return RecordMovement(ctx, tx, orderID, MovementRelease)
 }
