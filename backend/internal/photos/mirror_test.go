@@ -153,6 +153,55 @@ func TestPassRecordsFailure(t *testing.T) {
 	}
 }
 
+// СБИС отдаёт webp, а уменьшить его нечем. Такой снимок обязан всё равно
+// оказаться в нашем хранилище — иначе витрина останется на чужих ссылках.
+func TestUnreadableFormatIsCopiedAsIs(t *testing.T) {
+	// Заголовок RIFF….WEBP — этого хватает, чтобы формат был опознан, и не
+	// хватает, чтобы картинка разобралась.
+	webp := append([]byte("RIFF\x00\x00\x00\x00WEBPVP8 "), make([]byte, 64)...)
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(webp)
+	}))
+	defer source.Close()
+
+	var mutex sync.Mutex
+	uploaded := map[string]string{}
+	bucket := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mutex.Lock()
+		uploaded[r.URL.Path] = r.Header.Get("Content-Type")
+		mutex.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer bucket.Close()
+
+	address := "https://sbis.example/photo.webp"
+	store := newMemoryStore(address)
+	worker := NewMirror(store, NewStorage(bucket.URL, "ru-1", "photos", "k", "s"), quiet())
+	worker.Pause = 0
+	worker.client = source.Client()
+	worker.client.Transport = redirect{to: source.URL}
+
+	moved, err := worker.Pass(context.Background())
+	if err != nil || moved != 1 {
+		t.Fatalf("снимок не перенесён: moved=%d err=%v", moved, err)
+	}
+	if len(uploaded) != 1 {
+		t.Fatalf("ожидали одну копию, получили %d", len(uploaded))
+	}
+	for path, kind := range uploaded {
+		if !strings.HasSuffix(path, "-original.webp") {
+			t.Errorf("неожиданное имя файла: %s", path)
+		}
+		if !strings.HasPrefix(kind, "image/webp") {
+			t.Errorf("тип файла потерялся: %s", kind)
+		}
+	}
+	links := store.saved[address]
+	if links[0] == "" || links[0] != links[1] {
+		t.Errorf("обе ссылки должны вести на одну копию: %v", links)
+	}
+}
+
 func TestDownloadRefusesPlainHTTP(t *testing.T) {
 	worker := NewMirror(newMemoryStore(), NewStorage("https://s3.example", "ru-1", "b", "k", "s"), quiet())
 	if _, _, err := worker.download(context.Background(), "http://sbis.example/a.jpg"); err == nil {
