@@ -154,9 +154,16 @@ try:
     )
     report("saby/oidc-" + flags, "success")
 
+    # Коды нужны, чтобы менеджер мог завести товар в магазин по тому же
+    # номеру, который видит в СБИС. Зовётся он в выгрузке по-разному, поэтому
+    # пропускаем все три варианта и штрихкод заодно.
     allowed_fields = (
         "id",
         "article",
+        "code",
+        "externalId",
+        "nomNumber",
+        "barcode",
         "name",
         "description",
         "cost",
