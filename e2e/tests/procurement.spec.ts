@@ -8,23 +8,29 @@ async function mockProcurement(page: import("@playwright/test").Page) {
     orders: [{ id: 4, supplierId: 1, supplierName: "ТК Ярославский", orderNumber: "П3-11660", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 154, total: 53900, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "ТК Ярославский", rawName: "Фикус Лирата d 10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "X7582076", suggestedSabyName: "Фикус Лирата D27", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
   };
-  // A single handler avoids route precedence races in WebKit: every API
-  // request used by this scenario is resolved deterministically here.
-  await page.route("**/api/v1/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === "/api/v1/auth/me") return route.fulfill({ json: { user: owner.user } });
-    if (path === "/api/v1/admin/dashboard") return route.fulfill({ json: {
+  const dashboard = {
       user: { fullName: "Александр" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
       dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
-    } });
-    if (path.startsWith("/api/v1/admin/")) return route.fulfill({ json: procurement });
-    return route.fulfill({ json: {} });
-  });
-  // WebKit can miss the broad glob for requests started after a React state
-  // transition. The exact regex is registered last so it has top priority.
-  await page.route(/\/api\/v1\/admin\/procurement(?:\?.*)?$/, (route) =>
-    route.fulfill({ json: procurement }));
+  };
+  // Install the API stub inside the page before React starts. WebKit handles
+  // route interception differently after state transitions, while fetch is
+  // identical across the browsers this layout suite covers.
+  await page.addInitScript(({ user, dashboard, procurement }) => {
+    const originalFetch = window.fetch.bind(window);
+    const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    window.fetch = (input, init) => {
+      const raw = typeof input === "string" ? input : input instanceof Request ? input.url : input.toString();
+      const path = new URL(raw, window.location.origin).pathname;
+      if (path === "/api/v1/auth/me") return json({ user });
+      if (path === "/api/v1/admin/dashboard") return json(dashboard);
+      if (path === "/api/v1/admin/procurement") return json(procurement);
+      if (path.startsWith("/api/v1/")) return json({});
+      return originalFetch(input, init);
+    };
+  }, { user: owner.user, dashboard, procurement });
 }
 
 test("@desktop procurement opens inside the existing admin panel", async ({ page }) => {
