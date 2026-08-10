@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import App from "./App";
 import { StoreHeader } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
 import { searchProducts, suggestions } from "./lib/search";
@@ -72,7 +73,17 @@ export default function StorefrontPage() {
       return new Set();
     }
   });
+  const [cartOpen, setCartOpen] = useState(
+    () => new URLSearchParams(window.location.search).get("cart") === "1",
+  );
   const searchBox = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("cart")) return;
+    url.searchParams.delete("cart");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   useEffect(() => {
     fetch("/api/v1/catalog", { cache: "no-store" })
@@ -90,12 +101,6 @@ export default function StorefrontPage() {
       .then((response) => response.json())
       .then((data: { categories?: Category[] }) => setCategories(data.categories ?? []))
       .catch(() => setCategories([]));
-  }, []);
-
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("cart") === "1") {
-      window.location.assign("/?cart=1");
-    }
   }, []);
 
   useEffect(() => {
@@ -226,7 +231,10 @@ export default function StorefrontPage() {
   const addToCart = (product: Product) =>
     setCart((current) => ({
       ...current,
-      [product.id]: Math.min(20, (current[product.id] ?? 0) + 1),
+      [product.id]: Math.min(
+        product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20,
+        (current[product.id] ?? 0) + 1,
+      ),
     }));
 
   const toggleFavorite = (id: string) =>
@@ -246,6 +254,7 @@ export default function StorefrontPage() {
         cartCount={cartCount}
         favoritesCount={favorites.size}
         showSearch={false}
+        onCartClick={() => setCartOpen(true)}
       />
 
       <div className="storefront-search-bar">
@@ -375,7 +384,7 @@ export default function StorefrontPage() {
                     <strong>{money(product.price)}</strong>
                     <button
                       className={inCart ? "in-cart" : ""}
-                      onClick={() => (inCart ? window.location.assign("/?cart=1") : addToCart(product))}
+                      onClick={() => (inCart ? setCartOpen(true) : addToCart(product))}
                     >
                       {inCart ? `В корзине · ${inCart}` : preorder ? "Под заказ" : "В корзину"}
                     </button>
@@ -386,6 +395,14 @@ export default function StorefrontPage() {
           </div>
         </div>
       </section>
+      <App
+        embedded
+        externalCart={cart}
+        cartProducts={products}
+        controlledCartOpen={cartOpen}
+        onCartOpenChange={setCartOpen}
+        onCartChange={setCart}
+      />
     </main>
   );
 }
