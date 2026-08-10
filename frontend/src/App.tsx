@@ -3,6 +3,7 @@ import {
   formatRussianPhoneInput,
   normalizeRussianPhone,
 } from "./lib/phone";
+import { CartDrawer } from "./CartCheckout";
 import { StoreHeader } from "./StoreHeader";
 
 type Product = {
@@ -855,20 +856,14 @@ export default function Home({
 
       {(cartOpen || checkoutOpen) && <button className="overlay" aria-label="Закрыть" onClick={() => { setCartOpen(false); setCheckoutOpen(false); }} />}
 
-      <aside className={`drawer ${cartOpen ? "open" : ""}`} aria-hidden={!cartOpen}>
-        <div className="drawer-head"><div><p className="eyebrow">Ваш выбор</p><h2>Корзина</h2></div><button onClick={() => setCartOpen(false)} aria-label="Закрыть корзину">×</button></div>
-        <div className="cart-lines">
-          {cartLines.map((item) => (
-            <div className="cart-line" key={item.id}>
-              <img src={item.image} alt="" />
-              <div><h3>{item.name}</h3><p>{money(item.price)}</p><div className="quantity"><button onClick={() => setQuantity(item.id, item.quantity - 1)} aria-label="Уменьшить">−</button><span>{item.quantity}</span><button onClick={() => setQuantity(item.id, item.quantity + 1)} aria-label="Увеличить">+</button></div></div>
-              <button className="remove" onClick={() => setQuantity(item.id, 0)} aria-label={`Удалить ${item.name}`}>×</button>
-            </div>
-          ))}
-          {!cartLines.length && <div className="empty-cart"><span>⌁</span><h3>Корзина пока пуста</h3><p>Добавьте растения из каталога — они появятся здесь.</p><button onClick={() => setCartOpen(false)}>Перейти в каталог</button></div>}
-        </div>
-        {!!cartLines.length && <div className="cart-summary"><div><span>Товары</span><strong>{money(subtotal)}</strong></div><p>Доставка рассчитывается при оформлении</p><button className="primary-button" onClick={beginCheckout}>Оформить заказ</button></div>}
-      </aside>
+      <CartDrawer
+        open={cartOpen}
+        lines={cartLines}
+        subtotal={subtotal}
+        onClose={() => setCartOpen(false)}
+        onQuantityChange={setQuantity}
+        onCheckout={beginCheckout}
+      />
 
       <aside className={`checkout ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
         <div className="drawer-head"><div><p className="eyebrow">Последний шаг</p><h2>Оформление заказа</h2></div><button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button></div>
