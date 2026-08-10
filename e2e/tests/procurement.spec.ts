@@ -34,7 +34,10 @@ test("@phone procurement does not break the admin layout", async ({ page }) => {
   await page.getByRole("button", { name: "Закупки" }).click();
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
+  await expect(page.getByText("Безопасный режим включён")).toBeVisible();
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
-  await page.getByRole("button", { name: "Добавить поставщика" }).press("Enter");
+  const addSupplier = page.getByRole("button", { name: "Добавить поставщика" });
+  await expect(addSupplier).toBeVisible();
+  await addSupplier.click({ force: true });
   await expect(page.getByRole("dialog", { name: "Новый поставщик" })).toBeVisible();
 });
