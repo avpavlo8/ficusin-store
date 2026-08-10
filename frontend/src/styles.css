@@ -298,6 +298,20 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .admin-stats article strong, .admin-stats button strong { color: var(--green); font: 400 43px Georgia, serif; }
 .admin-stats article small, .admin-stats button small { color: #8b928c; }
 .admin-stats article.attention, .admin-stats button.attention { border-color: #d6a18a; background: #fff8f4; }
+.procurement-safety { margin-bottom: 20px; padding: 18px 20px; display: flex; justify-content: space-between; gap: 20px; align-items: center; border: 1px solid #b7d1c1; border-radius: 13px; background: #e8f2eb; }
+.procurement-safety strong { color: var(--green); }
+.procurement-safety p { margin: 5px 0 0; color: #587063; font-size: 13px; line-height: 1.45; }
+.procurement-safety > span { padding: 7px 10px; flex: 0 0 auto; border-radius: 99px; background: white; color: var(--green); font-size: 11px; font-weight: 700; }
+.procurement-toolbar .secondary-button { padding: 10px 15px; border-radius: 9px; }
+.procurement-block { padding: 22px; }
+.procurement-orders { min-width: 880px; }
+.procurement-review { min-width: 920px; }
+.procurement-warning { color: #9b522f; font-weight: 700; }
+.procurement-ok { color: #2d6848; font-weight: 700; }
+.procurement-zero { min-height: 120px; padding: 24px; display: grid; place-items: center; align-content: center; gap: 7px; border: 1px dashed var(--line); border-radius: 13px; color: #748078; text-align: center; }
+.procurement-zero strong { color: var(--green); font: 400 22px Georgia, serif; }
+.procurement-empty { min-height: 250px; }
+.admin-primary:disabled { opacity: .45; cursor: not-allowed; }
 .admin-block { margin-bottom: 20px; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
 .admin-block-heading { margin-bottom: 22px; display: flex; justify-content: space-between; gap: 20px; align-items: end; }
 .admin-block-heading .eyebrow { margin-bottom: 9px; }
@@ -583,6 +597,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
   .account-title { align-items: start; flex-direction: column; }
   .orders-list article { grid-template-columns: 1fr 1fr; gap: 16px; }
   .admin-alert { align-items: start; flex-direction: column; }
+	.procurement-safety { align-items: start; flex-direction: column; }
   .admin-stats { grid-template-columns: 1fr 1fr; }
   .admin-stats article, .admin-stats button { min-height: 125px; padding: 17px; }
   .admin-block { padding: 21px 16px; }

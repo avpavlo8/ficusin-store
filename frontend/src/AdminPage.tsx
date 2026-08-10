@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { StoreHeader, useStoreUser } from "./StoreHeader";
 
 type Role = "owner" | "manager" | "";
-type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings" | "collections";
+type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement";
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
 
 type AdminData = {
@@ -45,6 +45,25 @@ type Product = {
   heightClass?: string; careLevel?: string; placement?: string; petSafety?: string;
   growthHabit?: string; sabyUpdatedAt?: string;
   categoryId?: number;
+};
+
+type ProcurementSupplier = {
+  id: number; name: string; kind: "international" | "domestic"; countryCode: string;
+  defaultCurrency: "EUR" | "USD" | "RUB"; active: boolean; createdAt: string;
+};
+type ProcurementOrder = {
+  id: number; supplierId: number; supplierName: string; orderNumber: string;
+  documentNumber: string; documentDate?: string; sourceKind: string; currency: string;
+  status: string; lines: number; units: number; total: number; unmatched: number; createdAt: string;
+};
+type ProcurementAlias = {
+  id: number; supplierId: number; supplierName: string; rawName: string; supplierArticle: string;
+  potDiameterCm?: number; heightCm?: number; suggestedSabyId: string; suggestedSabyName: string;
+  matchStatus: string; confidence: number; availabilityStatus: string; lastSeenAt?: string;
+};
+type ProcurementData = {
+  summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
+  suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; review: ProcurementAlias[];
 };
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
@@ -137,6 +156,7 @@ export default function AdminPage() {
             {can("products.read") && <Nav active={section === "categories"} onClick={() => go("categories")}>Категории</Nav>}
             {can("products.read") && <Nav active={section === "collections"} onClick={() => go("collections")}>Подборки</Nav>}
             {can("orders.read") && <Nav active={section === "orders"} onClick={() => go("orders")}>Заказы</Nav>}
+            {can("procurement.read") && <Nav active={section === "procurement"} onClick={() => go("procurement")}>Закупки</Nav>}
             {can("customers.read") && <Nav active={section === "customers"} onClick={() => go("customers")}>Клиенты</Nav>}
             {data.role === "owner" && <Nav active={section === "settings"} onClick={() => go("settings")}>Настройки</Nav>}
           </nav>
@@ -148,6 +168,7 @@ export default function AdminPage() {
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}
           {section === "orders" && <Orders focusOrder={focusOrder} onError={setError} />}
+          {section === "procurement" && <Procurement onError={setError} />}
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "collections" && <Collections onError={setError} />}
@@ -302,6 +323,104 @@ function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: s
 // Shares the account page's heading block so both areas read identically.
 function PageHeading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
   return <div className="account-title"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p className="account-title-note">{text}</p></div></div>;
+}
+
+const procurementStatusLabels: Record<string, string> = {
+  draft: "Черновик", ordered: "Заказано", invoice_received: "Инвойс получен",
+  review: "Требует проверки", ready_to_receive: "Готово к поступлению",
+  received: "Принято", cancelled: "Отменено",
+};
+const procurementSourceLabels: Record<string, string> = {
+  manual: "Ручная закупка", recommendation: "По рекомендации",
+  invoice: "Инвойс", payment_invoice: "Счёт на оплату",
+};
+
+function Procurement({ onError }: { onError: (value: string) => void }) {
+  const [data, setData] = useState<ProcurementData | null>(null);
+  const [supplierDialog, setSupplierDialog] = useState(false);
+  const [orderDialog, setOrderDialog] = useState(false);
+  const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
+    .then(setData).catch((error) => onError((error as Error).message)), [onError]);
+  useEffect(() => { void load(); }, [load]);
+
+  if (!data) return <><PageHeading eyebrow="Снабжение" title="Закупки" text="Загружаем данные закупок…" /></>;
+  const formatTotal = (item: ProcurementOrder) => new Intl.NumberFormat("ru-RU", {
+    style: "currency", currency: item.currency, maximumFractionDigits: 2,
+  }).format(item.total);
+  return <>
+    <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
+    <div className="procurement-safety">
+      <div><strong>Безопасный режим включён</strong><p>Раздел пока только готовит данные. Остатки и цены в СБИС, на сайте, WB и Ozon здесь не меняются.</p></div>
+      <span>Нет автопроводки</span>
+    </div>
+    <div className="admin-stats procurement-stats">
+      <article><span>Активные закупки</span><strong>{data.summary.openOrders}</strong><small>кроме принятых и отменённых</small></article>
+      <article className={data.summary.unresolvedAliases ? "attention" : ""}><span>Нужно сопоставить</span><strong>{data.summary.unresolvedAliases}</strong><small>названий поставщиков</small></article>
+      <article className={data.summary.availabilityChecks ? "attention" : ""}><span>Проверить наличие</span><strong>{data.summary.availabilityChecks}</strong><small>временно пропавших позиций</small></article>
+      <article><span>Запросы</span><strong>{data.summary.openRequests}</strong><small>под заказ и от сотрудников</small></article>
+    </div>
+    <div className="admin-toolbar procurement-toolbar">
+      <button className="admin-primary" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Новая закупка</button>
+      <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Добавить поставщика</button>
+      <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
+    </div>
+
+    <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Закупки</h2></div></div>
+      {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
+        <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Строк / шт.</th><th>Сумма</th><th>Проверка</th>
+      </tr></thead><tbody>{data.orders.map((item) => <tr key={item.id}>
+        <td><strong>{item.orderNumber || `Черновик №${item.id}`}</strong><small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small></td>
+        <td><strong>{item.supplierName}</strong><small>{item.currency}</small></td>
+        <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
+        <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
+        <td>{item.lines} / {item.units}</td><td>{formatTotal(item)}</td>
+        <td>{item.unmatched ? <span className="procurement-warning">{item.unmatched} не сопоставлено</span> : <span className="procurement-ok">Готово</span>}</td>
+      </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупок пока нет</h3><p>Создайте первого поставщика и черновик закупки. Загрузку PDF-инвойсов добавим следующим этапом.</p></div>}
+    </section>
+
+    <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Контроль</p><h2>Очередь сопоставления</h2></div><span className="admin-pill">{data.review.length} показано</span></div>
+      {data.review.length ? <div className="admin-table-wrap"><table className="admin-table procurement-review"><thead><tr>
+        <th>Поставщик</th><th>Название в документе</th><th>Размер</th><th>Кандидат СБИС</th><th>Уверенность</th><th>Наличие</th>
+      </tr></thead><tbody>{data.review.map((item) => <tr key={item.id}>
+        <td>{item.supplierName}</td><td><strong>{item.rawName}</strong>{item.supplierArticle && <small>Артикул: {item.supplierArticle}</small>}</td>
+        <td>{[item.potDiameterCm && `D${item.potDiameterCm}`, item.heightCm && `${item.heightCm} см`].filter(Boolean).join(" · ") || "—"}</td>
+        <td><strong>{item.suggestedSabyName || "Кандидат не найден"}</strong><small>{item.suggestedSabyId}</small></td>
+        <td>{Math.round(item.confidence * 100)}%</td><td>{item.availabilityStatus === "check" ? "Проверить" : "Неизвестно"}</td>
+      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Очередь пуста</strong><span>Новые названия появятся здесь после разбора первого документа.</span></div>}
+    </section>
+    {supplierDialog && <SupplierDialog onClose={() => setSupplierDialog(false)} onSaved={() => { setSupplierDialog(false); void load(); }} onError={onError} />}
+    {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
+  </>;
+}
+
+function SupplierDialog({ onClose, onSaved, onError }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [name, setName] = useState(""); const [kind, setKind] = useState<"international" | "domestic">("international");
+  const [countryCode, setCountryCode] = useState("NL"); const [currency, setCurrency] = useState<"EUR" | "USD" | "RUB">("EUR");
+  const [saving, setSaving] = useState(false);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/suppliers", { method: "POST", body: JSON.stringify({ name, kind, countryCode, defaultCurrency: currency }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const changeKind = (value: "international" | "domestic") => { setKind(value); if (value === "domestic") { setCountryCode("RU"); setCurrency("RUB"); } else { setCountryCode("NL"); setCurrency("EUR"); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-title"><header><h2 id="supplier-title">Новый поставщик</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label className="wide">Название<input value={name} onChange={(event) => setName(event.target.value)} autoFocus /></label>
+      <label>Тип<select value={kind} onChange={(event) => changeKind(event.target.value as "international" | "domestic")}><option value="international">Иностранный</option><option value="domestic">Российский</option></select></label>
+      <label>Страна<input maxLength={2} value={countryCode} onChange={(event) => setCountryCode(event.target.value.toUpperCase())} /></label>
+      <label>Валюта<select value={currency} onChange={(event) => setCurrency(event.target.value as "EUR" | "USD" | "RUB")}><option>EUR</option><option>USD</option><option>RUB</option></select></label>
+      <p className="admin-hint wide">Название поставщика не используется для автоматического сопоставления растений. У каждого поставщика будет собственный набор ключей.</p>
+    </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!name.trim() || saving} onClick={save}>{saving ? "Сохраняем…" : "Добавить"}</button></div></div></>;
+}
+
+function ProcurementOrderDialog({ suppliers, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0); const selected = suppliers.find((item) => item.id === supplierId);
+  const [orderNumber, setOrderNumber] = useState(""); const [sourceKind, setSourceKind] = useState("manual"); const [notes, setNotes] = useState(""); const [saving, setSaving] = useState(false);
+  const save = async () => { if (!selected) return; setSaving(true); try { await api("/api/v1/admin/procurement/orders", { method: "POST", body: JSON.stringify({ supplierId, orderNumber, sourceKind, currency: selected.defaultCurrency, notes }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="procurement-title"><header><h2 id="procurement-title">Новая закупка</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label className="wide">Поставщик<select value={supplierId} onChange={(event) => setSupplierId(Number(event.target.value))}>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.defaultCurrency}</option>)}</select></label>
+      <label>Номер заказа<input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} placeholder="Можно заполнить позже" /></label>
+      <label>Основание<select value={sourceKind} onChange={(event) => setSourceKind(event.target.value)}><option value="manual">Ручная закупка</option><option value="recommendation">Рекомендации системы</option><option value="invoice">Инвойс</option><option value="payment_invoice">Счёт на оплату</option></select></label>
+      <label className="wide">Комментарий<textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+      <p className="admin-hint wide">Создаётся только черновик. Отправки в СБИС и изменения цен не будет.</p>
+    </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!supplierId || saving} onClick={save}>{saving ? "Создаём…" : "Создать черновик"}</button></div></div></>;
 }
 
 function Dashboard({ data, onNavigate }: {
