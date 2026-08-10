@@ -98,3 +98,26 @@ test("@desktop ссылка с запросом сразу показывает 
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
   await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toHaveCount(0);
 });
+
+test("@desktop корзина открывается поверх витрины без навигации", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  await card.getByRole("button", { name: /В корзине/ }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  const drawer = page.locator(".drawer.open");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
+  await expect(drawer.locator(".quantity span")).toHaveText("1");
+});
+
+test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?cart=1");
+
+  await expect(page.locator(".drawer.open")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+});

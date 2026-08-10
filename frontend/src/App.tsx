@@ -51,6 +51,7 @@ type CheckoutProfile = {
 };
 
 type Cart = Record<string, number>;
+export type CartProduct = Pick<Product, "id" | "name" | "price" | "image" | "stock">;
 type PaymentMethod = { id: string; title: string; note: string };
 type CdekCity = { code: number; city: string; region?: string };
 type CdekOffice = {
@@ -87,7 +88,23 @@ const deliveryOptions = [
 const money = (value: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value);
 
-export default function Home() {
+type HomeProps = {
+  embedded?: boolean;
+  externalCart?: Cart;
+  cartProducts?: CartProduct[];
+  controlledCartOpen?: boolean;
+  onCartOpenChange?: (open: boolean) => void;
+  onCartChange?: (cart: Cart) => void;
+};
+
+export default function Home({
+  embedded = false,
+  externalCart,
+  cartProducts,
+  controlledCartOpen,
+  onCartOpenChange,
+  onCartChange,
+}: HomeProps = {}) {
   const [products, setProducts] = useState<Product[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
@@ -119,6 +136,7 @@ export default function Home() {
   // very first render, and overwrote the stored basket with an empty one
   // before anything had been read back.
   const [cart, setCart] = useState<Cart>(() => {
+    if (externalCart) return externalCart;
     try {
       const saved = window.localStorage.getItem("ficusin-cart");
       return saved ? (JSON.parse(saved) as Cart) : {};
@@ -126,7 +144,7 @@ export default function Home() {
       return {};
     }
   });
-  const [cartOpen, setCartOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(controlledCartOpen ?? false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [delivery, setDelivery] = useState("pickup");
   const [notice, setNotice] = useState("");
@@ -167,6 +185,35 @@ export default function Home() {
   // Guards the first save: until the server copy has been merged in we must
   // not push the local basket over it.
   const cartSynced = useRef(false);
+
+  // The modern storefront owns the visible basket counter and product grid.
+  // In embedded mode this component only owns the already battle-tested
+  // checkout flow. Keep both sides on the same basket object without a page
+  // navigation or a second source of truth.
+  useEffect(() => {
+    if (!externalCart) return;
+    if (JSON.stringify(externalCart) !== JSON.stringify(cart)) setCart(externalCart);
+    // `cart` is deliberately omitted: parent changes are the only reason to
+    // pull state inward; local changes are pushed by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalCart]);
+
+  useEffect(() => {
+    onCartChange?.(cart);
+  }, [cart, onCartChange]);
+
+  useEffect(() => {
+    if (controlledCartOpen != null && controlledCartOpen !== cartOpen) {
+      setCartOpen(controlledCartOpen);
+    }
+    // See the cart synchronization note above: this direction only follows
+    // the parent value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledCartOpen]);
+
+  useEffect(() => {
+    onCartOpenChange?.(cartOpen);
+  }, [cartOpen, onCartOpenChange]);
 
   // The options depend on the delivery method, so this is asked again
   // whenever the customer switches between pick-up and shipping.
@@ -217,6 +264,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (embedded) return;
     fetch("/api/v1/categories", { cache: "no-store" })
       .then((response) => response.json())
       .then((data: { categories?: Category[] }) => {
@@ -225,7 +273,7 @@ export default function Home() {
         const plants = items.find((item) => item.slug === "plants");
         if (plants) setSelectedCategory(plants.id);
       }).catch(() => setCategories([]));
-  }, []);
+  }, [embedded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +305,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (embedded) return;
     let cancelled = false;
     fetch("/api/v1/catalog", { cache: "no-store" })
       .then(async (response) => {
@@ -285,7 +334,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [embedded]);
 
   // A signed-in customer also keeps a copy on the server, so the basket
   // survives a cleared browser or a switch to another phone. The browser is
@@ -405,7 +454,8 @@ export default function Home() {
     [products, selectedCategory, categoryIDs, selectedCollection, searchTerm],
   );
 
-  const cartLines = products
+  const productsForCart = cartProducts ?? products;
+  const cartLines = productsForCart
     .filter((product) => cart[product.id])
     .map((product) => ({ ...product, quantity: cart[product.id] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
@@ -521,8 +571,12 @@ export default function Home() {
       const next = { ...current };
       if (quantity <= 0) delete next[id];
       else {
-        const product = products.find((item) => item.id === id);
-        next[id] = Math.min(product?.stock ?? 20, quantity);
+        const product = productsForCart.find((item) => item.id === id);
+        // Zero stock is a valid pre-order. It must not turn the first press
+        // on "+" into quantity zero; only a positive stock value caps the
+        // basket below the normal per-line limit.
+        const limit = product?.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
+        next[id] = Math.min(limit, quantity);
       }
       return next;
     });
@@ -618,8 +672,10 @@ export default function Home() {
   const childrenOf = (id: number) => categories.filter((item) => item.parentId === id);
   const selectedCategoryName = categories.find((item) => item.id === selectedCategory)?.name || "Все товары";
 
+  const RootElement = embedded ? "div" : "main";
   return (
-    <main>
+    <RootElement className={embedded ? "cart-checkout-host" : undefined}>
+      {!embedded && <>
       <StoreHeader
         query={query}
         onQueryChange={setQuery}
@@ -780,6 +836,7 @@ export default function Home() {
         <div><h3>Покупателям</h3><a href="/delivery-and-returns">Доставка и возврат</a><a href="/offer">Публичная оферта</a><a href="/privacy">Персональные данные</a><a href="/requisites">Реквизиты</a></div>
         <small>© 2026 Фикусин · Ежедневно 08:00–20:00 · ИП Павловский А. В. · ИНН 620201228029 · ОГРНИП 324620000031276</small>
       </footer>
+      </>}
 
       {notice && <div className="toast" role="status">{notice}</div>}
       {paymentReturn && (
@@ -1096,6 +1153,6 @@ export default function Home() {
         )}
       </aside>
 
-    </main>
+    </RootElement>
   );
 }
