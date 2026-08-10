@@ -2,6 +2,12 @@ import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
 async function mockProcurement(page: import("@playwright/test").Page) {
+  const procurement = {
+    summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
+    suppliers: [{ id: 1, name: "ТК Ярославский", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
+    orders: [{ id: 4, supplierId: 1, supplierName: "ТК Ярославский", orderNumber: "П3-11660", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 154, total: 53900, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
+    review: [{ id: 9, supplierId: 1, supplierName: "ТК Ярославский", rawName: "Фикус Лирата d 10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "X7582076", suggestedSabyName: "Фикус Лирата D27", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
+  };
   // A single handler avoids route precedence races in WebKit: every API
   // request used by this scenario is resolved deterministically here.
   await page.route("**/api/v1/**", (route) => {
@@ -12,14 +18,13 @@ async function mockProcurement(page: import("@playwright/test").Page) {
       permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
       dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
     } });
-    if (path === "/api/v1/admin/procurement") return route.fulfill({ json: {
-      summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
-      suppliers: [{ id: 1, name: "ТК Ярославский", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
-      orders: [{ id: 4, supplierId: 1, supplierName: "ТК Ярославский", orderNumber: "П3-11660", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 154, total: 53900, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
-      review: [{ id: 9, supplierId: 1, supplierName: "ТК Ярославский", rawName: "Фикус Лирата d 10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "X7582076", suggestedSabyName: "Фикус Лирата D27", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
-    } });
+    if (path === "/api/v1/admin/procurement") return route.fulfill({ json: procurement });
     return route.fulfill({ json: {} });
   });
+  // WebKit can miss the broad glob for requests started after a React state
+  // transition. The exact regex is registered last so it has top priority.
+  await page.route(/\/api\/v1\/admin\/procurement(?:\?.*)?$/, (route) =>
+    route.fulfill({ json: procurement }));
 }
 
 test("@desktop procurement opens inside the existing admin panel", async ({ page }) => {
