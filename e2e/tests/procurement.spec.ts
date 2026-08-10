@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { horizontalOverflow, mockApi, owner } from "./helpers";
+import { horizontalOverflow, owner } from "./helpers";
 
 async function mockProcurement(page: import("@playwright/test").Page) {
-  await mockApi(page, owner);
-  await page.route("**/api/v1/admin/**", (route) => {
+  // A single handler avoids route precedence races in WebKit: every API
+  // request used by this scenario is resolved deterministically here.
+  await page.route("**/api/v1/**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/v1/auth/me") return route.fulfill({ json: { user: owner.user } });
     if (path === "/api/v1/admin/dashboard") return route.fulfill({ json: {
       user: { fullName: "Александр" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
