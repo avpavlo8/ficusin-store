@@ -23,6 +23,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
+	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
@@ -103,6 +104,7 @@ func main() {
 		logger,
 	)
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
+	procurementService := procurement.NewService(procurement.NewPostgresStore(pool))
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
 		Handler: httpapi.NewRouter(logger, httpapi.Dependencies{
@@ -119,6 +121,7 @@ func main() {
 			Collections:  catalogRepository,
 			Payments:     paymentService,
 			Settings:     shopSettings,
+			Procurement:  procurementService,
 			Refunds:      paymentService,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
