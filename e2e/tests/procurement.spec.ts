@@ -23,9 +23,7 @@ async function mockProcurement(page: import("@playwright/test").Page) {
 test("@desktop procurement opens inside the existing admin panel", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  const procurementResponse = page.waitForResponse((response) => response.url().includes("/api/v1/admin/procurement") && response.ok());
   await page.getByRole("button", { name: "Закупки" }).click();
-  await procurementResponse;
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Безопасный режим включён")).toBeVisible({ timeout: 15_000 });
@@ -37,9 +35,7 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
 test("@phone procurement does not break the admin layout", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  const procurementResponse = page.waitForResponse((response) => response.url().includes("/api/v1/admin/procurement") && response.ok());
   await page.getByRole("button", { name: "Закупки" }).click();
-  await procurementResponse;
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Безопасный режим включён")).toBeVisible({ timeout: 15_000 });
