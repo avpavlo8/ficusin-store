@@ -22,6 +22,8 @@ const (
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
 	PermissionProductsSync     = "products.sync"
+	PermissionProcurementRead  = "procurement.read"
+	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
 )
 
@@ -53,7 +55,8 @@ func Can(role, permission string) bool {
 			permission == PermissionCustomersRead ||
 			permission == PermissionOrdersRead || permission == PermissionOrdersEdit ||
 			permission == PermissionProductsRead || permission == PermissionProductsEdit ||
-			permission == PermissionProductsSync
+			permission == PermissionProductsSync ||
+			permission == PermissionProcurementRead || permission == PermissionProcurementEdit
 	default:
 		return false
 	}
