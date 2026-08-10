@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
@@ -14,6 +16,7 @@ type procurementService interface {
 	Dashboard(context.Context) (procurement.Dashboard, error)
 	CreateSupplier(context.Context, procurement.Actor, procurement.SupplierCreate) (procurement.Supplier, error)
 	CreateOrder(context.Context, procurement.Actor, procurement.OrderCreate) (procurement.OrderSummary, error)
+	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
 }
 
 type procurementHandlers struct {
@@ -90,6 +93,66 @@ func (handlers procurementHandlers) createOrder(response http.ResponseWriter, re
 	writeJSON(response, http.StatusCreated, map[string]any{"order": item})
 }
 
+func (handlers procurementHandlers) importDocument(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	if handlers.service == nil {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Раздел закупок пока недоступен"})
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, (20<<20)+(1<<20))
+	if err := request.ParseMultipartForm(20 << 20); err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "PDF слишком большой или форма повреждена"})
+		return
+	}
+	defer request.MultipartForm.RemoveAll() //nolint:errcheck
+	supplierID, err := strconv.ParseInt(request.FormValue("supplierId"), 10, 64)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите поставщика"})
+		return
+	}
+	var orderID int64
+	if raw := request.FormValue("orderId"); raw != "" {
+		orderID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная закупка"})
+			return
+		}
+	}
+	file, header, err := request.FormFile("file")
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите PDF-файл"})
+		return
+	}
+	defer file.Close() //nolint:errcheck
+	content, err := io.ReadAll(io.LimitReader(file, (20<<20)+1))
+	if err != nil || len(content) > 20<<20 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось прочитать PDF или файл больше 20 МБ"})
+		return
+	}
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = http.DetectContentType(content)
+	}
+	result, err := handlers.service.ImportDocument(request.Context(), procurement.Actor{
+		CustomerID: actor.CustomerID, Role: actor.Role,
+	}, procurement.DocumentUpload{
+		SupplierID: supplierID, OrderID: orderID, FileName: header.Filename,
+		ContentType: contentType, Content: content,
+	})
+	if err != nil {
+		handlers.failed(response, "import procurement document", err)
+		return
+	}
+	status := http.StatusCreated
+	if result.Duplicate {
+		status = http.StatusOK
+	}
+	writeJSON(response, status, result)
+}
+
 func (handlers procurementHandlers) failed(response http.ResponseWriter, operation string, err error) {
 	status := http.StatusServiceUnavailable
 	message := "Не удалось выполнить операцию"
@@ -97,7 +160,13 @@ func (handlers procurementHandlers) failed(response http.ResponseWriter, operati
 		status, message = http.StatusBadRequest, "Проверьте заполненные поля"
 	}
 	if errors.Is(err, procurement.ErrNotFound) {
-		status, message = http.StatusNotFound, "Поставщик не найден или отключён"
+		status, message = http.StatusNotFound, "Поставщик или закупка не найдены"
+	}
+	if errors.Is(err, procurement.ErrUnsupportedDocument) {
+		status, message = http.StatusUnprocessableEntity, "Не удалось распознать строки PDF. Проверьте формат документа"
+	}
+	if errors.Is(err, procurement.ErrDuplicate) {
+		status, message = http.StatusConflict, "Этот документ уже загружен"
 	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: message})

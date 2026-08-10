@@ -61,9 +61,15 @@ type ProcurementAlias = {
   potDiameterCm?: number; heightCm?: number; suggestedSabyId: string; suggestedSabyName: string;
   matchStatus: string; confidence: number; availabilityStatus: string; lastSeenAt?: string;
 };
+type ProcurementDocument = {
+  id: number; supplierId: number; supplierName: string; orderId: number; fileName: string;
+  parserKind: string; parseStatus: string; arithmeticStatus: string; documentNumber: string;
+  documentDate?: string; currency: string; lines: number; units: number; productSubtotal: number;
+  packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; createdAt: string;
+};
 type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
-  suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; review: ProcurementAlias[];
+  suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; documents: ProcurementDocument[]; review: ProcurementAlias[];
 };
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
@@ -102,9 +108,11 @@ const catalogOptions = {
 } satisfies Record<string, string[][]>;
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  if (!(options?.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const response = await fetch(path, {
     credentials: "same-origin", cache: "no-store", ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
+    headers,
   });
   if (response.status === 401) { window.location.assign("/login?returnTo=/admin"); throw new Error("Требуется вход"); }
   if (response.status === 403) throw new Error("Недостаточно прав для этого действия");
@@ -334,11 +342,15 @@ const procurementSourceLabels: Record<string, string> = {
   manual: "Ручная закупка", recommendation: "По рекомендации",
   invoice: "Инвойс", payment_invoice: "Счёт на оплату",
 };
+const procurementParserLabels: Record<string, string> = {
+  holland_packing_list: "Голландский инвойс", domestic_payment_invoice: "Российский счёт", unknown: "Не определён",
+};
 
 function Procurement({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
   const [supplierDialog, setSupplierDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
+  const [uploadDialog, setUploadDialog] = useState(false);
   const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
     .then(setData).catch((error) => onError((error as Error).message)), [onError]);
   useEffect(() => { void load(); }, [load]);
@@ -347,6 +359,9 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
   const formatTotal = (item: ProcurementOrder) => new Intl.NumberFormat("ru-RU", {
     style: "currency", currency: item.currency, maximumFractionDigits: 2,
   }).format(item.total);
+  const formatMoney = (value: number, currency: string) => currency ? new Intl.NumberFormat("ru-RU", {
+    style: "currency", currency, maximumFractionDigits: 2,
+  }).format(value) : "—";
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
     <div className="procurement-safety">
@@ -360,10 +375,23 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
       <article><span>Запросы</span><strong>{data.summary.openRequests}</strong><small>под заказ и от сотрудников</small></article>
     </div>
     <div className="admin-toolbar procurement-toolbar">
+      <button className="admin-primary" onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить PDF</button>
       <button className="admin-primary" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Новая закупка</button>
       <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Добавить поставщика</button>
       <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
     </div>
+
+    <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Входящие документы</p><h2>Инвойсы и счета</h2></div><span className="admin-pill">{data.documents.length} загружено</span></div>
+      {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
+        <th>Документ</th><th>Поставщик</th><th>Формат</th><th>Строк / шт.</th><th>Растения</th><th>Упаковка</th><th>Проверка</th>
+      </tr></thead><tbody>{data.documents.map((item) => <tr key={item.id}>
+        <td><strong>{item.documentNumber || item.fileName}</strong><small>{item.documentDate ? new Date(item.documentDate).toLocaleDateString("ru-RU") : item.fileName}</small></td>
+        <td>{item.supplierName}</td><td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
+        <td>{item.lines} / {item.units}</td><td>{formatMoney(item.productSubtotal, item.currency)}</td><td>{formatMoney(item.packageTotal, item.currency)}</td>
+        <td>{item.arithmeticStatus === "ok" ? <span className="procurement-ok">Суммы сходятся</span> : <span className="procurement-warning">Проверить суммы</span>}<small>{item.parseStatus === "review" ? "Есть несопоставленные строки" : "Разобрано"}</small></td>
+      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Документов пока нет</strong><span>Загрузите PDF поставщика — строки и телеги будут разобраны автоматически.</span></div>}
+    </section>
 
     <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Текущие закупки</h2></div></div>
@@ -376,7 +404,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
         <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
         <td>{item.lines} / {item.units}</td><td>{formatTotal(item)}</td>
         <td>{item.unmatched ? <span className="procurement-warning">{item.unmatched} не сопоставлено</span> : <span className="procurement-ok">Готово</span>}</td>
-      </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупок пока нет</h3><p>Создайте первого поставщика и черновик закупки. Загрузку PDF-инвойсов добавим следующим этапом.</p></div>}
+      </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупок пока нет</h3><p>Создайте черновик вручную или загрузите PDF поставщика.</p></div>}
     </section>
 
     <section className="admin-block procurement-block">
@@ -392,7 +420,25 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
     </section>
     {supplierDialog && <SupplierDialog onClose={() => setSupplierDialog(false)} onSaved={() => { setSupplierDialog(false); void load(); }} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
+    {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
   </>;
+}
+
+function ProcurementUploadDialog({ suppliers, orders, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0); const [orderId, setOrderId] = useState(0);
+  const [file, setFile] = useState<File | null>(null); const [saving, setSaving] = useState(false);
+  const availableOrders = orders.filter((item) => item.supplierId === supplierId && !["received", "cancelled"].includes(item.status));
+  const changeSupplier = (value: number) => { setSupplierId(value); setOrderId(0); };
+  const save = async () => { if (!file || !supplierId) return; setSaving(true); try {
+    const body = new FormData(); body.append("supplierId", String(supplierId)); if (orderId) body.append("orderId", String(orderId)); body.append("file", file);
+    await api("/api/v1/admin/procurement/documents", { method: "POST", body }); onSaved();
+  } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-title"><header><h2 id="upload-title">Загрузить документ</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label className="wide">Поставщик<select value={supplierId} onChange={(event) => changeSupplier(Number(event.target.value))}>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="wide">Связать с закупкой<select value={orderId} onChange={(event) => setOrderId(Number(event.target.value))}><option value={0}>Создать закупку из документа</option>{availableOrders.map((item) => <option key={item.id} value={item.id}>{item.orderNumber || `Черновик №${item.id}`}</option>)}</select></label>
+      <label className="wide procurement-file">PDF-файл<input type="file" accept="application/pdf,.pdf" onChange={(event) => setFile(event.target.files?.[0] || null)} /><span>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} МБ` : "До 20 МБ"}</span></label>
+      <p className="admin-hint wide">Поддерживаются packing list PL-FG 267 и российские счета на оплату. Повторная загрузка того же файла не создаст дубль.</p>
+    </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!file || !supplierId || saving} onClick={save}>{saving ? "Разбираем PDF…" : "Загрузить и разобрать"}</button></div></div></>;
 }
 
 function SupplierDialog({ onClose, onSaved, onError }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {

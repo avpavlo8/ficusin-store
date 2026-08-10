@@ -33,7 +33,7 @@ type Dependencies struct {
 	// means every item is quoted at the fallback box size.
 	Packages packageRepository
 	// Collections are the hand-made sets shown as tabs on the storefront.
-	Collections  collectionRepository
+	Collections collectionRepository
 	// Payments is nil when no YooKassa keys are set, which means the shop
 	// simply does not offer card payment.
 	Payments paymentService
@@ -169,6 +169,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/procurement", procurementAPI.dashboard)
 	mux.HandleFunc("POST /api/v1/admin/procurement/suppliers", procurementAPI.createSupplier)
 	mux.HandleFunc("POST /api/v1/admin/procurement/orders", procurementAPI.createOrder)
+	mux.HandleFunc("POST /api/v1/admin/procurement/documents", procurementAPI.importDocument)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),
