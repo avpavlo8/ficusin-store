@@ -114,6 +114,24 @@ test("@desktop корзина открывается поверх витрины
   await expect(drawer.locator(".quantity span")).toHaveText("1");
 });
 
+test("@desktop оформление открывается из вынесенной корзины", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  await card.getByRole("button", { name: /В корзине/ }).click();
+  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+
+  const checkout = page.locator(".checkout.open");
+  await expect(checkout).toBeVisible();
+  await expect(checkout.getByRole("heading", { name: "Оформление заказа" })).toBeVisible();
+  await expect(checkout.getByLabel("Имя")).toBeVisible();
+  await expect(checkout.getByLabel("Телефон")).toBeVisible();
+  await expect(checkout.getByRole("button", { name: "Подтвердить заказ" })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+});
+
 test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?cart=1");
