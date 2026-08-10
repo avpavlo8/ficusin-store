@@ -21,7 +21,7 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки" }).click();
 
-  await expect(page.getByRole("heading", { name: "Закупки" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Безопасный режим включён")).toBeVisible();
   await expect(page.getByText("П3-11660")).toBeVisible();
   await expect(page.getByText("Фикус Лирата d 10")).toBeVisible();
@@ -33,8 +33,8 @@ test("@phone procurement does not break the admin layout", async ({ page }) => {
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки" }).click();
 
-  await expect(page.getByRole("heading", { name: "Закупки" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
-  await page.getByRole("button", { name: "Добавить поставщика" }).click();
+  await page.getByRole("button", { name: "Добавить поставщика" }).press("Enter");
   await expect(page.getByRole("dialog", { name: "Новый поставщик" })).toBeVisible();
 });
