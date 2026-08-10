@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockApi } from "./helpers";
+import { mockApi, owner } from "./helpers";
 
 // Витрина — это главная страница магазина, и почти всё, что покупатель делает
 // до корзины, происходит здесь. Раньше её не проверял никто.
@@ -160,6 +160,22 @@ test("@desktop оформление отправляет заказ с норм�
     items: [{ id: "saby-1", quantity: 1 }],
     consent: true,
   });
+});
+
+test("@desktop оформление подставляет профиль авторизованного покупателя", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.goto("/");
+
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  await card.getByRole("button", { name: /В корзине/ }).click();
+  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+
+  const checkout = page.locator(".checkout.open");
+  await expect(checkout.getByLabel("Имя")).toHaveValue("Александр");
+  await expect(checkout.getByLabel("Телефон")).toHaveValue("+79150000000");
+  await expect(checkout.getByLabel("Email")).toHaveValue("owner@example.com");
+  await expect(checkout.locator(".checkout-total > div").first().locator("span").last()).toHaveText("1 490 ₽");
 });
 
 test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {

@@ -1,4 +1,3 @@
-import App from "./App";
 import StorefrontPage from "./StorefrontPage";
 import AdminPage from "./AdminPage";
 import ProductPage from "./ProductPage";
@@ -50,6 +49,6 @@ export default function Root() {
     case "/delivery-and-returns":
       return <DeliveryPage />;
     default:
-      return <App />;
+      return <StorefrontPage />;
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import App from "./App";
+import CheckoutHost from "./CheckoutHost";
 import { StoreHeader } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
 import { searchProducts, suggestions } from "./lib/search";
@@ -395,11 +395,10 @@ export default function StorefrontPage() {
           </div>
         </div>
       </section>
-      <App
-        embedded
-        externalCart={cart}
-        cartProducts={products}
-        controlledCartOpen={cartOpen}
+      <CheckoutHost
+        cart={cart}
+        products={products}
+        cartOpen={cartOpen}
         onCartOpenChange={setCartOpen}
         onCartChange={setCart}
       />
