@@ -175,7 +175,7 @@ test("@desktop оформление подставляет профиль авт
   await expect(checkout.getByLabel("Имя")).toHaveValue("Александр");
   await expect(checkout.getByLabel("Телефон")).toHaveValue("+79150000000");
   await expect(checkout.getByLabel("Email")).toHaveValue("owner@example.com");
-  await expect(checkout.getByText("Аглаонема Мария")).toBeVisible();
+  await expect(checkout.locator(".checkout-total > div").first().locator("span").last()).toHaveText("1 490 ₽");
 });
 
 test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {
