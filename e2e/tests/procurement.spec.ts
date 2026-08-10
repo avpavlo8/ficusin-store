@@ -3,17 +3,21 @@ import { horizontalOverflow, mockApi, owner } from "./helpers";
 
 async function mockProcurement(page: import("@playwright/test").Page) {
   await mockApi(page, owner);
-  await page.route("**/api/v1/admin/dashboard", (route) => route.fulfill({ json: {
-    user: { fullName: "Александр" }, role: "owner",
-    permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
-    dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
-  } }));
-  await page.route("**/api/v1/admin/procurement*", (route) => route.fulfill({ json: {
-    summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
-    suppliers: [{ id: 1, name: "ТК Ярославский", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
-    orders: [{ id: 4, supplierId: 1, supplierName: "ТК Ярославский", orderNumber: "П3-11660", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 154, total: 53900, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
-    review: [{ id: 9, supplierId: 1, supplierName: "ТК Ярославский", rawName: "Фикус Лирата d 10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "X7582076", suggestedSabyName: "Фикус Лирата D27", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
-  } }));
+  await page.route("**/api/v1/admin/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/v1/admin/dashboard") return route.fulfill({ json: {
+      user: { fullName: "Александр" }, role: "owner",
+      permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
+      dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
+    } });
+    if (path === "/api/v1/admin/procurement") return route.fulfill({ json: {
+      summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
+      suppliers: [{ id: 1, name: "ТК Ярославский", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
+      orders: [{ id: 4, supplierId: 1, supplierName: "ТК Ярославский", orderNumber: "П3-11660", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 154, total: 53900, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
+      review: [{ id: 9, supplierId: 1, supplierName: "ТК Ярославский", rawName: "Фикус Лирата d 10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "X7582076", suggestedSabyName: "Фикус Лирата D27", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
+    } });
+    return route.fulfill({ json: {} });
+  });
 }
 
 test("@desktop procurement opens inside the existing admin panel", async ({ page }) => {
