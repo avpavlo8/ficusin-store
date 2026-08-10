@@ -40,6 +40,8 @@ type Dependencies struct {
 	// Settings is nil in tests; the routes then answer 503 and nothing
 	// else in the shop notices.
 	Settings settingsService
+	// Procurement is nil only in tests that do not exercise the purchasing panel.
+	Procurement procurementService
 	// Refunds sends money back for a cancelled order; nil means the panel
 	// says refunds are unavailable.
 	Refunds      refundService
@@ -68,6 +70,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.Admin,
 		dependencies.Refunds,
 	)
+	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
 
 	// Nothing behind these three routes is free for us: a call costs money
 	// at SMS.ru, an order pings a person, and every address suggestion is
@@ -163,6 +166,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/categories", adminAPI.createCategory)
 	mux.HandleFunc("PATCH /api/v1/admin/categories/{id}", adminAPI.updateCategory)
 	mux.HandleFunc("DELETE /api/v1/admin/categories/{id}", adminAPI.deleteCategory)
+	mux.HandleFunc("GET /api/v1/admin/procurement", procurementAPI.dashboard)
+	mux.HandleFunc("POST /api/v1/admin/procurement/suppliers", procurementAPI.createSupplier)
+	mux.HandleFunc("POST /api/v1/admin/procurement/orders", procurementAPI.createOrder)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),
