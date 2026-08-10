@@ -132,6 +132,36 @@ test("@desktop оформление открывается из вынесенн
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("@desktop оформление отправляет заказ с нормализованным телефоном", async ({ page }) => {
+  await mockApi(page);
+  let order: Record<string, unknown> | undefined;
+  await page.route("**/api/v1/orders", async (route) => {
+    order = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ json: { orderNumber: "WEB-1001" } });
+  });
+  await page.goto("/");
+
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  await card.getByRole("button", { name: /В корзине/ }).click();
+  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+
+  const checkout = page.locator(".checkout.open");
+  await checkout.getByLabel("Имя").fill("Александр");
+  await checkout.getByLabel("Телефон").fill("9151234567");
+  await checkout.getByLabel("Email").fill("buyer@example.com");
+  await checkout.locator('input[name="consent"]').check();
+  await checkout.getByRole("button", { name: "Подтвердить заказ" }).click();
+
+  await expect(checkout.getByRole("heading", { name: "Заказ принят" })).toBeVisible();
+  expect(order).toMatchObject({
+    customer: { name: "Александр", phone: "+79151234567", email: "buyer@example.com" },
+    delivery: "pickup",
+    items: [{ id: "saby-1", quantity: 1 }],
+    consent: true,
+  });
+});
+
 test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?cart=1");

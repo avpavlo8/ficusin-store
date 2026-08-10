@@ -1,7 +1,7 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { normalizeRussianPhone } from "./lib/phone";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CartDrawer, CheckoutPanel } from "./CartCheckout";
 import { StoreHeader } from "./StoreHeader";
+import { useCheckout } from "./useCheckout";
 
 type Product = {
   id: string;
@@ -41,30 +41,8 @@ type StoreUser = {
   avatarUpdatedAt?: string;
 };
 
-type CheckoutProfile = {
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-};
-
 type Cart = Record<string, number>;
 export type CartProduct = Pick<Product, "id" | "name" | "price" | "image" | "stock">;
-type PaymentMethod = { id: string; title: string; note: string };
-type CdekCity = { code: number; city: string; region?: string };
-type CdekOffice = {
-  code: string;
-  name: string;
-  location: { city: string; address: string; address_full?: string };
-  work_time?: string;
-};
-type CdekQuote = {
-  tariffCode: number;
-  tariffName: string;
-  price: number;
-  daysMin: number;
-  daysMax: number;
-};
 
 const collections: Array<{ id: string; title: string; text: string; field: keyof Product; value: string; icon: string }> = [
   { id: "sunny", title: "Для солнечной стороны", text: "Любят много света", field: "lightLevel", value: "sunny", icon: "☀" },
@@ -76,13 +54,6 @@ const collections: Array<{ id: string; title: string; text: string; field: keyof
   { id: "tall", title: "Высокие растения", text: "Зелёный акцент в интерьере", field: "heightClass", value: "high", icon: "↟" },
   { id: "trailing", title: "Ампельные растения", text: "Красиво ниспадают с полок", field: "growthHabit", value: "trailing", icon: "⌇" },
 ];
-const deliveryOptions = [
-  { id: "pickup", title: "Самовывоз в Рязани", detail: "из магазина, бесплатно", fee: 0 },
-  { id: "courier", title: "Курьер по Рязани", detail: "в согласованный день", fee: 490 },
-  { id: "cdek", title: "СДЭК по России", detail: "до выбранного пункта выдачи", fee: null },
-  { id: "post", title: "Почта России", detail: "для населённых пунктов без СДЭК", fee: 590 },
-];
-
 const money = (value: number) =>
   new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value);
 
@@ -143,43 +114,18 @@ export default function Home({
     }
   });
   const [cartOpen, setCartOpen] = useState(controlledCartOpen ?? false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [delivery, setDelivery] = useState("pickup");
   const [notice, setNotice] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [orderNumber, setOrderNumber] = useState("");
-  const [cdekCityQuery, setCdekCityQuery] = useState("");
-  const [cdekCities, setCdekCities] = useState<CdekCity[]>([]);
-  const [cdekCity, setCdekCity] = useState<CdekCity | null>(null);
-  const [cdekOffices, setCdekOffices] = useState<CdekOffice[]>([]);
-  const [cdekOfficeCode, setCdekOfficeCode] = useState("");
-  // Moscow has hundreds of pick-up points. A dropdown of them all is a scroll
-  // through a phone book, so the customer types part of the address instead.
-  const [cdekOfficeQuery, setCdekOfficeQuery] = useState("");
-  const [cdekOfficeListOpen, setCdekOfficeListOpen] = useState(false);
-  const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
-  const [cdekTariffCode, setCdekTariffCode] = useState(0);
-  // Every plant is quoted in its own box. For an order of several the
-  // customer can ask whether they fit into one — only the packer can tell.
-  const [cdekRepack, setCdekRepack] = useState(false);
-  // Which ways to pay this customer may use is decided by the server: it
-  // depends on how they collect and on whether they are a wholesale buyer.
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState("online");
   // Set when the customer comes back from the payment page.
   const [paymentReturn, setPaymentReturn] = useState("");
-  const [cdekLoading, setCdekLoading] = useState(false);
-  const [cdekError, setCdekError] = useState("");
-  // Pick-up points need API keys. Without them the option is hidden rather
-  // than offered and then failing at the last step of the checkout.
-  const [cdekAvailable, setCdekAvailable] = useState(true);
   const [user, setUser] = useState<StoreUser | null>(null);
-  const [checkoutProfile, setCheckoutProfile] = useState<CheckoutProfile>({
-    name: "",
-    phone: "",
-    email: "",
-    address: "",
-  });
+  const productsForCart = cartProducts ?? products;
+  const cartLines = productsForCart
+    .filter((product) => cart[product.id])
+    .map((product) => ({ ...product, quantity: cart[product.id] }));
+  const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
+  const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice });
+  const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
   // Guards the first save: until the server copy has been merged in we must
   // not push the local basket over it.
   const cartSynced = useRef(false);
@@ -212,38 +158,6 @@ export default function Home({
   useEffect(() => {
     onCartOpenChange?.(cartOpen);
   }, [cartOpen, onCartOpenChange]);
-
-  // The options depend on the delivery method, so this is asked again
-  // whenever the customer switches between pick-up and shipping.
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/v1/payments/methods?delivery=${encodeURIComponent(delivery)}`, {
-      credentials: "same-origin",
-      cache: "no-store",
-    })
-      .then((response) => response.json())
-      .then((data: { methods?: PaymentMethod[] }) => {
-        if (cancelled) return;
-        const methods = data.methods ?? [];
-        setPaymentMethods(methods);
-        setPaymentMethod((current) =>
-          methods.some((item) => item.id === current) ? current : (methods[0]?.id ?? "online"),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setPaymentMethods([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [delivery]);
-
-  useEffect(() => {
-    fetch("/api/v1/delivery/cdek?action=status", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data: { available?: boolean }) => setCdekAvailable(Boolean(data.available)))
-      .catch(() => setCdekAvailable(false));
-  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -300,7 +214,7 @@ export default function Home({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setCheckoutProfile]);
 
   useEffect(() => {
     if (embedded) return;
@@ -386,43 +300,6 @@ export default function Home({
     return () => document.body.classList.remove("drawer-open");
   }, [cartOpen, checkoutOpen]);
 
-  useEffect(() => {
-    if (
-      delivery !== "cdek" ||
-      cdekCityQuery.trim().length < 2 ||
-      cdekCityQuery.trim() === cdekCity?.city
-    ) {
-      return;
-    }
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        setCdekLoading(true);
-        setCdekError("");
-        const response = await fetch(
-          `/api/v1/delivery/cdek?action=cities&city=${encodeURIComponent(cdekCityQuery.trim())}`,
-          { signal: controller.signal },
-        );
-        const data = (await response.json()) as {
-          cities?: CdekCity[];
-          error?: string;
-        };
-        if (!response.ok) throw new Error(data.error || "Не удалось найти город");
-        setCdekCities(data.cities ?? []);
-      } catch (error) {
-        if ((error as Error).name !== "AbortError") {
-          setCdekError(error instanceof Error ? error.message : "Не удалось найти город");
-        }
-      } finally {
-        setCdekLoading(false);
-      }
-    }, 350);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [delivery, cdekCityQuery, cdekCity]);
-
   const selectedCollection = collections.find((item) => item.id === collection);
   const categoryIDs = useMemo(() => {
     if (!selectedCategory) return new Set<number>();
@@ -451,98 +328,6 @@ export default function Home({
       }),
     [products, selectedCategory, categoryIDs, selectedCollection, searchTerm],
   );
-
-  const productsForCart = cartProducts ?? products;
-  const cartLines = productsForCart
-    .filter((product) => cart[product.id])
-    .map((product) => ({ ...product, quantity: cart[product.id] }));
-  const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const availableDelivery = deliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable);
-  const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
-  // The cheapest tariff comes first and is what we preselect; the customer
-  // may pay more for a faster one.
-  const cdekQuote =
-    cdekQuotes.find((item) => item.tariffCode === cdekTariffCode) ?? cdekQuotes[0] ?? null;
-  // Either we have a price we can stand behind, or a person will work it
-  // out. There is no third case worth showing a number for.
-  const cdekFeePending = delivery === "cdek" && (!cdekQuote || cdekRepack);
-  const deliveryFee =
-    delivery === "cdek"
-      ? cdekFeePending
-        ? 0
-        : (cdekQuote?.price ?? 0)
-      : (deliveryOption.fee ?? 0);
-  const officeSearch = cdekOfficeQuery.trim().toLowerCase();
-  const cdekOfficeMatches = (
-    officeSearch
-      ? cdekOffices.filter((office) =>
-          `${office.location.address} ${office.name}`.toLowerCase().includes(officeSearch),
-        )
-      : cdekOffices
-  ).slice(0, 12);
-  const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
-  const total = subtotal + deliveryFee;
-
-  async function chooseCdekCity(city: CdekCity) {
-    setCdekCity(city);
-    setCdekCityQuery(city.city);
-    setCdekCities([]);
-    setCdekOffices([]);
-    setCdekOfficeCode("");
-    setCdekOfficeQuery("");
-    setCdekQuotes([]);
-    setCdekTariffCode(0);
-    setCdekLoading(true);
-    setCdekError("");
-    try {
-      const [officesResponse, quoteResponse] = await Promise.all([
-        fetch(`/api/v1/delivery/cdek?action=offices&cityCode=${city.code}`),
-        fetch("/api/v1/delivery/cdek", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // The price follows the boxes of the actual plants in the cart,
-          // so the server needs to know what is in it.
-          body: JSON.stringify({
-            cityCode: city.code,
-            items: cartLines.map((line) => ({ id: line.id, quantity: line.quantity })),
-          }),
-        }),
-      ]);
-      const officesData = (await officesResponse.json()) as {
-        offices?: CdekOffice[];
-        error?: string;
-      };
-      const quoteData = (await quoteResponse.json()) as {
-        quotes?: CdekQuote[];
-        pending?: boolean;
-        error?: string;
-      };
-      if (!officesResponse.ok) {
-        throw new Error(officesData.error || "Не удалось загрузить пункты выдачи");
-      }
-      if (!officesData.offices?.length) {
-        throw new Error("В этом городе нет доступных пунктов выдачи");
-      }
-      setCdekOffices(officesData.offices);
-      // No price is not a failure. Some plants have no box measured yet and
-      // CDEK is not always up; either way the order goes through and the
-      // manager works the cost out.
-      if (quoteData.quotes?.length) {
-        setCdekQuotes(quoteData.quotes);
-        setCdekTariffCode(quoteData.quotes[0].tariffCode);
-      } else {
-        setCdekQuotes([]);
-        setCdekTariffCode(0);
-      }
-    } catch (error) {
-      setCdekError(
-        error instanceof Error ? error.message : "Не удалось рассчитать доставку",
-      );
-    } finally {
-      setCdekLoading(false);
-    }
-  }
 
   function toggleFavorite(id: string) {
     setFavorites((current) => {
@@ -580,90 +365,10 @@ export default function Home({
     });
   }
 
-  async function submitOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    const form = new FormData(event.currentTarget);
-    const phoneInput = event.currentTarget.elements.namedItem(
-      "phone",
-    ) as HTMLInputElement;
-    const phone = normalizeRussianPhone(String(form.get("phone") ?? ""));
-    if (!phone) {
-      phoneInput.setCustomValidity(
-        "Введите российский номер: 9151234567, 79151234567 или 89151234567",
-      );
-      phoneInput.reportValidity();
-      setSubmitting(false);
-      return;
-    }
-    phoneInput.setCustomValidity("");
-    phoneInput.value = phone;
-    const payload = {
-      customer: {
-        name: String(form.get("name") ?? ""),
-        phone,
-        email: String(form.get("email") ?? ""),
-        address: String(form.get("address") ?? ""),
-        comment: String(form.get("comment") ?? ""),
-      },
-      delivery,
-      cdek:
-        delivery === "cdek"
-          ? {
-              cityCode: cdekCity?.code,
-              cityName: cdekCity?.city,
-              officeCode: cdekOfficeCode,
-              tariffCode: cdekRepack ? 0 : (cdekQuote?.tariffCode ?? 0),
-              repack: cdekRepack,
-            }
-          : undefined,
-      items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
-      // The checkbox is required in the markup, so reaching this point
-      // means it was ticked. The server records the agreement against the
-      // order — that record is the only evidence of it we would ever have.
-      consent: form.get("consent") === "on",
-      paymentMethod,
-    };
-
-    try {
-      const response = await fetch("/api/v1/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = (await response.json()) as { orderNumber?: string; error?: string };
-      if (!response.ok || !data.orderNumber) throw new Error(data.error || "Не удалось оформить заказ");
-      setOrderNumber(data.orderNumber);
-      setCart({});
-      // Paying by card sends the customer straight to the payment page.
-      // If that fails, the order still exists and can be paid from the
-      // account later, so the failure is a notice rather than an error.
-      if (paymentMethod === "online" && !cdekFeePending) {
-        try {
-          const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
-            method: "POST",
-            credentials: "same-origin",
-          });
-          const result = (await payment.json()) as { confirmationUrl?: string };
-          if (result.confirmationUrl) {
-            window.location.assign(result.confirmationUrl);
-            return;
-          }
-        } catch {
-          setNotice("Заказ оформлен. Оплатить можно из личного кабинета");
-        }
-      }
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Не удалось оформить заказ");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   function beginCheckout() {
     setCartOpen(false);
-    setCheckoutOpen(true);
-    setOrderNumber("");
+    checkout.beginCheckout();
   }
 
   const roots = categories.filter((item) => !item.parentId);
@@ -821,7 +526,7 @@ export default function Home({
           <p>Итоговую стоимость и срок менеджер подтвердит после оформления заказа.</p>
         </div>
         <div className="delivery-grid">
-          {availableDelivery.map((item, index) => (
+          {checkout.availableDelivery.map((item, index) => (
             <article key={item.id}><span>0{index + 1}</span><h3>{item.title}</h3><p>{item.detail}</p><b>{item.id === "cdek" ? "По тарифу СДЭК" : item.fee ? `от ${money(item.fee)}` : "Бесплатно"}</b></article>
           ))}
         </div>
@@ -862,51 +567,7 @@ export default function Home({
         onCheckout={beginCheckout}
       />
 
-      <CheckoutPanel
-        checkoutOpen={checkoutOpen}
-        setCheckoutOpen={setCheckoutOpen}
-        orderNumber={orderNumber}
-        submitOrder={submitOrder}
-        user={!!user}
-        checkoutProfile={checkoutProfile}
-        setCheckoutProfile={setCheckoutProfile}
-        availableDelivery={availableDelivery}
-        delivery={delivery}
-        setDelivery={setDelivery}
-        cdekQuote={cdekQuote}
-        cdekCityQuery={cdekCityQuery}
-        setCdekCityQuery={setCdekCityQuery}
-        setCdekCity={setCdekCity}
-        setCdekCities={setCdekCities}
-        setCdekOffices={setCdekOffices}
-        cdekOfficeCode={cdekOfficeCode}
-        setCdekOfficeCode={setCdekOfficeCode}
-        cdekOfficeQuery={cdekOfficeQuery}
-        setCdekOfficeQuery={setCdekOfficeQuery}
-        setCdekQuotes={setCdekQuotes}
-        setCdekTariffCode={setCdekTariffCode}
-        cdekCities={cdekCities}
-        chooseCdekCity={chooseCdekCity}
-        cdekLoading={cdekLoading}
-        cdekError={cdekError}
-        cdekOffices={cdekOffices}
-        setCdekOfficeListOpen={setCdekOfficeListOpen}
-        cdekOfficeListOpen={cdekOfficeListOpen}
-        cdekOfficeMatches={cdekOfficeMatches}
-        selectedOffice={selectedOffice}
-        cdekFeePending={cdekFeePending}
-        cdekRepack={cdekRepack}
-        setCdekRepack={setCdekRepack}
-        cartCount={cartCount}
-        cdekQuotes={cdekQuotes}
-        paymentMethods={paymentMethods}
-        paymentMethod={paymentMethod}
-        setPaymentMethod={setPaymentMethod}
-        subtotal={subtotal}
-        deliveryFee={deliveryFee}
-        total={total}
-        submitting={submitting}
-      />
+      <CheckoutPanel user={!!user} {...checkout.panelProps} />
 
     </RootElement>
   );
