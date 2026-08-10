@@ -592,7 +592,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
   .account-header { height: 72px; padding: 0 18px; }
   .account-back { font-size: 12px; }
   .account-shell { width: auto; margin: 22px 18px; grid-template-columns: 1fr; }
-  .account-sidebar { padding: 25px; position: static; }
+  .account-sidebar { padding: 14px; position: static; overflow: hidden; }
+  .account-sidebar .account-avatar, .account-sidebar > h1, .account-sidebar > p, .account-sidebar > .account-switch { display: none; }
+  .account-sidebar nav { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .account-sidebar nav button { white-space: nowrap; }
   .account-content { min-height: 0; padding: 28px 20px; }
   .account-title { align-items: start; flex-direction: column; }
   .orders-list article { grid-template-columns: 1fr 1fr; gap: 16px; }

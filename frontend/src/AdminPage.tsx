@@ -366,7 +366,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
     </div>
 
     <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Закупки</h2></div></div>
+      <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Текущие закупки</h2></div></div>
       {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
         <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Строк / шт.</th><th>Сумма</th><th>Проверка</th>
       </tr></thead><tbody>{data.orders.map((item) => <tr key={item.id}>
