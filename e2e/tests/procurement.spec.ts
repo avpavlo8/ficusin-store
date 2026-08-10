@@ -18,7 +18,7 @@ async function mockProcurement(page: import("@playwright/test").Page) {
       permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
       dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
     } });
-    if (path === "/api/v1/admin/procurement") return route.fulfill({ json: procurement });
+    if (path.startsWith("/api/v1/admin/")) return route.fulfill({ json: procurement });
     return route.fulfill({ json: {} });
   });
   // WebKit can miss the broad glob for requests started after a React state
