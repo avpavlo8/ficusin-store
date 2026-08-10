@@ -6,6 +6,7 @@ async function mockProcurement(page: import("@playwright/test").Page) {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     suppliers: [{ id: 1, name: "ТК Ярославский", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
     orders: [{ id: 4, supplierId: 1, supplierName: "ТК Ярославский", orderNumber: "П3-11660", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 154, total: 53900, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
+    documents: [{ id: 7, supplierId: 1, supplierName: "ТК Ярославский", orderId: 4, fileName: "П3-11660.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "П3-11660", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 154, productSubtotal: 53900, packageTotal: 0, documentTotal: 53900, calculatedTotal: 53900, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "ТК Ярославский", rawName: "Фикус Лирата d 10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "X7582076", suggestedSabyName: "Фикус Лирата D27", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
   };
   const dashboard = {
@@ -40,7 +41,9 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Безопасный режим включён")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("П3-11660")).toBeVisible();
+  await expect(page.getByText("П3-11660").first()).toBeVisible();
+  await expect(page.getByText("Российский счёт")).toBeVisible();
+  await expect(page.getByText("Суммы сходятся")).toBeVisible();
   await expect(page.getByText("Фикус Лирата d 10")).toBeVisible();
   await expect(page.getByText("2 не сопоставлено")).toBeVisible();
 });

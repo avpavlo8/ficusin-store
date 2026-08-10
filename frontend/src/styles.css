@@ -304,8 +304,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .procurement-safety > span { padding: 7px 10px; flex: 0 0 auto; border-radius: 99px; background: white; color: var(--green); font-size: 11px; font-weight: 700; }
 .procurement-toolbar .secondary-button { padding: 10px 15px; border-radius: 9px; }
 .procurement-block { padding: 22px; }
+.procurement-documents { min-width: 1040px; }
 .procurement-orders { min-width: 880px; }
 .procurement-review { min-width: 920px; }
+.procurement-file { padding: 14px; border: 1px dashed var(--line); border-radius: 11px; background: var(--cream); }
+.procurement-file input { padding: 0; border: 0; background: transparent; }
+.procurement-file span { color: #748078; font-size: 12px; }
 .procurement-warning { color: #9b522f; font-weight: 700; }
 .procurement-ok { color: #2d6848; font-weight: 700; }
 .procurement-zero { min-height: 120px; padding: 24px; display: grid; place-items: center; align-content: center; gap: 7px; border: 1px dashed var(--line); border-radius: 13px; color: #748078; text-align: center; }

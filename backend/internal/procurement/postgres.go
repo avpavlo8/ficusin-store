@@ -2,9 +2,12 @@ package procurement
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -48,7 +51,11 @@ func (store *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
 	if err != nil {
 		return Dashboard{}, err
 	}
-	result.Suppliers, result.Orders, result.Review = suppliers, orders, review
+	documents, err := store.listDocuments(ctx)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	result.Suppliers, result.Orders, result.Documents, result.Review = suppliers, orders, documents, review
 	return result, nil
 }
 
@@ -130,6 +137,153 @@ func (store *PostgresStore) CreateOrder(
 	return item, nil
 }
 
+func (store *PostgresStore) ImportDocument(
+	ctx context.Context,
+	actor Actor,
+	input DocumentUpload,
+	parsed ParsedDocument,
+) (ImportResult, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("begin import procurement document: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var supplierName string
+	if err := tx.QueryRow(ctx, `
+		SELECT name FROM procurement_suppliers WHERE id = $1 AND active = TRUE FOR SHARE
+	`, input.SupplierID).Scan(&supplierName); errors.Is(err, pgx.ErrNoRows) {
+		return ImportResult{}, ErrNotFound
+	} else if err != nil {
+		return ImportResult{}, fmt.Errorf("load procurement supplier: %w", err)
+	}
+
+	hash := fmt.Sprintf("%x", sha256.Sum256(input.Content))
+	if existing, order, found, err := loadDocumentByHash(ctx, tx, input.SupplierID, hash); err != nil {
+		return ImportResult{}, err
+	} else if found {
+		return ImportResult{Document: existing, Order: order, Duplicate: true}, nil
+	}
+
+	orderID := input.OrderID
+	sourceKind := SourceInvoice
+	if parsed.ParserKind == "domestic_payment_invoice" {
+		sourceKind = SourcePaymentInvoice
+	}
+	if orderID == 0 {
+		err = tx.QueryRow(ctx, `
+			INSERT INTO procurement_orders (
+				supplier_id, order_number, document_number, document_date,
+				source_kind, currency, status, created_by
+			) VALUES ($1, $2, $2, $3, $4, $5, 'invoice_received', $6)
+			RETURNING id
+		`, input.SupplierID, parsed.DocumentNumber, parsed.DocumentDate, sourceKind, parsed.Currency, actor.CustomerID).Scan(&orderID)
+	} else {
+		err = tx.QueryRow(ctx, `
+			UPDATE procurement_orders SET
+				document_number = $3, document_date = $4, source_kind = $5,
+				currency = $6, status = 'invoice_received', updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1 AND supplier_id = $2 AND status NOT IN ('received', 'cancelled')
+			RETURNING id
+		`, orderID, input.SupplierID, parsed.DocumentNumber, parsed.DocumentDate, sourceKind, parsed.Currency).Scan(&orderID)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ImportResult{}, ErrNotFound
+	}
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("create or attach procurement order: %w", err)
+	}
+
+	arithmeticStatus := "mismatch"
+	if parsed.ArithmeticOK {
+		arithmeticStatus = "ok"
+	}
+	var document DocumentSummary
+	err = tx.QueryRow(ctx, `
+		INSERT INTO procurement_documents (
+			supplier_id, procurement_order_id, file_name, content_type, size_bytes,
+			sha256, content, parser_kind, parser_version, parse_status,
+			arithmetic_status, document_number, document_date, currency,
+			line_count, unit_count, product_subtotal, package_total,
+			document_total, calculated_total, extracted_text, created_by
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, 'review', $10, $11, $12,
+			$13, $14, $15, $16, $17, $18, $19, $20, $21
+		)
+		RETURNING id, supplier_id, procurement_order_id, file_name, parser_kind,
+			parse_status, arithmetic_status, document_number, document_date, currency,
+			line_count, unit_count, product_subtotal::DOUBLE PRECISION,
+			package_total::DOUBLE PRECISION, document_total::DOUBLE PRECISION,
+			calculated_total::DOUBLE PRECISION, parse_error, created_at
+	`, input.SupplierID, orderID, input.FileName, input.ContentType, len(input.Content),
+		hash, input.Content, parsed.ParserKind, parserVersion, arithmeticStatus,
+		parsed.DocumentNumber, parsed.DocumentDate, parsed.Currency, len(parsed.Lines),
+		countUnits(parsed.Lines), parsed.ProductSubtotal, parsed.PackageTotal,
+		parsed.DocumentTotal, parsed.CalculatedTotal, parsed.ExtractedText, actor.CustomerID,
+	).Scan(
+		&document.ID, &document.SupplierID, &document.OrderID, &document.FileName,
+		&document.ParserKind, &document.ParseStatus, &document.ArithmeticStatus,
+		&document.DocumentNumber, &document.DocumentDate, &document.Currency,
+		&document.Lines, &document.Units, &document.ProductSubtotal,
+		&document.PackageTotal, &document.DocumentTotal, &document.CalculatedTotal,
+		&document.ParseError, &document.CreatedAt,
+	)
+	if err != nil {
+		if uniqueViolation(err) {
+			return ImportResult{}, ErrDuplicate
+		}
+		return ImportResult{}, fmt.Errorf("insert procurement document: %w", err)
+	}
+	document.SupplierName = supplierName
+
+	unmatched := 0
+	for _, line := range parsed.Lines {
+		aliasID, sabyID, matchStatus, err := upsertAlias(ctx, tx, input.SupplierID, line, parsed.DocumentDate)
+		if err != nil {
+			return ImportResult{}, err
+		}
+		if matchStatus != "confirmed" && matchStatus != "ignored" {
+			unmatched++
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO procurement_order_lines (
+				procurement_order_id, procurement_document_id, supplier_alias_id, saby_id,
+				raw_name, supplier_article, invoiced_qty, unit_price, line_total,
+				load_unit, match_status, source_page, source_line, pot_diameter_cm, height_cm
+			) VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
+			line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
+			line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM,
+		); err != nil {
+			return ImportResult{}, fmt.Errorf("insert procurement document line: %w", err)
+		}
+	}
+
+	parseStatus, orderStatus := "parsed", "invoice_received"
+	if unmatched > 0 || !parsed.ArithmeticOK {
+		parseStatus, orderStatus = "review", "review"
+	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_documents SET parse_status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, document.ID, parseStatus); err != nil {
+		return ImportResult{}, fmt.Errorf("update procurement document status: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_orders SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, orderID, orderStatus); err != nil {
+		return ImportResult{}, fmt.Errorf("update procurement order status: %w", err)
+	}
+	document.ParseStatus = parseStatus
+
+	order, err := loadOrderSummary(ctx, tx, orderID)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := audit(ctx, tx, actor, "procurement.document.import", "procurement_document", document.ID, document); err != nil {
+		return ImportResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ImportResult{}, fmt.Errorf("commit procurement document import: %w", err)
+	}
+	return ImportResult{Document: document, Order: order}, nil
+}
+
 func (store *PostgresStore) listSuppliers(ctx context.Context) ([]Supplier, error) {
 	rows, err := store.pool.Query(ctx, `
 		SELECT id, name, kind, country_code, default_currency, active, created_at
@@ -186,6 +340,36 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 	return items, rows.Err()
 }
 
+func (store *PostgresStore) listDocuments(ctx context.Context) ([]DocumentSummary, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT d.id, d.supplier_id, s.name, COALESCE(d.procurement_order_id, 0),
+			d.file_name, d.parser_kind, d.parse_status, d.arithmetic_status,
+			d.document_number, d.document_date, d.currency, d.line_count, d.unit_count,
+			COALESCE(d.product_subtotal, 0)::DOUBLE PRECISION,
+			COALESCE(d.package_total, 0)::DOUBLE PRECISION,
+			COALESCE(d.document_total, 0)::DOUBLE PRECISION,
+			COALESCE(d.calculated_total, 0)::DOUBLE PRECISION,
+			d.parse_error, d.created_at
+		FROM procurement_documents d
+		JOIN procurement_suppliers s ON s.id = d.supplier_id
+		ORDER BY d.created_at DESC
+		LIMIT 50
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query procurement documents: %w", err)
+	}
+	defer rows.Close()
+	items := make([]DocumentSummary, 0)
+	for rows.Next() {
+		var item DocumentSummary
+		if err := scanDocument(rows, &item); err != nil {
+			return nil, fmt.Errorf("scan procurement document: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (store *PostgresStore) listReview(ctx context.Context) ([]AliasReview, error) {
 	rows, err := store.pool.Query(ctx, `
 		SELECT a.id, a.supplier_id, s.name, a.raw_name, a.supplier_article,
@@ -218,6 +402,141 @@ func (store *PostgresStore) listReview(ctx context.Context) ([]AliasReview, erro
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+type queryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func scanDocument(row rowScanner, item *DocumentSummary) error {
+	return row.Scan(
+		&item.ID, &item.SupplierID, &item.SupplierName, &item.OrderID,
+		&item.FileName, &item.ParserKind, &item.ParseStatus, &item.ArithmeticStatus,
+		&item.DocumentNumber, &item.DocumentDate, &item.Currency, &item.Lines,
+		&item.Units, &item.ProductSubtotal, &item.PackageTotal, &item.DocumentTotal,
+		&item.CalculatedTotal, &item.ParseError, &item.CreatedAt,
+	)
+}
+
+func loadDocumentByHash(
+	ctx context.Context,
+	querier queryRower,
+	supplierID int64,
+	hash string,
+) (DocumentSummary, OrderSummary, bool, error) {
+	var document DocumentSummary
+	err := scanDocument(querier.QueryRow(ctx, `
+		SELECT d.id, d.supplier_id, s.name, COALESCE(d.procurement_order_id, 0),
+			d.file_name, d.parser_kind, d.parse_status, d.arithmetic_status,
+			d.document_number, d.document_date, d.currency, d.line_count, d.unit_count,
+			COALESCE(d.product_subtotal, 0)::DOUBLE PRECISION,
+			COALESCE(d.package_total, 0)::DOUBLE PRECISION,
+			COALESCE(d.document_total, 0)::DOUBLE PRECISION,
+			COALESCE(d.calculated_total, 0)::DOUBLE PRECISION,
+			d.parse_error, d.created_at
+		FROM procurement_documents d
+		JOIN procurement_suppliers s ON s.id = d.supplier_id
+		WHERE d.supplier_id = $1 AND d.sha256 = $2
+	`, supplierID, hash), &document)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return DocumentSummary{}, OrderSummary{}, false, nil
+	}
+	if err != nil {
+		return DocumentSummary{}, OrderSummary{}, false, fmt.Errorf("query duplicate procurement document: %w", err)
+	}
+	var order OrderSummary
+	if document.OrderID > 0 {
+		order, err = loadOrderSummary(ctx, querier, document.OrderID)
+		if err != nil {
+			return DocumentSummary{}, OrderSummary{}, false, err
+		}
+	}
+	return document, order, true, nil
+}
+
+func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (OrderSummary, error) {
+	var item OrderSummary
+	err := querier.QueryRow(ctx, `
+		SELECT o.id, o.supplier_id, s.name, o.order_number, o.document_number,
+			o.document_date, o.source_kind, o.currency, o.status,
+			COUNT(l.id)::INTEGER,
+			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
+			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, 0)), 0)::DOUBLE PRECISION,
+			COUNT(l.id) FILTER (WHERE l.match_status IN ('unmatched', 'suggested'))::INTEGER,
+			o.created_at
+		FROM procurement_orders o
+		JOIN procurement_suppliers s ON s.id = o.supplier_id
+		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
+		WHERE o.id = $1
+		GROUP BY o.id, s.name
+	`, orderID).Scan(
+		&item.ID, &item.SupplierID, &item.SupplierName, &item.OrderNumber,
+		&item.DocumentNumber, &item.DocumentDate, &item.SourceKind, &item.Currency,
+		&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OrderSummary{}, ErrNotFound
+	}
+	if err != nil {
+		return OrderSummary{}, fmt.Errorf("load procurement order: %w", err)
+	}
+	return item, nil
+}
+
+func upsertAlias(
+	ctx context.Context,
+	tx pgx.Tx,
+	supplierID int64,
+	line ParsedLine,
+	seenAt *time.Time,
+) (int64, string, string, error) {
+	var aliasID int64
+	var sabyID, matchStatus string
+	err := tx.QueryRow(ctx, `
+		INSERT INTO procurement_supplier_aliases (
+			supplier_id, raw_name, normalized_name, supplier_article,
+			pot_diameter_cm, height_cm, occurrences, last_seen_at, availability_status
+		) VALUES ($1, $2, $3, $4, $5, $6, 1, COALESCE($7, CURRENT_DATE), 'available')
+		ON CONFLICT DO NOTHING
+		RETURNING id, COALESCE(matched_saby_id, ''), match_status
+	`, supplierID, line.RawName, normalizeAlias(line.RawName), line.SupplierArticle,
+		line.PotDiameterCM, line.HeightCM, seenAt,
+	).Scan(&aliasID, &sabyID, &matchStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = tx.QueryRow(ctx, `
+			UPDATE procurement_supplier_aliases SET
+				normalized_name = $3, occurrences = occurrences + 1,
+				last_seen_at = COALESCE($7, CURRENT_DATE), availability_status = 'available',
+				unavailable_since = NULL, check_after = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE supplier_id = $1 AND LOWER(raw_name) = LOWER($2)
+				AND COALESCE(supplier_article, '') = COALESCE($4, '')
+				AND COALESCE(pot_diameter_cm, -1) = COALESCE($5, -1)
+				AND COALESCE(height_cm, -1) = COALESCE($6, -1)
+			RETURNING id, COALESCE(matched_saby_id, ''), match_status
+		`, supplierID, line.RawName, normalizeAlias(line.RawName), line.SupplierArticle,
+			line.PotDiameterCM, line.HeightCM, seenAt,
+		).Scan(&aliasID, &sabyID, &matchStatus)
+	}
+	if err != nil {
+		return 0, "", "", fmt.Errorf("upsert procurement supplier alias: %w", err)
+	}
+	return aliasID, sabyID, matchStatus, nil
+}
+
+func normalizeAlias(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}
+
+func countUnits(lines []ParsedLine) int {
+	units := 0
+	for _, line := range lines {
+		units += line.Quantity
+	}
+	return units
 }
 
 type auditExecutor interface {
