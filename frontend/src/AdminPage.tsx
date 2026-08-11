@@ -78,7 +78,8 @@ type NomenclatureCandidate = {
   sabyId: string; code: string; article: string; name: string; balance: number; price: number;
 };
 type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
-type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; balance: number; siteSales: number; openRequests: number; suggestedQty: number; reason: string };
+type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; balance: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; openRequests: number; suggestedQty: number; reason: string };
+type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; periodFrom: string; periodTo: string; latestSale: string };
 type ProcurementProduct = { sabyId: string; sabyCode: string; sabyArticle: string; name: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; aliases: string[] };
 type ProcurementActionItem = { id: number; lineId: number; productName: string; channel: string; externalArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string };
 type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
@@ -98,7 +99,7 @@ type ProcurementData = {
   integrations: { wb: boolean; ozon: boolean; saby: boolean };
   settings: ProcurementSettings; suppliers: ProcurementSupplier[]; orders: ProcurementOrder[];
   documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
-  availability: ProcurementAlias[]; recommendations: ProcurementRecommendation[];
+  availability: ProcurementAlias[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
 };
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
@@ -469,9 +470,10 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
     </section></>}
 
     {view === "recommendations" && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Остаток + продажи сайта</p><h2>Рекомендации к закупке</h2></div><button className="admin-primary" disabled={!data.recommendations.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ</button></div>
-      <p className="admin-hint procurement-note">WB и Ozon появятся в расчёте после подключения их аналитических API. Сейчас алгоритм честно использует остаток СБИС, продажи сайта и ручные запросы.</p>
-      {data.recommendations.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Артикул</th><th>Остаток</th><th>Продажи</th><th>Запросы</th><th>Рекомендация</th><th></th></tr></thead><tbody>{data.recommendations.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}><td><strong>{item.name}</strong><small>{item.reason}</small></td><td>{data.suppliers.find((supplier) => supplier.id === item.supplierId)?.name || "—"}</td><td>{item.supplierArticle || "Нужно заполнить"}</td><td>{item.balance}</td><td>{item.siteSales}</td><td>{item.openRequests}</td><td><strong>{item.suggestedQty} шт.</strong></td><td>{item.aliasId > 0 && <button className="table-action" onClick={() => void updateAvailability(item.aliasId, "check", load, onError)}>Проверить наличие</button>}</td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Пока нечего рекомендовать</strong><span>В основной список попадают только товары с подтверждённым наличием у поставщика.</span></div>}
+      <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button className="admin-primary" disabled={!data.recommendations.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ</button></div>
+      <p className="admin-hint procurement-note">Формула использует продажи всех каналов за {data.settings.recommendationDays} дней, запас на {data.settings.targetCoverDays} дней, остаток СБИС, товары в пути и открытые запросы.</p>
+      <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · {sync.rowsSynced} строк</small>{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
+      {data.recommendations.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Артикул</th><th>Остаток</th><th>СБИС</th><th>Сайт</th><th>WB</th><th>Ozon</th><th>Всего</th><th>Запросы</th><th>Рекомендация</th><th></th></tr></thead><tbody>{data.recommendations.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}><td><strong>{item.name}</strong><small>{item.reason}</small></td><td>{data.suppliers.find((supplier) => supplier.id === item.supplierId)?.name || "—"}</td><td>{item.supplierArticle || "Нужно заполнить"}</td><td>{item.balance}</td><td>{item.sabySales}</td><td>{item.siteSales}</td><td>{item.wbSales}</td><td>{item.ozonSales}</td><td><strong>{item.totalSales}</strong></td><td>{item.openRequests}</td><td><strong>{item.suggestedQty} шт.</strong></td><td>{item.aliasId > 0 && <button className="table-action" onClick={() => void updateAvailability(item.aliasId, "check", load, onError)}>Проверить наличие</button>}</td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Пока нечего рекомендовать</strong><span>Проверьте синхронизацию выше. В список попадают только сопоставленные товары с наличием «Есть» и расчётным дефицитом.</span></div>}
     </section>}
 
     {view === "products" && <ProcurementProducts suppliers={data.suppliers} onError={onError} />}
@@ -498,6 +500,8 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
 }
 
 const availabilityLabel = (value: string) => ({ available: "Есть", check: "Проверить", temporarily_unavailable: "Временно нет", discontinued: "Снят с продажи", unknown: "Неизвестно" }[value] || value);
+const salesChannelLabel = (value: string) => ({ site: "Сайт", saby: "СБИС / магазин", wb: "Wildberries", ozon: "Ozon" }[value] || value);
+const salesSyncLabel = (value: string) => ({ pending: "Ожидает первой загрузки", running: "Обновляется", ok: "Актуально", error: "Ошибка", disabled: "Не подключено" }[value] || value);
 
 async function updateAvailability(aliasId: number, status: string, reload: () => Promise<unknown>, onError: (value: string) => void) {
   const days = status === "check" ? 14 : status === "temporarily_unavailable" ? 30 : 0;

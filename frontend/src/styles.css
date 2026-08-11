@@ -335,6 +335,15 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .procurement-tabs button.active { border-color: var(--green); background: var(--green); color: white; }
 .procurement-tabs button span { margin-left: 4px; opacity: .72; }
 .procurement-note { margin: 0 0 16px; line-height: 1.5; }
+.sales-sync-grid { margin: 0 0 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.sales-sync-grid article { min-width: 0; padding: 12px; display: grid; gap: 5px; border: 1px solid var(--line); border-radius: 11px; background: #fafbf9; }
+.sales-sync-grid article > div { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+.sales-sync-grid article span { color: #667168; font-size: 11px; font-weight: 700; text-align: right; }
+.sales-sync-grid article small { color: #69736c; overflow-wrap: anywhere; }
+.sales-sync-grid article em { color: #a13e36; font-size: 11px; font-style: normal; overflow-wrap: anywhere; }
+.sales-sync-grid .sales-sync-ok { border-color: #b7d1c1; background: #f1f7f3; }
+.sales-sync-grid .sales-sync-error { border-color: #e4aaa4; background: #fff5f3; }
+.sales-sync-grid .sales-sync-running { border-color: #d7c58d; background: #fffaf0; }
 .procurement-inline-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 .procurement-inline-actions button, .procurement-batch-buttons button { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--green); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
 .procurement-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
@@ -659,6 +668,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
   .orders-list article { grid-template-columns: 1fr 1fr; gap: 16px; }
   .admin-alert { align-items: start; flex-direction: column; }
 	.procurement-safety { align-items: start; flex-direction: column; }
+	.sales-sync-grid { grid-template-columns: 1fr; }
 	.procurement-settings-grid { grid-template-columns: 1fr 1fr; }
 	.procurement-costs { grid-template-columns: 1fr 1fr; }
   .admin-stats { grid-template-columns: 1fr 1fr; }

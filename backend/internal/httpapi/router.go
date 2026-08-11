@@ -190,6 +190,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),
 	)
+	mux.Handle(
+		"POST /api/v1/integrations/saby/sales",
+		sabySalesSyncHandler(logger, dependencies.Saby),
+	)
 
 	var handler http.Handler = mux
 	if dependencies.StaticDir != "" {

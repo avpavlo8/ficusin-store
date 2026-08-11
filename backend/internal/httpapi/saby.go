@@ -13,6 +13,7 @@ import (
 type sabySyncService interface {
 	Verify(context.Context, string) error
 	Sync(context.Context, []saby.CatalogItem) (saby.Result, error)
+	SyncSales(context.Context, saby.SalesUpload) (saby.SalesResult, error)
 }
 
 func sabyCatalogSyncHandler(logger *slog.Logger, service sabySyncService) http.Handler {
@@ -54,6 +55,37 @@ func sabyCatalogSyncHandler(logger *slog.Logger, service sabySyncService) http.H
 			writeJSON(response, http.StatusInternalServerError, errorResponse{
 				Error: "Не удалось обновить каталог",
 			})
+			return
+		}
+		writeJSON(response, http.StatusOK, result)
+	})
+}
+
+func sabySalesSyncHandler(logger *slog.Logger, service sabySyncService) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		token := strings.TrimSpace(request.Header.Get("X-Ficusin-GitHub-OIDC"))
+		if token == "" {
+			writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Доступ запрещён"})
+			return
+		}
+		if err := service.Verify(request.Context(), token); err != nil {
+			logger.Warn("Saby sales synchronization rejected", "error", err)
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Доступ запрещён"})
+			return
+		}
+		var body saby.SalesUpload
+		if err := decodeJSONWithLimit(request, &body, 32<<20); err != nil || body.Items == nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная история продаж"})
+			return
+		}
+		result, err := service.SyncSales(request.Context(), body)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "invalid Saby sales") {
+				writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная история продаж"})
+				return
+			}
+			logger.Error("Saby sales synchronization failed", "error", err)
+			writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "Не удалось обновить продажи"})
 			return
 		}
 		writeJSON(response, http.StatusOK, result)
