@@ -1,5 +1,7 @@
 package saby
 
+import "time"
+
 // CatalogItem — позиция номенклатуры, как её присылает выгрузка из СБИС.
 //
 // Поля с кодами приняты как any: СБИС отдаёт их то строкой, то числом, и
@@ -18,6 +20,25 @@ type CatalogItem struct {
 	Images      []string `json:"images"`
 	Published   *bool    `json:"published"`
 	IsParent    bool     `json:"isParent"`
+}
+
+type SalesItem struct {
+	Date     string  `json:"date"`
+	SabyID   string  `json:"sabyId"`
+	Units    int     `json:"units"`
+	GrossRUB float64 `json:"grossRub"`
+}
+
+type SalesUpload struct {
+	From  string      `json:"from"`
+	To    string      `json:"to"`
+	Items []SalesItem `json:"items"`
+}
+
+type SalesResult struct {
+	OK       bool      `json:"ok"`
+	Rows     int       `json:"rows"`
+	SyncedAt time.Time `json:"syncedAt"`
 }
 
 type Result struct {

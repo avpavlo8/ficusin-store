@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 )
@@ -28,6 +29,41 @@ func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 	result, err := executor.Execute(context.Background(), procurement.ActionItem{Channel: "ozon", ExternalArticle: "OZ-1", NewValue: 1490})
 	if err != nil || !result.Completed {
 		t.Fatalf("result = %#v, err = %v", result, err)
+	}
+}
+
+func TestWBSalesIncludeSalesAndSubtractReturns(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`[
+			{"nm_id":123,"doc_type_name":"Продажа","supplier_oper_name":"Продажа","quantity":2,"retail_amount":3000,"sale_dt":"2026-08-05T12:00:00Z"},
+			{"nm_id":123,"doc_type_name":"Возврат","supplier_oper_name":"Возврат","quantity":1,"retail_amount":1500,"sale_dt":"2026-08-06T12:00:00Z"}
+		]`))
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("token", "", "")
+	executor.wbStatsBase, executor.client = server.URL, server.Client()
+	records, err := executor.FetchSales(context.Background(), "wb", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(records) != 2 || records[0].Units != 2 || records[1].Units != -1 {
+		t.Fatalf("records = %+v, err = %v", records, err)
+	}
+}
+
+func TestOzonSalesCombineFBSAndFBO(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/v3/posting/fbs/list" {
+			_, _ = response.Write([]byte(`{"result":{"postings":[{"created_at":"2026-08-05T12:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":2,"price":"1200"}]}]}}`))
+			return
+		}
+		_, _ = response.Write([]byte(`{"result":[{"created_at":"2026-08-06T12:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":"1200"}]}]}`))
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	records, err := executor.FetchSales(context.Background(), "ozon", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(records) != 2 || records[0].ExternalID != "OZ-1" || records[1].Units != 1 {
+		t.Fatalf("records = %+v, err = %v", records, err)
 	}
 }
 

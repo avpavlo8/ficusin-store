@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -19,6 +20,33 @@ import (
 type Service struct {
 	pool     *pgxpool.Pool
 	verifier *OIDCVerifier
+}
+
+func (service *Service) SyncSales(ctx context.Context, upload SalesUpload) (SalesResult, error) {
+	from, err := time.Parse("2006-01-02", strings.TrimSpace(upload.From))
+	if err != nil {
+		return SalesResult{}, errors.New("invalid Saby sales period")
+	}
+	to, err := time.Parse("2006-01-02", strings.TrimSpace(upload.To))
+	if err != nil || from.After(to) || to.Sub(from) > 366*24*time.Hour || len(upload.Items) > 100000 {
+		return SalesResult{}, errors.New("invalid Saby sales period")
+	}
+	records := make([]procurement.SalesRecord, 0, len(upload.Items))
+	for _, item := range upload.Items {
+		date, parseErr := time.Parse("2006-01-02", strings.TrimSpace(item.Date))
+		if parseErr != nil || strings.TrimSpace(item.SabyID) == "" {
+			return SalesResult{}, errors.New("invalid Saby sales item")
+		}
+		records = append(records, procurement.SalesRecord{
+			Date: date, ExternalID: item.SabyID, SabyID: item.SabyID,
+			Units: item.Units, GrossRUB: item.GrossRUB,
+		})
+	}
+	rows, err := procurement.NewPostgresStore(service.pool).ReplaceSales(ctx, "saby", from, to, records)
+	if err != nil {
+		return SalesResult{}, fmt.Errorf("replace Saby sales: %w", err)
+	}
+	return SalesResult{OK: true, Rows: rows, SyncedAt: time.Now().UTC()}, nil
 }
 
 // normalizedItem — позиция номенклатуры, приведённая к нашему виду.

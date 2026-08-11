@@ -45,6 +45,7 @@ type Dashboard struct {
 	Requests        []Request         `json:"requests"`
 	Availability    []AliasReview     `json:"availability"`
 	Recommendations []Recommendation  `json:"recommendations"`
+	SalesSync       []SalesSyncStatus `json:"salesSync"`
 }
 
 type PricingSettings struct {
@@ -247,9 +248,33 @@ type Recommendation struct {
 	SupplierArticle string `json:"supplierArticle"`
 	Balance         int    `json:"balance"`
 	SiteSales       int    `json:"siteSales"`
+	SabySales       int    `json:"sabySales"`
+	WBSales         int    `json:"wbSales"`
+	OzonSales       int    `json:"ozonSales"`
+	TotalSales      int    `json:"totalSales"`
 	OpenRequests    int    `json:"openRequests"`
 	SuggestedQty    int    `json:"suggestedQty"`
 	Reason          string `json:"reason"`
+}
+
+type SalesRecord struct {
+	Date       time.Time
+	ExternalID string
+	SabyID     string
+	Units      int
+	GrossRUB   float64
+}
+
+type SalesSyncStatus struct {
+	Channel       string     `json:"channel"`
+	Status        string     `json:"status"`
+	LastAttemptAt *time.Time `json:"lastAttemptAt,omitempty"`
+	LastSuccessAt *time.Time `json:"lastSuccessAt,omitempty"`
+	LastError     string     `json:"lastError"`
+	RowsSynced    int        `json:"rowsSynced"`
+	PeriodFrom    string     `json:"periodFrom"`
+	PeriodTo      string     `json:"periodTo"`
+	LatestSale    string     `json:"latestSale"`
 }
 
 type ProductDirectoryItem struct {

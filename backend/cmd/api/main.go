@@ -171,6 +171,10 @@ func main() {
 	}
 	go notificationWorker.Run(ctx)
 	go procurement.NewActionWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
+	// Продажи сайта пересчитываются из своей базы, WB и Ozon забираются из
+	// seller API. СБИС присылает офлайн-продажи тем же защищённым заданием,
+	// которое раз в шесть часов обновляет каталог и остатки.
+	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	// The safety net under YooKassa's notifications: a lost one would
 	// otherwise leave a paid order looking unpaid.
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)

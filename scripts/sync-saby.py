@@ -1,4 +1,5 @@
 import base64
+import datetime
 import json
 import os
 import urllib.error
@@ -169,6 +170,67 @@ try:
     if not catalog_items:
         raise RuntimeError("empty catalog")
 
+    stage = "saby-sales"
+    sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))
+    moscow = datetime.timezone(datetime.timedelta(hours=3))
+    sales_to = datetime.datetime.now(moscow).date()
+    sales_from = sales_to - datetime.timedelta(days=sales_days - 1)
+    sales_by_day = {}
+    for page in range(1000):
+        query = {
+            "pointId": os.environ["SABY_POINT_ID"],
+            "fromDateTime": sales_from.strftime("%Y-%m-%d 00:00:00"),
+            "toDateTime": sales_to.strftime("%Y-%m-%d 23:59:59"),
+            "page": page,
+            "pageSize": 100,
+        }
+        request = urllib.request.Request(
+            "https://api.sbis.ru/retail/order/list?" + urllib.parse.urlencode(query),
+            headers={"X-SBISAccessToken": saby_token},
+        )
+        response = request_json(request)
+        orders = response.get("orders") or response.get("sales") or []
+        for order in orders:
+            if order.get("Deleted"):
+                continue
+            raw_date = order.get("ClosedWTZ") or order.get("DateWTZ") or order.get("OpenedWTZ") or ""
+            sale_date = str(raw_date)[:10]
+            if len(sale_date) != 10:
+                continue
+            is_return = bool(order.get("Return"))
+            positions = order.get("SaleNomenclatures") or order.get("Positions") or []
+            for position in positions:
+                if position.get("Refused") or position.get("IsModifier"):
+                    continue
+                saby_id = str(position.get("NomenclatureUUID") or "").strip()
+                if not saby_id:
+                    continue
+                try:
+                    quantity = float(position.get("Quantity") or 0)
+                    total = float(position.get("TotalPrice") or 0)
+                except (TypeError, ValueError):
+                    continue
+                sign = -1 if is_return or position.get("IsReturn") else 1
+                key = (sale_date, saby_id)
+                current = sales_by_day.setdefault(key, {"units": 0, "grossRub": 0.0})
+                current["units"] += sign * int(round(abs(quantity)))
+                current["grossRub"] += sign * abs(total)
+        if len(orders) < 100:
+            break
+    else:
+        raise RuntimeError("sales pagination limit")
+
+    public_sales = [
+        {
+            "date": sale_date,
+            "sabyId": saby_id,
+            "units": values["units"],
+            "grossRub": round(values["grossRub"], 2),
+        }
+        for (sale_date, saby_id), values in sorted(sales_by_day.items())
+        if values["units"] != 0 or values["grossRub"] != 0
+    ]
+
     stage = "github-oidc"
     oidc_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
     separator = "&" if "?" in oidc_url else "?"
@@ -257,7 +319,36 @@ try:
     if not response.get("ok"):
         raise RuntimeError("store rejected catalog")
 
-    report(f"saby/store-sync/success-r{len(public_catalog)}", "success")
+    stage = "store-sales"
+    sales_sync_url = os.environ.get("FICUSIN_SALES_SYNC_URL") or os.environ["FICUSIN_SYNC_URL"].replace(
+        "/catalog", "/sales"
+    )
+    sales_request = urllib.request.Request(
+        sales_sync_url,
+        data=json.dumps(
+            {
+                "from": sales_from.isoformat(),
+                "to": sales_to.isoformat(),
+                "items": public_sales,
+            },
+            ensure_ascii=False,
+        ).encode("utf-8"),
+        headers={
+            "X-Ficusin-GitHub-OIDC": oidc_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Ficusin-Saby-Sync/3.0",
+        },
+        method="POST",
+    )
+    sales_response = request_json(sales_request)
+    if not sales_response.get("ok"):
+        raise RuntimeError("store rejected sales")
+
+    report(
+        f"saby/store-sync/success-c{len(public_catalog)}-s{len(public_sales)}",
+        "success",
+    )
     print("Saby catalog sync completed")
 except urllib.error.HTTPError as error:
     safe_code = error.headers.get("X-Saby-Sync-Error")

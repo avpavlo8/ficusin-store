@@ -11,6 +11,12 @@ async function mockProcurement(page: import("@playwright/test").Page) {
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "Тестовый поставщик", rawName: "Тестовая строка D10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "TEST-SABY-1", suggestedSabyName: "Тестовый товар D10", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
     requests: [], availability: [], recommendations: [],
+    salesSync: [
+      { channel: "saby", status: "ok", lastSuccessAt: "2026-08-10T12:00:00Z", lastError: "", rowsSynced: 120, periodFrom: "2025-08-11", periodTo: "2026-08-10", latestSale: "2026-08-10" },
+      { channel: "site", status: "ok", lastSuccessAt: "2026-08-10T12:00:00Z", lastError: "", rowsSynced: 12, periodFrom: "2025-08-11", periodTo: "2026-08-10", latestSale: "2026-08-09" },
+      { channel: "wb", status: "disabled", lastError: "", rowsSynced: 0, periodFrom: "", periodTo: "", latestSale: "" },
+      { channel: "ozon", status: "disabled", lastError: "", rowsSynced: 0, periodFrom: "", periodTo: "", latestSale: "" },
+    ],
   };
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToRyazanRub: 0 },

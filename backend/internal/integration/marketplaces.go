@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 
 const (
 	defaultWBBase   = "https://discounts-prices-api.wildberries.ru"
+	defaultWBStats  = "https://statistics-api.wildberries.ru"
 	defaultOzonBase = "https://api-seller.ozon.ru"
 )
 
@@ -27,6 +29,7 @@ type MarketplaceExecutor struct {
 	ozonClientID string
 	ozonAPIKey   string
 	wbBase       string
+	wbStatsBase  string
 	ozonBase     string
 }
 
@@ -34,8 +37,176 @@ func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *Marketpla
 	return &MarketplaceExecutor{
 		client: &http.Client{Timeout: 20 * time.Second}, wbToken: strings.TrimSpace(wbToken),
 		ozonClientID: strings.TrimSpace(ozonClientID), ozonAPIKey: strings.TrimSpace(ozonAPIKey),
-		wbBase: defaultWBBase, ozonBase: defaultOzonBase,
+		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, ozonBase: defaultOzonBase,
 	}
+}
+
+func (executor *MarketplaceExecutor) FetchSales(
+	ctx context.Context,
+	channel string,
+	from, to time.Time,
+) ([]procurement.SalesRecord, error) {
+	switch channel {
+	case "wb":
+		return executor.fetchWBSales(ctx, from, to)
+	case "ozon":
+		return executor.fetchOzonSales(ctx, from, to)
+	default:
+		return nil, fmt.Errorf("история продаж канала %s не поддерживается", channel)
+	}
+}
+
+func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
+	if !executor.Configured("wb") {
+		return nil, errors.New("токен Wildberries не настроен")
+	}
+	endpoint := executor.wbStatsBase + "/api/v5/supplier/reportDetailByPeriod?" + url.Values{
+		"dateFrom": {from.Format("2006-01-02")}, "dateTo": {to.Add(24*time.Hour - time.Second).Format(time.RFC3339)},
+		"limit": {"100000"}, "rrdid": {"0"}, "period": {"daily"},
+	}.Encode()
+	var response []struct {
+		NmID            int64   `json:"nm_id"`
+		DocType         string  `json:"doc_type_name"`
+		Operation       string  `json:"supplier_oper_name"`
+		Quantity        float64 `json:"quantity"`
+		RetailAmount    float64 `json:"retail_amount"`
+		SaleDate        string  `json:"sale_dt"`
+		RealizationDate string  `json:"rr_dt"`
+	}
+	if err := executor.request(ctx, http.MethodGet, endpoint, nil, map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
+		return nil, fmt.Errorf("получить продажи Wildberries: %w", err)
+	}
+	records := make([]procurement.SalesRecord, 0, len(response))
+	for _, row := range response {
+		if row.NmID <= 0 || row.Quantity == 0 {
+			continue
+		}
+		date, err := parseMarketplaceDate(firstNonEmpty(row.SaleDate, row.RealizationDate))
+		if err != nil || date.Before(from) || date.After(to.Add(24*time.Hour-time.Second)) {
+			continue
+		}
+		sign := 1
+		kind := strings.ToLower(row.DocType + " " + row.Operation)
+		if strings.Contains(kind, "возврат") || strings.Contains(kind, "return") {
+			sign = -1
+		} else if !strings.Contains(kind, "продаж") && !strings.Contains(kind, "sale") {
+			continue
+		}
+		records = append(records, procurement.SalesRecord{
+			Date: date, ExternalID: strconv.FormatInt(row.NmID, 10),
+			Units: sign * int(math.Round(math.Abs(row.Quantity))), GrossRUB: float64(sign) * math.Abs(row.RetailAmount),
+		})
+	}
+	return records, nil
+}
+
+type ozonPosting struct {
+	CreatedAt string `json:"created_at"`
+	Status    string `json:"status"`
+	Products  []struct {
+		OfferID  string `json:"offer_id"`
+		Quantity int    `json:"quantity"`
+		Price    string `json:"price"`
+	} `json:"products"`
+}
+
+func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
+	if !executor.Configured("ozon") {
+		return nil, errors.New("ключи Ozon не настроены")
+	}
+	records := make([]procurement.SalesRecord, 0)
+	for _, path := range []string{"/v3/posting/fbs/list", "/v2/posting/fbo/list"} {
+		items, err := executor.fetchOzonPostings(ctx, path, from, to)
+		if err != nil {
+			return nil, err
+		}
+		for _, posting := range items {
+			if posting.Status != "delivered" {
+				continue
+			}
+			date, err := parseMarketplaceDate(posting.CreatedAt)
+			if err != nil {
+				continue
+			}
+			for _, product := range posting.Products {
+				price, _ := strconv.ParseFloat(product.Price, 64)
+				if strings.TrimSpace(product.OfferID) != "" && product.Quantity > 0 {
+					records = append(records, procurement.SalesRecord{
+						Date: date, ExternalID: product.OfferID, Units: product.Quantity,
+						GrossRUB: price * float64(product.Quantity),
+					})
+				}
+			}
+		}
+	}
+	return records, nil
+}
+
+func (executor *MarketplaceExecutor) fetchOzonPostings(
+	ctx context.Context,
+	path string,
+	from, to time.Time,
+) ([]ozonPosting, error) {
+	const limit = 1000
+	result := make([]ozonPosting, 0)
+	for offset := 0; offset < 100000; offset += limit {
+		with := map[string]bool{"analytics_data": false, "financial_data": false}
+		payload := map[string]any{
+			"dir": "ASC", "filter": map[string]any{
+				"since": from.Format(time.RFC3339), "to": to.Add(24*time.Hour - time.Second).Format(time.RFC3339), "status": "delivered",
+			},
+			"limit": limit, "offset": offset, "with": with,
+		}
+		if strings.Contains(path, "/fbs/") {
+			with["barcodes"], with["translit"] = false, false
+		} else {
+			payload["translit"] = true
+		}
+		var response struct {
+			Result json.RawMessage `json:"result"`
+		}
+		if err := executor.request(ctx, http.MethodPost, executor.ozonBase+path, payload,
+			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
+			return nil, fmt.Errorf("получить продажи Ozon %s: %w", path, err)
+		}
+		var page []ozonPosting
+		if len(response.Result) > 0 && response.Result[0] == '[' {
+			if err := json.Unmarshal(response.Result, &page); err != nil {
+				return nil, fmt.Errorf("разобрать продажи Ozon: %w", err)
+			}
+		} else {
+			var wrapped struct {
+				Postings []ozonPosting `json:"postings"`
+			}
+			if err := json.Unmarshal(response.Result, &wrapped); err != nil {
+				return nil, fmt.Errorf("разобрать продажи Ozon: %w", err)
+			}
+			page = wrapped.Postings
+		}
+		result = append(result, page...)
+		if len(page) < limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func parseMarketplaceDate(value string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+		if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
+			return parsed.UTC(), nil
+		}
+	}
+	return time.Time{}, errors.New("некорректная дата продажи")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (executor *MarketplaceExecutor) Configured(channel string) bool {
@@ -204,6 +375,9 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content))}
+	}
+	if response.StatusCode == http.StatusNoContent {
+		return nil
 	}
 	if err := json.Unmarshal(content, target); err != nil {
 		return fmt.Errorf("decode marketplace response: %w", err)

@@ -17,10 +17,15 @@ type fakeSabySync struct {
 	verifyErr error
 	result    saby.Result
 	syncErr   error
+	sales     saby.SalesResult
 }
 
 func (service fakeSabySync) Verify(context.Context, string) error {
 	return service.verifyErr
+}
+
+func (service fakeSabySync) SyncSales(_ context.Context, _ saby.SalesUpload) (saby.SalesResult, error) {
+	return service.sales, service.syncErr
 }
 
 func (service fakeSabySync) Sync(
@@ -28,6 +33,25 @@ func (service fakeSabySync) Sync(
 	_ []saby.CatalogItem,
 ) (saby.Result, error) {
 	return service.result, service.syncErr
+}
+
+func TestSabySalesSyncAcceptsNormalizedHistory(t *testing.T) {
+	t.Parallel()
+	handler := sabySalesSyncHandler(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		fakeSabySync{sales: saby.SalesResult{OK: true, Rows: 2}},
+	)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/saby/sales", strings.NewReader(
+		`{"from":"2026-08-01","to":"2026-08-10","items":[{"date":"2026-08-09","sabyId":"abc","units":2,"grossRub":3000}]}`,
+	))
+	request.Header.Set("X-Ficusin-GitHub-OIDC", "token")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"rows":2`) {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
 }
 
 func TestSabyCatalogSyncRequiresOIDCToken(t *testing.T) {

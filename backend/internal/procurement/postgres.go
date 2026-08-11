@@ -72,9 +72,14 @@ func (store *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
 	if err != nil {
 		return Dashboard{}, err
 	}
+	salesSync, err := store.listSalesSync(ctx)
+	if err != nil {
+		return Dashboard{}, err
+	}
 	result.Settings = settings
 	result.Suppliers, result.Orders, result.Documents, result.Review = suppliers, orders, documents, review
 	result.Requests, result.Availability, result.Recommendations = requests, availability, recommendations
+	result.SalesSync = salesSync
 	return result, nil
 }
 
@@ -1049,13 +1054,15 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 func (store *PostgresStore) listRecommendations(ctx context.Context, settings PricingSettings) ([]Recommendation, error) {
 	rows, err := store.pool.Query(ctx, `
 		WITH sales AS (
-			SELECT pv.saby_id, COALESCE(SUM(oi.quantity), 0)::INTEGER AS units
-			FROM order_items oi
-			JOIN product_variants pv ON pv.id = oi.variant_id
-			JOIN orders o ON o.id = oi.order_id
-			WHERE o.created_at >= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 day')
-				AND o.status <> 'cancelled' AND pv.saby_id IS NOT NULL
-			GROUP BY pv.saby_id
+			SELECT saby_id,
+				COALESCE(SUM(units) FILTER (WHERE channel = 'site'), 0)::INTEGER AS site_units,
+				COALESCE(SUM(units) FILTER (WHERE channel = 'saby'), 0)::INTEGER AS saby_units,
+				COALESCE(SUM(units) FILTER (WHERE channel = 'wb'), 0)::INTEGER AS wb_units,
+				COALESCE(SUM(units) FILTER (WHERE channel = 'ozon'), 0)::INTEGER AS ozon_units,
+				COALESCE(SUM(units), 0)::INTEGER AS units
+			FROM procurement_sales_daily
+			WHERE sale_date >= CURRENT_DATE - ($1 - 1) AND saby_id IS NOT NULL
+			GROUP BY saby_id
 		), requests AS (
 			SELECT saby_id, COALESCE(SUM(quantity), 0)::INTEGER AS units
 			FROM procurement_requests WHERE status = 'open' AND saby_id IS NOT NULL GROUP BY saby_id
@@ -1072,7 +1079,8 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC LIMIT 1), 0),
 				sp.supplier_id, n.saby_id, n.name,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), ''), n.balance,
-				COALESCE(s.units, 0), COALESCE(r.units, 0),
+				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
+				COALESCE(s.ozon_units, 0), COALESCE(s.units, 0), COALESCE(r.units, 0),
 				GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0))
 			FROM procurement_supplier_products sp
 			JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
@@ -1095,19 +1103,184 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 	for rows.Next() {
 		var item Recommendation
 		if err := rows.Scan(&item.AliasID, &item.SupplierID, &item.SabyID, &item.Name, &item.SupplierArticle, &item.Balance,
-			&item.SiteSales, &item.OpenRequests, &item.SuggestedQty); err != nil {
+			&item.SiteSales, &item.SabySales, &item.WBSales, &item.OzonSales, &item.TotalSales,
+			&item.OpenRequests, &item.SuggestedQty); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
 		if item.OpenRequests > 0 {
 			item.Reason = "Есть клиентский заказ"
 		} else if item.SuggestedQty > 0 {
-			item.Reason = "Продажи выше целевого остатка"
+			item.Reason = "Продажи всех каналов выше целевого остатка"
 		} else {
 			item.Reason = "Запас достаточен"
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatus, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT state.channel, state.status, state.last_attempt_at, state.last_success_at,
+			state.last_error, state.rows_synced, COALESCE(state.period_from::TEXT, ''),
+			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, '')
+		FROM procurement_sales_sync_state state
+		LEFT JOIN procurement_sales_daily sale ON sale.channel = state.channel
+		GROUP BY state.channel, state.status, state.last_attempt_at, state.last_success_at,
+			state.last_error, state.rows_synced, state.period_from, state.period_to
+		ORDER BY CASE state.channel WHEN 'saby' THEN 0 WHEN 'site' THEN 1 WHEN 'wb' THEN 2 ELSE 3 END
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query sales synchronization state: %w", err)
+	}
+	defer rows.Close()
+	items := make([]SalesSyncStatus, 0, 4)
+	for rows.Next() {
+		var item SalesSyncStatus
+		if err := rows.Scan(&item.Channel, &item.Status, &item.LastAttemptAt, &item.LastSuccessAt,
+			&item.LastError, &item.RowsSynced, &item.PeriodFrom, &item.PeriodTo, &item.LatestSale); err != nil {
+			return nil, fmt.Errorf("scan sales synchronization state: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (store *PostgresStore) MarkSalesSync(ctx context.Context, channel, status string, syncErr error) error {
+	if !validSalesChannel(channel) || !oneOf(status, "pending", "running", "ok", "error", "disabled") {
+		return ErrInvalidInput
+	}
+	errorMessage := ""
+	if syncErr != nil {
+		errorMessage = syncErr.Error()
+		if len(errorMessage) > 500 {
+			errorMessage = errorMessage[:500]
+		}
+	}
+	_, err := store.pool.Exec(ctx, `
+		INSERT INTO procurement_sales_sync_state (channel, status, last_attempt_at, last_error)
+		VALUES ($1, $2, CASE WHEN $2 IN ('running', 'error') THEN CURRENT_TIMESTAMP ELSE NULL END, $3)
+		ON CONFLICT (channel) DO UPDATE SET status = EXCLUDED.status,
+			last_attempt_at = CASE WHEN EXCLUDED.status IN ('running', 'error')
+				THEN CURRENT_TIMESTAMP ELSE procurement_sales_sync_state.last_attempt_at END,
+			last_error = CASE WHEN EXCLUDED.status IN ('error', 'disabled') THEN EXCLUDED.last_error ELSE '' END,
+			updated_at = CURRENT_TIMESTAMP
+	`, channel, status, errorMessage)
+	if err != nil {
+		return fmt.Errorf("mark sales synchronization: %w", err)
+	}
+	return nil
+}
+
+func (store *PostgresStore) RefreshSiteSales(ctx context.Context, from, to time.Time) (int, error) {
+	return store.replaceSalesWithQuery(ctx, "site", from, to, `
+		INSERT INTO procurement_sales_daily (
+			channel, sale_date, external_product_id, saby_id, units, gross_rub
+		)
+		SELECT 'site', o.created_at::DATE, pv.saby_id, pv.saby_id,
+			SUM(oi.quantity)::INTEGER, SUM(oi.quantity * oi.unit_price)::NUMERIC
+		FROM orders o
+		JOIN order_items oi ON oi.order_id = o.id
+		JOIN product_variants pv ON pv.id = oi.variant_id
+		WHERE o.created_at::DATE BETWEEN $1 AND $2
+			AND o.status <> 'cancelled' AND pv.saby_id IS NOT NULL
+		GROUP BY o.created_at::DATE, pv.saby_id
+	`)
+}
+
+func (store *PostgresStore) replaceSalesWithQuery(
+	ctx context.Context,
+	channel string,
+	from, to time.Time,
+	insertSQL string,
+) (int, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin sales refresh: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `DELETE FROM procurement_sales_daily WHERE channel = $1 AND sale_date BETWEEN $2 AND $3`, channel, from, to); err != nil {
+		return 0, fmt.Errorf("clear sales refresh window: %w", err)
+	}
+	command, err := tx.Exec(ctx, insertSQL, from, to)
+	if err != nil {
+		return 0, fmt.Errorf("insert refreshed sales: %w", err)
+	}
+	count := int(command.RowsAffected())
+	if err := finishSalesSync(ctx, tx, channel, from, to, count); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit sales refresh: %w", err)
+	}
+	return count, nil
+}
+
+func (store *PostgresStore) ReplaceSales(
+	ctx context.Context,
+	channel string,
+	from, to time.Time,
+	records []SalesRecord,
+) (int, error) {
+	if !validSalesChannel(channel) || from.After(to) {
+		return 0, ErrInvalidInput
+	}
+	normalized, err := normalizeSalesRecords(records, day(from), day(to))
+	if err != nil {
+		return 0, err
+	}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin replace sales: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `DELETE FROM procurement_sales_daily WHERE channel = $1 AND sale_date BETWEEN $2 AND $3`, channel, from, to); err != nil {
+		return 0, fmt.Errorf("clear sales window: %w", err)
+	}
+	inserted := 0
+	for _, record := range normalized {
+		command, err := tx.Exec(ctx, `
+			INSERT INTO procurement_sales_daily (
+				channel, sale_date, external_product_id, saby_id, units, gross_rub
+			) VALUES ($1, $2, $3, COALESCE(
+				(SELECT saby_id FROM saby_nomenclature WHERE saby_id = NULLIF($4, '')),
+				(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'wb' AND wb_nm_id::TEXT = $3 LIMIT 1),
+				(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'ozon' AND ozon_offer_id = $3 LIMIT 1)
+			), $5, $6)
+			ON CONFLICT (channel, sale_date, external_product_id) DO UPDATE SET
+				saby_id = EXCLUDED.saby_id, units = EXCLUDED.units,
+				gross_rub = EXCLUDED.gross_rub, synced_at = CURRENT_TIMESTAMP
+		`, channel, record.Date, record.ExternalID, record.SabyID, record.Units, record.GrossRUB)
+		if err != nil {
+			return 0, fmt.Errorf("insert sales record: %w", err)
+		}
+		inserted += int(command.RowsAffected())
+	}
+	if err := finishSalesSync(ctx, tx, channel, from, to, inserted); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit replace sales: %w", err)
+	}
+	return inserted, nil
+}
+
+func finishSalesSync(ctx context.Context, tx pgx.Tx, channel string, from, to time.Time, count int) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO procurement_sales_sync_state (
+			channel, status, last_attempt_at, last_success_at, last_error,
+			rows_synced, period_from, period_to
+		) VALUES ($1, 'ok', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '', $2, $3, $4)
+		ON CONFLICT (channel) DO UPDATE SET status = 'ok',
+			last_attempt_at = CURRENT_TIMESTAMP, last_success_at = CURRENT_TIMESTAMP,
+			last_error = '', rows_synced = EXCLUDED.rows_synced,
+			period_from = EXCLUDED.period_from, period_to = EXCLUDED.period_to,
+			updated_at = CURRENT_TIMESTAMP
+	`, channel, count, from, to)
+	if err != nil {
+		return fmt.Errorf("finish sales synchronization: %w", err)
+	}
+	return nil
 }
 
 func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
