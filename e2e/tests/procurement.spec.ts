@@ -80,7 +80,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await mockProcurement(page);
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки" }).click();
-  await page.getByText("TEST-100").first().click();
+  await page.locator(".procurement-orders").getByText("TEST-100").click();
   await expect(page.getByText("Расчёт заблокирован")).toBeVisible();
   await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
