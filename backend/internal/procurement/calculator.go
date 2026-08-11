@@ -44,12 +44,9 @@ func calculateLine(settings PricingSettings, costs OrderCosts, line calculationL
 	}
 	unitCost := purchase + trolleyDelivery + ryazanDelivery
 
-	retailBase := purchase * settings.DomesticRetailMultiplier
-	if line.Kind == KindInternational {
-		retailBase = (purchase*settings.InternationalCostMultiplier + trolleyDelivery) * settings.InternationalRetailMultiplier
-	}
-	retail := roundRetail(retailBase, settings.RetailRoundStep, settings.AvoidRoundHundreds)
-	marketplaceBase := float64(retail) + ryazanDelivery + settings.PackageRUB
+	retailBase := unitCost * settings.RetailMarkupMultiplier
+	retail := roundRetail(retailBase, settings.RoundPrices)
+	marketplaceBase := float64(retail) + settings.PackageRUB
 	marketplaceRate := 1 + settings.ReturnLossRate + settings.MarketplaceCostRate + settings.TaxRate + settings.ReserveRate
 	marketplace := int64(math.Floor(marketplaceBase * marketplaceRate))
 	strike := int64(math.Floor(float64(marketplace) * (1 + settings.MarketplaceStrikeMarkup)))
@@ -71,12 +68,9 @@ func calculateAllocatedLine(settings PricingSettings, kind string, unitPrice, ex
 		purchase *= exchangeRate
 	}
 	unitCost := purchase + trolleyPerUnit + ryazanPerUnit
-	retailBase := purchase * settings.DomesticRetailMultiplier
-	if kind == KindInternational {
-		retailBase = (purchase*settings.InternationalCostMultiplier + trolleyPerUnit) * settings.InternationalRetailMultiplier
-	}
-	retail := roundRetail(retailBase, settings.RetailRoundStep, settings.AvoidRoundHundreds)
-	marketplaceBase := float64(retail) + ryazanPerUnit + settings.PackageRUB
+	retailBase := unitCost * settings.RetailMarkupMultiplier
+	retail := roundRetail(retailBase, settings.RoundPrices)
+	marketplaceBase := float64(retail) + settings.PackageRUB
 	marketplaceRate := 1 + settings.ReturnLossRate + settings.MarketplaceCostRate + settings.TaxRate + settings.ReserveRate
 	marketplace := int64(math.Floor(marketplaceBase * marketplaceRate))
 	strike := int64(math.Floor(float64(marketplace) * (1 + settings.MarketplaceStrikeMarkup)))
@@ -88,15 +82,38 @@ func calculateAllocatedLine(settings PricingSettings, kind string, unitPrice, ex
 	}
 }
 
-func roundRetail(value float64, step int, avoidHundreds bool) int64 {
-	if value <= 0 || step <= 0 {
+func roundRetail(value float64, enabled bool) int64 {
+	if value <= 0 {
 		return 0
 	}
-	result := int64(math.Ceil(value/float64(step))) * int64(step)
-	if avoidHundreds && result%100 == 0 {
-		result -= 10
+	if !enabled {
+		return int64(math.Round(value))
 	}
-	return result
+
+	// Prices are rounded to the nearest positive value ending in 50 or 90.
+	// If two candidates are equally close, prefer the higher one so rounding
+	// never loses margin merely because a value sits exactly in the middle.
+	hundred := int64(math.Floor(value/100)) * 100
+	candidates := []int64{hundred - 50, hundred - 10, hundred + 50, hundred + 90, hundred + 150}
+	best := int64(0)
+	bestDistance := math.MaxFloat64
+	for _, candidate := range candidates {
+		if candidate <= 0 {
+			continue
+		}
+		distance := math.Abs(value - float64(candidate))
+		if distance < bestDistance || distance == bestDistance && candidate > best {
+			best, bestDistance = candidate, distance
+		}
+	}
+	return best
+}
+
+func deliveryPerTrolley(total float64, trolleyCount int) float64 {
+	if total <= 0 || trolleyCount <= 0 {
+		return 0
+	}
+	return total / float64(trolleyCount)
 }
 
 func priceChangeNeeded(current float64, proposed int64, threshold float64) bool {

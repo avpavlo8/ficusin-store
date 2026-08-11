@@ -84,7 +84,8 @@ func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input P
 		input.RecommendationDays < 7 || input.RecommendationDays > 365 || input.TargetCoverDays < 1 || input.TargetCoverDays > 365 ||
 		!validRate(input.ReturnLossRate) || !validRate(input.MarketplaceCostRate) || !validRate(input.TaxRate) ||
 		!validRate(input.ReserveRate) || !validRate(input.MarketplaceStrikeMarkup) ||
-		input.DomesticRetailMultiplier <= 0 || input.InternationalCostMultiplier <= 0 || input.InternationalRetailMultiplier <= 0 {
+		input.DomesticRetailMultiplier <= 0 || input.InternationalCostMultiplier <= 0 || input.InternationalRetailMultiplier <= 0 ||
+		input.RetailMarkupMultiplier <= 0 {
 		return PricingSettings{}, ErrInvalidInput
 	}
 	return service.store.UpdateSettings(ctx, actor, input)
@@ -151,7 +152,8 @@ func (service *Service) CalculateOrder(ctx context.Context, actor Actor, orderID
 	if input.TrolleyCostRUB == 0 && input.TrolleyCostCurrency > 0 {
 		input.TrolleyCostRUB = input.TrolleyCostCurrency
 	}
-	if orderID <= 0 || input.ExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 || input.DeliveryToRyazanRUB < 0 {
+	if orderID <= 0 || input.ExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 ||
+		input.DeliveryToMoscowRUB < 0 || input.DeliveryToRyazanRUB < 0 {
 		return OrderDetail{}, ErrInvalidInput
 	}
 	return service.store.CalculateOrder(ctx, actor, orderID, input)
