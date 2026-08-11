@@ -14,11 +14,16 @@ type Store interface {
 	CreatePlan(context.Context, Actor, PlanCreate) (OrderSummary, error)
 	OrderDetail(context.Context, int64) (OrderDetail, error)
 	CalculateOrder(context.Context, Actor, int64, CalculationInput) (OrderDetail, error)
+	UpdateOrderStatus(context.Context, Actor, int64, OrderStatusUpdate) (OrderDetail, error)
+	UpdateOrderLine(context.Context, Actor, int64, OrderLineUpdate) (OrderDetail, error)
 	ImportDocument(context.Context, Actor, DocumentUpload, ParsedDocument) (ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
 	ResolveAlias(context.Context, Actor, int64, AliasResolution) (AliasReview, error)
 	CreateRequest(context.Context, Actor, RequestCreate) (Request, error)
+	UpdateRequest(context.Context, Actor, int64, RequestUpdate) (Request, error)
 	UpdateAvailability(context.Context, Actor, int64, AvailabilityUpdate) (AliasReview, error)
+	ListProducts(context.Context, int64, string) ([]ProductDirectoryItem, error)
+	UpdateProduct(context.Context, Actor, ProductDirectoryUpdate) (ProductDirectoryItem, error)
 	PrepareBatch(context.Context, Actor, int64, string) (ActionBatch, error)
 	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ClaimAction(context.Context) (*ActionItem, error)
@@ -38,8 +43,8 @@ type ActionExecution struct {
 }
 
 type Service struct {
-	store  Store
-	parser Parser
+	store    Store
+	parser   Parser
 	executor Executor
 }
 
@@ -70,7 +75,10 @@ func (service *Service) Dashboard(ctx context.Context) (Dashboard, error) {
 }
 
 func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input PricingSettings) (PricingSettings, error) {
-	if input.DefaultExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyVolumeCM3 <= 0 ||
+	if input.TrolleyCostRUB == 0 && input.TrolleyCostCurrency > 0 {
+		input.TrolleyCostRUB = input.TrolleyCostCurrency
+	}
+	if input.DefaultExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 || input.TrolleyVolumeCM3 <= 0 ||
 		input.TrolleyFillRatio <= 0 || input.TrolleyFillRatio > 1 || input.PackageRUB < 0 ||
 		input.PriceChangeThreshold < 0 || input.PriceChangeThreshold >= 1 || input.RetailRoundStep <= 0 ||
 		input.RecommendationDays < 7 || input.RecommendationDays > 365 || input.TargetCoverDays < 1 || input.TargetCoverDays > 365 ||
@@ -140,10 +148,43 @@ func (service *Service) OrderDetail(ctx context.Context, orderID int64) (OrderDe
 }
 
 func (service *Service) CalculateOrder(ctx context.Context, actor Actor, orderID int64, input CalculationInput) (OrderDetail, error) {
-	if orderID <= 0 || input.ExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.DeliveryToRyazanRUB < 0 {
+	if input.TrolleyCostRUB == 0 && input.TrolleyCostCurrency > 0 {
+		input.TrolleyCostRUB = input.TrolleyCostCurrency
+	}
+	if orderID <= 0 || input.ExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 || input.DeliveryToRyazanRUB < 0 {
 		return OrderDetail{}, ErrInvalidInput
 	}
 	return service.store.CalculateOrder(ctx, actor, orderID, input)
+}
+
+func (service *Service) UpdateOrderStatus(ctx context.Context, actor Actor, orderID int64, input OrderStatusUpdate) (OrderDetail, error) {
+	input.Status = strings.TrimSpace(input.Status)
+	input.Note = strings.TrimSpace(input.Note)
+	if orderID <= 0 || !oneOf(input.Status, "received", "cancelled", "review") {
+		return OrderDetail{}, ErrInvalidInput
+	}
+	return service.store.UpdateOrderStatus(ctx, actor, orderID, input)
+}
+
+func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
+	if lineID <= 0 || (input.ExpectedUnitPrice == nil && input.PotDiameterCM == nil && input.HeightCM == nil && input.LoadUnit == nil && input.AcceptComparison == nil && input.ComparisonNote == nil) {
+		return OrderDetail{}, ErrInvalidInput
+	}
+	if input.ExpectedUnitPrice != nil && *input.ExpectedUnitPrice < 0 || input.PotDiameterCM != nil && *input.PotDiameterCM <= 0 || input.HeightCM != nil && *input.HeightCM <= 0 {
+		return OrderDetail{}, ErrInvalidInput
+	}
+	if input.LoadUnit != nil {
+		value := strings.TrimSpace(*input.LoadUnit)
+		input.LoadUnit = &value
+	}
+	if input.ComparisonNote != nil {
+		value := strings.TrimSpace(*input.ComparisonNote)
+		input.ComparisonNote = &value
+	}
+	if input.AcceptComparison != nil && *input.AcceptComparison && (input.ComparisonNote == nil || *input.ComparisonNote == "") {
+		return OrderDetail{}, ErrInvalidInput
+	}
+	return service.store.UpdateOrderLine(ctx, actor, lineID, input)
 }
 
 func (service *Service) ImportDocument(
@@ -202,6 +243,44 @@ func (service *Service) CreateRequest(ctx context.Context, actor Actor, input Re
 		return Request{}, ErrInvalidInput
 	}
 	return service.store.CreateRequest(ctx, actor, input)
+}
+
+func (service *Service) UpdateRequest(ctx context.Context, actor Actor, requestID int64, input RequestUpdate) (Request, error) {
+	input.SabyID = strings.TrimSpace(input.SabyID)
+	input.RequestedName = strings.TrimSpace(input.RequestedName)
+	input.Status = strings.TrimSpace(input.Status)
+	input.Notes = strings.TrimSpace(input.Notes)
+	if requestID <= 0 || input.RequestedName == "" || input.Quantity <= 0 || !oneOf(input.Status, "open", "included", "fulfilled", "cancelled") {
+		return Request{}, ErrInvalidInput
+	}
+	return service.store.UpdateRequest(ctx, actor, requestID, input)
+}
+
+func (service *Service) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
+	query = strings.TrimSpace(query)
+	if supplierID < 0 || len(query) > 200 {
+		return nil, ErrInvalidInput
+	}
+	return service.store.ListProducts(ctx, supplierID, query)
+}
+
+func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
+	input.SabyID = strings.TrimSpace(input.SabyID)
+	input.SupplierArticle = strings.TrimSpace(input.SupplierArticle)
+	input.AvailabilityStatus = strings.TrimSpace(input.AvailabilityStatus)
+	input.CheckAfter = strings.TrimSpace(input.CheckAfter)
+	input.HollandArticle = strings.TrimSpace(input.HollandArticle)
+	input.WBVendorCode = strings.TrimSpace(input.WBVendorCode)
+	input.OzonOfferID = strings.TrimSpace(input.OzonOfferID)
+	if input.SabyID == "" || input.SupplierID <= 0 || !oneOf(input.AvailabilityStatus, "available", "unknown", "check", "temporarily_unavailable", "discontinued") || input.WBNmID != nil && *input.WBNmID <= 0 {
+		return ProductDirectoryItem{}, ErrInvalidInput
+	}
+	if input.CheckAfter != "" {
+		if _, err := time.Parse("2006-01-02", input.CheckAfter); err != nil {
+			return ProductDirectoryItem{}, ErrInvalidInput
+		}
+	}
+	return service.store.UpdateProduct(ctx, actor, input)
 }
 
 func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {

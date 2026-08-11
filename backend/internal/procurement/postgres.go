@@ -82,7 +82,7 @@ func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, 
 	var item PricingSettings
 	err := store.pool.QueryRow(ctx, `
 		SELECT version, default_exchange_rate::DOUBLE PRECISION,
-			trolley_cost_currency::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
+			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
 			trolley_fill_ratio::DOUBLE PRECISION, return_loss_rate::DOUBLE PRECISION,
 			marketplace_cost_rate::DOUBLE PRECISION, tax_rate::DOUBLE PRECISION,
 			reserve_rate::DOUBLE PRECISION, package_rub::DOUBLE PRECISION,
@@ -92,7 +92,7 @@ func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, 
 			avoid_round_hundreds, recommendation_days, target_cover_days
 		FROM procurement_pricing_settings WHERE id = 1
 	`).Scan(
-		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency,
+		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
 		&item.TrolleyVolumeCM3, &item.TrolleyFillRatio, &item.ReturnLossRate,
 		&item.MarketplaceCostRate, &item.TaxRate, &item.ReserveRate, &item.PackageRUB,
 		&item.PriceChangeThreshold, &item.DomesticRetailMultiplier,
@@ -115,17 +115,17 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 	var item PricingSettings
 	err = tx.QueryRow(ctx, `
 		UPDATE procurement_pricing_settings SET
-			version = version + 1, default_exchange_rate = $1, trolley_cost_currency = $2,
-			trolley_volume_cm3 = $3, trolley_fill_ratio = $4, return_loss_rate = $5,
-			marketplace_cost_rate = $6, tax_rate = $7, reserve_rate = $8, package_rub = $9,
-			price_change_threshold = $10, domestic_retail_multiplier = $11,
-			international_cost_multiplier = $12, international_retail_multiplier = $13,
-			marketplace_strike_markup = $14, retail_round_step = $15,
-			avoid_round_hundreds = $16, recommendation_days = $17, target_cover_days = $18,
-			updated_by = $19, updated_at = CURRENT_TIMESTAMP
+			version = version + 1, default_exchange_rate = $1, trolley_cost_currency = $2, trolley_cost_rub = $3,
+			trolley_volume_cm3 = $4, trolley_fill_ratio = $5, return_loss_rate = $6,
+			marketplace_cost_rate = $7, tax_rate = $8, reserve_rate = $9, package_rub = $10,
+			price_change_threshold = $11, domestic_retail_multiplier = $12,
+			international_cost_multiplier = $13, international_retail_multiplier = $14,
+			marketplace_strike_markup = $15, retail_round_step = $16,
+			avoid_round_hundreds = $17, recommendation_days = $18, target_cover_days = $19,
+			updated_by = $20, updated_at = CURRENT_TIMESTAMP
 		WHERE id = 1
 		RETURNING version, default_exchange_rate::DOUBLE PRECISION,
-			trolley_cost_currency::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
+			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
 			trolley_fill_ratio::DOUBLE PRECISION, return_loss_rate::DOUBLE PRECISION,
 			marketplace_cost_rate::DOUBLE PRECISION, tax_rate::DOUBLE PRECISION,
 			reserve_rate::DOUBLE PRECISION, package_rub::DOUBLE PRECISION,
@@ -133,7 +133,7 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 			international_cost_multiplier::DOUBLE PRECISION, international_retail_multiplier::DOUBLE PRECISION,
 			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
 			avoid_round_hundreds, recommendation_days, target_cover_days
-	`, input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyVolumeCM3,
+	`, input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3,
 		input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate,
 		input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold,
 		input.DomesticRetailMultiplier, input.InternationalCostMultiplier,
@@ -141,7 +141,7 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 		input.RetailRoundStep, input.AvoidRoundHundreds, input.RecommendationDays,
 		input.TargetCoverDays, actor.CustomerID,
 	).Scan(
-		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency,
+		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
 		&item.TrolleyVolumeCM3, &item.TrolleyFillRatio, &item.ReturnLossRate,
 		&item.MarketplaceCostRate, &item.TaxRate, &item.ReserveRate, &item.PackageRUB,
 		&item.PriceChangeThreshold, &item.DomesticRetailMultiplier,
@@ -313,9 +313,9 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	detail.Order = order
 	err = store.pool.QueryRow(ctx, `
 		SELECT COALESCE(exchange_rate, 0)::DOUBLE PRECISION,
-			trolley_cost_currency::DOUBLE PRECISION, delivery_to_ryazan_rub::DOUBLE PRECISION
+			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, delivery_to_ryazan_rub::DOUBLE PRECISION
 		FROM procurement_orders WHERE id = $1
-	`, orderID).Scan(&detail.Costs.ExchangeRate, &detail.Costs.TrolleyCostCurrency, &detail.Costs.DeliveryToRyazanRUB)
+	`, orderID).Scan(&detail.Costs.ExchangeRate, &detail.Costs.TrolleyCostCurrency, &detail.Costs.TrolleyCostRUB, &detail.Costs.DeliveryToRyazanRUB)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("load procurement order costs: %w", err)
 	}
@@ -330,7 +330,8 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			l.ryazan_delivery_unit_rub::DOUBLE PRECISION, l.unit_cost_rub::DOUBLE PRECISION,
 			COALESCE(n.price_minor, 0)::DOUBLE PRECISION / 100,
 			l.proposed_retail_rub, l.proposed_marketplace_rub,
-			l.proposed_marketplace_strike_rub, l.customer_request
+			l.proposed_marketplace_strike_rub, l.customer_request,
+			l.comparison_accepted, l.comparison_note
 		FROM procurement_order_lines l
 		LEFT JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 		WHERE l.procurement_order_id = $1
@@ -350,26 +351,147 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.PurchaseUnitRUB, &line.TrolleyDeliveryUnitRUB, &line.RyazanDeliveryUnitRUB,
 			&line.UnitCostRUB, &line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.ProposedRetailRUB != nil {
 			line.PriceChangeNeeded = priceChangeNeeded(line.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
-		}
-		line.ComparisonMismatch = line.InvoicedQuantity != nil && line.OrderedQuantity > 0 && *line.InvoicedQuantity != line.OrderedQuantity
-		if line.ExpectedUnitPrice != nil && line.InvoicedQuantity != nil && math.Abs(line.UnitPrice-*line.ExpectedUnitPrice) > .005 {
-			line.ComparisonMismatch = true
 		}
 		detail.Lines = append(detail.Lines, line)
 	}
 	if err := rows.Err(); err != nil {
 		return OrderDetail{}, err
 	}
+	type comparisonGroup struct {
+		ordered, invoiced       int
+		expected                *float64
+		priceMismatch, accepted bool
+		first                   int
+	}
+	groups := make(map[string]*comparisonGroup)
+	for index := range detail.Lines {
+		line := &detail.Lines[index]
+		if line.MatchStatus != "confirmed" || line.SabyID == "" {
+			continue
+		}
+		group := groups[line.SabyID]
+		if group == nil {
+			group = &comparisonGroup{first: index}
+			groups[line.SabyID] = group
+		}
+		group.ordered += line.OrderedQuantity
+		if line.InvoicedQuantity != nil {
+			group.invoiced += *line.InvoicedQuantity
+		}
+		if line.ExpectedUnitPrice != nil {
+			value := *line.ExpectedUnitPrice
+			group.expected = &value
+		}
+		group.accepted = group.accepted || line.ComparisonAccepted
+	}
+	for sabyID, group := range groups {
+		if group.expected != nil {
+			for index := range detail.Lines {
+				line := detail.Lines[index]
+				if line.SabyID == sabyID && line.InvoicedQuantity != nil && math.Abs(line.UnitPrice-*group.expected) > .005 {
+					group.priceMismatch = true
+				}
+			}
+		}
+		mismatch := group.ordered > 0 && group.ordered != group.invoiced || group.priceMismatch
+		detail.Lines[group.first].ComparisonMismatch = mismatch
+		detail.Lines[group.first].ComparisonAccepted = group.accepted
+	}
 	detail.Batches, err = store.listBatches(ctx, orderID)
 	if err != nil {
 		return OrderDetail{}, err
 	}
+	detail.Validation, err = store.loadOrderValidation(ctx, orderID, detail)
+	if err != nil {
+		return OrderDetail{}, err
+	}
 	return detail, nil
+}
+
+func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int64, detail OrderDetail) (OrderValidation, error) {
+	var result OrderValidation
+	var kind, status string
+	var documents int
+	if err := store.pool.QueryRow(ctx, `
+		SELECT s.kind, o.status,
+			COUNT(d.id)::INTEGER,
+			COUNT(d.id) FILTER (WHERE d.arithmetic_status <> 'ok')::INTEGER,
+			COUNT(DISTINCT NULLIF(l.load_unit, '')) FILTER (WHERE l.match_status = 'confirmed')::INTEGER
+		FROM procurement_orders o
+		JOIN procurement_suppliers s ON s.id = o.supplier_id
+		LEFT JOIN procurement_documents d ON d.procurement_order_id = o.id
+		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
+		WHERE o.id = $1 GROUP BY s.kind, o.status
+	`, orderID).Scan(&kind, &status, &documents, &result.ArithmeticMismatch, &result.TrolleyCount); err != nil {
+		return OrderValidation{}, fmt.Errorf("validate procurement order: %w", err)
+	}
+	// The joins above multiply documents by lines; use an exact document count.
+	if err := store.pool.QueryRow(ctx, `
+		SELECT COUNT(*)::INTEGER, COUNT(*) FILTER (WHERE arithmetic_status <> 'ok')::INTEGER
+		FROM procurement_documents WHERE procurement_order_id = $1
+	`, orderID).Scan(&documents, &result.ArithmeticMismatch); err != nil {
+		return OrderValidation{}, fmt.Errorf("validate procurement documents: %w", err)
+	}
+	for _, line := range detail.Lines {
+		if line.MatchStatus != "confirmed" && line.MatchStatus != "ignored" {
+			result.Unmatched++
+		}
+		if line.MatchStatus != "confirmed" {
+			continue
+		}
+		if line.InvoicedQuantity == nil || line.Quantity <= 0 || line.UnitPrice <= 0 {
+			result.InvalidLines++
+		}
+		if line.ComparisonMismatch && !line.ComparisonAccepted {
+			result.ComparisonMismatch++
+		}
+		if kind == KindInternational && (line.PotDiameterCM == nil || *line.PotDiameterCM <= 0 || line.HeightCM == nil || *line.HeightCM <= 0) {
+			result.MissingDimensions++
+		}
+		if kind == KindInternational && strings.TrimSpace(line.LoadUnit) == "" {
+			result.MissingLoadUnits++
+		}
+		quantity := float64(line.Quantity)
+		if line.TrolleyDeliveryUnitRUB != nil {
+			result.AllocatedTrolleyRUB += *line.TrolleyDeliveryUnitRUB * quantity
+		}
+		if line.RyazanDeliveryUnitRUB != nil {
+			result.AllocatedRyazanRUB += *line.RyazanDeliveryUnitRUB * quantity
+		}
+	}
+	if kind == KindInternational {
+		result.ExpectedTrolleyRUB = float64(result.TrolleyCount) * detail.Costs.TrolleyCostRUB
+	}
+	result.ExpectedRyazanRUB = detail.Costs.DeliveryToRyazanRUB
+	if documents == 0 {
+		result.Blockers = append(result.Blockers, "Не загружен инвойс или счёт")
+	}
+	if result.ArithmeticMismatch > 0 {
+		result.Blockers = append(result.Blockers, "Итог документа не совпадает с суммой строк")
+	}
+	if result.Unmatched > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("Не сопоставлено строк: %d", result.Unmatched))
+	}
+	if result.ComparisonMismatch > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("Не подтверждено расхождений заказа и инвойса: %d", result.ComparisonMismatch))
+	}
+	if result.MissingDimensions > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("Не заполнены размеры: %d", result.MissingDimensions))
+	}
+	if result.MissingLoadUnits > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("Не указана телега: %d", result.MissingLoadUnits))
+	}
+	if result.InvalidLines > 0 {
+		result.Blockers = append(result.Blockers, fmt.Sprintf("В инвойсе нет количества или цены: %d", result.InvalidLines))
+	}
+	result.CanCalculate = status != "received" && status != "cancelled" && len(result.Blockers) == 0
+	result.CanPrepareActions = status == "ready_to_receive" && result.CanCalculate && detail.Order.Status == "ready_to_receive"
+	return result, nil
 }
 
 func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, orderID int64, input CalculationInput) (OrderDetail, error) {
@@ -395,16 +517,31 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	if status == "received" || status == "cancelled" {
 		return OrderDetail{}, ErrInvalidInput
 	}
+	var activeApproved bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM procurement_action_batches
+			WHERE procurement_order_id = $1 AND status NOT IN ('draft', 'cancelled', 'completed'))
+	`, orderID).Scan(&activeApproved); err != nil {
+		return OrderDetail{}, fmt.Errorf("check active procurement actions: %w", err)
+	}
+	if activeApproved {
+		return OrderDetail{}, ErrInvalidInput
+	}
 	type sourceLine struct {
-		id                     int64
-		quantity               int
-		unitPrice, pot, height float64
-		matchStatus            string
+		id                            int64
+		quantity, orderedQty          int
+		unitPrice, pot, height        float64
+		expectedPrice                 *float64
+		invoicedQty                   *int
+		matchStatus, loadUnit, sabyID string
+		comparisonAccepted            bool
 	}
 	rows, err := tx.Query(ctx, `
 		SELECT id, COALESCE(invoiced_qty, ordered_qty), COALESCE(unit_price, expected_unit_price, 0)::DOUBLE PRECISION,
 			COALESCE(pot_diameter_cm, 0)::DOUBLE PRECISION,
-			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status
+			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status, load_unit,
+			expected_unit_price::DOUBLE PRECISION, invoiced_qty, comparison_accepted, ordered_qty,
+			COALESCE(saby_id, '')
 		FROM procurement_order_lines WHERE procurement_order_id = $1 FOR UPDATE
 	`, orderID)
 	if err != nil {
@@ -412,9 +549,11 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	}
 	lines := make([]sourceLine, 0)
 	totalHeightUnits := 0.0
+	loadVolumes := make(map[string]float64)
 	for rows.Next() {
 		var line sourceLine
-		if err := rows.Scan(&line.id, &line.quantity, &line.unitPrice, &line.pot, &line.height, &line.matchStatus); err != nil {
+		if err := rows.Scan(&line.id, &line.quantity, &line.unitPrice, &line.pot, &line.height, &line.matchStatus,
+			&line.loadUnit, &line.expectedPrice, &line.invoicedQty, &line.comparisonAccepted, &line.orderedQty, &line.sabyID); err != nil {
 			rows.Close()
 			return OrderDetail{}, fmt.Errorf("scan procurement calculation line: %w", err)
 		}
@@ -423,7 +562,19 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			return OrderDetail{}, ErrInvalidInput
 		}
 		if line.matchStatus == "confirmed" {
+			if line.quantity <= 0 || line.unitPrice <= 0 || line.invoicedQty == nil {
+				rows.Close()
+				return OrderDetail{}, ErrInvalidInput
+			}
+			if kind == KindInternational && (line.pot <= 0 || line.height <= 0 || strings.TrimSpace(line.loadUnit) == "") {
+				rows.Close()
+				return OrderDetail{}, ErrInvalidInput
+			}
 			totalHeightUnits += line.height * float64(line.quantity)
+			if kind == KindInternational {
+				volume := math.Pi * math.Pow(line.pot/2, 2) * line.height
+				loadVolumes[line.loadUnit] += volume * float64(line.quantity)
+			}
 		}
 		lines = append(lines, line)
 	}
@@ -431,15 +582,68 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	if len(lines) == 0 {
 		return OrderDetail{}, ErrInvalidInput
 	}
+	type calculationComparison struct {
+		ordered, invoiced int
+		expected          *float64
+		prices            []float64
+		accepted          bool
+	}
+	comparisons := make(map[string]*calculationComparison)
+	for _, line := range lines {
+		if line.matchStatus != "confirmed" || line.sabyID == "" {
+			continue
+		}
+		group := comparisons[line.sabyID]
+		if group == nil {
+			group = &calculationComparison{}
+			comparisons[line.sabyID] = group
+		}
+		group.ordered += line.orderedQty
+		if line.invoicedQty != nil {
+			group.invoiced += *line.invoicedQty
+		}
+		if line.expectedPrice != nil {
+			value := *line.expectedPrice
+			group.expected = &value
+		}
+		group.prices = append(group.prices, line.unitPrice)
+		group.accepted = group.accepted || line.comparisonAccepted
+	}
+	for _, group := range comparisons {
+		mismatch := group.ordered > 0 && group.ordered != group.invoiced
+		if group.expected != nil {
+			for _, price := range group.prices {
+				mismatch = mismatch || math.Abs(price-*group.expected) > .005
+			}
+		}
+		if mismatch && !group.accepted {
+			return OrderDetail{}, ErrInvalidInput
+		}
+	}
+	var documentCount, arithmeticMismatch int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*)::INTEGER, COUNT(*) FILTER (WHERE arithmetic_status <> 'ok')::INTEGER
+		FROM procurement_documents WHERE procurement_order_id = $1
+	`, orderID).Scan(&documentCount, &arithmeticMismatch); err != nil {
+		return OrderDetail{}, fmt.Errorf("validate documents before calculation: %w", err)
+	}
+	if documentCount == 0 || arithmeticMismatch > 0 || (input.DeliveryToRyazanRUB > 0 && totalHeightUnits <= 0) {
+		return OrderDetail{}, ErrInvalidInput
+	}
 	for _, line := range lines {
 		if line.matchStatus == "ignored" {
 			continue
 		}
-		calculated := calculateLine(settings, OrderCosts{
-			ExchangeRate: input.ExchangeRate, TrolleyCostCurrency: input.TrolleyCostCurrency,
-			DeliveryToRyazanRUB: input.DeliveryToRyazanRUB,
-		}, calculationLine{Kind: kind, Quantity: line.quantity, UnitPrice: line.unitPrice,
-			PotDiameterCM: line.pot, HeightCM: line.height}, totalHeightUnits)
+		trolleyPerUnit := 0.0
+		if kind == KindInternational && loadVolumes[line.loadUnit] > 0 {
+			unitVolume := math.Pi * math.Pow(line.pot/2, 2) * line.height
+			trolleyPerUnit = input.TrolleyCostRUB * unitVolume / loadVolumes[line.loadUnit]
+		}
+		ryazanPerUnit := 0.0
+		if totalHeightUnits > 0 {
+			ryazanPerUnit = input.DeliveryToRyazanRUB * line.height / totalHeightUnits
+		}
+		calculated := calculateAllocatedLine(settings, kind, line.unitPrice, input.ExchangeRate, trolleyPerUnit, ryazanPerUnit)
 		if _, err := tx.Exec(ctx, `
 			UPDATE procurement_order_lines SET purchase_unit_rub = $2,
 				trolley_delivery_unit_rub = $3, ryazan_delivery_unit_rub = $4,
@@ -458,11 +662,17 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		return OrderDetail{}, fmt.Errorf("encode procurement calculation settings: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE procurement_orders SET exchange_rate = $2, trolley_cost_currency = $3,
-			delivery_to_ryazan_rub = $4, calculation_version = $5,
-			calculation_settings = $6, calculated_at = CURRENT_TIMESTAMP,
+		UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+		WHERE procurement_order_id = $1 AND status = 'draft'
+	`, orderID); err != nil {
+		return OrderDetail{}, fmt.Errorf("cancel stale procurement batches: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_orders SET exchange_rate = $2, trolley_cost_currency = $3, trolley_cost_rub = $4,
+			delivery_to_ryazan_rub = $5, calculation_version = $6,
+			calculation_settings = $7, calculated_at = CURRENT_TIMESTAMP,
 			status = 'ready_to_receive', updated_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, orderID, input.ExchangeRate, input.TrolleyCostCurrency, input.DeliveryToRyazanRUB,
+	`, orderID, input.ExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.DeliveryToRyazanRUB,
 		settings.Version, snapshot); err != nil {
 		return OrderDetail{}, fmt.Errorf("save procurement calculation: %w", err)
 	}
@@ -487,13 +697,17 @@ func (store *PostgresStore) ImportDocument(
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var supplierName string
+	var supplierName, supplierKind, supplierCurrency string
 	if err := tx.QueryRow(ctx, `
-		SELECT name FROM procurement_suppliers WHERE id = $1 AND active = TRUE FOR SHARE
-	`, input.SupplierID).Scan(&supplierName); errors.Is(err, pgx.ErrNoRows) {
+		SELECT name, kind, default_currency FROM procurement_suppliers WHERE id = $1 AND active = TRUE FOR SHARE
+	`, input.SupplierID).Scan(&supplierName, &supplierKind, &supplierCurrency); errors.Is(err, pgx.ErrNoRows) {
 		return ImportResult{}, ErrNotFound
 	} else if err != nil {
 		return ImportResult{}, fmt.Errorf("load procurement supplier: %w", err)
+	}
+	if supplierKind == KindDomestic && (parsed.ParserKind != "domestic_payment_invoice" || parsed.Currency != "RUB") ||
+		supplierKind == KindInternational && (parsed.ParserKind != "holland_packing_list" || parsed.Currency != supplierCurrency) {
+		return ImportResult{}, ErrUnsupportedDocument
 	}
 
 	hash := fmt.Sprintf("%x", sha256.Sum256(input.Content))
@@ -845,29 +1059,29 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 		), requests AS (
 			SELECT saby_id, COALESCE(SUM(quantity), 0)::INTEGER AS units
 			FROM procurement_requests WHERE status = 'open' AND saby_id IS NOT NULL GROUP BY saby_id
-		), incoming AS (
-			SELECT l.saby_id, COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER AS units
-			FROM procurement_order_lines l
-			JOIN procurement_orders o ON o.id = l.procurement_order_id
-			WHERE l.saby_id IS NOT NULL AND l.match_status = 'confirmed'
-				AND o.status IN ('ordered', 'invoice_received', 'review', 'ready_to_receive')
-			GROUP BY l.saby_id
-		), aliases AS (
-			SELECT DISTINCT ON (matched_saby_id) id, matched_saby_id, supplier_article, availability_status
-			FROM procurement_supplier_aliases
-			WHERE matched_saby_id IS NOT NULL
-			ORDER BY matched_saby_id, last_seen_at DESC NULLS LAST
-		)
-		SELECT COALESCE(a.id, 0), n.saby_id, n.name, COALESCE(a.supplier_article, ''), n.balance,
-			COALESCE(s.units, 0), COALESCE(r.units, 0),
-			GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0))
-		FROM saby_nomenclature n
-		LEFT JOIN sales s ON s.saby_id = n.saby_id
-		LEFT JOIN requests r ON r.saby_id = n.saby_id
-		LEFT JOIN incoming i ON i.saby_id = n.saby_id
-		LEFT JOIN aliases a ON a.matched_saby_id = n.saby_id
-		WHERE (COALESCE(s.units, 0) > 0 OR COALESCE(r.units, 0) > 0)
-			AND COALESCE(a.availability_status, 'unknown') NOT IN ('temporarily_unavailable', 'discontinued')
+			), incoming AS (
+				SELECT o.supplier_id, l.saby_id, COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER AS units
+				FROM procurement_order_lines l
+				JOIN procurement_orders o ON o.id = l.procurement_order_id
+				WHERE l.saby_id IS NOT NULL AND l.match_status = 'confirmed'
+					AND o.status IN ('ordered', 'invoice_received', 'review', 'ready_to_receive')
+				GROUP BY o.supplier_id, l.saby_id
+			)
+			SELECT COALESCE((SELECT a.id FROM procurement_supplier_aliases a
+				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id
+				ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC LIMIT 1), 0),
+				sp.supplier_id, n.saby_id, n.name,
+				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), ''), n.balance,
+				COALESCE(s.units, 0), COALESCE(r.units, 0),
+				GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0))
+			FROM procurement_supplier_products sp
+			JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
+			LEFT JOIN sales s ON s.saby_id = n.saby_id
+			LEFT JOIN requests r ON r.saby_id = n.saby_id
+			LEFT JOIN incoming i ON i.saby_id = n.saby_id AND i.supplier_id = sp.supplier_id
+			LEFT JOIN procurement_product_channels pc ON pc.saby_id = n.saby_id
+			WHERE (COALESCE(s.units, 0) > 0 OR COALESCE(r.units, 0) > 0)
+				AND sp.availability_status = 'available'
 			AND GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0)) > 0
 		ORDER BY GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0)) DESC,
 			COALESCE(r.units, 0) DESC, n.name
@@ -880,7 +1094,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 	items := make([]Recommendation, 0)
 	for rows.Next() {
 		var item Recommendation
-		if err := rows.Scan(&item.AliasID, &item.SabyID, &item.Name, &item.SupplierArticle, &item.Balance,
+		if err := rows.Scan(&item.AliasID, &item.SupplierID, &item.SabyID, &item.Name, &item.SupplierArticle, &item.Balance,
 			&item.SiteSales, &item.OpenRequests, &item.SuggestedQty); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
@@ -969,9 +1183,23 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_order_lines SET
 			saby_id = NULLIF($2, ''), match_status = $3, updated_at = CURRENT_TIMESTAMP
-		WHERE supplier_alias_id = $1
+		WHERE supplier_alias_id = $1 AND procurement_order_id IN (
+			SELECT id FROM procurement_orders WHERE status NOT IN ('received', 'cancelled')
+		)
 	`, aliasID, input.SabyID, input.MatchStatus); err != nil {
 		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
+	}
+	if input.MatchStatus == "confirmed" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO procurement_supplier_products (supplier_id, saby_id, supplier_article, availability_status, updated_by)
+			SELECT supplier_id, $2, supplier_article, availability_status, $3
+			FROM procurement_supplier_aliases WHERE id = $1
+			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET
+				supplier_article = CASE WHEN EXCLUDED.supplier_article <> '' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+		`, aliasID, input.SabyID, actor.CustomerID); err != nil {
+			return AliasReview{}, fmt.Errorf("upsert procurement supplier product: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_documents d SET
@@ -1018,6 +1246,138 @@ func (store *PostgresStore) ResolveAlias(
 	return item, nil
 }
 
+func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return OrderDetail{}, fmt.Errorf("begin update procurement line: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var orderID int64
+	err = tx.QueryRow(ctx, `
+		SELECT l.procurement_order_id FROM procurement_order_lines l
+		JOIN procurement_orders o ON o.id = l.procurement_order_id
+		WHERE l.id = $1 AND o.status NOT IN ('received', 'cancelled') FOR UPDATE OF l, o
+	`, lineID).Scan(&orderID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return OrderDetail{}, ErrNotFound
+	}
+	if err != nil {
+		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE procurement_order_lines SET
+			expected_unit_price = CASE WHEN $2 THEN $3 ELSE expected_unit_price END,
+			pot_diameter_cm = CASE WHEN $4 THEN $5 ELSE pot_diameter_cm END,
+			height_cm = CASE WHEN $6 THEN $7 ELSE height_cm END,
+			load_unit = CASE WHEN $8 THEN $9 ELSE load_unit END,
+			comparison_accepted = CASE WHEN $10 THEN $11 ELSE comparison_accepted END,
+			comparison_note = CASE WHEN $12 THEN $13 ELSE comparison_note END,
+			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
+			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
+			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
+			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, lineID,
+		input.ExpectedUnitPrice != nil, input.ExpectedUnitPrice,
+		input.PotDiameterCM != nil, input.PotDiameterCM,
+		input.HeightCM != nil, input.HeightCM,
+		input.LoadUnit != nil, input.LoadUnit,
+		input.AcceptComparison != nil, input.AcceptComparison,
+		input.ComparisonNote != nil, input.ComparisonNote)
+	if err != nil {
+		return OrderDetail{}, fmt.Errorf("update procurement line: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+		WHERE procurement_order_id = $1 AND status = 'draft'
+	`, orderID); err != nil {
+		return OrderDetail{}, fmt.Errorf("cancel stale procurement batches: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_orders SET status = 'review', calculated_at = NULL,
+			calculation_settings = NULL, calculation_version = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, orderID); err != nil {
+		return OrderDetail{}, fmt.Errorf("invalidate procurement calculation: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.line.update", "procurement_order_line", lineID, input); err != nil {
+		return OrderDetail{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return OrderDetail{}, fmt.Errorf("commit procurement line update: %w", err)
+	}
+	return store.OrderDetail(ctx, orderID)
+}
+
+func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, orderID int64, input OrderStatusUpdate) (OrderDetail, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return OrderDetail{}, fmt.Errorf("begin update procurement status: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var current string
+	if err := tx.QueryRow(ctx, `SELECT status FROM procurement_orders WHERE id = $1 FOR UPDATE`, orderID).Scan(&current); errors.Is(err, pgx.ErrNoRows) {
+		return OrderDetail{}, ErrNotFound
+	} else if err != nil {
+		return OrderDetail{}, fmt.Errorf("lock procurement order status: %w", err)
+	}
+	allowed := input.Status == "cancelled" && current != "received" && current != "cancelled" ||
+		input.Status == "review" && current == "ready_to_receive" ||
+		input.Status == "received" && current == "ready_to_receive"
+	if !allowed {
+		return OrderDetail{}, ErrInvalidInput
+	}
+	if input.Status == "received" {
+		var prepared bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM procurement_action_batches
+				WHERE procurement_order_id = $1 AND kind = 'receipt' AND status NOT IN ('draft', 'cancelled'))
+		`, orderID).Scan(&prepared); err != nil || !prepared {
+			return OrderDetail{}, ErrInvalidInput
+		}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_orders SET status = $2,
+			received_at = CASE WHEN $2 = 'received' THEN CURRENT_TIMESTAMP ELSE received_at END,
+			cancelled_at = CASE WHEN $2 = 'cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,
+			notes = CASE WHEN $3 = '' THEN notes ELSE CONCAT_WS(E'\n', NULLIF(notes, ''), $3) END,
+			updated_at = CURRENT_TIMESTAMP WHERE id = $1
+	`, orderID, input.Status, input.Note); err != nil {
+		return OrderDetail{}, fmt.Errorf("update procurement order status: %w", err)
+	}
+	if input.Status == "cancelled" {
+		if _, err := tx.Exec(ctx, `
+			UPDATE procurement_requests SET status = 'open', updated_at = CURRENT_TIMESTAMP
+			WHERE status = 'included' AND saby_id IN (
+				SELECT saby_id FROM procurement_order_lines WHERE procurement_order_id = $1 AND saby_id IS NOT NULL
+			)
+		`, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("restore procurement requests: %w", err)
+		}
+		_, _ = tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE procurement_order_id = $1 AND status = 'draft'`, orderID)
+	}
+	if input.Status == "received" {
+		if _, err := tx.Exec(ctx, `
+			UPDATE procurement_requests SET status = 'fulfilled', updated_at = CURRENT_TIMESTAMP
+			WHERE status = 'included' AND saby_id IN (
+				SELECT saby_id FROM procurement_order_lines WHERE procurement_order_id = $1 AND saby_id IS NOT NULL
+			)
+		`, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("fulfil procurement requests: %w", err)
+		}
+	}
+	if input.Status == "review" {
+		_, _ = tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE procurement_order_id = $1 AND status = 'draft'`, orderID)
+	}
+	if err := audit(ctx, tx, actor, "procurement.order.status", "procurement_order", orderID, input); err != nil {
+		return OrderDetail{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return OrderDetail{}, fmt.Errorf("commit procurement status: %w", err)
+	}
+	return store.OrderDetail(ctx, orderID)
+}
+
 func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, input RequestCreate) (Request, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -1048,23 +1408,170 @@ func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, inpu
 	return item, nil
 }
 
+func (store *PostgresStore) UpdateRequest(ctx context.Context, actor Actor, requestID int64, input RequestUpdate) (Request, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return Request{}, fmt.Errorf("begin update procurement request: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var item Request
+	err = tx.QueryRow(ctx, `
+		UPDATE procurement_requests SET saby_id = NULLIF($2, ''), requested_name = $3,
+			quantity = $4, status = $5, notes = $6, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
+	`, requestID, input.SabyID, input.RequestedName, input.Quantity, input.Status, input.Notes).Scan(
+		&item.ID, &item.Kind, &item.SabyID, &item.RequestedName, &item.Quantity,
+		&item.Status, &item.Notes, &item.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Request{}, ErrNotFound
+	}
+	if err != nil {
+		return Request{}, fmt.Errorf("update procurement request: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.request.update", "procurement_request", requestID, item); err != nil {
+		return Request{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Request{}, fmt.Errorf("commit procurement request update: %w", err)
+	}
+	return item, nil
+}
+
+func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT n.saby_id, n.code, n.article, n.name, n.balance, n.price_minor::DOUBLE PRECISION / 100,
+			sp.supplier_id, s.name, sp.supplier_article, sp.availability_status,
+			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), pc.wb_nm_id,
+			COALESCE(pc.wb_vendor_code, ''), COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, ''),
+			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
+				FROM procurement_supplier_aliases a
+				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::TEXT[])
+		FROM procurement_supplier_products sp
+		JOIN procurement_suppliers s ON s.id = sp.supplier_id
+		JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
+		LEFT JOIN procurement_product_channels pc ON pc.saby_id = n.saby_id
+		WHERE ($1 = 0 OR sp.supplier_id = $1) AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
+			OR n.code ILIKE '%' || $2 || '%' OR n.article ILIKE '%' || $2 || '%'
+			OR n.saby_id ILIKE '%' || $2 || '%' OR sp.supplier_article ILIKE '%' || $2 || '%')
+		ORDER BY s.name, n.name LIMIT 500
+	`, supplierID, query)
+	if err != nil {
+		return nil, fmt.Errorf("query procurement product directory: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ProductDirectoryItem, 0)
+	for rows.Next() {
+		var item ProductDirectoryItem
+		if err := rows.Scan(&item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name,
+			&item.Balance, &item.CurrentPriceRUB, &item.SupplierID, &item.SupplierName,
+			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
+			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
+			&item.Aliases); err != nil {
+			return nil, fmt.Errorf("scan procurement product directory: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ProductDirectoryItem{}, fmt.Errorf("begin update procurement product: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM saby_nomenclature WHERE saby_id = $1)`, input.SabyID).Scan(&exists); err != nil || !exists {
+		return ProductDirectoryItem{}, ErrNotFound
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO procurement_supplier_products (
+			supplier_id, saby_id, supplier_article, availability_status, check_after, unavailable_since, updated_by
+		) VALUES ($1, $2, $3, $4, NULLIF($5, '')::DATE,
+			CASE WHEN $4 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $6)
+		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET supplier_article = EXCLUDED.supplier_article,
+			availability_status = EXCLUDED.availability_status, check_after = EXCLUDED.check_after,
+			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
+				THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
+			updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+	`, input.SupplierID, input.SabyID, input.SupplierArticle, input.AvailabilityStatus, input.CheckAfter, actor.CustomerID)
+	if err != nil {
+		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement supplier product: %w", err)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO procurement_product_channels (
+			saby_id, holland_article, wb_nm_id, wb_vendor_code, ozon_offer_id, updated_by
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (saby_id) DO UPDATE SET holland_article = EXCLUDED.holland_article,
+			wb_nm_id = EXCLUDED.wb_nm_id, wb_vendor_code = EXCLUDED.wb_vendor_code,
+			ozon_offer_id = EXCLUDED.ozon_offer_id, updated_by = EXCLUDED.updated_by,
+			updated_at = CURRENT_TIMESTAMP
+	`, input.SabyID, input.HollandArticle, input.WBNmID, input.WBVendorCode, input.OzonOfferID, actor.CustomerID)
+	if err != nil {
+		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement product channels: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_supplier_aliases SET availability_status = $3,
+			check_after = NULLIF($4, '')::DATE,
+			unavailable_since = CASE WHEN $3 = 'temporarily_unavailable' THEN COALESCE(unavailable_since, CURRENT_DATE) ELSE NULL END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE supplier_id = $1 AND matched_saby_id = $2
+	`, input.SupplierID, input.SabyID, input.AvailabilityStatus, input.CheckAfter); err != nil {
+		return ProductDirectoryItem{}, fmt.Errorf("sync procurement alias availability: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.product.update", "procurement_product", input.SupplierID, input); err != nil {
+		return ProductDirectoryItem{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ProductDirectoryItem{}, fmt.Errorf("commit procurement product update: %w", err)
+	}
+	items, err := store.ListProducts(ctx, input.SupplierID, input.SabyID)
+	if err != nil || len(items) == 0 {
+		return ProductDirectoryItem{}, err
+	}
+	return items[0], nil
+}
+
 func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return AliasReview{}, fmt.Errorf("begin update procurement availability: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	var supplierID int64
+	var sabyID string
+	if err := tx.QueryRow(ctx, `SELECT supplier_id, COALESCE(matched_saby_id, '') FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&supplierID, &sabyID); errors.Is(err, pgx.ErrNoRows) {
+		return AliasReview{}, ErrNotFound
+	} else if err != nil {
+		return AliasReview{}, fmt.Errorf("lock procurement availability: %w", err)
+	}
 	command, err := tx.Exec(ctx, `
 		UPDATE procurement_supplier_aliases SET availability_status = $2,
 			unavailable_since = CASE WHEN $2 = 'temporarily_unavailable' THEN COALESCE(unavailable_since, CURRENT_DATE) ELSE NULL END,
 			check_after = NULLIF($3, '')::DATE, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
-	`, aliasID, input.Status, input.CheckAfter)
+		WHERE id = $1 OR ($4 <> '' AND supplier_id = $5 AND matched_saby_id = $4)
+	`, aliasID, input.Status, input.CheckAfter, sabyID, supplierID)
 	if err != nil {
 		return AliasReview{}, fmt.Errorf("update procurement availability: %w", err)
 	}
 	if command.RowsAffected() == 0 {
 		return AliasReview{}, ErrNotFound
+	}
+	if sabyID != "" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO procurement_supplier_products (supplier_id, saby_id, availability_status, check_after, unavailable_since, updated_by)
+			VALUES ($1, $2, $3, NULLIF($4, '')::DATE,
+				CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5)
+			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET availability_status = EXCLUDED.availability_status,
+				check_after = EXCLUDED.check_after,
+				unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
+					THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
+				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+		`, supplierID, sabyID, input.Status, input.CheckAfter, actor.CustomerID); err != nil {
+			return AliasReview{}, fmt.Errorf("update supplier product availability: %w", err)
+		}
 	}
 	item, err := loadAliasReview(ctx, tx, aliasID)
 	if err != nil {
@@ -1095,62 +1602,100 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		return ActionBatch{}, ErrInvalidInput
 	}
 	var batchID int64
+	var existingID int64
+	var existingStatus string
 	err = tx.QueryRow(ctx, `
-		SELECT id FROM procurement_action_batches
+		SELECT id, status FROM procurement_action_batches
 		WHERE procurement_order_id = $1 AND kind = $2 AND status NOT IN ('cancelled', 'completed')
 		ORDER BY id DESC LIMIT 1 FOR UPDATE
-	`, orderID, kind).Scan(&batchID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = tx.QueryRow(ctx, `
-			INSERT INTO procurement_action_batches (procurement_order_id, kind, created_by)
-			VALUES ($1, $2, $3) RETURNING id
-		`, orderID, kind, actor.CustomerID).Scan(&batchID)
+	`, orderID, kind).Scan(&existingID, &existingStatus)
+	if err == nil && existingStatus != "draft" {
+		return ActionBatch{}, ErrInvalidInput
 	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return ActionBatch{}, fmt.Errorf("lock procurement action batch: %w", err)
+	}
+	if existingID > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, existingID); err != nil {
+			return ActionBatch{}, fmt.Errorf("cancel stale procurement action batch: %w", err)
+		}
+	}
+	err = tx.QueryRow(ctx, `
+		INSERT INTO procurement_action_batches (
+			procurement_order_id, kind, created_by, calculation_version, calculated_at
+		) SELECT id, $2, $3, calculation_version, calculated_at
+		FROM procurement_orders WHERE id = $1 RETURNING id
+	`, orderID, kind, actor.CustomerID).Scan(&batchID)
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("create procurement action batch: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM procurement_action_items WHERE batch_id = $1 AND status = 'draft'`, batchID); err != nil {
-		return ActionBatch{}, fmt.Errorf("refresh procurement action batch: %w", err)
 	}
 	if kind == "receipt" {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO procurement_action_items (
 				batch_id, procurement_order_line_id, channel, external_article, new_value, quantity
 			)
-			SELECT $1, l.id, 'saby_receipt', l.saby_id, l.unit_cost_rub,
-				COALESCE(l.invoiced_qty, l.ordered_qty)
+			SELECT $1, MIN(l.id), 'saby_receipt', l.saby_id,
+				SUM(l.unit_cost_rub * COALESCE(l.invoiced_qty, l.ordered_qty)) /
+					NULLIF(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0),
+				SUM(COALESCE(l.invoiced_qty, l.ordered_qty))
 			FROM procurement_order_lines l
 			WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
 				AND l.saby_id IS NOT NULL AND l.unit_cost_rub IS NOT NULL
-			ON CONFLICT (batch_id, procurement_order_line_id, channel) DO NOTHING
+			GROUP BY l.saby_id
 		`, batchID, orderID)
 	} else {
+		var conflicts int
+		if err := tx.QueryRow(ctx, `
+			SELECT COUNT(*)::INTEGER FROM (
+				SELECT saby_id FROM procurement_order_lines
+				WHERE procurement_order_id = $1 AND match_status = 'confirmed' AND saby_id IS NOT NULL
+				GROUP BY saby_id HAVING COUNT(DISTINCT proposed_retail_rub) > 1
+					OR COUNT(DISTINCT proposed_marketplace_rub) > 1
+			) conflict
+		`, orderID).Scan(&conflicts); err != nil {
+			return ActionBatch{}, fmt.Errorf("check procurement price conflicts: %w", err)
+		}
+		if conflicts > 0 {
+			return ActionBatch{}, ErrInvalidInput
+		}
 		_, err = tx.Exec(ctx, `
+			WITH products AS (
+				SELECT saby_id, MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
+					MAX(proposed_marketplace_rub) AS marketplace,
+					MAX(proposed_marketplace_strike_rub) AS strike
+				FROM procurement_order_lines
+				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
+					AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
+				GROUP BY saby_id
+			)
 			INSERT INTO procurement_action_items (
 				batch_id, procurement_order_line_id, channel, external_article, old_value, new_value, compare_at_value
 			)
-			SELECT $1, l.id, channel.name,
-				CASE channel.name WHEN 'wb' THEN COALESCE(pc.wb_article, '')
-					WHEN 'ozon' THEN COALESCE(pc.ozon_article, '') ELSE l.saby_id END,
+			SELECT $1, p.line_id, channel.name,
+				CASE channel.name WHEN 'wb' THEN COALESCE(pc.wb_nm_id::TEXT, '')
+					WHEN 'ozon' THEN COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, '') ELSE p.saby_id END,
 				CASE channel.name
 					WHEN 'site' THEN COALESCE(pv.base_price_minor, 0)::NUMERIC / 100
 					WHEN 'saby_price' THEN COALESCE(n.price_minor, 0)::NUMERIC / 100
 					ELSE NULL
 				END,
-				CASE WHEN channel.name IN ('wb', 'ozon') THEN l.proposed_marketplace_rub ELSE l.proposed_retail_rub END,
-				CASE WHEN channel.name IN ('wb', 'ozon') THEN l.proposed_marketplace_strike_rub ELSE NULL END
-			FROM procurement_order_lines l
-			JOIN saby_nomenclature n ON n.saby_id = l.saby_id
-			LEFT JOIN product_variants pv ON pv.saby_id = l.saby_id
-			LEFT JOIN procurement_product_channels pc ON pc.saby_id = l.saby_id
+				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.marketplace ELSE p.retail END,
+				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.strike ELSE NULL END
+			FROM products p
+			JOIN saby_nomenclature n ON n.saby_id = p.saby_id
+			LEFT JOIN LATERAL (
+				SELECT MAX(base_price_minor) AS base_price_minor FROM product_variants WHERE saby_id = p.saby_id
+			) pv ON TRUE
+			LEFT JOIN procurement_product_channels pc ON pc.saby_id = p.saby_id
 			CROSS JOIN (VALUES ('site'), ('saby_price'), ('wb'), ('ozon')) AS channel(name)
 			CROSS JOIN procurement_pricing_settings settings
-			WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
-				AND l.proposed_retail_rub IS NOT NULL AND (
-					n.price_minor <= 0 OR ABS(l.proposed_retail_rub - n.price_minor::NUMERIC / 100)
-						> (n.price_minor::NUMERIC / 100 * settings.price_change_threshold)
-				)
-			ON CONFLICT (batch_id, procurement_order_line_id, channel) DO NOTHING
+			WHERE channel.name IN ('wb', 'ozon') OR channel.name = 'site' AND (
+				COALESCE(pv.base_price_minor, 0) <= 0 OR ABS(p.retail - pv.base_price_minor::NUMERIC / 100)
+					> (pv.base_price_minor::NUMERIC / 100 * settings.price_change_threshold)
+			) OR channel.name = 'saby_price' AND (
+				n.price_minor <= 0 OR ABS(p.retail - n.price_minor::NUMERIC / 100)
+					> (n.price_minor::NUMERIC / 100 * settings.price_change_threshold)
+			)
 		`, batchID, orderID)
 	}
 	if err != nil {
@@ -1559,6 +2104,18 @@ func upsertAlias(
 	}
 	if err != nil {
 		return 0, "", "", fmt.Errorf("upsert procurement supplier alias: %w", err)
+	}
+	if sabyID != "" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO procurement_supplier_products (supplier_id, saby_id, supplier_article, availability_status)
+			VALUES ($1, $2, $3, 'available')
+			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET availability_status = 'available',
+				unavailable_since = NULL, check_after = NULL,
+				supplier_article = CASE WHEN EXCLUDED.supplier_article <> '' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+				updated_at = CURRENT_TIMESTAMP
+		`, supplierID, sabyID, line.SupplierArticle); err != nil {
+			return 0, "", "", fmt.Errorf("refresh supplier product availability: %w", err)
+		}
 	}
 	return aliasID, sabyID, matchStatus, nil
 }

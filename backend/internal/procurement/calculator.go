@@ -62,6 +62,32 @@ func calculateLine(settings PricingSettings, costs OrderCosts, line calculationL
 	}
 }
 
+// calculateAllocatedLine applies the pricing formula after logistics has been
+// reconciled at order level. This keeps every trolley and the Ryazan delivery
+// exact instead of letting each row independently approximate its share.
+func calculateAllocatedLine(settings PricingSettings, kind string, unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit float64) calculatedLine {
+	purchase := unitPrice
+	if kind == KindInternational {
+		purchase *= exchangeRate
+	}
+	unitCost := purchase + trolleyPerUnit + ryazanPerUnit
+	retailBase := purchase * settings.DomesticRetailMultiplier
+	if kind == KindInternational {
+		retailBase = (purchase*settings.InternationalCostMultiplier + trolleyPerUnit) * settings.InternationalRetailMultiplier
+	}
+	retail := roundRetail(retailBase, settings.RetailRoundStep, settings.AvoidRoundHundreds)
+	marketplaceBase := float64(retail) + ryazanPerUnit + settings.PackageRUB
+	marketplaceRate := 1 + settings.ReturnLossRate + settings.MarketplaceCostRate + settings.TaxRate + settings.ReserveRate
+	marketplace := int64(math.Floor(marketplaceBase * marketplaceRate))
+	strike := int64(math.Floor(float64(marketplace) * (1 + settings.MarketplaceStrikeMarkup)))
+	return calculatedLine{
+		PurchaseUnitRUB: purchase, TrolleyDeliveryUnitRUB: trolleyPerUnit,
+		RyazanDeliveryUnitRUB: ryazanPerUnit, UnitCostRUB: unitCost,
+		ProposedRetailRUB: retail, ProposedMarketplaceRUB: marketplace,
+		ProposedMarketplaceStrikeRUB: strike,
+	}
+}
+
 func roundRetail(value float64, step int, avoidHundreds bool) int64 {
 	if value <= 0 || step <= 0 {
 		return 0

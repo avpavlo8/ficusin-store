@@ -20,11 +20,16 @@ type procurementService interface {
 	CreatePlan(context.Context, procurement.Actor, procurement.PlanCreate) (procurement.OrderSummary, error)
 	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
 	CalculateOrder(context.Context, procurement.Actor, int64, procurement.CalculationInput) (procurement.OrderDetail, error)
+	UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error)
+	UpdateOrderLine(context.Context, procurement.Actor, int64, procurement.OrderLineUpdate) (procurement.OrderDetail, error)
 	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
 	ResolveAlias(context.Context, procurement.Actor, int64, procurement.AliasResolution) (procurement.AliasReview, error)
 	CreateRequest(context.Context, procurement.Actor, procurement.RequestCreate) (procurement.Request, error)
+	UpdateRequest(context.Context, procurement.Actor, int64, procurement.RequestUpdate) (procurement.Request, error)
 	UpdateAvailability(context.Context, procurement.Actor, int64, procurement.AvailabilityUpdate) (procurement.AliasReview, error)
+	ListProducts(context.Context, int64, string) ([]procurement.ProductDirectoryItem, error)
+	UpdateProduct(context.Context, procurement.Actor, procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error)
 	PrepareBatch(context.Context, procurement.Actor, int64, string) (procurement.ActionBatch, error)
 	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
@@ -178,6 +183,50 @@ func (handlers procurementHandlers) calculateOrder(response http.ResponseWriter,
 	writeJSON(response, http.StatusOK, item)
 }
 
+func (handlers procurementHandlers) updateOrderStatus(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input procurement.OrderStatusUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус закупки"})
+		return
+	}
+	item, err := handlers.service.UpdateOrderStatus(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID, input)
+	if err != nil {
+		handlers.failed(response, "update procurement order status", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, item)
+}
+
+func (handlers procurementHandlers) updateOrderLine(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	lineID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input procurement.OrderLineUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные строки"})
+		return
+	}
+	item, err := handlers.service.UpdateOrderLine(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, lineID, input)
+	if err != nil {
+		handlers.failed(response, "update procurement order line", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, item)
+}
+
 func (handlers procurementHandlers) importDocument(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
 	if !ok {
@@ -298,6 +347,67 @@ func (handlers procurementHandlers) createRequest(response http.ResponseWriter, 
 		return
 	}
 	writeJSON(response, http.StatusCreated, map[string]any{"request": item})
+}
+
+func (handlers procurementHandlers) updateRequest(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	requestID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input procurement.RequestUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные заявки"})
+		return
+	}
+	item, err := handlers.service.UpdateRequest(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, requestID, input)
+	if err != nil {
+		handlers.failed(response, "update procurement request", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"request": item})
+}
+
+func (handlers procurementHandlers) listProducts(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	var supplierID int64
+	var err error
+	if raw := request.URL.Query().Get("supplierId"); raw != "" {
+		supplierID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный поставщик"})
+			return
+		}
+	}
+	items, err := handlers.service.ListProducts(request.Context(), supplierID, request.URL.Query().Get("q"))
+	if err != nil {
+		handlers.failed(response, "list procurement products", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+}
+
+func (handlers procurementHandlers) updateProduct(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	var input procurement.ProductDirectoryUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная карточка закупки"})
+		return
+	}
+	item, err := handlers.service.UpdateProduct(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input)
+	if err != nil {
+		handlers.failed(response, "update procurement product", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"item": item})
 }
 
 func (handlers procurementHandlers) updateAvailability(response http.ResponseWriter, request *http.Request) {

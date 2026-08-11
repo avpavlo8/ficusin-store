@@ -51,6 +51,7 @@ type PricingSettings struct {
 	Version                       int     `json:"version"`
 	DefaultExchangeRate           float64 `json:"defaultExchangeRate"`
 	TrolleyCostCurrency           float64 `json:"trolleyCostCurrency"`
+	TrolleyCostRUB                float64 `json:"trolleyCostRub"`
 	TrolleyVolumeCM3              float64 `json:"trolleyVolumeCm3"`
 	TrolleyFillRatio              float64 `json:"trolleyFillRatio"`
 	ReturnLossRate                float64 `json:"returnLossRate"`
@@ -126,14 +127,33 @@ type PlanItem struct {
 type OrderCosts struct {
 	ExchangeRate        float64 `json:"exchangeRate"`
 	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
+	TrolleyCostRUB      float64 `json:"trolleyCostRub"`
 	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
 }
 
 type OrderDetail struct {
-	Order   OrderSummary  `json:"order"`
-	Costs   OrderCosts    `json:"costs"`
-	Lines   []OrderLine   `json:"lines"`
-	Batches []ActionBatch `json:"batches"`
+	Order      OrderSummary    `json:"order"`
+	Costs      OrderCosts      `json:"costs"`
+	Validation OrderValidation `json:"validation"`
+	Lines      []OrderLine     `json:"lines"`
+	Batches    []ActionBatch   `json:"batches"`
+}
+
+type OrderValidation struct {
+	CanCalculate        bool     `json:"canCalculate"`
+	CanPrepareActions   bool     `json:"canPrepareActions"`
+	Blockers            []string `json:"blockers"`
+	ArithmeticMismatch  int      `json:"arithmeticMismatch"`
+	ComparisonMismatch  int      `json:"comparisonMismatch"`
+	MissingDimensions   int      `json:"missingDimensions"`
+	MissingLoadUnits    int      `json:"missingLoadUnits"`
+	InvalidLines        int      `json:"invalidLines"`
+	Unmatched           int      `json:"unmatched"`
+	TrolleyCount        int      `json:"trolleyCount"`
+	ExpectedTrolleyRUB  float64  `json:"expectedTrolleyRub"`
+	AllocatedTrolleyRUB float64  `json:"allocatedTrolleyRub"`
+	ExpectedRyazanRUB   float64  `json:"expectedRyazanRub"`
+	AllocatedRyazanRUB  float64  `json:"allocatedRyazanRub"`
 }
 
 type OrderLine struct {
@@ -162,11 +182,14 @@ type OrderLine struct {
 	PriceChangeNeeded            bool     `json:"priceChangeNeeded"`
 	CustomerRequest              bool     `json:"customerRequest"`
 	ComparisonMismatch           bool     `json:"comparisonMismatch"`
+	ComparisonAccepted           bool     `json:"comparisonAccepted"`
+	ComparisonNote               string   `json:"comparisonNote"`
 }
 
 type CalculationInput struct {
 	ExchangeRate        float64 `json:"exchangeRate"`
 	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
+	TrolleyCostRUB      float64 `json:"trolleyCostRub"`
 	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
 }
 
@@ -189,6 +212,28 @@ type RequestCreate struct {
 	Notes         string `json:"notes"`
 }
 
+type RequestUpdate struct {
+	SabyID        string `json:"sabyId"`
+	RequestedName string `json:"requestedName"`
+	Quantity      int    `json:"quantity"`
+	Status        string `json:"status"`
+	Notes         string `json:"notes"`
+}
+
+type OrderStatusUpdate struct {
+	Status string `json:"status"`
+	Note   string `json:"note"`
+}
+
+type OrderLineUpdate struct {
+	ExpectedUnitPrice *float64 `json:"expectedUnitPrice"`
+	PotDiameterCM     *float64 `json:"potDiameterCm"`
+	HeightCM          *float64 `json:"heightCm"`
+	LoadUnit          *string  `json:"loadUnit"`
+	AcceptComparison  *bool    `json:"acceptComparison"`
+	ComparisonNote    *string  `json:"comparisonNote"`
+}
+
 type AvailabilityUpdate struct {
 	Status     string `json:"status"`
 	CheckAfter string `json:"checkAfter"`
@@ -196,6 +241,7 @@ type AvailabilityUpdate struct {
 
 type Recommendation struct {
 	AliasID         int64  `json:"aliasId"`
+	SupplierID      int64  `json:"supplierId"`
 	SabyID          string `json:"sabyId"`
 	Name            string `json:"name"`
 	SupplierArticle string `json:"supplierArticle"`
@@ -204,6 +250,37 @@ type Recommendation struct {
 	OpenRequests    int    `json:"openRequests"`
 	SuggestedQty    int    `json:"suggestedQty"`
 	Reason          string `json:"reason"`
+}
+
+type ProductDirectoryItem struct {
+	SabyID             string   `json:"sabyId"`
+	SabyCode           string   `json:"sabyCode"`
+	SabyArticle        string   `json:"sabyArticle"`
+	Name               string   `json:"name"`
+	Balance            int      `json:"balance"`
+	CurrentPriceRUB    float64  `json:"currentPriceRub"`
+	SupplierID         int64    `json:"supplierId"`
+	SupplierName       string   `json:"supplierName"`
+	SupplierArticle    string   `json:"supplierArticle"`
+	AvailabilityStatus string   `json:"availabilityStatus"`
+	CheckAfter         string   `json:"checkAfter"`
+	HollandArticle     string   `json:"hollandArticle"`
+	WBNmID             *int64   `json:"wbNmId,omitempty"`
+	WBVendorCode       string   `json:"wbVendorCode"`
+	OzonOfferID        string   `json:"ozonOfferId"`
+	Aliases            []string `json:"aliases"`
+}
+
+type ProductDirectoryUpdate struct {
+	SabyID             string `json:"sabyId"`
+	SupplierID         int64  `json:"supplierId"`
+	SupplierArticle    string `json:"supplierArticle"`
+	AvailabilityStatus string `json:"availabilityStatus"`
+	CheckAfter         string `json:"checkAfter"`
+	HollandArticle     string `json:"hollandArticle"`
+	WBNmID             *int64 `json:"wbNmId"`
+	WBVendorCode       string `json:"wbVendorCode"`
+	OzonOfferID        string `json:"ozonOfferId"`
 }
 
 type ActionBatch struct {
@@ -215,19 +292,19 @@ type ActionBatch struct {
 }
 
 type ActionItem struct {
-	ID              int64    `json:"id"`
-	LineID          int64    `json:"lineId"`
-	ProductName     string   `json:"productName"`
-	Channel         string   `json:"channel"`
-	ExternalArticle    string   `json:"externalArticle"`
-	OldValue           *float64 `json:"oldValue,omitempty"`
-	NewValue           float64  `json:"newValue"`
-	CompareAtValue     *float64 `json:"compareAtValue,omitempty"`
-	Quantity           *int     `json:"quantity,omitempty"`
-	Status             string   `json:"status"`
-	ErrorMessage       string   `json:"errorMessage"`
-	ExternalOperationID string `json:"-"`
-	Attempts           int      `json:"-"`
+	ID                  int64    `json:"id"`
+	LineID              int64    `json:"lineId"`
+	ProductName         string   `json:"productName"`
+	Channel             string   `json:"channel"`
+	ExternalArticle     string   `json:"externalArticle"`
+	OldValue            *float64 `json:"oldValue,omitempty"`
+	NewValue            float64  `json:"newValue"`
+	CompareAtValue      *float64 `json:"compareAtValue,omitempty"`
+	Quantity            *int     `json:"quantity,omitempty"`
+	Status              string   `json:"status"`
+	ErrorMessage        string   `json:"errorMessage"`
+	ExternalOperationID string   `json:"-"`
+	Attempts            int      `json:"-"`
 }
 
 type IntegrationStatus struct {

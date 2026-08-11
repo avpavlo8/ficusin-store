@@ -34,3 +34,14 @@ func TestPriceChangeThresholdAppliesBothDirections(t *testing.T) {
 		t.Fatal("small change must be suppressed")
 	}
 }
+
+func TestAllocatedLineUsesReconciledLogisticsWithoutCurrencyConversion(t *testing.T) {
+	settings := PricingSettings{
+		InternationalCostMultiplier: 2, InternationalRetailMultiplier: 1.1,
+		DomesticRetailMultiplier: 2, RetailRoundStep: 10,
+	}
+	result := calculateAllocatedLine(settings, KindInternational, 10, 100, 250, 50)
+	if result.PurchaseUnitRUB != 1000 || result.TrolleyDeliveryUnitRUB != 250 || result.RyazanDeliveryUnitRUB != 50 || result.UnitCostRUB != 1300 {
+		t.Fatalf("allocated calculation = %#v", result)
+	}
+}
