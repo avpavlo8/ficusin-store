@@ -27,6 +27,7 @@ type procurementService interface {
 	UpdateAvailability(context.Context, procurement.Actor, int64, procurement.AvailabilityUpdate) (procurement.AliasReview, error)
 	PrepareBatch(context.Context, procurement.Actor, int64, string) (procurement.ActionBatch, error)
 	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
+	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 }
 
 type procurementHandlers struct {
@@ -357,6 +358,23 @@ func (handlers procurementHandlers) approveBatch(response http.ResponseWriter, r
 	item, err := handlers.service.ApproveBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, batchID)
 	if err != nil {
 		handlers.failed(response, "approve procurement batch", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"batch": item})
+}
+
+func (handlers procurementHandlers) retryBatch(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	batchID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	item, err := handlers.service.RetryBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, batchID)
+	if err != nil {
+		handlers.failed(response, "retry procurement batch", err)
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"batch": item})

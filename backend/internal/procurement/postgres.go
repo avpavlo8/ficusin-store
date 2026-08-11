@@ -1127,7 +1127,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	} else {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO procurement_action_items (
-				batch_id, procurement_order_line_id, channel, external_article, old_value, new_value
+				batch_id, procurement_order_line_id, channel, external_article, old_value, new_value, compare_at_value
 			)
 			SELECT $1, l.id, channel.name,
 				CASE channel.name WHEN 'wb' THEN COALESCE(pc.wb_article, '')
@@ -1137,7 +1137,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					WHEN 'saby_price' THEN COALESCE(n.price_minor, 0)::NUMERIC / 100
 					ELSE NULL
 				END,
-				CASE WHEN channel.name IN ('wb', 'ozon') THEN l.proposed_marketplace_rub ELSE l.proposed_retail_rub END
+				CASE WHEN channel.name IN ('wb', 'ozon') THEN l.proposed_marketplace_rub ELSE l.proposed_retail_rub END,
+				CASE WHEN channel.name IN ('wb', 'ozon') THEN l.proposed_marketplace_strike_rub ELSE NULL END
 			FROM procurement_order_lines l
 			JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 			LEFT JOIN product_variants pv ON pv.saby_id = l.saby_id
@@ -1173,7 +1174,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	return ActionBatch{}, ErrNotFound
 }
 
-func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batchID int64) (ActionBatch, error) {
+func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batchID int64, configured map[string]bool) (ActionBatch, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("begin approve procurement batch: %w", err)
@@ -1191,8 +1192,8 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	if status != "draft" {
 		return ActionBatch{}, ErrInvalidInput
 	}
-	// Цена сайта меняется в нашей базе сразу. Остальные каналы остаются явно
-	// помеченными как не подключённые, пока для них нет проверенного API-адаптера.
+	// The site price is atomic with approval. External calls are queued in the
+	// same transaction and are performed by a restart-safe worker afterwards.
 	if _, err := tx.Exec(ctx, `
 		UPDATE product_variants pv SET base_price_minor = ROUND(item.new_value * 100), updated_at = CURRENT_TIMESTAMP
 		FROM procurement_action_items item
@@ -1202,17 +1203,26 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 		return ActionBatch{}, fmt.Errorf("apply procurement site prices: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		UPDATE procurement_action_items SET status = CASE WHEN channel = 'site' THEN 'completed' ELSE 'not_configured' END,
-			error_message = CASE WHEN channel = 'site' THEN '' ELSE 'API-адаптер канала не настроен' END,
+		UPDATE procurement_action_items SET status = CASE
+				WHEN channel = 'site' THEN 'completed'
+				WHEN channel = 'wb' AND $2 AND external_article <> '' THEN 'queued'
+				WHEN channel = 'ozon' AND $3 AND external_article <> '' THEN 'queued'
+				WHEN channel IN ('wb', 'ozon') AND external_article = '' THEN 'skipped'
+				ELSE 'not_configured' END,
+			error_message = CASE
+				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '') THEN ''
+				WHEN channel IN ('wb', 'ozon') AND external_article = '' THEN 'Не заполнен артикул канала'
+				ELSE 'API-адаптер канала не настроен' END,
 			completed_at = CASE WHEN channel = 'site' THEN CURRENT_TIMESTAMP ELSE NULL END,
-			updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
-	`, batchID); err != nil {
+			next_attempt_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
+	`, batchID, configured["wb"], configured["ozon"]); err != nil {
 		return ActionBatch{}, fmt.Errorf("update procurement action statuses: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches SET status = CASE
-			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status = 'not_configured')
-			THEN 'partially_completed' ELSE 'completed' END,
+			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status = 'queued') THEN 'processing'
+			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('not_configured', 'skipped', 'failed')) THEN 'partially_completed'
+			ELSE 'completed' END,
 			approved_by = $2, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, batchID, actor.CustomerID); err != nil {
@@ -1254,7 +1264,8 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 		itemRows, err := store.pool.Query(ctx, `
 			SELECT item.id, item.procurement_order_line_id, COALESCE(n.name, line.raw_name),
 				item.channel, item.external_article, item.old_value::DOUBLE PRECISION,
-				item.new_value::DOUBLE PRECISION, item.quantity, item.status, item.error_message
+				item.new_value::DOUBLE PRECISION, item.compare_at_value::DOUBLE PRECISION,
+				item.quantity, item.status, item.error_message
 			FROM procurement_action_items item
 			JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
 			LEFT JOIN saby_nomenclature n ON n.saby_id = line.saby_id
@@ -1267,7 +1278,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 		for itemRows.Next() {
 			var item ActionItem
 			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.Channel,
-				&item.ExternalArticle, &item.OldValue, &item.NewValue, &item.Quantity,
+				&item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
 				&item.Status, &item.ErrorMessage); err != nil {
 				itemRows.Close()
 				return nil, fmt.Errorf("scan procurement batch item: %w", err)
@@ -1278,6 +1289,128 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 		batches = append(batches, batch)
 	}
 	return batches, rows.Err()
+}
+
+func (store *PostgresStore) ClaimAction(ctx context.Context) (*ActionItem, error) {
+	var item ActionItem
+	err := store.pool.QueryRow(ctx, `
+		WITH candidate AS (
+			SELECT id FROM procurement_action_items
+			WHERE (status = 'queued' AND next_attempt_at <= CURRENT_TIMESTAMP)
+				OR (status = 'processing' AND locked_until < CURRENT_TIMESTAMP)
+			ORDER BY next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+		)
+		UPDATE procurement_action_items item SET status = 'processing', attempts = attempts + 1,
+			last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '2 minutes',
+			updated_at = CURRENT_TIMESTAMP
+		FROM candidate WHERE item.id = candidate.id
+		RETURNING item.id, item.procurement_order_line_id, item.channel, item.external_article,
+			item.old_value::DOUBLE PRECISION, item.new_value::DOUBLE PRECISION,
+			item.compare_at_value::DOUBLE PRECISION, item.quantity, item.external_operation_id, item.attempts
+	`).Scan(&item.ID, &item.LineID, &item.Channel, &item.ExternalArticle, &item.OldValue,
+		&item.NewValue, &item.CompareAtValue, &item.Quantity, &item.ExternalOperationID, &item.Attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("claim procurement action: %w", err)
+	}
+	return &item, nil
+}
+
+func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, result ActionExecution, executeErr error) error {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin finish procurement action: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var batchID int64
+	var attempts int
+	if err := tx.QueryRow(ctx, `SELECT batch_id, attempts FROM procurement_action_items WHERE id = $1 FOR UPDATE`, actionID).Scan(&batchID, &attempts); err != nil {
+		return fmt.Errorf("lock finished procurement action: %w", err)
+	}
+	status, message, delay := "queued", "", result.RetryAfter
+	if delay <= 0 {
+		delay = 15 * time.Second
+	}
+	if executeErr != nil {
+		message = executeErr.Error()
+		if attempts >= 5 {
+			status = "failed"
+		} else {
+			delay = time.Duration(attempts*attempts) * 15 * time.Second
+		}
+	} else if result.Completed {
+		status = "completed"
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_action_items SET status = $2, error_message = $3,
+			external_operation_id = CASE WHEN $4 = '' THEN external_operation_id ELSE $4 END,
+			completed_at = CASE WHEN $2 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
+			next_attempt_at = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second'), locked_until = NULL,
+			updated_at = CURRENT_TIMESTAMP WHERE id = $1
+	`, actionID, status, message, result.ExternalOperationID, int(delay.Seconds())); err != nil {
+		return fmt.Errorf("update procurement action result: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_action_batches SET status = CASE
+			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('queued', 'processing')) THEN 'processing'
+			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('failed', 'not_configured', 'skipped')) THEN 'partially_completed'
+			ELSE 'completed' END, updated_at = CURRENT_TIMESTAMP WHERE id = $1
+	`, batchID); err != nil {
+		return fmt.Errorf("update procurement batch result: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit procurement action result: %w", err)
+	}
+	return nil
+}
+
+func (store *PostgresStore) RetryBatch(ctx context.Context, actor Actor, batchID int64, configured map[string]bool) (ActionBatch, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ActionBatch{}, fmt.Errorf("begin retry procurement batch: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var orderID int64
+	if err := tx.QueryRow(ctx, `SELECT procurement_order_id FROM procurement_action_batches WHERE id = $1 FOR UPDATE`, batchID).Scan(&orderID); errors.Is(err, pgx.ErrNoRows) {
+		return ActionBatch{}, ErrNotFound
+	} else if err != nil {
+		return ActionBatch{}, fmt.Errorf("lock retry procurement batch: %w", err)
+	}
+	command, err := tx.Exec(ctx, `
+		UPDATE procurement_action_items SET status = 'queued', attempts = 0, error_message = '',
+			next_attempt_at = CURRENT_TIMESTAMP, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE batch_id = $1 AND external_article <> '' AND (
+			(status = 'failed' AND channel IN ('wb', 'ozon')) OR
+			(status = 'not_configured' AND ((channel = 'wb' AND $2) OR (channel = 'ozon' AND $3)))
+		)
+	`, batchID, configured["wb"], configured["ozon"])
+	if err != nil {
+		return ActionBatch{}, fmt.Errorf("retry procurement actions: %w", err)
+	}
+	if command.RowsAffected() == 0 {
+		return ActionBatch{}, ErrInvalidInput
+	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, batchID); err != nil {
+		return ActionBatch{}, fmt.Errorf("mark procurement batch retry: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.batch.retry", "procurement_action_batch", batchID, map[string]any{"retried": command.RowsAffected()}); err != nil {
+		return ActionBatch{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ActionBatch{}, fmt.Errorf("commit procurement batch retry: %w", err)
+	}
+	batches, err := store.listBatches(ctx, orderID)
+	if err != nil {
+		return ActionBatch{}, err
+	}
+	for _, batch := range batches {
+		if batch.ID == batchID {
+			return batch, nil
+		}
+	}
+	return ActionBatch{}, ErrNotFound
 }
 
 type rowScanner interface {

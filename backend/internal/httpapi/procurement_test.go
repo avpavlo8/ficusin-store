@@ -73,6 +73,9 @@ func (stub *procurementStub) PrepareBatch(_ context.Context, _ procurement.Actor
 func (stub *procurementStub) ApproveBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {
 	return procurement.ActionBatch{ID: batchID, Status: "completed"}, nil
 }
+func (stub *procurementStub) RetryBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {
+	return procurement.ActionBatch{ID: batchID, Status: "processing"}, nil
+}
 
 func procurementDependencies(service procurementService, role string) Dependencies {
 	dependencies := adminDependencies(&adminRepositoryStub{}, role, "manager@example.com")

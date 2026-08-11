@@ -180,6 +180,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/availability/{id}", procurementAPI.updateAvailability)
 	mux.HandleFunc("POST /api/v1/admin/procurement/requests", procurementAPI.createRequest)
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/approve", procurementAPI.approveBatch)
+	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/retry", procurementAPI.retryBatch)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),

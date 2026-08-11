@@ -45,6 +45,8 @@ Timeweb Cloud App Platform, приложение `229223`. **Мерж в `main`
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM` | письма покупателям не отправляются |
 | `ADMIN_EMAILS` | некому выдать права владельца на пустой базе |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | push-уведомления выключены, кнопка в кабинете не показывается |
+| `WB_API_TOKEN` | подтверждённые цены WB остаются со статусом «API не подключён» |
+| `OZON_CLIENT_ID`, `OZON_API_KEY` | подтверждённые цены Ozon остаются со статусом «API не подключён» |
 
 **Все внешние ключи — только из окружения.** Была ещё таблица
 `integration_credentials` с RSA-шифрованием; ключа расшифровки в Timeweb не
