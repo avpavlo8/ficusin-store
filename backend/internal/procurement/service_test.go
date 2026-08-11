@@ -17,6 +17,9 @@ type storeStub struct {
 }
 
 func (stub *storeStub) Dashboard(context.Context) (Dashboard, error) { return Dashboard{}, nil }
+func (stub *storeStub) UpdateSettings(_ context.Context, _ Actor, input PricingSettings) (PricingSettings, error) {
+	return input, nil
+}
 func (stub *storeStub) CreateSupplier(_ context.Context, _ Actor, input SupplierCreate) (Supplier, error) {
 	stub.supplierInput = input
 	return Supplier{Name: input.Name, Kind: input.Kind, CountryCode: input.CountryCode, DefaultCurrency: input.DefaultCurrency}, nil
@@ -24,6 +27,15 @@ func (stub *storeStub) CreateSupplier(_ context.Context, _ Actor, input Supplier
 func (stub *storeStub) CreateOrder(_ context.Context, _ Actor, input OrderCreate) (OrderSummary, error) {
 	stub.orderInput = input
 	return OrderSummary{SupplierID: input.SupplierID, SourceKind: input.SourceKind, Currency: input.Currency}, nil
+}
+func (stub *storeStub) CreatePlan(_ context.Context, _ Actor, input PlanCreate) (OrderSummary, error) {
+	return OrderSummary{SupplierID: input.SupplierID}, nil
+}
+func (stub *storeStub) OrderDetail(context.Context, int64) (OrderDetail, error) {
+	return OrderDetail{}, nil
+}
+func (stub *storeStub) CalculateOrder(context.Context, Actor, int64, CalculationInput) (OrderDetail, error) {
+	return OrderDetail{}, nil
 }
 func (stub *storeStub) ImportDocument(_ context.Context, _ Actor, input DocumentUpload, parsed ParsedDocument) (ImportResult, error) {
 	stub.documentInput, stub.parsedInput = input, parsed
@@ -36,6 +48,18 @@ func (stub *storeStub) SearchNomenclature(_ context.Context, query string) ([]No
 func (stub *storeStub) ResolveAlias(_ context.Context, _ Actor, aliasID int64, input AliasResolution) (AliasReview, error) {
 	stub.aliasID, stub.resolution = aliasID, input
 	return AliasReview{ID: aliasID, MatchStatus: input.MatchStatus, SuggestedSabyID: input.SabyID}, nil
+}
+func (stub *storeStub) CreateRequest(_ context.Context, _ Actor, input RequestCreate) (Request, error) {
+	return Request{Kind: input.Kind}, nil
+}
+func (stub *storeStub) UpdateAvailability(_ context.Context, _ Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {
+	return AliasReview{ID: aliasID, AvailabilityStatus: input.Status}, nil
+}
+func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string) (ActionBatch, error) {
+	return ActionBatch{Kind: kind}, nil
+}
+func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64) (ActionBatch, error) {
+	return ActionBatch{ID: batchID}, nil
 }
 
 type parserStub struct {

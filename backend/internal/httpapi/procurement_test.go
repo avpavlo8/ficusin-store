@@ -26,6 +26,9 @@ type procurementStub struct {
 func (stub *procurementStub) Dashboard(context.Context) (procurement.Dashboard, error) {
 	return stub.dashboard, nil
 }
+func (stub *procurementStub) UpdateSettings(_ context.Context, _ procurement.Actor, input procurement.PricingSettings) (procurement.PricingSettings, error) {
+	return input, nil
+}
 
 func (stub *procurementStub) CreateSupplier(_ context.Context, _ procurement.Actor, input procurement.SupplierCreate) (procurement.Supplier, error) {
 	stub.supplierInputs = append(stub.supplierInputs, input)
@@ -35,6 +38,15 @@ func (stub *procurementStub) CreateSupplier(_ context.Context, _ procurement.Act
 func (stub *procurementStub) CreateOrder(_ context.Context, _ procurement.Actor, input procurement.OrderCreate) (procurement.OrderSummary, error) {
 	stub.orderInputs = append(stub.orderInputs, input)
 	return procurement.OrderSummary{ID: 9, SupplierID: input.SupplierID}, nil
+}
+func (stub *procurementStub) CreatePlan(_ context.Context, _ procurement.Actor, input procurement.PlanCreate) (procurement.OrderSummary, error) {
+	return procurement.OrderSummary{ID: 10, SupplierID: input.SupplierID}, nil
+}
+func (stub *procurementStub) OrderDetail(context.Context, int64) (procurement.OrderDetail, error) {
+	return procurement.OrderDetail{}, nil
+}
+func (stub *procurementStub) CalculateOrder(_ context.Context, _ procurement.Actor, _ int64, _ procurement.CalculationInput) (procurement.OrderDetail, error) {
+	return procurement.OrderDetail{}, nil
 }
 
 func (stub *procurementStub) ImportDocument(_ context.Context, _ procurement.Actor, input procurement.DocumentUpload) (procurement.ImportResult, error) {
@@ -48,6 +60,18 @@ func (stub *procurementStub) SearchNomenclature(_ context.Context, query string)
 func (stub *procurementStub) ResolveAlias(_ context.Context, _ procurement.Actor, aliasID int64, input procurement.AliasResolution) (procurement.AliasReview, error) {
 	stub.aliasInputs = append(stub.aliasInputs, input)
 	return procurement.AliasReview{ID: aliasID, MatchStatus: input.MatchStatus}, nil
+}
+func (stub *procurementStub) CreateRequest(_ context.Context, _ procurement.Actor, input procurement.RequestCreate) (procurement.Request, error) {
+	return procurement.Request{ID: 1, Kind: input.Kind}, nil
+}
+func (stub *procurementStub) UpdateAvailability(_ context.Context, _ procurement.Actor, aliasID int64, input procurement.AvailabilityUpdate) (procurement.AliasReview, error) {
+	return procurement.AliasReview{ID: aliasID, AvailabilityStatus: input.Status}, nil
+}
+func (stub *procurementStub) PrepareBatch(_ context.Context, _ procurement.Actor, _ int64, kind string) (procurement.ActionBatch, error) {
+	return procurement.ActionBatch{ID: 1, Kind: kind}, nil
+}
+func (stub *procurementStub) ApproveBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {
+	return procurement.ActionBatch{ID: batchID, Status: "completed"}, nil
 }
 
 func procurementDependencies(service procurementService, role string) Dependencies {

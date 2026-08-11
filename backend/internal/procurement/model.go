@@ -35,11 +35,37 @@ type Summary struct {
 }
 
 type Dashboard struct {
-	Summary   Summary           `json:"summary"`
-	Suppliers []Supplier        `json:"suppliers"`
-	Orders    []OrderSummary    `json:"orders"`
-	Documents []DocumentSummary `json:"documents"`
-	Review    []AliasReview     `json:"review"`
+	Summary         Summary           `json:"summary"`
+	Settings        PricingSettings   `json:"settings"`
+	Suppliers       []Supplier        `json:"suppliers"`
+	Orders          []OrderSummary    `json:"orders"`
+	Documents       []DocumentSummary `json:"documents"`
+	Review          []AliasReview     `json:"review"`
+	Requests        []Request         `json:"requests"`
+	Availability    []AliasReview     `json:"availability"`
+	Recommendations []Recommendation  `json:"recommendations"`
+}
+
+type PricingSettings struct {
+	Version                       int     `json:"version"`
+	DefaultExchangeRate           float64 `json:"defaultExchangeRate"`
+	TrolleyCostCurrency           float64 `json:"trolleyCostCurrency"`
+	TrolleyVolumeCM3              float64 `json:"trolleyVolumeCm3"`
+	TrolleyFillRatio              float64 `json:"trolleyFillRatio"`
+	ReturnLossRate                float64 `json:"returnLossRate"`
+	MarketplaceCostRate           float64 `json:"marketplaceCostRate"`
+	TaxRate                       float64 `json:"taxRate"`
+	ReserveRate                   float64 `json:"reserveRate"`
+	PackageRUB                    float64 `json:"packageRub"`
+	PriceChangeThreshold          float64 `json:"priceChangeThreshold"`
+	DomesticRetailMultiplier      float64 `json:"domesticRetailMultiplier"`
+	InternationalCostMultiplier   float64 `json:"internationalCostMultiplier"`
+	InternationalRetailMultiplier float64 `json:"internationalRetailMultiplier"`
+	MarketplaceStrikeMarkup       float64 `json:"marketplaceStrikeMarkup"`
+	RetailRoundStep               int     `json:"retailRoundStep"`
+	AvoidRoundHundreds            bool    `json:"avoidRoundHundreds"`
+	RecommendationDays            int     `json:"recommendationDays"`
+	TargetCoverDays               int     `json:"targetCoverDays"`
 }
 
 type Supplier struct {
@@ -82,6 +108,122 @@ type OrderCreate struct {
 	SourceKind  string `json:"sourceKind"`
 	Currency    string `json:"currency"`
 	Notes       string `json:"notes"`
+}
+
+type PlanCreate struct {
+	SupplierID  int64      `json:"supplierId"`
+	OrderNumber string     `json:"orderNumber"`
+	Items       []PlanItem `json:"items"`
+}
+
+type PlanItem struct {
+	SabyID            string  `json:"sabyId"`
+	Quantity          int     `json:"quantity"`
+	ExpectedUnitPrice float64 `json:"expectedUnitPrice"`
+}
+
+type OrderCosts struct {
+	ExchangeRate        float64 `json:"exchangeRate"`
+	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
+	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
+}
+
+type OrderDetail struct {
+	Order   OrderSummary  `json:"order"`
+	Costs   OrderCosts    `json:"costs"`
+	Lines   []OrderLine   `json:"lines"`
+	Batches []ActionBatch `json:"batches"`
+}
+
+type OrderLine struct {
+	ID                           int64    `json:"id"`
+	SabyID                       string   `json:"sabyId"`
+	SabyName                     string   `json:"sabyName"`
+	RawName                      string   `json:"rawName"`
+	SupplierArticle              string   `json:"supplierArticle"`
+	Quantity                     int      `json:"quantity"`
+	OrderedQuantity              int      `json:"orderedQuantity"`
+	InvoicedQuantity             *int     `json:"invoicedQuantity,omitempty"`
+	UnitPrice                    float64  `json:"unitPrice"`
+	ExpectedUnitPrice            *float64 `json:"expectedUnitPrice,omitempty"`
+	LoadUnit                     string   `json:"loadUnit"`
+	PotDiameterCM                *float64 `json:"potDiameterCm,omitempty"`
+	HeightCM                     *float64 `json:"heightCm,omitempty"`
+	MatchStatus                  string   `json:"matchStatus"`
+	PurchaseUnitRUB              *float64 `json:"purchaseUnitRub,omitempty"`
+	TrolleyDeliveryUnitRUB       *float64 `json:"trolleyDeliveryUnitRub,omitempty"`
+	RyazanDeliveryUnitRUB        *float64 `json:"ryazanDeliveryUnitRub,omitempty"`
+	UnitCostRUB                  *float64 `json:"unitCostRub,omitempty"`
+	CurrentRetailRUB             float64  `json:"currentRetailRub"`
+	ProposedRetailRUB            *int64   `json:"proposedRetailRub,omitempty"`
+	ProposedMarketplaceRUB       *int64   `json:"proposedMarketplaceRub,omitempty"`
+	ProposedMarketplaceStrikeRUB *int64   `json:"proposedMarketplaceStrikeRub,omitempty"`
+	PriceChangeNeeded            bool     `json:"priceChangeNeeded"`
+	CustomerRequest              bool     `json:"customerRequest"`
+	ComparisonMismatch           bool     `json:"comparisonMismatch"`
+}
+
+type CalculationInput struct {
+	ExchangeRate        float64 `json:"exchangeRate"`
+	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
+	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
+}
+
+type Request struct {
+	ID            int64     `json:"id"`
+	Kind          string    `json:"kind"`
+	SabyID        string    `json:"sabyId"`
+	RequestedName string    `json:"requestedName"`
+	Quantity      int       `json:"quantity"`
+	Status        string    `json:"status"`
+	Notes         string    `json:"notes"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+type RequestCreate struct {
+	Kind          string `json:"kind"`
+	SabyID        string `json:"sabyId"`
+	RequestedName string `json:"requestedName"`
+	Quantity      int    `json:"quantity"`
+	Notes         string `json:"notes"`
+}
+
+type AvailabilityUpdate struct {
+	Status     string `json:"status"`
+	CheckAfter string `json:"checkAfter"`
+}
+
+type Recommendation struct {
+	AliasID         int64  `json:"aliasId"`
+	SabyID          string `json:"sabyId"`
+	Name            string `json:"name"`
+	SupplierArticle string `json:"supplierArticle"`
+	Balance         int    `json:"balance"`
+	SiteSales       int    `json:"siteSales"`
+	OpenRequests    int    `json:"openRequests"`
+	SuggestedQty    int    `json:"suggestedQty"`
+	Reason          string `json:"reason"`
+}
+
+type ActionBatch struct {
+	ID        int64        `json:"id"`
+	Kind      string       `json:"kind"`
+	Status    string       `json:"status"`
+	CreatedAt time.Time    `json:"createdAt"`
+	Items     []ActionItem `json:"items"`
+}
+
+type ActionItem struct {
+	ID              int64    `json:"id"`
+	LineID          int64    `json:"lineId"`
+	ProductName     string   `json:"productName"`
+	Channel         string   `json:"channel"`
+	ExternalArticle string   `json:"externalArticle"`
+	OldValue        *float64 `json:"oldValue,omitempty"`
+	NewValue        float64  `json:"newValue"`
+	Quantity        *int     `json:"quantity,omitempty"`
+	Status          string   `json:"status"`
+	ErrorMessage    string   `json:"errorMessage"`
 }
 
 type AliasReview struct {
