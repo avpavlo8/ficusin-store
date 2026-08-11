@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
-async function mockProcurement(page: import("@playwright/test").Page) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -20,7 +20,7 @@ async function mockProcurement(page: import("@playwright/test").Page) {
   };
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToRyazanRub: 0 },
-    validation: { canCalculate: false, canPrepareActions: false, blockers: ["Не сопоставлено строк: 2"], arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
+    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
     lines: [], batches: [],
   };
   const dashboard = {
@@ -90,4 +90,19 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await expect(page.getByText("Расчёт заблокирован")).toBeVisible();
   await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
+});
+
+test("@desktop procurement opens an order with no validation blockers", async ({ page }) => {
+  await mockProcurement(page, { blockers: null });
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.locator(".procurement-orders").getByText("TEST-100").click();
+
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText("Проверки пройдены")).toBeVisible();
+
+  const delivery = page.getByLabel("Москва → Рязань, ₽");
+  await delivery.click();
+  await delivery.pressSequentially("14000");
+  await expect(delivery).toHaveValue("14000");
 });

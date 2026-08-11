@@ -92,7 +92,7 @@ type ProcurementOrderLine = {
   proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
 };
-type ProcurementValidation = { canCalculate: boolean; canPrepareActions: boolean; blockers: string[]; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
+type ProcurementValidation = { canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
 type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
@@ -151,6 +151,23 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return result;
 }
 
+// Number("") is zero, so a controlled number field used to restore the zero
+// immediately while the operator was trying to replace it. Selecting a zero
+// on focus/click makes the next digit replace it in every admin form.
+function selectZeroNumberInput(event: React.SyntheticEvent<HTMLElement>) {
+  const input = event.target;
+  if (input instanceof HTMLInputElement && input.type === "number" && Number(input.value) === 0) input.select();
+}
+
+function normalizeProcurementOrderDetail(item: ProcurementOrderDetail): ProcurementOrderDetail {
+  return {
+    ...item,
+    validation: { ...item.validation, blockers: item.validation.blockers ?? [] },
+    lines: item.lines ?? [],
+    batches: (item.batches ?? []).map((batch) => ({ ...batch, items: batch.items ?? [] })),
+  };
+}
+
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
   const [section, setSection] = useState<Section>("dashboard");
@@ -173,7 +190,7 @@ export default function AdminPage() {
     setSection(next);
   };
 
-  if (!data) return <main className="account-page">
+  if (!data) return <main className="account-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
     <StoreHeader showTabBar={false} />
     <section className="account-shell"><div className="account-content"><p>{error || "Загружаем панель…"}</p></div></section>
   </main>;
@@ -181,7 +198,7 @@ export default function AdminPage() {
   const can = (permission: string) => data.permissions.includes(permission);
   const initial = data.user.fullName.trim().charAt(0).toUpperCase() || "Ф";
   return (
-    <main className="account-page">
+    <main className="account-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
       <StoreHeader showTabBar={false} />
       <section className="account-shell">
         <aside className="account-sidebar">
@@ -550,6 +567,8 @@ function ProcurementSettingsPanel({ settings, onSaved, onError }: { settings: Pr
     <div className="procurement-settings-grid">
       <label>Курс оплаты<input type="number" step="0.01" value={draft.defaultExchangeRate} onChange={(event) => number("defaultExchangeRate", event.target.value)} /></label>
       <label>Телега до Москвы, ₽<input type="number" step="0.01" value={draft.trolleyCostRub} onChange={(event) => number("trolleyCostRub", event.target.value)} /></label>
+      <label>Объём телеги, см³<input type="number" step="1" value={draft.trolleyVolumeCm3} onChange={(event) => number("trolleyVolumeCm3", event.target.value)} /></label>
+      <PercentField label="Заполнение телеги" value={draft.trolleyFillRatio} onChange={(value) => setDraft({ ...draft, trolleyFillRatio: value })} />
       <PercentField label="Возвраты" value={draft.returnLossRate} onChange={(value) => setDraft({ ...draft, returnLossRate: value })} />
       <PercentField label="Расходы маркетплейсов" value={draft.marketplaceCostRate} onChange={(value) => setDraft({ ...draft, marketplaceCostRate: value })} />
       <PercentField label="Налог" value={draft.taxRate} onChange={(value) => setDraft({ ...draft, taxRate: value })} />
@@ -604,14 +623,14 @@ function ProcurementRequestDialog({ onClose, onSaved, onError }: { onClose: () =
 function ProcurementOrderDetailDialog({ orderId, settings, onClose, onSaved, onError }: { orderId: number; settings: ProcurementSettings; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
   const [detail, setDetail] = useState<ProcurementOrderDetail | null>(null); const [saving, setSaving] = useState(false);
   const [costs, setCosts] = useState({ exchangeRate: settings.defaultExchangeRate, trolleyCostRub: settings.trolleyCostRub, deliveryToRyazanRub: 0 });
-  const load = useCallback(() => api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}`).then((item) => { setDetail(item); setCosts({ exchangeRate: item.costs.exchangeRate || settings.defaultExchangeRate, trolleyCostRub: item.costs.trolleyCostRub || settings.trolleyCostRub, deliveryToRyazanRub: item.costs.deliveryToRyazanRub }); }).catch((error) => onError((error as Error).message)), [orderId, settings, onError]);
+  const load = useCallback(() => api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}`).then((item) => { setDetail(normalizeProcurementOrderDetail(item)); setCosts({ exchangeRate: item.costs.exchangeRate || settings.defaultExchangeRate, trolleyCostRub: item.costs.trolleyCostRub || settings.trolleyCostRub, deliveryToRyazanRub: item.costs.deliveryToRyazanRub }); }).catch((error) => onError((error as Error).message)), [orderId, settings, onError]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!detail?.batches.some((batch) => batch.status === "processing")) return;
     const timer = window.setTimeout(() => void load(), 4000);
     return () => window.clearTimeout(timer);
   }, [detail, load]);
-  const calculate = async () => { setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/calculate`, { method: "POST", body: JSON.stringify(costs) }); setDetail(item); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const calculate = async () => { setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/calculate`, { method: "POST", body: JSON.stringify(costs) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   const prepare = async (kind: "receipt" | "prices") => { setSaving(true); try { await api(`/api/v1/admin/procurement/orders/${orderId}/batches`, { method: "POST", body: JSON.stringify({ kind }) }); await load(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   const approve = async (batch: ProcurementActionBatch) => { if (!window.confirm(batch.kind === "prices" ? "Применить показанные цены на сайте и поставить остальные каналы в очередь?" : "Подтвердить состав черновика поступления?")) return; setSaving(true); try { await api(`/api/v1/admin/procurement/batches/${batch.id}/approve`, { method: "POST" }); await load(); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   const retry = async (batch: ProcurementActionBatch) => { setSaving(true); try { await api(`/api/v1/admin/procurement/batches/${batch.id}/retry`, { method: "POST" }); await load(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
@@ -619,14 +638,14 @@ function ProcurementOrderDetailDialog({ orderId, settings, onClose, onSaved, onE
     const pot = window.prompt("Диаметр горшка, см", line.potDiameterCm?.toString() || ""); if (pot == null) return;
     const height = window.prompt("Высота растения, см", line.heightCm?.toString() || ""); if (height == null) return;
     const loadUnit = window.prompt("Телега / коробка", line.loadUnit || ""); if (loadUnit == null) return;
-    setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ potDiameterCm: Number(pot), heightCm: Number(height), loadUnit }) }); setDetail(item); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); }
+    setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ potDiameterCm: Number(pot), heightCm: Number(height), loadUnit }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); }
   };
-  const acceptMismatch = async (line: ProcurementOrderLine) => { const note = window.prompt("Почему расхождение допустимо? Это попадёт в журнал проверки.", line.comparisonNote || ""); if (!note?.trim()) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ acceptComparison: true, comparisonNote: note }) }); setDetail(item); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
-  const setStatus = async (status: "received" | "cancelled" | "review") => { if (!window.confirm(status === "received" ? "Поступление уже проведено в СБИС? Закрыть закупку и выполнить клиентские заявки?" : status === "cancelled" ? "Отменить закупку? Заявки вернутся в открытые." : "Вернуть закупку на проверку? Черновики действий будут отменены.")) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }); setDetail(item); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const acceptMismatch = async (line: ProcurementOrderLine) => { const note = window.prompt("Почему расхождение допустимо? Это попадёт в журнал проверки.", line.comparisonNote || ""); if (!note?.trim()) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ acceptComparison: true, comparisonNote: note }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const setStatus = async (status: "received" | "cancelled" | "review") => { if (!window.confirm(status === "received" ? "Поступление уже проведено в СБИС? Закрыть закупку и выполнить клиентские заявки?" : status === "cancelled" ? "Отменить закупку? Заявки вернутся в открытые." : "Вернуть закупку на проверку? Черновики действий будут отменены.")) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-order-dialog" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><header><div><p className="eyebrow">Закупка</p><h2 id="order-detail-title">{detail?.order.orderNumber || `№${orderId}`}</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
     {!detail ? <div className="procurement-zero">Загружаем строки…</div> : <div className="procurement-order-body">
       <div className="procurement-costs"><label>Курс оплаты<input type="number" step="0.01" value={costs.exchangeRate} onChange={(event) => setCosts({ ...costs, exchangeRate: Number(event.target.value) })} /></label><label>Телега до Москвы, ₽<input type="number" step="0.01" value={costs.trolleyCostRub} onChange={(event) => setCosts({ ...costs, trolleyCostRub: Number(event.target.value) })} /></label><label>Москва → Рязань, ₽<input type="number" value={costs.deliveryToRyazanRub} onChange={(event) => setCosts({ ...costs, deliveryToRyazanRub: Number(event.target.value) })} /></label><button className="admin-primary" disabled={saving || !detail.validation.canCalculate} onClick={calculate}>{saving ? "Считаем…" : "Рассчитать"}</button></div>
-      <section className={detail.validation.blockers.length ? "procurement-checklist blocked" : "procurement-checklist ready"}><strong>{detail.validation.blockers.length ? "Расчёт заблокирован" : "Проверки пройдены"}</strong>{detail.validation.blockers.length ? <ul>{detail.validation.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p>Инвойс, сопоставление, размеры и расхождения проверены.</p>}<small>Телег: {detail.validation.trolleyCount} · распределено {money.format(detail.validation.allocatedTrolleyRub)} из {money.format(detail.validation.expectedTrolleyRub)} · Москва → Рязань {money.format(detail.validation.allocatedRyazanRub)} из {money.format(detail.validation.expectedRyazanRub)}</small></section>
+      <section className={detail.validation.blockers?.length ? "procurement-checklist blocked" : "procurement-checklist ready"}><strong>{detail.validation.blockers?.length ? "Расчёт заблокирован" : "Проверки пройдены"}</strong>{detail.validation.blockers?.length ? <ul>{detail.validation.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p>Инвойс, сопоставление, размеры и расхождения проверены.</p>}<small>Телег: {detail.validation.trolleyCount} · распределено {money.format(detail.validation.allocatedTrolleyRub)} из {money.format(detail.validation.expectedTrolleyRub)} · Москва → Рязань {money.format(detail.validation.allocatedRyazanRub)} из {money.format(detail.validation.expectedRyazanRub)}</small></section>
       <div className="admin-table-wrap"><table className="admin-table procurement-lines"><thead><tr><th>Товар</th><th>Телега / размер</th><th>Заказ / инвойс</th><th>Цена заказ / инвойс</th><th>Доставка</th><th>Себестоимость</th><th>СБИС сейчас</th><th>Новая розница</th><th>WB / Ozon</th><th></th></tr></thead><tbody>{detail.lines.map((line) => <tr key={line.id} className={line.comparisonMismatch && !line.comparisonAccepted ? "procurement-row-mismatch" : ""}><td><strong>{line.sabyName || line.rawName}</strong><small>{line.supplierArticle}</small></td><td>{line.loadUnit || "—"}<small>{[line.potDiameterCm && `D${line.potDiameterCm}`, line.heightCm && `${line.heightCm} см`].filter(Boolean).join(" · ") || "Размер не заполнен"}</small></td><td>{line.orderedQuantity || "—"} / {line.invoicedQuantity ?? "—"}{line.comparisonAccepted && <small className="procurement-ok">Расхождение принято</small>}</td><td>{line.expectedUnitPrice ? line.expectedUnitPrice.toFixed(2) : "—"} / {line.invoicedQuantity == null ? "—" : line.unitPrice.toFixed(2)} {detail.order.currency}</td><td>{line.trolleyDeliveryUnitRub == null ? "—" : money.format((line.trolleyDeliveryUnitRub || 0) + (line.ryazanDeliveryUnitRub || 0))}</td><td>{line.unitCostRub == null ? "—" : money.format(line.unitCostRub)}</td><td>{money.format(line.currentRetailRub)}</td><td className={line.priceChangeNeeded ? "procurement-price-change" : ""}>{line.proposedRetailRub ? money.format(line.proposedRetailRub) : "—"}</td><td>{line.proposedMarketplaceRub ? money.format(line.proposedMarketplaceRub) : "—"}</td><td><div className="procurement-inline-actions"><button onClick={() => void editLine(line)}>Размеры</button>{line.comparisonMismatch && !line.comparisonAccepted && <button onClick={() => void acceptMismatch(line)}>Принять расхождение</button>}</div></td></tr>)}</tbody></table></div>
       {detail.order.status === "ready_to_receive" && <div className="procurement-batch-buttons"><button onClick={() => void setStatus("review")} disabled={saving}>Вернуть на проверку</button><button onClick={() => void prepare("receipt")} disabled={saving || !detail.validation.canPrepareActions}>Подготовить поступление СБИС</button><button className="admin-primary" onClick={() => void prepare("prices")} disabled={saving || !detail.validation.canPrepareActions}>Подготовить изменение цен</button></div>}
       {detail.batches.map((batch) => <section className="procurement-batch" key={batch.id}><div className="admin-block-heading"><div><p className="eyebrow">{batch.kind === "prices" ? "Цены" : "Поступление"}</p><h3>{batch.kind === "prices" ? "Изменения по каналам" : "Черновик для СБИС"}</h3></div><span className="admin-pill">{batchStatusLabel(batch.status)}</span></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Канал</th><th>Было</th><th>Станет / количество</th><th>Статус</th></tr></thead><tbody>{batch.items.map((item) => <tr key={item.id}><td>{item.productName}</td><td>{channelLabel(item.channel)}{item.externalArticle && <small>{item.externalArticle}</small>}</td><td>{item.oldValue == null ? "—" : money.format(item.oldValue)}</td><td>{item.quantity ?? money.format(item.newValue)}{item.compareAtValue && item.compareAtValue > item.newValue ? <small>до скидки {money.format(item.compareAtValue)}</small> : null}</td><td>{actionStatus(item)}</td></tr>)}</tbody></table></div>{batch.status === "draft" && <div className="dialog-actions"><button className="primary" disabled={saving || !batch.items.length} onClick={() => void approve(batch)}>Подтвердить {batch.items.length} действий</button></div>}{batch.items.some((item) => item.status === "failed") && <div className="dialog-actions"><button disabled={saving} onClick={() => void retry(batch)}>Повторить ошибки</button></div>}</section>)}
