@@ -69,6 +69,8 @@ type PricingSettings struct {
 	AvoidRoundHundreds            bool    `json:"avoidRoundHundreds"`
 	RecommendationDays            int     `json:"recommendationDays"`
 	TargetCoverDays               int     `json:"targetCoverDays"`
+	RetailMarkupMultiplier        float64 `json:"retailMarkupMultiplier"`
+	RoundPrices                   bool    `json:"roundPrices"`
 }
 
 type Supplier struct {
@@ -129,6 +131,7 @@ type OrderCosts struct {
 	ExchangeRate        float64 `json:"exchangeRate"`
 	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
 	TrolleyCostRUB      float64 `json:"trolleyCostRub"`
+	DeliveryToMoscowRUB float64 `json:"deliveryToMoscowRub"`
 	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
 }
 
@@ -191,6 +194,7 @@ type CalculationInput struct {
 	ExchangeRate        float64 `json:"exchangeRate"`
 	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
 	TrolleyCostRUB      float64 `json:"trolleyCostRub"`
+	DeliveryToMoscowRUB float64 `json:"deliveryToMoscowRub"`
 	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
 }
 

@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR" } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
-    settings: { version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30 },
+    settings: { version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
     suppliers: [{ id: 1, name: "Тестовый поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
-    orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
+    orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: options.currency || "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "Тестовый поставщик", rawName: "Тестовая строка D10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "TEST-SABY-1", suggestedSabyName: "Тестовый товар D10", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
     requests: [], availability: [], recommendations: [],
@@ -19,7 +19,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     ],
   };
   const orderDetail = {
-    order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToRyazanRub: 0 },
+    order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
     validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
     lines: [], batches: [],
   };
@@ -93,7 +93,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
 });
 
 test("@desktop procurement opens an order with no validation blockers", async ({ page }) => {
-  await mockProcurement(page, { blockers: null });
+  await mockProcurement(page, { blockers: null, currency: "EUR" });
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки" }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
@@ -101,8 +101,21 @@ test("@desktop procurement opens an order with no validation blockers", async ({
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("Проверки пройдены")).toBeVisible();
 
-  const delivery = page.getByLabel("Москва → Рязань, ₽");
+  const delivery = page.getByLabel("Москва → Рязань, весь инвойс, ₽");
   await delivery.click();
   await delivery.pressSequentially("14000");
   await expect(delivery).toHaveValue("14000");
+});
+
+test("@desktop procurement shows one markup and clear rounding settings", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Формула v1" }).click();
+
+  await expect(page.getByLabel("Наценка на закупочную стоимость, %")).toHaveValue("110");
+  await expect(page.getByLabel("Менять цену при отклонении более, %")).toHaveValue("10");
+  await expect(page.getByLabel("Округлять цены до ближайших 50 или 90")).toBeChecked();
+  await expect(page.getByLabel("База Голландии")).toHaveCount(0);
+  await expect(page.getByLabel("Объём телеги, см³")).toHaveCount(0);
 });

@@ -94,7 +94,8 @@ func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, 
 			price_change_threshold::DOUBLE PRECISION, domestic_retail_multiplier::DOUBLE PRECISION,
 			international_cost_multiplier::DOUBLE PRECISION, international_retail_multiplier::DOUBLE PRECISION,
 			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
-			avoid_round_hundreds, recommendation_days, target_cover_days
+			avoid_round_hundreds, recommendation_days, target_cover_days,
+			retail_markup_multiplier::DOUBLE PRECISION, round_prices
 		FROM procurement_pricing_settings WHERE id = 1
 	`).Scan(
 		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
@@ -104,6 +105,7 @@ func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, 
 		&item.InternationalCostMultiplier, &item.InternationalRetailMultiplier,
 		&item.MarketplaceStrikeMarkup, &item.RetailRoundStep, &item.AvoidRoundHundreds,
 		&item.RecommendationDays, &item.TargetCoverDays,
+		&item.RetailMarkupMultiplier, &item.RoundPrices,
 	)
 	if err != nil {
 		return PricingSettings{}, fmt.Errorf("load procurement pricing settings: %w", err)
@@ -127,7 +129,8 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 			international_cost_multiplier = $13, international_retail_multiplier = $14,
 			marketplace_strike_markup = $15, retail_round_step = $16,
 			avoid_round_hundreds = $17, recommendation_days = $18, target_cover_days = $19,
-			updated_by = $20, updated_at = CURRENT_TIMESTAMP
+			retail_markup_multiplier = $20, round_prices = $21,
+			updated_by = $22, updated_at = CURRENT_TIMESTAMP
 		WHERE id = 1
 		RETURNING version, default_exchange_rate::DOUBLE PRECISION,
 			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
@@ -137,14 +140,15 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 			price_change_threshold::DOUBLE PRECISION, domestic_retail_multiplier::DOUBLE PRECISION,
 			international_cost_multiplier::DOUBLE PRECISION, international_retail_multiplier::DOUBLE PRECISION,
 			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
-			avoid_round_hundreds, recommendation_days, target_cover_days
+			avoid_round_hundreds, recommendation_days, target_cover_days,
+			retail_markup_multiplier::DOUBLE PRECISION, round_prices
 	`, input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3,
 		input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate,
 		input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold,
 		input.DomesticRetailMultiplier, input.InternationalCostMultiplier,
 		input.InternationalRetailMultiplier, input.MarketplaceStrikeMarkup,
 		input.RetailRoundStep, input.AvoidRoundHundreds, input.RecommendationDays,
-		input.TargetCoverDays, actor.CustomerID,
+		input.TargetCoverDays, input.RetailMarkupMultiplier, input.RoundPrices, actor.CustomerID,
 	).Scan(
 		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
 		&item.TrolleyVolumeCM3, &item.TrolleyFillRatio, &item.ReturnLossRate,
@@ -153,6 +157,7 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 		&item.InternationalCostMultiplier, &item.InternationalRetailMultiplier,
 		&item.MarketplaceStrikeMarkup, &item.RetailRoundStep, &item.AvoidRoundHundreds,
 		&item.RecommendationDays, &item.TargetCoverDays,
+		&item.RetailMarkupMultiplier, &item.RoundPrices,
 	)
 	if err != nil {
 		return PricingSettings{}, fmt.Errorf("update procurement settings: %w", err)
@@ -318,9 +323,11 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	detail.Order = order
 	err = store.pool.QueryRow(ctx, `
 		SELECT COALESCE(exchange_rate, 0)::DOUBLE PRECISION,
-			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, delivery_to_ryazan_rub::DOUBLE PRECISION
+			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION,
+			delivery_to_moscow_rub::DOUBLE PRECISION, delivery_to_ryazan_rub::DOUBLE PRECISION
 		FROM procurement_orders WHERE id = $1
-	`, orderID).Scan(&detail.Costs.ExchangeRate, &detail.Costs.TrolleyCostCurrency, &detail.Costs.TrolleyCostRUB, &detail.Costs.DeliveryToRyazanRUB)
+	`, orderID).Scan(&detail.Costs.ExchangeRate, &detail.Costs.TrolleyCostCurrency, &detail.Costs.TrolleyCostRUB,
+		&detail.Costs.DeliveryToMoscowRUB, &detail.Costs.DeliveryToRyazanRUB)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("load procurement order costs: %w", err)
 	}
@@ -470,7 +477,10 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		}
 	}
 	if kind == KindInternational {
-		result.ExpectedTrolleyRUB = float64(result.TrolleyCount) * detail.Costs.TrolleyCostRUB
+		result.ExpectedTrolleyRUB = detail.Costs.DeliveryToMoscowRUB
+		if result.ExpectedTrolleyRUB == 0 {
+			result.ExpectedTrolleyRUB = float64(result.TrolleyCount) * detail.Costs.TrolleyCostRUB
+		}
 	}
 	result.ExpectedRyazanRUB = detail.Costs.DeliveryToRyazanRUB
 	if documents == 0 {
@@ -594,6 +604,12 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		accepted          bool
 	}
 	comparisons := make(map[string]*calculationComparison)
+	deliveryToMoscowRUB := input.DeliveryToMoscowRUB
+	if deliveryToMoscowRUB == 0 && input.TrolleyCostRUB > 0 {
+		deliveryToMoscowRUB = input.TrolleyCostRUB * float64(len(loadVolumes))
+	}
+	perTrolleyRUB := 0.0
+	perTrolleyRUB = deliveryPerTrolley(deliveryToMoscowRUB, len(loadVolumes))
 	for _, line := range lines {
 		if line.matchStatus != "confirmed" || line.sabyID == "" {
 			continue
@@ -642,7 +658,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		trolleyPerUnit := 0.0
 		if kind == KindInternational && loadVolumes[line.loadUnit] > 0 {
 			unitVolume := math.Pi * math.Pow(line.pot/2, 2) * line.height
-			trolleyPerUnit = input.TrolleyCostRUB * unitVolume / loadVolumes[line.loadUnit]
+			trolleyPerUnit = perTrolleyRUB * unitVolume / loadVolumes[line.loadUnit]
 		}
 		ryazanPerUnit := 0.0
 		if totalHeightUnits > 0 {
@@ -674,11 +690,11 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_orders SET exchange_rate = $2, trolley_cost_currency = $3, trolley_cost_rub = $4,
-			delivery_to_ryazan_rub = $5, calculation_version = $6,
-			calculation_settings = $7, calculated_at = CURRENT_TIMESTAMP,
+			delivery_to_moscow_rub = $5, delivery_to_ryazan_rub = $6, calculation_version = $7,
+			calculation_settings = $8, calculated_at = CURRENT_TIMESTAMP,
 			status = 'ready_to_receive', updated_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, orderID, input.ExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.DeliveryToRyazanRUB,
-		settings.Version, snapshot); err != nil {
+	`, orderID, input.ExchangeRate, input.TrolleyCostCurrency, perTrolleyRUB, deliveryToMoscowRUB,
+		input.DeliveryToRyazanRUB, settings.Version, snapshot); err != nil {
 		return OrderDetail{}, fmt.Errorf("save procurement calculation: %w", err)
 	}
 	if err := audit(ctx, tx, actor, "procurement.order.calculate", "procurement_order", orderID, input); err != nil {
