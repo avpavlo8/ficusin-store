@@ -160,7 +160,11 @@ export default function AdminPage() {
   const [wholesaleOnly, setWholesaleOnly] = useState(false);
   const user = useStoreUser();
 
-  useEffect(() => { api<AdminData>("/api/v1/admin/dashboard").then(setData).catch(setError); }, []);
+  useEffect(() => {
+    api<AdminData>("/api/v1/admin/dashboard")
+      .then(setData)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Не удалось загрузить панель"));
+  }, []);
 
   const go = (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
     setFocusOrder(options?.orderNumber || "");
