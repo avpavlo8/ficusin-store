@@ -67,6 +67,9 @@ type ProcurementDocument = {
   documentDate?: string; currency: string; lines: number; units: number; productSubtotal: number;
   packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; createdAt: string;
 };
+type NomenclatureCandidate = {
+  sabyId: string; code: string; article: string; name: string; balance: number; price: number;
+};
 type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
   suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; documents: ProcurementDocument[]; review: ProcurementAlias[];
@@ -351,6 +354,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
   const [supplierDialog, setSupplierDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [uploadDialog, setUploadDialog] = useState(false);
+  const [matchDialog, setMatchDialog] = useState<ProcurementAlias | null>(null);
   const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
     .then(setData).catch((error) => onError((error as Error).message)), [onError]);
   useEffect(() => { void load(); }, [load]);
@@ -410,18 +414,40 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
     <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Контроль</p><h2>Очередь сопоставления</h2></div><span className="admin-pill">{data.review.length} показано</span></div>
       {data.review.length ? <div className="admin-table-wrap"><table className="admin-table procurement-review"><thead><tr>
-        <th>Поставщик</th><th>Название в документе</th><th>Размер</th><th>Кандидат СБИС</th><th>Уверенность</th><th>Наличие</th>
+        <th>Поставщик</th><th>Название в документе</th><th>Размер</th><th>Кандидат СБИС</th><th>Уверенность</th><th>Наличие</th><th></th>
       </tr></thead><tbody>{data.review.map((item) => <tr key={item.id}>
         <td>{item.supplierName}</td><td><strong>{item.rawName}</strong>{item.supplierArticle && <small>Артикул: {item.supplierArticle}</small>}</td>
         <td>{[item.potDiameterCm && `D${item.potDiameterCm}`, item.heightCm && `${item.heightCm} см`].filter(Boolean).join(" · ") || "—"}</td>
         <td><strong>{item.suggestedSabyName || "Кандидат не найден"}</strong><small>{item.suggestedSabyId}</small></td>
         <td>{Math.round(item.confidence * 100)}%</td><td>{item.availabilityStatus === "check" ? "Проверить" : "Неизвестно"}</td>
+        <td><button className="table-action" onClick={() => setMatchDialog(item)}>Сопоставить</button></td>
       </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Очередь пуста</strong><span>Новые названия появятся здесь после разбора первого документа.</span></div>}
     </section>
     {supplierDialog && <SupplierDialog onClose={() => setSupplierDialog(false)} onSaved={() => { setSupplierDialog(false); void load(); }} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
+    {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
   </>;
+}
+
+function ProcurementMatchDialog({ alias, onClose, onSaved, onError }: { alias: ProcurementAlias; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [query, setQuery] = useState(alias.rawName); const [items, setItems] = useState<NomenclatureCandidate[]>([]);
+  const [searching, setSearching] = useState(false); const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (query.trim().length < 2) { setItems([]); return; }
+    const timer = window.setTimeout(() => { setSearching(true); api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`)
+      .then((result) => setItems(result.items)).catch((error) => onError((error as Error).message)).finally(() => setSearching(false)); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query, onError]);
+  const resolve = async (matchStatus: "confirmed" | "new_product" | "ignored", sabyId = "") => { setSaving(true); try {
+    await api(`/api/v1/admin/procurement/aliases/${alias.id}`, { method: "PATCH", body: JSON.stringify({ matchStatus, sabyId }) }); onSaved();
+  } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="match-title"><header><div><p className="eyebrow">{alias.supplierName}</p><h2 id="match-title">Сопоставить товар</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="procurement-match-source"><strong>{alias.rawName}</strong><span>{[alias.supplierArticle && `Артикул ${alias.supplierArticle}`, alias.potDiameterCm && `D${alias.potDiameterCm}`, alias.heightCm && `${alias.heightCm} см`].filter(Boolean).join(" · ") || "Размер не указан"}</span></div>
+    <label className="procurement-match-search">Поиск по всему справочнику СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
+    <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в СБИС…</span></div> : items.length ? items.map((item) => <article key={item.sabyId}><div><strong>{item.name}</strong><span>{[item.code, item.article, item.sabyId].filter(Boolean).join(" · ")}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div><button disabled={saving} onClick={() => void resolve("confirmed", item.sabyId)}>Выбрать</button></article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Измените запрос или отметьте позицию как новый товар.</span></div>}</div>
+    <div className="dialog-actions procurement-match-actions"><button onClick={() => void resolve("ignored")} disabled={saving}>Игнорировать строку</button><button onClick={() => void resolve("new_product")} disabled={saving}>Это новый товар</button><button className="primary" onClick={onClose}>Отмена</button></div>
+  </div></>;
 }
 
 function ProcurementUploadDialog({ suppliers, orders, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {

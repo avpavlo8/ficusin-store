@@ -19,6 +19,8 @@ type procurementStub struct {
 	supplierInputs []procurement.SupplierCreate
 	orderInputs    []procurement.OrderCreate
 	documentInputs []procurement.DocumentUpload
+	searchInputs   []string
+	aliasInputs    []procurement.AliasResolution
 }
 
 func (stub *procurementStub) Dashboard(context.Context) (procurement.Dashboard, error) {
@@ -38,6 +40,14 @@ func (stub *procurementStub) CreateOrder(_ context.Context, _ procurement.Actor,
 func (stub *procurementStub) ImportDocument(_ context.Context, _ procurement.Actor, input procurement.DocumentUpload) (procurement.ImportResult, error) {
 	stub.documentInputs = append(stub.documentInputs, input)
 	return procurement.ImportResult{Document: procurement.DocumentSummary{ID: 12}}, nil
+}
+func (stub *procurementStub) SearchNomenclature(_ context.Context, query string) ([]procurement.NomenclatureCandidate, error) {
+	stub.searchInputs = append(stub.searchInputs, query)
+	return []procurement.NomenclatureCandidate{{SabyID: "X1", Name: "Фикус Лирата"}}, nil
+}
+func (stub *procurementStub) ResolveAlias(_ context.Context, _ procurement.Actor, aliasID int64, input procurement.AliasResolution) (procurement.AliasReview, error) {
+	stub.aliasInputs = append(stub.aliasInputs, input)
+	return procurement.AliasReview{ID: aliasID, MatchStatus: input.MatchStatus}, nil
 }
 
 func procurementDependencies(service procurementService, role string) Dependencies {
@@ -112,5 +122,25 @@ func TestProcurementRejectsUnknownRole(t *testing.T) {
 	NewRouter(discardLogger(), procurementDependencies(&procurementStub{}, "unknown")).ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestProcurementNomenclatureSearchAndAliasResolution(t *testing.T) {
+	t.Parallel()
+	service := &procurementStub{}
+	router := NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager))
+
+	search := adminRequest(http.MethodGet, "/api/v1/admin/procurement/nomenclature?q=Фикус", "")
+	searchResponse := httptest.NewRecorder()
+	router.ServeHTTP(searchResponse, search)
+	if searchResponse.Code != http.StatusOK || len(service.searchInputs) != 1 || service.searchInputs[0] != "Фикус" {
+		t.Fatalf("unexpected search response: status=%d calls=%+v body=%s", searchResponse.Code, service.searchInputs, searchResponse.Body.String())
+	}
+
+	resolve := adminRequest(http.MethodPatch, "/api/v1/admin/procurement/aliases/9", `{"matchStatus":"confirmed","sabyId":"X1"}`)
+	resolveResponse := httptest.NewRecorder()
+	router.ServeHTTP(resolveResponse, resolve)
+	if resolveResponse.Code != http.StatusOK || len(service.aliasInputs) != 1 || service.aliasInputs[0].SabyID != "X1" {
+		t.Fatalf("unexpected resolution response: status=%d calls=%+v body=%s", resolveResponse.Code, service.aliasInputs, resolveResponse.Body.String())
 	}
 }

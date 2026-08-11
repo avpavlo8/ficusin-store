@@ -17,6 +17,8 @@ type procurementService interface {
 	CreateSupplier(context.Context, procurement.Actor, procurement.SupplierCreate) (procurement.Supplier, error)
 	CreateOrder(context.Context, procurement.Actor, procurement.OrderCreate) (procurement.OrderSummary, error)
 	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
+	SearchNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
+	ResolveAlias(context.Context, procurement.Actor, int64, procurement.AliasResolution) (procurement.AliasReview, error)
 }
 
 type procurementHandlers struct {
@@ -151,6 +153,50 @@ func (handlers procurementHandlers) importDocument(response http.ResponseWriter,
 		status = http.StatusOK
 	}
 	writeJSON(response, status, result)
+}
+
+func (handlers procurementHandlers) searchNomenclature(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	if handlers.service == nil {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Раздел закупок пока недоступен"})
+		return
+	}
+	items, err := handlers.service.SearchNomenclature(request.Context(), request.URL.Query().Get("q"))
+	if err != nil {
+		handlers.failed(response, "search procurement nomenclature", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+}
+
+func (handlers procurementHandlers) resolveAlias(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	if handlers.service == nil {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Раздел закупок пока недоступен"})
+		return
+	}
+	aliasID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input procurement.AliasResolution
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное решение по сопоставлению"})
+		return
+	}
+	item, err := handlers.service.ResolveAlias(request.Context(), procurement.Actor{
+		CustomerID: actor.CustomerID, Role: actor.Role,
+	}, aliasID, input)
+	if err != nil {
+		handlers.failed(response, "resolve procurement alias", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"alias": item})
 }
 
 func (handlers procurementHandlers) failed(response http.ResponseWriter, operation string, err error) {

@@ -310,6 +310,21 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .procurement-file { padding: 14px; border: 1px dashed var(--line); border-radius: 11px; background: var(--cream); }
 .procurement-file input { padding: 0; border: 0; background: transparent; }
 .procurement-file span { color: #748078; font-size: 12px; }
+.procurement-match-dialog { width: min(720px, calc(100vw - 32px)); }
+.procurement-match-dialog header > div { min-width: 0; }
+.procurement-match-dialog header .eyebrow { margin: 0 0 5px; }
+.procurement-match-source { margin-bottom: 16px; padding: 14px 16px; display: grid; gap: 5px; border-radius: 11px; background: var(--cream); }
+.procurement-match-source strong { color: var(--green); }
+.procurement-match-source span { color: #748078; font-size: 12px; }
+.procurement-match-search { display: grid; gap: 7px; color: #58635b; font-size: 12px; font-weight: 700; }
+.procurement-match-search input { padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; font: inherit; font-size: 14px; }
+.procurement-candidates { min-height: 190px; max-height: 340px; margin-top: 14px; overflow-y: auto; display: grid; align-content: start; gap: 7px; }
+.procurement-candidates article { padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.procurement-candidates article div { display: grid; gap: 3px; min-width: 0; }
+.procurement-candidates article strong { color: var(--green); }
+.procurement-candidates article span, .procurement-candidates article small { overflow: hidden; color: #748078; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.procurement-candidates article button { padding: 8px 12px; border: 1px solid var(--green); border-radius: 8px; background: white; color: var(--green); font: inherit; font-weight: 700; cursor: pointer; }
+.procurement-match-actions { flex-wrap: wrap; }
 .procurement-warning { color: #9b522f; font-weight: 700; }
 .procurement-ok { color: #2d6848; font-weight: 700; }
 .procurement-zero { min-height: 120px; padding: 24px; display: grid; place-items: center; align-content: center; gap: 7px; border: 1px dashed var(--line); border-radius: 13px; color: #748078; text-align: center; }

@@ -28,6 +28,7 @@ async function mockProcurement(page: import("@playwright/test").Page) {
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
+      if (path === "/api/v1/admin/procurement/nomenclature") return json({ items: [{ sabyId: "X7582076", code: "000-123", article: "FIC-LYR-10", name: "Фикус Лирата D10", balance: 4, price: 1290 }] });
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
@@ -46,6 +47,10 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await expect(page.getByText("Суммы сходятся")).toBeVisible();
   await expect(page.getByText("Фикус Лирата d 10")).toBeVisible();
   await expect(page.getByText("2 не сопоставлено")).toBeVisible();
+  await page.getByRole("button", { name: "Сопоставить" }).click();
+  await expect(page.getByRole("dialog", { name: "Сопоставить товар" })).toBeVisible();
+  await expect(page.getByText("Фикус Лирата D10")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Это новый товар" })).toBeVisible();
 });
 
 test("@phone procurement does not break the admin layout", async ({ page }) => {
