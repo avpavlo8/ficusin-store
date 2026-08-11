@@ -167,11 +167,19 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/admin/categories/{id}", adminAPI.updateCategory)
 	mux.HandleFunc("DELETE /api/v1/admin/categories/{id}", adminAPI.deleteCategory)
 	mux.HandleFunc("GET /api/v1/admin/procurement", procurementAPI.dashboard)
+	mux.HandleFunc("PUT /api/v1/admin/procurement/settings", procurementAPI.updateSettings)
 	mux.HandleFunc("POST /api/v1/admin/procurement/suppliers", procurementAPI.createSupplier)
 	mux.HandleFunc("POST /api/v1/admin/procurement/orders", procurementAPI.createOrder)
+	mux.HandleFunc("POST /api/v1/admin/procurement/plans", procurementAPI.createPlan)
+	mux.HandleFunc("GET /api/v1/admin/procurement/orders/{id}", procurementAPI.orderDetail)
+	mux.HandleFunc("POST /api/v1/admin/procurement/orders/{id}/calculate", procurementAPI.calculateOrder)
+	mux.HandleFunc("POST /api/v1/admin/procurement/orders/{id}/batches", procurementAPI.prepareBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/documents", procurementAPI.importDocument)
 	mux.HandleFunc("GET /api/v1/admin/procurement/nomenclature", procurementAPI.searchNomenclature)
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/aliases/{id}", procurementAPI.resolveAlias)
+	mux.HandleFunc("PATCH /api/v1/admin/procurement/availability/{id}", procurementAPI.updateAvailability)
+	mux.HandleFunc("POST /api/v1/admin/procurement/requests", procurementAPI.createRequest)
+	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/approve", procurementAPI.approveBatch)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),

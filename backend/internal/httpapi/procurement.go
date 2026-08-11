@@ -14,11 +14,19 @@ import (
 
 type procurementService interface {
 	Dashboard(context.Context) (procurement.Dashboard, error)
+	UpdateSettings(context.Context, procurement.Actor, procurement.PricingSettings) (procurement.PricingSettings, error)
 	CreateSupplier(context.Context, procurement.Actor, procurement.SupplierCreate) (procurement.Supplier, error)
 	CreateOrder(context.Context, procurement.Actor, procurement.OrderCreate) (procurement.OrderSummary, error)
+	CreatePlan(context.Context, procurement.Actor, procurement.PlanCreate) (procurement.OrderSummary, error)
+	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
+	CalculateOrder(context.Context, procurement.Actor, int64, procurement.CalculationInput) (procurement.OrderDetail, error)
 	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
 	ResolveAlias(context.Context, procurement.Actor, int64, procurement.AliasResolution) (procurement.AliasReview, error)
+	CreateRequest(context.Context, procurement.Actor, procurement.RequestCreate) (procurement.Request, error)
+	UpdateAvailability(context.Context, procurement.Actor, int64, procurement.AvailabilityUpdate) (procurement.AliasReview, error)
+	PrepareBatch(context.Context, procurement.Actor, int64, string) (procurement.ActionBatch, error)
+	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 }
 
 type procurementHandlers struct {
@@ -45,6 +53,24 @@ func (handlers procurementHandlers) dashboard(response http.ResponseWriter, requ
 		return
 	}
 	writeJSON(response, http.StatusOK, result)
+}
+
+func (handlers procurementHandlers) updateSettings(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	var input procurement.PricingSettings
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные настройки расчёта"})
+		return
+	}
+	item, err := handlers.service.UpdateSettings(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input)
+	if err != nil {
+		handlers.failed(response, "update procurement settings", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"settings": item})
 }
 
 func (handlers procurementHandlers) createSupplier(response http.ResponseWriter, request *http.Request) {
@@ -93,6 +119,62 @@ func (handlers procurementHandlers) createOrder(response http.ResponseWriter, re
 		return
 	}
 	writeJSON(response, http.StatusCreated, map[string]any{"order": item})
+}
+
+func (handlers procurementHandlers) createPlan(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	var input procurement.PlanCreate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный список закупки"})
+		return
+	}
+	item, err := handlers.service.CreatePlan(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input)
+	if err != nil {
+		handlers.failed(response, "create procurement plan", err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"order": item})
+}
+
+func (handlers procurementHandlers) orderDetail(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	item, err := handlers.service.OrderDetail(request.Context(), orderID)
+	if err != nil {
+		handlers.failed(response, "load procurement order", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, item)
+}
+
+func (handlers procurementHandlers) calculateOrder(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input procurement.CalculationInput
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные расходы закупки"})
+		return
+	}
+	item, err := handlers.service.CalculateOrder(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID, input)
+	if err != nil {
+		handlers.failed(response, "calculate procurement order", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, item)
 }
 
 func (handlers procurementHandlers) importDocument(response http.ResponseWriter, request *http.Request) {
@@ -197,6 +279,87 @@ func (handlers procurementHandlers) resolveAlias(response http.ResponseWriter, r
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"alias": item})
+}
+
+func (handlers procurementHandlers) createRequest(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	var input procurement.RequestCreate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный запрос на закупку"})
+		return
+	}
+	item, err := handlers.service.CreateRequest(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input)
+	if err != nil {
+		handlers.failed(response, "create procurement request", err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"request": item})
+}
+
+func (handlers procurementHandlers) updateAvailability(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	aliasID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input procurement.AvailabilityUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус наличия"})
+		return
+	}
+	item, err := handlers.service.UpdateAvailability(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, aliasID, input)
+	if err != nil {
+		handlers.failed(response, "update procurement availability", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"alias": item})
+}
+
+func (handlers procurementHandlers) prepareBatch(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input struct {
+		Kind string `json:"kind"`
+	}
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный тип документа"})
+		return
+	}
+	item, err := handlers.service.PrepareBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID, input.Kind)
+	if err != nil {
+		handlers.failed(response, "prepare procurement batch", err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"batch": item})
+}
+
+func (handlers procurementHandlers) approveBatch(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	batchID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	item, err := handlers.service.ApproveBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, batchID)
+	if err != nil {
+		handlers.failed(response, "approve procurement batch", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"batch": item})
 }
 
 func (handlers procurementHandlers) failed(response http.ResponseWriter, operation string, err error) {

@@ -56,6 +56,13 @@ type ProcurementOrder = {
   documentNumber: string; documentDate?: string; sourceKind: string; currency: string;
   status: string; lines: number; units: number; total: number; unmatched: number; createdAt: string;
 };
+type ProcurementSettings = {
+  version: number; defaultExchangeRate: number; trolleyCostCurrency: number; trolleyVolumeCm3: number;
+  trolleyFillRatio: number; returnLossRate: number; marketplaceCostRate: number; taxRate: number;
+  reserveRate: number; packageRub: number; priceChangeThreshold: number; domesticRetailMultiplier: number;
+  internationalCostMultiplier: number; internationalRetailMultiplier: number; marketplaceStrikeMarkup: number;
+  retailRoundStep: number; avoidRoundHundreds: boolean; recommendationDays: number; targetCoverDays: number;
+};
 type ProcurementAlias = {
   id: number; supplierId: number; supplierName: string; rawName: string; supplierArticle: string;
   potDiameterCm?: number; heightCm?: number; suggestedSabyId: string; suggestedSabyName: string;
@@ -70,9 +77,25 @@ type ProcurementDocument = {
 type NomenclatureCandidate = {
   sabyId: string; code: string; article: string; name: string; balance: number; price: number;
 };
+type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
+type ProcurementRecommendation = { aliasId: number; sabyId: string; name: string; supplierArticle: string; balance: number; siteSales: number; openRequests: number; suggestedQty: number; reason: string };
+type ProcurementActionItem = { id: number; lineId: number; productName: string; channel: string; externalArticle: string; oldValue?: number; newValue: number; quantity?: number; status: string; errorMessage: string };
+type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
+type ProcurementOrderLine = {
+  id: number; sabyId: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
+  unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
+  loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
+  purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
+  currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
+  proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
+  comparisonMismatch: boolean;
+};
+type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; trolleyCostCurrency: number; deliveryToRyazanRub: number }; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
-  suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; documents: ProcurementDocument[]; review: ProcurementAlias[];
+  settings: ProcurementSettings; suppliers: ProcurementSupplier[]; orders: ProcurementOrder[];
+  documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
+  availability: ProcurementAlias[]; recommendations: ProcurementRecommendation[];
 };
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
@@ -351,10 +374,14 @@ const procurementParserLabels: Record<string, string> = {
 
 function Procurement({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
+  const [view, setView] = useState<"orders" | "recommendations" | "requests" | "availability" | "settings">("orders");
   const [supplierDialog, setSupplierDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [uploadDialog, setUploadDialog] = useState(false);
+  const [requestDialog, setRequestDialog] = useState(false);
+  const [planDialog, setPlanDialog] = useState(false);
   const [matchDialog, setMatchDialog] = useState<ProcurementAlias | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
   const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
     .then(setData).catch((error) => onError((error as Error).message)), [onError]);
   useEffect(() => { void load(); }, [load]);
@@ -369,8 +396,8 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
     <div className="procurement-safety">
-      <div><strong>Безопасный режим включён</strong><p>Раздел пока только готовит данные. Остатки и цены в СБИС, на сайте, WB и Ozon здесь не меняются.</p></div>
-      <span>Нет автопроводки</span>
+      <div><strong>Изменения только после подтверждения</strong><p>Сайт применяет подтверждённую цену сразу. СБИС, WB и Ozon показываются отдельными действиями и не считаются выполненными, пока их API не подключён.</p></div>
+      <span>Проводка СБИС вручную</span>
     </div>
     <div className="admin-stats procurement-stats">
       <article><span>Активные закупки</span><strong>{data.summary.openOrders}</strong><small>кроме принятых и отменённых</small></article>
@@ -382,10 +409,19 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
       <button className="admin-primary" onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить PDF</button>
       <button className="admin-primary" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Новая закупка</button>
       <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Добавить поставщика</button>
+      <button className="secondary-button" onClick={() => setRequestDialog(true)}>Добавить запрос</button>
       <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
     </div>
 
-    <section className="admin-block procurement-block">
+    <div className="procurement-tabs" role="tablist">
+      <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
+      <button className={view === "recommendations" ? "active" : ""} onClick={() => setView("recommendations")}>Что заказать</button>
+      <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Под заказ <span>{data.summary.openRequests}</span></button>
+      <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Наличие <span>{data.summary.availabilityChecks}</span></button>
+      <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Формула v{data.settings.version}</button>
+    </div>
+
+    {view === "orders" && <><section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Входящие документы</p><h2>Инвойсы и счета</h2></div><span className="admin-pill">{data.documents.length} загружено</span></div>
       {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
         <th>Документ</th><th>Поставщик</th><th>Формат</th><th>Строк / шт.</th><th>Растения</th><th>Упаковка</th><th>Проверка</th>
@@ -401,7 +437,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
       <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Текущие закупки</h2></div></div>
       {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
         <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Строк / шт.</th><th>Сумма</th><th>Проверка</th>
-      </tr></thead><tbody>{data.orders.map((item) => <tr key={item.id}>
+      </tr></thead><tbody>{data.orders.map((item) => <tr key={item.id} className="clickable" onClick={() => setSelectedOrder(item.id)}>
         <td><strong>{item.orderNumber || `Черновик №${item.id}`}</strong><small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small></td>
         <td><strong>{item.supplierName}</strong><small>{item.currency}</small></td>
         <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
@@ -422,13 +458,124 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
         <td>{Math.round(item.confidence * 100)}%</td><td>{item.availabilityStatus === "check" ? "Проверить" : "Неизвестно"}</td>
         <td><button className="table-action" onClick={() => setMatchDialog(item)}>Сопоставить</button></td>
       </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Очередь пуста</strong><span>Новые названия появятся здесь после разбора первого документа.</span></div>}
-    </section>
+    </section></>}
+
+    {view === "recommendations" && <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Остаток + продажи сайта</p><h2>Рекомендации к закупке</h2></div><button className="admin-primary" disabled={!data.recommendations.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ</button></div>
+      <p className="admin-hint procurement-note">WB и Ozon появятся в расчёте после подключения их аналитических API. Сейчас алгоритм честно использует остаток СБИС, продажи сайта и ручные запросы.</p>
+      {data.recommendations.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Артикул Голландии</th><th>Остаток</th><th>Продажи</th><th>Запросы</th><th>Рекомендация</th><th></th></tr></thead><tbody>{data.recommendations.map((item) => <tr key={item.sabyId}><td><strong>{item.name}</strong><small>{item.reason}</small></td><td>{item.supplierArticle || "Нужно заполнить"}</td><td>{item.balance}</td><td>{item.siteSales}</td><td>{item.openRequests}</td><td><strong>{item.suggestedQty} шт.</strong></td><td>{item.aliasId > 0 && <button className="table-action" onClick={() => void updateAvailability(item.aliasId, "check", load, onError)}>Проверить наличие</button>}</td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Пока нечего рекомендовать</strong><span>Нужны продажи сайта, запросы или сопоставленные товары.</span></div>}
+    </section>}
+
+    {view === "requests" && <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Приоритет закупки</p><h2>Под заказ и идеи магазина</h2></div><button className="admin-primary" onClick={() => setRequestDialog(true)}>Добавить</button></div>
+      {data.requests.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Тип</th><th>Товар</th><th>Количество</th><th>Комментарий</th><th>Создан</th></tr></thead><tbody>{data.requests.map((item) => <tr key={item.id}><td>{item.kind === "customer_order" ? <span className="procurement-warning">Клиенту</span> : "Рекомендация"}</td><td><strong>{item.requestedName}</strong><small>{item.sabyId}</small></td><td>{item.quantity}</td><td>{item.notes || "—"}</td><td>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Запросов нет</strong><span>Добавьте клиентский заказ или рекомендацию сотрудника.</span></div>}
+    </section>}
+
+    {view === "availability" && <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Исключения из рекомендаций</p><h2>Проверить наличие у поставщика</h2></div></div>
+      {data.availability.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Последний раз</th><th>Статус</th><th>Действия</th></tr></thead><tbody>{data.availability.map((item) => <tr key={item.id}><td><strong>{item.suggestedSabyName || item.rawName}</strong><small>{item.supplierArticle}</small></td><td>{item.supplierName}</td><td>{item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleDateString("ru-RU") : "—"}</td><td>{availabilityLabel(item.availabilityStatus)}</td><td><div className="procurement-inline-actions"><button onClick={() => void updateAvailability(item.id, "available", load, onError)}>Есть</button><button onClick={() => void updateAvailability(item.id, "temporarily_unavailable", load, onError)}>Нет временно</button><button onClick={() => void updateAvailability(item.id, "check", load, onError)}>Проверить позже</button></div></td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Список пуст</strong><span>Помеченные временно отсутствующими растения не попадают в рекомендации.</span></div>}
+    </section>}
+
+    {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
     {supplierDialog && <SupplierDialog onClose={() => setSupplierDialog(false)} onSaved={() => { setSupplierDialog(false); void load(); }} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
+    {requestDialog && <ProcurementRequestDialog onClose={() => setRequestDialog(false)} onSaved={() => { setRequestDialog(false); void load(); }} onError={onError} />}
+    {planDialog && <ProcurementPlanDialog suppliers={data.suppliers} recommendations={data.recommendations} onClose={() => setPlanDialog(false)} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); }} onError={onError} />}
     {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
+    {selectedOrder && <ProcurementOrderDetailDialog orderId={selectedOrder} settings={data.settings} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
   </>;
 }
+
+const availabilityLabel = (value: string) => ({ available: "Есть", check: "Проверить", temporarily_unavailable: "Временно нет", discontinued: "Снят с продажи", unknown: "Неизвестно" }[value] || value);
+
+async function updateAvailability(aliasId: number, status: string, reload: () => Promise<unknown>, onError: (value: string) => void) {
+  const days = status === "check" ? 14 : status === "temporarily_unavailable" ? 30 : 0;
+  const date = days ? new Date(Date.now() + days * 86400000).toISOString().slice(0, 10) : "";
+  try { await api(`/api/v1/admin/procurement/availability/${aliasId}`, { method: "PATCH", body: JSON.stringify({ status, checkAfter: date }) }); await reload(); }
+  catch (error) { onError((error as Error).message); }
+}
+
+function ProcurementSettingsPanel({ settings, onSaved, onError }: { settings: ProcurementSettings; onSaved: () => void; onError: (value: string) => void }) {
+  const [draft, setDraft] = useState(settings); const [saving, setSaving] = useState(false);
+  const number = (key: keyof ProcurementSettings, value: string) => setDraft((current) => ({ ...current, [key]: Number(value) }));
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/settings", { method: "PUT", body: JSON.stringify(draft) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <section className="admin-block procurement-block"><div className="admin-block-heading"><div><p className="eyebrow">Версия {settings.version}</p><h2>Формула цены</h2></div><button className="admin-primary" disabled={saving} onClick={save}>{saving ? "Сохраняем…" : "Сохранить новую версию"}</button></div>
+    <p className="admin-hint procurement-note">Проценты вводятся как 5%, 46%, 8%. Уже рассчитанные поставки сохраняют снимок прежней версии.</p>
+    <div className="procurement-settings-grid">
+      <label>Курс оплаты<input type="number" step="0.01" value={draft.defaultExchangeRate} onChange={(event) => number("defaultExchangeRate", event.target.value)} /></label>
+      <label>Телега, валюта поставки<input type="number" step="0.01" value={draft.trolleyCostCurrency} onChange={(event) => number("trolleyCostCurrency", event.target.value)} /></label>
+      <label>Объём телеги, см³<input type="number" value={draft.trolleyVolumeCm3} onChange={(event) => number("trolleyVolumeCm3", event.target.value)} /></label>
+      <PercentField label="Заполнение телеги" value={draft.trolleyFillRatio} onChange={(value) => setDraft({ ...draft, trolleyFillRatio: value })} />
+      <PercentField label="Возвраты" value={draft.returnLossRate} onChange={(value) => setDraft({ ...draft, returnLossRate: value })} />
+      <PercentField label="Расходы маркетплейсов" value={draft.marketplaceCostRate} onChange={(value) => setDraft({ ...draft, marketplaceCostRate: value })} />
+      <PercentField label="Налог" value={draft.taxRate} onChange={(value) => setDraft({ ...draft, taxRate: value })} />
+      <PercentField label="Резерв" value={draft.reserveRate} onChange={(value) => setDraft({ ...draft, reserveRate: value })} />
+      <label>Упаковка, ₽<input type="number" value={draft.packageRub} onChange={(event) => number("packageRub", event.target.value)} /></label>
+      <PercentField label="Порог изменения цены" value={draft.priceChangeThreshold} onChange={(value) => setDraft({ ...draft, priceChangeThreshold: value })} />
+      <label>Наценка РФ<input type="number" step="0.01" value={draft.domesticRetailMultiplier} onChange={(event) => number("domesticRetailMultiplier", event.target.value)} /></label>
+      <label>База Голландии<input type="number" step="0.01" value={draft.internationalCostMultiplier} onChange={(event) => number("internationalCostMultiplier", event.target.value)} /></label>
+      <label>Наценка Голландии<input type="number" step="0.01" value={draft.internationalRetailMultiplier} onChange={(event) => number("internationalRetailMultiplier", event.target.value)} /></label>
+      <PercentField label="Цена МП без скидки" value={draft.marketplaceStrikeMarkup} onChange={(value) => setDraft({ ...draft, marketplaceStrikeMarkup: value })} />
+      <label>Шаг округления, ₽<input type="number" value={draft.retailRoundStep} onChange={(event) => number("retailRoundStep", event.target.value)} /></label>
+      <label>Период продаж, дней<input type="number" value={draft.recommendationDays} onChange={(event) => number("recommendationDays", event.target.value)} /></label>
+      <label>Целевой запас, дней<input type="number" value={draft.targetCoverDays} onChange={(event) => number("targetCoverDays", event.target.value)} /></label>
+      <label className="admin-checkbox"><input type="checkbox" checked={draft.avoidRoundHundreds} onChange={(event) => setDraft({ ...draft, avoidRoundHundreds: event.target.checked })} />Не ставить круглые сотни</label>
+    </div>
+  </section>;
+}
+
+function PercentField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return <label>{label}, %<input type="number" step="0.1" value={Math.round(value * 10000) / 100} onChange={(event) => onChange(Number(event.target.value) / 100)} /></label>;
+}
+
+function ProcurementPlanDialog({ suppliers, recommendations, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; recommendations: ProcurementRecommendation[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const preferred = suppliers.find((item) => item.kind === "international") || suppliers[0];
+  const [supplierId, setSupplierId] = useState(preferred?.id || 0); const [orderNumber, setOrderNumber] = useState(""); const [saving, setSaving] = useState(false);
+  const [items, setItems] = useState(() => recommendations.map((item) => ({ sabyId: item.sabyId, name: item.name, article: item.supplierArticle, quantity: item.suggestedQty, expectedUnitPrice: 0 })));
+  const updateItem = (index: number, key: "quantity" | "expectedUnitPrice", value: number) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
+  const selected = items.filter((item) => item.quantity > 0);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/plans", { method: "POST", body: JSON.stringify({ supplierId, orderNumber, items: selected.map(({ sabyId, quantity, expectedUnitPrice }) => ({ sabyId, quantity, expectedUnitPrice })) }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-plan-dialog" role="dialog" aria-modal="true" aria-labelledby="plan-title"><header><div><p className="eyebrow">Рекомендации</p><h2 id="plan-title">Список поставщику</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label>Поставщик<select value={supplierId} onChange={(event) => setSupplierId(Number(event.target.value))}>{suppliers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Номер заказа<input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} placeholder="Можно оставить пустым" /></label></div>
+    <p className="admin-hint procurement-note">Количество 0 исключает строку. Цену поставщика можно оставить пустой и проверить после получения инвойса.</p>
+    <div className="admin-table-wrap"><table className="admin-table procurement-plan-table"><thead><tr><th>Товар</th><th>Артикул</th><th>Количество</th><th>Цена поставщика</th></tr></thead><tbody>{items.map((item, index) => <tr key={item.sabyId}><td><strong>{item.name}</strong></td><td>{item.article || "—"}</td><td><input type="number" min="0" value={item.quantity} onChange={(event) => updateItem(index, "quantity", Number(event.target.value))} /></td><td><input type="number" min="0" step="0.01" value={item.expectedUnitPrice || ""} placeholder="После инвойса" onChange={(event) => updateItem(index, "expectedUnitPrice", Number(event.target.value))} /></td></tr>)}</tbody></table></div>
+    <div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!supplierId || !selected.length || saving} onClick={save}>{saving ? "Создаём…" : `Создать закупку · ${selected.length}`}</button></div>
+  </div></>;
+}
+
+function ProcurementRequestDialog({ onClose, onSaved, onError }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [kind, setKind] = useState("customer_order"); const [name, setName] = useState(""); const [sabyId, setSabyId] = useState(""); const [quantity, setQuantity] = useState(1); const [notes, setNotes] = useState(""); const [saving, setSaving] = useState(false);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/requests", { method: "POST", body: JSON.stringify({ kind, requestedName: name, sabyId, quantity, notes }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="request-title"><header><h2 id="request-title">Добавить к закупке</h2><button onClick={onClose} aria-label="Закрыть">×</button></header><div className="admin-form-grid">
+    <label>Тип<select value={kind} onChange={(event) => setKind(event.target.value)}><option value="customer_order">Заказ клиента</option><option value="staff_recommendation">Рекомендация магазина</option></select></label>
+    <label>Количество<input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label>
+    <label className="wide">Название товара<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Например, Соланум D12" /></label>
+    <label className="wide">Код СБИС, если известен<input value={sabyId} onChange={(event) => setSabyId(event.target.value)} placeholder="Можно заполнить позже" /></label>
+    <label className="wide">Комментарий<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Клиент, срок, цвет или другая важная деталь" /></label>
+  </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!name.trim() || quantity < 1 || saving} onClick={save}>Добавить</button></div></div></>;
+}
+
+function ProcurementOrderDetailDialog({ orderId, settings, onClose, onSaved, onError }: { orderId: number; settings: ProcurementSettings; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [detail, setDetail] = useState<ProcurementOrderDetail | null>(null); const [saving, setSaving] = useState(false);
+  const [costs, setCosts] = useState({ exchangeRate: settings.defaultExchangeRate, trolleyCostCurrency: settings.trolleyCostCurrency, deliveryToRyazanRub: 0 });
+  const load = useCallback(() => api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}`).then((item) => { setDetail(item); setCosts({ exchangeRate: item.costs.exchangeRate || settings.defaultExchangeRate, trolleyCostCurrency: item.costs.trolleyCostCurrency || settings.trolleyCostCurrency, deliveryToRyazanRub: item.costs.deliveryToRyazanRub }); }).catch((error) => onError((error as Error).message)), [orderId, settings, onError]);
+  useEffect(() => { void load(); }, [load]);
+  const calculate = async () => { setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/calculate`, { method: "POST", body: JSON.stringify(costs) }); setDetail(item); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const prepare = async (kind: "receipt" | "prices") => { setSaving(true); try { await api(`/api/v1/admin/procurement/orders/${orderId}/batches`, { method: "POST", body: JSON.stringify({ kind }) }); await load(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const approve = async (batch: ProcurementActionBatch) => { if (!window.confirm(batch.kind === "prices" ? "Применить показанные цены на сайте и поставить остальные каналы в очередь?" : "Подтвердить состав черновика поступления?")) return; setSaving(true); try { await api(`/api/v1/admin/procurement/batches/${batch.id}/approve`, { method: "POST" }); await load(); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-order-dialog" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><header><div><p className="eyebrow">Закупка</p><h2 id="order-detail-title">{detail?.order.orderNumber || `№${orderId}`}</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    {!detail ? <div className="procurement-zero">Загружаем строки…</div> : <div className="procurement-order-body">
+      <div className="procurement-costs"><label>Курс оплаты<input type="number" step="0.01" value={costs.exchangeRate} onChange={(event) => setCosts({ ...costs, exchangeRate: Number(event.target.value) })} /></label><label>Телега, {detail.order.currency}<input type="number" step="0.01" value={costs.trolleyCostCurrency} onChange={(event) => setCosts({ ...costs, trolleyCostCurrency: Number(event.target.value) })} /></label><label>Москва → Рязань, ₽<input type="number" value={costs.deliveryToRyazanRub} onChange={(event) => setCosts({ ...costs, deliveryToRyazanRub: Number(event.target.value) })} /></label><button className="admin-primary" disabled={saving || detail.order.unmatched > 0} onClick={calculate}>{saving ? "Считаем…" : "Рассчитать"}</button></div>
+      {detail.order.unmatched > 0 && <p className="procurement-warning procurement-note">Сначала сопоставьте {detail.order.unmatched} строк. Расчёт с неизвестными товарами заблокирован.</p>}
+      <div className="admin-table-wrap"><table className="admin-table procurement-lines"><thead><tr><th>Товар</th><th>Телега</th><th>Заказ / инвойс</th><th>Цена заказ / инвойс</th><th>Доставка</th><th>Себестоимость</th><th>СБИС сейчас</th><th>Новая розница</th><th>WB / Ozon</th></tr></thead><tbody>{detail.lines.map((line) => <tr key={line.id} className={line.comparisonMismatch ? "procurement-row-mismatch" : ""}><td><strong>{line.sabyName || line.rawName}</strong><small>{line.supplierArticle}</small></td><td>{line.loadUnit || "—"}</td><td>{line.orderedQuantity || "—"} / {line.invoicedQuantity ?? "—"}</td><td>{line.expectedUnitPrice ? line.expectedUnitPrice.toFixed(2) : "—"} / {line.invoicedQuantity == null ? "—" : line.unitPrice.toFixed(2)} {detail.order.currency}</td><td>{line.trolleyDeliveryUnitRub == null ? "—" : money.format((line.trolleyDeliveryUnitRub || 0) + (line.ryazanDeliveryUnitRub || 0))}</td><td>{line.unitCostRub == null ? "—" : money.format(line.unitCostRub)}</td><td>{money.format(line.currentRetailRub)}</td><td className={line.priceChangeNeeded ? "procurement-price-change" : ""}>{line.proposedRetailRub ? money.format(line.proposedRetailRub) : "—"}</td><td>{line.proposedMarketplaceRub ? money.format(line.proposedMarketplaceRub) : "—"}</td></tr>)}</tbody></table></div>
+      {detail.order.status === "ready_to_receive" && <div className="procurement-batch-buttons"><button onClick={() => void prepare("receipt")} disabled={saving}>Подготовить поступление СБИС</button><button className="admin-primary" onClick={() => void prepare("prices")} disabled={saving}>Подготовить изменение цен</button></div>}
+      {detail.batches.map((batch) => <section className="procurement-batch" key={batch.id}><div className="admin-block-heading"><div><p className="eyebrow">{batch.kind === "prices" ? "Цены" : "Поступление"}</p><h3>{batch.kind === "prices" ? "Изменения по каналам" : "Черновик для СБИС"}</h3></div><span className="admin-pill">{batch.status}</span></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Канал</th><th>Было</th><th>Станет / количество</th><th>Статус</th></tr></thead><tbody>{batch.items.map((item) => <tr key={item.id}><td>{item.productName}</td><td>{channelLabel(item.channel)}</td><td>{item.oldValue == null ? "—" : money.format(item.oldValue)}</td><td>{item.quantity ?? money.format(item.newValue)}</td><td>{item.status === "not_configured" ? <span className="procurement-warning">API не подключён</span> : item.status}</td></tr>)}</tbody></table></div>{batch.status === "draft" && <div className="dialog-actions"><button className="primary" disabled={saving || !batch.items.length} onClick={() => void approve(batch)}>Подтвердить {batch.items.length} действий</button></div>}</section>)}
+    </div>}
+  </div></>;
+}
+
+const channelLabel = (value: string) => ({ site: "Сайт", saby_price: "СБИС — цена", saby_receipt: "СБИС — поступление", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 
 function ProcurementMatchDialog({ alias, onClose, onSaved, onError }: { alias: ProcurementAlias; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
   const [query, setQuery] = useState(alias.rawName); const [items, setItems] = useState<NomenclatureCandidate[]>([]);
