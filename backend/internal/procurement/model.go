@@ -100,6 +100,20 @@ type AliasReview struct {
 	LastSeenAt         *time.Time `json:"lastSeenAt,omitempty"`
 }
 
+type NomenclatureCandidate struct {
+	SabyID  string  `json:"sabyId"`
+	Code    string  `json:"code"`
+	Article string  `json:"article"`
+	Name    string  `json:"name"`
+	Balance int     `json:"balance"`
+	Price   float64 `json:"price"`
+}
+
+type AliasResolution struct {
+	MatchStatus string `json:"matchStatus"`
+	SabyID      string `json:"sabyId"`
+}
+
 type DocumentSummary struct {
 	ID               int64      `json:"id"`
 	SupplierID       int64      `json:"supplierId"`

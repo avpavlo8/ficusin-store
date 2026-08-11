@@ -404,6 +404,128 @@ func (store *PostgresStore) listReview(ctx context.Context) ([]AliasReview, erro
 	return items, rows.Err()
 }
 
+func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT saby_id, code, article, name, balance,
+			price_minor::DOUBLE PRECISION / 100
+		FROM saby_nomenclature
+		WHERE name ILIKE '%' || $1 || '%'
+			OR code ILIKE '%' || $1 || '%'
+			OR article ILIKE '%' || $1 || '%'
+			OR saby_id ILIKE '%' || $1 || '%'
+		ORDER BY CASE
+			WHEN UPPER(code) = UPPER($1) OR UPPER(article) = UPPER($1) OR UPPER(saby_id) = UPPER($1) THEN 0
+			WHEN name ILIKE $1 || '%' THEN 1
+			ELSE 2
+		END, balance DESC, name
+		LIMIT 30
+	`, query)
+	if err != nil {
+		return nil, fmt.Errorf("search Saby nomenclature for procurement: %w", err)
+	}
+	defer rows.Close()
+	items := make([]NomenclatureCandidate, 0)
+	for rows.Next() {
+		var item NomenclatureCandidate
+		if err := rows.Scan(&item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
+			return nil, fmt.Errorf("scan Saby nomenclature candidate: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (store *PostgresStore) ResolveAlias(
+	ctx context.Context,
+	actor Actor,
+	aliasID int64,
+	input AliasResolution,
+) (AliasReview, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return AliasReview{}, fmt.Errorf("begin resolve procurement alias: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT TRUE FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
+		return AliasReview{}, ErrNotFound
+	} else if err != nil {
+		return AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
+	}
+	if input.MatchStatus == "confirmed" {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM saby_nomenclature WHERE saby_id = $1)`, input.SabyID).Scan(&exists); err != nil {
+			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
+		}
+		if !exists {
+			return AliasReview{}, ErrNotFound
+		}
+	}
+
+	confidence := 0.0
+	if input.MatchStatus == "confirmed" {
+		confidence = 1
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_supplier_aliases SET
+			matched_saby_id = NULLIF($2, ''), match_status = $3,
+			confidence = $4, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, aliasID, input.SabyID, input.MatchStatus, confidence); err != nil {
+		return AliasReview{}, fmt.Errorf("resolve procurement alias: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_order_lines SET
+			saby_id = NULLIF($2, ''), match_status = $3, updated_at = CURRENT_TIMESTAMP
+		WHERE supplier_alias_id = $1
+	`, aliasID, input.SabyID, input.MatchStatus); err != nil {
+		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_documents d SET
+			parse_status = CASE WHEN d.arithmetic_status <> 'ok' OR EXISTS (
+				SELECT 1 FROM procurement_order_lines l
+				WHERE l.procurement_document_id = d.id AND l.match_status IN ('unmatched', 'suggested')
+			) THEN 'review' ELSE 'parsed' END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE EXISTS (
+			SELECT 1 FROM procurement_order_lines affected
+			WHERE affected.procurement_document_id = d.id AND affected.supplier_alias_id = $1
+		)
+	`, aliasID); err != nil {
+		return AliasReview{}, fmt.Errorf("refresh procurement document review status: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_orders o SET
+			status = CASE WHEN EXISTS (
+				SELECT 1 FROM procurement_order_lines l
+				WHERE l.procurement_order_id = o.id AND l.match_status IN ('unmatched', 'suggested')
+			) OR EXISTS (
+				SELECT 1 FROM procurement_documents d
+				WHERE d.procurement_order_id = o.id AND d.arithmetic_status <> 'ok'
+			) THEN 'review' ELSE 'invoice_received' END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE o.status NOT IN ('received', 'cancelled') AND EXISTS (
+			SELECT 1 FROM procurement_order_lines affected
+			WHERE affected.procurement_order_id = o.id AND affected.supplier_alias_id = $1
+		)
+	`, aliasID); err != nil {
+		return AliasReview{}, fmt.Errorf("refresh procurement order review status: %w", err)
+	}
+
+	item, err := loadAliasReview(ctx, tx, aliasID)
+	if err != nil {
+		return AliasReview{}, err
+	}
+	if err := audit(ctx, tx, actor, "procurement.alias.resolve", "procurement_supplier_alias", aliasID, item); err != nil {
+		return AliasReview{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AliasReview{}, fmt.Errorf("commit procurement alias resolution: %w", err)
+	}
+	return item, nil
+}
+
 type rowScanner interface {
 	Scan(...any) error
 }
@@ -420,6 +542,33 @@ func scanDocument(row rowScanner, item *DocumentSummary) error {
 		&item.Units, &item.ProductSubtotal, &item.PackageTotal, &item.DocumentTotal,
 		&item.CalculatedTotal, &item.ParseError, &item.CreatedAt,
 	)
+}
+
+func loadAliasReview(ctx context.Context, querier queryRower, aliasID int64) (AliasReview, error) {
+	var item AliasReview
+	err := querier.QueryRow(ctx, `
+		SELECT a.id, a.supplier_id, s.name, a.raw_name, a.supplier_article,
+			a.pot_diameter_cm::DOUBLE PRECISION, a.height_cm::DOUBLE PRECISION,
+			COALESCE(a.matched_saby_id, ''), COALESCE(n.name, ''),
+			a.match_status, a.confidence::DOUBLE PRECISION, a.availability_status,
+			a.last_seen_at
+		FROM procurement_supplier_aliases a
+		JOIN procurement_suppliers s ON s.id = a.supplier_id
+		LEFT JOIN saby_nomenclature n ON n.saby_id = a.matched_saby_id
+		WHERE a.id = $1
+	`, aliasID).Scan(
+		&item.ID, &item.SupplierID, &item.SupplierName, &item.RawName,
+		&item.SupplierArticle, &item.PotDiameterCM, &item.HeightCM,
+		&item.SuggestedSabyID, &item.SuggestedSabyName, &item.MatchStatus,
+		&item.Confidence, &item.AvailabilityStatus, &item.LastSeenAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AliasReview{}, ErrNotFound
+	}
+	if err != nil {
+		return AliasReview{}, fmt.Errorf("load procurement alias: %w", err)
+	}
+	return item, nil
 }
 
 func loadDocumentByHash(

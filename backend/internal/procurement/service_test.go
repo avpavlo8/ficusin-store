@@ -11,6 +11,9 @@ type storeStub struct {
 	orderInput    OrderCreate
 	documentInput DocumentUpload
 	parsedInput   ParsedDocument
+	searchInput   string
+	aliasID       int64
+	resolution    AliasResolution
 }
 
 func (stub *storeStub) Dashboard(context.Context) (Dashboard, error) { return Dashboard{}, nil }
@@ -25,6 +28,14 @@ func (stub *storeStub) CreateOrder(_ context.Context, _ Actor, input OrderCreate
 func (stub *storeStub) ImportDocument(_ context.Context, _ Actor, input DocumentUpload, parsed ParsedDocument) (ImportResult, error) {
 	stub.documentInput, stub.parsedInput = input, parsed
 	return ImportResult{Document: DocumentSummary{ID: 12}}, nil
+}
+func (stub *storeStub) SearchNomenclature(_ context.Context, query string) ([]NomenclatureCandidate, error) {
+	stub.searchInput = query
+	return []NomenclatureCandidate{{SabyID: "X1", Name: "Фикус Лирата"}}, nil
+}
+func (stub *storeStub) ResolveAlias(_ context.Context, _ Actor, aliasID int64, input AliasResolution) (AliasReview, error) {
+	stub.aliasID, stub.resolution = aliasID, input
+	return AliasReview{ID: aliasID, MatchStatus: input.MatchStatus, SuggestedSabyID: input.SabyID}, nil
 }
 
 type parserStub struct {
@@ -90,6 +101,23 @@ func TestImportDocumentRejectsNonPDF(t *testing.T) {
 		context.Background(), Actor{}, DocumentUpload{SupplierID: 1, FileName: "invoice.pdf", Content: []byte("hello")},
 	)
 	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestSearchNomenclatureAndResolveAliasValidateInput(t *testing.T) {
+	t.Parallel()
+	store := &storeStub{}
+	service := NewService(store)
+	items, err := service.SearchNomenclature(context.Background(), "  Фикус ")
+	if err != nil || len(items) != 1 || store.searchInput != "Фикус" {
+		t.Fatalf("unexpected search: items=%+v input=%q err=%v", items, store.searchInput, err)
+	}
+	item, err := service.ResolveAlias(context.Background(), Actor{}, 17, AliasResolution{MatchStatus: "confirmed", SabyID: " X1 "})
+	if err != nil || item.ID != 17 || store.resolution.SabyID != "X1" {
+		t.Fatalf("unexpected resolution: item=%+v input=%+v err=%v", item, store.resolution, err)
+	}
+	if _, err := service.ResolveAlias(context.Background(), Actor{}, 17, AliasResolution{MatchStatus: "ignored", SabyID: "X1"}); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
 }

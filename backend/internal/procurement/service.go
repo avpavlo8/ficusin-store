@@ -10,6 +10,8 @@ type Store interface {
 	CreateSupplier(context.Context, Actor, SupplierCreate) (Supplier, error)
 	CreateOrder(context.Context, Actor, OrderCreate) (OrderSummary, error)
 	ImportDocument(context.Context, Actor, DocumentUpload, ParsedDocument) (ImportResult, error)
+	SearchNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
+	ResolveAlias(context.Context, Actor, int64, AliasResolution) (AliasReview, error)
 }
 
 type Service struct {
@@ -83,6 +85,30 @@ func (service *Service) ImportDocument(
 		return ImportResult{}, err
 	}
 	return service.store.ImportDocument(ctx, actor, input, parsed)
+}
+
+func (service *Service) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	query = strings.TrimSpace(query)
+	if len([]rune(query)) < 2 || len(query) > 200 {
+		return nil, ErrInvalidInput
+	}
+	return service.store.SearchNomenclature(ctx, query)
+}
+
+func (service *Service) ResolveAlias(
+	ctx context.Context,
+	actor Actor,
+	aliasID int64,
+	input AliasResolution,
+) (AliasReview, error) {
+	input.MatchStatus = strings.TrimSpace(input.MatchStatus)
+	input.SabyID = strings.TrimSpace(input.SabyID)
+	if aliasID <= 0 || !oneOf(input.MatchStatus, "confirmed", "new_product", "ignored") ||
+		(input.MatchStatus == "confirmed" && input.SabyID == "") ||
+		(input.MatchStatus != "confirmed" && input.SabyID != "") {
+		return AliasReview{}, ErrInvalidInput
+	}
+	return service.store.ResolveAlias(ctx, actor, aliasID, input)
 }
 
 func oneOf(value string, allowed ...string) bool {
