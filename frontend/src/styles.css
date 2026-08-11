@@ -357,6 +357,18 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .procurement-plan-table input { width: 120px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px; font: inherit; }
 .procurement-row-mismatch td { background: #fff4ed; }
 .procurement-row-mismatch td:first-child { box-shadow: inset 3px 0 #c96f43; }
+.procurement-checklist { margin: 0 0 16px; padding: 14px 16px; border: 1px solid; border-radius: 12px; }
+.procurement-checklist.blocked { border-color: #e3b99f; background: #fff4ed; color: #864528; }
+.procurement-checklist.ready { border-color: #b7d1c1; background: #e8f2eb; color: #2d6848; }
+.procurement-checklist p, .procurement-checklist ul { margin: 7px 0; }
+.procurement-checklist small { display: block; color: #66756c; }
+.procurement-directory { min-width: 1050px; }
+.procurement-directory td small { display: block; margin-top: 3px; }
+.procurement-request-candidates { display: grid; gap: 5px; }
+.procurement-request-candidates button { padding: 9px 11px; display: flex; justify-content: space-between; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--green); text-align: left; cursor: pointer; }
+.procurement-selected-product { padding: 11px; display: flex; align-items: center; gap: 10px; border-radius: 9px; background: var(--cream); }
+.procurement-selected-product span { margin-right: auto; color: #748078; font-size: 12px; }
+.procurement-order-final { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .admin-primary:disabled { opacity: .45; cursor: not-allowed; }
 .admin-block { margin-bottom: 20px; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
 .admin-block-heading { margin-bottom: 22px; display: flex; justify-content: space-between; gap: 20px; align-items: end; }

@@ -48,6 +48,12 @@ func (stub *procurementStub) OrderDetail(context.Context, int64) (procurement.Or
 func (stub *procurementStub) CalculateOrder(_ context.Context, _ procurement.Actor, _ int64, _ procurement.CalculationInput) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
 }
+func (stub *procurementStub) UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error) {
+	return procurement.OrderDetail{}, nil
+}
+func (stub *procurementStub) UpdateOrderLine(context.Context, procurement.Actor, int64, procurement.OrderLineUpdate) (procurement.OrderDetail, error) {
+	return procurement.OrderDetail{}, nil
+}
 
 func (stub *procurementStub) ImportDocument(_ context.Context, _ procurement.Actor, input procurement.DocumentUpload) (procurement.ImportResult, error) {
 	stub.documentInputs = append(stub.documentInputs, input)
@@ -63,6 +69,15 @@ func (stub *procurementStub) ResolveAlias(_ context.Context, _ procurement.Actor
 }
 func (stub *procurementStub) CreateRequest(_ context.Context, _ procurement.Actor, input procurement.RequestCreate) (procurement.Request, error) {
 	return procurement.Request{ID: 1, Kind: input.Kind}, nil
+}
+func (stub *procurementStub) UpdateRequest(_ context.Context, _ procurement.Actor, _ int64, input procurement.RequestUpdate) (procurement.Request, error) {
+	return procurement.Request{Status: input.Status}, nil
+}
+func (stub *procurementStub) ListProducts(context.Context, int64, string) ([]procurement.ProductDirectoryItem, error) {
+	return nil, nil
+}
+func (stub *procurementStub) UpdateProduct(_ context.Context, _ procurement.Actor, input procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error) {
+	return procurement.ProductDirectoryItem{SabyID: input.SabyID}, nil
 }
 func (stub *procurementStub) UpdateAvailability(_ context.Context, _ procurement.Actor, aliasID int64, input procurement.AvailabilityUpdate) (procurement.AliasReview, error) {
 	return procurement.AliasReview{ID: aliasID, AvailabilityStatus: input.Status}, nil

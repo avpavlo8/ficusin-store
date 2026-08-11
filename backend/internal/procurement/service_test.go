@@ -37,6 +37,12 @@ func (stub *storeStub) OrderDetail(context.Context, int64) (OrderDetail, error) 
 func (stub *storeStub) CalculateOrder(context.Context, Actor, int64, CalculationInput) (OrderDetail, error) {
 	return OrderDetail{}, nil
 }
+func (stub *storeStub) UpdateOrderStatus(context.Context, Actor, int64, OrderStatusUpdate) (OrderDetail, error) {
+	return OrderDetail{}, nil
+}
+func (stub *storeStub) UpdateOrderLine(context.Context, Actor, int64, OrderLineUpdate) (OrderDetail, error) {
+	return OrderDetail{}, nil
+}
 func (stub *storeStub) ImportDocument(_ context.Context, _ Actor, input DocumentUpload, parsed ParsedDocument) (ImportResult, error) {
 	stub.documentInput, stub.parsedInput = input, parsed
 	return ImportResult{Document: DocumentSummary{ID: 12}}, nil
@@ -52,6 +58,15 @@ func (stub *storeStub) ResolveAlias(_ context.Context, _ Actor, aliasID int64, i
 func (stub *storeStub) CreateRequest(_ context.Context, _ Actor, input RequestCreate) (Request, error) {
 	return Request{Kind: input.Kind}, nil
 }
+func (stub *storeStub) UpdateRequest(_ context.Context, _ Actor, _ int64, input RequestUpdate) (Request, error) {
+	return Request{Status: input.Status}, nil
+}
+func (stub *storeStub) ListProducts(context.Context, int64, string) ([]ProductDirectoryItem, error) {
+	return nil, nil
+}
+func (stub *storeStub) UpdateProduct(_ context.Context, _ Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
+	return ProductDirectoryItem{SabyID: input.SabyID}, nil
+}
 func (stub *storeStub) UpdateAvailability(_ context.Context, _ Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {
 	return AliasReview{ID: aliasID, AvailabilityStatus: input.Status}, nil
 }
@@ -61,7 +76,7 @@ func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind st
 func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
 }
-func (stub *storeStub) ClaimAction(context.Context) (*ActionItem, error) { return nil, nil }
+func (stub *storeStub) ClaimAction(context.Context) (*ActionItem, error)                  { return nil, nil }
 func (stub *storeStub) FinishAction(context.Context, int64, ActionExecution, error) error { return nil }
 func (stub *storeStub) RetryBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
