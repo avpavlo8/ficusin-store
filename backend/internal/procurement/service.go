@@ -20,12 +20,27 @@ type Store interface {
 	CreateRequest(context.Context, Actor, RequestCreate) (Request, error)
 	UpdateAvailability(context.Context, Actor, int64, AvailabilityUpdate) (AliasReview, error)
 	PrepareBatch(context.Context, Actor, int64, string) (ActionBatch, error)
-	ApproveBatch(context.Context, Actor, int64) (ActionBatch, error)
+	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
+	ClaimAction(context.Context) (*ActionItem, error)
+	FinishAction(context.Context, int64, ActionExecution, error) error
+	RetryBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
+}
+
+type Executor interface {
+	Configured(channel string) bool
+	Execute(context.Context, ActionItem) (ActionExecution, error)
+}
+
+type ActionExecution struct {
+	Completed           bool
+	ExternalOperationID string
+	RetryAfter          time.Duration
 }
 
 type Service struct {
 	store  Store
 	parser Parser
+	executor Executor
 }
 
 func NewService(store Store) *Service {
@@ -36,8 +51,22 @@ func NewServiceWithParser(store Store, parser Parser) *Service {
 	return &Service{store: store, parser: parser}
 }
 
+func NewServiceWithExecutor(store Store, executor Executor) *Service {
+	return &Service{store: store, parser: NewPDFParser(), executor: executor}
+}
+
 func (service *Service) Dashboard(ctx context.Context) (Dashboard, error) {
-	return service.store.Dashboard(ctx)
+	result, err := service.store.Dashboard(ctx)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	if service.executor != nil {
+		result.Integrations = IntegrationStatus{
+			WB: service.executor.Configured("wb"), Ozon: service.executor.Configured("ozon"),
+			Saby: service.executor.Configured("saby_price") && service.executor.Configured("saby_receipt"),
+		}
+	}
+	return result, nil
 }
 
 func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input PricingSettings) (PricingSettings, error) {
@@ -201,7 +230,26 @@ func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID i
 	if batchID <= 0 {
 		return ActionBatch{}, ErrInvalidInput
 	}
-	return service.store.ApproveBatch(ctx, actor, batchID)
+	configured := map[string]bool{}
+	if service.executor != nil {
+		for _, channel := range []string{"wb", "ozon", "saby_price", "saby_receipt"} {
+			configured[channel] = service.executor.Configured(channel)
+		}
+	}
+	return service.store.ApproveBatch(ctx, actor, batchID, configured)
+}
+
+func (service *Service) RetryBatch(ctx context.Context, actor Actor, batchID int64) (ActionBatch, error) {
+	if batchID <= 0 {
+		return ActionBatch{}, ErrInvalidInput
+	}
+	configured := map[string]bool{}
+	if service.executor != nil {
+		for _, channel := range []string{"wb", "ozon", "saby_price", "saby_receipt"} {
+			configured[channel] = service.executor.Configured(channel)
+		}
+	}
+	return service.store.RetryBatch(ctx, actor, batchID, configured)
 }
 
 func validRate(value float64) bool { return value >= 0 && value < 1 }

@@ -22,7 +22,16 @@ type Config struct {
 		Payments              Payments
 		SiteURL               string
 		Mail                  Mail
-		Photos                Photos
+	Photos                 Photos
+	Marketplaces           Marketplaces
+}
+
+// Marketplaces holds seller API credentials. Empty credentials keep the
+// corresponding channel disabled; secrets never live in the database.
+type Marketplaces struct {
+	WBToken      string
+	OzonClientID string
+	OzonAPIKey   string
 }
 
 // Mail is the SMTP account the shop writes from. An empty host switches
@@ -164,6 +173,11 @@ func Load() (Config, error) {
 									Bucket:    strings.TrimSpace(os.Getenv("S3_BUCKET")),
 									AccessKey: strings.TrimSpace(os.Getenv("S3_ACCESS_KEY")),
 									SecretKey: strings.TrimSpace(os.Getenv("S3_SECRET_KEY")),
+								},
+					Marketplaces: Marketplaces{
+									WBToken:      strings.TrimSpace(os.Getenv("WB_API_TOKEN")),
+									OzonClientID: strings.TrimSpace(os.Getenv("OZON_CLIENT_ID")),
+									OzonAPIKey:   strings.TrimSpace(os.Getenv("OZON_API_KEY")),
 								},
 					Push: Push{
 									PublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),

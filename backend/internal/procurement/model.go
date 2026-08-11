@@ -36,6 +36,7 @@ type Summary struct {
 
 type Dashboard struct {
 	Summary         Summary           `json:"summary"`
+	Integrations    IntegrationStatus `json:"integrations"`
 	Settings        PricingSettings   `json:"settings"`
 	Suppliers       []Supplier        `json:"suppliers"`
 	Orders          []OrderSummary    `json:"orders"`
@@ -218,12 +219,21 @@ type ActionItem struct {
 	LineID          int64    `json:"lineId"`
 	ProductName     string   `json:"productName"`
 	Channel         string   `json:"channel"`
-	ExternalArticle string   `json:"externalArticle"`
-	OldValue        *float64 `json:"oldValue,omitempty"`
-	NewValue        float64  `json:"newValue"`
-	Quantity        *int     `json:"quantity,omitempty"`
-	Status          string   `json:"status"`
-	ErrorMessage    string   `json:"errorMessage"`
+	ExternalArticle    string   `json:"externalArticle"`
+	OldValue           *float64 `json:"oldValue,omitempty"`
+	NewValue           float64  `json:"newValue"`
+	CompareAtValue     *float64 `json:"compareAtValue,omitempty"`
+	Quantity           *int     `json:"quantity,omitempty"`
+	Status             string   `json:"status"`
+	ErrorMessage       string   `json:"errorMessage"`
+	ExternalOperationID string `json:"-"`
+	Attempts           int      `json:"-"`
+}
+
+type IntegrationStatus struct {
+	WB   bool `json:"wb"`
+	Ozon bool `json:"ozon"`
+	Saby bool `json:"saby"`
 }
 
 type AliasReview struct {
