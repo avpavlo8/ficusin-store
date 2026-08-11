@@ -419,7 +419,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 }
 
 func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int64, detail OrderDetail) (OrderValidation, error) {
-	var result OrderValidation
+	result := OrderValidation{Blockers: make([]string, 0)}
 	var kind, status string
 	var documents int
 	if err := store.pool.QueryRow(ctx, `
