@@ -2,6 +2,7 @@ package procurement
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -29,11 +30,17 @@ type Store interface {
 	ClaimAction(context.Context) (*ActionItem, error)
 	FinishAction(context.Context, int64, ActionExecution, error) error
 	RetryBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
+	ListIntegrationHealth(context.Context) ([]IntegrationHealth, error)
+	RecordIntegrationCheck(context.Context, string, bool, error) (IntegrationHealth, error)
 }
 
 type Executor interface {
 	Configured(channel string) bool
 	Execute(context.Context, ActionItem) (ActionExecution, error)
+}
+
+type IntegrationProber interface {
+	Probe(context.Context, string) error
 }
 
 type ActionExecution struct {
@@ -68,10 +75,47 @@ func (service *Service) Dashboard(ctx context.Context) (Dashboard, error) {
 	if service.executor != nil {
 		result.Integrations = IntegrationStatus{
 			WB: service.executor.Configured("wb"), Ozon: service.executor.Configured("ozon"),
-			Saby: service.executor.Configured("saby_price") && service.executor.Configured("saby_receipt"),
+			Saby: service.executor.Configured("saby"),
 		}
 	}
+	health, err := service.store.ListIntegrationHealth(ctx)
+	if err != nil {
+		return Dashboard{}, err
+	}
+	for index := range health {
+		switch health[index].Channel {
+		case "wb":
+			health[index].Configured = result.Integrations.WB
+		case "ozon":
+			health[index].Configured = result.Integrations.Ozon
+		case "saby":
+			health[index].Configured = result.Integrations.Saby
+		}
+	}
+	result.IntegrationHealth = health
 	return result, nil
+}
+
+func (service *Service) CheckIntegration(ctx context.Context, actor Actor, channel string) (IntegrationHealth, error) {
+	channel = strings.TrimSpace(channel)
+	if !oneOf(channel, "wb", "ozon", "saby") {
+		return IntegrationHealth{}, ErrInvalidInput
+	}
+	configured := service.executor != nil && service.executor.Configured(channel)
+	var checkErr error
+	if !configured {
+		checkErr = errors.New("переменные окружения не настроены полностью")
+	} else if prober, ok := service.executor.(IntegrationProber); !ok {
+		checkErr = errors.New("проверка подключения не поддерживается")
+	} else {
+		checkErr = prober.Probe(ctx, channel)
+	}
+	item, err := service.store.RecordIntegrationCheck(ctx, channel, configured, checkErr)
+	if err != nil {
+		return IntegrationHealth{}, err
+	}
+	_ = actor // Kept in the service boundary for the integration audit extension.
+	return item, nil
 }
 
 func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input PricingSettings) (PricingSettings, error) {

@@ -35,17 +35,18 @@ type Summary struct {
 }
 
 type Dashboard struct {
-	Summary         Summary           `json:"summary"`
-	Integrations    IntegrationStatus `json:"integrations"`
-	Settings        PricingSettings   `json:"settings"`
-	Suppliers       []Supplier        `json:"suppliers"`
-	Orders          []OrderSummary    `json:"orders"`
-	Documents       []DocumentSummary `json:"documents"`
-	Review          []AliasReview     `json:"review"`
-	Requests        []Request         `json:"requests"`
-	Availability    []AliasReview     `json:"availability"`
-	Recommendations []Recommendation  `json:"recommendations"`
-	SalesSync       []SalesSyncStatus `json:"salesSync"`
+	Summary           Summary             `json:"summary"`
+	Integrations      IntegrationStatus   `json:"integrations"`
+	Settings          PricingSettings     `json:"settings"`
+	Suppliers         []Supplier          `json:"suppliers"`
+	Orders            []OrderSummary      `json:"orders"`
+	Documents         []DocumentSummary   `json:"documents"`
+	Review            []AliasReview       `json:"review"`
+	Requests          []Request           `json:"requests"`
+	Availability      []AliasReview       `json:"availability"`
+	Recommendations   []Recommendation    `json:"recommendations"`
+	SalesSync         []SalesSyncStatus   `json:"salesSync"`
+	IntegrationHealth []IntegrationHealth `json:"integrationHealth"`
 }
 
 type PricingSettings struct {
@@ -340,6 +341,14 @@ type IntegrationStatus struct {
 	WB   bool `json:"wb"`
 	Ozon bool `json:"ozon"`
 	Saby bool `json:"saby"`
+}
+
+type IntegrationHealth struct {
+	Channel       string     `json:"channel"`
+	Configured    bool       `json:"configured"`
+	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
+	LastSuccessAt *time.Time `json:"lastSuccessAt,omitempty"`
+	LastError     string     `json:"lastError"`
 }
 
 type AliasReview struct {
