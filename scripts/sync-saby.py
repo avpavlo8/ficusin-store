@@ -176,7 +176,12 @@ try:
     # snapshot so sales and balances reach one product in the store database.
     sales_product_ids = {}
     for item in catalog_items:
-        canonical_id = str(item.get("id") or "").strip()
+        human_code = str(item.get("nomNumber") or "").strip()
+        canonical_id = (
+            human_code
+            if human_code.upper().startswith("X")
+            else str(item.get("id") or "").strip()
+        )
         if not canonical_id:
             continue
         for field in ("id", "externalId", "code", "nomNumber", "article"):
