@@ -87,3 +87,13 @@ func TestNoStockWithoutSupplierAvailabilityNeedsCheck(t *testing.T) {
 		t.Fatalf("recommendation = %+v, included = %v", item, ok)
 	}
 }
+
+func TestUnknownSupplierAvailabilityDoesNotHideDemand(t *testing.T) {
+	item, ok := calculateRecommendation(recommendationInput{
+		Recommendation: Recommendation{SabySales: 10, Balance: 4, MinimumOrderQty: 1, OrderMultiple: 1},
+		AvailabilityStatus: "unknown",
+	}, 60)
+	if !ok || item.Status != RecommendationReady || item.SuggestedQty != 6 {
+		t.Fatalf("recommendation = %+v, included = %v", item, ok)
+	}
+}
