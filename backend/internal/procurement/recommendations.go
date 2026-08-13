@@ -58,7 +58,7 @@ func calculateRecommendation(input recommendationInput, historyDays int) (Recomm
 		return Recommendation{}, false
 	}
 
-	if input.AvailabilityStatus != "available" {
+	if input.AvailabilityStatus == "check" || input.AvailabilityStatus == "temporarily_unavailable" {
 		item.Status = RecommendationAvailability
 		item.Reason = "Есть спрос, но наличие у поставщика не подтверждено"
 		return item, true
