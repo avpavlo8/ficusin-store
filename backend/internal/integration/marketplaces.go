@@ -17,6 +17,12 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 )
 
+// maxMarketplaceResponse — потолок одного ответа площадки. Страница в
+// тысячу отправлений Ozon укладывается в единицы мегабайт; запас взят
+// с расчётом на самый разговорчивый ответ, но так, чтобы битый или
+// бесконечный поток не съел память.
+const maxMarketplaceResponse = 64 << 20
+
 const (
 	defaultWBBase    = "https://discounts-prices-api.wildberries.ru"
 	defaultWBStats   = "https://finance-api.wildberries.ru"
@@ -586,12 +592,27 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		return fmt.Errorf("marketplace request failed: %w", err)
 	}
 	defer response.Body.Close() //nolint:errcheck
-	content, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	// Потолок в 64 килобайта, стоявший здесь раньше, резал не мусор, а
+	// данные: страница продаж Ozon или карточек Wildberries весит сотни
+	// килобайт, обрывалась на середине, и разбор падал с «unexpected end of
+	// JSON input». Со стороны это выглядело как молчание площадки, хотя
+	// площадка отвечала исправно. Потолок нужен — но такой, в который
+	// помещается настоящая страница, а не такой, который её отрезает.
+	limit := int64(maxMarketplaceResponse)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		// Тело ошибки читаем скупо: оно идёт в сообщение человеку.
+		limit = 64 << 10
+	}
+	content, err := io.ReadAll(io.LimitReader(response.Body, limit))
 	if err != nil {
 		return fmt.Errorf("read marketplace response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response)}
+	}
+	if int64(len(content)) >= limit {
+		return fmt.Errorf("%s ответил %d, но ответ длиннее %d МБ — уменьшите размер страницы",
+			requestPath(endpoint), response.StatusCode, maxMarketplaceResponse>>20)
 	}
 	if response.StatusCode == http.StatusNoContent {
 		return nil
