@@ -28,13 +28,15 @@ type procurementService interface {
 	ResolveAlias(context.Context, procurement.Actor, int64, procurement.AliasResolution) (procurement.AliasReview, error)
 	CreateRequest(context.Context, procurement.Actor, procurement.RequestCreate) (procurement.Request, error)
 	UpdateRequest(context.Context, procurement.Actor, int64, procurement.RequestUpdate) (procurement.Request, error)
-	UpdateAvailability(context.Context, procurement.Actor, int64, procurement.AvailabilityUpdate) (procurement.AliasReview, error)
+	UpdateAvailability(context.Context, procurement.Actor, procurement.AvailabilityUpdate) (procurement.AvailabilityItem, error)
+	SetExclusion(context.Context, procurement.Actor, procurement.ExclusionUpdate) error
 	ListProducts(context.Context, int64, string) ([]procurement.ProductDirectoryItem, error)
 	UpdateProduct(context.Context, procurement.Actor, procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error)
 	PrepareBatch(context.Context, procurement.Actor, int64, string) (procurement.ActionBatch, error)
 	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	CheckIntegration(context.Context, procurement.Actor, string) (procurement.IntegrationHealth, error)
+	SyncChannelCatalog(context.Context, procurement.Actor, string) (procurement.ChannelLinkResult, error)
 }
 
 func (handlers procurementHandlers) checkIntegration(response http.ResponseWriter, request *http.Request) {
@@ -451,21 +453,49 @@ func (handlers procurementHandlers) updateAvailability(response http.ResponseWri
 	if !ok {
 		return
 	}
-	aliasID, ok := pathID(response, request)
-	if !ok {
-		return
-	}
 	var input procurement.AvailabilityUpdate
 	if decodeJSON(request, &input) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус наличия"})
 		return
 	}
-	item, err := handlers.service.UpdateAvailability(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, aliasID, input)
+	item, err := handlers.service.UpdateAvailability(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input)
 	if err != nil {
 		handlers.failed(response, "update procurement availability", err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"alias": item})
+	writeJSON(response, http.StatusOK, map[string]any{"availability": item})
+}
+
+func (handlers procurementHandlers) syncChannelCatalog(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	result, err := handlers.service.SyncChannelCatalog(request.Context(), procurement.Actor{
+		CustomerID: actor.CustomerID, Role: actor.Role,
+	}, request.PathValue("channel"))
+	if err != nil {
+		handlers.failed(response, "sync procurement channel catalog", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"link": result})
+}
+
+func (handlers procurementHandlers) updateExclusion(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	var input procurement.ExclusionUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный запрос"})
+		return
+	}
+	if err := handlers.service.SetExclusion(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input); err != nil {
+		handlers.failed(response, "update procurement exclusion", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (handlers procurementHandlers) prepareBatch(response http.ResponseWriter, request *http.Request) {

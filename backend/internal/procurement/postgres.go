@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,7 +31,7 @@ func (store *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
 		SELECT
 			(SELECT COUNT(*) FROM procurement_orders WHERE status NOT IN ('received', 'cancelled'))::INTEGER,
 			(SELECT COUNT(*) FROM procurement_supplier_aliases WHERE match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
-			(SELECT COUNT(*) FROM procurement_supplier_aliases WHERE availability_status = 'check' OR (check_after IS NOT NULL AND check_after <= CURRENT_DATE))::INTEGER,
+			(SELECT COUNT(*) FROM procurement_supplier_products WHERE availability_status = 'check' OR (check_after IS NOT NULL AND check_after <= CURRENT_DATE))::INTEGER,
 			(SELECT COUNT(*) FROM procurement_requests WHERE status = 'open')::INTEGER
 	`).Scan(
 		&result.Summary.OpenOrders,
@@ -1102,33 +1103,38 @@ func (store *PostgresStore) listReview(ctx context.Context) ([]AliasReview, erro
 	return items, rows.Err()
 }
 
-func (store *PostgresStore) listAvailability(ctx context.Context) ([]AliasReview, error) {
+func (store *PostgresStore) listAvailability(ctx context.Context) ([]AvailabilityItem, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT a.id, a.supplier_id, s.name, a.raw_name, a.supplier_article,
-			a.pot_diameter_cm::DOUBLE PRECISION, a.height_cm::DOUBLE PRECISION,
-			COALESCE(a.matched_saby_id, ''), COALESCE(n.name, ''),
-			a.match_status, a.confidence::DOUBLE PRECISION, a.availability_status,
-			a.last_seen_at
-		FROM procurement_supplier_aliases a
-		JOIN procurement_suppliers s ON s.id = a.supplier_id
-		LEFT JOIN saby_nomenclature n ON n.saby_id = a.matched_saby_id
-		WHERE a.availability_status IN ('check', 'temporarily_unavailable', 'discontinued')
-			OR (a.check_after IS NOT NULL AND a.check_after <= CURRENT_DATE)
-		ORDER BY CASE a.availability_status WHEN 'check' THEN 0 WHEN 'temporarily_unavailable' THEN 1 ELSE 2 END,
-			a.check_after NULLS FIRST, a.last_seen_at DESC NULLS LAST
-		LIMIT 100
+		SELECT sp.supplier_id, s.name, sp.saby_id, COALESCE(n.name, ''),
+			COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), ''),
+			sp.availability_status, COALESCE(sp.check_after::TEXT, ''),
+			COALESCE(sp.unavailable_since::TEXT, ''), COALESCE(n.balance, 0), a.last_seen_at
+		FROM procurement_supplier_products sp
+		JOIN procurement_suppliers s ON s.id = sp.supplier_id
+		LEFT JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
+		LEFT JOIN procurement_product_channels pc ON pc.saby_id = sp.saby_id
+		LEFT JOIN LATERAL (
+			SELECT last_seen_at FROM procurement_supplier_aliases
+			WHERE supplier_id = sp.supplier_id AND matched_saby_id = sp.saby_id
+			ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1
+		) a ON TRUE
+		WHERE sp.availability_status IN ('check', 'temporarily_unavailable', 'discontinued')
+			OR (sp.check_after IS NOT NULL AND sp.check_after <= CURRENT_DATE)
+		ORDER BY CASE sp.availability_status WHEN 'check' THEN 0
+				WHEN 'temporarily_unavailable' THEN 1 ELSE 2 END,
+			sp.check_after NULLS FIRST, a.last_seen_at DESC NULLS LAST, sp.saby_id
+		LIMIT 300
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement availability: %w", err)
 	}
 	defer rows.Close()
-	items := make([]AliasReview, 0)
+	items := make([]AvailabilityItem, 0)
 	for rows.Next() {
-		var item AliasReview
-		if err := rows.Scan(&item.ID, &item.SupplierID, &item.SupplierName, &item.RawName,
-			&item.SupplierArticle, &item.PotDiameterCM, &item.HeightCM,
-			&item.SuggestedSabyID, &item.SuggestedSabyName, &item.MatchStatus,
-			&item.Confidence, &item.AvailabilityStatus, &item.LastSeenAt); err != nil {
+		var item AvailabilityItem
+		if err := rows.Scan(&item.SupplierID, &item.SupplierName, &item.SabyID, &item.Name,
+			&item.SupplierArticle, &item.Status, &item.CheckAfter, &item.UnavailableSince,
+			&item.Balance, &item.LastSeenAt); err != nil {
 			return nil, fmt.Errorf("scan procurement availability: %w", err)
 		}
 		items = append(items, item)
@@ -1189,6 +1195,9 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			FROM procurement_order_lines l JOIN procurement_orders o ON o.id = l.procurement_order_id
 			WHERE l.saby_id IS NOT NULL AND o.status <> 'cancelled' GROUP BY l.saby_id
 		), products AS (
+			-- Товар может быть заведён у нескольких поставщиков. Берём того,
+			-- у кого наличие подтверждено раньше прочих: рекомендация должна
+			-- вести к поставщику, у которого растение действительно есть.
 			SELECT sp.*, COALESCE(a.id, 0) AS alias_id, a.last_seen_at,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
 				ROW_NUMBER() OVER (PARTITION BY sp.saby_id ORDER BY
@@ -1199,42 +1208,48 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			LEFT JOIN LATERAL (SELECT id, last_seen_at FROM procurement_supplier_aliases
 				WHERE supplier_id = sp.supplier_id AND matched_saby_id = sp.saby_id
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1) a ON TRUE
-			WHERE sp.availability_status <> 'discontinued'
 		)
 			SELECT sp.alias_id, sp.supplier_id, n.saby_id, n.name, sp.article,
 				sp.availability_status, n.balance, COALESCE(i.units, 0),
 				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
 				COALESCE(s.ozon_units, 0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),
-				sp.minimum_order_qty, sp.order_multiple, lo.last_ordered_at
+				sp.minimum_order_qty, sp.order_multiple, lo.last_ordered_at,
+				e.saby_id IS NOT NULL, COALESCE(e.reason, '')
 			FROM products sp
 			JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
 			LEFT JOIN sales s ON s.saby_id = n.saby_id
 			LEFT JOIN requests r ON r.saby_id = n.saby_id
 			LEFT JOIN incoming i ON i.saby_id = n.saby_id
 			LEFT JOIN last_orders lo ON lo.saby_id = n.saby_id
+			LEFT JOIN procurement_excluded_products e ON e.saby_id = n.saby_id
 			WHERE sp.preference = 1 AND (n.balance <= 0 OR COALESCE(s.units, 0) > 0 OR
-				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0)
+				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0 OR
+				e.saby_id IS NOT NULL)
 			ORDER BY CASE WHEN COALESCE(s.units, 0) > 0 OR COALESCE(r.customer_units, 0) > 0
 				OR COALESCE(r.staff_units, 0) > 0 THEN 0 ELSE 1 END, n.balance, n.name
-		LIMIT 500
+		LIMIT 2000
 	`, settings.RecommendationDays)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement recommendations: %w", err)
 	}
 	defer rows.Close()
-	items := make([]Recommendation, 0, 100)
+	items := make([]Recommendation, 0, 200)
 	for rows.Next() {
 		var input recommendationInput
 		if err := rows.Scan(&input.AliasID, &input.SupplierID, &input.SabyID, &input.Name, &input.SupplierArticle,
 			&input.AvailabilityStatus, &input.Balance, &input.Incoming, &input.SiteSales, &input.SabySales,
 			&input.WBSales, &input.OzonSales, &input.CustomerRequests, &input.StaffRequests,
-			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt); err != nil {
+			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt,
+			&input.Excluded, &input.ExclusionReason); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
-		item, include := calculateRecommendation(input, settings.RecommendationDays)
+		item, include := calculateRecommendation(input, settings.RecommendationDays, settings.TargetCoverDays)
 		if include {
 			items = append(items, item)
 		}
+	}
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("read procurement recommendations: %w", rows.Err())
 	}
 	sort.SliceStable(items, func(left, right int) bool {
 		if recommendationPriority(items[left]) != recommendationPriority(items[right]) {
@@ -1245,9 +1260,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 		}
 		return items[left].Name < items[right].Name
 	})
-	if len(items) > 100 {
-		items = items[:100]
-	}
+
 	return items, rows.Err()
 }
 
@@ -1846,58 +1859,109 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	return items[0], nil
 }
 
-func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {
+// UpdateAvailability помечает наличие у поставщика. Ключ — пара
+// поставщик+товар: раньше статус жил на алиасе, и товар, чьё название ни
+// разу не встретилось в разобранном PDF, пометить было нечем.
+//
+// Алиасы того же товара обновляем следом, чтобы очередь сопоставления не
+// показывала вчерашнюю правду, но читаем мы теперь только пару.
+func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor, input AvailabilityUpdate) (AvailabilityItem, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
-		return AliasReview{}, fmt.Errorf("begin update procurement availability: %w", err)
+		return AvailabilityItem{}, fmt.Errorf("begin update procurement availability: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var supplierID int64
-	var sabyID string
-	if err := tx.QueryRow(ctx, `SELECT supplier_id, COALESCE(matched_saby_id, '') FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&supplierID, &sabyID); errors.Is(err, pgx.ErrNoRows) {
-		return AliasReview{}, ErrNotFound
-	} else if err != nil {
-		return AliasReview{}, fmt.Errorf("lock procurement availability: %w", err)
-	}
 	command, err := tx.Exec(ctx, `
-		UPDATE procurement_supplier_aliases SET availability_status = $2,
-			unavailable_since = CASE WHEN $2 = 'temporarily_unavailable' THEN COALESCE(unavailable_since, CURRENT_DATE) ELSE NULL END,
-			check_after = NULLIF($3, '')::DATE, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1 OR ($4 <> '' AND supplier_id = $5 AND matched_saby_id = $4)
-	`, aliasID, input.Status, input.CheckAfter, sabyID, supplierID)
+		INSERT INTO procurement_supplier_products (
+			supplier_id, saby_id, availability_status, check_after, unavailable_since, updated_by
+		)
+		SELECT $1, $2, $3, NULLIF($4, '')::DATE,
+			CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5
+		WHERE EXISTS (SELECT 1 FROM procurement_suppliers WHERE id = $1)
+			AND EXISTS (SELECT 1 FROM saby_nomenclature WHERE saby_id = $2)
+		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET
+			availability_status = EXCLUDED.availability_status,
+			check_after = EXCLUDED.check_after,
+			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
+				THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
+			updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter, actor.CustomerID)
 	if err != nil {
-		return AliasReview{}, fmt.Errorf("update procurement availability: %w", err)
+		return AvailabilityItem{}, fmt.Errorf("update procurement availability: %w", err)
 	}
 	if command.RowsAffected() == 0 {
-		return AliasReview{}, ErrNotFound
+		return AvailabilityItem{}, ErrNotFound
 	}
-	if sabyID != "" {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO procurement_supplier_products (supplier_id, saby_id, availability_status, check_after, unavailable_since, updated_by)
-			VALUES ($1, $2, $3, NULLIF($4, '')::DATE,
-				CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5)
-			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET availability_status = EXCLUDED.availability_status,
-				check_after = EXCLUDED.check_after,
-				unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
-					THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
-				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-		`, supplierID, sabyID, input.Status, input.CheckAfter, actor.CustomerID); err != nil {
-			return AliasReview{}, fmt.Errorf("update supplier product availability: %w", err)
-		}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_supplier_aliases SET availability_status = $3,
+			check_after = NULLIF($4, '')::DATE,
+			unavailable_since = CASE WHEN $3 = 'temporarily_unavailable'
+				THEN COALESCE(unavailable_since, CURRENT_DATE) ELSE NULL END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE supplier_id = $1 AND matched_saby_id = $2
+	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter); err != nil {
+		return AvailabilityItem{}, fmt.Errorf("sync procurement alias availability: %w", err)
 	}
-	item, err := loadAliasReview(ctx, tx, aliasID)
-	if err != nil {
-		return AliasReview{}, err
+	var item AvailabilityItem
+	if err := tx.QueryRow(ctx, `
+		SELECT sp.supplier_id, s.name, sp.saby_id, COALESCE(n.name, ''),
+			COALESCE(sp.supplier_article, ''), sp.availability_status,
+			COALESCE(sp.check_after::TEXT, ''), COALESCE(sp.unavailable_since::TEXT, ''),
+			COALESCE(n.balance, 0)
+		FROM procurement_supplier_products sp
+		JOIN procurement_suppliers s ON s.id = sp.supplier_id
+		LEFT JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
+		WHERE sp.supplier_id = $1 AND sp.saby_id = $2
+	`, input.SupplierID, input.SabyID).Scan(&item.SupplierID, &item.SupplierName, &item.SabyID,
+		&item.Name, &item.SupplierArticle, &item.Status, &item.CheckAfter,
+		&item.UnavailableSince, &item.Balance); errors.Is(err, pgx.ErrNoRows) {
+		return AvailabilityItem{}, ErrNotFound
+	} else if err != nil {
+		return AvailabilityItem{}, fmt.Errorf("load procurement availability: %w", err)
 	}
-	if err := audit(ctx, tx, actor, "procurement.alias.availability", "procurement_supplier_alias", aliasID, item); err != nil {
-		return AliasReview{}, err
+	if err := audit(ctx, tx, actor, "procurement.availability.update", "procurement_supplier_product", input.SupplierID, item); err != nil {
+		return AvailabilityItem{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return AliasReview{}, fmt.Errorf("commit procurement availability: %w", err)
+		return AvailabilityItem{}, fmt.Errorf("commit procurement availability: %w", err)
 	}
 	return item, nil
 }
 
+// SetExclusion снимает товар с закупки или возвращает его обратно. Решение
+// магазина, поэтому без поставщика и с обязательной причиной при снятии:
+// через месяц «почему это не заказывается» — обычный вопрос.
+func (store *PostgresStore) SetExclusion(ctx context.Context, actor Actor, input ExclusionUpdate) error {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin procurement exclusion: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if input.Excluded {
+		command, err := tx.Exec(ctx, `
+			INSERT INTO procurement_excluded_products (saby_id, reason, updated_by)
+			SELECT $1, $2, $3 FROM saby_nomenclature WHERE saby_id = $1
+			ON CONFLICT (saby_id) DO UPDATE SET reason = EXCLUDED.reason,
+				excluded_at = CURRENT_TIMESTAMP, updated_by = EXCLUDED.updated_by
+		`, input.SabyID, input.Reason, actor.CustomerID)
+		if err != nil {
+			return fmt.Errorf("insert procurement exclusion: %w", err)
+		}
+		if command.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+	} else if _, err := tx.Exec(ctx,
+		`DELETE FROM procurement_excluded_products WHERE saby_id = $1`, input.SabyID); err != nil {
+		return fmt.Errorf("delete procurement exclusion: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.exclusion.update", "procurement_excluded_product", 0, input); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit procurement exclusion: %w", err)
+	}
+	return nil
+}
 func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, orderID int64, kind string) (ActionBatch, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -2474,4 +2538,106 @@ func audit(ctx context.Context, executor auditExecutor, actor Actor, action, ent
 func uniqueViolation(err error) bool {
 	var postgresError *pgconn.PgError
 	return errors.As(err, &postgresError) && postgresError.Code == "23505"
+}
+
+// LinkChannelProducts связывает карточки маркетплейса с номенклатурой СБИС.
+//
+// Связь ставится только по точному совпадению кода, артикула или штрихкода
+// и только там, где поле канала ещё пустое: подтягивание справочника не
+// должно переписывать связь, которую человек проставил руками. Ключ,
+// совпавший больше чем с одним товаром, пропускается — лучше оставить
+// пустым, чем приписать продажи чужому растению.
+func (store *PostgresStore) LinkChannelProducts(
+	ctx context.Context,
+	actor Actor,
+	channel string,
+	items []ChannelProduct,
+) (ChannelLinkResult, error) {
+	result := ChannelLinkResult{Channel: channel, Fetched: len(items)}
+	rows, err := store.pool.Query(ctx, `
+		SELECT saby_id, LOWER(TRIM(code)), LOWER(TRIM(article)), LOWER(TRIM(barcode))
+		FROM saby_nomenclature WHERE missing_since IS NULL
+	`)
+	if err != nil {
+		return ChannelLinkResult{}, fmt.Errorf("query saby nomenclature keys: %w", err)
+	}
+	defer rows.Close()
+	bySabyKey := make(map[string]string, 4096)
+	ambiguous := make(map[string]bool)
+	for rows.Next() {
+		var sabyID, code, article, barcode string
+		if err := rows.Scan(&sabyID, &code, &article, &barcode); err != nil {
+			return ChannelLinkResult{}, fmt.Errorf("scan saby nomenclature key: %w", err)
+		}
+		for _, key := range []string{code, article, barcode} {
+			if key == "" {
+				continue
+			}
+			if existing, seen := bySabyKey[key]; seen && existing != sabyID {
+				ambiguous[key] = true
+				continue
+			}
+			bySabyKey[key] = sabyID
+		}
+	}
+	if rows.Err() != nil {
+		return ChannelLinkResult{}, fmt.Errorf("read saby nomenclature keys: %w", rows.Err())
+	}
+
+	matched := make(map[string]string, len(items))
+	for _, item := range items {
+		keys := append([]string{item.Article}, item.Barcodes...)
+		for _, key := range keys {
+			key = strings.ToLower(strings.TrimSpace(key))
+			if key == "" || ambiguous[key] {
+				continue
+			}
+			if sabyID, ok := bySabyKey[key]; ok {
+				matched[sabyID] = item.ExternalID
+				break
+			}
+		}
+	}
+	result.Unmatched = len(items) - len(matched)
+
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return ChannelLinkResult{}, fmt.Errorf("begin channel link: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	for sabyID, externalID := range matched {
+		var command pgconn.CommandTag
+		if channel == "wb" {
+			nmID, convErr := strconv.ParseInt(externalID, 10, 64)
+			if convErr != nil {
+				continue
+			}
+			command, err = tx.Exec(ctx, `
+				INSERT INTO procurement_product_channels (saby_id, wb_nm_id, updated_by)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (saby_id) DO UPDATE SET wb_nm_id = EXCLUDED.wb_nm_id,
+					updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+				WHERE procurement_product_channels.wb_nm_id IS NULL
+			`, sabyID, nmID, actor.CustomerID)
+		} else {
+			command, err = tx.Exec(ctx, `
+				INSERT INTO procurement_product_channels (saby_id, ozon_offer_id, updated_by)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (saby_id) DO UPDATE SET ozon_offer_id = EXCLUDED.ozon_offer_id,
+					updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+				WHERE procurement_product_channels.ozon_offer_id = ''
+			`, sabyID, externalID, actor.CustomerID)
+		}
+		if err != nil {
+			return ChannelLinkResult{}, fmt.Errorf("link channel product: %w", err)
+		}
+		result.Linked += int(command.RowsAffected())
+	}
+	if err := audit(ctx, tx, actor, "procurement.channel.link", "procurement_product_channels", 0, result); err != nil {
+		return ChannelLinkResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ChannelLinkResult{}, fmt.Errorf("commit channel link: %w", err)
+	}
+	return result, nil
 }

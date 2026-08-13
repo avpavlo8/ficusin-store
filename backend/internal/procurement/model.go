@@ -44,7 +44,7 @@ type Dashboard struct {
 	Documents         []DocumentSummary   `json:"documents"`
 	Review            []AliasReview       `json:"review"`
 	Requests          []Request           `json:"requests"`
-	Availability      []AliasReview       `json:"availability"`
+	Availability      []AvailabilityItem  `json:"availability"`
 	Recommendations   []Recommendation    `json:"recommendations"`
 	SalesSync         []SalesSyncStatus   `json:"salesSync"`
 	IntegrationHealth []IntegrationHealth `json:"integrationHealth"`
@@ -241,9 +241,36 @@ type OrderLineUpdate struct {
 	ComparisonNote    *string  `json:"comparisonNote"`
 }
 
+// AvailabilityUpdate — наличие у поставщика. Ключ — пара поставщик+товар,
+// а не написание из инвойса: пометить нужно уметь и товар, которого ни в
+// одном разобранном PDF ещё не было.
 type AvailabilityUpdate struct {
+	SupplierID int64  `json:"supplierId"`
+	SabyID     string `json:"sabyId"`
 	Status     string `json:"status"`
 	CheckAfter string `json:"checkAfter"`
+}
+
+// AvailabilityItem — строка раздела «Наличие у поставщика».
+type AvailabilityItem struct {
+	SupplierID       int64      `json:"supplierId"`
+	SupplierName     string     `json:"supplierName"`
+	SabyID           string     `json:"sabyId"`
+	Name             string     `json:"name"`
+	SupplierArticle  string     `json:"supplierArticle"`
+	Status           string     `json:"availabilityStatus"`
+	CheckAfter       string     `json:"checkAfter"`
+	UnavailableSince string     `json:"unavailableSince"`
+	Balance          int        `json:"balance"`
+	LastSeenAt       *time.Time `json:"lastSeenAt,omitempty"`
+}
+
+// ExclusionUpdate — «не закупаем». Решение магазина, а не поставщика,
+// поэтому крепится к товару целиком.
+type ExclusionUpdate struct {
+	SabyID   string `json:"sabyId"`
+	Excluded bool   `json:"excluded"`
+	Reason   string `json:"reason"`
 }
 
 type Recommendation struct {
@@ -351,6 +378,22 @@ type ActionItem struct {
 	ErrorMessage        string   `json:"errorMessage"`
 	ExternalOperationID string   `json:"-"`
 	Attempts            int      `json:"-"`
+}
+
+// ChannelProduct — карточка маркетплейса, какой её отдаёт площадка.
+type ChannelProduct struct {
+	ExternalID string
+	Article    string
+	Name       string
+	Barcodes   []string
+}
+
+// ChannelLinkResult — итог подтягивания справочника канала.
+type ChannelLinkResult struct {
+	Channel   string `json:"channel"`
+	Fetched   int    `json:"fetched"`
+	Linked    int    `json:"linked"`
+	Unmatched int    `json:"unmatched"`
 }
 
 type IntegrationStatus struct {

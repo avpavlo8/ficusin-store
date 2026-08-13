@@ -43,6 +43,17 @@ func (executor *ProcurementExecutor) Execute(ctx context.Context, item procureme
 	}
 }
 
+// FetchCatalog отдаёт справочник карточек маркетплейса. СБИС здесь не
+// участвует: его номенклатура и есть то, с чем эти карточки связывают.
+func (executor *ProcurementExecutor) FetchCatalog(ctx context.Context, channel string) ([]procurement.ChannelProduct, error) {
+	switch channel {
+	case "wb", "ozon":
+		return executor.marketplaces.FetchCatalog(ctx, channel)
+	default:
+		return nil, fmt.Errorf("справочник канала %s не поддерживается", channel)
+	}
+}
+
 func (executor *ProcurementExecutor) Probe(ctx context.Context, channel string) error {
 	switch channel {
 	case "wb", "ozon":

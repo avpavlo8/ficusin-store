@@ -349,6 +349,13 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if err := RecordMovement(ctx, transaction, orderID, MovementReserve); err != nil {
 		return Created{}, err
 	}
+	// Предзаказ — это обещание купить то, чего сейчас нет. Такое обещание
+	// должно дойти до закупки, иначе растение никто не закажет и обещание
+	// останется невыполненным. Пишем в той же транзакции, что и заказ:
+	// заявка, потерявшаяся при откате, хуже отсутствующей.
+	if err := recordPreorderRequests(ctx, transaction, orderID); err != nil {
+		return Created{}, err
+	}
 	// The agreement is written in the same transaction as the order, so an
 	// order can never exist without the record of the consent behind it.
 	if err := consent.Record(ctx, transaction, consent.Event{

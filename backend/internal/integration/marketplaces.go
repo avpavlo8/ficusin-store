@@ -21,6 +21,7 @@ const (
 	defaultWBBase    = "https://discounts-prices-api.wildberries.ru"
 	defaultWBStats   = "https://finance-api.wildberries.ru"
 	defaultWBReports = "https://statistics-api.wildberries.ru"
+	defaultWBContent = "https://content-api.wildberries.ru"
 	defaultOzonBase  = "https://api-seller.ozon.ru"
 )
 
@@ -32,6 +33,7 @@ type MarketplaceExecutor struct {
 	wbBase        string
 	wbStatsBase   string
 	wbReportsBase string
+	wbContentBase string
 	ozonBase      string
 }
 
@@ -55,7 +57,8 @@ func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *Marketpla
 	return &MarketplaceExecutor{
 		client: &http.Client{Timeout: 20 * time.Second}, wbToken: strings.TrimSpace(wbToken),
 		ozonClientID: strings.TrimSpace(ozonClientID), ozonAPIKey: strings.TrimSpace(ozonAPIKey),
-		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, wbReportsBase: defaultWBReports, ozonBase: defaultOzonBase,
+		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, wbReportsBase: defaultWBReports,
+		wbContentBase: defaultWBContent, ozonBase: defaultOzonBase,
 	}
 }
 
@@ -647,4 +650,126 @@ func safeRemoteMessage(value string) string {
 		value = string(runes[:300]) + "…"
 	}
 	return value
+}
+
+// FetchCatalog читает карточки маркетплейса, чтобы связать их с
+// номенклатурой СБИС.
+//
+// Без этой связи продажи WB и Ozon приходят, сохраняются и не участвуют в
+// расчёте: рекомендация занижена ровно на то, что продалось на площадках.
+// Заполнять сотни артикулов руками никто не станет, поэтому справочник
+// подтягивается сам, а решение о связи принимается по точному совпадению
+// кода или штрихкода — не по названию.
+func (executor *MarketplaceExecutor) FetchCatalog(ctx context.Context, channel string) ([]procurement.ChannelProduct, error) {
+	switch channel {
+	case "wb":
+		return executor.fetchWBCatalog(ctx)
+	case "ozon":
+		return executor.fetchOzonCatalog(ctx)
+	default:
+		return nil, fmt.Errorf("справочник канала %s не поддерживается", channel)
+	}
+}
+
+func (executor *MarketplaceExecutor) fetchWBCatalog(ctx context.Context) ([]procurement.ChannelProduct, error) {
+	if !executor.Configured("wb") {
+		return nil, errors.New("токен Wildberries не настроен")
+	}
+	headers := map[string]string{"Authorization": executor.wbToken}
+	items := make([]procurement.ChannelProduct, 0, 200)
+	cursor := map[string]any{"limit": 100}
+	// Курсор WB отдаёт следующую страницу через updatedAt и nmID последней
+	// карточки. Потолок страниц выбран с запасом: он спасает от бесконечного
+	// цикла, если площадка перестанет двигать курсор.
+	for page := 0; page < 200; page++ {
+		payload := map[string]any{
+			"settings": map[string]any{
+				"cursor": cursor,
+				"filter": map[string]any{"withPhoto": -1},
+			},
+		}
+		var response struct {
+			Cards []struct {
+				NmID       int64  `json:"nmID"`
+				VendorCode string `json:"vendorCode"`
+				Title      string `json:"title"`
+				Sizes      []struct {
+					Skus []string `json:"skus"`
+				} `json:"sizes"`
+			} `json:"cards"`
+			Cursor struct {
+				UpdatedAt string `json:"updatedAt"`
+				NmID      int64  `json:"nmID"`
+				Total     int    `json:"total"`
+			} `json:"cursor"`
+		}
+		if err := executor.requestRead(ctx, http.MethodPost,
+			executor.wbContentBase+"/content/v2/get/cards/list", payload, headers, &response); err != nil {
+			return nil, err
+		}
+		for _, card := range response.Cards {
+			item := procurement.ChannelProduct{
+				ExternalID: strconv.FormatInt(card.NmID, 10),
+				Article:    strings.TrimSpace(card.VendorCode),
+				Name:       strings.TrimSpace(card.Title),
+			}
+			for _, size := range card.Sizes {
+				for _, sku := range size.Skus {
+					if sku = strings.TrimSpace(sku); sku != "" {
+						item.Barcodes = append(item.Barcodes, sku)
+					}
+				}
+			}
+			items = append(items, item)
+		}
+		if len(response.Cards) < 100 {
+			break
+		}
+		cursor = map[string]any{
+			"limit": 100, "updatedAt": response.Cursor.UpdatedAt, "nmID": response.Cursor.NmID,
+		}
+	}
+	return items, nil
+}
+
+func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]procurement.ChannelProduct, error) {
+	if !executor.Configured("ozon") {
+		return nil, errors.New("ключи Ozon не настроены")
+	}
+	headers := map[string]string{
+		"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey,
+	}
+	items := make([]procurement.ChannelProduct, 0, 200)
+	lastID := ""
+	for page := 0; page < 200; page++ {
+		payload := map[string]any{"filter": map[string]any{"visibility": "ALL"}, "limit": 1000, "last_id": lastID}
+		var response struct {
+			Result struct {
+				Items []struct {
+					OfferID string `json:"offer_id"`
+					SKU     int64  `json:"sku"`
+				} `json:"items"`
+				LastID string `json:"last_id"`
+				Total  int    `json:"total"`
+			} `json:"result"`
+		}
+		if err := executor.requestRead(ctx, http.MethodPost,
+			executor.ozonBase+"/v3/product/list", payload, headers, &response); err != nil {
+			return nil, err
+		}
+		for _, item := range response.Result.Items {
+			offer := strings.TrimSpace(item.OfferID)
+			if offer == "" {
+				continue
+			}
+			// У Ozon внешний ключ продаж и есть offer_id, поэтому он же
+			// служит идентификатором карточки.
+			items = append(items, procurement.ChannelProduct{ExternalID: offer, Article: offer})
+		}
+		if len(response.Result.Items) == 0 || response.Result.LastID == "" || response.Result.LastID == lastID {
+			break
+		}
+		lastID = response.Result.LastID
+	}
+	return items, nil
 }

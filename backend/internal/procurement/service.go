@@ -23,7 +23,9 @@ type Store interface {
 	ResolveAlias(context.Context, Actor, int64, AliasResolution) (AliasReview, error)
 	CreateRequest(context.Context, Actor, RequestCreate) (Request, error)
 	UpdateRequest(context.Context, Actor, int64, RequestUpdate) (Request, error)
-	UpdateAvailability(context.Context, Actor, int64, AvailabilityUpdate) (AliasReview, error)
+	UpdateAvailability(context.Context, Actor, AvailabilityUpdate) (AvailabilityItem, error)
+	SetExclusion(context.Context, Actor, ExclusionUpdate) error
+	LinkChannelProducts(context.Context, Actor, string, []ChannelProduct) (ChannelLinkResult, error)
 	ListProducts(context.Context, int64, string) ([]ProductDirectoryItem, error)
 	UpdateProduct(context.Context, Actor, ProductDirectoryUpdate) (ProductDirectoryItem, error)
 	PrepareBatch(context.Context, Actor, int64, string) (ActionBatch, error)
@@ -42,6 +44,11 @@ type Executor interface {
 
 type IntegrationProber interface {
 	Probe(context.Context, string) error
+}
+
+// ChannelCatalogSource читает справочник карточек маркетплейса.
+type ChannelCatalogSource interface {
+	FetchCatalog(context.Context, string) ([]ChannelProduct, error)
 }
 
 type ActionExecution struct {
@@ -117,6 +124,31 @@ func (service *Service) CheckIntegration(ctx context.Context, actor Actor, chann
 	}
 	_ = actor // Kept in the service boundary for the integration audit extension.
 	return item, nil
+}
+
+// SyncChannelCatalog подтягивает артикулы WB или Ozon и связывает их с
+// номенклатурой СБИС по точному совпадению кода, артикула или штрихкода.
+//
+// Совпадение по названию сознательно не используется: «Фикус Бенджамина 12»
+// и «Фикус Бенджамина 14» — разные растения с разной ценой, и ошибочная
+// связь тихо припишет продажи чужой карточке.
+func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, channel string) (ChannelLinkResult, error) {
+	channel = strings.TrimSpace(channel)
+	if !oneOf(channel, "wb", "ozon") {
+		return ChannelLinkResult{}, ErrInvalidInput
+	}
+	source, ok := service.executor.(ChannelCatalogSource)
+	if service.executor == nil || !ok {
+		return ChannelLinkResult{}, errors.New("чтение справочника канала не поддерживается")
+	}
+	if !service.executor.Configured(channel) {
+		return ChannelLinkResult{}, errors.New("ключи канала не настроены")
+	}
+	items, err := source.FetchCatalog(ctx, channel)
+	if err != nil {
+		return ChannelLinkResult{}, err
+	}
+	return service.store.LinkChannelProducts(ctx, actor, channel, items)
 }
 
 func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input PricingSettings) (PricingSettings, error) {
@@ -339,18 +371,35 @@ func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input Pr
 	return service.store.UpdateProduct(ctx, actor, input)
 }
 
-func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {
+func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, input AvailabilityUpdate) (AvailabilityItem, error) {
+	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.Status = strings.TrimSpace(input.Status)
 	input.CheckAfter = strings.TrimSpace(input.CheckAfter)
-	if aliasID <= 0 || !oneOf(input.Status, "available", "unknown", "check", "temporarily_unavailable", "discontinued") {
-		return AliasReview{}, ErrInvalidInput
+	if input.SupplierID <= 0 || input.SabyID == "" ||
+		!oneOf(input.Status, "available", "unknown", "check", "temporarily_unavailable", "discontinued") {
+		return AvailabilityItem{}, ErrInvalidInput
 	}
 	if input.CheckAfter != "" {
 		if _, err := time.Parse("2006-01-02", input.CheckAfter); err != nil {
-			return AliasReview{}, ErrInvalidInput
+			return AvailabilityItem{}, ErrInvalidInput
 		}
 	}
-	return service.store.UpdateAvailability(ctx, actor, aliasID, input)
+	return service.store.UpdateAvailability(ctx, actor, input)
+}
+
+// SetExclusion снимает товар с закупки. Причина обязательна: список «не
+// закупаем» живёт годами, и через полгода вопрос «почему этого нет в
+// рекомендациях» задаст тот же человек, который его туда положил.
+func (service *Service) SetExclusion(ctx context.Context, actor Actor, input ExclusionUpdate) error {
+	input.SabyID = strings.TrimSpace(input.SabyID)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if len([]rune(input.Reason)) > 300 {
+		input.Reason = string([]rune(input.Reason)[:300])
+	}
+	if input.SabyID == "" || (input.Excluded && input.Reason == "") {
+		return ErrInvalidInput
+	}
+	return service.store.SetExclusion(ctx, actor, input)
 }
 
 func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID int64, kind string) (ActionBatch, error) {

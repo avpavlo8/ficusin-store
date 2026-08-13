@@ -84,8 +84,14 @@ func (stub *procurementStub) ListProducts(context.Context, int64, string) ([]pro
 func (stub *procurementStub) UpdateProduct(_ context.Context, _ procurement.Actor, input procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error) {
 	return procurement.ProductDirectoryItem{SabyID: input.SabyID}, nil
 }
-func (stub *procurementStub) UpdateAvailability(_ context.Context, _ procurement.Actor, aliasID int64, input procurement.AvailabilityUpdate) (procurement.AliasReview, error) {
-	return procurement.AliasReview{ID: aliasID, AvailabilityStatus: input.Status}, nil
+func (stub *procurementStub) UpdateAvailability(_ context.Context, _ procurement.Actor, input procurement.AvailabilityUpdate) (procurement.AvailabilityItem, error) {
+	return procurement.AvailabilityItem{SupplierID: input.SupplierID, SabyID: input.SabyID, Status: input.Status}, nil
+}
+func (stub *procurementStub) SetExclusion(context.Context, procurement.Actor, procurement.ExclusionUpdate) error {
+	return nil
+}
+func (stub *procurementStub) SyncChannelCatalog(_ context.Context, _ procurement.Actor, channel string) (procurement.ChannelLinkResult, error) {
+	return procurement.ChannelLinkResult{Channel: channel}, nil
 }
 func (stub *procurementStub) PrepareBatch(_ context.Context, _ procurement.Actor, _ int64, kind string) (procurement.ActionBatch, error) {
 	return procurement.ActionBatch{ID: 1, Kind: kind}, nil

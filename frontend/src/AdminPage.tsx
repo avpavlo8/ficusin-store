@@ -79,7 +79,9 @@ type NomenclatureCandidate = {
   sabyId: string; code: string; article: string; name: string; balance: number; price: number;
 };
 type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
-type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: "recommended" | "already_ordered" | "check_availability" | "new_assortment" | "no_stock"; reason: string };
+type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
+type RecommendationStatus = "recommended" | "already_ordered" | "check_availability" | "supplier_unavailable" | "excluded";
+type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string };
 type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string };
 type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
 type ProcurementProduct = { sabyId: string; sabyCode: string; sabyArticle: string; name: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; minimumOrderQty: number; orderMultiple: number; aliases: string[] };
@@ -101,7 +103,7 @@ type ProcurementData = {
   integrations: { wb: boolean; ozon: boolean; saby: boolean };
   settings: ProcurementSettings; suppliers: ProcurementSupplier[]; orders: ProcurementOrder[];
   documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
-  availability: ProcurementAlias[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
+  availability: ProcurementAvailability[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
   integrationHealth: IntegrationHealth[];
 };
 
@@ -408,9 +410,10 @@ const procurementParserLabels: Record<string, string> = {
 function Procurement({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
   const [view, setView] = useState<"orders" | "recommendations" | "products" | "requests" | "availability" | "integrations" | "settings">("orders");
-  const [recommendationView, setRecommendationView] = useState<"recommended" | "already_ordered" | "check_availability" | "new_assortment" | "no_stock">("recommended");
+  const [recommendationView, setRecommendationView] = useState<RecommendationStatus>("recommended");
   const [checkingIntegration, setCheckingIntegration] = useState<string>("");
   const [integrationNotice, setIntegrationNotice] = useState<{ channel: string; ok: boolean; text: string } | null>(null);
+  const [syncingCatalog, setSyncingCatalog] = useState("");
   const [supplierDialog, setSupplierDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [uploadDialog, setUploadDialog] = useState(false);
@@ -421,6 +424,15 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
   const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
     .then(setData).catch((error) => onError((error as Error).message)), [onError]);
   useEffect(() => { void load(); }, [load]);
+  const syncCatalog = async (channel: string) => {
+    setSyncingCatalog(channel);
+    try {
+      const result = await api<{ link: { fetched: number; linked: number; unmatched: number } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
+      setIntegrationNotice({ channel, ok: true, text: `Прочитано карточек: ${result.link.fetched}, связано: ${result.link.linked}, без совпадения: ${result.link.unmatched}` });
+      await load();
+    } catch (error) { setIntegrationNotice({ channel, ok: false, text: (error as Error).message }); }
+    finally { setSyncingCatalog(""); }
+  };
   const checkIntegration = async (channel: string) => {
     setCheckingIntegration(channel);
     setIntegrationNotice(null);
@@ -446,7 +458,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
 
   if (!data) return <><PageHeading eyebrow="Снабжение" title="Закупки" text="Загружаем данные закупок…" /></>;
   const recommendationItems = data.recommendations.filter((item) => item.status === recommendationView);
-  const actionableRecommendations = data.recommendations.filter((item) => item.status === "recommended" || item.status === "new_assortment" || item.status === "no_stock");
+  const actionableRecommendations = data.recommendations.filter((item) => item.status === "recommended");
   const formatTotal = (item: ProcurementOrder) => new Intl.NumberFormat("ru-RU", {
     style: "currency", currency: item.currency, maximumFractionDigits: 2,
   }).format(item.total);
@@ -524,12 +536,12 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
 
     {view === "recommendations" && <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button className="admin-primary" disabled={!actionableRecommendations.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ</button></div>
-      <p className="admin-hint procurement-note">К закупке = продажи СБИС, сайта, WB и Ozon за {data.settings.recommendationDays} дней − текущий остаток СБИС − товар в пути. Заказы клиентов добавляются к потребности.</p>
+      <p className="admin-hint procurement-note">К закупке = продажи СБИС, сайта, WB и Ozon за {data.settings.recommendationDays} дней, пересчитанные на запас {data.settings.targetCoverDays} дней, − текущий остаток СБИС − товар в пути. Заказы клиентов добавляются к потребности.</p>
       <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced}, связано {sync.rowsLinked}</small>{sync.rowsSynced > sync.rowsLinked && <em>Часть продаж не сопоставлена с товарами и не участвует в расчёте</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
       <div className="procurement-recommendation-tabs">
-        {(["recommended", "no_stock", "new_assortment", "already_ordered", "check_availability"] as const).map((status) => <button className={recommendationView === status ? "active" : ""} key={status} onClick={() => setRecommendationView(status)}>{recommendationStatusLabel(status)} <span>{data.recommendations.filter((item) => item.status === status).length}</span></button>)}
+        {(["recommended", "already_ordered", "check_availability", "supplier_unavailable", "excluded"] as const).map((status) => <button className={recommendationView === status ? "active" : ""} key={status} onClick={() => setRecommendationView(status)}>{recommendationStatusLabel(status)} <span>{data.recommendations.filter((item) => item.status === status).length}</span></button>)}
       </div>
-      {recommendationItems.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик / артикул</th><th>Остаток / в пути</th><th>Продажи</th><th>Хватит на</th><th>Запросы</th><th>Заказать</th><th></th></tr></thead><tbody>{recommendationItems.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}><td><strong>{item.name}</strong><small>{item.reason}</small>{item.lastOrderedAt && <small>Последний заказ: {new Date(item.lastOrderedAt).toLocaleDateString("ru-RU")}</small>}</td><td><strong>{data.suppliers.find((supplier) => supplier.id === item.supplierId)?.name || "—"}</strong><small>{item.supplierArticle || "Артикул не заполнен"}</small></td><td><strong>{item.balance} / {item.incoming}</strong></td><td><strong>{item.totalSales}</strong><small>магазин {item.sabySales} · сайт {item.siteSales} · WB {item.wbSales} · Ozon {item.ozonSales}</small></td><td>{item.daysOfCover == null ? "Нет продаж" : `${Math.round(item.daysOfCover)} дн.`}</td><td>{item.openRequests}<small>{item.customerRequests ? `клиенту ${item.customerRequests}` : ""}{item.staffRequests ? `${item.customerRequests ? " · " : ""}магазину ${item.staffRequests}` : ""}</small></td><td><strong>{item.suggestedQty ? `${item.suggestedQty} шт.` : "—"}</strong>{item.orderMultiple > 1 && <small>кратно {item.orderMultiple}</small>}</td><td>{item.aliasId > 0 && item.status !== "check_availability" && <button className="table-action" onClick={() => void updateAvailability(item.aliasId, "check", load, onError)}>Проверить наличие</button>}</td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>{recommendationEmptyTitle(recommendationView)}</strong><span>{recommendationEmptyText(recommendationView)}</span></div>}
+      {recommendationItems.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик / артикул</th><th>Остаток / в пути</th><th>Продажи</th><th>Хватит на</th><th>Запросы</th><th>Заказать</th><th></th></tr></thead><tbody>{recommendationItems.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}><td><strong>{item.name}</strong><small>{item.reason}</small>{item.lastOrderedAt && <small>Последний заказ: {new Date(item.lastOrderedAt).toLocaleDateString("ru-RU")}</small>}</td><td><strong>{data.suppliers.find((supplier) => supplier.id === item.supplierId)?.name || "—"}</strong><small>{item.supplierArticle || "Артикул не заполнен"}</small></td><td><strong>{item.balance} / {item.incoming}</strong></td><td><strong>{item.totalSales}</strong><small>магазин {item.sabySales} · сайт {item.siteSales} · WB {item.wbSales} · Ozon {item.ozonSales}</small></td><td>{item.daysOfCover == null ? "Нет продаж" : `${Math.round(item.daysOfCover)} дн.`}</td><td>{item.openRequests}<small>{item.customerRequests ? `клиенту ${item.customerRequests}` : ""}{item.staffRequests ? `${item.customerRequests ? " · " : ""}магазину ${item.staffRequests}` : ""}</small></td><td><strong>{item.suggestedQty ? `${item.suggestedQty} шт.` : "—"}</strong>{item.orderMultiple > 1 && <small>кратно {item.orderMultiple}</small>}</td><td><div className="procurement-inline-actions">{item.status !== "check_availability" && item.status !== "excluded" && <button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "check", load, onError)}>Проверить наличие</button>}{item.status !== "supplier_unavailable" && item.status !== "excluded" && <button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "temporarily_unavailable", load, onError)}>Нет у поставщика</button>}{item.status === "excluded" ? <button onClick={() => void setExclusion(item.sabyId, false, "", load, onError)}>Вернуть в закупку</button> : <button onClick={() => void setExclusion(item.sabyId, true, "", load, onError)}>Не закупать</button>}</div></td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>{recommendationEmptyTitle(recommendationView)}</strong><span>{recommendationEmptyText(recommendationView)}</span></div>}
     </section>}
 
     {view === "products" && <ProcurementProducts suppliers={data.suppliers} onError={onError} />}
@@ -540,8 +552,9 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
     </section>}
 
     {view === "availability" && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Исключения из рекомендаций</p><h2>Проверить наличие у поставщика</h2></div></div>
-      {data.availability.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Последний раз</th><th>Статус</th><th>Действия</th></tr></thead><tbody>{data.availability.map((item) => <tr key={item.id}><td><strong>{item.suggestedSabyName || item.rawName}</strong><small>{item.supplierArticle}</small></td><td>{item.supplierName}</td><td>{item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleDateString("ru-RU") : "—"}</td><td>{availabilityLabel(item.availabilityStatus)}</td><td><div className="procurement-inline-actions"><button onClick={() => void updateAvailability(item.id, "available", load, onError)}>Есть</button><button onClick={() => void updateAvailability(item.id, "temporarily_unavailable", load, onError)}>Нет временно</button><button onClick={() => void updateAvailability(item.id, "check", load, onError)}>Проверить позже</button></div></td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Список пуст</strong><span>Помеченные временно отсутствующими растения не попадают в рекомендации.</span></div>}
+      <div className="admin-block-heading"><div><p className="eyebrow">Наличие у поставщика</p><h2>Проверить наличие</h2></div><span className="admin-pill">{data.availability.length} позиций</span></div>
+      <p className="admin-hint procurement-note">Статус хранится на паре товар + поставщик, поэтому пометить можно любое растение из справочника, а не только встреченное в разобранном инвойсе.</p>
+      {data.availability.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Остаток</th><th>С какого дня</th><th>Статус</th><th>Действия</th></tr></thead><tbody>{data.availability.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}><td><strong>{item.name || item.sabyId}</strong><small>{item.supplierArticle || "Артикул не заполнен"}</small></td><td>{item.supplierName}</td><td>{item.balance}</td><td>{item.unavailableSince ? new Date(`${item.unavailableSince}T00:00:00`).toLocaleDateString("ru-RU") : item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleDateString("ru-RU") : "—"}</td><td>{availabilityLabel(item.availabilityStatus)}</td><td><div className="procurement-inline-actions"><button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "available", load, onError)}>Есть</button><button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "temporarily_unavailable", load, onError)}>Нет временно</button><button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "discontinued", load, onError)}>Снят с продажи</button></div></td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Список пуст</strong><span>Растения, помеченные как отсутствующие у поставщика, не мешают собирать заказ и ждут проверки здесь.</span></div>}
     </section>}
 
     {view === "integrations" && <section className="admin-block procurement-block">
@@ -553,7 +566,9 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
         {item.lastError && <em>{item.lastError}</em>}
         {integrationNotice?.channel === item.channel && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
         <button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : "Проверить подключение"}</button>
+        {item.channel !== "saby" && <button className="secondary-button" disabled={syncingCatalog !== ""} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Подтягиваем…" : "Подтянуть артикулы"}</button>}
       </article>)}</div>
+      <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Пока связи нет, продажи канала загружаются, но в расчёт не идут.</p>
       <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки» и «Финансы». Ozon проверяется по безопасному чтению списка товаров.</p>
       <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Создание поступлений и изменение прайса остаются выключенными, пока не подтверждён поддерживаемый Saby контракт записи.</p>
     </section>}
@@ -572,17 +587,29 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
 const availabilityLabel = (value: string) => ({ available: "Есть", check: "Проверить", temporarily_unavailable: "Временно нет", discontinued: "Снят с продажи", unknown: "Неизвестно" }[value] || value);
 const salesChannelLabel = (value: string) => ({ site: "Сайт", saby: "СБИС / магазин", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 const salesSyncLabel = (value: string) => ({ pending: "Ожидает первой загрузки", running: "Обновляется", ok: "Актуально", error: "Ошибка", disabled: "Не подключено" }[value] || value);
-const recommendationStatusLabel = (value: string) => ({ recommended: "К заказу", no_stock: "Нет остатка", new_assortment: "Новинки", already_ordered: "Уже заказано", check_availability: "Проверить наличие" }[value] || value);
-const recommendationEmptyTitle = (value: string) => ({ recommended: "Дефицита нет", no_stock: "Товаров без остатка нет", new_assortment: "Новых идей нет", already_ordered: "Товаров в пути нет", check_availability: "Проверять нечего" }[value] || "Список пуст");
-const recommendationEmptyText = (value: string) => value === "recommended" ? "Текущий остаток и товары в пути покрывают рассчитанный спрос." : value === "no_stock" ? "Здесь появятся товары без остатка и продаж за выбранный период." : value === "new_assortment" ? "Добавьте ручную рекомендацию магазина и свяжите её с товаром СБИС." : value === "already_ordered" ? "Здесь появятся позиции из действующих закупок, чтобы не заказать их повторно." : "Здесь появится спрос на товары с неподтверждённым наличием у поставщика.";
+const recommendationStatusLabel = (value: string) => ({ recommended: "К заказу", already_ordered: "Уже заказано", check_availability: "Проверить наличие", supplier_unavailable: "Нет у поставщика", excluded: "Не закупаем" }[value] || value);
+const recommendationEmptyTitle = (value: string) => ({ recommended: "Дефицита нет", already_ordered: "Товаров в пути нет", check_availability: "Проверять нечего", supplier_unavailable: "У поставщиков всё есть", excluded: "Ничего не снято с закупки" }[value] || "Список пуст");
+const recommendationEmptyText = (value: string) => value === "recommended" ? "Текущий остаток и товары в пути покрывают рассчитанный спрос." : value === "already_ordered" ? "Здесь появятся позиции из действующих закупок, чтобы не заказать их повторно." : value === "check_availability" ? "Отметьте кнопкой «Проверить наличие» то, чего у поставщика может не оказаться." : value === "supplier_unavailable" ? "Растения, которых у поставщика нет, уходят сюда и не мешают собирать заказ." : "Снятое с закупки решением магазина видно здесь и в заказ не попадает.";
 const integrationChannelLabel = (value: string) => ({ saby: "СБИС / Saby", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 
-async function updateAvailability(aliasId: number, status: string, reload: () => Promise<unknown>, onError: (value: string) => void) {
-  const days = status === "check" ? 14 : status === "temporarily_unavailable" ? 30 : 0;
-  const date = days ? new Date(Date.now() + days * 86400000).toISOString().slice(0, 10) : "";
-  try { await api(`/api/v1/admin/procurement/availability/${aliasId}`, { method: "PATCH", body: JSON.stringify({ status, checkAfter: date }) }); await reload(); }
+async function updateAvailability(supplierId: number, sabyId: string, status: string, reload: () => Promise<unknown>, onError: (message: string) => void) {
+  const date = status === "check" ? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) : "";
+  try { await api("/api/v1/admin/procurement/availability", { method: "PATCH", body: JSON.stringify({ supplierId, sabyId, status, checkAfter: date }) }); await reload(); }
   catch (error) { onError((error as Error).message); }
 }
+
+// Причина обязательна при снятии: через полгода вопрос «почему этого нет в
+// рекомендациях» задаёт тот же человек, который его туда положил.
+async function setExclusion(sabyId: string, excluded: boolean, reason: string, reload: () => Promise<unknown>, onError: (message: string) => void) {
+  let note = reason;
+  if (excluded && !note) {
+    note = (window.prompt("Почему не закупаем это растение?") || "").trim();
+    if (!note) return;
+  }
+  try { await api("/api/v1/admin/procurement/exclusions", { method: "PUT", body: JSON.stringify({ sabyId, excluded, reason: note }) }); await reload(); }
+  catch (error) { onError((error as Error).message); }
+}
+
 
 async function updateRequestStatus(item: ProcurementRequest, status: string, reload: () => Promise<unknown>, onError: (value: string) => void) {
   try {
@@ -632,6 +659,7 @@ function ProcurementSettingsPanel({ settings, onSaved, onError }: { settings: Pr
       <PercentField label="Наценка на закупочную стоимость" value={draft.retailMarkupMultiplier - 1} onChange={(value) => setDraft({ ...draft, retailMarkupMultiplier: 1 + value })} />
       <PercentField label="Цена МП без скидки" value={draft.marketplaceStrikeMarkup} onChange={(value) => setDraft({ ...draft, marketplaceStrikeMarkup: value })} />
       <label>Период анализа продаж, дней<input type="number" value={draft.recommendationDays} onChange={(event) => number("recommendationDays", event.target.value)} /></label>
+      <label>Закупаем запас на, дней<input type="number" value={draft.targetCoverDays} onChange={(event) => number("targetCoverDays", event.target.value)} /></label>
       <label className="admin-checkbox"><input type="checkbox" checked={draft.roundPrices} onChange={(event) => setDraft({ ...draft, roundPrices: event.target.checked })} />Округлять цены до ближайших 50 или 90</label>
     </div>
   </section>;
