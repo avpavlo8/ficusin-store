@@ -170,6 +170,20 @@ try:
     if not catalog_items:
         raise RuntimeError("empty catalog")
 
+    # Retail receipts identify nomenclature by NomenclatureUUID, while the
+    # catalogue endpoint uses its own `id` as the canonical key. Build the
+    # translation from every stable identifier returned in the same catalogue
+    # snapshot so sales and balances reach one product in the store database.
+    sales_product_ids = {}
+    for item in catalog_items:
+        canonical_id = str(item.get("id") or "").strip()
+        if not canonical_id:
+            continue
+        for field in ("id", "externalId", "code", "nomNumber", "article"):
+            source_id = str(item.get(field) or "").strip()
+            if source_id:
+                sales_product_ids[source_id.casefold()] = canonical_id
+
     stage = "saby-sales"
     sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))
     moscow = datetime.timezone(datetime.timedelta(hours=3))
@@ -202,9 +216,17 @@ try:
             for position in positions:
                 if position.get("Refused") or position.get("IsModifier"):
                     continue
-                saby_id = str(position.get("NomenclatureUUID") or "").strip()
-                if not saby_id:
+                source_id = str(
+                    position.get("NomenclatureUUID")
+                    or position.get("NomenclatureID")
+                    or position.get("Nomenclature")
+                    or position.get("NomNumber")
+                    or position.get("Article")
+                    or ""
+                ).strip()
+                if not source_id:
                     continue
+                saby_id = sales_product_ids.get(source_id.casefold(), source_id)
                 try:
                     quantity = float(position.get("Quantity") or 0)
                     total = float(position.get("TotalPrice") or 0)
