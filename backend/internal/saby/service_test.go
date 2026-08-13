@@ -46,6 +46,9 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 		t.Fatalf("ожидали одну позицию, получили %d", len(items))
 	}
 	item := items[0]
+	if item.id != "42" {
+		t.Errorf("normalization must keep raw id before synchronization: %q", item.id)
+	}
 	if item.code != "X1150532" || item.article != "ART-1" || item.barcode != "4600000000001" {
 		t.Errorf("коды потерялись: %+v", item)
 	}

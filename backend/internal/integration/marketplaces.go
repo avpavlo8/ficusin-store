@@ -204,6 +204,12 @@ func (executor *MarketplaceExecutor) fetchOzonPostings(
 		}
 		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+path, payload,
 			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
+			// Ozon occasionally returns an empty successful body when the page
+			// contains no postings. For a read-only list this means the end of
+			// pagination, not a failed integration.
+			if strings.Contains(strings.ToLower(err.Error()), "unexpected end of json input") {
+				break
+			}
 			return nil, fmt.Errorf("получить продажи Ozon %s: %w", path, err)
 		}
 		var page []ozonPosting

@@ -176,7 +176,12 @@ try:
     # snapshot so sales and balances reach one product in the store database.
     sales_product_ids = {}
     for item in catalog_items:
-        canonical_id = str(item.get("id") or "").strip()
+        human_code = str(item.get("nomNumber") or "").strip()
+        canonical_id = (
+            human_code
+            if human_code.upper().startswith("X")
+            else str(item.get("id") or "").strip()
+        )
         if not canonical_id:
             continue
         for field in ("id", "externalId", "code", "nomNumber", "article"):
@@ -366,12 +371,20 @@ try:
     sales_response = request_json(sales_request)
     if not sales_response.get("ok"):
         raise RuntimeError("store rejected sales")
+    linked_sales = int(sales_response.get("linkedRows") or 0)
+    recommendation_rows = int(sales_response.get("recommendationRows") or 0)
+    if public_sales and linked_sales == 0:
+        raise RuntimeError("store linked zero Saby sales")
 
     report(
-        f"saby/store-sync/success-c{len(public_catalog)}-s{len(public_sales)}",
+        f"saby/store-sync/success-c{len(public_catalog)}-s{len(public_sales)}-l{linked_sales}-r{recommendation_rows}",
         "success",
     )
-    print("Saby catalog sync completed")
+    print(
+        "Saby catalog sync completed: "
+        f"catalog={len(public_catalog)} sales={len(public_sales)} "
+        f"linked={linked_sales} recommendations={recommendation_rows}"
+    )
 except urllib.error.HTTPError as error:
     safe_code = error.headers.get("X-Saby-Sync-Error")
     if not safe_code:

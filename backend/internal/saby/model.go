@@ -36,9 +36,11 @@ type SalesUpload struct {
 }
 
 type SalesResult struct {
-	OK       bool      `json:"ok"`
-	Rows     int       `json:"rows"`
-	SyncedAt time.Time `json:"syncedAt"`
+	OK                 bool      `json:"ok"`
+	Rows               int       `json:"rows"`
+	LinkedRows         int       `json:"linkedRows"`
+	RecommendationRows int       `json:"recommendationRows"`
+	SyncedAt           time.Time `json:"syncedAt"`
 }
 
 type Result struct {

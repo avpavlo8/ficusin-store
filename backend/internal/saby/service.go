@@ -46,7 +46,24 @@ func (service *Service) SyncSales(ctx context.Context, upload SalesUpload) (Sale
 	if err != nil {
 		return SalesResult{}, fmt.Errorf("replace Saby sales: %w", err)
 	}
-	return SalesResult{OK: true, Rows: rows, SyncedAt: time.Now().UTC()}, nil
+	var linkedRows, recommendationRows int
+	if err := service.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER,
+			COUNT(DISTINCT supplier_product.saby_id) FILTER (
+				WHERE sale.saby_id IS NOT NULL AND nomenclature.balance < sale.units
+			)::INTEGER
+		FROM procurement_sales_daily sale
+		LEFT JOIN procurement_supplier_products supplier_product ON supplier_product.saby_id = sale.saby_id
+		LEFT JOIN saby_nomenclature nomenclature ON nomenclature.saby_id = sale.saby_id
+		WHERE sale.channel = 'saby' AND sale.sale_date BETWEEN $1 AND $2
+	`, from, to).Scan(&linkedRows, &recommendationRows); err != nil {
+		return SalesResult{}, fmt.Errorf("verify linked Saby sales: %w", err)
+	}
+	return SalesResult{
+		OK: true, Rows: rows, LinkedRows: linkedRows,
+		RecommendationRows: recommendationRows, SyncedAt: time.Now().UTC(),
+	}, nil
 }
 
 // normalizedItem — позиция номенклатуры, приведённая к нашему виду.
@@ -158,6 +175,12 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	rows := make([]poolRow, 0, len(items))
 	received := make([]string, 0, len(items))
 	for _, item := range items {
+		// The human Saby nomenclature number (X...) is the stable identifier
+		// already used by supplier mappings. Internal catalogue IDs and retail
+		// UUIDs can differ between Saby endpoints.
+		if strings.HasPrefix(strings.ToUpper(item.code), "X") {
+			item.id = item.code
+		}
 		rows = append(rows, poolRow{
 			SabyID: item.id, Code: item.code, Article: item.article, Barcode: item.barcode,
 			Name: item.name, Description: item.description,
