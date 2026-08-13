@@ -267,17 +267,15 @@ func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) 
 		var response map[string]any
 		if err := executor.request(ctx, http.MethodGet, executor.wbBase+"/ping", nil,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
-			return fmt.Errorf("проверить Wildberries: %w", err)
+			return fmt.Errorf("проверить доступ Wildberries к ценам: %w", err)
 		}
-		payload := map[string]any{
-			"dateFrom": time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02"),
-			"dateTo": time.Now().UTC().Format("2006-01-02"), "limit": 1, "rrdId": 0,
-			"period": "daily", "fields": []string{"rrdId"},
-		}
-		var report []map[string]any
-		if err := executor.request(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload,
-			map[string]string{"Authorization": executor.wbToken}, &report); err != nil {
-			return fmt.Errorf("проверить доступ Wildberries к финансовым отчётам: %w", err)
+		// Every WB API category has its own read-only /ping. Using the finance
+		// ping verifies the permission needed for sales history without consuming
+		// the financial report endpoint's strict rate limit.
+		response = nil
+		if err := executor.request(ctx, http.MethodGet, executor.wbStatsBase+"/ping", nil,
+			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
+			return fmt.Errorf("проверить доступ Wildberries к финансам: %w", err)
 		}
 		return nil
 	case "ozon":
