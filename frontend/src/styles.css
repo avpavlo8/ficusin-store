@@ -353,6 +353,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .integration-health-grid article.connected { border-color: #b7d1c1; background: #f1f7f3; }
 .integration-health-grid article.attention { border-color: #e4aaa4; background: #fff5f3; }
 .integration-health-grid button { justify-self: start; margin-top: 3px; }
+.integration-check-result { margin: 0; padding: 9px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; }
+.integration-check-result.success { background: #e1eee5; color: #28573e; }
+.integration-check-result.error { background: #f8e3df; color: #8a3029; }
 .procurement-recommendation-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 12px; }
 .procurement-recommendation-tabs button { padding: 9px 12px; border: 1px solid var(--line); border-radius: 999px; background: white; color: var(--green); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .procurement-recommendation-tabs button.active { border-color: var(--green); background: var(--green); color: white; }
@@ -546,7 +549,18 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .dialog-actions { margin-top: 22px; display: flex; justify-content: flex-end; gap: 9px; }
 .dialog-actions button { padding: 11px 18px; border: 1px solid var(--line); border-radius: 8px; background: white; cursor: pointer; }
 .dialog-actions button.primary { border-color: var(--green); background: var(--green); color: white; }
+.dialog-actions button.danger-primary { border-color: #a13e36; background: #a13e36; color: white; }
 .dialog-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.procurement-suppliers-table { min-width: 0; table-layout: fixed; }
+.procurement-suppliers-table th:nth-child(1) { width: 52%; }
+.procurement-suppliers-table th:nth-child(2) { width: 28%; }
+.procurement-suppliers-table .supplier-action-column { width: 120px; text-align: center; vertical-align: middle; }
+.supplier-delete-button { min-width: 82px; display: inline-flex; justify-content: center; }
+.confirm-backdrop { z-index: 112; }
+.confirm-dialog { z-index: 113; width: min(470px, calc(100vw - 32px)); }
+.confirm-dialog > header { margin-bottom: 14px; }
+.confirm-dialog > header h2 { font-size: 28px; }
+.confirm-dialog > p { margin: 0; color: #58635b; line-height: 1.6; }
 /* Переключатели вместо галочек: у флажка не видно, включён он или нет,
    пока не приглядишься, а у бегунка это читается с одного взгляда. */
 .sync-options { margin: 18px 0; display: grid; gap: 8px; }
