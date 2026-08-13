@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	defaultWBBase   = "https://discounts-prices-api.wildberries.ru"
-	defaultWBStats  = "https://finance-api.wildberries.ru"
-	defaultOzonBase = "https://api-seller.ozon.ru"
+	defaultWBBase    = "https://discounts-prices-api.wildberries.ru"
+	defaultWBStats   = "https://finance-api.wildberries.ru"
+	defaultWBReports = "https://statistics-api.wildberries.ru"
+	defaultOzonBase  = "https://api-seller.ozon.ru"
 )
 
 type MarketplaceExecutor struct {
@@ -28,9 +29,10 @@ type MarketplaceExecutor struct {
 	wbToken      string
 	ozonClientID string
 	ozonAPIKey   string
-	wbBase       string
-	wbStatsBase  string
-	ozonBase     string
+	wbBase        string
+	wbStatsBase   string
+	wbReportsBase string
+	ozonBase      string
 }
 
 type marketplaceNumber float64
@@ -53,7 +55,7 @@ func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *Marketpla
 	return &MarketplaceExecutor{
 		client: &http.Client{Timeout: 20 * time.Second}, wbToken: strings.TrimSpace(wbToken),
 		ozonClientID: strings.TrimSpace(ozonClientID), ozonAPIKey: strings.TrimSpace(ozonAPIKey),
-		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, ozonBase: defaultOzonBase,
+		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, wbReportsBase: defaultWBReports, ozonBase: defaultOzonBase,
 	}
 }
 
@@ -96,8 +98,18 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 			"fields": []string{"rrdId", "nmId", "docTypeName", "sellerOperName", "quantity", "retailAmount", "saleDt", "rrDate"},
 		}
 		var response []wbReportRow
-		if err := executor.requestRead(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload,
-			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
+		headers := map[string]string{"Authorization": executor.wbToken}
+		err := executor.request(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload, headers, &response)
+		if isRateLimit(err) {
+			return executor.fetchWBOperationalSales(ctx, from, to)
+		}
+		if err != nil {
+			err = executor.requestRead(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload, headers, &response)
+		}
+		if err != nil {
+			if isRateLimit(err) {
+				return executor.fetchWBOperationalSales(ctx, from, to)
+			}
 			return nil, fmt.Errorf("получить продажи Wildberries: %w", err)
 		}
 		if len(response) == 0 {
@@ -137,6 +149,58 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 	return records, nil
 }
 
+// fetchWBOperationalSales uses WB's operational sales report as a fallback
+// when the financial report's global one-request-per-minute seller limit is
+// occupied by another integration. The report contains both sales and returns
+// and keeps 90 days, which covers the procurement recommendation window.
+func (executor *MarketplaceExecutor) fetchWBOperationalSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
+	type wbSale struct {
+		NmID          int64             `json:"nmId"`
+		SaleID        string            `json:"saleID"`
+		Date          string            `json:"date"`
+		LastChange    string            `json:"lastChangeDate"`
+		FinishedPrice marketplaceNumber `json:"finishedPrice"`
+		PriceWithDisc marketplaceNumber `json:"priceWithDisc"`
+	}
+	endpoint, err := url.Parse(executor.wbReportsBase + "/api/v1/supplier/sales")
+	if err != nil {
+		return nil, err
+	}
+	query := endpoint.Query()
+	query.Set("dateFrom", from.Format(time.RFC3339))
+	query.Set("flag", "0")
+	endpoint.RawQuery = query.Encode()
+	var rows []wbSale
+	if err := executor.requestRead(ctx, http.MethodGet, endpoint.String(), nil,
+		map[string]string{"Authorization": executor.wbToken}, &rows); err != nil {
+		return nil, fmt.Errorf("получить оперативные продажи Wildberries: %w", err)
+	}
+	records := make([]procurement.SalesRecord, 0, len(rows))
+	for _, row := range rows {
+		date, err := parseMarketplaceDate(firstNonEmpty(row.Date, row.LastChange))
+		if err != nil || date.Before(from) || date.After(to.Add(24*time.Hour-time.Second)) || row.NmID <= 0 {
+			continue
+		}
+		sign := 1
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(row.SaleID)), "R") {
+			sign = -1
+		}
+		amount := math.Abs(float64(row.FinishedPrice))
+		if amount == 0 {
+			amount = math.Abs(float64(row.PriceWithDisc))
+		}
+		records = append(records, procurement.SalesRecord{
+			Date: date, ExternalID: strconv.FormatInt(row.NmID, 10), Units: sign, GrossRUB: float64(sign) * amount,
+		})
+	}
+	return records, nil
+}
+
+func isRateLimit(err error) bool {
+	var remote *remoteError
+	return errors.As(err, &remote) && remote.Status == http.StatusTooManyRequests
+}
+
 type ozonPosting struct {
 	CreatedAt string `json:"created_at"`
 	Status    string `json:"status"`
@@ -155,6 +219,9 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 	for _, path := range []string{"/v3/posting/fbs/list", "/v2/posting/fbo/list"} {
 		items, err := executor.fetchOzonPostings(ctx, path, from, to)
 		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "unexpected end of json input") {
+				continue
+			}
 			return nil, err
 		}
 		for _, posting := range items {
@@ -174,6 +241,63 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 					})
 				}
 			}
+		}
+	}
+	if len(records) == 0 {
+		return executor.fetchOzonAnalyticsSales(ctx, from, to)
+	}
+	return records, nil
+}
+
+// fetchOzonAnalyticsSales is a second independent read path for accounts where
+// posting lists return an empty successful response. Ozon's analytics endpoint
+// reports ordered units by SKU/day; the dimension name contains the seller's
+// offer_id used by our directory.
+func (executor *MarketplaceExecutor) fetchOzonAnalyticsSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
+	const limit = 1000
+	if minimum := to.AddDate(0, 0, -89); from.Before(minimum) {
+		from = minimum
+	}
+	records := make([]procurement.SalesRecord, 0)
+	for offset := 0; offset < 100000; offset += limit {
+		payload := map[string]any{
+			"date_from": from.Format("2006-01-02"), "date_to": to.Format("2006-01-02"),
+			"metrics": []string{"ordered_units", "revenue"}, "dimension": []string{"sku", "day"},
+			"filters": []any{}, "sort": []any{}, "limit": limit, "offset": offset,
+		}
+		var response struct {
+			Result struct {
+				Data []struct {
+					Dimensions []struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"dimensions"`
+					Metrics []marketplaceNumber `json:"metrics"`
+				} `json:"data"`
+			} `json:"result"`
+		}
+		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v1/analytics/data", payload,
+			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
+			return nil, fmt.Errorf("получить аналитику продаж Ozon: %w", err)
+		}
+		for _, row := range response.Result.Data {
+			if len(row.Dimensions) < 2 || len(row.Metrics) == 0 {
+				continue
+			}
+			offerID := strings.TrimSpace(firstNonEmpty(row.Dimensions[0].Name, row.Dimensions[0].ID))
+			date, err := parseMarketplaceDate(row.Dimensions[1].ID)
+			units := int(math.Round(float64(row.Metrics[0])))
+			if err != nil || offerID == "" || units <= 0 {
+				continue
+			}
+			gross := float64(0)
+			if len(row.Metrics) > 1 {
+				gross = float64(row.Metrics[1])
+			}
+			records = append(records, procurement.SalesRecord{Date: date, ExternalID: offerID, Units: units, GrossRUB: gross})
+		}
+		if len(response.Result.Data) < limit {
+			break
 		}
 	}
 	return records, nil
@@ -204,12 +328,6 @@ func (executor *MarketplaceExecutor) fetchOzonPostings(
 		}
 		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+path, payload,
 			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
-			// Ozon occasionally returns an empty successful body when the page
-			// contains no postings. For a read-only list this means the end of
-			// pagination, not a failed integration.
-			if strings.Contains(strings.ToLower(err.Error()), "unexpected end of json input") {
-				break
-			}
 			return nil, fmt.Errorf("получить продажи Ozon %s: %w", path, err)
 		}
 		var page []ozonPosting
