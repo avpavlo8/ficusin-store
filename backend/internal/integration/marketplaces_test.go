@@ -105,6 +105,7 @@ func TestWBRejectsSellerArticleInsteadOfNmID(t *testing.T) {
 }
 
 func TestMarketplaceProbesAreReadOnly(t *testing.T) {
+	pingCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
@@ -112,17 +113,13 @@ func TestMarketplaceProbesAreReadOnly(t *testing.T) {
 			if request.Method != http.MethodGet {
 				t.Fatalf("WB probe method = %s", request.Method)
 			}
+			pingCalls++
 			_, _ = response.Write([]byte(`{"Status":"OK"}`))
 		case "/v3/product/list":
 			if request.Method != http.MethodPost {
 				t.Fatalf("Ozon probe method = %s", request.Method)
 			}
 			_, _ = response.Write([]byte(`{"result":{"items":[]}}`))
-		case "/api/finance/v1/sales-reports/detailed":
-			if request.Method != http.MethodPost {
-				t.Fatalf("WB finance probe method = %s", request.Method)
-			}
-			response.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(response, request)
 		}
@@ -134,5 +131,8 @@ func TestMarketplaceProbesAreReadOnly(t *testing.T) {
 		if err := executor.Probe(context.Background(), channel); err != nil {
 			t.Fatalf("probe %s: %v", channel, err)
 		}
+	}
+	if pingCalls != 2 {
+		t.Fatalf("WB price and finance pings = %d, want 2", pingCalls)
 	}
 }
