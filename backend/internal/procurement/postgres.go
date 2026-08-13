@@ -1212,8 +1212,10 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			LEFT JOIN requests r ON r.saby_id = n.saby_id
 			LEFT JOIN incoming i ON i.saby_id = n.saby_id
 			LEFT JOIN last_orders lo ON lo.saby_id = n.saby_id
-			WHERE sp.preference = 1 AND (COALESCE(s.units, 0) > 0 OR
+			WHERE sp.preference = 1 AND (n.balance <= 0 OR COALESCE(s.units, 0) > 0 OR
 				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0)
+			ORDER BY CASE WHEN COALESCE(s.units, 0) > 0 OR COALESCE(r.customer_units, 0) > 0
+				OR COALESCE(r.staff_units, 0) > 0 THEN 0 ELSE 1 END, n.balance, n.name
 		LIMIT 500
 	`, settings.RecommendationDays)
 	if err != nil {

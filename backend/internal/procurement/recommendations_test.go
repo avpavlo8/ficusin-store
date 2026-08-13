@@ -67,3 +67,23 @@ func TestRecommendationReplacesPeriodSalesLessCurrentStock(t *testing.T) {
 		t.Fatalf("recommendation = %+v, included = %v", item, ok)
 	}
 }
+
+func TestNoStockAndNoSalesRemainsVisible(t *testing.T) {
+	item, ok := calculateRecommendation(recommendationInput{
+		Recommendation: Recommendation{Balance: 0, MinimumOrderQty: 6, OrderMultiple: 6},
+		AvailabilityStatus: "available",
+	}, 60)
+	if !ok || item.Status != RecommendationNoStock || item.SuggestedQty != 6 {
+		t.Fatalf("recommendation = %+v, included = %v", item, ok)
+	}
+}
+
+func TestNoStockWithoutSupplierAvailabilityNeedsCheck(t *testing.T) {
+	item, ok := calculateRecommendation(recommendationInput{
+		Recommendation: Recommendation{Balance: 0, MinimumOrderQty: 1, OrderMultiple: 1},
+		AvailabilityStatus: "temporarily_unavailable",
+	}, 60)
+	if !ok || item.Status != RecommendationAvailability || item.SuggestedQty != 0 {
+		t.Fatalf("recommendation = %+v, included = %v", item, ok)
+	}
+}
