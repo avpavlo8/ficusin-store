@@ -20,6 +20,11 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       { channel: "wb", status: "disabled", lastError: "", rowsSynced: 0, periodFrom: "", periodTo: "", latestSale: "" },
       { channel: "ozon", status: "disabled", lastError: "", rowsSynced: 0, periodFrom: "", periodTo: "", latestSale: "" },
     ],
+    integrationHealth: [
+      { channel: "wb", configured: true, lastError: "" },
+      { channel: "ozon", configured: true, lastError: "" },
+      { channel: "saby", configured: false, lastError: "" },
+    ],
   };
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
@@ -45,6 +50,13 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
+      if (path === "/api/v1/admin/procurement/suppliers/1" && init?.method === "DELETE") {
+        procurement.suppliers = [];
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (path === "/api/v1/admin/procurement/integrations/wb/check" && init?.method === "POST") {
+        return json({ integration: { channel: "wb", configured: true, lastCheckedAt: "2026-08-13T12:00:00Z", lastSuccessAt: "2026-08-13T12:00:00Z", lastError: "" } });
+      }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
       if (path === "/api/v1/admin/procurement/nomenclature") return json({ items: [{ sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 }] });
       if (path.startsWith("/api/v1/")) return json({});
@@ -83,6 +95,32 @@ test("@phone procurement does not break the admin layout", async ({ page }) => {
   await expect(addSupplier).toBeVisible();
   await addSupplier.click({ force: true });
   await expect(page.getByRole("dialog", { name: "Поставщики" })).toBeVisible();
+});
+
+test("@desktop supplier deletion uses the site dialog and handles an empty success response", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Поставщики" }).click();
+  await page.getByRole("button", { name: "Удалить" }).click();
+
+  const confirmation = page.getByRole("alertdialog", { name: "Удалить поставщика?" });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation.getByText("Тестовый поставщик")).toBeVisible();
+  await confirmation.getByRole("button", { name: "Удалить" }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Поставщики" }).getByText("Тестовый поставщик")).toHaveCount(0);
+});
+
+test("@desktop marketplace check shows its result immediately", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Интеграции" }).click();
+  const wb = page.locator(".integration-health-grid article").filter({ hasText: "Wildberries" });
+  await wb.getByRole("button", { name: "Проверить подключение" }).click();
+  await expect(wb.getByRole("status")).toHaveText("Wildberries: подключение работает");
+  await expect(wb).toHaveClass(/connected/);
 });
 
 test("@desktop procurement blocks calculation until invoice checks pass", async ({ page }) => {
