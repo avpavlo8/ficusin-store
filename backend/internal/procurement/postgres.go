@@ -116,7 +116,7 @@ func (store *PostgresStore) RecordIntegrationCheck(ctx context.Context, channel 
 		ON CONFLICT (channel) DO UPDATE SET last_checked_at = CURRENT_TIMESTAMP,
 			last_success_at = CASE WHEN EXCLUDED.last_error = '' THEN CURRENT_TIMESTAMP ELSE procurement_integration_health.last_success_at END,
 			last_error = EXCLUDED.last_error
-		RETURNING channel, $2, last_checked_at, last_success_at, last_error
+		RETURNING channel, $2::BOOLEAN, last_checked_at, last_success_at, last_error
 	`, channel, configured, message).Scan(
 		&item.Channel, &item.Configured, &item.LastCheckedAt, &item.LastSuccessAt, &item.LastError,
 	)
