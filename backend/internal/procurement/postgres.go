@@ -257,6 +257,48 @@ func (store *PostgresStore) CreateSupplier(
 	return item, nil
 }
 
+func (store *PostgresStore) DeleteSupplier(ctx context.Context, actor Actor, supplierID int64) error {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete supplier: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var item Supplier
+	err = tx.QueryRow(ctx, `
+		SELECT id, name, kind, country_code, default_currency, active, created_at
+		FROM procurement_suppliers WHERE id = $1 FOR UPDATE
+	`, supplierID).Scan(&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.DefaultCurrency, &item.Active, &item.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("load procurement supplier for deletion: %w", err)
+	}
+
+	var used bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM procurement_orders WHERE supplier_id = $1)
+		    OR EXISTS (SELECT 1 FROM procurement_documents WHERE supplier_id = $1)
+	`, supplierID).Scan(&used)
+	if err != nil {
+		return fmt.Errorf("check procurement supplier usage: %w", err)
+	}
+	if used {
+		return ErrSupplierInUse
+	}
+	if err := audit(ctx, tx, actor, "procurement.supplier.delete", "procurement_supplier", supplierID, item); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id = $1`, supplierID); err != nil {
+		return fmt.Errorf("delete procurement supplier: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete supplier: %w", err)
+	}
+	return nil
+}
+
 func (store *PostgresStore) CreateOrder(
 	ctx context.Context,
 	actor Actor,

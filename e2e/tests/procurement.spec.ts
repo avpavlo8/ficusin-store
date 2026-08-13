@@ -79,10 +79,10 @@ test("@phone procurement does not break the admin layout", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Изменения только после подтверждения")).toBeVisible({ timeout: 15_000 });
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
-  const addSupplier = page.getByRole("button", { name: "Добавить поставщика" });
+  const addSupplier = page.getByRole("button", { name: "Поставщики" });
   await expect(addSupplier).toBeVisible();
   await addSupplier.click({ force: true });
-  await expect(page.getByRole("dialog", { name: "Новый поставщик" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Поставщики" })).toBeVisible();
 });
 
 test("@desktop procurement blocks calculation until invoice checks pass", async ({ page }) => {

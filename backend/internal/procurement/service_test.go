@@ -7,13 +7,14 @@ import (
 )
 
 type storeStub struct {
-	supplierInput SupplierCreate
-	orderInput    OrderCreate
-	documentInput DocumentUpload
-	parsedInput   ParsedDocument
-	searchInput   string
-	aliasID       int64
-	resolution    AliasResolution
+	supplierInput     SupplierCreate
+	orderInput        OrderCreate
+	documentInput     DocumentUpload
+	parsedInput       ParsedDocument
+	searchInput       string
+	aliasID           int64
+	resolution        AliasResolution
+	deletedSupplierID int64
 }
 
 func (stub *storeStub) Dashboard(context.Context) (Dashboard, error) { return Dashboard{}, nil }
@@ -23,6 +24,10 @@ func (stub *storeStub) UpdateSettings(_ context.Context, _ Actor, input PricingS
 func (stub *storeStub) CreateSupplier(_ context.Context, _ Actor, input SupplierCreate) (Supplier, error) {
 	stub.supplierInput = input
 	return Supplier{Name: input.Name, Kind: input.Kind, CountryCode: input.CountryCode, DefaultCurrency: input.DefaultCurrency}, nil
+}
+func (stub *storeStub) DeleteSupplier(_ context.Context, _ Actor, supplierID int64) error {
+	stub.deletedSupplierID = supplierID
+	return nil
 }
 func (stub *storeStub) CreateOrder(_ context.Context, _ Actor, input OrderCreate) (OrderSummary, error) {
 	stub.orderInput = input
@@ -110,6 +115,18 @@ func TestCreateSupplierNormalizesInput(t *testing.T) {
 	}
 	if store.supplierInput.Name != "ТК Ярославский" || store.supplierInput.CountryCode != "RU" || store.supplierInput.DefaultCurrency != "RUB" {
 		t.Fatalf("unexpected normalized supplier: %+v", store.supplierInput)
+	}
+}
+
+func TestDeleteSupplierValidatesID(t *testing.T) {
+	t.Parallel()
+	store := &storeStub{}
+	service := NewService(store)
+	if err := service.DeleteSupplier(context.Background(), Actor{}, 0); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
+	}
+	if err := service.DeleteSupplier(context.Background(), Actor{}, 17); err != nil || store.deletedSupplierID != 17 {
+		t.Fatalf("deleted supplier = %d, err = %v", store.deletedSupplierID, err)
 	}
 }
 

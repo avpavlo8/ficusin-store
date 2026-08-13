@@ -860,6 +860,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .category-create input { max-width: 250px; }
 .category-create select { width: min(330px,100%); }
 .text-button.danger { margin-left: 12px; color: #a64a3d; }
+.table-action.danger { color: #a64a3d; border-color: rgba(166, 74, 61, 0.3); }
 
 @media (max-width: 1200px) {
   .desktop-nav { display: none; }

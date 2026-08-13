@@ -11,6 +11,7 @@ type Store interface {
 	Dashboard(context.Context) (Dashboard, error)
 	UpdateSettings(context.Context, Actor, PricingSettings) (PricingSettings, error)
 	CreateSupplier(context.Context, Actor, SupplierCreate) (Supplier, error)
+	DeleteSupplier(context.Context, Actor, int64) error
 	CreateOrder(context.Context, Actor, OrderCreate) (OrderSummary, error)
 	CreatePlan(context.Context, Actor, PlanCreate) (OrderSummary, error)
 	OrderDetail(context.Context, int64) (OrderDetail, error)
@@ -149,6 +150,13 @@ func (service *Service) CreateSupplier(
 		return Supplier{}, ErrInvalidInput
 	}
 	return service.store.CreateSupplier(ctx, actor, input)
+}
+
+func (service *Service) DeleteSupplier(ctx context.Context, actor Actor, supplierID int64) error {
+	if supplierID <= 0 {
+		return ErrInvalidInput
+	}
+	return service.store.DeleteSupplier(ctx, actor, supplierID)
 }
 
 func (service *Service) CreateOrder(

@@ -15,12 +15,13 @@ import (
 )
 
 type procurementStub struct {
-	dashboard      procurement.Dashboard
-	supplierInputs []procurement.SupplierCreate
-	orderInputs    []procurement.OrderCreate
-	documentInputs []procurement.DocumentUpload
-	searchInputs   []string
-	aliasInputs    []procurement.AliasResolution
+	dashboard          procurement.Dashboard
+	supplierInputs     []procurement.SupplierCreate
+	orderInputs        []procurement.OrderCreate
+	documentInputs     []procurement.DocumentUpload
+	searchInputs       []string
+	aliasInputs        []procurement.AliasResolution
+	deletedSupplierIDs []int64
 }
 
 func (stub *procurementStub) Dashboard(context.Context) (procurement.Dashboard, error) {
@@ -33,6 +34,10 @@ func (stub *procurementStub) UpdateSettings(_ context.Context, _ procurement.Act
 func (stub *procurementStub) CreateSupplier(_ context.Context, _ procurement.Actor, input procurement.SupplierCreate) (procurement.Supplier, error) {
 	stub.supplierInputs = append(stub.supplierInputs, input)
 	return procurement.Supplier{ID: 7, Name: input.Name}, nil
+}
+func (stub *procurementStub) DeleteSupplier(_ context.Context, _ procurement.Actor, supplierID int64) error {
+	stub.deletedSupplierIDs = append(stub.deletedSupplierIDs, supplierID)
+	return nil
 }
 
 func (stub *procurementStub) CreateOrder(_ context.Context, _ procurement.Actor, input procurement.OrderCreate) (procurement.OrderSummary, error) {
@@ -128,6 +133,20 @@ func TestProcurementSupplierCreation(t *testing.T) {
 	}
 	if len(service.supplierInputs) != 1 || service.supplierInputs[0].DefaultCurrency != "RUB" {
 		t.Fatalf("unexpected calls: %+v", service.supplierInputs)
+	}
+}
+
+func TestProcurementSupplierDeletion(t *testing.T) {
+	t.Parallel()
+	service := &procurementStub{}
+	request := adminRequest(http.MethodDelete, "/api/v1/admin/procurement/suppliers/7", "")
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusNoContent, response.Body.String())
+	}
+	if len(service.deletedSupplierIDs) != 1 || service.deletedSupplierIDs[0] != 7 {
+		t.Fatalf("unexpected calls: %+v", service.deletedSupplierIDs)
 	}
 }
 
