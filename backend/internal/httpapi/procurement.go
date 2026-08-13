@@ -475,7 +475,21 @@ func (handlers procurementHandlers) syncChannelCatalog(response http.ResponseWri
 		CustomerID: actor.CustomerID, Role: actor.Role,
 	}, request.PathValue("channel"))
 	if err != nil {
-		handlers.failed(response, "sync procurement channel catalog", err)
+		// Здесь общая заглушка «не удалось выполнить операцию» бесполезна:
+		// причина почти всегда в правах токена или в закрытом методе
+		// площадки, и без неё человек видит только то, что кнопка не
+		// сработала. Текст приходит от площадки уже подрезанным и ключей
+		// не содержит — они уходят заголовком, а не в адресе.
+		if errors.Is(err, procurement.ErrInvalidInput) {
+			handlers.failed(response, "sync procurement channel catalog", err)
+			return
+		}
+		handlers.logger.Error("sync procurement channel catalog failed", "error", err)
+		message := err.Error()
+		if runes := []rune(message); len(runes) > 300 {
+			message = string(runes[:300]) + "…"
+		}
+		writeJSON(response, http.StatusBadGateway, errorResponse{Error: message})
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"link": result})

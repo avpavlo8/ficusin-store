@@ -739,7 +739,7 @@ func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]pr
 	headers := map[string]string{
 		"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey,
 	}
-	items := make([]procurement.ChannelProduct, 0, 200)
+	offers := make([]string, 0, 200)
 	lastID := ""
 	for page := 0; page < 200; page++ {
 		payload := map[string]any{"filter": map[string]any{"visibility": "ALL"}, "limit": 1000, "last_id": lastID}
@@ -747,10 +747,8 @@ func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]pr
 			Result struct {
 				Items []struct {
 					OfferID string `json:"offer_id"`
-					SKU     int64  `json:"sku"`
 				} `json:"items"`
 				LastID string `json:"last_id"`
-				Total  int    `json:"total"`
 			} `json:"result"`
 		}
 		if err := executor.requestRead(ctx, http.MethodPost,
@@ -758,18 +756,70 @@ func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]pr
 			return nil, err
 		}
 		for _, item := range response.Result.Items {
-			offer := strings.TrimSpace(item.OfferID)
-			if offer == "" {
-				continue
+			if offer := strings.TrimSpace(item.OfferID); offer != "" {
+				offers = append(offers, offer)
 			}
-			// У Ozon внешний ключ продаж и есть offer_id, поэтому он же
-			// служит идентификатором карточки.
-			items = append(items, procurement.ChannelProduct{ExternalID: offer, Article: offer})
 		}
 		if len(response.Result.Items) == 0 || response.Result.LastID == "" || response.Result.LastID == lastID {
 			break
 		}
 		lastID = response.Result.LastID
+	}
+
+	// Список товаров отдаёт только offer_id — собственный код продавца,
+	// который со справочником СБИС обычно не совпадает ничем. Штрихкод
+	// совпадает: он один и тот же на этикетке и там, и там. Поэтому за
+	// карточками ходим вторым запросом.
+	items := make([]procurement.ChannelProduct, 0, len(offers))
+	for start := 0; start < len(offers); start += 100 {
+		finish := min(start+100, len(offers))
+		var response struct {
+			Items []struct {
+				OfferID  string   `json:"offer_id"`
+				Barcodes []string `json:"barcodes"`
+				Barcode  string   `json:"barcode"`
+				Name     string   `json:"name"`
+			} `json:"items"`
+			Result struct {
+				Items []struct {
+					OfferID  string   `json:"offer_id"`
+					Barcodes []string `json:"barcodes"`
+					Barcode  string   `json:"barcode"`
+					Name     string   `json:"name"`
+				} `json:"items"`
+			} `json:"result"`
+		}
+		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v3/product/info/list",
+			map[string]any{"offer_id": offers[start:finish]}, headers, &response); err != nil {
+			return nil, err
+		}
+		details := response.Items
+		if len(details) == 0 {
+			details = response.Result.Items
+		}
+		for _, detail := range details {
+			offer := strings.TrimSpace(detail.OfferID)
+			if offer == "" {
+				continue
+			}
+			item := procurement.ChannelProduct{
+				ExternalID: offer, Article: offer, Name: strings.TrimSpace(detail.Name),
+			}
+			for _, barcode := range append(detail.Barcodes, detail.Barcode) {
+				if barcode = strings.TrimSpace(barcode); barcode != "" {
+					item.Barcodes = append(item.Barcodes, barcode)
+				}
+			}
+			items = append(items, item)
+		}
+	}
+	if len(items) == 0 {
+		// Карточки есть, а подробностей нет — значит, метод закрыт правами
+		// ключа. Возвращаем то, что знаем, чтобы разведка всё равно
+		// показала, по чему шло сравнение.
+		for _, offer := range offers {
+			items = append(items, procurement.ChannelProduct{ExternalID: offer, Article: offer})
+		}
 	}
 	return items, nil
 }

@@ -2578,24 +2578,40 @@ func (store *PostgresStore) LinkChannelProducts(
 				continue
 			}
 			bySabyKey[key] = sabyID
+			if len(result.CatalogSamples) < 5 {
+				result.CatalogSamples = append(result.CatalogSamples, key)
+			}
 		}
 	}
 	if rows.Err() != nil {
 		return ChannelLinkResult{}, fmt.Errorf("read saby nomenclature keys: %w", rows.Err())
 	}
+	result.CatalogKeys = len(bySabyKey)
 
 	matched := make(map[string]string, len(items))
 	for _, item := range items {
 		keys := append([]string{item.Article}, item.Barcodes...)
+		found := false
 		for _, key := range keys {
 			key = strings.ToLower(strings.TrimSpace(key))
-			if key == "" || ambiguous[key] {
+			if key == "" {
 				continue
 			}
-			if sabyID, ok := bySabyKey[key]; ok {
-				matched[sabyID] = item.ExternalID
-				break
+			result.ChannelKeys++
+			if ambiguous[key] {
+				continue
 			}
+			if sabyID, ok := bySabyKey[key]; ok && !found {
+				matched[sabyID] = item.ExternalID
+				found = true
+			}
+		}
+		if !found && len(result.ChannelSamples) < 5 {
+			sample := strings.TrimSpace(item.Article)
+			if len(item.Barcodes) > 0 {
+				sample += " / " + item.Barcodes[0]
+			}
+			result.ChannelSamples = append(result.ChannelSamples, strings.TrimSpace(sample))
 		}
 	}
 	result.Unmatched = len(items) - len(matched)

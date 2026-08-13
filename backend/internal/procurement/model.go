@@ -389,11 +389,20 @@ type ChannelProduct struct {
 }
 
 // ChannelLinkResult — итог подтягивания справочника канала.
+//
+// Одних счётчиков мало: «связано 0» ничего не говорит о том, почему.
+// Поэтому рядом лежит то, по чему шло сравнение — сколько ключей нашлось
+// с каждой стороны и как они выглядят. Примеры берутся из артикулов и
+// штрихкодов, то есть из того, что и так печатается на ценнике.
 type ChannelLinkResult struct {
-	Channel   string `json:"channel"`
-	Fetched   int    `json:"fetched"`
-	Linked    int    `json:"linked"`
-	Unmatched int    `json:"unmatched"`
+	Channel        string   `json:"channel"`
+	Fetched        int      `json:"fetched"`
+	Linked         int      `json:"linked"`
+	Unmatched      int      `json:"unmatched"`
+	ChannelKeys    int      `json:"channelKeys"`
+	CatalogKeys    int      `json:"catalogKeys"`
+	ChannelSamples []string `json:"channelSamples"`
+	CatalogSamples []string `json:"catalogSamples"`
 }
 
 type IntegrationStatus struct {
