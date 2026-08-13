@@ -91,6 +91,9 @@ func (stub *procurementStub) ApproveBatch(_ context.Context, _ procurement.Actor
 func (stub *procurementStub) RetryBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {
 	return procurement.ActionBatch{ID: batchID, Status: "processing"}, nil
 }
+func (stub *procurementStub) CheckIntegration(_ context.Context, _ procurement.Actor, channel string) (procurement.IntegrationHealth, error) {
+	return procurement.IntegrationHealth{Channel: channel, Configured: true}, nil
+}
 
 func procurementDependencies(service procurementService, role string) Dependencies {
 	dependencies := adminDependencies(&adminRepositoryStub{}, role, "manager@example.com")

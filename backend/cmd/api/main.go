@@ -108,7 +108,11 @@ func main() {
 	marketplaceExecutor := integration.NewMarketplaceExecutor(
 		cfg.Marketplaces.WBToken, cfg.Marketplaces.OzonClientID, cfg.Marketplaces.OzonAPIKey,
 	)
-	procurementService := procurement.NewServiceWithExecutor(procurementStore, marketplaceExecutor)
+	sabyProcurementClient := integration.NewSabyClient(
+		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
+	)
+	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient)
+	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
 		Handler: httpapi.NewRouter(logger, httpapi.Dependencies{
@@ -170,7 +174,7 @@ func main() {
 		logger.Info("перенос фотографий выключен; задайте S3_BUCKET, S3_ACCESS_KEY и S3_SECRET_KEY")
 	}
 	go notificationWorker.Run(ctx)
-	go procurement.NewActionWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
+	go procurement.NewActionWorker(procurementStore, procurementExecutor, logger).Run(ctx)
 	// Продажи сайта пересчитываются из своей базы, WB и Ozon забираются из
 	// seller API. СБИС присылает офлайн-продажи тем же защищённым заданием,
 	// которое раз в шесть часов обновляет каталог и остатки.

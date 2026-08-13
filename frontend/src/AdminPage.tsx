@@ -81,6 +81,7 @@ type NomenclatureCandidate = {
 type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
 type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; balance: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; openRequests: number; suggestedQty: number; reason: string };
 type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; periodFrom: string; periodTo: string; latestSale: string };
+type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
 type ProcurementProduct = { sabyId: string; sabyCode: string; sabyArticle: string; name: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; aliases: string[] };
 type ProcurementActionItem = { id: number; lineId: number; productName: string; channel: string; externalArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string };
 type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
@@ -101,6 +102,7 @@ type ProcurementData = {
   settings: ProcurementSettings; suppliers: ProcurementSupplier[]; orders: ProcurementOrder[];
   documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
   availability: ProcurementAlias[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
+  integrationHealth: IntegrationHealth[];
 };
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
@@ -400,7 +402,8 @@ const procurementParserLabels: Record<string, string> = {
 
 function Procurement({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
-  const [view, setView] = useState<"orders" | "recommendations" | "products" | "requests" | "availability" | "settings">("orders");
+  const [view, setView] = useState<"orders" | "recommendations" | "products" | "requests" | "availability" | "integrations" | "settings">("orders");
+  const [checkingIntegration, setCheckingIntegration] = useState<string>("");
   const [supplierDialog, setSupplierDialog] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [uploadDialog, setUploadDialog] = useState(false);
@@ -411,6 +414,18 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
   const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
     .then(setData).catch((error) => onError((error as Error).message)), [onError]);
   useEffect(() => { void load(); }, [load]);
+  const checkIntegration = async (channel: string) => {
+    setCheckingIntegration(channel);
+    try {
+      await api(`/api/v1/admin/procurement/integrations/${channel}/check`, { method: "POST" });
+      await load();
+    } catch (error) {
+      onError((error as Error).message);
+      await load();
+    } finally {
+      setCheckingIntegration("");
+    }
+  };
 
   if (!data) return <><PageHeading eyebrow="Снабжение" title="Закупки" text="Загружаем данные закупок…" /></>;
   const formatTotal = (item: ProcurementOrder) => new Intl.NumberFormat("ru-RU", {
@@ -445,6 +460,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
       <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Справочник</button>
       <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Под заказ <span>{data.summary.openRequests}</span></button>
       <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Наличие <span>{data.summary.availabilityChecks}</span></button>
+      <button className={view === "integrations" ? "active" : ""} onClick={() => setView("integrations")}>Интеграции</button>
       <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Формула v{data.settings.version}</button>
     </div>
 
@@ -506,6 +522,18 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
       {data.availability.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Последний раз</th><th>Статус</th><th>Действия</th></tr></thead><tbody>{data.availability.map((item) => <tr key={item.id}><td><strong>{item.suggestedSabyName || item.rawName}</strong><small>{item.supplierArticle}</small></td><td>{item.supplierName}</td><td>{item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleDateString("ru-RU") : "—"}</td><td>{availabilityLabel(item.availabilityStatus)}</td><td><div className="procurement-inline-actions"><button onClick={() => void updateAvailability(item.id, "available", load, onError)}>Есть</button><button onClick={() => void updateAvailability(item.id, "temporarily_unavailable", load, onError)}>Нет временно</button><button onClick={() => void updateAvailability(item.id, "check", load, onError)}>Проверить позже</button></div></td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Список пуст</strong><span>Помеченные временно отсутствующими растения не попадают в рекомендации.</span></div>}
     </section>}
 
+    {view === "integrations" && <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Безопасная диагностика</p><h2>Подключения API</h2></div></div>
+      <p className="admin-hint procurement-note">Проверка только читает одну служебную запись. Цены, остатки, заказы и документы не изменяются.</p>
+      <div className="integration-health-grid">{(data.integrationHealth || []).map((item) => <article className={item.lastError ? "attention" : item.lastSuccessAt ? "connected" : ""} key={item.channel}>
+        <div><strong>{integrationChannelLabel(item.channel)}</strong><span>{!item.configured ? "Переменные не найдены" : item.lastError ? "Ошибка подключения" : item.lastSuccessAt ? "Подключено" : "Не проверялось"}</span></div>
+        <small>{item.lastSuccessAt ? `Последний успех: ${new Date(item.lastSuccessAt).toLocaleString("ru-RU")}` : "Успешных проверок ещё нет"}</small>
+        {item.lastError && <em>{item.lastError}</em>}
+        <button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : "Проверить подключение"}</button>
+      </article>)}</div>
+      <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Создание поступлений и изменение прайса остаются выключенными, пока не подтверждён поддерживаемый Saby контракт записи.</p>
+    </section>}
+
     {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
     {supplierDialog && <SupplierDialog onClose={() => setSupplierDialog(false)} onSaved={() => { setSupplierDialog(false); void load(); }} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
@@ -520,6 +548,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
 const availabilityLabel = (value: string) => ({ available: "Есть", check: "Проверить", temporarily_unavailable: "Временно нет", discontinued: "Снят с продажи", unknown: "Неизвестно" }[value] || value);
 const salesChannelLabel = (value: string) => ({ site: "Сайт", saby: "СБИС / магазин", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 const salesSyncLabel = (value: string) => ({ pending: "Ожидает первой загрузки", running: "Обновляется", ok: "Актуально", error: "Ошибка", disabled: "Не подключено" }[value] || value);
+const integrationChannelLabel = (value: string) => ({ saby: "СБИС / Saby", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 
 async function updateAvailability(aliasId: number, status: string, reload: () => Promise<unknown>, onError: (value: string) => void) {
   const days = status === "check" ? 14 : status === "temporarily_unavailable" ? 30 : 0;

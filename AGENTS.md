@@ -47,6 +47,8 @@ Timeweb Cloud App Platform, приложение `229223`. **Мерж в `main`
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | push-уведомления выключены, кнопка в кабинете не показывается |
 | `WB_API_TOKEN` | подтверждённые цены WB остаются со статусом «API не подключён» |
 | `OZON_CLIENT_ID`, `OZON_API_KEY` | подтверждённые цены Ozon остаются со статусом «API не подключён» |
+| `SABY_APP_CLIENT_ID`, `SABY_APP_SECRET`, `SABY_SECRET_KEY` | backend не может проверить сервисную сессию Saby |
+| `SABY_POINT_ID`, `SABY_PRICE_LIST_ID` | диагностика Saby использует точку 278 и прайс 6 по умолчанию |
 
 **Все внешние ключи — только из окружения.** Была ещё таблица
 `integration_credentials` с RSA-шифрованием; ключа расшифровки в Timeweb не

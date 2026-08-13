@@ -220,6 +220,37 @@ func (executor *MarketplaceExecutor) Configured(channel string) bool {
 	}
 }
 
+// Probe validates credentials without changing prices, stock or orders.
+func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) error {
+	switch channel {
+	case "wb":
+		if !executor.Configured("wb") {
+			return errors.New("токен Wildberries не настроен")
+		}
+		var response map[string]any
+		if err := executor.request(ctx, http.MethodGet, executor.wbBase+"/ping", nil,
+			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
+			return fmt.Errorf("проверить Wildberries: %w", err)
+		}
+		return nil
+	case "ozon":
+		if !executor.Configured("ozon") {
+			return errors.New("ключи Ozon не настроены")
+		}
+		payload := map[string]any{
+			"filter": map[string]any{"visibility": "ALL"}, "last_id": "", "limit": 1,
+		}
+		var response map[string]any
+		if err := executor.request(ctx, http.MethodPost, executor.ozonBase+"/v3/product/list", payload,
+			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
+			return fmt.Errorf("проверить Ozon: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("канал %s не поддерживается", channel)
+	}
+}
+
 func (executor *MarketplaceExecutor) Execute(ctx context.Context, item procurement.ActionItem) (procurement.ActionExecution, error) {
 	switch item.Channel {
 	case "wb":

@@ -81,6 +81,16 @@ func (stub *storeStub) FinishAction(context.Context, int64, ActionExecution, err
 func (stub *storeStub) RetryBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
 }
+func (stub *storeStub) ListIntegrationHealth(context.Context) ([]IntegrationHealth, error) {
+	return nil, nil
+}
+func (stub *storeStub) RecordIntegrationCheck(_ context.Context, channel string, configured bool, checkErr error) (IntegrationHealth, error) {
+	item := IntegrationHealth{Channel: channel, Configured: configured}
+	if checkErr != nil {
+		item.LastError = checkErr.Error()
+	}
+	return item, nil
+}
 
 type parserStub struct {
 	result ParsedDocument

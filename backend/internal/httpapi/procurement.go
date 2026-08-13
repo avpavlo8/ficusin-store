@@ -33,6 +33,23 @@ type procurementService interface {
 	PrepareBatch(context.Context, procurement.Actor, int64, string) (procurement.ActionBatch, error)
 	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
+	CheckIntegration(context.Context, procurement.Actor, string) (procurement.IntegrationHealth, error)
+}
+
+func (handlers procurementHandlers) checkIntegration(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	channel := request.PathValue("channel")
+	item, err := handlers.service.CheckIntegration(request.Context(), procurement.Actor{
+		CustomerID: actor.CustomerID, Role: actor.Role,
+	}, channel)
+	if err != nil {
+		handlers.failed(response, "check procurement integration", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"integration": item})
 }
 
 type procurementHandlers struct {

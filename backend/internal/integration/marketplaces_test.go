@@ -96,3 +96,31 @@ func TestWBRejectsSellerArticleInsteadOfNmID(t *testing.T) {
 		t.Fatal("non-numeric WB article must not be sent as nmID")
 	}
 }
+
+func TestMarketplaceProbesAreReadOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/ping":
+			if request.Method != http.MethodGet {
+				t.Fatalf("WB probe method = %s", request.Method)
+			}
+			_, _ = response.Write([]byte(`{"Status":"OK"}`))
+		case "/v3/product/list":
+			if request.Method != http.MethodPost {
+				t.Fatalf("Ozon probe method = %s", request.Method)
+			}
+			_, _ = response.Write([]byte(`{"result":{"items":[]}}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("token", "client", "secret")
+	executor.wbBase, executor.ozonBase, executor.client = server.URL, server.URL, server.Client()
+	for _, channel := range []string{"wb", "ozon"} {
+		if err := executor.Probe(context.Background(), channel); err != nil {
+			t.Fatalf("probe %s: %v", channel, err)
+		}
+	}
+}

@@ -83,6 +83,56 @@ func (store *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
 	return result, nil
 }
 
+func (store *PostgresStore) ListIntegrationHealth(ctx context.Context) ([]IntegrationHealth, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT channel, false, last_checked_at, last_success_at, last_error
+		FROM procurement_integration_health ORDER BY CASE channel WHEN 'saby' THEN 1 WHEN 'wb' THEN 2 ELSE 3 END
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query procurement integration health: %w", err)
+	}
+	defer rows.Close()
+	items := make([]IntegrationHealth, 0, 3)
+	for rows.Next() {
+		var item IntegrationHealth
+		if err := rows.Scan(&item.Channel, &item.Configured, &item.LastCheckedAt, &item.LastSuccessAt, &item.LastError); err != nil {
+			return nil, fmt.Errorf("scan procurement integration health: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (store *PostgresStore) RecordIntegrationCheck(ctx context.Context, channel string, configured bool, checkErr error) (IntegrationHealth, error) {
+	message := ""
+	if checkErr != nil {
+		message = safeError(checkErr.Error())
+	}
+	var item IntegrationHealth
+	err := store.pool.QueryRow(ctx, `
+		INSERT INTO procurement_integration_health (channel, last_checked_at, last_success_at, last_error)
+		VALUES ($1, CURRENT_TIMESTAMP, CASE WHEN $3 = '' THEN CURRENT_TIMESTAMP ELSE NULL END, $3)
+		ON CONFLICT (channel) DO UPDATE SET last_checked_at = CURRENT_TIMESTAMP,
+			last_success_at = CASE WHEN EXCLUDED.last_error = '' THEN CURRENT_TIMESTAMP ELSE procurement_integration_health.last_success_at END,
+			last_error = EXCLUDED.last_error
+		RETURNING channel, $2, last_checked_at, last_success_at, last_error
+	`, channel, configured, message).Scan(
+		&item.Channel, &item.Configured, &item.LastCheckedAt, &item.LastSuccessAt, &item.LastError,
+	)
+	if err != nil {
+		return IntegrationHealth{}, fmt.Errorf("record procurement integration check: %w", err)
+	}
+	return item, nil
+}
+
+func safeError(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\n", " "))
+	if len([]rune(value)) > 500 {
+		return string([]rune(value)[:500]) + "…"
+	}
+	return value
+}
+
 func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, error) {
 	var item PricingSettings
 	err := store.pool.QueryRow(ctx, `
