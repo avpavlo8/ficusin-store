@@ -20,6 +20,10 @@ func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
+		prices, ok := body["prices"].([]any)
+		if !ok || len(prices) != 1 || prices[0].(map[string]any)["min_price"] != "" {
+			t.Fatalf("unexpected Ozon price payload: %#v", body)
+		}
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`{"result":[{"offer_id":"OZ-1","updated":true,"errors":[]}]}`))
 	}))
@@ -34,10 +38,13 @@ func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 
 func TestWBSalesIncludeSalesAndSubtractReturns(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/finance/v1/sales-reports/detailed" {
+			t.Fatalf("unexpected WB report request: %s %s", request.Method, request.URL.Path)
+		}
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`[
-			{"nm_id":123,"doc_type_name":"Продажа","supplier_oper_name":"Продажа","quantity":2,"retail_amount":3000,"sale_dt":"2026-08-05T12:00:00Z"},
-			{"nm_id":123,"doc_type_name":"Возврат","supplier_oper_name":"Возврат","quantity":1,"retail_amount":1500,"sale_dt":"2026-08-06T12:00:00Z"}
+			{"rrdId":1,"nmId":123,"docTypeName":"Продажа","sellerOperName":"Продажа","quantity":2,"retailAmount":"3000","saleDt":"2026-08-05T12:00:00Z"},
+			{"rrdId":2,"nmId":123,"docTypeName":"Возврат","sellerOperName":"Возврат","quantity":1,"retailAmount":"1500","saleDt":"2026-08-06T12:00:00Z"}
 		]`))
 	}))
 	defer server.Close()
@@ -111,13 +118,18 @@ func TestMarketplaceProbesAreReadOnly(t *testing.T) {
 				t.Fatalf("Ozon probe method = %s", request.Method)
 			}
 			_, _ = response.Write([]byte(`{"result":{"items":[]}}`))
+		case "/api/finance/v1/sales-reports/detailed":
+			if request.Method != http.MethodPost {
+				t.Fatalf("WB finance probe method = %s", request.Method)
+			}
+			response.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(response, request)
 		}
 	}))
 	defer server.Close()
 	executor := NewMarketplaceExecutor("token", "client", "secret")
-	executor.wbBase, executor.ozonBase, executor.client = server.URL, server.URL, server.Client()
+	executor.wbBase, executor.wbStatsBase, executor.ozonBase, executor.client = server.URL, server.URL, server.URL, server.Client()
 	for _, channel := range []string{"wb", "ozon"} {
 		if err := executor.Probe(context.Background(), channel); err != nil {
 			t.Fatalf("probe %s: %v", channel, err)

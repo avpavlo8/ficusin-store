@@ -16,6 +16,7 @@ type procurementService interface {
 	Dashboard(context.Context) (procurement.Dashboard, error)
 	UpdateSettings(context.Context, procurement.Actor, procurement.PricingSettings) (procurement.PricingSettings, error)
 	CreateSupplier(context.Context, procurement.Actor, procurement.SupplierCreate) (procurement.Supplier, error)
+	DeleteSupplier(context.Context, procurement.Actor, int64) error
 	CreateOrder(context.Context, procurement.Actor, procurement.OrderCreate) (procurement.OrderSummary, error)
 	CreatePlan(context.Context, procurement.Actor, procurement.PlanCreate) (procurement.OrderSummary, error)
 	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
@@ -118,6 +119,24 @@ func (handlers procurementHandlers) createSupplier(response http.ResponseWriter,
 		return
 	}
 	writeJSON(response, http.StatusCreated, map[string]any{"supplier": item})
+}
+
+func (handlers procurementHandlers) deleteSupplier(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	supplierID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	if err := handlers.service.DeleteSupplier(request.Context(), procurement.Actor{
+		CustomerID: actor.CustomerID, Role: actor.Role,
+	}, supplierID); err != nil {
+		handlers.failed(response, "delete procurement supplier", err)
+		return
+	}
+	response.WriteHeader(http.StatusNoContent)
 }
 
 func (handlers procurementHandlers) createOrder(response http.ResponseWriter, request *http.Request) {
@@ -521,6 +540,9 @@ func (handlers procurementHandlers) failed(response http.ResponseWriter, operati
 	}
 	if errors.Is(err, procurement.ErrDuplicate) {
 		status, message = http.StatusConflict, "Этот документ уже загружен"
+	}
+	if errors.Is(err, procurement.ErrSupplierInUse) {
+		status, message = http.StatusConflict, "Поставщика нельзя удалить: с ним уже есть закупки или документы"
 	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: message})

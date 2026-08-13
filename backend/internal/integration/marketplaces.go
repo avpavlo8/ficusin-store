@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultWBBase   = "https://discounts-prices-api.wildberries.ru"
-	defaultWBStats  = "https://statistics-api.wildberries.ru"
+	defaultWBStats  = "https://finance-api.wildberries.ru"
 	defaultOzonBase = "https://api-seller.ozon.ru"
 )
 
@@ -31,6 +31,22 @@ type MarketplaceExecutor struct {
 	wbBase       string
 	wbStatsBase  string
 	ozonBase     string
+}
+
+type marketplaceNumber float64
+
+func (value *marketplaceNumber) UnmarshalJSON(data []byte) error {
+	raw := strings.Trim(strings.TrimSpace(string(data)), `"`)
+	if raw == "" || raw == "null" {
+		*value = 0
+		return nil
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return err
+	}
+	*value = marketplaceNumber(parsed)
+	return nil
 }
 
 func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *MarketplaceExecutor {
@@ -60,24 +76,45 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 	if !executor.Configured("wb") {
 		return nil, errors.New("токен Wildberries не настроен")
 	}
-	endpoint := executor.wbStatsBase + "/api/v5/supplier/reportDetailByPeriod?" + url.Values{
-		"dateFrom": {from.Format("2006-01-02")}, "dateTo": {to.Add(24*time.Hour - time.Second).Format(time.RFC3339)},
-		"limit": {"100000"}, "rrdid": {"0"}, "period": {"daily"},
-	}.Encode()
-	var response []struct {
-		NmID            int64   `json:"nm_id"`
-		DocType         string  `json:"doc_type_name"`
-		Operation       string  `json:"supplier_oper_name"`
-		Quantity        float64 `json:"quantity"`
-		RetailAmount    float64 `json:"retail_amount"`
-		SaleDate        string  `json:"sale_dt"`
-		RealizationDate string  `json:"rr_dt"`
+	const limit = 100000
+	type wbReportRow struct {
+		RrdID           int64             `json:"rrdId"`
+		NmID            int64             `json:"nmId"`
+		DocType         string            `json:"docTypeName"`
+		Operation       string            `json:"sellerOperName"`
+		Quantity        marketplaceNumber `json:"quantity"`
+		RetailAmount    marketplaceNumber `json:"retailAmount"`
+		SaleDate        string            `json:"saleDt"`
+		RealizationDate string            `json:"rrDate"`
 	}
-	if err := executor.request(ctx, http.MethodGet, endpoint, nil, map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
-		return nil, fmt.Errorf("получить продажи Wildberries: %w", err)
+	rows := make([]wbReportRow, 0)
+	var rrdID int64
+	for page := 0; page < 100; page++ {
+		payload := map[string]any{
+			"dateFrom": from.Format("2006-01-02"), "dateTo": to.Format("2006-01-02"),
+			"limit": limit, "rrdId": rrdID, "period": "daily",
+			"fields": []string{"rrdId", "nmId", "docTypeName", "sellerOperName", "quantity", "retailAmount", "saleDt", "rrDate"},
+		}
+		var response []wbReportRow
+		if err := executor.request(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload,
+			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
+			return nil, fmt.Errorf("получить продажи Wildberries: %w", err)
+		}
+		if len(response) == 0 {
+			break
+		}
+		rows = append(rows, response...)
+		next := response[len(response)-1].RrdID
+		if len(response) < limit {
+			break
+		}
+		if next <= 0 || next == rrdID {
+			return nil, errors.New("Wildberries вернул некорректный курсор финансового отчёта")
+		}
+		rrdID = next
 	}
-	records := make([]procurement.SalesRecord, 0, len(response))
-	for _, row := range response {
+	records := make([]procurement.SalesRecord, 0, len(rows))
+	for _, row := range rows {
 		if row.NmID <= 0 || row.Quantity == 0 {
 			continue
 		}
@@ -94,7 +131,7 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 		}
 		records = append(records, procurement.SalesRecord{
 			Date: date, ExternalID: strconv.FormatInt(row.NmID, 10),
-			Units: sign * int(math.Round(math.Abs(row.Quantity))), GrossRUB: float64(sign) * math.Abs(row.RetailAmount),
+			Units: sign * int(math.Round(math.Abs(float64(row.Quantity)))), GrossRUB: float64(sign) * math.Abs(float64(row.RetailAmount)),
 		})
 	}
 	return records, nil
@@ -232,6 +269,16 @@ func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) 
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
 			return fmt.Errorf("проверить Wildberries: %w", err)
 		}
+		payload := map[string]any{
+			"dateFrom": time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02"),
+			"dateTo": time.Now().UTC().Format("2006-01-02"), "limit": 1, "rrdId": 0,
+			"period": "daily", "fields": []string{"rrdId"},
+		}
+		var report []map[string]any
+		if err := executor.request(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload,
+			map[string]string{"Authorization": executor.wbToken}, &report); err != nil {
+			return fmt.Errorf("проверить доступ Wildberries к финансовым отчётам: %w", err)
+		}
 		return nil
 	case "ozon":
 		if !executor.Configured("ozon") {
@@ -339,7 +386,7 @@ func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procu
 	}
 	payload := map[string]any{"prices": []map[string]any{{
 		"offer_id": strings.TrimSpace(item.ExternalArticle), "price": price,
-		"old_price": oldPrice, "min_price": price, "currency_code": "RUB", "auto_action_enabled": "UNKNOWN",
+		"old_price": oldPrice, "min_price": "", "currency_code": "RUB", "auto_action_enabled": "UNKNOWN",
 	}}}
 	var response struct {
 		Result []struct {

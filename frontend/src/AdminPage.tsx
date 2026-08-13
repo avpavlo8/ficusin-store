@@ -452,7 +452,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
     <div className="admin-toolbar procurement-toolbar">
       <button className="admin-primary" onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить PDF</button>
       <button className="admin-primary" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Новая закупка</button>
-      <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Добавить поставщика</button>
+      <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Поставщики</button>
       <button className="secondary-button" onClick={() => setRequestDialog(true)}>Добавить запрос</button>
       <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
     </div>
@@ -537,11 +537,12 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
         {item.lastError && <em>{item.lastError}</em>}
         <button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : "Проверить подключение"}</button>
       </article>)}</div>
+      <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки» и «Финансы». Ozon проверяется по безопасному чтению списка товаров.</p>
       <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Создание поступлений и изменение прайса остаются выключенными, пока не подтверждён поддерживаемый Saby контракт записи.</p>
     </section>}
 
     {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
-    {supplierDialog && <SupplierDialog onClose={() => setSupplierDialog(false)} onSaved={() => { setSupplierDialog(false); void load(); }} onError={onError} />}
+    {supplierDialog && <SupplierDialog suppliers={data.suppliers} onClose={() => setSupplierDialog(false)} onSaved={() => void load()} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
     {requestDialog && <ProcurementRequestDialog onClose={() => setRequestDialog(false)} onSaved={() => { setRequestDialog(false); void load(); }} onError={onError} />}
@@ -732,13 +733,22 @@ function ProcurementUploadDialog({ suppliers, orders, onClose, onSaved, onError 
     </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!file || !supplierId || saving} onClick={save}>{saving ? "Разбираем PDF…" : "Загрузить и разобрать"}</button></div></div></>;
 }
 
-function SupplierDialog({ onClose, onSaved, onError }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+function SupplierDialog({ suppliers, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
   const [name, setName] = useState(""); const [kind, setKind] = useState<"international" | "domestic">("international");
   const [countryCode, setCountryCode] = useState("NL"); const [currency, setCurrency] = useState<"EUR" | "USD" | "RUB">("EUR");
-  const [saving, setSaving] = useState(false);
-  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/suppliers", { method: "POST", body: JSON.stringify({ name, kind, countryCode, defaultCurrency: currency }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const [saving, setSaving] = useState(false); const [deletingId, setDeletingId] = useState(0);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/suppliers", { method: "POST", body: JSON.stringify({ name, kind, countryCode, defaultCurrency: currency }) }); setName(""); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const remove = async (supplier: ProcurementSupplier) => {
+    if (!window.confirm(`Удалить поставщика «${supplier.name}»? Его ключи и сопоставления тоже будут удалены. Поставщика с закупками удалить нельзя.`)) return;
+    setDeletingId(supplier.id);
+    try { await api(`/api/v1/admin/procurement/suppliers/${supplier.id}`, { method: "DELETE" }); onSaved(); }
+    catch (error) { onError((error as Error).message); }
+    finally { setDeletingId(0); }
+  };
   const changeKind = (value: "international" | "domestic") => { setKind(value); if (value === "domestic") { setCountryCode("RU"); setCurrency("RUB"); } else { setCountryCode("NL"); setCurrency("EUR"); } };
-  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-title"><header><h2 id="supplier-title">Новый поставщик</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-title"><header><h2 id="supplier-title">Поставщики</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    {suppliers.length > 0 && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Поставщик</th><th>Тип</th><th></th></tr></thead><tbody>{suppliers.map((supplier) => <tr key={supplier.id}><td><strong>{supplier.name}</strong><small>{supplier.countryCode || "Страна не указана"} · {supplier.defaultCurrency}</small></td><td>{supplier.kind === "international" ? "Иностранный" : "Российский"}</td><td><button className="table-action danger" disabled={deletingId > 0} onClick={() => void remove(supplier)}>{deletingId === supplier.id ? "Удаляем…" : "Удалить"}</button></td></tr>)}</tbody></table></div>}
+    <h3>Добавить поставщика</h3>
     <div className="admin-form-grid"><label className="wide">Название<input value={name} onChange={(event) => setName(event.target.value)} autoFocus /></label>
       <label>Тип<select value={kind} onChange={(event) => changeKind(event.target.value as "international" | "domestic")}><option value="international">Иностранный</option><option value="domestic">Российский</option></select></label>
       <label>Страна<input maxLength={2} value={countryCode} onChange={(event) => setCountryCode(event.target.value.toUpperCase())} /></label>
