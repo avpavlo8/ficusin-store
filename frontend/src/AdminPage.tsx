@@ -427,8 +427,12 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
   const syncCatalog = async (channel: string) => {
     setSyncingCatalog(channel);
     try {
-      const result = await api<{ link: { fetched: number; linked: number; unmatched: number } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
-      setIntegrationNotice({ channel, ok: true, text: `Прочитано карточек: ${result.link.fetched}, связано: ${result.link.linked}, без совпадения: ${result.link.unmatched}` });
+      const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[] } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
+      const link = result.link;
+      const detail = link.linked === 0 && link.fetched > 0
+        ? ` Сравнивали ${link.channelKeys} ключей канала с ${link.catalogKeys} ключами СБИС. У канала: ${(link.channelSamples || []).join(", ") || "нет"}. В СБИС: ${(link.catalogSamples || []).join(", ") || "нет"}.`
+        : "";
+      setIntegrationNotice({ channel, ok: link.linked > 0, text: `Прочитано карточек: ${link.fetched}, связано: ${link.linked}, без совпадения: ${link.unmatched}.${detail}` });
       await load();
     } catch (error) { setIntegrationNotice({ channel, ok: false, text: (error as Error).message }); }
     finally { setSyncingCatalog(""); }
@@ -569,7 +573,7 @@ function Procurement({ onError }: { onError: (value: string) => void }) {
         {item.channel !== "saby" && <button className="secondary-button" disabled={syncingCatalog !== ""} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Подтягиваем…" : "Подтянуть артикулы"}</button>}
       </article>)}</div>
       <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Пока связи нет, продажи канала загружаются, но в расчёт не идут.</p>
-      <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки» и «Финансы». Ozon проверяется по безопасному чтению списка товаров.</p>
+      <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки», «Финансы» и «Контент» — без последней чтение карточек закрыто и кнопка «Подтянуть артикулы» ответит ошибкой площадки. Ozon проверяется по безопасному чтению списка товаров.</p>
       <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Создание поступлений и изменение прайса остаются выключенными, пока не подтверждён поддерживаемый Saby контракт записи.</p>
     </section>}
 
