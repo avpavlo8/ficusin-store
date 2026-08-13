@@ -222,7 +222,8 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 	for _, path := range []string{"/v3/posting/fbs/list", "/v2/posting/fbo/list"} {
 		items, err := executor.fetchOzonPostings(ctx, path, from, to)
 		if err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "unexpected end of json input") {
+			var empty *emptyBodyError
+			if errors.As(err, &empty) {
 				continue
 			}
 			return nil, err
@@ -548,6 +549,18 @@ func (err *remoteError) Error() string {
 	return fmt.Sprintf("внешний API ответил %d: %s", err.Status, err.Message)
 }
 
+// emptyBodyError — код успеха и пустое тело. Отдельный тип, а не текст:
+// по нему принимается решение о повторе и о запасном пути, и ловить его
+// сравнением строк значило бы сломать оба, переписав сообщение.
+type emptyBodyError struct {
+	Path   string
+	Status int
+}
+
+func (err *emptyBodyError) Error() string {
+	return fmt.Sprintf("%s ответил %d с пустым телом", err.Path, err.Status)
+}
+
 func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoint string, payload any, headers map[string]string, target any) error {
 	var body io.Reader
 	if payload != nil {
@@ -583,11 +596,17 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	if response.StatusCode == http.StatusNoContent {
 		return nil
 	}
+	// Пустой ответ с кодом успеха и разбор, который не сошёлся, — разные
+	// беды, но выглядели одинаково: «unexpected end of JSON input» и ни
+	// слова о том, кто это сказал. Поэтому называем адрес, код и начало
+	// тела. Тело — собственный каталог магазина, ключей в нём нет: они
+	// уходят заголовком.
 	if len(bytes.TrimSpace(content)) == 0 && target != nil {
-		return errors.New("decode marketplace response: unexpected end of JSON input")
+		return &emptyBodyError{Path: requestPath(endpoint), Status: response.StatusCode}
 	}
 	if err := json.Unmarshal(content, target); err != nil {
-		return fmt.Errorf("decode marketplace response: %w", err)
+		return fmt.Errorf("%s ответил %d, разобрать не удалось (%w): %s",
+			requestPath(endpoint), response.StatusCode, err, safeRemoteMessage(string(content)))
 	}
 	return nil
 }
@@ -603,8 +622,9 @@ func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, en
 			return nil
 		}
 		var remote *remoteError
+		var empty *emptyBodyError
 		retry := errors.As(lastErr, &remote) && (remote.Status == http.StatusTooManyRequests || remote.Status >= 500)
-		if !retry && !strings.Contains(strings.ToLower(lastErr.Error()), "unexpected end of json input") {
+		if !retry && !errors.As(lastErr, &empty) {
 			return lastErr
 		}
 		delay := time.Duration(attempt+1) * time.Second
@@ -638,6 +658,15 @@ func marketplaceRetryAfter(response *http.Response) time.Duration {
 		return time.Duration(seconds) * time.Second
 	}
 	return 0
+}
+
+// requestPath оставляет от адреса только путь: хост площадки в сообщении
+// ничего не объясняет, а строку удлиняет.
+func requestPath(endpoint string) string {
+	if parsed, err := url.Parse(endpoint); err == nil && parsed.Path != "" {
+		return parsed.Path
+	}
+	return endpoint
 }
 
 func safeRemoteMessage(value string) string {
@@ -789,9 +818,17 @@ func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]pr
 				} `json:"items"`
 			} `json:"result"`
 		}
-		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v3/product/info/list",
-			map[string]any{"offer_id": offers[start:finish]}, headers, &response); err != nil {
-			return nil, err
+		// Метод карточек у Ozon пережил смену версии, и какая из них жива
+		// на конкретном аккаунте — видно только по ответу. Спрашиваем
+		// сначала новую, потом старую; обе только читают.
+		err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v3/product/info/list",
+			map[string]any{"offer_id": offers[start:finish]}, headers, &response)
+		if err != nil {
+			legacyErr := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v2/product/info/list",
+				map[string]any{"offer_id": offers[start:finish]}, headers, &response)
+			if legacyErr != nil {
+				return nil, fmt.Errorf("карточки Ozon: v3 — %w; v2 — %v", err, legacyErr)
+			}
 		}
 		details := response.Items
 		if len(details) == 0 {
