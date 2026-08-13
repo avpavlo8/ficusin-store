@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -1130,57 +1131,78 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			WHERE sale_date >= CURRENT_DATE - ($1 - 1) AND saby_id IS NOT NULL
 			GROUP BY saby_id
 		), requests AS (
-			SELECT saby_id, COALESCE(SUM(quantity), 0)::INTEGER AS units
+			SELECT saby_id,
+				COALESCE(SUM(quantity) FILTER (WHERE kind = 'customer_order'), 0)::INTEGER AS customer_units,
+				COALESCE(SUM(quantity) FILTER (WHERE kind = 'staff_recommendation'), 0)::INTEGER AS staff_units
 			FROM procurement_requests WHERE status = 'open' AND saby_id IS NOT NULL GROUP BY saby_id
-			), incoming AS (
-				SELECT o.supplier_id, l.saby_id, COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER AS units
+		), incoming AS (
+				SELECT l.saby_id, COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER AS units
 				FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
 				WHERE l.saby_id IS NOT NULL AND l.match_status = 'confirmed'
 					AND o.status IN ('ordered', 'invoice_received', 'review', 'ready_to_receive')
-				GROUP BY o.supplier_id, l.saby_id
-			)
-			SELECT COALESCE((SELECT a.id FROM procurement_supplier_aliases a
-				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id
-				ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC LIMIT 1), 0),
-				sp.supplier_id, n.saby_id, n.name,
-				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), ''), n.balance,
-				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
-				COALESCE(s.ozon_units, 0), COALESCE(s.units, 0), COALESCE(r.units, 0),
-				GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0))
+				GROUP BY l.saby_id
+		), last_orders AS (
+			SELECT l.saby_id, MAX(COALESCE(o.received_at, o.created_at)) AS last_ordered_at
+			FROM procurement_order_lines l JOIN procurement_orders o ON o.id = l.procurement_order_id
+			WHERE l.saby_id IS NOT NULL AND o.status <> 'cancelled' GROUP BY l.saby_id
+		), products AS (
+			SELECT sp.*, COALESCE(a.id, 0) AS alias_id, a.last_seen_at,
+				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
+				ROW_NUMBER() OVER (PARTITION BY sp.saby_id ORDER BY
+					CASE sp.availability_status WHEN 'available' THEN 0 WHEN 'check' THEN 1 WHEN 'unknown' THEN 2 ELSE 3 END,
+					a.last_seen_at DESC NULLS LAST, sp.updated_at DESC, sp.supplier_id) AS preference
 			FROM procurement_supplier_products sp
+			LEFT JOIN procurement_product_channels pc ON pc.saby_id = sp.saby_id
+			LEFT JOIN LATERAL (SELECT id, last_seen_at FROM procurement_supplier_aliases
+				WHERE supplier_id = sp.supplier_id AND matched_saby_id = sp.saby_id
+				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1) a ON TRUE
+			WHERE sp.availability_status <> 'discontinued'
+		)
+			SELECT sp.alias_id, sp.supplier_id, n.saby_id, n.name, sp.article,
+				sp.availability_status, n.balance, COALESCE(i.units, 0),
+				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
+				COALESCE(s.ozon_units, 0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),
+				sp.minimum_order_qty, sp.order_multiple, lo.last_ordered_at
+			FROM products sp
 			JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
 			LEFT JOIN sales s ON s.saby_id = n.saby_id
 			LEFT JOIN requests r ON r.saby_id = n.saby_id
-			LEFT JOIN incoming i ON i.saby_id = n.saby_id AND i.supplier_id = sp.supplier_id
-			LEFT JOIN procurement_product_channels pc ON pc.saby_id = n.saby_id
-			WHERE (COALESCE(s.units, 0) > 0 OR COALESCE(r.units, 0) > 0)
-				AND sp.availability_status = 'available'
-			AND GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0)) > 0
-		ORDER BY GREATEST(0, CEIL(COALESCE(s.units, 0)::NUMERIC * $2 / $1)::INTEGER + COALESCE(r.units, 0) - n.balance - COALESCE(i.units, 0)) DESC,
-			COALESCE(r.units, 0) DESC, n.name
-		LIMIT 100
-	`, settings.RecommendationDays, settings.TargetCoverDays)
+			LEFT JOIN incoming i ON i.saby_id = n.saby_id
+			LEFT JOIN last_orders lo ON lo.saby_id = n.saby_id
+			WHERE sp.preference = 1 AND (COALESCE(s.units, 0) > 0 OR
+				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0)
+		LIMIT 500
+	`, settings.RecommendationDays)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement recommendations: %w", err)
 	}
 	defer rows.Close()
-	items := make([]Recommendation, 0)
+	items := make([]Recommendation, 0, 100)
 	for rows.Next() {
-		var item Recommendation
-		if err := rows.Scan(&item.AliasID, &item.SupplierID, &item.SabyID, &item.Name, &item.SupplierArticle, &item.Balance,
-			&item.SiteSales, &item.SabySales, &item.WBSales, &item.OzonSales, &item.TotalSales,
-			&item.OpenRequests, &item.SuggestedQty); err != nil {
+		var input recommendationInput
+		if err := rows.Scan(&input.AliasID, &input.SupplierID, &input.SabyID, &input.Name, &input.SupplierArticle,
+			&input.AvailabilityStatus, &input.Balance, &input.Incoming, &input.SiteSales, &input.SabySales,
+			&input.WBSales, &input.OzonSales, &input.CustomerRequests, &input.StaffRequests,
+			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
-		if item.OpenRequests > 0 {
-			item.Reason = "Есть клиентский заказ"
-		} else if item.SuggestedQty > 0 {
-			item.Reason = "Продажи всех каналов выше целевого остатка"
-		} else {
-			item.Reason = "Запас достаточен"
+		item, include := calculateRecommendation(input, settings.RecommendationDays, settings.TargetCoverDays)
+		if include {
+			items = append(items, item)
 		}
-		items = append(items, item)
+	}
+	sort.SliceStable(items, func(left, right int) bool {
+		if recommendationPriority(items[left]) != recommendationPriority(items[right]) {
+			return recommendationPriority(items[left]) < recommendationPriority(items[right])
+		}
+		if items[left].SuggestedQty != items[right].SuggestedQty {
+			return items[left].SuggestedQty > items[right].SuggestedQty
+		}
+		return items[left].Name < items[right].Name
+	})
+	if len(items) > 100 {
+		items = items[:100]
 	}
 	return items, rows.Err()
 }
@@ -1684,6 +1706,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			sp.supplier_id, s.name, sp.supplier_article, sp.availability_status,
 			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), pc.wb_nm_id,
 			COALESCE(pc.wb_vendor_code, ''), COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, ''),
+			sp.minimum_order_qty, sp.order_multiple,
 			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
 				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::TEXT[])
@@ -1707,6 +1730,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.Balance, &item.CurrentPriceRUB, &item.SupplierID, &item.SupplierName,
 			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
 			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
+			&item.MinimumOrderQty, &item.OrderMultiple,
 			&item.Aliases); err != nil {
 			return nil, fmt.Errorf("scan procurement product directory: %w", err)
 		}
@@ -1727,15 +1751,18 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO procurement_supplier_products (
-			supplier_id, saby_id, supplier_article, availability_status, check_after, unavailable_since, updated_by
+			supplier_id, saby_id, supplier_article, availability_status, check_after, unavailable_since,
+			minimum_order_qty, order_multiple, updated_by
 		) VALUES ($1, $2, $3, $4, NULLIF($5, '')::DATE,
-			CASE WHEN $4 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $6)
+			CASE WHEN $4 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $6, $7, $8)
 		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET supplier_article = EXCLUDED.supplier_article,
 			availability_status = EXCLUDED.availability_status, check_after = EXCLUDED.check_after,
 			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
 				THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
+			minimum_order_qty = EXCLUDED.minimum_order_qty, order_multiple = EXCLUDED.order_multiple,
 			updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-	`, input.SupplierID, input.SabyID, input.SupplierArticle, input.AvailabilityStatus, input.CheckAfter, actor.CustomerID)
+	`, input.SupplierID, input.SabyID, input.SupplierArticle, input.AvailabilityStatus, input.CheckAfter,
+		input.MinimumOrderQty, input.OrderMultiple, actor.CustomerID)
 	if err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement supplier product: %w", err)
 	}

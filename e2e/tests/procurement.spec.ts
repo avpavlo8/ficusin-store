@@ -10,7 +10,10 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: options.currency || "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "Тестовый поставщик", rawName: "Тестовая строка D10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "TEST-SABY-1", suggestedSabyName: "Тестовый товар D10", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
-    requests: [], availability: [], recommendations: [],
+    requests: [], availability: [], recommendations: [
+      { aliasId: 9, supplierId: 1, sabyId: "TEST-SABY-1", name: "Тестовый товар D10", supplierArticle: "SUP-1", availability: "available", balance: 2, incoming: 0, siteSales: 2, sabySales: 5, wbSales: 1, ozonSales: 0, totalSales: 8, customerRequests: 1, staffRequests: 0, openRequests: 1, minimumOrderQty: 6, orderMultiple: 6, suggestedQty: 12, dailySales: 0.27, daysOfCover: 7.5, status: "recommended", reason: "Есть товар под заказ клиента" },
+      { aliasId: 10, supplierId: 1, sabyId: "TEST-SABY-2", name: "Товар уже едет", supplierArticle: "SUP-2", availability: "available", balance: 0, incoming: 6, siteSales: 0, sabySales: 4, wbSales: 0, ozonSales: 0, totalSales: 4, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 0, dailySales: 0.13, daysOfCover: 0, status: "already_ordered", reason: "Уже заказано 6 шт.; повторная закупка исключена" },
+    ],
     salesSync: [
       { channel: "saby", status: "ok", lastSuccessAt: "2026-08-10T12:00:00Z", lastError: "", rowsSynced: 120, periodFrom: "2025-08-11", periodTo: "2026-08-10", latestSale: "2026-08-10" },
       { channel: "site", status: "ok", lastSuccessAt: "2026-08-10T12:00:00Z", lastError: "", rowsSynced: 12, periodFrom: "2025-08-11", periodTo: "2026-08-10", latestSale: "2026-08-09" },
@@ -118,4 +121,17 @@ test("@desktop procurement shows one markup and clear rounding settings", async 
   await expect(page.getByLabel("Округлять цены до ближайших 50 или 90")).toBeChecked();
   await expect(page.getByLabel("База Голландии")).toHaveCount(0);
   await expect(page.getByLabel("Объём телеги, см³")).toHaveCount(0);
+});
+
+test("@desktop procurement separates actionable and already ordered recommendations", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Что заказать" }).click();
+
+  await expect(page.getByText("Тестовый товар D10")).toBeVisible();
+  await expect(page.getByText("12 шт.")).toBeVisible();
+  await page.getByRole("button", { name: "Уже заказано 1" }).click();
+  await expect(page.getByText("Товар уже едет")).toBeVisible();
+  await expect(page.getByText("повторная закупка исключена")).toBeVisible();
 });

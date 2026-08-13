@@ -318,7 +318,9 @@ func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input Pr
 	input.HollandArticle = strings.TrimSpace(input.HollandArticle)
 	input.WBVendorCode = strings.TrimSpace(input.WBVendorCode)
 	input.OzonOfferID = strings.TrimSpace(input.OzonOfferID)
-	if input.SabyID == "" || input.SupplierID <= 0 || !oneOf(input.AvailabilityStatus, "available", "unknown", "check", "temporarily_unavailable", "discontinued") || input.WBNmID != nil && *input.WBNmID <= 0 {
+	if input.SabyID == "" || input.SupplierID <= 0 || input.MinimumOrderQty <= 0 || input.OrderMultiple <= 0 ||
+		!oneOf(input.AvailabilityStatus, "available", "unknown", "check", "temporarily_unavailable", "discontinued") ||
+		input.WBNmID != nil && *input.WBNmID <= 0 {
 		return ProductDirectoryItem{}, ErrInvalidInput
 	}
 	if input.CheckAfter != "" {
