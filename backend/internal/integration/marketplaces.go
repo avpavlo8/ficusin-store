@@ -222,7 +222,8 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 	for _, path := range []string{"/v3/posting/fbs/list", "/v2/posting/fbo/list"} {
 		items, err := executor.fetchOzonPostings(ctx, path, from, to)
 		if err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "с пустым телом") {
+			var empty *emptyBodyError
+			if errors.As(err, &empty) {
 				continue
 			}
 			return nil, err
@@ -548,6 +549,18 @@ func (err *remoteError) Error() string {
 	return fmt.Sprintf("внешний API ответил %d: %s", err.Status, err.Message)
 }
 
+// emptyBodyError — код успеха и пустое тело. Отдельный тип, а не текст:
+// по нему принимается решение о повторе и о запасном пути, и ловить его
+// сравнением строк значило бы сломать оба, переписав сообщение.
+type emptyBodyError struct {
+	Path   string
+	Status int
+}
+
+func (err *emptyBodyError) Error() string {
+	return fmt.Sprintf("%s ответил %d с пустым телом", err.Path, err.Status)
+}
+
 func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoint string, payload any, headers map[string]string, target any) error {
 	var body io.Reader
 	if payload != nil {
@@ -589,7 +602,7 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	// тела. Тело — собственный каталог магазина, ключей в нём нет: они
 	// уходят заголовком.
 	if len(bytes.TrimSpace(content)) == 0 && target != nil {
-		return fmt.Errorf("%s ответил %d с пустым телом", requestPath(endpoint), response.StatusCode)
+		return &emptyBodyError{Path: requestPath(endpoint), Status: response.StatusCode}
 	}
 	if err := json.Unmarshal(content, target); err != nil {
 		return fmt.Errorf("%s ответил %d, разобрать не удалось (%w): %s",
@@ -609,19 +622,19 @@ func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, en
 			return nil
 		}
 		var remote *remoteError
-		// Пустое тело повторять бессмысленно: причина не в гонке, а в
-		// адресе или в правах ключа, и три попытки только тянут время.
-		if !errors.As(lastErr, &remote) || (remote.Status != http.StatusTooManyRequests && remote.Status < 500) {
+		var empty *emptyBodyError
+		retry := errors.As(lastErr, &remote) && (remote.Status == http.StatusTooManyRequests || remote.Status >= 500)
+		if !retry && !errors.As(lastErr, &empty) {
 			return lastErr
 		}
 		delay := time.Duration(attempt+1) * time.Second
-		if remote.Status == http.StatusTooManyRequests && remote.RetryAfter == 0 {
+		if remote != nil && remote.Status == http.StatusTooManyRequests && remote.RetryAfter == 0 {
 			// WB's financial report has a strict global seller limit. A quick
 			// retry only consumes the next attempt, so use a conservative pause
 			// when the API omits an explicit Retry-After value.
 			delay = time.Minute
 		}
-		if remote.RetryAfter > delay {
+		if remote != nil && remote.RetryAfter > delay {
 			delay = remote.RetryAfter
 		}
 		if delay > time.Minute {
