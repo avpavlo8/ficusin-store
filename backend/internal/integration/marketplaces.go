@@ -96,7 +96,7 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 			"fields": []string{"rrdId", "nmId", "docTypeName", "sellerOperName", "quantity", "retailAmount", "saleDt", "rrDate"},
 		}
 		var response []wbReportRow
-		if err := executor.request(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload,
+		if err := executor.requestRead(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
 			return nil, fmt.Errorf("получить продажи Wildberries: %w", err)
 		}
@@ -202,7 +202,7 @@ func (executor *MarketplaceExecutor) fetchOzonPostings(
 		var response struct {
 			Result json.RawMessage `json:"result"`
 		}
-		if err := executor.request(ctx, http.MethodPost, executor.ozonBase+path, payload,
+		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+path, payload,
 			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
 			return nil, fmt.Errorf("получить продажи Ozon %s: %w", path, err)
 		}
@@ -265,7 +265,7 @@ func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) 
 			return errors.New("токен Wildberries не настроен")
 		}
 		var response map[string]any
-		if err := executor.request(ctx, http.MethodGet, executor.wbBase+"/ping", nil,
+		if err := executor.requestRead(ctx, http.MethodGet, executor.wbBase+"/ping", nil,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
 			return fmt.Errorf("проверить доступ Wildberries к ценам: %w", err)
 		}
@@ -273,7 +273,7 @@ func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) 
 		// ping verifies the permission needed for sales history without consuming
 		// the financial report endpoint's strict rate limit.
 		response = nil
-		if err := executor.request(ctx, http.MethodGet, executor.wbStatsBase+"/ping", nil,
+		if err := executor.requestRead(ctx, http.MethodGet, executor.wbStatsBase+"/ping", nil,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
 			return fmt.Errorf("проверить доступ Wildberries к финансам: %w", err)
 		}
@@ -286,7 +286,7 @@ func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) 
 			"filter": map[string]any{"visibility": "ALL"}, "last_id": "", "limit": 1,
 		}
 		var response map[string]any
-		if err := executor.request(ctx, http.MethodPost, executor.ozonBase+"/v3/product/list", payload,
+		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v3/product/list", payload,
 			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
 			return fmt.Errorf("проверить Ozon: %w", err)
 		}
@@ -412,8 +412,9 @@ func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procu
 }
 
 type remoteError struct {
-	Status  int
-	Message string
+	Status     int
+	Message    string
+	RetryAfter time.Duration
 }
 
 func (err *remoteError) Error() string {
@@ -450,15 +451,66 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		return fmt.Errorf("read marketplace response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content))}
+		return &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response)}
 	}
 	if response.StatusCode == http.StatusNoContent {
 		return nil
+	}
+	if len(bytes.TrimSpace(content)) == 0 && target != nil {
+		return errors.New("decode marketplace response: unexpected end of JSON input")
 	}
 	if err := json.Unmarshal(content, target); err != nil {
 		return fmt.Errorf("decode marketplace response: %w", err)
 	}
 	return nil
+}
+
+// requestRead retries only read-only marketplace operations. Price writes use
+// request directly: retrying a mutation after an ambiguous network failure can
+// create a duplicate remote operation.
+func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, endpoint string, payload any, headers map[string]string, target any) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastErr = executor.request(ctx, method, endpoint, payload, headers, target)
+		if lastErr == nil {
+			return nil
+		}
+		var remote *remoteError
+		retry := errors.As(lastErr, &remote) && (remote.Status == http.StatusTooManyRequests || remote.Status >= 500)
+		if !retry && !strings.Contains(strings.ToLower(lastErr.Error()), "unexpected end of json input") {
+			return lastErr
+		}
+		delay := time.Duration(attempt+1) * time.Second
+		if remote != nil && remote.Status == http.StatusTooManyRequests && remote.RetryAfter == 0 {
+			// WB's financial report has a strict global seller limit. A quick
+			// retry only consumes the next attempt, so use a conservative pause
+			// when the API omits an explicit Retry-After value.
+			delay = time.Minute
+		}
+		if remote != nil && remote.RetryAfter > delay {
+			delay = remote.RetryAfter
+		}
+		if delay > time.Minute {
+			delay = time.Minute
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return lastErr
+}
+
+func marketplaceRetryAfter(response *http.Response) time.Duration {
+	value := firstNonEmpty(response.Header.Get("Retry-After"), response.Header.Get("X-Ratelimit-Retry"))
+	seconds, err := strconv.Atoi(strings.TrimSpace(value))
+	if err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	return 0
 }
 
 func safeRemoteMessage(value string) string {
