@@ -56,6 +56,33 @@ func TestWBSalesIncludeSalesAndSubtractReturns(t *testing.T) {
 	}
 }
 
+func TestWBSalesFallBackToOperationalReportOnFinanceRateLimit(t *testing.T) {
+	finance := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Set("X-Ratelimit-Retry", "1")
+		response.WriteHeader(http.StatusTooManyRequests)
+		_, _ = response.Write([]byte(`{"title":"too many requests"}`))
+	}))
+	defer finance.Close()
+	reports := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/v1/supplier/sales" || request.URL.Query().Get("flag") != "0" {
+			t.Fatalf("unexpected operational report request: %s %s", request.Method, request.URL.String())
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`[
+			{"nmId":123,"saleID":"S1","date":"2026-08-05T12:00:00Z","finishedPrice":1500},
+			{"nmId":123,"saleID":"R1","date":"2026-08-06T12:00:00Z","finishedPrice":1500}
+		]`))
+	}))
+	defer reports.Close()
+	executor := NewMarketplaceExecutor("token", "", "")
+	executor.wbStatsBase, executor.wbReportsBase = finance.URL, reports.URL
+	records, err := executor.FetchSales(context.Background(), "wb", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(records) != 2 || records[0].Units != 1 || records[1].Units != -1 {
+		t.Fatalf("records = %+v, err = %v", records, err)
+	}
+}
+
 func TestOzonSalesCombineFBSAndFBO(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
@@ -70,6 +97,24 @@ func TestOzonSalesCombineFBSAndFBO(t *testing.T) {
 	executor.ozonBase, executor.client = server.URL, server.Client()
 	records, err := executor.FetchSales(context.Background(), "ozon", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
 	if err != nil || len(records) != 2 || records[0].ExternalID != "OZ-1" || records[1].Units != 1 {
+		t.Fatalf("records = %+v, err = %v", records, err)
+	}
+}
+
+func TestOzonSalesFallBackToAnalyticsWhenPostingsAreEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/v1/analytics/data" {
+			_, _ = response.Write([]byte(`{"result":{"data":[{"dimensions":[{"id":"123456","name":"OZ-1"},{"id":"2026-08-05","name":"05.08.2026"}],"metrics":[2,2400]}]}}`))
+			return
+		}
+		_, _ = response.Write([]byte(`{"result":{"postings":[]}}`))
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	records, err := executor.FetchSales(context.Background(), "ozon", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || len(records) != 1 || records[0].ExternalID != "OZ-1" || records[0].Units != 2 {
 		t.Fatalf("records = %+v, err = %v", records, err)
 	}
 }
