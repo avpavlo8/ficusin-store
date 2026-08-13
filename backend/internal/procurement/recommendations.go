@@ -10,6 +10,7 @@ const (
 	RecommendationIncoming     = "already_ordered"
 	RecommendationAvailability = "check_availability"
 	RecommendationNew          = "new_assortment"
+	RecommendationNoStock      = "no_stock"
 )
 
 type recommendationInput struct {
@@ -33,6 +34,22 @@ func calculateRecommendation(input recommendationInput, historyDays int) (Recomm
 	if item.DailySales > 0 {
 		cover := float64(max(0, item.Balance)) / item.DailySales
 		item.DaysOfCover = &cover
+	}
+	if item.TotalSales == 0 && item.OpenRequests == 0 && item.Balance <= 0 {
+		if item.Incoming > 0 {
+			item.Status = RecommendationIncoming
+			item.Reason = fmt.Sprintf("Продаж за период нет, но уже заказано %d шт.", item.Incoming)
+			return item, true
+		}
+		if input.AvailabilityStatus == "check" || input.AvailabilityStatus == "temporarily_unavailable" {
+			item.Status = RecommendationAvailability
+			item.Reason = "Нет остатка и продаж; наличие у поставщика нужно проверить"
+			return item, true
+		}
+		item.Status = RecommendationNoStock
+		item.SuggestedQty = roundOrderQuantity(1, item.MinimumOrderQty, item.OrderMultiple)
+		item.Reason = "Нет остатка и продаж за выбранный период"
+		return item, true
 	}
 	// Replenish exactly what was sold during the selected history window.
 	// Current Saby stock and confirmed incoming quantities reduce that need.
@@ -90,10 +107,12 @@ func recommendationPriority(item Recommendation) int {
 		return 1
 	case RecommendationNew:
 		return 2
-	case RecommendationIncoming:
+	case RecommendationNoStock:
 		return 3
-	case RecommendationAvailability:
+	case RecommendationIncoming:
 		return 4
+	case RecommendationAvailability:
+		return 5
 	default:
 		return 5
 	}
