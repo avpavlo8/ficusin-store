@@ -136,3 +136,47 @@ func TestMarketplaceProbesAreReadOnly(t *testing.T) {
 		t.Fatalf("WB price and finance pings = %d, want 2", pingCalls)
 	}
 }
+
+func TestReadOnlyMarketplaceRequestRetriesRateLimit(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		calls++
+		response.Header().Set("Content-Type", "application/json")
+		if calls == 1 {
+			response.Header().Set("Retry-After", "1")
+			response.WriteHeader(http.StatusTooManyRequests)
+			_, _ = response.Write([]byte(`{"title":"too many requests"}`))
+			return
+		}
+		_, _ = response.Write([]byte(`{"result":{"items":[]}}`))
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	if err := executor.Probe(context.Background(), "ozon"); err != nil {
+		t.Fatalf("probe after rate limit: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestReadOnlyMarketplaceRequestRetriesEmptyJSON(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		calls++
+		response.Header().Set("Content-Type", "application/json")
+		if calls > 1 {
+			_, _ = response.Write([]byte(`{"result":{"items":[]}}`))
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	if err := executor.Probe(context.Background(), "ozon"); err != nil {
+		t.Fatalf("probe after empty response: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
