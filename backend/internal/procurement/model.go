@@ -246,20 +246,30 @@ type AvailabilityUpdate struct {
 }
 
 type Recommendation struct {
-	AliasID         int64  `json:"aliasId"`
-	SupplierID      int64  `json:"supplierId"`
-	SabyID          string `json:"sabyId"`
-	Name            string `json:"name"`
-	SupplierArticle string `json:"supplierArticle"`
-	Balance         int    `json:"balance"`
-	SiteSales       int    `json:"siteSales"`
-	SabySales       int    `json:"sabySales"`
-	WBSales         int    `json:"wbSales"`
-	OzonSales       int    `json:"ozonSales"`
-	TotalSales      int    `json:"totalSales"`
-	OpenRequests    int    `json:"openRequests"`
-	SuggestedQty    int    `json:"suggestedQty"`
-	Reason          string `json:"reason"`
+	AliasID          int64      `json:"aliasId"`
+	SupplierID       int64      `json:"supplierId"`
+	SabyID           string     `json:"sabyId"`
+	Name             string     `json:"name"`
+	SupplierArticle  string     `json:"supplierArticle"`
+	Availability     string     `json:"availability"`
+	Balance          int        `json:"balance"`
+	Incoming         int        `json:"incoming"`
+	SiteSales        int        `json:"siteSales"`
+	SabySales        int        `json:"sabySales"`
+	WBSales          int        `json:"wbSales"`
+	OzonSales        int        `json:"ozonSales"`
+	TotalSales       int        `json:"totalSales"`
+	CustomerRequests int        `json:"customerRequests"`
+	StaffRequests    int        `json:"staffRequests"`
+	OpenRequests     int        `json:"openRequests"`
+	MinimumOrderQty  int        `json:"minimumOrderQty"`
+	OrderMultiple    int        `json:"orderMultiple"`
+	SuggestedQty     int        `json:"suggestedQty"`
+	DailySales       float64    `json:"dailySales"`
+	DaysOfCover      *float64   `json:"daysOfCover,omitempty"`
+	LastOrderedAt    *time.Time `json:"lastOrderedAt,omitempty"`
+	Status           string     `json:"status"`
+	Reason           string     `json:"reason"`
 }
 
 type SalesRecord struct {
@@ -298,6 +308,8 @@ type ProductDirectoryItem struct {
 	WBNmID             *int64   `json:"wbNmId,omitempty"`
 	WBVendorCode       string   `json:"wbVendorCode"`
 	OzonOfferID        string   `json:"ozonOfferId"`
+	MinimumOrderQty    int      `json:"minimumOrderQty"`
+	OrderMultiple      int      `json:"orderMultiple"`
 	Aliases            []string `json:"aliases"`
 }
 
@@ -311,6 +323,8 @@ type ProductDirectoryUpdate struct {
 	WBNmID             *int64 `json:"wbNmId"`
 	WBVendorCode       string `json:"wbVendorCode"`
 	OzonOfferID        string `json:"ozonOfferId"`
+	MinimumOrderQty    int    `json:"minimumOrderQty"`
+	OrderMultiple      int    `json:"orderMultiple"`
 }
 
 type ActionBatch struct {
