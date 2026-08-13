@@ -1,6 +1,11 @@
 name: Saby catalog sync
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/sync-saby.py
+      - .github/workflows/saby-catalog-sync.yml
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch: {}
