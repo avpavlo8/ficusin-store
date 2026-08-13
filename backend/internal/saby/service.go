@@ -158,6 +158,12 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	rows := make([]poolRow, 0, len(items))
 	received := make([]string, 0, len(items))
 	for _, item := range items {
+		// The human Saby nomenclature number (X...) is the stable identifier
+		// already used by supplier mappings. Internal catalogue IDs and retail
+		// UUIDs can differ between Saby endpoints.
+		if strings.HasPrefix(strings.ToUpper(item.code), "X") {
+			item.id = item.code
+		}
 		rows = append(rows, poolRow{
 			SabyID: item.id, Code: item.code, Article: item.article, Barcode: item.barcode,
 			Name: item.name, Description: item.description,
