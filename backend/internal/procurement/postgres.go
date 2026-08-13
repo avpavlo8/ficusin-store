@@ -1229,7 +1229,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
-		item, include := calculateRecommendation(input, settings.RecommendationDays, settings.TargetCoverDays)
+		item, include := calculateRecommendation(input, settings.RecommendationDays)
 		if include {
 			items = append(items, item)
 		}
@@ -1253,7 +1253,8 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 	rows, err := store.pool.Query(ctx, `
 		SELECT state.channel, state.status, state.last_attempt_at, state.last_success_at,
 			state.last_error, state.rows_synced, COALESCE(state.period_from::TEXT, ''),
-			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, '')
+			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, ''),
+			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER
 		FROM procurement_sales_sync_state state
 		LEFT JOIN procurement_sales_daily sale ON sale.channel = state.channel
 		GROUP BY state.channel, state.status, state.last_attempt_at, state.last_success_at,
@@ -1268,7 +1269,8 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 	for rows.Next() {
 		var item SalesSyncStatus
 		if err := rows.Scan(&item.Channel, &item.Status, &item.LastAttemptAt, &item.LastSuccessAt,
-			&item.LastError, &item.RowsSynced, &item.PeriodFrom, &item.PeriodTo, &item.LatestSale); err != nil {
+			&item.LastError, &item.RowsSynced, &item.PeriodFrom, &item.PeriodTo, &item.LatestSale,
+			&item.RowsLinked); err != nil {
 			return nil, fmt.Errorf("scan sales synchronization state: %w", err)
 		}
 		items = append(items, item)

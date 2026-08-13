@@ -17,7 +17,7 @@ type recommendationInput struct {
 	AvailabilityStatus string
 }
 
-func calculateRecommendation(input recommendationInput, historyDays, targetDays int) (Recommendation, bool) {
+func calculateRecommendation(input recommendationInput, historyDays int) (Recommendation, bool) {
 	item := input.Recommendation
 	item.Availability = input.AvailabilityStatus
 	item.SiteSales = max(0, item.SiteSales)
@@ -26,7 +26,7 @@ func calculateRecommendation(input recommendationInput, historyDays, targetDays 
 	item.OzonSales = max(0, item.OzonSales)
 	item.TotalSales = item.SiteSales + item.SabySales + item.WBSales + item.OzonSales
 	item.OpenRequests = item.CustomerRequests + item.StaffRequests
-	if historyDays <= 0 || targetDays <= 0 {
+	if historyDays <= 0 {
 		return Recommendation{}, false
 	}
 	item.DailySales = float64(item.TotalSales) / float64(historyDays)
@@ -34,8 +34,9 @@ func calculateRecommendation(input recommendationInput, historyDays, targetDays 
 		cover := float64(max(0, item.Balance)) / item.DailySales
 		item.DaysOfCover = &cover
 	}
-	salesNeed := int(math.Ceil(item.DailySales * float64(targetDays)))
-	needBeforeIncoming := max(0, salesNeed+item.OpenRequests-max(0, item.Balance))
+	// Replenish exactly what was sold during the selected history window.
+	// Current Saby stock and confirmed incoming quantities reduce that need.
+	needBeforeIncoming := max(0, item.TotalSales+item.OpenRequests-max(0, item.Balance))
 	if needBeforeIncoming == 0 {
 		return Recommendation{}, false
 	}
@@ -68,7 +69,7 @@ func calculateRecommendation(input recommendationInput, historyDays, targetDays 
 		item.Reason = "Есть товар под заказ клиента"
 	} else {
 		item.Status = RecommendationReady
-		item.Reason = fmt.Sprintf("Запаса меньше чем на %d дней", targetDays)
+		item.Reason = fmt.Sprintf("За период продано %d шт., на остатке %d шт.", item.TotalSales, max(0, item.Balance))
 	}
 	return item, true
 }

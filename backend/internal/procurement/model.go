@@ -288,6 +288,7 @@ type SalesSyncStatus struct {
 	LastSuccessAt *time.Time `json:"lastSuccessAt,omitempty"`
 	LastError     string     `json:"lastError"`
 	RowsSynced    int        `json:"rowsSynced"`
+	RowsLinked    int        `json:"rowsLinked"`
 	PeriodFrom    string     `json:"periodFrom"`
 	PeriodTo      string     `json:"periodTo"`
 	LatestSale    string     `json:"latestSale"`
