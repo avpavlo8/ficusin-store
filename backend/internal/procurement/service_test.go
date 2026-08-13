@@ -15,6 +15,7 @@ type storeStub struct {
 	aliasID           int64
 	resolution        AliasResolution
 	deletedSupplierID int64
+	exclusion         ExclusionUpdate
 }
 
 func (stub *storeStub) Dashboard(context.Context) (Dashboard, error) { return Dashboard{}, nil }
@@ -72,8 +73,15 @@ func (stub *storeStub) ListProducts(context.Context, int64, string) ([]ProductDi
 func (stub *storeStub) UpdateProduct(_ context.Context, _ Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
 	return ProductDirectoryItem{SabyID: input.SabyID}, nil
 }
-func (stub *storeStub) UpdateAvailability(_ context.Context, _ Actor, aliasID int64, input AvailabilityUpdate) (AliasReview, error) {
-	return AliasReview{ID: aliasID, AvailabilityStatus: input.Status}, nil
+func (stub *storeStub) UpdateAvailability(_ context.Context, _ Actor, input AvailabilityUpdate) (AvailabilityItem, error) {
+	return AvailabilityItem{SupplierID: input.SupplierID, SabyID: input.SabyID, Status: input.Status}, nil
+}
+func (stub *storeStub) SetExclusion(_ context.Context, _ Actor, input ExclusionUpdate) error {
+	stub.exclusion = input
+	return nil
+}
+func (stub *storeStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
+	return ChannelLinkResult{Channel: channel, Fetched: len(items)}, nil
 }
 func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string) (ActionBatch, error) {
 	return ActionBatch{Kind: kind}, nil

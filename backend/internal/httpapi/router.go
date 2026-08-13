@@ -180,7 +180,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/procurement/documents", procurementAPI.importDocument)
 	mux.HandleFunc("GET /api/v1/admin/procurement/nomenclature", procurementAPI.searchNomenclature)
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/aliases/{id}", procurementAPI.resolveAlias)
-	mux.HandleFunc("PATCH /api/v1/admin/procurement/availability/{id}", procurementAPI.updateAvailability)
+	mux.HandleFunc("PATCH /api/v1/admin/procurement/availability", procurementAPI.updateAvailability)
+	mux.HandleFunc("PUT /api/v1/admin/procurement/exclusions", procurementAPI.updateExclusion)
 	mux.HandleFunc("POST /api/v1/admin/procurement/requests", procurementAPI.createRequest)
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/requests/{id}", procurementAPI.updateRequest)
 	mux.HandleFunc("GET /api/v1/admin/procurement/products", procurementAPI.listProducts)
@@ -188,6 +189,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/approve", procurementAPI.approveBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/retry", procurementAPI.retryBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/check", procurementAPI.checkIntegration)
+	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/catalog", procurementAPI.syncChannelCatalog)
 	mux.Handle(
 		"POST /api/v1/integrations/saby/catalog",
 		sabyCatalogSyncHandler(logger, dependencies.Saby),

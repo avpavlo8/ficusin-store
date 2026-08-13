@@ -5,20 +5,35 @@ import (
 	"math"
 )
 
+// Очереди экрана рекомендаций.
+//
+// «К заказу» — единственный список, по которому формируется заказ
+// поставщику. Товар без остатка и ручная рекомендация магазина живут здесь
+// же: разбирать их по отдельным вкладкам значило заставлять человека
+// собирать заказ из трёх мест. Остальные очереди — это то, что из «К
+// заказу» вычли, и каждая называет причину.
 const (
 	RecommendationReady        = "recommended"
 	RecommendationIncoming     = "already_ordered"
 	RecommendationAvailability = "check_availability"
-	RecommendationNew          = "new_assortment"
-	RecommendationNoStock      = "no_stock"
+	RecommendationUnavailable  = "supplier_unavailable"
+	RecommendationExcluded     = "excluded"
 )
 
 type recommendationInput struct {
 	Recommendation
 	AvailabilityStatus string
+	Excluded           bool
+	ExclusionReason    string
 }
 
-func calculateRecommendation(input recommendationInput, historyDays int) (Recommendation, bool) {
+// calculateRecommendation считает потребность и раскладывает товар по
+// очередям.
+//
+// historyDays — за сколько дней смотрим продажи, coverDays — на сколько
+// дней берём запас. Раньше это было одно число, и длинный период истории
+// молча превращался в такой же длинный заказ.
+func calculateRecommendation(input recommendationInput, historyDays, coverDays int) (Recommendation, bool) {
 	item := input.Recommendation
 	item.Availability = input.AvailabilityStatus
 	item.SiteSales = max(0, item.SiteSales)
@@ -30,43 +45,60 @@ func calculateRecommendation(input recommendationInput, historyDays int) (Recomm
 	if historyDays <= 0 {
 		return Recommendation{}, false
 	}
+	if coverDays <= 0 {
+		coverDays = historyDays
+	}
 	item.DailySales = float64(item.TotalSales) / float64(historyDays)
 	if item.DailySales > 0 {
 		cover := float64(max(0, item.Balance)) / item.DailySales
 		item.DaysOfCover = &cover
 	}
-	if item.TotalSales == 0 && item.OpenRequests == 0 && item.Balance <= 0 {
-		if item.Incoming > 0 {
-			item.Status = RecommendationIncoming
-			item.Reason = fmt.Sprintf("Продаж за период нет, но уже заказано %d шт.", item.Incoming)
-			return item, true
-		}
-		if input.AvailabilityStatus == "check" || input.AvailabilityStatus == "temporarily_unavailable" {
-			item.Status = RecommendationAvailability
-			item.Reason = "Нет остатка и продаж; наличие у поставщика нужно проверить"
-			return item, true
-		}
-		item.Status = RecommendationNoStock
-		item.SuggestedQty = roundOrderQuantity(1, item.MinimumOrderQty, item.OrderMultiple)
-		item.Reason = "Нет остатка и продаж за выбранный период"
+
+	// Решение магазина не закупать сильнее любого расчёта: считать спрос по
+	// такому товару всё равно нужно, чтобы человек видел, от чего
+	// отказывается, но в заказ он не попадёт.
+	if input.Excluded {
+		item.Status = RecommendationExcluded
+		item.Reason = defaultReason(input.ExclusionReason, "Снят с закупки решением магазина")
 		return item, true
 	}
-	// Replenish exactly what was sold during the selected history window.
-	// Current Saby stock and confirmed incoming quantities reduce that need.
-	needBeforeIncoming := max(0, item.TotalSales+item.OpenRequests-max(0, item.Balance))
+
+	// Считаем целыми: 10 продаж за 60 дней с горизонтом 60 в дробной
+	// арифметике дают 9.999999999999998, и округление вверх молча
+	// превращается то в 10, то в 11.
+	demand := (item.TotalSales*coverDays+historyDays-1)/historyDays + item.OpenRequests
+	needBeforeIncoming := max(0, demand-max(0, item.Balance))
+
+	// Нулевой остаток без продаж и без заявок — это не рассчитанная
+	// потребность, а напоминание: растения нет ни на складе, ни в продаже.
+	// Просим минимальную партию.
+	if needBeforeIncoming == 0 && item.Balance <= 0 && item.TotalSales == 0 && item.OpenRequests == 0 {
+		needBeforeIncoming = 1
+	}
 	if needBeforeIncoming == 0 {
 		return Recommendation{}, false
 	}
 
-	if input.AvailabilityStatus == "check" || input.AvailabilityStatus == "temporarily_unavailable" {
+	switch input.AvailabilityStatus {
+	case "check":
 		item.Status = RecommendationAvailability
-		item.Reason = "Есть спрос, но наличие у поставщика не подтверждено"
+		item.Reason = "Наличие у поставщика нужно проверить"
+		return item, true
+	case "temporarily_unavailable":
+		item.Status = RecommendationUnavailable
+		item.Reason = "У поставщика временно нет"
+		return item, true
+	case "discontinued":
+		item.Status = RecommendationUnavailable
+		item.Reason = "Поставщик снял с продажи"
 		return item, true
 	}
 
+	// Заказанное и ещё не приехавшее закрывает потребность, иначе одно и то
+	// же растение уедет в заказ дважды.
 	rawQuantity := max(0, needBeforeIncoming-max(0, item.Incoming))
-	// A new customer order must not disappear merely because an older order is
-	// on the way and cannot cover that customer.
+	// Новая заявка клиента не должна исчезнуть только потому, что в пути
+	// есть старый заказ, которого на этого клиента не хватает.
 	uncoveredCustomer := max(0, item.CustomerRequests-max(0, item.Balance)-max(0, item.Incoming))
 	if item.Incoming > 0 && uncoveredCustomer == 0 {
 		item.Status = RecommendationIncoming
@@ -78,17 +110,26 @@ func calculateRecommendation(input recommendationInput, historyDays int) (Recomm
 	}
 
 	item.SuggestedQty = roundOrderQuantity(rawQuantity, item.MinimumOrderQty, item.OrderMultiple)
-	if item.StaffRequests > 0 && item.TotalSales == 0 {
-		item.Status = RecommendationNew
-		item.Reason = "Ручная рекомендация для ассортимента магазина"
-	} else if item.CustomerRequests > 0 {
-		item.Status = RecommendationReady
+	item.Status = RecommendationReady
+	switch {
+	case item.CustomerRequests > 0:
 		item.Reason = "Есть товар под заказ клиента"
-	} else {
-		item.Status = RecommendationReady
-		item.Reason = fmt.Sprintf("За период продано %d шт., на остатке %d шт.", item.TotalSales, max(0, item.Balance))
+	case item.TotalSales == 0 && item.StaffRequests > 0:
+		item.Reason = "Ручная рекомендация для ассортимента магазина"
+	case item.TotalSales == 0:
+		item.Reason = "Нет остатка и продаж за выбранный период"
+	default:
+		item.Reason = fmt.Sprintf("За %d дн. продано %d шт., на остатке %d шт.; закупаем запас на %d дн.",
+			historyDays, item.TotalSales, max(0, item.Balance), coverDays)
 	}
 	return item, true
+}
+
+func defaultReason(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func roundOrderQuantity(quantity, minimum, multiple int) int {
@@ -105,15 +146,15 @@ func recommendationPriority(item Recommendation) int {
 			return 0
 		}
 		return 1
-	case RecommendationNew:
-		return 2
-	case RecommendationNoStock:
-		return 3
 	case RecommendationIncoming:
-		return 4
+		return 2
 	case RecommendationAvailability:
+		return 3
+	case RecommendationUnavailable:
+		return 4
+	case RecommendationExcluded:
 		return 5
 	default:
-		return 5
+		return 6
 	}
 }
