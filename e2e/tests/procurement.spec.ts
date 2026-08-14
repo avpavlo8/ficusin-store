@@ -59,17 +59,19 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
       if (path === "/api/v1/admin/procurement/nomenclature") {
-        const candidate = { sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 };
-        // Живой справочник отдаёт одну позицию по нескольку раз. Разбору
-        // продаж копии выбирать не из чего, и он обязан их схлопнуть.
-        const query = new URL(raw, window.location.origin).searchParams.get("q") || "";
-        return json({ items: query.includes("fikus") ? [candidate, candidate] : [candidate] });
+        return json({ items: [{ sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 }] });
+      }
+      if (path === "/api/v1/admin/procurement/sales/nomenclature") {
+        // Живой справочник иногда отдаёт одну запись дважды. Разбору продаж
+        // выбирать между копиями нечего — он обязан их схлопнуть.
+        const candidate = { sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Фикус Бенджамина D12", balance: 4, price: 100 };
+        return json({ items: [candidate, candidate] });
       }
       if (path === "/api/v1/admin/procurement/sales/unlinked") {
-        return json({ items: [{ channel: "ozon", externalId: "fikus-benjamina-12", days: 3, units: 7, grossRub: 4900, lastSale: "2026-08-10" }] });
+        return json({ items: [{ channel: "ozon", externalId: "fikus-benjamina-12", article: "fikus-benjamina-12", name: "Фикус Бенджамина 12 см", days: 3, units: 7, grossRub: 4900, lastSale: "2026-08-10" }] });
       }
       if (path === "/api/v1/admin/procurement/sales/link" && init?.method === "POST") {
-        return json({ link: { channel: "ozon", externalId: "fikus-benjamina-12", sabyId: "TEST-SABY-1", sabyName: "Тестовый товар D10", linkedRows: 3, linkedUnits: 7, takenFrom: "", remaining: 0 } });
+        return json({ link: { channel: "ozon", externalId: "fikus-benjamina-12", sabyId: "TEST-SABY-1", sabyName: "Фикус Бенджамина D12", linkedRows: 3, linkedUnits: 7, takenFrom: "", remaining: 0 } });
       }
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
@@ -146,11 +148,14 @@ test("@desktop unlinked marketplace sales are matched by hand", async ({ page })
   await page.getByRole("button", { name: "Продажи без товара" }).click();
 
   await expect(page.getByText("fikus-benjamina-12").first()).toBeVisible();
+  // Голый код ничего не говорит человеку, поэтому рядом стоит подпись
+  // карточки, прочитанная с площадки.
+  await expect(page.getByText("Фикус Бенджамина 12 см")).toBeVisible();
   await page.getByRole("button", { name: "Сопоставить" }).click();
   const dialog = page.getByRole("dialog", { name: "Сопоставить продажи" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".procurement-candidates article")).toHaveCount(1);
-  await expect(dialog.getByText("Тестовый товар D10")).toBeVisible();
+  await expect(dialog.getByText("Фикус Бенджамина D12")).toBeVisible();
   await dialog.getByRole("button", { name: "Связать" }).click();
   await expect(page.getByRole("status")).toContainText("В расчёт вернулось строк продаж: 3");
 });

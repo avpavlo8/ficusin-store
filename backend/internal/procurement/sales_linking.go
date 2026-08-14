@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// manualSalesChannels — каналы, у которых внешний код продажи вообще может
+// manualSalesChannels — каналы, у которых внешний код продажи может
 // разойтись с номенклатурой. Сайт и СБИС кладут в продажи сам saby_id,
 // связывать там нечего.
 var manualSalesChannels = []string{"wb", "ozon"}
@@ -21,14 +21,22 @@ var manualSalesChannels = []string{"wb", "ozon"}
 // без потолка редкий канал с тысячами разовых кодов повесил бы таблицу.
 const unlinkedSalesLimit = 300
 
+// linkableCandidatesLimit — сколько кандидатов показываем при поиске.
+const linkableCandidatesLimit = 40
+
 // UnlinkedSale — внешний код, продажи которого не дошли до товара.
 //
 // Строка агрегирована по коду, а не по дню: разбирающему важно, сколько
 // всего продано под этим кодом и когда его видели в последний раз, —
 // давно замолчавший код чаще всего снятая карточка, и его можно отложить.
+//
+// Article и Name — подпись карточки с площадки. Без неё разбор Wildberries
+// слепой: там внешний код — это числовой nmID.
 type UnlinkedSale struct {
 	Channel    string  `json:"channel"`
 	ExternalID string  `json:"externalId"`
+	Article    string  `json:"article"`
+	Name       string  `json:"name"`
 	Days       int     `json:"days"`
 	Units      int     `json:"units"`
 	GrossRUB   float64 `json:"grossRub"`
@@ -68,6 +76,8 @@ type SalesLinkResult struct {
 type SalesLinkStore interface {
 	ListUnlinkedSales(context.Context, string, int) ([]UnlinkedSale, error)
 	LinkSalesProduct(context.Context, Actor, SalesLink) (SalesLinkResult, error)
+	SearchLinkableNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
+	RememberChannelProducts(context.Context, string, []ChannelProduct) error
 }
 
 // ErrSalesLinkUnsupported — хранилище не умеет разбирать продажи руками.
@@ -84,6 +94,24 @@ func (service *Service) UnlinkedSales(ctx context.Context, channel string) ([]Un
 		return nil, ErrSalesLinkUnsupported
 	}
 	return store.ListUnlinkedSales(ctx, channel, unlinkedSalesLimit)
+}
+
+// SearchLinkableNomenclature ищет товар, за которым можно закрепить код.
+//
+// От общего поиска по справочнику отличается тем, что не показывает
+// позиции, пропавшие из выгрузки СБИС. Выбрать такую — значит приписать
+// продажи карточке, которой в магазине уже нет, и потерять их в расчёте
+// закупки во второй раз.
+func (service *Service) SearchLinkableNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	query = strings.TrimSpace(query)
+	if len([]rune(query)) < 2 || len(query) > 200 {
+		return nil, ErrInvalidInput
+	}
+	store, able := service.store.(SalesLinkStore)
+	if !able {
+		return nil, ErrSalesLinkUnsupported
+	}
+	return store.SearchLinkableNomenclature(ctx, query)
 }
 
 // LinkSalesProduct закрепляет внешний код за товаром СБИС.
@@ -111,15 +139,20 @@ func (service *Service) LinkSalesProduct(ctx context.Context, actor Actor, input
 }
 
 func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel string, limit int) ([]UnlinkedSale, error) {
+	// Подпись карточки берётся слева: площадку могли ещё ни разу не
+	// прочитать, и это не повод прятать продажи — код покажем как есть.
 	rows, err := store.pool.Query(ctx, `
-		SELECT external_product_id, COUNT(*)::INTEGER,
-			COALESCE(SUM(units), 0)::INTEGER,
-			COALESCE(SUM(gross_rub), 0)::DOUBLE PRECISION,
-			MAX(sale_date)::TEXT
-		FROM procurement_sales_daily
-		WHERE channel = $1 AND saby_id IS NULL
-		GROUP BY external_product_id
-		ORDER BY SUM(units) DESC, MAX(sale_date) DESC
+		SELECT sale.external_product_id, COUNT(*)::INTEGER,
+			COALESCE(SUM(sale.units), 0)::INTEGER,
+			COALESCE(SUM(sale.gross_rub), 0)::DOUBLE PRECISION,
+			MAX(sale.sale_date)::TEXT,
+			COALESCE(MAX(card.article), ''), COALESCE(MAX(card.name), '')
+		FROM procurement_sales_daily sale
+		LEFT JOIN procurement_channel_products card
+			ON card.channel = sale.channel AND card.external_id = sale.external_product_id
+		WHERE sale.channel = $1 AND sale.saby_id IS NULL
+		GROUP BY sale.external_product_id
+		ORDER BY SUM(sale.units) DESC, MAX(sale.sale_date) DESC
 		LIMIT $2
 	`, channel, limit)
 	if err != nil {
@@ -129,12 +162,83 @@ func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel strin
 	items := make([]UnlinkedSale, 0, 64)
 	for rows.Next() {
 		item := UnlinkedSale{Channel: channel}
-		if err := rows.Scan(&item.ExternalID, &item.Days, &item.Units, &item.GrossRUB, &item.LastSale); err != nil {
+		if err := rows.Scan(
+			&item.ExternalID, &item.Days, &item.Units, &item.GrossRUB, &item.LastSale,
+			&item.Article, &item.Name,
+		); err != nil {
 			return nil, fmt.Errorf("scan unlinked sales: %w", err)
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// SearchLinkableNomenclature отдаёт живые позиции справочника.
+//
+// Сортировка по остатку не косметика: у растения нередко заведено две
+// карточки — рабочая и оставшаяся с прошлой выгрузки, — и различить их
+// по названию нельзя. Та, на которой лежит товар, и есть действующая.
+func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT saby_id, code, article, name, balance,
+			price_minor::DOUBLE PRECISION / 100
+		FROM saby_nomenclature
+		WHERE missing_since IS NULL
+			AND (name ILIKE '%' || $1 || '%'
+				OR code ILIKE '%' || $1 || '%'
+				OR article ILIKE '%' || $1 || '%'
+				OR saby_id ILIKE '%' || $1 || '%')
+		ORDER BY balance DESC, name, saby_id
+		LIMIT $2
+	`, query, linkableCandidatesLimit)
+	if err != nil {
+		return nil, fmt.Errorf("search linkable nomenclature: %w", err)
+	}
+	defer rows.Close()
+	items := make([]NomenclatureCandidate, 0, linkableCandidatesLimit)
+	for rows.Next() {
+		var item NomenclatureCandidate
+		if err := rows.Scan(&item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
+			return nil, fmt.Errorf("scan linkable nomenclature: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// RememberChannelProducts сохраняет подписи карточек площадки.
+//
+// Это вспомогательная запись: она ничего не связывает и не участвует в
+// расчёте, поэтому и хранится отдельно от procurement_product_channels.
+func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel string, items []ChannelProduct) error {
+	if !oneOf(channel, manualSalesChannels...) {
+		return ErrInvalidInput
+	}
+	batch := &pgx.Batch{}
+	for _, item := range items {
+		externalID := strings.TrimSpace(item.ExternalID)
+		if externalID == "" {
+			continue
+		}
+		batch.Queue(`
+			INSERT INTO procurement_channel_products (channel, external_id, article, name)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (channel, external_id) DO UPDATE SET
+				article = EXCLUDED.article, name = EXCLUDED.name,
+				seen_at = CURRENT_TIMESTAMP
+		`, channel, externalID, strings.TrimSpace(item.Article), strings.TrimSpace(item.Name))
+	}
+	if batch.Len() == 0 {
+		return nil
+	}
+	results := store.pool.SendBatch(ctx, batch)
+	defer results.Close() //nolint:errcheck
+	for index := 0; index < batch.Len(); index++ {
+		if _, err := results.Exec(); err != nil {
+			return fmt.Errorf("remember channel product: %w", err)
+		}
+	}
+	return nil
 }
 
 // LinkSalesProduct связывает код канала с товаром и чинит уже загруженные
@@ -211,7 +315,7 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 
 	command, err := tx.Exec(ctx, `
-		UPDATE procurement_sales_daily SET saby_id = $3, synced_at = CURRENT_TIMESTAMP
+		UPDATE procurement_sales_daily SET saby_id = $3
 		WHERE channel = $1 AND external_product_id = $2 AND saby_id IS DISTINCT FROM $3
 	`, input.Channel, input.ExternalID, input.SabyID)
 	if err != nil {

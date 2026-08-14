@@ -85,8 +85,13 @@ export type NomenclatureCandidate = {
 
 // Внешний код маркетплейса, продажи которого не дошли до товара СБИС.
 // Агрегат по коду за всю загруженную историю: days — в скольких днях он
-// встретился, lastSale — когда в последний раз.
-export type UnlinkedSale = { channel: string; externalId: string; days: number; units: number; grossRub: number; lastSale: string };
+// встретился, lastSale — когда в последний раз. article и name — подпись
+// карточки с площадки: у Wildberries код числовой, и без неё непонятно,
+// какое растение разбираешь.
+export type UnlinkedSale = {
+  channel: string; externalId: string; article: string; name: string;
+  days: number; units: number; grossRub: number; lastSale: string;
+};
 
 // Итог связывания. takenFrom не пустой, когда код пришлось отобрать у
 // другого товара: карточка маркетплейса продаёт ровно одно растение.
