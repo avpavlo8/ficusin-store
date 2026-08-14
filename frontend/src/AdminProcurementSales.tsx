@@ -8,8 +8,17 @@ import type { NomenclatureCandidate, SalesLinkResult, UnlinkedSale } from "./adm
 const linkableChannels = ["ozon", "wb"];
 
 const externalCodeHint = (channel: string) => channel === "wb"
-  ? "Внешний код Wildberries — это nmID карточки."
+  ? "Внешний код Wildberries — числовой nmID, по нему растение не узнать. Название карточки берётся с площадки кнопкой «Подтянуть артикулы» на вкладке «Интеграции»: пока её не нажимали, в списке будет только число."
   : "Внешний код Ozon — это offer_id карточки, он часто похож на название растения, поэтому подставляется в поиск как есть.";
+
+// saleTitle — чем подписан код в списке.
+//
+// У Ozon артикул продавца и есть внешний код, повторять его второй раз
+// незачем; у Wildberries это разные вещи, и артикул читается лучше nmID.
+const saleTitle = (item: UnlinkedSale) => [
+  item.article && item.article !== item.externalId ? item.article : "",
+  item.name,
+].filter(Boolean).join(" · ");
 
 export function ProcurementUnlinkedSales({ onError }: { onError: (value: string) => void }) {
   const [channel, setChannel] = useState("ozon");
@@ -44,10 +53,9 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
     </div>
     {notice && <p className="integration-check-result success" role="status">{notice}</p>}
     {items.length ? <div className="admin-table-wrap"><table className="admin-table procurement-unlinked-sales"><thead><tr>
-      <th>Канал</th><th>Внешний код</th><th>Штук</th><th>Сумма</th><th>Дней с продажами</th><th>Последняя продажа</th><th></th>
+      <th>Карточка канала</th><th>Штук</th><th>Сумма</th><th>Дней</th><th>Последняя продажа</th><th></th>
     </tr></thead><tbody>{items.map((item) => <tr key={item.externalId}>
-      <td>{salesChannelLabel(item.channel)}</td>
-      <td><strong>{item.externalId}</strong></td>
+      <td><strong>{item.externalId}</strong><small>{saleTitle(item) || "Название с площадки не загружено"}</small></td>
       <td>{item.units}</td>
       <td>{money.format(item.grossRub)}</td>
       <td>{item.days}</td>
@@ -65,21 +73,23 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
 //
 // В номенклатуре живут пары записей с одинаковым названием и кодом, но
 // разными saby_id: у одной он совпадает с кодом, у другой это внутренний
-// номер. Без подписей строки выглядят как «X712410235 · 1073» и
-// «X712410235 · X712410235», и понять, какая из них какая, нельзя, — а
-// выбор определяет, к какой карточке приклеятся продажи.
-const candidateKeys = (item: NomenclatureCandidate) => [
-  item.code && `код ${item.code}`,
-  item.article && `артикул ${item.article}`,
-  `СБИС ${item.sabyId}`,
-].filter(Boolean).join(" · ");
+// номер. Повторять одно и то же значение дважды незачем, а вот подписать
+// каждое обязательно — от выбора зависит, к какой карточке приклеятся
+// продажи.
+const candidateKeys = (item: NomenclatureCandidate) => {
+  const parts = [];
+  if (item.code) parts.push(`код ${item.code}`);
+  if (item.article && item.article !== item.code) parts.push(`артикул ${item.article}`);
+  if (item.sabyId !== item.code) parts.push(`СБИС ${item.sabyId}`);
+  return parts.join(" · ");
+};
 
 export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
   sale: UnlinkedSale; onClose: () => void; onLinked: (result: SalesLinkResult) => void; onError: (value: string) => void;
 }) {
-  // Поиск начинается с самого внешнего кода: у Ozon это обычно и есть
-  // название растения, и чаще всего править запрос не приходится.
-  const [query, setQuery] = useState(sale.externalId);
+  // Поиск начинается с того, что известно о карточке: у Ozon внешний код и
+  // есть название растения, у Wildberries читается только подпись.
+  const [query, setQuery] = useState(saleTitle(sale) || sale.externalId);
   const [candidates, setCandidates] = useState<NomenclatureCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -87,7 +97,7 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
     if (query.trim().length < 2) { setCandidates([]); return; }
     const timer = window.setTimeout(() => {
       setSearching(true);
-      api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`)
+      api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/sales/nomenclature?q=${encodeURIComponent(query.trim())}`)
         .then((result) => {
           // Одну и ту же запись поиск иногда отдаёт дважды. Выбирать между
           // такими строками нечего — за ними один saby_id, — а React ещё и
@@ -117,8 +127,9 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
   return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} />
     <div className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
       <header><div><p className="eyebrow">{salesChannelLabel(sale.channel)} · {sale.units} шт.</p><h2 id="sales-link-title">Сопоставить продажи</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
-      <div className="procurement-match-source"><strong>{sale.externalId}</strong><span>Код закрепится за выбранным товаром: уже загруженные продажи под ним вернутся в расчёт, а следующие выгрузки свяжутся сами. Если код был закреплён за другим растением, он перейдёт сюда — карточка маркетплейса продаёт что-то одно.</span></div>
-      <label className="procurement-match-search">Поиск по всему справочнику СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
+      <div className="procurement-match-source"><strong>{sale.externalId}</strong><span>{saleTitle(sale) || "Название с площадки не загружено"}</span></div>
+      <p className="admin-hint procurement-note">Код закрепится за выбранным товаром: уже загруженные продажи под ним вернутся в расчёт, а следующие выгрузки свяжутся сами. Позиции, пропавшие из выгрузки СБИС, здесь не показываются — приписать продажи карточке, которой в магазине уже нет, значит потерять их второй раз.</p>
+      <label className="procurement-match-search">Поиск по живой номенклатуре СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
       <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в СБИС…</span></div> : candidates.length ? candidates.map((item) => <article key={item.sabyId}>
         <div><strong>{item.name}</strong><span>{candidateKeys(item)}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
         <button disabled={saving} onClick={() => void link(item)}>Связать</button>
