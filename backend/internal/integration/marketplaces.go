@@ -276,12 +276,41 @@ func (executor *MarketplaceExecutor) fetchOzonPostings(
 	from, to time.Time,
 ) ([]ozonPosting, error) {
 	const limit = 1000
+	// Ozon отдаёт отправления окном, а не всей историей: годовой запрос
+	// возвращается пустым, и со стороны это неотличимо от «продаж не было».
+	// Поэтому ходим месяцами. Заодно страницы получаются короче, а к ним
+	// применяется пауза между запросами.
+	const window = 30 * 24 * time.Hour
+	result := make([]ozonPosting, 0)
+	for start := from; !start.After(to); start = start.Add(window) {
+		finish := start.Add(window - time.Second)
+		if last := to.Add(24*time.Hour - time.Second); finish.After(last) {
+			finish = last
+		}
+		page, err := executor.fetchOzonPostingWindow(ctx, path, start, finish, limit)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, page...)
+	}
+	return result, nil
+}
+
+func (executor *MarketplaceExecutor) fetchOzonPostingWindow(
+	ctx context.Context,
+	path string,
+	since, until time.Time,
+	limit int,
+) ([]ozonPosting, error) {
 	result := make([]ozonPosting, 0)
 	for offset := 0; offset < 100000; offset += limit {
 		with := map[string]bool{"analytics_data": false, "financial_data": false}
+		// Статус в фильтре не задаём: у FBS и FBO наборы значений разные, и
+		// неизвестное площадке значение молча возвращает пустоту. Доставленные
+		// отбираем сами, уже разобрав ответ.
 		payload := map[string]any{
 			"dir": "ASC", "filter": map[string]any{
-				"since": from.Format(time.RFC3339), "to": to.Add(24*time.Hour - time.Second).Format(time.RFC3339), "status": "delivered",
+				"since": since.Format(time.RFC3339), "to": until.Format(time.RFC3339),
 			},
 			"limit": limit, "offset": offset, "with": with,
 		}
