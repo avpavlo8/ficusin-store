@@ -11,6 +11,7 @@ import (
 
 // Список FBS третьей версии не отдаёт created_at. Пока дату брали только
 // оттуда, все шесть тысяч отправлений молча пропадали на разборе даты.
+// До суток дату округляет уже хранилище продаж, выгрузка отдаёт время как есть.
 func TestOzonPostingWithoutCreatedAtStillCounts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
@@ -32,7 +33,8 @@ func TestOzonPostingWithoutCreatedAtStillCounts(t *testing.T) {
 	if len(records) != 1 || records[0].Units != 3 {
 		t.Fatalf("строк = %d, ожидалась одна с тремя штуками: %#v", len(records), records)
 	}
-	if !records[0].Date.Equal(day) {
-		t.Fatalf("дата = %s, ожидалась %s", records[0].Date, day)
+	expected := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	if !records[0].Date.Equal(expected) {
+		t.Fatalf("дата = %s, ожидалась %s", records[0].Date, expected)
 	}
 }
