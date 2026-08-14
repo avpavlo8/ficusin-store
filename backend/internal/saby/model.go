@@ -13,6 +13,7 @@ type CatalogItem struct {
 	ExternalID  any      `json:"externalId"`
 	NomNumber   any      `json:"nomNumber"`
 	Barcode     any      `json:"barcode"`
+	Barcodes    []CatalogBarcode `json:"barcodes"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Cost        any      `json:"cost"`
@@ -20,6 +21,13 @@ type CatalogItem struct {
 	Images      []string `json:"images"`
 	Published   *bool    `json:"published"`
 	IsParent    bool     `json:"isParent"`
+}
+
+// CatalogBarcode — один из штрихкодов позиции. Их несколько: свои с
+// этикетки и выданные маркетплейсом.
+type CatalogBarcode struct {
+	Code     any `json:"code"`
+	CodeType any `json:"codeType"`
 }
 
 type SalesItem struct {

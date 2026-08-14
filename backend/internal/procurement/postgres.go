@@ -2555,7 +2555,7 @@ func (store *PostgresStore) LinkChannelProducts(
 ) (ChannelLinkResult, error) {
 	result := ChannelLinkResult{Channel: channel, Fetched: len(items)}
 	rows, err := store.pool.Query(ctx, `
-		SELECT saby_id, LOWER(TRIM(code)), LOWER(TRIM(article)), LOWER(TRIM(barcode))
+		SELECT saby_id, LOWER(TRIM(code)), LOWER(TRIM(article)), LOWER(TRIM(barcode)), barcodes
 		FROM saby_nomenclature WHERE missing_since IS NULL
 	`)
 	if err != nil {
@@ -2566,10 +2566,17 @@ func (store *PostgresStore) LinkChannelProducts(
 	ambiguous := make(map[string]bool)
 	for rows.Next() {
 		var sabyID, code, article, barcode string
-		if err := rows.Scan(&sabyID, &code, &article, &barcode); err != nil {
+		var barcodes []string
+		if err := rows.Scan(&sabyID, &code, &article, &barcode, &barcodes); err != nil {
 			return ChannelLinkResult{}, fmt.Errorf("scan saby nomenclature key: %w", err)
 		}
-		for _, key := range []string{code, article, barcode} {
+		// Штрихкод, выданный маркетплейсом, — единственное, что совпадает у
+		// СБИС и площадки: код товара и артикул у них свои.
+		keys := []string{code, article, barcode}
+		for _, extra := range barcodes {
+			keys = append(keys, strings.ToLower(strings.TrimSpace(extra)))
+		}
+		for _, key := range keys {
 			if key == "" {
 				continue
 			}

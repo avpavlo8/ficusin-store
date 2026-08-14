@@ -72,6 +72,7 @@ type normalizedItem struct {
 	code        string
 	article     string
 	barcode     string
+	barcodes    []string
 	name        string
 	description string
 	costMinor   int64
@@ -139,6 +140,7 @@ type poolRow struct {
 	Code        string   `json:"code"`
 	Article     string   `json:"article"`
 	Barcode     string   `json:"barcode"`
+	Barcodes    []string `json:"barcodes"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	PriceMinor  int64    `json:"price_minor"`
@@ -183,6 +185,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		}
 		rows = append(rows, poolRow{
 			SabyID: item.id, Code: item.code, Article: item.article, Barcode: item.barcode,
+			Barcodes: item.barcodes,
 			Name: item.name, Description: item.description,
 			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images,
 		})
@@ -198,20 +201,22 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	// ищет здесь, а не ходит в СБИС в момент нажатия кнопки.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO saby_nomenclature (
-			saby_id, code, article, barcode, name, description,
+			saby_id, code, article, barcode, barcodes, name, description,
 			price_minor, balance, images, seen_at, missing_since
 		)
-		SELECT item.saby_id, item.code, item.article, item.barcode, item.name,
+		SELECT item.saby_id, item.code, item.article, item.barcode,
+			ARRAY(SELECT jsonb_array_elements_text(item.barcodes)), item.name,
 			item.description, item.price_minor, item.balance,
 			ARRAY(SELECT jsonb_array_elements_text(item.images)),
 			CURRENT_TIMESTAMP, NULL
 		FROM jsonb_to_recordset($1::jsonb) AS item(
-			saby_id TEXT, code TEXT, article TEXT, barcode TEXT, name TEXT,
-			description TEXT, price_minor BIGINT, balance INTEGER, images JSONB
+			saby_id TEXT, code TEXT, article TEXT, barcode TEXT, barcodes JSONB,
+			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB
 		)
 		ON CONFLICT (saby_id) DO UPDATE SET
 			code = EXCLUDED.code, article = EXCLUDED.article,
-			barcode = EXCLUDED.barcode, name = EXCLUDED.name,
+			barcode = EXCLUDED.barcode, barcodes = EXCLUDED.barcodes,
+			name = EXCLUDED.name,
 			description = EXCLUDED.description, price_minor = EXCLUDED.price_minor,
 			balance = EXCLUDED.balance, images = EXCLUDED.images,
 			seen_at = CURRENT_TIMESTAMP, missing_since = NULL
@@ -385,6 +390,7 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 			code:        itemCode(item),
 			article:     valueString(item.Article),
 			barcode:     valueString(item.Barcode),
+			barcodes:    catalogBarcodes(item),
 			name:        name,
 			description: strings.TrimSpace(item.Description),
 			costMinor:   max(0, int64(math.Round(cost*100))),
@@ -502,4 +508,21 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+// catalogBarcodes собирает все штрихкоды позиции. У растения их обычно три:
+// два EAN13 с этикетки и код, выданный маркетплейсом. Именно последний и
+// связывает товар с карточкой площадки, поэтому берём все и не выбираем.
+func catalogBarcodes(item CatalogItem) []string {
+	codes := make([]string, 0, len(item.Barcodes))
+	seen := make(map[string]bool, len(item.Barcodes))
+	for _, barcode := range item.Barcodes {
+		code := strings.TrimSpace(valueString(barcode.Code))
+		if code == "" || seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	return codes
 }
