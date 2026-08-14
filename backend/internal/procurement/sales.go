@@ -25,13 +25,24 @@ type SalesWorker struct {
 	source   SalesSource
 	logger   *slog.Logger
 	interval time.Duration
-	now      func() time.Time
+	// externalEvery — как часто спрашиваем сами площадки. Wildberries держит
+	// лимит на продавца, общий на все его интеграции сразу, и четыре захода
+	// в сутки мы тратили сами: отчёт отвечал 429 ещё до того, как им
+	// воспользовался кто-то другой. Продажи за год меняются медленно, чаще
+	// раза в день их спрашивать незачем.
+	externalEvery time.Duration
+	// externalAt — когда площадки ответили в последний раз. Отмечаем только
+	// удачную попытку: неудачная должна повториться на ближайшем такте, а не
+	// ждать сутки, иначе один отказ площадки съест весь день.
+	externalAt map[string]time.Time
+	now        func() time.Time
 }
 
 func NewSalesWorker(store SalesStore, source SalesSource, logger *slog.Logger) *SalesWorker {
 	return &SalesWorker{
 		store: store, source: source, logger: logger,
-		interval: 6 * time.Hour, now: time.Now,
+		interval: 6 * time.Hour, externalEvery: 24 * time.Hour,
+		externalAt: map[string]time.Time{}, now: time.Now,
 	}
 }
 
@@ -52,6 +63,8 @@ func (worker *SalesWorker) Run(ctx context.Context) {
 func (worker *SalesWorker) run(ctx context.Context) {
 	to := day(worker.now().UTC())
 	from := to.AddDate(0, 0, -(salesHistoryDays - 1))
+	// Сайт считается из своей же базы, никаких чужих лимитов не занимает,
+	// поэтому пересчитывается на каждом такте.
 	if err := worker.store.MarkSalesSync(ctx, "site", "running", nil); err == nil {
 		if _, refreshErr := worker.store.RefreshSiteSales(ctx, from, to); refreshErr != nil {
 			_ = worker.store.MarkSalesSync(ctx, "site", "error", refreshErr)
@@ -59,8 +72,17 @@ func (worker *SalesWorker) run(ctx context.Context) {
 		}
 	}
 	for _, channel := range []string{"wb", "ozon"} {
+		if !worker.externalDue(channel) {
+			continue
+		}
 		worker.syncExternal(ctx, channel, from, to)
 	}
+}
+
+// externalDue отвечает, пора ли снова беспокоить площадку.
+func (worker *SalesWorker) externalDue(channel string) bool {
+	last, known := worker.externalAt[channel]
+	return !known || worker.now().UTC().Sub(last) >= worker.externalEvery
 }
 
 func (worker *SalesWorker) syncExternal(ctx context.Context, channel string, from, to time.Time) {
@@ -79,7 +101,9 @@ func (worker *SalesWorker) syncExternal(ctx context.Context, channel string, fro
 	if err != nil {
 		_ = worker.store.MarkSalesSync(ctx, channel, "error", err)
 		worker.logger.Warn("marketplace sales synchronization failed", "channel", channel, "error", err)
+		return
 	}
+	worker.externalAt[channel] = worker.now().UTC()
 }
 
 func day(value time.Time) time.Time {
