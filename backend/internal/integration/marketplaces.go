@@ -256,61 +256,16 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 		}
 	}
 	if len(records) == 0 {
-		return executor.fetchOzonAnalyticsSales(ctx, from, to)
-	}
-	return records, nil
-}
-
-// fetchOzonAnalyticsSales is a second independent read path for accounts where
-// posting lists return an empty successful response. Ozon's analytics endpoint
-// reports ordered units by SKU/day; the dimension name contains the seller's
-// offer_id used by our directory.
-func (executor *MarketplaceExecutor) fetchOzonAnalyticsSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
-	const limit = 1000
-	if minimum := to.AddDate(0, 0, -89); from.Before(minimum) {
-		from = minimum
-	}
-	records := make([]procurement.SalesRecord, 0)
-	for offset := 0; offset < 100000; offset += limit {
-		payload := map[string]any{
-			"date_from": from.Format("2006-01-02"), "date_to": to.Format("2006-01-02"),
-			"metrics": []string{"ordered_units", "revenue"}, "dimension": []string{"sku", "day"},
-			"filters": []any{}, "sort": []any{}, "limit": limit, "offset": offset,
-		}
-		var response struct {
-			Result struct {
-				Data []struct {
-					Dimensions []struct {
-						ID   string `json:"id"`
-						Name string `json:"name"`
-					} `json:"dimensions"`
-					Metrics []marketplaceNumber `json:"metrics"`
-				} `json:"data"`
-			} `json:"result"`
-		}
-		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v1/analytics/data", payload,
-			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
-			return nil, fmt.Errorf("получить аналитику продаж Ozon: %w", err)
-		}
-		for _, row := range response.Result.Data {
-			if len(row.Dimensions) < 2 || len(row.Metrics) == 0 {
-				continue
-			}
-			offerID := strings.TrimSpace(firstNonEmpty(row.Dimensions[0].Name, row.Dimensions[0].ID))
-			date, err := parseMarketplaceDate(row.Dimensions[1].ID)
-			units := int(math.Round(float64(row.Metrics[0])))
-			if err != nil || offerID == "" || units <= 0 {
-				continue
-			}
-			gross := float64(0)
-			if len(row.Metrics) > 1 {
-				gross = float64(row.Metrics[1])
-			}
-			records = append(records, procurement.SalesRecord{Date: date, ExternalID: offerID, Units: units, GrossRUB: gross})
-		}
-		if len(response.Result.Data) < limit {
-			break
-		}
+		// Аналитика Ozon отдаёт продажи по SKU и названию товара, а
+		// справочник связан по offer_id — коду продавца. Совпасть они не
+		// могут, и строки из аналитики связать не с чем: на экране это
+		// выглядело как «загружено 1529, связано 0», то есть отказ,
+		// переодетый в успех. Пусть лучше канал честно скажет, что
+		// отправлений не нашёл.
+		return nil, fmt.Errorf(
+			"Ozon не вернул отправлений за период: %s — %s",
+			from.Format("2006-01-02"), to.Format("2006-01-02"),
+		)
 	}
 	return records, nil
 }
