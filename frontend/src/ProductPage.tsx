@@ -18,6 +18,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [activeImage, setActiveImage] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [quantity, setQuantity] = useState(1);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
@@ -50,11 +51,17 @@ export default function ProductPage({ slug }: { slug: string }) {
     if (!product || !variant || variant.stock <= 0) return;
     let stored: Record<string, number> = {};
     try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; }
-    stored[product.id] = Math.min(variant.stock, (stored[product.id] || 0) + 1);
+    stored[product.id] = Math.min(variant.stock, quantity);
     localStorage.setItem("ficusin-cart", JSON.stringify(stored));
     setCart({ ...stored });
-    setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
+    setNotice(cart[product.id] ? "Количество обновлено" : "Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
+
+  const warningBadges = [
+    product.petSafety === "toxic" ? "Ядовито для животных" : product.petSafety === "safe" ? "Безопасно для животных" : "",
+    product.lightLevel === "sunny" ? "Нужно яркое освещение" : "",
+    product.watering === "frequent" ? "Нужен частый полив" : "",
+  ].filter(Boolean).slice(0, 3);
 
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
   if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
@@ -65,9 +72,10 @@ export default function ProductPage({ slug }: { slug: string }) {
     <section className="pdp-main">
       <div className="pdp-gallery"><div className="pdp-thumbs">{product.images.map((image, index) => <button className={activeImage === index ? "active" : ""} onClick={() => setActiveImage(index)} key={`${image}-${index}`}><img src={image} alt="" /></button>)}</div><div className="pdp-image"><img src={product.images[activeImage] || product.images[0]} alt={product.name} /></div></div>
       <div className="pdp-summary"><p className="latin">{product.latin}</p><h1>{product.name}</h1><p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
-        {product.variants.length > 1 && <div className="variant-picker"><span>Выберите размер</span>{product.variants.map((item) => <button className={item.id === variant?.id ? "active" : ""} onClick={() => setSelectedID(item.id)} key={item.id}><strong>{item.label}</strong><small>{money(item.price)}</small></button>)}</div>}
+        {product.variants.length > 1 && <div className="variant-picker"><span>Выберите размер</span>{product.variants.map((item) => <button className={item.id === variant?.id ? "active" : ""} onClick={() => { setSelectedID(item.id); setQuantity(1); }} key={item.id}><strong>{item.label}</strong><small>{money(item.price)}</small></button>)}</div>}
         {variant && <div className="pdp-specs">{variant.heightCm && <div><span>Высота</span><strong>{variant.heightCm} см</strong></div>}{variant.potDiameterCm && <div><span>Горшок</span><strong>Ø {variant.potDiameterCm} см</strong></div>}<div><span>Артикул</span><strong>{variant.sku}</strong></div><div><span>Наличие</span><strong>{variant.stock > 0 ? `${variant.stock} шт.` : "Нет"}</strong></div></div>}
-        <div className="pdp-buy"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><button className={favorites.has(product.id) ? "pdp-favorite active" : "pdp-favorite"} onClick={toggleFavorite} aria-label="Добавить в избранное">{favorites.has(product.id) ? "♥" : "♡"}</button><button className={cart[product.id] ? "in-cart" : undefined} onClick={cart[product.id] ? () => window.location.assign("/?cart=1") : addToCart} disabled={!variant || variant.stock <= 0}>{!variant?.stock ? "Нет в наличии" : cart[product.id] ? `В корзине · ${cart[product.id]} шт.` : "Добавить в корзину"}</button></div>
+        {warningBadges.length > 0 && <div className="pdp-warnings">{warningBadges.map((badge) => <span key={badge}>{badge}</span>)}</div>}
+        <div className="pdp-buy"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><div className="pdp-quantity" aria-label="Количество"><button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1}>−</button><output>{quantity}</output><button type="button" onClick={() => setQuantity((value) => Math.min(Math.min(variant?.stock || 1, 20), value + 1))} disabled={!variant || quantity >= Math.min(variant.stock, 20)}>+</button></div><button className={favorites.has(product.id) ? "pdp-favorite active" : "pdp-favorite"} onClick={toggleFavorite} aria-label="Добавить в избранное">{favorites.has(product.id) ? "♥" : "♡"}</button><button className={cart[product.id] ? "in-cart" : undefined} onClick={addToCart} disabled={!variant || variant.stock <= 0}>{!variant?.stock ? "Нет в наличии" : cart[product.id] ? "Обновить корзину" : "Добавить в корзину"}</button></div>
         <div className="pdp-benefits"><p>✓ Проверим растение перед отправкой</p><p>✓ Упакуем с учётом погоды</p><p>✓ Доставка по Рязани и России</p></div>
       </div>
     </section>
@@ -77,4 +85,3 @@ export default function ProductPage({ slug }: { slug: string }) {
     {notice && <div className="toast">{notice}</div>}
   </main>;
 }
-
