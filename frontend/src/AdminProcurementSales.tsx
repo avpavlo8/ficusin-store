@@ -75,7 +75,14 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
     const timer = window.setTimeout(() => {
       setSearching(true);
       api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`)
-        .then((result) => setCandidates(result.items || []))
+        .then((result) => {
+          // Поиск отдаёт одну позицию по нескольку раз, и в списке копии
+          // выглядят как разные растения с одинаковым названием. Выбирать
+          // между ними нечего: за ними один и тот же saby_id.
+          const unique = new Map<string, NomenclatureCandidate>();
+          for (const item of result.items || []) if (!unique.has(item.sabyId)) unique.set(item.sabyId, item);
+          setCandidates([...unique.values()]);
+        })
         .catch(() => setCandidates([]))
         .finally(() => setSearching(false));
     }, 250);
@@ -92,16 +99,17 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
     } catch (error) { onError((error as Error).message); }
     finally { setSaving(false); }
   };
+  // Вёрстка кандидатов взята у диалога сопоставления инвойса: своя таблица
+  // не помещалась в ширину окна и обрезала кнопку выбора.
   return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} />
-    <div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
+    <div className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
       <header><div><p className="eyebrow">{salesChannelLabel(sale.channel)} · {sale.units} шт.</p><h2 id="sales-link-title">Сопоставить продажи</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
-      <p className="admin-hint procurement-note">Код <strong>{sale.externalId}</strong> закрепится за выбранным товаром: уже загруженные продажи под ним вернутся в расчёт, а следующие выгрузки свяжутся сами. Если код был закреплён за другим растением, он перейдёт сюда — карточка маркетплейса продаёт что-то одно.</p>
-      <label>Поиск по номенклатуре СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, код или артикул" /></label>
-      {candidates.length ? <div className="admin-table-wrap"><table className="admin-table"><tbody>{candidates.map((item) => <tr key={item.sabyId}>
-        <td><strong>{item.name}</strong><small>{[item.code, item.article].filter(Boolean).join(" · ") || item.sabyId}</small></td>
-        <td>{item.balance} шт.</td>
-        <td><button className="table-action" disabled={saving} onClick={() => void link(item)}>Связать</button></td>
-      </tr>)}</tbody></table></div> : <p className="admin-hint">{searching ? "Ищем…" : query.trim().length < 2 ? "Введите хотя бы два символа." : "Ничего не нашлось. Попробуйте часть названия без размера."}</p>}
-      <div className="dialog-actions"><button onClick={onClose} disabled={saving}>Отмена</button></div>
+      <div className="procurement-match-source"><strong>{sale.externalId}</strong><span>Код закрепится за выбранным товаром: уже загруженные продажи под ним вернутся в расчёт, а следующие выгрузки свяжутся сами. Если код был закреплён за другим растением, он перейдёт сюда — карточка маркетплейса продаёт что-то одно.</span></div>
+      <label className="procurement-match-search">Поиск по всему справочнику СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
+      <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в СБИС…</span></div> : candidates.length ? candidates.map((item) => <article key={item.sabyId}>
+        <div><strong>{item.name}</strong><span>{[item.code, item.article, item.sabyId].filter(Boolean).join(" · ")}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
+        <button disabled={saving} onClick={() => void link(item)}>Связать</button>
+      </article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Попробуйте часть названия без размера — код маркетплейса не обязан совпадать с написанием в СБИС.</span></div>}</div>
+      <div className="dialog-actions procurement-match-actions"><button className="primary" onClick={onClose} disabled={saving}>Отмена</button></div>
     </div></>;
 }
