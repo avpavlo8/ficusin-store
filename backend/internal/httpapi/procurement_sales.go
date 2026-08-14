@@ -17,6 +17,7 @@ import (
 // метод там стоит правки, никак с задачей не связанной.
 type salesLinkService interface {
 	UnlinkedSales(context.Context, string) ([]procurement.UnlinkedSale, error)
+	SearchLinkableNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
 	LinkSalesProduct(context.Context, procurement.Actor, procurement.SalesLink) (procurement.SalesLinkResult, error)
 }
 
@@ -43,6 +44,27 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 	items, err := service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
 	if err != nil {
 		handlers.failed(response, "list unlinked procurement sales", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+}
+
+// linkableNomenclature — поиск товара для связывания.
+//
+// Отдельно от общего поиска по справочнику: здесь не показываются позиции,
+// пропавшие из выгрузки СБИС. Выбрать такую — значит приписать продажи
+// карточке, которой в магазине уже нет.
+func (handlers procurementHandlers) linkableNomenclature(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	service, able := handlers.salesLinking(response)
+	if !able {
+		return
+	}
+	items, err := service.SearchLinkableNomenclature(request.Context(), request.URL.Query().Get("q"))
+	if err != nil {
+		handlers.failed(response, "search linkable procurement nomenclature", err)
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"items": items})
