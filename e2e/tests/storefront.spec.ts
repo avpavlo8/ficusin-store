@@ -64,8 +64,9 @@ test("@desktop быстрые фильтры поддерживают множе
   await page.goto("/");
 
   await page.locator(".preset", { hasText: "Для ванной" }).click();
-  await page.locator(".preset", { hasText: "Редкий полив" }).click();
+  await page.locator(".preset", { hasText: "Для офиса" }).click();
   await expect(page.locator(".preset.active")).toHaveCount(2);
+  await expect(page.locator(".storefront-card")).toHaveCount(0);
 
   await page.locator(".preset", { hasText: "Для ванной" }).click();
   await expect(page.locator(".preset.active")).toHaveCount(1);
