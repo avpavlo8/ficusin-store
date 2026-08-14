@@ -1,0 +1,161 @@
+import { useCallback, useEffect, useState } from "react";
+import { normalizeProcurementOrderDetail } from "./AdminProcurement";
+import { ConfirmDialog, api, money } from "./adminShared";
+import type { NomenclatureCandidate, ProcurementActionBatch, ProcurementActionItem, ProcurementAlias, ProcurementOrder, ProcurementOrderDetail, ProcurementOrderLine, ProcurementRecommendation, ProcurementSupplier } from "./adminTypes";
+
+export function ProcurementPlanDialog({ suppliers, recommendations, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; recommendations: ProcurementRecommendation[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const preferred = suppliers.find((item) => item.kind === "international") || suppliers[0];
+  const [supplierId, setSupplierId] = useState(preferred?.id || 0); const [orderNumber, setOrderNumber] = useState(""); const [saving, setSaving] = useState(false);
+  const buildItems = (id: number) => recommendations.filter((item) => item.supplierId === id).map((item) => ({ sabyId: item.sabyId, name: item.name, article: item.supplierArticle, quantity: item.suggestedQty, expectedUnitPrice: 0 }));
+  const [items, setItems] = useState(() => buildItems(preferred?.id || 0));
+  const updateItem = (index: number, key: "quantity" | "expectedUnitPrice", value: number) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
+  const selected = items.filter((item) => item.quantity > 0);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/plans", { method: "POST", body: JSON.stringify({ supplierId, orderNumber, items: selected.map(({ sabyId, quantity, expectedUnitPrice }) => ({ sabyId, quantity, expectedUnitPrice })) }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-plan-dialog" role="dialog" aria-modal="true" aria-labelledby="plan-title"><header><div><p className="eyebrow">Рекомендации</p><h2 id="plan-title">Список поставщику</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label>Поставщик<select value={supplierId} onChange={(event) => { const id = Number(event.target.value); setSupplierId(id); setItems(buildItems(id)); }}>{suppliers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Номер заказа<input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} placeholder="Можно оставить пустым" /></label></div>
+    <p className="admin-hint procurement-note">Количество 0 исключает строку. Цену поставщика можно оставить пустой и проверить после получения инвойса.</p>
+    <div className="admin-table-wrap"><table className="admin-table procurement-plan-table"><thead><tr><th>Товар</th><th>Артикул</th><th>Количество</th><th>Цена поставщика</th></tr></thead><tbody>{items.map((item, index) => <tr key={item.sabyId}><td><strong>{item.name}</strong></td><td>{item.article || "—"}</td><td><input type="number" min="0" value={item.quantity} onChange={(event) => updateItem(index, "quantity", Number(event.target.value))} /></td><td><input type="number" min="0" step="0.01" value={item.expectedUnitPrice || ""} placeholder="После инвойса" onChange={(event) => updateItem(index, "expectedUnitPrice", Number(event.target.value))} /></td></tr>)}</tbody></table></div>
+    <div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!supplierId || !selected.length || saving} onClick={save}>{saving ? "Создаём…" : `Создать закупку · ${selected.length}`}</button></div>
+  </div></>;
+}
+
+export function ProcurementRequestDialog({ onClose, onSaved, onError }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [kind, setKind] = useState("customer_order"); const [name, setName] = useState(""); const [sabyId, setSabyId] = useState(""); const [quantity, setQuantity] = useState(1); const [notes, setNotes] = useState(""); const [saving, setSaving] = useState(false); const [candidates, setCandidates] = useState<NomenclatureCandidate[]>([]);
+  useEffect(() => { if (name.trim().length < 2 || sabyId) { setCandidates([]); return; } const timer = window.setTimeout(() => api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(name.trim())}`).then((result) => setCandidates(result.items.slice(0, 6))).catch(() => setCandidates([])), 250); return () => window.clearTimeout(timer); }, [name, sabyId]);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/requests", { method: "POST", body: JSON.stringify({ kind, requestedName: name, sabyId, quantity, notes }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="request-title"><header><h2 id="request-title">Добавить к закупке</h2><button onClick={onClose} aria-label="Закрыть">×</button></header><div className="admin-form-grid">
+    <label>Тип<select value={kind} onChange={(event) => setKind(event.target.value)}><option value="customer_order">Заказ клиента</option><option value="staff_recommendation">Рекомендация магазина</option></select></label>
+    <label>Количество<input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label>
+    <label className="wide">Название товара<input value={name} onChange={(event) => { setName(event.target.value); setSabyId(""); }} placeholder="Начните вводить название" /></label>
+    {sabyId ? <div className="wide procurement-selected-product"><strong>Связано с товаром СБИС</strong><span>{sabyId}</span><button onClick={() => setSabyId("")}>Изменить</button></div> : candidates.length > 0 && <div className="wide procurement-request-candidates">{candidates.map((item) => <button key={item.sabyId} onClick={() => { setSabyId(item.sabyId); setName(item.name); }}><strong>{item.name}</strong><small>{item.code || item.article}</small></button>)}</div>}
+    <label className="wide">Комментарий<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Клиент, срок, цвет или другая важная деталь" /></label>
+  </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!name.trim() || quantity < 1 || saving} onClick={save}>Добавить</button></div></div></>;
+}
+
+export function ProcurementOrderDetailDialog({ orderId, onClose, onSaved, onError }: { orderId: number; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [detail, setDetail] = useState<ProcurementOrderDetail | null>(null); const [saving, setSaving] = useState(false);
+  const [costs, setCosts] = useState({ exchangeRate: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 });
+  const load = useCallback(() => api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}`).then((item) => { setDetail(normalizeProcurementOrderDetail(item)); setCosts({ exchangeRate: item.costs.exchangeRate || (item.order.currency === "RUB" ? 1 : 0), deliveryToMoscowRub: item.costs.deliveryToMoscowRub || item.costs.trolleyCostRub * item.validation.trolleyCount, deliveryToRyazanRub: item.costs.deliveryToRyazanRub }); }).catch((error) => onError((error as Error).message)), [orderId, onError]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!detail?.batches.some((batch) => batch.status === "processing")) return;
+    const timer = window.setTimeout(() => void load(), 4000);
+    return () => window.clearTimeout(timer);
+  }, [detail, load]);
+  const calculate = async () => { setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/calculate`, { method: "POST", body: JSON.stringify(costs) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const prepare = async (kind: "receipt" | "prices") => { setSaving(true); try { await api(`/api/v1/admin/procurement/orders/${orderId}/batches`, { method: "POST", body: JSON.stringify({ kind }) }); await load(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const approve = async (batch: ProcurementActionBatch) => { if (!window.confirm(batch.kind === "prices" ? "Применить показанные цены на сайте и поставить остальные каналы в очередь?" : "Подтвердить состав черновика поступления?")) return; setSaving(true); try { await api(`/api/v1/admin/procurement/batches/${batch.id}/approve`, { method: "POST" }); await load(); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const retry = async (batch: ProcurementActionBatch) => { setSaving(true); try { await api(`/api/v1/admin/procurement/batches/${batch.id}/retry`, { method: "POST" }); await load(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const editLine = async (line: ProcurementOrderLine) => {
+    const pot = window.prompt("Диаметр горшка, см", line.potDiameterCm?.toString() || ""); if (pot == null) return;
+    const height = window.prompt("Высота растения, см", line.heightCm?.toString() || ""); if (height == null) return;
+    const loadUnit = window.prompt("Телега / коробка", line.loadUnit || ""); if (loadUnit == null) return;
+    setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ potDiameterCm: Number(pot), heightCm: Number(height), loadUnit }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); }
+  };
+  const acceptMismatch = async (line: ProcurementOrderLine) => { const note = window.prompt("Почему расхождение допустимо? Это попадёт в журнал проверки.", line.comparisonNote || ""); if (!note?.trim()) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ acceptComparison: true, comparisonNote: note }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const setStatus = async (status: "received" | "cancelled" | "review") => { if (!window.confirm(status === "received" ? "Поступление уже проведено в СБИС? Закрыть закупку и выполнить клиентские заявки?" : status === "cancelled" ? "Отменить закупку? Заявки вернутся в открытые." : "Вернуть закупку на проверку? Черновики действий будут отменены.")) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-order-dialog" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><header><div><p className="eyebrow">Закупка</p><h2 id="order-detail-title">{detail?.order.orderNumber || `№${orderId}`}</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    {!detail ? <div className="procurement-zero">Загружаем строки…</div> : <div className="procurement-order-body">
+      <div className="procurement-costs">{detail.order.currency !== "RUB" && <><label>Курс оплаты<input type="number" step="0.01" value={costs.exchangeRate} onChange={(event) => setCosts({ ...costs, exchangeRate: Number(event.target.value) })} /></label><label>Голландия → Москва, весь инвойс, ₽<input type="number" step="0.01" value={costs.deliveryToMoscowRub} onChange={(event) => setCosts({ ...costs, deliveryToMoscowRub: Number(event.target.value) })} /></label><label>Москва → Рязань, весь инвойс, ₽<input type="number" value={costs.deliveryToRyazanRub} onChange={(event) => setCosts({ ...costs, deliveryToRyazanRub: Number(event.target.value) })} /></label></>}<button className="admin-primary" disabled={saving || !detail.validation.canCalculate || costs.exchangeRate <= 0} onClick={calculate}>{saving ? "Считаем…" : "Рассчитать"}</button></div>
+      {detail.order.currency !== "RUB" ? <p className="admin-hint procurement-note">Парсер нашёл телег: {detail.validation.trolleyCount}. Доставка до Москвы будет разделена между ними автоматически.</p> : <p className="admin-hint procurement-note">Российская закупка рассчитывается сразу в рублях, без курса и голландской логистики.</p>}
+      <section className={detail.validation.blockers?.length ? "procurement-checklist blocked" : "procurement-checklist ready"}><strong>{detail.validation.blockers?.length ? "Расчёт заблокирован" : "Проверки пройдены"}</strong>{detail.validation.blockers?.length ? <ul>{detail.validation.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p>Инвойс, сопоставление, размеры и расхождения проверены.</p>}<small>Телег: {detail.validation.trolleyCount} · распределено {money.format(detail.validation.allocatedTrolleyRub)} из {money.format(detail.validation.expectedTrolleyRub)} · Москва → Рязань {money.format(detail.validation.allocatedRyazanRub)} из {money.format(detail.validation.expectedRyazanRub)}</small></section>
+      <div className="admin-table-wrap"><table className="admin-table procurement-lines"><thead><tr><th>Товар</th><th>Телега / размер</th><th>Заказ / инвойс</th><th>Цена заказ / инвойс</th><th>Доставка</th><th>Себестоимость</th><th>СБИС сейчас</th><th>Новая розница</th><th>WB / Ozon</th><th></th></tr></thead><tbody>{detail.lines.map((line) => <tr key={line.id} className={line.comparisonMismatch && !line.comparisonAccepted ? "procurement-row-mismatch" : ""}><td><strong>{line.sabyName || line.rawName}</strong><small>{line.supplierArticle}</small></td><td>{line.loadUnit || "—"}<small>{[line.potDiameterCm && `D${line.potDiameterCm}`, line.heightCm && `${line.heightCm} см`].filter(Boolean).join(" · ") || "Размер не заполнен"}</small></td><td>{line.orderedQuantity || "—"} / {line.invoicedQuantity ?? "—"}{line.comparisonAccepted && <small className="procurement-ok">Расхождение принято</small>}</td><td>{line.expectedUnitPrice ? line.expectedUnitPrice.toFixed(2) : "—"} / {line.invoicedQuantity == null ? "—" : line.unitPrice.toFixed(2)} {detail.order.currency}</td><td>{line.trolleyDeliveryUnitRub == null ? "—" : money.format((line.trolleyDeliveryUnitRub || 0) + (line.ryazanDeliveryUnitRub || 0))}</td><td>{line.unitCostRub == null ? "—" : money.format(line.unitCostRub)}</td><td>{money.format(line.currentRetailRub)}</td><td className={line.priceChangeNeeded ? "procurement-price-change" : ""}>{line.proposedRetailRub ? money.format(line.proposedRetailRub) : "—"}</td><td>{line.proposedMarketplaceRub ? money.format(line.proposedMarketplaceRub) : "—"}</td><td><div className="procurement-inline-actions"><button onClick={() => void editLine(line)}>Размеры</button>{line.comparisonMismatch && !line.comparisonAccepted && <button onClick={() => void acceptMismatch(line)}>Принять расхождение</button>}</div></td></tr>)}</tbody></table></div>
+      {detail.order.status === "ready_to_receive" && <div className="procurement-batch-buttons"><button onClick={() => void setStatus("review")} disabled={saving}>Вернуть на проверку</button><button onClick={() => void prepare("receipt")} disabled={saving || !detail.validation.canPrepareActions}>Подготовить поступление СБИС</button><button className="admin-primary" onClick={() => void prepare("prices")} disabled={saving || !detail.validation.canPrepareActions}>Подготовить изменение цен</button></div>}
+      {detail.batches.map((batch) => <section className="procurement-batch" key={batch.id}><div className="admin-block-heading"><div><p className="eyebrow">{batch.kind === "prices" ? "Цены" : "Поступление"}</p><h3>{batch.kind === "prices" ? "Изменения по каналам" : "Черновик для СБИС"}</h3></div><span className="admin-pill">{batchStatusLabel(batch.status)}</span></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Канал</th><th>Было</th><th>Станет / количество</th><th>Статус</th></tr></thead><tbody>{batch.items.map((item) => <tr key={item.id}><td>{item.productName}</td><td>{channelLabel(item.channel)}{item.externalArticle && <small>{item.externalArticle}</small>}</td><td>{item.oldValue == null ? "—" : money.format(item.oldValue)}</td><td>{item.quantity ?? money.format(item.newValue)}{item.compareAtValue && item.compareAtValue > item.newValue ? <small>до скидки {money.format(item.compareAtValue)}</small> : null}</td><td>{actionStatus(item)}</td></tr>)}</tbody></table></div>{batch.status === "draft" && <div className="dialog-actions"><button className="primary" disabled={saving || !batch.items.length} onClick={() => void approve(batch)}>Подтвердить {batch.items.length} действий</button></div>}{batch.items.some((item) => item.status === "failed") && <div className="dialog-actions"><button disabled={saving} onClick={() => void retry(batch)}>Повторить ошибки</button></div>}</section>)}
+      {!['received', 'cancelled'].includes(detail.order.status) && <div className="procurement-order-final"><button className="text-button danger" disabled={saving} onClick={() => void setStatus("cancelled")}>Отменить закупку</button>{detail.order.status === "ready_to_receive" && detail.batches.some((batch) => batch.kind === "receipt" && !['draft', 'cancelled'].includes(batch.status)) && <button className="admin-primary" disabled={saving} onClick={() => void setStatus("received")}>Поступление проведено — закрыть</button>}</div>}
+    </div>}
+  </div></>;
+}
+
+export const channelLabel = (value: string) => ({ site: "Сайт", saby_price: "СБИС — цена", saby_receipt: "СБИС — поступление", wb: "Wildberries", ozon: "Ozon" }[value] || value);
+
+export const batchStatusLabel = (value: string) => ({ draft: "Черновик", processing: "Выполняется", completed: "Выполнено", partially_completed: "Выполнено частично", failed: "Ошибка", cancelled: "Отменено" }[value] || value);
+
+export const actionStatus = (item: ProcurementActionItem) => {
+  const label = ({ draft: "Черновик", queued: "В очереди", processing: "Отправляется", completed: "Выполнено", failed: "Ошибка", skipped: "Пропущено", not_configured: "API не подключён" } as Record<string, string>)[item.status] || item.status;
+  return <>{<span className={item.status === "completed" ? "procurement-ok" : item.status === "failed" || item.status === "not_configured" || item.status === "skipped" ? "procurement-warning" : ""}>{label}</span>}{item.errorMessage && <small>{item.errorMessage}</small>}</>;
+};
+
+export function ProcurementMatchDialog({ alias, onClose, onSaved, onError }: { alias: ProcurementAlias; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [query, setQuery] = useState(alias.rawName); const [items, setItems] = useState<NomenclatureCandidate[]>([]);
+  const [searching, setSearching] = useState(false); const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (query.trim().length < 2) { setItems([]); return; }
+    const timer = window.setTimeout(() => { setSearching(true); api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`)
+      .then((result) => setItems(result.items)).catch((error) => onError((error as Error).message)).finally(() => setSearching(false)); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [query, onError]);
+  const resolve = async (matchStatus: "confirmed" | "new_product" | "ignored", sabyId = "") => { setSaving(true); try {
+    await api(`/api/v1/admin/procurement/aliases/${alias.id}`, { method: "PATCH", body: JSON.stringify({ matchStatus, sabyId }) }); onSaved();
+  } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="match-title"><header><div><p className="eyebrow">{alias.supplierName}</p><h2 id="match-title">Сопоставить товар</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="procurement-match-source"><strong>{alias.rawName}</strong><span>{[alias.supplierArticle && `Артикул ${alias.supplierArticle}`, alias.potDiameterCm && `D${alias.potDiameterCm}`, alias.heightCm && `${alias.heightCm} см`].filter(Boolean).join(" · ") || "Размер не указан"}</span></div>
+    <label className="procurement-match-search">Поиск по всему справочнику СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
+    <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в СБИС…</span></div> : items.length ? items.map((item) => <article key={item.sabyId}><div><strong>{item.name}</strong><span>{[item.code, item.article, item.sabyId].filter(Boolean).join(" · ")}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div><button disabled={saving} onClick={() => void resolve("confirmed", item.sabyId)}>Выбрать</button></article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Измените запрос или отметьте позицию как новый товар.</span></div>}</div>
+    <div className="dialog-actions procurement-match-actions"><button onClick={() => void resolve("ignored")} disabled={saving}>Игнорировать строку</button><button onClick={() => void resolve("new_product")} disabled={saving}>Это новый товар</button><button className="primary" onClick={onClose}>Отмена</button></div>
+  </div></>;
+}
+
+export function ProcurementUploadDialog({ suppliers, orders, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; orders: ProcurementOrder[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0); const [orderId, setOrderId] = useState(0);
+  const [file, setFile] = useState<File | null>(null); const [saving, setSaving] = useState(false);
+  const availableOrders = orders.filter((item) => item.supplierId === supplierId && !["received", "cancelled"].includes(item.status));
+  const changeSupplier = (value: number) => { setSupplierId(value); setOrderId(0); };
+  const save = async () => { if (!file || !supplierId) return; setSaving(true); try {
+    const body = new FormData(); body.append("supplierId", String(supplierId)); if (orderId) body.append("orderId", String(orderId)); body.append("file", file);
+    await api("/api/v1/admin/procurement/documents", { method: "POST", body }); onSaved();
+  } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="upload-title"><header><h2 id="upload-title">Загрузить документ</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label className="wide">Поставщик<select value={supplierId} onChange={(event) => changeSupplier(Number(event.target.value))}>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label className="wide">Связать с закупкой<select value={orderId} onChange={(event) => setOrderId(Number(event.target.value))}><option value={0}>Создать закупку из документа</option>{availableOrders.map((item) => <option key={item.id} value={item.id}>{item.orderNumber || `Черновик №${item.id}`}</option>)}</select></label>
+      <label className="wide procurement-file">PDF-файл<input type="file" accept="application/pdf,.pdf" onChange={(event) => setFile(event.target.files?.[0] || null)} /><span>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} МБ` : "До 20 МБ"}</span></label>
+      <p className="admin-hint wide">Поддерживаются packing list PL-FG 267 и российские счета на оплату. Повторная загрузка того же файла не создаст дубль.</p>
+    </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!file || !supplierId || saving} onClick={save}>{saving ? "Разбираем PDF…" : "Загрузить и разобрать"}</button></div></div></>;
+}
+
+export function SupplierDialog({ suppliers, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [name, setName] = useState(""); const [kind, setKind] = useState<"international" | "domestic">("international");
+  const [countryCode, setCountryCode] = useState("NL"); const [currency, setCurrency] = useState<"EUR" | "USD" | "RUB">("EUR");
+  const [saving, setSaving] = useState(false); const [deletingId, setDeletingId] = useState(0);
+  const [deleteCandidate, setDeleteCandidate] = useState<ProcurementSupplier | null>(null);
+  const save = async () => { setSaving(true); try { await api("/api/v1/admin/procurement/suppliers", { method: "POST", body: JSON.stringify({ name, kind, countryCode, defaultCurrency: currency }) }); setName(""); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  const remove = async (supplier: ProcurementSupplier) => {
+    setDeletingId(supplier.id);
+    try { await api(`/api/v1/admin/procurement/suppliers/${supplier.id}`, { method: "DELETE" }); setDeleteCandidate(null); onSaved(); }
+    catch (error) { onError((error as Error).message); }
+    finally { setDeletingId(0); }
+  };
+  const changeKind = (value: "international" | "domestic") => { setKind(value); if (value === "domestic") { setCountryCode("RU"); setCurrency("RUB"); } else { setCountryCode("NL"); setCurrency("EUR"); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="supplier-title"><header><h2 id="supplier-title">Поставщики</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    {suppliers.length > 0 && <div className="admin-table-wrap"><table className="admin-table procurement-suppliers-table"><thead><tr><th>Поставщик</th><th>Тип</th><th className="supplier-action-column">Действие</th></tr></thead><tbody>{suppliers.map((supplier) => <tr key={supplier.id}><td><strong>{supplier.name}</strong><small>{supplier.countryCode || "Страна не указана"} · {supplier.defaultCurrency}</small></td><td>{supplier.kind === "international" ? "Иностранный" : "Российский"}</td><td className="supplier-action-column"><button className="table-action danger supplier-delete-button" disabled={deletingId > 0} onClick={() => setDeleteCandidate(supplier)}>{deletingId === supplier.id ? "Удаляем…" : "Удалить"}</button></td></tr>)}</tbody></table></div>}
+    <h3>Добавить поставщика</h3>
+    <div className="admin-form-grid"><label className="wide">Название<input value={name} onChange={(event) => setName(event.target.value)} autoFocus /></label>
+      <label>Тип<select value={kind} onChange={(event) => changeKind(event.target.value as "international" | "domestic")}><option value="international">Иностранный</option><option value="domestic">Российский</option></select></label>
+      <label>Страна<input maxLength={2} value={countryCode} onChange={(event) => setCountryCode(event.target.value.toUpperCase())} /></label>
+      <label>Валюта<select value={currency} onChange={(event) => setCurrency(event.target.value as "EUR" | "USD" | "RUB")}><option>EUR</option><option>USD</option><option>RUB</option></select></label>
+      <p className="admin-hint wide">Название поставщика не используется для автоматического сопоставления растений. У каждого поставщика будет собственный набор ключей.</p>
+    </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!name.trim() || saving} onClick={save}>{saving ? "Сохраняем…" : "Добавить"}</button></div></div>
+    {deleteCandidate && <ConfirmDialog
+      title="Удалить поставщика?"
+      text={<>Поставщик <strong>«{deleteCandidate.name}»</strong>, его ключи и сопоставления будут удалены. Это действие нельзя отменить.</>}
+      confirmLabel={deletingId === deleteCandidate.id ? "Удаляем…" : "Удалить"}
+      busy={deletingId > 0}
+      danger
+      onCancel={() => setDeleteCandidate(null)}
+      onConfirm={() => void remove(deleteCandidate)}
+    />}
+  </>;
+}
+
+export function ProcurementOrderDialog({ suppliers, onClose, onSaved, onError }: { suppliers: ProcurementSupplier[]; onClose: () => void; onSaved: () => void; onError: (value: string) => void }) {
+  const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0); const selected = suppliers.find((item) => item.id === supplierId);
+  const [orderNumber, setOrderNumber] = useState(""); const [sourceKind, setSourceKind] = useState("manual"); const [notes, setNotes] = useState(""); const [saving, setSaving] = useState(false);
+  const save = async () => { if (!selected) return; setSaving(true); try { await api("/api/v1/admin/procurement/orders", { method: "POST", body: JSON.stringify({ supplierId, orderNumber, sourceKind, currency: selected.defaultCurrency, notes }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="procurement-title"><header><h2 id="procurement-title">Новая закупка</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>
+    <div className="admin-form-grid"><label className="wide">Поставщик<select value={supplierId} onChange={(event) => setSupplierId(Number(event.target.value))}>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.defaultCurrency}</option>)}</select></label>
+      <label>Номер заказа<input value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} placeholder="Можно заполнить позже" /></label>
+      <label>Основание<select value={sourceKind} onChange={(event) => setSourceKind(event.target.value)}><option value="manual">Ручная закупка</option><option value="recommendation">Рекомендации системы</option><option value="invoice">Инвойс</option><option value="payment_invoice">Счёт на оплату</option></select></label>
+      <label className="wide">Комментарий<textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+      <p className="admin-hint wide">Создаётся только черновик. Отправки в СБИС и изменения цен не будет.</p>
+    </div><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={!supplierId || saving} onClick={save}>{saving ? "Создаём…" : "Создать черновик"}</button></div></div></>;
+}
