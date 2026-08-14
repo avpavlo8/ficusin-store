@@ -212,16 +212,6 @@ func isRateLimit(err error) bool {
 	return errors.As(err, &remote) && remote.Status == http.StatusTooManyRequests
 }
 
-type ozonPosting struct {
-	CreatedAt string `json:"created_at"`
-	Status    string `json:"status"`
-	Products  []struct {
-		OfferID  string `json:"offer_id"`
-		Quantity int    `json:"quantity"`
-		Price    string `json:"price"`
-	} `json:"products"`
-}
-
 func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
 	if !executor.Configured("ozon") {
 		return nil, errors.New("ключи Ozon не настроены")
@@ -240,7 +230,7 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 			if posting.Status != "delivered" {
 				continue
 			}
-			date, err := parseMarketplaceDate(posting.CreatedAt)
+			date, err := posting.saleDate()
 			if err != nil {
 				continue
 			}
