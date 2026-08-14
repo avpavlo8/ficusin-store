@@ -61,7 +61,9 @@ func (value *marketplaceNumber) UnmarshalJSON(data []byte) error {
 
 func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *MarketplaceExecutor {
 	return &MarketplaceExecutor{
-		client: &http.Client{Timeout: 20 * time.Second}, wbToken: strings.TrimSpace(wbToken),
+		// Транспорт с паузой: площадки считают не только объём, но и частоту.
+		client: &http.Client{Timeout: 90 * time.Second, Transport: newPacedTransport(nil)},
+		wbToken: strings.TrimSpace(wbToken),
 		ozonClientID: strings.TrimSpace(ozonClientID), ozonAPIKey: strings.TrimSpace(ozonAPIKey),
 		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, wbReportsBase: defaultWBReports,
 		wbContentBase: defaultWBContent, ozonBase: defaultOzonBase,
