@@ -52,7 +52,7 @@ export default function StorefrontPage() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [category, setCategory] = useState<number | null>(null);
   const [opened, setOpened] = useState<Set<number>>(new Set());
-  const [preset, setPreset] = useState("");
+  const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sort, setSort] = useState("popular");
 
@@ -179,15 +179,22 @@ export default function StorefrontPage() {
     if (!searching && category != null) {
       list = list.filter((item) => inBranch(item.categoryId, category));
     }
-    if (preset) {
-      const rule = presets.find((item) => item.id === preset);
-      if (rule) list = list.filter(rule.match);
+    if (selectedPresets.size > 0) {
+      const rules = presets.filter((item) => selectedPresets.has(item.id));
+      list = list.filter((product) => rules.every((rule) => rule.match(product)));
     }
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
     return list;
-  }, [found, searching, category, inBranch, preset, inStockOnly, sort]);
+  }, [found, searching, category, inBranch, selectedPresets, inStockOnly, sort]);
+
+  const togglePreset = (id: string) => setSelectedPresets((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
   const hints = useMemo(
     () => (suggestOpen && searching ? suggestions(products, query) : []),
@@ -323,7 +330,7 @@ export default function StorefrontPage() {
         </aside>
 
         <div className="storefront-main">
-          <CollectionStrip products={products} active={preset} onPick={setPreset} />
+          <CollectionStrip products={products} active={selectedPresets} onPick={togglePreset} />
 
           <div className="storefront-head">
             <p>
@@ -351,7 +358,7 @@ export default function StorefrontPage() {
               <button
                 onClick={() => {
                   setQuery("");
-                  setPreset("");
+                  setSelectedPresets(new Set());
                   setCategory(null);
                   setInStockOnly(false);
                 }}
