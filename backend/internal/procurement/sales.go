@@ -20,6 +20,14 @@ type SalesSource interface {
 	FetchSales(context.Context, string, time.Time, time.Time) ([]SalesRecord, error)
 }
 
+// SalesDiagnostics — необязательное дополнение к источнику: умение объяснить
+// собственный отказ. Сама выгрузка возвращает короткую ошибку — «площадка
+// не вернула отправлений», — а за ней прячутся разные беды с разным лечением.
+// Кто умеет рассказать подробнее — рассказывает, и это видно на плашке канала.
+type SalesDiagnostics interface {
+	DescribeSalesFailure(context.Context, string, time.Time, time.Time, error) error
+}
+
 type SalesWorker struct {
 	store    SalesStore
 	source   SalesSource
@@ -95,7 +103,16 @@ func (worker *SalesWorker) syncExternal(ctx context.Context, channel string, fro
 		return
 	}
 	records, err := worker.source.FetchSales(ctx, channel, from, to)
-	if err == nil {
+	if err != nil {
+		// Отказ площадки попадает на плашку канала как есть, и короткой строки
+		// там не хватало: «не вернул отправлений» одинаково звучит и когда
+		// отправлений нет, и когда они есть, но без кода продавца.
+		if reporter, able := worker.source.(SalesDiagnostics); able {
+			if detailed := reporter.DescribeSalesFailure(ctx, channel, from, to, err); detailed != nil {
+				err = detailed
+			}
+		}
+	} else {
 		_, err = worker.store.ReplaceSales(ctx, channel, from, to, records)
 	}
 	if err != nil {
