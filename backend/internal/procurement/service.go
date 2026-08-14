@@ -148,7 +148,18 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 	if err != nil {
 		return ChannelLinkResult{}, err
 	}
-	return service.store.LinkChannelProducts(ctx, actor, channel, items)
+	result, err := service.store.LinkChannelProducts(ctx, actor, channel, items)
+	if err != nil {
+		return ChannelLinkResult{}, err
+	}
+	// Названия карточек нужны разбору продаж: у Wildberries внешний код —
+	// это числовой nmID, и без подписи человек не поймёт, какое растение
+	// разбирает. Подпись вспомогательная, поэтому её неудача не отменяет
+	// уже сделанное связывание артикулов.
+	if remember, able := service.store.(SalesLinkStore); able {
+		_ = remember.RememberChannelProducts(ctx, channel, items)
+	}
+	return result, nil
 }
 
 func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input PricingSettings) (PricingSettings, error) {
