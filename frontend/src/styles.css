@@ -595,7 +595,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .pdp-thumbs button { aspect-ratio: 1; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 10px; background: var(--cream); cursor: pointer; }
 .pdp-thumbs button.active { border-color: var(--green); }
 .pdp-thumbs img { width: 100%; height: 100%; object-fit: cover; }
-.pdp-image { min-height: 650px; overflow: hidden; border-radius: 24px; background: var(--cream); }
+.pdp-image { min-height: 520px; max-height: 620px; overflow: hidden; border-radius: 24px; background: var(--cream); }
 .pdp-image img { width: 100%; height: 100%; object-fit: cover; }
 .pdp-summary { padding: 30px 0; }
 .pdp-summary h1 { margin: 7px 0 20px; color: var(--green); font: 400 clamp(42px,5vw,68px) Georgia,serif; line-height: .98; letter-spacing: -.04em; }
@@ -612,6 +612,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .pdp-buy > strong { color: var(--green); font: 400 36px Georgia,serif; }
 .pdp-buy button { padding: 15px 22px; border: 0; border-radius: 10px; background: var(--green); color: white; font-weight: 700; cursor: pointer; }
 .pdp-buy button:disabled { opacity: .5; }
+.pdp-quantity { display: inline-flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.pdp-quantity button { width: 36px; padding: 11px 0; border-radius: 0; background: #fff; color: var(--green); font-size: 18px; }
+.pdp-quantity output { min-width: 28px; text-align: center; font-weight: 700; }
+.pdp-warnings { display: flex; flex-wrap: wrap; gap: 8px; }
+.pdp-warnings span { padding: 8px 11px; border-radius: 9px; background: #fff3df; color: #82561c; font-size: 12px; font-weight: 700; }
 /* Already in the cart — the opposite fill, so the change is unmistakable. */
 .pdp-buy button.in-cart { border: 1px solid var(--green); background: #edf2ec; color: var(--green); }
 .pdp-benefits { padding: 18px; border-radius: 12px; background: var(--cream); color: #59685e; font-size: 12px; }
