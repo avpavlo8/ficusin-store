@@ -58,7 +58,13 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ integration: { channel: "wb", configured: true, lastCheckedAt: "2026-08-13T12:00:00Z", lastSuccessAt: "2026-08-13T12:00:00Z", lastError: "" } });
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
-      if (path === "/api/v1/admin/procurement/nomenclature") return json({ items: [{ sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 }] });
+      if (path === "/api/v1/admin/procurement/nomenclature") {
+        const candidate = { sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 };
+        // Живой справочник отдаёт одну позицию по нескольку раз. Разбору
+        // продаж копии выбирать не из чего, и он обязан их схлопнуть.
+        const query = new URL(raw, window.location.origin).searchParams.get("q") || "";
+        return json({ items: query.includes("fikus") ? [candidate, candidate] : [candidate] });
+      }
       if (path === "/api/v1/admin/procurement/sales/unlinked") {
         return json({ items: [{ channel: "ozon", externalId: "fikus-benjamina-12", days: 3, units: 7, grossRub: 4900, lastSale: "2026-08-10" }] });
       }
@@ -143,6 +149,7 @@ test("@desktop unlinked marketplace sales are matched by hand", async ({ page })
   await page.getByRole("button", { name: "Сопоставить" }).click();
   const dialog = page.getByRole("dialog", { name: "Сопоставить продажи" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".procurement-candidates article")).toHaveCount(1);
   await expect(dialog.getByText("Тестовый товар D10")).toBeVisible();
   await dialog.getByRole("button", { name: "Связать" }).click();
   await expect(page.getByRole("status")).toContainText("В расчёт вернулось строк продаж: 3");
