@@ -83,6 +83,18 @@ export type NomenclatureCandidate = {
   sabyId: string; code: string; article: string; name: string; balance: number; price: number;
 };
 
+// Внешний код маркетплейса, продажи которого не дошли до товара СБИС.
+// Агрегат по коду за всю загруженную историю: days — в скольких днях он
+// встретился, lastSale — когда в последний раз.
+export type UnlinkedSale = { channel: string; externalId: string; days: number; units: number; grossRub: number; lastSale: string };
+
+// Итог связывания. takenFrom не пустой, когда код пришлось отобрать у
+// другого товара: карточка маркетплейса продаёт ровно одно растение.
+export type SalesLinkResult = {
+  channel: string; externalId: string; sabyId: string; sabyName: string;
+  linkedRows: number; linkedUnits: number; takenFrom: string; remaining: number;
+};
+
 export type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
 
 export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
