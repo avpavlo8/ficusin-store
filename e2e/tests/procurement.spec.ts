@@ -59,6 +59,12 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
       if (path === "/api/v1/admin/procurement/nomenclature") return json({ items: [{ sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 }] });
+      if (path === "/api/v1/admin/procurement/sales/unlinked") {
+        return json({ items: [{ channel: "ozon", externalId: "fikus-benjamina-12", days: 3, units: 7, grossRub: 4900, lastSale: "2026-08-10" }] });
+      }
+      if (path === "/api/v1/admin/procurement/sales/link" && init?.method === "POST") {
+        return json({ link: { channel: "ozon", externalId: "fikus-benjamina-12", sabyId: "TEST-SABY-1", sabyName: "Тестовый товар D10", linkedRows: 3, linkedUnits: 7, takenFrom: "", remaining: 0 } });
+      }
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
@@ -121,6 +127,25 @@ test("@desktop marketplace check shows its result immediately", async ({ page })
   await wb.getByRole("button", { name: "Проверить подключение" }).click();
   await expect(wb.getByRole("status")).toHaveText("Wildberries: подключение работает");
   await expect(wb).toHaveClass(/connected/);
+});
+
+// Продажи, не связанные с товаром, в расчёт закупки не попадают. Разбор их
+// руками — единственный путь после автосвязывания, и он должен доводиться до
+// конца: выбор товара обязан чинить уже загруженные строки, а не только
+// будущие выгрузки.
+test("@desktop unlinked marketplace sales are matched by hand", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Продажи без товара" }).click();
+
+  await expect(page.getByText("fikus-benjamina-12").first()).toBeVisible();
+  await page.getByRole("button", { name: "Сопоставить" }).click();
+  const dialog = page.getByRole("dialog", { name: "Сопоставить продажи" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Тестовый товар D10")).toBeVisible();
+  await dialog.getByRole("button", { name: "Связать" }).click();
+  await expect(page.getByRole("status")).toContainText("В расчёт вернулось строк продаж: 3");
 });
 
 test("@desktop procurement blocks calculation until invoice checks pass", async ({ page }) => {
