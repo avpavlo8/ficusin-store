@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,12 +102,15 @@ func TestOzonSalesCombineFBSAndFBO(t *testing.T) {
 	}
 }
 
-func TestOzonSalesFallBackToAnalyticsWhenPostingsAreEmpty(t *testing.T) {
+// Аналитика Ozon отдаёт продажи по SKU и названию товара, а справочник
+// связан по offer_id — коду продавца. Строки из аналитики связать не с чем,
+// и раньше это выглядело как «загружено 1529, связано 0»: отказ, переодетый
+// в успех. Пустой ответ по отправлениям должен быть честной ошибкой.
+func TestOzonSalesReportEmptyPostingsAsError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/v1/analytics/data" {
-			_, _ = response.Write([]byte(`{"result":{"data":[{"dimensions":[{"id":"123456","name":"OZ-1"},{"id":"2026-08-05","name":"05.08.2026"}],"metrics":[2,2400]}]}}`))
-			return
+			t.Fatal("аналитика больше не источник продаж: её идентификатор нечем связать")
 		}
 		_, _ = response.Write([]byte(`{"result":{"postings":[]}}`))
 	}))
@@ -114,8 +118,11 @@ func TestOzonSalesFallBackToAnalyticsWhenPostingsAreEmpty(t *testing.T) {
 	executor := NewMarketplaceExecutor("", "client", "secret")
 	executor.ozonBase, executor.client = server.URL, server.Client()
 	records, err := executor.FetchSales(context.Background(), "ozon", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
-	if err != nil || len(records) != 1 || records[0].ExternalID != "OZ-1" || records[0].Units != 2 {
-		t.Fatalf("records = %+v, err = %v", records, err)
+	if err == nil {
+		t.Fatalf("ожидалась ошибка, получено %d записей", len(records))
+	}
+	if !strings.Contains(err.Error(), "отправлений") {
+		t.Fatalf("ошибка = %v", err)
 	}
 }
 

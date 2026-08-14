@@ -33,6 +33,13 @@ func marketplacePace(host string) time.Duration {
 	switch {
 	case strings.HasSuffix(host, "ozon.ru"):
 		return 600 * time.Millisecond
+	// Отчёты Wildberries считают предел на продавца целиком и поминутно:
+	// финансовый отчёт разрешает один запрос в минуту, оперативный — не
+	// чаще. Секунды здесь не хватает, отсюда 429 «Limited by global
+	// limiter, per seller» на каждом заходе.
+	case strings.HasSuffix(host, "statistics-api.wildberries.ru"),
+		strings.HasSuffix(host, "finance-api.wildberries.ru"):
+		return 65 * time.Second
 	case strings.HasSuffix(host, "wildberries.ru"):
 		return time.Second
 	default:
