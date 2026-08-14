@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"math"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 	"github.com/jackc/pgx/v5"
@@ -424,13 +427,46 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 			barcode:     valueString(item.Barcode),
 			barcodes:    catalogBarcodes(item),
 			name:        name,
-			description: strings.TrimSpace(item.Description),
+			description: plainDescription(item.Description),
 			costMinor:   max(0, int64(math.Round(cost*100))),
 			balance:     max(0, int(math.Floor(balance))),
 			images:      images,
 		})
 	}
 	return result
+}
+
+var (
+	descriptionBreaks = regexp.MustCompile(`(?i)<\s*(br\s*/?|/p|/div|/li)\s*>`)
+	descriptionTags   = regexp.MustCompile(`<[^>]*>`)
+	descriptionSpace  = regexp.MustCompile(`[\t\r ]+`)
+	descriptionLines  = regexp.MustCompile(`\n{3,}`)
+)
+
+// plainDescription turns Saby's editor HTML into readable text. The
+// storefront deliberately renders text rather than trusting third-party
+// markup, so sanitising here both preserves paragraphs and prevents raw P/BR
+// tags from leaking into product cards.
+func plainDescription(value string) string {
+	value = html.UnescapeString(strings.TrimSpace(value))
+	value = strings.Map(func(symbol rune) rune {
+		if symbol != '\n' && unicode.IsSpace(symbol) {
+			return ' '
+		}
+		return symbol
+	}, value)
+	value = descriptionBreaks.ReplaceAllString(value, "\n")
+	value = descriptionTags.ReplaceAllString(value, " ")
+	value = descriptionSpace.ReplaceAllString(value, " ")
+	lines := strings.Split(value, "\n")
+	clean := lines[:0]
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.EqualFold(line, "p") {
+			clean = append(clean, line)
+		}
+	}
+	return strings.TrimSpace(descriptionLines.ReplaceAllString(strings.Join(clean, "\n"), "\n\n"))
 }
 
 // itemCode — тот самый «код товара», по которому менеджер ищет позицию в

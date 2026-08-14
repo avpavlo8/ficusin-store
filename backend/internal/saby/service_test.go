@@ -79,6 +79,14 @@ func TestNormalizeKeepsItemsWithoutPrice(t *testing.T) {
 	}
 }
 
+func TestPlainDescriptionRemovesEditorMarkup(t *testing.T) {
+	input := `<P>Первая строка&nbsp;описания</P><P><strong>Вторая строка</strong><br>Уход</P>`
+	want := "Первая строка описания\nВторая строка\nУход"
+	if got := plainDescription(input); got != want {
+		t.Fatalf("описание очищено неверно:\n%q\nожидали:\n%q", got, want)
+	}
+}
+
 func TestSameStrings(t *testing.T) {
 	if !sameStrings([]string{"a", "b"}, []string{"a", "b"}) {
 		t.Error("одинаковые наборы посчитались разными")
