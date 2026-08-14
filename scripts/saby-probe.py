@@ -34,6 +34,8 @@ def shape(value):
             return "список, пуст"
         return "список из %d, внутри %s" % (len(value), shape(value[0]))
     if isinstance(value, dict):
+        if not value:
+            return "объект, пуст"
         return "объект с полями: " + ", ".join(sorted(value)[:12])
     text = str(value).strip()
     if not text:
@@ -73,7 +75,7 @@ query = {
     "pointId": os.environ["SABY_POINT_ID"],
     "withBalance": "true",
     "withBarcode": "true",
-    "pageSize": 5,
+    "pageSize": 50,
     "page": 0,
 }
 search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
@@ -91,31 +93,49 @@ items = result.get("nomenclatures") or result.get("items") or result.get("result
 print("Ответ верхнего уровня, поля:", ", ".join(sorted(result)))
 print("Позиций в ответе:", len(items))
 
-if not items:
-    raise SystemExit("позиций не пришло — уточните SABY_PROBE_SEARCH")
+# Поиск возвращает и разделы каталога, причём первым. У раздела нет ни
+# артикула, ни штрихкодов, и если судить по нему — выйдет, что их нет ни у
+# кого. Смотрим только на товары.
+products = [item for item in items if not item.get("isParent")]
+print("Из них товаров (не разделов):", len(products))
+if not products:
+    raise SystemExit("товаров не нашлось — уточните SABY_PROBE_SEARCH")
 
 seen = {}
-for item in items:
+for item in products:
     for key, value in item.items():
-        seen.setdefault(key, shape(value))
+        current = shape(value)
+        if key not in seen or seen[key] in ("пусто", "строка, пуста", "список, пуст"):
+            seen[key] = current
 
-print("\nПоля позиции:")
+print("\nПоля товара (по всем %d найденным):" % len(products))
 for key in sorted(seen):
     print("  %-22s %s" % (key, seen[key]))
 
 # Отдельно разворачиваем всё, что похоже на идентификатор: именно они решают,
-# можно ли связать товар с карточкой маркетплейса.
-print("\nПодробно по спискам идентификаторов:")
-for key in ("barcodes", "attributes", "externalIds", "codes"):
-    value = items[0].get(key)
+# можно ли связать товар с карточкой маркетплейса. Берём тот товар, у
+# которого этих сведений больше всего.
+def richness(item):
+    return sum(1 for key in ("barcodes", "attributes", "article", "code") if item.get(key))
+
+
+sample = max(products, key=richness)
+print("\nПодробно по спискам идентификаторов (у самого заполненного товара):")
+for key in ("barcodes", "attributes", "externalIds", "codes", "code", "codeType", "article"):
+    if key not in sample:
+        print("  %s: поля нет" % key)
+        continue
+    value = sample[key]
     if isinstance(value, list) and value:
         print("  %s: %d элем." % (key, len(value)))
-        for element in value[:6]:
+        for element in value[:8]:
             if isinstance(element, dict):
                 print("    объект:", {name: shape(inner) for name, inner in element.items()})
             else:
                 print("    ", shape(element))
-    elif key in items[0]:
-        print("  %s: %s" % (key, shape(value)))
+    elif isinstance(value, dict) and value:
+        print("  %s: объект" % key)
+        for name, inner in list(value.items())[:8]:
+            print("    %-18s %s" % (name, shape(inner)))
     else:
-        print("  %s: поля нет" % key)
+        print("  %s: %s" % (key, shape(value)))
