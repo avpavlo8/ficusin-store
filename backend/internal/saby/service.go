@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 	"github.com/jackc/pgx/v5"
@@ -448,6 +449,12 @@ var (
 // tags from leaking into product cards.
 func plainDescription(value string) string {
 	value = html.UnescapeString(strings.TrimSpace(value))
+	value = strings.Map(func(symbol rune) rune {
+		if symbol != '\n' && unicode.IsSpace(symbol) {
+			return ' '
+		}
+		return symbol
+	}, value)
 	value = descriptionBreaks.ReplaceAllString(value, "\n")
 	value = descriptionTags.ReplaceAllString(value, " ")
 	value = descriptionSpace.ReplaceAllString(value, " ")
