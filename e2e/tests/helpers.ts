@@ -77,6 +77,16 @@ export async function mockApi(page: Page, session: Session = guest) {
   await page.route("**/api/v1/catalog", (route) =>
     route.fulfill({ json: { products: [product, ficus, monstera] } }));
 
+  await page.route("**/api/v1/products/*", (route) => route.fulfill({ json: { product: {
+    ...product,
+    shortDescription: "Неприхотливое растение",
+    description: "Подходит для дома",
+    careInstructions: "Поливать после просыхания грунта",
+    images: [product.image],
+    variants: [{ id: 1, sku: "X100", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
+    recommendations: [],
+  } } }));
+
   // Дерево нарочно трёхуровневое и с пустым разделом — как в настоящей базе.
   // Пока стенд был плоским, витрина рисовала два уровня и никто этого не
   // замечал: виды растений просто не показывались.
