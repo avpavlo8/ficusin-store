@@ -57,14 +57,14 @@ export default function ProductPage({ slug }: { slug: string }) {
     setNotice(cart[product.id] ? "Количество обновлено" : "Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
 
+  if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
+  if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
+
   const warningBadges = [
     product.petSafety === "toxic" ? "Ядовито для животных" : product.petSafety === "safe" ? "Безопасно для животных" : "",
     product.lightLevel === "sunny" ? "Нужно яркое освещение" : "",
     product.watering === "frequent" ? "Нужен частый полив" : "",
   ].filter(Boolean).slice(0, 3);
-
-  if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
-  if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
   return <main className="product-page">
     <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} />
