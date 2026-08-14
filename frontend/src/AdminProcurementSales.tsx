@@ -61,6 +61,19 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
   </section>;
 }
 
+// candidateKeys — чем одна позиция справочника отличается от соседней.
+//
+// В номенклатуре живут пары записей с одинаковым названием и кодом, но
+// разными saby_id: у одной он совпадает с кодом, у другой это внутренний
+// номер. Без подписей строки выглядят как «X712410235 · 1073» и
+// «X712410235 · X712410235», и понять, какая из них какая, нельзя, — а
+// выбор определяет, к какой карточке приклеятся продажи.
+const candidateKeys = (item: NomenclatureCandidate) => [
+  item.code && `код ${item.code}`,
+  item.article && `артикул ${item.article}`,
+  `СБИС ${item.sabyId}`,
+].filter(Boolean).join(" · ");
+
 export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
   sale: UnlinkedSale; onClose: () => void; onLinked: (result: SalesLinkResult) => void; onError: (value: string) => void;
 }) {
@@ -76,9 +89,9 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
       setSearching(true);
       api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`)
         .then((result) => {
-          // Поиск отдаёт одну позицию по нескольку раз, и в списке копии
-          // выглядят как разные растения с одинаковым названием. Выбирать
-          // между ними нечего: за ними один и тот же saby_id.
+          // Одну и ту же запись поиск иногда отдаёт дважды. Выбирать между
+          // такими строками нечего — за ними один saby_id, — а React ещё и
+          // ругается на повторяющийся ключ.
           const unique = new Map<string, NomenclatureCandidate>();
           for (const item of result.items || []) if (!unique.has(item.sabyId)) unique.set(item.sabyId, item);
           setCandidates([...unique.values()]);
@@ -107,7 +120,7 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
       <div className="procurement-match-source"><strong>{sale.externalId}</strong><span>Код закрепится за выбранным товаром: уже загруженные продажи под ним вернутся в расчёт, а следующие выгрузки свяжутся сами. Если код был закреплён за другим растением, он перейдёт сюда — карточка маркетплейса продаёт что-то одно.</span></div>
       <label className="procurement-match-search">Поиск по всему справочнику СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
       <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в СБИС…</span></div> : candidates.length ? candidates.map((item) => <article key={item.sabyId}>
-        <div><strong>{item.name}</strong><span>{[item.code, item.article, item.sabyId].filter(Boolean).join(" · ")}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
+        <div><strong>{item.name}</strong><span>{candidateKeys(item)}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
         <button disabled={saving} onClick={() => void link(item)}>Связать</button>
       </article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Попробуйте часть названия без размера — код маркетплейса не обязан совпадать с написанием в СБИС.</span></div>}</div>
       <div className="dialog-actions procurement-match-actions"><button className="primary" onClick={onClose} disabled={saving}>Отмена</button></div>
