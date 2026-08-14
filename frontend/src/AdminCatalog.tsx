@@ -166,7 +166,7 @@ export function Collections({ onError }: { onError: (value: string) => void }) {
     } catch (error) { onError((error as Error).message); }
   };
 
-  const shown = products.filter((item) => `${item.name} ${item.latinName}`.toLowerCase().includes(query.toLowerCase())).slice(0, 60);
+  const shown = products.filter((item) => `${item.name} ${item.latinName}`.toLowerCase().includes(query.toLowerCase()));
 
   return <><PageHeading eyebrow="Витрина" title="Подборки" text="Вкладки над каталогом: что в них попадает, решаете вы" />
     <div className="admin-collections">

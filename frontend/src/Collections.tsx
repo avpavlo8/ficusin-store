@@ -55,7 +55,7 @@ export function CollectionStrip<T extends Product>({
   onPick,
 }: {
   products: T[];
-  active: string;
+  active: ReadonlySet<string>;
   onPick: (id: string) => void;
 }) {
   // Пустые подборки не показываем совсем: плитка, ведущая в «ничего не
@@ -72,8 +72,9 @@ export function CollectionStrip<T extends Product>({
           key={preset.id}
           type="button"
           role="listitem"
-          className={active === preset.id ? "preset active" : "preset"}
-          onClick={() => onPick(active === preset.id ? "" : preset.id)}
+          className={active.has(preset.id) ? "preset active" : "preset"}
+          aria-pressed={active.has(preset.id)}
+          onClick={() => onPick(preset.id)}
           title={`${preset.title} — ${count}`}
         >
           <span className="preset-icon" aria-hidden="true">

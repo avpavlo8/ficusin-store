@@ -59,6 +59,19 @@ test("@desktop подборка фильтрует сетку, пустая не
   await expect(grid.getByText("Фикус Бенджамина")).toHaveCount(0);
 });
 
+test("@desktop быстрые фильтры поддерживают множественный выбор", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  await page.locator(".preset", { hasText: "Для ванной" }).click();
+  await page.locator(".preset", { hasText: "Для офиса" }).click();
+  await expect(page.locator(".preset.active")).toHaveCount(2);
+  await expect(page.locator(".storefront-card")).toHaveCount(0);
+
+  await page.locator(".preset", { hasText: "Для ванной" }).click();
+  await expect(page.locator(".preset.active")).toHaveCount(1);
+});
+
 test("@desktop товар без остатка идёт как предзаказ", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
