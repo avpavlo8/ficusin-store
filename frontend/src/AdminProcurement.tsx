@@ -117,7 +117,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Справочник</button>
       <button className={view === "unlinkedSales" ? "active" : ""} onClick={() => setView("unlinkedSales")}>Продажи без товара</button>
       <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Под заказ <span>{data.summary.openRequests}</span></button>
-      <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Наличие <span>{data.summary.availabilityChecks}</span></button>
+      <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Проверить наличие <span>{data.summary.availabilityChecks}</span></button>
       <button className={view === "integrations" ? "active" : ""} onClick={() => setView("integrations")}>Интеграции</button>
       <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Формула v{data.settings.version}</button>
     </div>
