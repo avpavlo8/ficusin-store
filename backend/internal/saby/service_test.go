@@ -90,3 +90,25 @@ func TestSameStrings(t *testing.T) {
 		t.Error("разная длина посчиталась одинаковой")
 	}
 }
+
+func TestValidateCatalogHealthRejectsTruncatedSnapshot(t *testing.T) {
+	items := make([]normalizedItem, 40)
+	if err := validateCatalogHealth(items, 100, 0); err == nil {
+		t.Fatal("обрезанная выгрузка не должна обнулять отсутствующие товары")
+	}
+}
+
+func TestValidateCatalogHealthRejectsMassZero(t *testing.T) {
+	items := make([]normalizedItem, 100)
+	if err := validateCatalogHealth(items, 100, 25); err == nil {
+		t.Fatal("полностью нулевая выгрузка не должна затирать рабочие остатки")
+	}
+}
+
+func TestValidateCatalogHealthAcceptsCompleteSnapshot(t *testing.T) {
+	items := make([]normalizedItem, 100)
+	items[0].balance = 1
+	if err := validateCatalogHealth(items, 100, 25); err != nil {
+		t.Fatalf("полная выгрузка отклонена: %v", err)
+	}
+}
