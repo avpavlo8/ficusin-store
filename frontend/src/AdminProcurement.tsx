@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ProcurementMatchDialog, ProcurementOrderDetailDialog, ProcurementOrderDialog, ProcurementPlanDialog, ProcurementRequestDialog, ProcurementUploadDialog, SupplierDialog } from "./AdminProcurementDialogs";
 import { ProcurementProducts, ProcurementSettingsPanel, availabilityLabel, integrationChannelLabel, recommendationEmptyText, recommendationEmptyTitle, recommendationStatusLabel, salesChannelLabel, salesSyncLabel, setExclusion, updateAvailability, updateRequestStatus } from "./AdminProcurementPanels";
+import { ProcurementUnlinkedSales } from "./AdminProcurementSales";
 import { PageHeading, api } from "./adminShared";
 import type { IntegrationHealth, ProcurementAlias, ProcurementData, ProcurementOrder, ProcurementOrderDetail, RecommendationStatus } from "./adminTypes";
 
@@ -30,7 +31,7 @@ export const procurementParserLabels: Record<string, string> = {
 
 export function Procurement({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
-  const [view, setView] = useState<"orders" | "recommendations" | "products" | "requests" | "availability" | "integrations" | "settings">("orders");
+  const [view, setView] = useState<"orders" | "recommendations" | "products" | "unlinkedSales" | "requests" | "availability" | "integrations" | "settings">("orders");
   const [recommendationView, setRecommendationView] = useState<RecommendationStatus>("recommended");
   const [checkingIntegration, setCheckingIntegration] = useState<string>("");
   const [integrationNotice, setIntegrationNotice] = useState<{ channel: string; ok: boolean; text: string } | null>(null);
@@ -114,6 +115,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
       <button className={view === "recommendations" ? "active" : ""} onClick={() => setView("recommendations")}>Что заказать</button>
       <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Справочник</button>
+      <button className={view === "unlinkedSales" ? "active" : ""} onClick={() => setView("unlinkedSales")}>Продажи без товара</button>
       <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Под заказ <span>{data.summary.openRequests}</span></button>
       <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Наличие <span>{data.summary.availabilityChecks}</span></button>
       <button className={view === "integrations" ? "active" : ""} onClick={() => setView("integrations")}>Интеграции</button>
@@ -162,7 +164,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     {view === "recommendations" && <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button className="admin-primary" disabled={!actionableRecommendations.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ</button></div>
       <p className="admin-hint procurement-note">К закупке = продажи СБИС, сайта, WB и Ozon за {data.settings.recommendationDays} дней, пересчитанные на запас {data.settings.targetCoverDays} дней, − текущий остаток СБИС − товар в пути. Заказы клиентов добавляются к потребности.</p>
-      <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced}, связано {sync.rowsLinked}</small>{sync.rowsSynced > sync.rowsLinked && <em>Часть продаж не сопоставлена с товарами и не участвует в расчёте</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
+      <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced}, связано {sync.rowsLinked}</small>{sync.rowsSynced > sync.rowsLinked && <em>Часть продаж не сопоставлена с товарами и не участвует в расчёте — разберите их на вкладке «Продажи без товара»</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
       <div className="procurement-recommendation-tabs">
         {(["recommended", "already_ordered", "check_availability", "supplier_unavailable", "excluded"] as const).map((status) => <button className={recommendationView === status ? "active" : ""} key={status} onClick={() => setRecommendationView(status)}>{recommendationStatusLabel(status)} <span>{data.recommendations.filter((item) => item.status === status).length}</span></button>)}
       </div>
@@ -170,6 +172,8 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     </section>}
 
     {view === "products" && <ProcurementProducts suppliers={data.suppliers} onError={onError} />}
+
+    {view === "unlinkedSales" && <ProcurementUnlinkedSales onError={onError} />}
 
     {view === "requests" && <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Приоритет закупки</p><h2>Под заказ и идеи магазина</h2></div><button className="admin-primary" onClick={() => setRequestDialog(true)}>Добавить</button></div>
@@ -193,7 +197,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
         <button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : "Проверить подключение"}</button>
         {item.channel !== "saby" && <button className="secondary-button" disabled={syncingCatalog !== ""} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Подтягиваем…" : "Подтянуть артикулы"}</button>}
       </article>)}</div>
-      <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Пока связи нет, продажи канала загружаются, но в расчёт не идут.</p>
+      <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Что не совпало, разбирается руками на вкладке «Продажи без товара».</p>
       <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки», «Финансы» и «Контент» — без последней чтение карточек закрыто и кнопка «Подтянуть артикулы» ответит ошибкой площадки. Ozon проверяется по безопасному чтению списка товаров.</p>
       <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Создание поступлений и изменение прайса остаются выключенными, пока не подтверждён поддерживаемый Saby контракт записи.</p>
     </section>}
