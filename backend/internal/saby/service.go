@@ -164,6 +164,18 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	var knownItems, knownPositive int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*)::INTEGER,
+			COUNT(*) FILTER (WHERE balance > 0)::INTEGER
+		FROM saby_nomenclature
+	`).Scan(&knownItems, &knownPositive); err != nil {
+		return fmt.Errorf("read previous Saby catalogue health: %w", err)
+	}
+	if err := validateCatalogHealth(items, knownItems, knownPositive); err != nil {
+		return err
+	}
+
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO warehouses (saby_id, name, city, address, is_active)
 		VALUES ('saby-ryazan-main', 'Основной склад', 'Рязань', 'Новосёлов, 40А', 1)
@@ -288,6 +300,26 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit Saby sync: %w", err)
+	}
+	return nil
+}
+
+// validateCatalogHealth prevents a transient or truncated Saby response from
+// turning a healthy local catalogue into an empty shop. A real large stock
+// reduction can still be imported once the source returns the complete list;
+// only structurally implausible snapshots are rejected.
+func validateCatalogHealth(items []normalizedItem, knownItems, knownPositive int) error {
+	if knownItems >= 20 && len(items)*2 < knownItems {
+		return fmt.Errorf("unsafe Saby catalog: received %d of %d known items", len(items), knownItems)
+	}
+	positive := 0
+	for _, item := range items {
+		if item.balance > 0 {
+			positive++
+		}
+	}
+	if knownPositive >= 5 && positive == 0 {
+		return fmt.Errorf("unsafe Saby catalog: all %d item balances are zero", len(items))
 	}
 	return nil
 }

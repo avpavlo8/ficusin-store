@@ -89,6 +89,19 @@ test("@desktop товар без остатка идёт как предзака
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
 });
 
+test("@desktop на карточке товара выбирается количество", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/saby-1");
+
+  await expect(page.locator(".pdp-quantity output")).toHaveText("1");
+  await page.locator(".pdp-quantity button").last().click();
+  await page.getByRole("button", { name: "Добавить в корзину" }).click();
+
+  await expect(page.getByRole("button", { name: "Обновить корзину" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
+  await expect(page.getByText("Безопасно для животных")).toBeVisible();
+});
+
 test("@desktop сортировка по цене", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
