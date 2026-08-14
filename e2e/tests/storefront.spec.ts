@@ -98,7 +98,7 @@ test("@desktop на карточке товара выбирается коли�
   await page.getByRole("button", { name: "Добавить в корзину" }).click();
 
   await expect(page.getByRole("button", { name: "Обновить корзину" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Корзина, товаров: 2/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Безопасно для животных")).toBeVisible();
 });
 
