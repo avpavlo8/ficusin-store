@@ -22,14 +22,8 @@ export async function updateAvailability(supplierId: number, sabyId: string, sta
   catch (error) { onError((error as Error).message); }
 }
 
-// Причина обязательна при снятии: через полгода вопрос «почему этого нет в
-// рекомендациях» задаёт тот же человек, который его туда положил.
 export async function setExclusion(sabyId: string, excluded: boolean, reason: string, reload: () => Promise<unknown>, onError: (message: string) => void) {
-  let note = reason;
-  if (excluded && !note) {
-    note = (window.prompt("Почему не закупаем это растение?") || "").trim();
-    if (!note) return;
-  }
+  const note = excluded ? reason.trim() : "";
   try { await api("/api/v1/admin/procurement/exclusions", { method: "PUT", body: JSON.stringify({ sabyId, excluded, reason: note }) }); await reload(); }
   catch (error) { onError((error as Error).message); }
 }
