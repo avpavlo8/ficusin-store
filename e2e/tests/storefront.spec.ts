@@ -114,7 +114,16 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(purchase.getByRole("button", { name: "Добавить в корзину" })).toBeVisible();
   await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(3);
   await expect(page.locator(".passport-sections")).toContainText("Регулярный уход");
-  await expect(page.locator(".reviews-layout .review-form")).toBeVisible();
+  await expect(page.locator(".review-editor")).toHaveCount(0);
+  await page.getByRole("radio", { name: "5 из 5" }).click();
+  await expect(page.locator(".review-editor")).toBeVisible();
+  await expect(page.getByLabel("Расскажите о покупке")).toBeFocused();
+  await expect(page.locator(".review-media-button input")).toHaveAttribute("accept", /video\/mp4/);
+  await page.locator(".review-media-button input").setInputFiles([
+    { name: "plant.png", mimeType: "image/png", buffer: Buffer.from("preview") },
+    { name: "unboxing.mp4", mimeType: "video/mp4", buffer: Buffer.from("preview") },
+  ]);
+  await expect(page.locator(".review-media-preview figure")).toHaveCount(2);
 });
 
 test("@desktop прямой QR-якорь открывает паспорт без потери контента", async ({ page }) => {

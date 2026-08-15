@@ -56,7 +56,7 @@ export type Product = {
 };
 
 export type PlantPassport = { origin: string; lighting: string; watering: string; humidity: string; temperature: string; soil: string; fertilizer: string; repotting: string; careDifficulty: string; growthRate: string; matureSize: string; toxicity: string; problems: string; pests: string; faq: Array<{ question: string; answer: string }> };
-export type ReviewModerationItem = { id: number; product: string; author: string; rating: number; text: string; createdAt: string };
+export type ReviewModerationItem = { id: number; product: string; author: string; rating: number; text: string; createdAt: string; media: Array<{ url: string; contentType: string }> };
 
 export type ProcurementSupplier = {
   id: number; name: string; kind: "international" | "domestic"; countryCode: string;

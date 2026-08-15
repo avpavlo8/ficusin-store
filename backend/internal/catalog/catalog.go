@@ -88,7 +88,8 @@ type PlantPassport struct {
 	Problems string `json:"problems"`; Pests string `json:"pests"`; FAQ []FAQItem `json:"faq"`
 }
 type FAQItem struct { Question string `json:"question"`; Answer string `json:"answer"` }
-type Review struct { ID int64 `json:"id"`; Rating int `json:"rating"`; Text string `json:"text"`; Author string `json:"author"`; Date string `json:"date"`; VerifiedPurchase bool `json:"verifiedPurchase"`; Photos []string `json:"photos"` }
+type ReviewMedia struct { URL string `json:"url"`; ContentType string `json:"contentType"` }
+type Review struct { ID int64 `json:"id"`; Rating int `json:"rating"`; Text string `json:"text"`; Author string `json:"author"`; Date string `json:"date"`; VerifiedPurchase bool `json:"verifiedPurchase"`; Photos []string `json:"photos"`; Media []ReviewMedia `json:"media"` }
 
 type Variant struct {
 	ID              int64   `json:"id"`
