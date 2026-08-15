@@ -23,10 +23,10 @@ type Product = {
   categoryId?: number;
 };
 
-type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
+type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string };
 // Не Node: так называется узел DOM, и подмена ломает проверку клика мимо
 // подсказок поиска.
-type CategoryNode = { id: number; name: string; count: number; children: CategoryNode[] };
+type CategoryNode = { id: number; name: string; icon: string; count: number; children: CategoryNode[] };
 type Cart = Record<string, number>;
 
 const money = (value: number) =>
@@ -35,6 +35,17 @@ const money = (value: number) =>
     currency: "RUB",
     maximumFractionDigits: 0,
   }).format(value);
+
+const categoryIconPaths: Record<string, string> = {
+  leaf: "M19 4C11 4 5 8 5 15c5 1 10-2 14-11ZM5 20c2-6 6-9 11-12",
+  pot: "M6 9h12l-1 10H7L6 9Zm-1-3h14v3H5V6Z",
+  soil: "M4 8c4-3 12-3 16 0v10H4V8Zm2 3c4-2 8-2 12 0",
+  fertilizer: "M9 3h6v4l3 4v9H6v-9l3-4V3Zm0 10h6",
+  tools: "M14 5a4 4 0 0 0 5 5l-9 9-4-4 9-9",
+};
+function CategoryIcon({ name }: { name: string }) {
+  return <svg className="category-icon" viewBox="0 0 24 24" aria-hidden="true"><path d={categoryIconPaths[name] || categoryIconPaths.leaf} /></svg>;
+}
 
 // Витрина — это главная: товары с первого пикселя, поиск в липкой шапке,
 // слева живое дерево каталога, над сеткой — подборки.
@@ -146,6 +157,7 @@ export default function StorefrontPage() {
       return {
         id: item.id,
         name: item.name,
+        icon: item.icon || "leaf",
         count: (direct.get(item.id) ?? 0) + nodes.reduce((sum, node) => sum + node.count, 0),
         children: nodes,
       };
@@ -225,7 +237,7 @@ export default function StorefrontPage() {
           {node.children.length > 0 && (
             <i className={opened.has(node.id) ? "twist open" : "twist"} aria-hidden="true">›</i>
           )}
-          {node.name}
+          <CategoryIcon name={node.icon} />{node.name}
         </span>
         <small>{node.count}</small>
       </button>
