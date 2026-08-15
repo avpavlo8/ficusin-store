@@ -77,9 +77,10 @@ export function CatalogSearch({ value, onChange, className = "header-search", pl
       event.preventDefault();
       // Mobile Safari may submit the form without delivering the preceding
       // Enter keydown. Preserve the highlighted keyboard option in that path.
-      if (activeRef.current >= 0) {
-        if (!loaded) pendingEnter.current = true;
-        else choose(activeRef.current);
+      if (!loaded) {
+        pendingEnter.current = true;
+      } else if (activeRef.current >= 0) {
+        choose(activeRef.current);
       } else if (matches.length > 0) {
         // iOS virtual keyboards sometimes submit without emitting ArrowDown.
         // In an open autocomplete Enter therefore accepts the first visible
