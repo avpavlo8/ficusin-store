@@ -37,6 +37,8 @@ export default function Root() {
       return <AccountPage section="profile" />;
     case "/account/favorites":
       return <AccountPage section="favorites" />;
+    case "/account/reviews":
+      return <AccountPage section="reviews" />;
     case "/admin":
       return <AdminPage />;
     case "/favorites":

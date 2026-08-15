@@ -140,6 +140,30 @@ func (storage *Storage) Put(ctx context.Context, key string, body []byte, conten
 	return nil
 }
 
+// Get reads a private object through a signed request. Review media is never
+// exposed through a public bucket URL: authorization and moderation status
+// are checked by the API before this method is called.
+func (storage *Storage) Get(ctx context.Context, key string) ([]byte, error) {
+	if !storage.Configured() { return nil, fmt.Errorf("хранилище не настроено") }
+	target := storage.PublicURL(key)
+	parsed, err := url.Parse(target); if err != nil { return nil, err }
+	now := time.Now().UTC(); amzDate := now.Format("20060102T150405Z"); shortDate := now.Format("20060102")
+	payloadHash := hashHex(nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil); if err != nil { return nil, err }
+	request.Header.Set("X-Amz-Content-Sha256", payloadHash); request.Header.Set("X-Amz-Date", amzDate)
+	canonicalHeaders := "host:" + parsed.Host + "\n" + "x-amz-content-sha256:" + payloadHash + "\n" + "x-amz-date:" + amzDate + "\n"
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+	canonicalRequest := strings.Join([]string{http.MethodGet, escapePath(parsed.Path), "", canonicalHeaders, signedHeaders, payloadHash}, "\n")
+	scope := shortDate + "/" + storage.region + "/s3/aws4_request"
+	stringToSign := strings.Join([]string{"AWS4-HMAC-SHA256", amzDate, scope, hashHex([]byte(canonicalRequest))}, "\n")
+	key256 := sign([]byte("AWS4"+storage.secretKey), shortDate); key256 = sign(key256, storage.region); key256 = sign(key256, "s3"); key256 = sign(key256, "aws4_request")
+	request.Header.Set("Authorization", fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s", storage.accessKey, scope, signedHeaders, hex.EncodeToString(sign(key256, stringToSign))))
+	response, err := storage.client.Do(request); if err != nil { return nil, fmt.Errorf("хранилище недоступно: %w", err) }
+	defer response.Body.Close(); if response.StatusCode != http.StatusOK { return nil, fmt.Errorf("хранилище отказало (%d)", response.StatusCode) }
+	data, err := io.ReadAll(io.LimitReader(response.Body, 21*1024*1024)); if err != nil { return nil, err }
+	return data, nil
+}
+
 func hashHex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
