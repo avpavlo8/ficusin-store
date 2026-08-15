@@ -117,7 +117,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(page.locator(".review-modal")).toHaveCount(0);
   await page.getByRole("radio", { name: "5 из 5" }).click();
   await expect(page.locator(".review-modal")).toBeVisible();
-  await expect(page.getByLabel("Расскажите о покупке")).toBeFocused();
+  await expect(page.getByLabel("Ваш отзыв")).toBeFocused();
   await expect(page.locator(".review-media-button input")).toHaveAttribute("accept", /video\/mp4/);
   await page.locator(".review-media-button input").setInputFiles([
     { name: "plant.png", mimeType: "image/png", buffer: Buffer.from("preview") },
