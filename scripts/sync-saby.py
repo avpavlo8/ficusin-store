@@ -333,6 +333,25 @@ try:
         for item in catalog_items
     ]
 
+    # Keep enough aggregate evidence in Actions to distinguish an invalid
+    # warehouse/point response from a mapping or database failure. Product
+    # names and identifiers are deliberately omitted from the public log.
+    balances_present = sum("balance" in item for item in public_catalog)
+    def is_positive_balance(value):
+        try:
+            return float(str(value).strip().replace(",", ".")) > 0
+        except (TypeError, ValueError):
+            return False
+
+    positive_balances = sum(
+        is_positive_balance(item.get("balance")) for item in public_catalog
+    )
+    print(
+        "Saby catalog health: "
+        f"items={len(public_catalog)} balanceFields={balances_present} "
+        f"positiveBalances={positive_balances} point={os.environ['SABY_POINT_ID']}"
+    )
+
     stage = "store"
     sync_request = urllib.request.Request(
         os.environ["FICUSIN_SYNC_URL"],
