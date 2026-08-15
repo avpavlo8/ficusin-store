@@ -266,7 +266,7 @@ export default function StorefrontPage() {
       />
 
       <div className="storefront-search-bar">
-        <CatalogSearch value={query} onChange={setQuery} className="storefront-search" placeholder="Поиск: монстера, фикус, кашпо 15 см" />
+        <CatalogSearch value={query} onChange={setQuery} inlineResults className="storefront-search" placeholder="Поиск: монстера, фикус, кашпо 15 см" />
       </div>
 
       <section className="storefront-shell" id="catalog">
