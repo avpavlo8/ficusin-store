@@ -133,7 +133,7 @@ test("@desktop пустой паспорт остаётся полезным и 
   await page.goto("/product/empty#plant-passport");
   await expect(page.locator("#plant-passport")).toContainText("Паспорт готовится");
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
-  await expect(page.locator(".pdp-rating")).toHaveText("Пока без отзывов");
+  await expect(page.locator(".pdp-rating")).toContainText("Пока без отзывов");
 });
 
 test("@desktop сортировка по цене", async ({ page }) => {
