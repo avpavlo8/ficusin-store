@@ -20,6 +20,7 @@ export const paymentLabels: Record<string, string> = {
 
 export const paymentMethodLabels: Record<string, string> = {
   on_delivery: "Оплатит при получении", invoice: "Нужен счёт на организацию",
+  manager_confirmation: "Оплата после подтверждения менеджером",
 };
 
 export const orderStatuses = ["new", "confirmed", "assembling", "ready", "shipped", "completed", "cancelled"];

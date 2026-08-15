@@ -2,6 +2,8 @@ package order
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -243,6 +245,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		} else if quotes, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, box); err != nil {
 			service.logger.Error("cdek quote failed at checkout", "error", err)
 			feePending = true
+		} else if len(quotes) == 0 {
+			service.logger.Error("cdek returned no tariffs at checkout")
+			feePending = true
 		} else {
 			// The cheapest tariff comes first, and that is what the checkout
 			// preselects. A customer who chose a faster one is charged for it.
@@ -289,7 +294,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	// The browser names a payment method; these rules decide whether it may
-	// have it. An unknown or forbidden choice falls back to paying by card.
+	// have it. Never silently replace an unavailable method with card payment.
 	paymentMethod := strings.TrimSpace(input.PaymentMethod)
 	if !payment.Allowed(
 		paymentMethod,
@@ -297,7 +302,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		input.WholesaleApproved,
 		input.OnlinePaymentReady,
 	) {
-		paymentMethod = payment.MethodOnline
+		return Created{}, invalid("Выберите доступный способ оплаты")
 	}
 
 	orderNumber, err := newOrderNumber(ctx, transaction, input.CustomerID)
@@ -419,7 +424,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		)
 	}
 
-	return Created{OrderNumber: orderNumber, PaymentStatus: "payment_provider_pending"}, nil
+	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod)}, nil
 }
 
 // reserveStock holds what it can and reports what it could not.
@@ -510,7 +515,14 @@ func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) 
 	`).Scan(&placed); err != nil {
 		return "", fmt.Errorf("count guest orders: %w", err)
 	}
-	return fmt.Sprintf("%s-%d", prefix, placed+1), nil
+	// The old sequential number was both guessable (the payment endpoint uses
+	// it as a capability for guest checkout) and racy for concurrent orders.
+	// Keep the readable prefix/counter for managers and add 64 bits of entropy.
+	random := make([]byte, 8)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate order number: %w", err)
+	}
+	return fmt.Sprintf("%s-%d-%s", prefix, placed+1, hex.EncodeToString(random)), nil
 }
 
 // letterLines turns the order's contents into what the letter prints.

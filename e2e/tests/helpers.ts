@@ -105,6 +105,17 @@ export async function mockApi(page: Page, session: Session = guest) {
 
   await page.route("**/api/v1/account/**", (route) =>
     route.fulfill({ json: { orders: [] } }));
+
+  await page.route("**/api/v1/payments/methods?delivery=*", (route) => {
+    const delivery = new URL(route.request().url()).searchParams.get("delivery");
+    const methods = delivery === "pickup"
+      ? [{ id: "on_delivery", title: "При получении", note: "Оплатите, когда заберёте заказ" }]
+      : [{ id: "manager_confirmation", title: "После подтверждения менеджером", note: "Оплата после подтверждения заказа менеджером" }];
+    return route.fulfill({ json: { methods } });
+  });
+
+  await page.route("**/api/v1/delivery/cdek?action=status", (route) =>
+    route.fulfill({ json: { available: false } }));
 }
 
 // Nothing may stick out sideways: a horizontal scrollbar on a phone is the

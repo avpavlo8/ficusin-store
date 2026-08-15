@@ -151,7 +151,7 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 // customer does not care which of our systems is having a moment.
 var quoteUnavailable = map[string]any{
 	"pending": true,
-	"message": "Стоимость доставки рассчитает менеджер после оформления заказа",
+	"message": "Оплата после подтверждения заказа менеджером",
 }
 
 // available reports whether pick-up points can be offered at all. A missing
@@ -163,5 +163,7 @@ func (handlers cdekHandlers) available() bool {
 
 func (handlers cdekHandlers) externalError(response http.ResponseWriter, err error) {
 	handlers.logger.Error("cdek request failed", "error", err)
-	writeJSON(response, http.StatusBadGateway, errorResponse{Error: err.Error()})
+	writeJSON(response, http.StatusBadGateway, errorResponse{
+		Error: "Не удалось получить данные СДЭК. Попробуйте ещё раз позже",
+	})
 }
