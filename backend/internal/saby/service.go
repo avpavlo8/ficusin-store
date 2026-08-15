@@ -406,8 +406,10 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 		// завести в магазин и назначить цену самому.
 		cost, _ := valueFloat(item.Cost)
 		name := strings.TrimSpace(item.Name)
-		if item.IsParent || (item.Published != nil && !*item.Published) ||
-			id == "" || name == "" {
+		// `published` belongs to the Saby sales channel. It must not decide
+		// whether an existing Ficusin card receives its stock: publication on
+		// the storefront is managed by Ficusin itself.
+		if item.IsParent || id == "" || name == "" {
 			continue
 		}
 		balance, _ := valueFloat(item.Balance)
