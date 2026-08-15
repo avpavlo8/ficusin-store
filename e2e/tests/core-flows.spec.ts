@@ -82,7 +82,7 @@ test("@phone mobile autocomplete открывает товар", async ({ page, 
     await search.press("Enter");
     await page.waitForURL(/\/product\/|\?q=/);
     if (!new URL(page.url()).pathname.startsWith("/product/")) {
-      await page.locator(".storefront-name", { hasText: "Фикус Бенджамина" }).click();
+      await page.locator('a[href="/product/saby-2"]').click();
     }
   } else {
     await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
