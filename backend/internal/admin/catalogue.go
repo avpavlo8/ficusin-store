@@ -27,12 +27,6 @@ type seed struct {
 	images         []string
 	sabyID         string
 	sabyFields     []string
-	heightCM       *int
-	potDiameterCM  *int
-	packageLengthCM *int
-	packageWidthCM *int
-	packageHeightCM *int
-	packageWeightGrams *int
 }
 
 // CreateProduct заводит карточку в магазине.
@@ -55,15 +49,6 @@ func (repository *PostgresRepository) CreateProduct(
 	if input.PriceMinor < 0 || input.Stock < 0 {
 		return Product{}, fmt.Errorf("%w: цена и остаток не могут быть отрицательными", ErrInvalidInput)
 	}
-	for label, value := range map[string]*int{
-		"высота": input.HeightCM, "диаметр горшка": input.PotDiameterCM,
-		"длина упаковки": input.PackageLengthCM, "ширина упаковки": input.PackageWidthCM,
-		"высота упаковки": input.PackageHeightCM, "вес упаковки": input.PackageWeightGrams,
-	} {
-		if value != nil && (*value < 0 || *value > 100000) {
-			return Product{}, fmt.Errorf("%w: неверное значение поля «%s»", ErrInvalidInput, label)
-		}
-	}
 
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
@@ -85,9 +70,6 @@ func (repository *PostgresRepository) CreateProduct(
 		stock:          input.Stock,
 		images:         images,
 		sabyFields:     []string{},
-		heightCM: input.HeightCM, potDiameterCM: input.PotDiameterCM,
-		packageLengthCM: input.PackageLengthCM, packageWidthCM: input.PackageWidthCM,
-		packageHeightCM: input.PackageHeightCM, packageWeightGrams: input.PackageWeightGrams,
 	})
 	if err != nil {
 		return Product{}, err
@@ -270,27 +252,12 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 	var variantID int64
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO product_variants (
-			product_id, saby_id, sku, label, base_price_minor, height_cm, pot_diameter_cm,
-			package_length_cm, package_width_cm, package_height_cm, package_weight_grams,
-			is_active, updated_at
+			product_id, saby_id, sku, label, base_price_minor, is_active, updated_at
 		)
-		VALUES ($1, $2, 'FIC-' || LPAD(nextval('ficusin_sku_seq')::TEXT, 6, '0'),
-			'Основной вариант', $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, 'Основной размер', $4, 1, CURRENT_TIMESTAMP)
 		RETURNING id
-	`, id, sabyID, item.priceMinor, item.heightCM, item.potDiameterCM, item.packageLengthCM,
-		item.packageWidthCM, item.packageHeightCM, item.packageWeightGrams).Scan(&variantID); err != nil {
+	`, id, sabyID, strings.ToUpper(slug), item.priceMinor).Scan(&variantID); err != nil {
 		return 0, fmt.Errorf("create product variant: %w", err)
-	}
-	if item.sabyID != "" {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)
-			VALUES ($1,$2,'saby','id',$3)
-			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
-				product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
-				updated_at=CURRENT_TIMESTAMP
-		`, id, variantID, item.sabyID); err != nil {
-			return 0, fmt.Errorf("map Saby product identity: %w", err)
-		}
 	}
 
 	// Склад заводим на всякий случай: без него товару некуда положить
