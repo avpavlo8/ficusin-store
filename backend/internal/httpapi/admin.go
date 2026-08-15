@@ -241,6 +241,20 @@ func (handlers adminHandlers) products(response http.ResponseWriter, request *ht
 	writeJSON(response, http.StatusOK, map[string]any{"products": products})
 }
 
+func (handlers adminHandlers) categoryAttributes(response http.ResponseWriter, request *http.Request) {
+	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
+	if !ok { return }
+	id, ok := pathID(response, request)
+	if !ok { return }
+	provider, ok := handlers.repository.(interface {
+		ListCategoryAttributes(context.Context, int64) ([]admin.CategoryAttribute, error)
+	})
+	if !ok { handlers.failed(response, "category attributes unavailable", errors.New("category attributes unavailable")); return }
+	items, err := provider.ListCategoryAttributes(request.Context(), id)
+	if err != nil { handlers.failed(response, "list category attributes", err); return }
+	writeJSON(response, http.StatusOK, map[string]any{"attributes": items})
+}
+
 func (handlers adminHandlers) updateProduct(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
 	if !ok {
