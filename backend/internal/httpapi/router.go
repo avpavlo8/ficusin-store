@@ -89,6 +89,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
 	mux.HandleFunc("POST /api/v1/products/{slug}/reviews", createReviewHandler(logger, dependencies.Auth, dependencies.Reviews))
 	mux.HandleFunc("GET /api/v1/review-photos/{id}", reviewPhotoHandler(dependencies.Reviews))
+	if dependencies.Reviews != nil {
+		mux.HandleFunc("GET /api/v1/account/reviews", accountReviewsHandler(dependencies.Auth, dependencies.Reviews))
+		mux.HandleFunc("PATCH /api/v1/account/reviews/{id}", updateAccountReviewHandler(dependencies.Auth, dependencies.Reviews))
+	}
 	mux.HandleFunc("POST /api/v1/auth/request-code", callLimiter.guard(
 		"Слишком много запросов звонка. Попробуйте через несколько минут",
 		authAPI.requestCode,

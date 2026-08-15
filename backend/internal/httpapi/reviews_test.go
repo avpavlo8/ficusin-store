@@ -17,6 +17,8 @@ func (*reviewStoreStub) Photo(context.Context,int64)(string,[]byte,error){return
 func (*reviewStoreStub) ModerationMedia(context.Context,int64)(string,[]byte,error){return "image/jpeg",[]byte("photo"),nil}
 func (*reviewStoreStub) Pending(context.Context)([]reviews.ModerationItem,error){return nil,nil}
 func (*reviewStoreStub) Moderate(context.Context,int64,int64,string)error{return nil}
+func (*reviewStoreStub) Mine(context.Context,int64)([]reviews.AccountItem,error){return nil,nil}
+func (*reviewStoreStub) UpdateMine(context.Context,int64,int64,int,string)error{return nil}
 
 func TestCreateReviewRequiresCompletedPurchase(t *testing.T){
 	store:=&reviewStoreStub{createErr:reviews.ErrNotPurchased}

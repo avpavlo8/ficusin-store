@@ -1,14 +1,16 @@
+import type { ReactNode } from "react";
 import type { ProductDetail, ProductVariant } from "./types";
-import { money, stars } from "./types";
+import { money } from "./types";
 
-export function ProductPurchasePanel({ product, variant, quantity, favorite, inCart, warnings, onVariant, onQuantity, onFavorite, onBuy }: {
+export function ProductPurchasePanel({ product, variant, quantity, favorite, inCart, warnings, reviewComposer, onVariant, onQuantity, onFavorite, onBuy }: {
   product: ProductDetail; variant?: ProductVariant; quantity: number; favorite: boolean; inCart: boolean; warnings: string[];
+  reviewComposer: ReactNode;
   onVariant: (id: number) => void; onQuantity: (value: number) => void; onFavorite: () => void; onBuy: () => void;
 }) {
   const available = Boolean(variant && variant.stock > 0);
   return <aside className="pdp-summary" aria-label="Покупка товара">
     <div className="pdp-identity"><p className="latin">{product.latin}</p><h1>{product.name}</h1>
-      <a className="pdp-rating" href="#reviews">{product.reviewsCount ? <><span>{stars(product.rating)}</span><strong>{product.rating.toFixed(1)}</strong><u>{product.reviewsCount} отзывов</u></> : <><span>☆☆☆☆☆</span><u>Пока без отзывов</u></>}</a>
+      {reviewComposer}
     </div>
     <p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
     {product.variants.length > 1 && <fieldset className="variant-picker"><legend>Размер и комплектация</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id} disabled={item.stock <= 0}><strong>{item.label}</strong><small>{item.stock > 0 ? money(item.price) : "Нет в наличии"}</small></button>)}</div></fieldset>}

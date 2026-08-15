@@ -114,9 +114,9 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(purchase.getByRole("button", { name: "Добавить в корзину" })).toBeVisible();
   await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(3);
   await expect(page.locator(".passport-sections")).toContainText("Регулярный уход");
-  await expect(page.locator(".review-editor")).toHaveCount(0);
+  await expect(page.locator(".review-modal")).toHaveCount(0);
   await page.getByRole("radio", { name: "5 из 5" }).click();
-  await expect(page.locator(".review-editor")).toBeVisible();
+  await expect(page.locator(".review-modal")).toBeVisible();
   await expect(page.getByLabel("Расскажите о покупке")).toBeFocused();
   await expect(page.locator(".review-media-button input")).toHaveAttribute("accept", /video\/mp4/);
   await page.locator(".review-media-button input").setInputFiles([
@@ -140,9 +140,20 @@ test("@desktop пустой паспорт остаётся полезным и 
     images: ["/assets/product-pothos.png"], variants: [], recommendations: [], passport: {}, importantWarnings: [], rating: 0, reviewsCount: 0, reviews: [], catalogSection: "plants",
   } } }));
   await page.goto("/product/empty#plant-passport");
+  const singlePhoto = await page.locator(".pdp-gallery.single .pdp-image").boundingBox();
+  expect(singlePhoto?.width || 0).toBeGreaterThan(400);
   await expect(page.locator("#plant-passport")).toContainText("Паспорт готовится");
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
-  await expect(page.locator(".pdp-rating")).toContainText("Пока без отзывов");
+  await expect(page.locator(".purchase-review-meta")).toContainText("Пока без отзывов");
+});
+
+test("@desktop фотография открывается в полноэкранной галерее", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/saby-1");
+  await page.getByRole("button", { name: "Открыть фотографию на весь экран" }).click();
+  await expect(page.getByRole("dialog", { name: /Фотографии/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: /Фотографии/ })).toHaveCount(0);
 });
 
 test("@desktop сортировка по цене", async ({ page }) => {

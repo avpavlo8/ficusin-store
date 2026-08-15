@@ -52,7 +52,7 @@ type FavoriteProduct = {
   id: string; name: string; latin: string; price: number; image: string; stock: number;
 };
 
-type Section = "orders" | "profile" | "favorites";
+type Section = "orders" | "profile" | "favorites" | "reviews";
 
 const orderStatusLabels: Record<string, string> = {
   new: "Новый",
@@ -130,6 +130,7 @@ function AccountShell({ user, section, children, onSignOut }: {
             <a className={section === "orders" ? "active" : ""} href="/account">Мои заказы</a>
             <a className={section === "profile" ? "active" : ""} href="/account/profile">Мои данные</a>
             <a className={section === "favorites" ? "active" : ""} href="/account/favorites">Избранное</a>
+            <a className={section === "reviews" ? "active" : ""} href="/account/reviews">Мои отзывы</a>
           </nav>
           {staff && <a className="account-switch" href="/admin">Панель управления →</a>}
           <button className="signout-link" type="button" onClick={onSignOut}>
@@ -595,6 +596,16 @@ function FavoritesSection() {
 
 // ----------------------------------------------------------------- page
 
+type AccountReview = { id: number; product: string; slug: string; rating: number; text: string; status: "pending" | "published" | "rejected"; createdAt: string };
+const reviewStatusLabels = { pending: "На модерации", published: "Опубликован", rejected: "Отклонён" };
+
+function ReviewsSection() {
+  const [items,setItems]=useState<AccountReview[]>([]); const [error,setError]=useState(""); const [editing,setEditing]=useState<AccountReview|null>(null); const [saving,setSaving]=useState(false);
+  useEffect(()=>{fetch("/api/v1/account/reviews",{credentials:"same-origin"}).then(async(response)=>{const body=await response.json() as {reviews?:AccountReview[];error?:string};if(!response.ok)throw new Error(body.error||"Не удалось загрузить отзывы");setItems(body.reviews||[])}).catch((reason)=>setError(reason instanceof Error?reason.message:"Не удалось загрузить отзывы"))},[]);
+  const save=async(event:FormEvent)=>{event.preventDefault();if(!editing)return;setSaving(true);setError("");try{const response=await fetch(`/api/v1/account/reviews/${editing.id}`,{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({rating:editing.rating,text:editing.text})});const body=await response.json() as {error?:string};if(!response.ok)throw new Error(body.error||"Не удалось сохранить");setItems((current)=>current.map((item)=>item.id===editing.id?editing:item));setEditing(null)}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось сохранить")}finally{setSaving(false)}};
+  return <div className="account-reviews"><div className="account-title"><div><p className="eyebrow">После покупки</p><h1>Мои отзывы</h1></div></div>{error&&<p className="form-error" role="alert">{error}</p>}{items.length?items.map((item)=><article key={item.id}><header><div><a href={`/product/${item.slug}#reviews`}>{item.product}</a><time>{formatDate(item.createdAt)}</time></div><span className={`admin-pill ${item.status}`}>{reviewStatusLabels[item.status]}</span></header><div className="account-review-stars">{"★".repeat(item.rating)}{"☆".repeat(5-item.rating)}</div><p>{item.text}</p>{item.status==="pending"&&<button type="button" onClick={()=>setEditing({...item})}>Редактировать</button>}</article>):<div className="orders-empty"><h2>Отзывов пока нет</h2><p>Оставить отзыв можно на странице товара после выполненного заказа.</p></div>}{editing&&<div className="account-review-dialog" role="dialog" aria-modal="true" aria-label="Редактировать отзыв"><form onSubmit={(event)=>void save(event)}><header><h2>{editing.product}</h2><button type="button" onClick={()=>setEditing(null)} aria-label="Закрыть">×</button></header><div className="account-review-rating" role="radiogroup">{[1,2,3,4,5].map((value)=><button type="button" role="radio" aria-checked={editing.rating===value} aria-label={`${value} из 5`} className={value<=editing.rating?"active":""} onClick={()=>setEditing({...editing,rating:value})} key={value}>★</button>)}</div><label>Текст отзыва<textarea required minLength={10} maxLength={3000} rows={6} value={editing.text} onChange={(event)=>setEditing({...editing,text:event.target.value})}/></label><button className="primary" disabled={saving}>{saving?"Сохраняем…":"Сохранить"}</button></form></div>}</div>;
+}
+
 export default function AccountPage({ section, orderNumber }: {
   section: Section;
   orderNumber?: string;
@@ -652,6 +663,7 @@ export default function AccountPage({ section, orderNumber }: {
         ? <OrderDetailSection orderNumber={orderNumber} />
         : section === "orders" ? <OrdersSection orders={orders} error={error} />
         : section === "profile" ? <ProfileSection user={user} onUpdated={setUser} />
+        : section === "reviews" ? <ReviewsSection />
         : <FavoritesSection />}
     </AccountShell>
   );

@@ -114,6 +114,7 @@ func main() {
 	)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
+	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
 		Handler: httpapi.NewRouter(logger, httpapi.Dependencies{
@@ -131,7 +132,7 @@ func main() {
 			Payments:     paymentService,
 			Settings:     shopSettings,
 			Procurement:  procurementService,
-			Reviews:      reviews.NewStore(pool),
+			Reviews:      reviews.NewStore(pool, photoStorage),
 			Refunds:      paymentService,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,
@@ -163,13 +164,6 @@ func main() {
 	// пикселей. Фоновый перенос кладёт свои копии поменьше в наше хранилище:
 	// покупатель с телефона перестаёт ждать, а витрина — зависеть от чужого
 	// сервера. Без ключей перенос просто не запускается.
-	photoStorage := photos.NewStorage(
-		cfg.Photos.Endpoint,
-		cfg.Photos.Region,
-		cfg.Photos.Bucket,
-		cfg.Photos.AccessKey,
-		cfg.Photos.SecretKey,
-	)
 	if photoStorage.Configured() {
 		go photos.NewMirror(photos.NewPostgresStore(pool), photoStorage, logger).Run(ctx)
 	} else {
