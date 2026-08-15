@@ -172,6 +172,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		SELECT COUNT(*)::INTEGER,
 			COUNT(*) FILTER (WHERE balance > 0)::INTEGER
 		FROM saby_nomenclature
+		WHERE missing_since IS NULL
 	`).Scan(&knownItems, &knownPositive); err != nil {
 		return fmt.Errorf("read previous Saby catalogue health: %w", err)
 	}
