@@ -238,6 +238,34 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		return fmt.Errorf("upsert Saby nomenclature: %w", err)
 	}
 
+	// Refresh integration mappings independently from product identity. Empty
+	// supplier values never delete a mapping that was already confirmed.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)
+		SELECT p.id, pv.id, 'saby', 'id', source.saby_id
+		FROM products p
+		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
+		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			updated_at=CURRENT_TIMESTAMP
+	`); err != nil {
+		return fmt.Errorf("map Saby IDs: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)
+		SELECT p.id, pv.id, 'saby', 'code', source.code
+		FROM products p
+		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
+		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
+		WHERE NULLIF(BTRIM(source.code),'') IS NOT NULL
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			updated_at=CURRENT_TIMESTAMP
+	`); err != nil {
+		return fmt.Errorf("map Saby codes: %w", err)
+	}
+
 	// Пропавшее из выгрузки не удаляем и не архивируем: обнуляем остаток и
 	// запоминаем день пропажи, чтобы было видно, с каких пор товара нет.
 	if _, err := tx.Exec(ctx, `
