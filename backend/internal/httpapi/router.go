@@ -172,6 +172,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/admin/collections/{id}", adminAPI.updateCollection)
 	mux.HandleFunc("GET /api/v1/admin/categories", adminAPI.categories)
 	mux.HandleFunc("GET /api/v1/admin/categories/{id}/attributes", adminAPI.categoryAttributes)
+	mux.HandleFunc("GET /api/v1/admin/catalog/media-health", adminAPI.catalogMediaHealth)
 	mux.HandleFunc("POST /api/v1/admin/categories", adminAPI.createCategory)
 	mux.HandleFunc("PATCH /api/v1/admin/categories/{id}", adminAPI.updateCategory)
 	mux.HandleFunc("DELETE /api/v1/admin/categories/{id}", adminAPI.deleteCategory)

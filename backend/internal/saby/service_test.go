@@ -128,3 +128,18 @@ func TestValidateCatalogHealthAcceptsCompleteSnapshot(t *testing.T) {
 		t.Fatalf("полная выгрузка отклонена: %v", err)
 	}
 }
+
+func TestNormalizeCharacteristicsUsesConservativeAllowlist(t *testing.T) {
+	got:=normalizeCharacteristics([]any{
+		map[string]any{"name":"Высота","value":"42"},
+		map[string]any{"name":"Освещение","value":"diffused"},
+		map[string]any{"name":"Пароль от склада","value":"secret"},
+	})
+	if got["height_cm"] != float64(42) || got["light_level"] != "diffused" { t.Fatalf("характеристики не сопоставлены: %#v",got) }
+	if _,ok:=got["парольотсклада"];ok{t.Fatal("неизвестная характеристика попала в модель товара")}
+}
+
+func TestNormalizeCharacteristicsIgnoresEmptySupplierValues(t *testing.T) {
+	got:=normalizeCharacteristics(map[string]any{"height_cm":"", "watering":nil})
+	if len(got)!=0{t.Fatalf("пустые значения нельзя импортировать: %#v",got)}
+}

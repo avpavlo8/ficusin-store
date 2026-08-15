@@ -43,6 +43,7 @@ type Product struct {
 	ReviewsCount int     `json:"reviewsCount"`
 	// PopularityScore is derived only from paid/completed order quantities.
 	PopularityScore float64 `json:"popularityScore"`
+	FilterAttributes []ProductAttribute `json:"filterAttributes"`
 }
 
 // Collection is one hand-made set as the storefront tab shows it.
@@ -78,6 +79,19 @@ type ProductDetail struct {
 	Rating         float64 `json:"rating"`
 	ReviewsCount   int `json:"reviewsCount"`
 	Reviews        []Review `json:"reviews"`
+	Attributes     []ProductAttribute `json:"attributes"`
+}
+
+// ProductAttribute is a customer-safe, category-driven characteristic. The
+// catalogue never exposes technical attributes (package size, integration
+// metadata) through this contract.
+type ProductAttribute struct {
+	Code  string `json:"code"`
+	Name  string `json:"name"`
+	Unit  string `json:"unit,omitempty"`
+	Value any    `json:"value"`
+	Badge bool   `json:"badge"`
+	Filterable bool `json:"filterable"`
 }
 
 type PlantPassport struct {

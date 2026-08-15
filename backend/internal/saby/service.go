@@ -81,6 +81,7 @@ type normalizedItem struct {
 	costMinor   int64
 	balance     int
 	images      []string
+	attributes  map[string]any
 }
 
 func NewService(pool *pgxpool.Pool, verifier *OIDCVerifier) *Service {
@@ -149,6 +150,7 @@ type poolRow struct {
 	PriceMinor  int64    `json:"price_minor"`
 	Balance     int      `json:"balance"`
 	Images      []string `json:"images"`
+	Attributes  map[string]any `json:"attributes"`
 }
 
 // sync складывает выгрузку в справочник и обновляет у товаров ровно то, что
@@ -201,7 +203,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			SabyID: item.id, Code: item.code, Article: item.article, Barcode: item.barcode,
 			Barcodes: item.barcodes,
 			Name: item.name, Description: item.description,
-			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images,
+			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images, Attributes: item.attributes,
 		})
 		received = append(received, item.id)
 	}
@@ -216,16 +218,16 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO saby_nomenclature (
 			saby_id, code, article, barcode, barcodes, name, description,
-			price_minor, balance, images, seen_at, missing_since
+			price_minor, balance, images, characteristics, seen_at, missing_since
 		)
 		SELECT item.saby_id, item.code, item.article, item.barcode,
 			ARRAY(SELECT jsonb_array_elements_text(item.barcodes)), item.name,
 			item.description, item.price_minor, item.balance,
-			ARRAY(SELECT jsonb_array_elements_text(item.images)),
+			ARRAY(SELECT jsonb_array_elements_text(item.images)), item.attributes,
 			CURRENT_TIMESTAMP, NULL
 		FROM jsonb_to_recordset($1::jsonb) AS item(
 			saby_id TEXT, code TEXT, article TEXT, barcode TEXT, barcodes JSONB,
-			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB
+			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB, attributes JSONB
 		)
 		ON CONFLICT (saby_id) DO UPDATE SET
 			code = EXCLUDED.code, article = EXCLUDED.article,
@@ -233,10 +235,30 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			name = EXCLUDED.name,
 			description = EXCLUDED.description, price_minor = EXCLUDED.price_minor,
 			balance = EXCLUDED.balance, images = EXCLUDED.images,
+			characteristics = CASE WHEN EXCLUDED.characteristics='{}'::jsonb THEN saby_nomenclature.characteristics ELSE EXCLUDED.characteristics END,
 			seen_at = CURRENT_TIMESTAMP, missing_since = NULL
 	`, catalogue); err != nil {
 		return fmt.Errorf("upsert Saby nomenclature: %w", err)
 	}
+	if _,err:=tx.Exec(ctx,`
+		INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
+		SELECT p.id,d.id,entry.value,'saby',CURRENT_TIMESTAMP
+		FROM products p JOIN saby_nomenclature n ON n.saby_id=p.saby_id
+		CROSS JOIN LATERAL jsonb_each(n.characteristics) entry
+		JOIN attribute_definitions d ON d.code=entry.key
+		WHERE entry.value NOT IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb)
+		  AND EXISTS (WITH RECURSIVE ancestors AS (
+			SELECT p.category_id id UNION ALL SELECT c.parent_id FROM categories c JOIN ancestors a ON c.id=a.id WHERE c.parent_id IS NOT NULL
+		  ) SELECT 1 FROM category_attributes ca JOIN ancestors a ON a.id=ca.category_id WHERE ca.attribute_id=d.id)
+		  AND CASE d.data_type
+			WHEN 'number' THEN jsonb_typeof(entry.value)='number'
+			WHEN 'boolean' THEN jsonb_typeof(entry.value)='boolean'
+			WHEN 'enum' THEN jsonb_typeof(entry.value)='string' AND d.options ? (entry.value #>> '{}')
+			WHEN 'multi_enum' THEN jsonb_typeof(entry.value)='array' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(entry.value) option WHERE NOT d.options ? option)
+			ELSE jsonb_typeof(entry.value)='string' END
+		ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,source='saby',updated_at=CURRENT_TIMESTAMP
+		WHERE product_attribute_values.source='saby'
+	`);err!=nil{return fmt.Errorf("map Saby characteristics: %w",err)}
 
 	// Refresh integration mappings independently from product identity. Empty
 	// supplier values never delete a mapping that was already confirmed.
@@ -460,10 +482,60 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 			costMinor:   max(0, int64(math.Round(cost*100))),
 			balance:     max(0, int(math.Floor(balance))),
 			images:      images,
+			attributes:  normalizeCharacteristics(item.Attributes),
 		})
 	}
 	return result
 }
+
+var characteristicCodes = map[string]string{
+	"height": "height_cm", "heightcm": "height_cm", "высота": "height_cm",
+	"potdiameter": "pot_diameter_cm", "potdiametercm": "pot_diameter_cm", "диаметргоршка": "pot_diameter_cm",
+	"lightlevel": "light_level", "освещение": "light_level", "watering": "watering", "полив": "watering",
+	"humidity": "humidity", "влажность": "humidity", "carelevel": "care_level", "сложностьухода": "care_level",
+	"toxicity": "toxicity", "токсичность": "toxicity", "petsafety": "pet_safety", "безопасностьдляживотных": "pet_safety",
+	"placement": "placement", "помещения": "placement", "growthhabit": "growth_habit", "формароста": "growth_habit",
+}
+
+func normalizeCharacteristics(raw any) map[string]any {
+	result := map[string]any{}
+	allowed := map[string]bool{"height_cm": true, "pot_diameter_cm": true, "light_level": true, "watering": true, "humidity": true, "care_level": true, "toxicity": true, "pet_safety": true, "placement": true, "growth_habit": true}
+	add := func(name string, value any) {
+		key := normalizeCharacteristicName(name)
+		code := characteristicCodes[key]
+		if code == "" { code = key }
+		if !allowed[code] { return }
+		if code == "height_cm" || code == "pot_diameter_cm" {
+			if number, ok := valueFloat(value); ok && number > 0 { result[code] = number }
+			return
+		}
+		switch typed := value.(type) {
+		case string:
+			if text := strings.ToLower(strings.TrimSpace(typed)); text != "" { result[code] = text }
+		case []any:
+			values := []string{}
+			for _, item := range typed { if text := strings.ToLower(valueString(item)); text != "" { values = append(values, text) } }
+			if len(values) > 0 { result[code] = values }
+		case []string:
+			if len(typed) > 0 { result[code] = typed }
+		}
+	}
+	switch typed := raw.(type) {
+	case map[string]any:
+		for name, value := range typed { add(name, characteristicValue(value)) }
+	case []any:
+		for _, entry := range typed {
+			if item, ok := entry.(map[string]any); ok { add(valueString(firstValue(item, "code", "name", "title", "characteristic")), characteristicValue(firstValue(item, "value", "values", "text"))) }
+		}
+	}
+	return result
+}
+
+func normalizeCharacteristicName(value string) string {
+	return strings.Map(func(r rune) rune { if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' { return unicode.ToLower(r) }; return -1 }, value)
+}
+func firstValue(values map[string]any, keys ...string) any { for _, key := range keys { if value, ok := values[key]; ok { return value } }; return nil }
+func characteristicValue(value any) any { if object, ok := value.(map[string]any); ok { return firstValue(object, "value", "values", "text") }; return value }
 
 var (
 	descriptionBreaks = regexp.MustCompile(`(?i)<\s*(br\s*/?|/p|/div|/li)\s*>`)

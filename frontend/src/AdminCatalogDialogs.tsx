@@ -31,13 +31,35 @@ function AttributeFields({ schema, values, onChange }: {
   })}</>;
 }
 
+function validAttributes(schema: CategoryAttribute[], values: Record<string, unknown>) {
+  const allowed = new Set(schema.map((item) => item.code));
+  return Object.fromEntries(Object.entries(values).filter(([code, value]) => allowed.has(code) && value !== null && value !== "" && (!Array.isArray(value) || value.length > 0)));
+}
+
+function missingRequired(schema: CategoryAttribute[], values: Record<string, unknown>) {
+  return schema.filter((item) => item.required && (values[item.code] == null || values[item.code] === "" || (Array.isArray(values[item.code]) && (values[item.code] as unknown[]).length === 0))).map((item) => item.name);
+}
+
+function ExternalMappings({ value, onChange }: { value: Product["externalIds"]; onChange: (value: Product["externalIds"]) => void }) {
+  const protectedMappings = value.filter((item) => item.provider === "ficusin" || item.provider === "saby");
+  const editable = value.filter((item) => item.provider !== "ficusin" && item.provider !== "saby");
+  const update = (index: number, patch: Partial<(typeof editable)[number]>) => onChange([...protectedMappings, ...editable.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item)]);
+  return <div className="wide external-mappings">
+    <div className="integration-mapping"><strong>Системные идентификаторы</strong>{protectedMappings.map((mapping) => <small key={`${mapping.provider}:${mapping.type}:${mapping.externalId}`}>{mapping.provider.toUpperCase()} · {mapping.type}: {mapping.externalId}</small>)}</div>
+    {editable.map((mapping, index) => <div className="external-mapping-row" key={`${index}:${mapping.provider}:${mapping.type}`}><input aria-label="Система" value={mapping.provider} onChange={(event) => update(index, { provider: event.target.value.toLowerCase() })} placeholder="wildberries" /><input aria-label="Тип ID" value={mapping.type} onChange={(event) => update(index, { type: event.target.value.toLowerCase() })} placeholder="sku" /><input aria-label="Внешний ID" value={mapping.externalId} onChange={(event) => update(index, { externalId: event.target.value })} placeholder="Значение" /><button type="button" onClick={() => onChange([...protectedMappings, ...editable.filter((_, itemIndex) => itemIndex !== index)])}>Удалить</button></div>)}
+    <button type="button" className="admin-action" onClick={() => onChange([...value, { provider: "wildberries", type: "sku", externalId: "" }])}>Добавить внешний ID</button>
+  </div>;
+}
+
 export function ProductDialog({ product, onClose, onSaved, onError }: { product: Product; onClose: () => void; onSaved: (value: Product) => void; onError: (value: string) => void }) {
   const [form, setForm] = useState(product);
   const [categories, setCategories] = useState<Category[]>([]);
   const [schema, setSchema] = useState<CategoryAttribute[]>([]);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
-  useEffect(() => { if (form.categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${form.categoryId}/attributes`).then((data) => setSchema(data.attributes)).catch((error) => onError(error.message)); }, [form.categoryId, onError]);
+  useEffect(() => { let active = true; if (form.categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${form.categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [form.categoryId, onError]);
   const save = async () => {
+    const missing = missingRequired(schema, form.attributes || {});
+    if (form.status === "published" && missing.length) { onError(`Заполните обязательные характеристики: ${missing.join(", ")}`); return; }
     try {
       const result = await api<{ product: Product }>(`/api/v1/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify({
         name: form.name, latinName: form.latinName, shortDescription: form.shortDescription,
@@ -52,7 +74,8 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
         petSafety: form.petSafety || "", growthHabit: form.growthHabit || "",
         passport: form.passport, importantWarnings: form.importantWarnings,
         sabyFields: form.sabyFields,
-        attributes: form.attributes,
+        attributes: validAttributes(schema, form.attributes || {}),
+        externalIds: form.externalIds,
         ...(form.sabyFields.includes("stock") ? {} : { stock: form.stock }),
       }) }); onSaved(result.product);
     } catch (error) { onError((error as Error).message); }
@@ -68,7 +91,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
     <label className="wide">Важные предупреждения (по одному на строку)<textarea rows={3} value={(form.importantWarnings || []).join('\n')} onChange={(event) => setForm({...form, importantWarnings: event.target.value.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, 4)})} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
     <h3 className="product-form-heading wide">Категория и характеристики</h3>
-    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId) => setForm({ ...form, categoryId })} /></div>
+    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId) => { setSchema([]); setForm({ ...form, categoryId }); }} /></div>
     <AttributeFields schema={schema.filter((item) => item.audience === "customer")} values={form.attributes || {}} onChange={(code, value) => setForm((current) => ({ ...current, attributes: { ...current.attributes, [code]: value as never } }))} />
     <h3 className="product-form-heading wide">Продажа</h3>
     <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
@@ -77,7 +100,8 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
     <h3 className="product-form-heading wide">Упаковка и доставка</h3>
     <AttributeFields schema={schema.filter((item) => item.audience === "technical")} values={form.attributes || {}} onChange={(code, value) => setForm((current) => ({ ...current, attributes: { ...current.attributes, [code]: value as never } }))} />
     <h3 className="product-form-heading wide">Интеграции</h3>
-    <div className="wide integration-mapping"><strong>Ficusin SKU: {form.sku}</strong>{form.externalIds?.length ? form.externalIds.map((mapping) => <small key={`${mapping.provider}:${mapping.type}:${mapping.externalId}`}>{mapping.provider.toUpperCase()} · {mapping.type}: {mapping.externalId}</small>) : <small>Внешних идентификаторов нет</small>}</div>
+    <div className="wide integration-mapping"><strong>Ficusin SKU: {form.sku}</strong><small>Неизменяемый внутренний идентификатор</small></div>
+    <ExternalMappings value={form.externalIds || []} onChange={(externalIds) => setForm({ ...form, externalIds })} />
     {form.sabyId && <div className="wide admin-field"><span className="admin-field-label">Что берём из СБИС</span><div className="sync-options">{Object.entries(sabyFieldLabels).map(([field, label]) => <label key={field}><input type="checkbox" checked={form.sabyFields.includes(field)} onChange={(event) => setForm({ ...form, sabyFields: event.target.checked ? [...form.sabyFields, field] : form.sabyFields.filter((item) => item !== field) })} /><span><strong>{label}</strong></span></label>)}</div></div>}
     <label>Статус<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Черновик</option><option value="published">Опубликован</option><option value="archived">Архив</option></select></label>
     <label className="admin-checkbox"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />Поднимать в начало каталога</label>
@@ -94,8 +118,10 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
   const [attributes, setAttributes] = useState<Record<string, string | number | boolean | string[] | null>>({});
   const [saving, setSaving] = useState(false);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
-  useEffect(() => { if (categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${categoryId}/attributes`).then((data) => setSchema(data.attributes)).catch((error) => onError(error.message)); }, [categoryId, onError]);
+  useEffect(() => { let active = true; if (categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [categoryId, onError]);
   const save = async () => {
+    const missing = missingRequired(schema, attributes);
+    if (missing.length) { onError(`Заполните обязательные характеристики: ${missing.join(", ")}`); return; }
     setSaving(true);
     try {
       await api("/api/v1/admin/products", { method: "POST", body: JSON.stringify({
@@ -105,7 +131,7 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
         heightCm: form.heightCm === "" ? null : Number(form.heightCm), potDiameterCm: form.potDiameterCm === "" ? null : Number(form.potDiameterCm),
         packageLengthCm: form.packageLengthCm === "" ? null : Number(form.packageLengthCm), packageWidthCm: form.packageWidthCm === "" ? null : Number(form.packageWidthCm),
         packageHeightCm: form.packageHeightCm === "" ? null : Number(form.packageHeightCm), packageWeightGrams: form.packageWeightGrams === "" ? null : Number(form.packageWeightGrams),
-        attributes,
+        attributes: validAttributes(schema, attributes),
       }) });
       onCreated();
     } catch (error) { onError((error as Error).message); setSaving(false); }
@@ -118,7 +144,7 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
     <label className="wide">Короткое описание<textarea rows={2} value={form.shortDescription} onChange={(event) => setForm({ ...form, shortDescription: event.target.value })} /></label>
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
-    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={categoryId} onChange={(next) => { setSchema([]); setCategoryId(next); }} /></div>
     <h3 className="product-form-heading wide">Клиентские характеристики</h3>
     <AttributeFields schema={schema.filter((item) => item.audience === "customer")} values={attributes} onChange={(code, value) => setAttributes((current) => ({ ...current, [code]: value }))} />
     <h3 className="product-form-heading wide">Продажа</h3>

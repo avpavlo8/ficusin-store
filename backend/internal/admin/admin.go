@@ -208,6 +208,16 @@ type ExternalID struct {
 	ExternalID string `json:"externalId"`
 }
 
+type MediaHealth struct {
+	References int `json:"references"`
+	External int `json:"external"`
+	Mirrored int `json:"mirrored"`
+	Pending int `json:"pending"`
+	Exhausted int `json:"exhausted"`
+	ProductsWithoutMedia int `json:"productsWithoutMedia"`
+	OrphanMappings int `json:"orphanMappings"`
+}
+
 type ProductUpdate struct {
 	Name               *string `json:"name"`
 	LatinName          *string `json:"latinName"`
@@ -241,6 +251,7 @@ type ProductUpdate struct {
 	Passport           *catalog.PlantPassport `json:"passport"`
 	ImportantWarnings  *[]string             `json:"importantWarnings"`
 	Attributes         map[string]any         `json:"attributes"`
+	ExternalIDs        *[]ExternalID          `json:"externalIds"`
 }
 
 // ProductCreate — карточка, заведённая в магазине с нуля.

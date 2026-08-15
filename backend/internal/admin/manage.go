@@ -449,6 +449,12 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err := saveProductAttributes(ctx, tx, id, update.Attributes); err != nil {
 		return Product{}, err
 	}
+	if update.Status != nil && *update.Status == "published" || update.CategoryID != nil || update.Attributes != nil {
+		var status string
+		if err := tx.QueryRow(ctx,"SELECT status FROM products WHERE id=$1",id).Scan(&status); err != nil { return Product{},err }
+		if status == "published" { if err := validateRequiredAttributes(ctx,tx,id); err != nil { return Product{},err } }
+	}
+	if update.ExternalIDs != nil { if err := replaceEditableExternalIDs(ctx,tx,id,*update.ExternalIDs); err != nil { return Product{},err } }
 	if update.Image != nil {
 		if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id = $1`, id); err != nil {
 			return Product{}, err
@@ -473,6 +479,46 @@ func (repository *PostgresRepository) UpdateProduct(
 		return Product{}, err
 	}
 	return repository.productByID(ctx, id)
+}
+
+// replaceEditableExternalIDs replaces only manager-owned mappings. Ficusin
+// and Saby identities are maintained by migrations/import and cannot be
+// deleted or forged from the product editor.
+func replaceEditableExternalIDs(ctx context.Context, tx pgx.Tx, productID int64, mappings []ExternalID) error {
+	if _,err:=tx.Exec(ctx,"DELETE FROM product_external_ids WHERE product_id=$1 AND provider NOT IN ('ficusin','saby')",productID);err!=nil{return fmt.Errorf("clear external mappings: %w",err)}
+	for _,mapping:=range mappings{
+		provider:=strings.ToLower(strings.TrimSpace(mapping.Provider));kind:=strings.ToLower(strings.TrimSpace(mapping.Type));external:=strings.TrimSpace(mapping.ExternalID)
+		if provider=="ficusin"||provider=="saby"{continue}
+		if !safeMappingToken(provider)||!safeMappingToken(kind)||external==""||len(external)>240{return fmt.Errorf("%w: неверный внешний идентификатор",ErrInvalidInput)}
+		tag,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id)
+			SELECT $1,pv.id,$2,$3,$4 FROM product_variants pv WHERE pv.product_id=$1 ORDER BY pv.is_active DESC,pv.id LIMIT 1
+			ON CONFLICT(provider,id_type,external_id) DO NOTHING`,productID,provider,kind,external)
+		if err!=nil{return fmt.Errorf("save external mapping: %w",err)}
+		if tag.RowsAffected()!=1{return fmt.Errorf("%w: внешний идентификатор уже связан с другим товаром",ErrInvalidInput)}
+	}
+	return nil
+}
+
+func safeMappingToken(value string) bool {
+	if value==""||len(value)>40{return false}
+	for _,char:=range value{if !(char>='a'&&char<='z'||char>='0'&&char<='9'||char=='_'||char=='-'){return false}}
+	return true
+}
+
+func (repository *PostgresRepository) CatalogMediaHealth(ctx context.Context) (MediaHealth,error) {
+	var result MediaHealth
+	err:=repository.pool.QueryRow(ctx,`
+		SELECT
+			(SELECT COUNT(*) FROM product_media)::int,
+			(SELECT COUNT(*) FROM product_media WHERE object_key ~ '^https?://')::int,
+			(SELECT COUNT(*) FROM product_media pm JOIN media_mirror mm ON mm.source_url=pm.object_key WHERE mm.card_url IS NOT NULL AND mm.large_url IS NOT NULL)::int,
+			(SELECT COUNT(*) FROM product_media pm LEFT JOIN media_mirror mm ON mm.source_url=pm.object_key WHERE pm.object_key ~ '^https?://' AND (mm.source_url IS NULL OR mm.card_url IS NULL OR mm.large_url IS NULL) AND COALESCE(mm.attempts,0)<5)::int,
+			(SELECT COUNT(*) FROM product_media pm JOIN media_mirror mm ON mm.source_url=pm.object_key WHERE pm.object_key ~ '^https?://' AND (mm.card_url IS NULL OR mm.large_url IS NULL) AND mm.attempts>=5)::int,
+			(SELECT COUNT(*) FROM products p WHERE NOT EXISTS(SELECT 1 FROM product_media pm WHERE pm.product_id=p.id))::int,
+			(SELECT COUNT(*) FROM media_mirror mm WHERE NOT EXISTS(SELECT 1 FROM product_media pm WHERE pm.object_key=mm.source_url))::int
+	`).Scan(&result.References,&result.External,&result.Mirrored,&result.Pending,&result.Exhausted,&result.ProductsWithoutMedia,&result.OrphanMappings)
+	if err!=nil{return MediaHealth{},fmt.Errorf("catalog media health: %w",err)}
+	return result,nil
 }
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {

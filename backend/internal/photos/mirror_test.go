@@ -101,7 +101,7 @@ func TestPassMovesPhotos(t *testing.T) {
 
 	// httptest выдаёт http, а перенос ходит только по https, поэтому
 	// подменяем адрес источника на заведомо https и правим транспорт.
-	address := "https://sbis.example/photo.jpg"
+	address := "https://disk.sbis.ru/photo.jpg"
 	storage := NewStorage(bucket.URL, "ru-1", "photos", "key", "secret")
 	store := newMemoryStore(address)
 	worker := NewMirror(store, storage, quiet())
@@ -142,7 +142,7 @@ func TestPassRecordsFailure(t *testing.T) {
 	}))
 	defer source.Close()
 
-	address := "https://sbis.example/missing.jpg"
+	address := "https://disk.sbis.ru/missing.jpg"
 	store := newMemoryStore(address)
 	worker := NewMirror(store, NewStorage("https://s3.example", "ru-1", "photos", "k", "s"), quiet())
 	worker.Pause = 0
@@ -185,7 +185,7 @@ func TestUnreadableFormatIsCopiedAsIs(t *testing.T) {
 	}))
 	defer bucket.Close()
 
-	address := "https://sbis.example/photo.webp"
+	address := "https://disk.sbis.ru/photo.webp"
 	store := newMemoryStore(address)
 	worker := NewMirror(store, NewStorage(bucket.URL, "ru-1", "photos", "k", "s"), quiet())
 	worker.Pause = 0
@@ -218,6 +218,15 @@ func TestDownloadRefusesPlainHTTP(t *testing.T) {
 	if _, _, err := worker.download(context.Background(), "http://sbis.example/a.jpg"); err == nil {
 		t.Fatal("простой http приняли")
 	}
+}
+
+func TestDownloadRefusesNonSabyAndUnsafeRedirectTargets(t *testing.T) {
+	worker := NewMirror(newMemoryStore(), NewStorage("https://s3.example", "ru-1", "b", "k", "s"), quiet())
+	for _, source := range []string{"https://127.0.0.1/a.jpg", "https://metadata.google.internal/a", "https://evil.example/a.jpg", "https://disk.sbis.ru:8443/a.jpg"} {
+		if _, _, err := worker.download(context.Background(), source); err == nil { t.Fatalf("небезопасный URL принят: %s", source) }
+	}
+	redirectTarget, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1/private", nil)
+	if err := worker.client.CheckRedirect(redirectTarget, nil); err == nil { t.Fatal("небезопасный redirect принят") }
 }
 
 // Имя файла выводится из ссылки: повторный перенос обязан лечь на то же
