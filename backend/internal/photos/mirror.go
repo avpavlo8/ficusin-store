@@ -51,7 +51,9 @@ func NewMirror(store Store, storage *Storage, logger *slog.Logger) *Mirror {
 		storage: storage,
 		logger:  logger,
 		client:  &http.Client{Timeout: 60 * time.Second},
-		Batch:   60,
+		// A deployment must drain a normal catalogue in one pass. Downloads
+		// stay deliberately sequential and Pause caps pressure on Saby/S3.
+		Batch:   250,
 		Every:   5 * time.Minute,
 		Pause:   500 * time.Millisecond,
 	}
