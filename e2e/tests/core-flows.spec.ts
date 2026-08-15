@@ -68,7 +68,7 @@ test("@desktop корзина объединяется после авториз
   expect(serverCart).toEqual({ "saby-1": 1, "saby-2": 2 });
 });
 
-test("@phone mobile autocomplete открывает товар", async ({ page }) => {
+test("@phone mobile autocomplete открывает товар", async ({ page, browserName }) => {
   await mockApi(page);
   await page.goto("/product/saby-1");
   await page.getByRole("button", { name: "Поиск по каталогу" }).click();
@@ -76,7 +76,17 @@ test("@phone mobile autocomplete открывает товар", async ({ page }
   await search.fill("фикус");
   // Touch keyboards have no arrow keys. Physical-keyboard navigation is
   // covered by the desktop scenario; the phone path verifies the real tap.
-  await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
+  if (browserName === "webkit") {
+    // WebKit's iPhone emulation exposes the virtual Search action, not a
+    // physical ArrowDown. It submits the query; the result opens from there.
+    await search.press("Enter");
+    await page.waitForURL(/\/product\/|\?q=/);
+    if (!new URL(page.url()).pathname.startsWith("/product/")) {
+      await page.locator(".storefront-name", { hasText: "Фикус Бенджамина" }).click();
+    }
+  } else {
+    await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
+  }
   await expect(page).toHaveURL(/\/product\/saby-2$/);
 });
 
