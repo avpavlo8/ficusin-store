@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,7 +25,7 @@ func (stub sitemapCatalogStub) ListAvailable(context.Context) ([]catalog.Product
 }
 
 func TestKnownAppRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15"} {
+	for _, path := range []string{"/", "/cart", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15"} {
 		if !knownAppRoute(path) {
 			t.Errorf("%s — настоящий адрес магазина, а считается выдуманным", path)
 		}
@@ -32,6 +34,26 @@ func TestKnownAppRoutes(t *testing.T) {
 		if knownAppRoute(path) {
 			t.Errorf("%s — выдуманный адрес, а считается настоящим", path)
 		}
+	}
+}
+
+
+func TestSPAFallbackServesDirectCartURL(t *testing.T) {
+	staticDir := t.TempDir()
+	const shell = "<!doctype html><title>shop</title><div id=\"root\"></div>"
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte(shell), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/cart", nil)
+	response := httptest.NewRecorder()
+	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /cart status = %d, want 200", response.Code)
+	}
+	if !strings.Contains(response.Body.String(), `id="root"`) {
+		t.Fatalf("GET /cart did not return the SPA shell: %q", response.Body.String())
 	}
 }
 

@@ -29,6 +29,7 @@ var appRoutes = map[string]bool{
 	"/account/profile":      true,
 	"/account/favorites":    true,
 	"/admin":                true,
+	"/cart":                 true,
 	"/favorites":            true,
 	"/offer":                true,
 	"/privacy":              true,
