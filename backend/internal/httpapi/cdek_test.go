@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,18 +16,39 @@ type cdekStub struct {
 	configured bool
 	called     bool
 	box        integration.Parcel
+	err        error
 }
 
 func (stub *cdekStub) Configured() bool { return stub.configured }
 
 func (stub *cdekStub) FindCities(context.Context, string) ([]integration.CDEKCity, error) {
 	stub.called = true
-	return nil, nil
+	return nil, stub.err
 }
 
 func (stub *cdekStub) GetOffices(context.Context, int) ([]integration.CDEKOffice, error) {
 	stub.called = true
-	return nil, nil
+	return nil, stub.err
+}
+
+func TestCDEKDoesNotExposeProviderErrors(t *testing.T) {
+	t.Parallel()
+
+	stub := &cdekStub{configured: true, err: errors.New("secret upstream diagnostic")}
+	dependencies := testDependencies(catalogStub{}, authStub{})
+	dependencies.CDEK = stub
+	request := httptest.NewRequest(http.MethodGet,
+		"/api/v1/delivery/cdek?action=cities&city=Рязань", nil)
+	response := httptest.NewRecorder()
+
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadGateway)
+	}
+	if strings.Contains(response.Body.String(), "secret upstream diagnostic") {
+		t.Fatalf("provider error leaked to customer: %s", response.Body)
+	}
 }
 
 func (stub *cdekStub) CalculatePVZ(

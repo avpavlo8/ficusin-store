@@ -232,7 +232,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     {orderNumber ? (
       <div className="success">
         <span>✓</span><h2>Заказ принят</h2><p>Номер заказа: <strong>{orderNumber}</strong></p>
-        <p>Менеджер свяжется с вами, подтвердит наличие и пришлёт ссылку на оплату после подключения эквайринга.</p>
+        <p>Менеджер свяжется с вами, если заказ или стоимость доставки требуют подтверждения.</p>
         <button className="primary-button" onClick={() => setCheckoutOpen(false)}>Вернуться в магазин</button>
       </div>
     ) : (
@@ -495,17 +495,16 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             </div>
             {paymentMethod === "online" && cdekFeePending && (
               <p className="cdek-status">
-                Оплатить можно будет после того, как менеджер рассчитает доставку — ссылка
-                появится в личном кабинете.
+                Оплата после подтверждения заказа менеджером.
               </p>
             )}
           </fieldset>
         )}
         <fieldset><legend>Комментарий</legend><label><textarea name="comment" rows={3} placeholder="Удобное время, пожелания к заказу" /></label></fieldset>
-        <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekOfficeCode ? "после выбора ПВЗ" : cdekFeePending ? "рассчитает менеджер" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{cdekFeePending && cdekOfficeCode ? `${money(total)} + доставка` : money(total)}</strong></div></div>
-        {!paymentMethods.length && <div className="payment-note"><b>Оплата при получении</b><p>Онлайн-оплата пока не подключена. Менеджер свяжется с вами и подскажет, как оплатить заказ.</p></div>}
+        <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekOfficeCode ? "после выбора ПВЗ" : cdekFeePending ? "рассчитает менеджер" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{cdekFeePending && cdekOfficeCode ? `${money(total)} + доставка` : money(total)}</strong></div>{cdekFeePending && cdekOfficeCode && <p className="cdek-status">Оплата после подтверждения заказа менеджером.</p>}</div>
+        {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
         <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
-        <button className="primary-button full" disabled={submitting || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : paymentMethod === "online" && !cdekFeePending && paymentMethods.length ? "Перейти к оплате" : "Подтвердить заказ"}</button>
+        <button className="primary-button full" disabled={submitting || !paymentMethods.length || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : paymentMethod === "online" && !cdekFeePending && paymentMethods.length ? "Перейти к оплате" : "Подтвердить заказ"}</button>
       </form>
     )}
   </aside>

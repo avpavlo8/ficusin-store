@@ -49,7 +49,9 @@ func startPaymentHandler(logger *slog.Logger, payments paymentService) http.Hand
 		url, err := payments.Start(request.Context(), orderNumber)
 		if err != nil {
 			logger.Error("start payment failed", "error", err, "order", orderNumber)
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			writeJSON(response, http.StatusBadRequest, errorResponse{
+				Error: "Не удалось начать оплату. Проверьте заказ или попробуйте ещё раз позже",
+			})
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]string{"confirmationUrl": url})

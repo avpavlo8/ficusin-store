@@ -77,6 +77,7 @@ const paymentLabels: Record<string, string> = {
   paid: "Оплачен",
   on_delivery: "Оплата при получении",
   invoice: "Счёт от менеджера",
+  manager_confirmation: "После подтверждения менеджером",
   cancelled: "Оплата отменена",
   refunded: "Возвращён",
 };
@@ -232,8 +233,8 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
       <div><span>Доставка</span><span>{order.deliveryFeePending ? "рассчитает менеджер" : order.deliveryFee ? money.format(order.deliveryFee) : "—"}</span></div>
       {order.hasPreorder && <p className="order-note">В заказе есть растения под заказ — менеджер уточнит срок поставки и свяжется с вами.</p>}
       {order.deliveryFeePending && <p className="order-note">{order.repackRequested
-        ? "Вы просили упаковать растения в одну коробку. Менеджер проверит, поместятся ли они вместе, пересчитает доставку и свяжется с вами."
-        : "Менеджер рассчитает стоимость доставки и свяжется с вами до отправки заказа."}</p>}
+        ? "Вы просили упаковать растения в одну коробку. Менеджер проверит, поместятся ли они вместе, пересчитает доставку и свяжется с вами. Оплата после подтверждения заказа менеджером."
+        : "Менеджер рассчитает стоимость доставки и свяжется с вами до отправки заказа. Оплата после подтверждения заказа менеджером."}</p>}
       <div className="total"><span>Итого</span><span>{money.format(order.total)}</span></div>
     </section>
     <section className="order-facts">

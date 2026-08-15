@@ -192,6 +192,42 @@ test("@desktop оформление отправляет заказ с норм�
   });
 });
 
+for (const delivery of [
+  { id: "courier", label: "Курьер по Рязани", address: "Рязань, Почтовая, 1" },
+  { id: "post", label: "Почта России", address: "390000, Рязань, Почтовая, 1" },
+]) {
+  test(`@desktop ${delivery.label}: адрес и оплата после подтверждения сохраняются`, async ({ page }) => {
+    await mockApi(page);
+    let order: Record<string, unknown> | undefined;
+    await page.route("**/api/v1/orders", async (route) => {
+      order = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ json: { orderNumber: "TEST-CHECKOUT-1" } });
+    });
+    await page.goto("/");
+    const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+    await card.getByRole("button", { name: "В корзину" }).click();
+    await card.getByRole("button", { name: /В корзине/ }).click();
+    await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+
+    const checkout = page.locator(".checkout.open");
+    await checkout.locator(`input[name="delivery"][value="${delivery.id}"]`).check();
+    await expect(checkout.getByText("Оплата после подтверждения заказа менеджером")).toBeVisible();
+    await checkout.getByLabel("Имя").fill("Тестовый заказ");
+    await checkout.getByLabel("Телефон").fill("9151234567");
+    await checkout.getByLabel("Email").fill("test@example.com");
+    await checkout.getByLabel("Адрес доставки").fill(delivery.address);
+    await checkout.locator('input[name="consent"]').check();
+    await checkout.getByRole("button", { name: "Подтвердить заказ" }).click();
+
+    expect(order).toMatchObject({
+      customer: { address: delivery.address },
+      delivery: delivery.id,
+      paymentMethod: "manager_confirmation",
+      consent: true,
+    });
+  });
+}
+
 test("@desktop оформление подставляет профиль авторизованного покупателя", async ({ page }) => {
   await mockApi(page, owner);
   await page.goto("/");

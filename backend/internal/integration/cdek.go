@@ -444,6 +444,34 @@ func (client *CDEKClient) FetchOrder(ctx context.Context, uuid string) (Shipment
 	return shipment, nil
 }
 
+// CancelOrder asks CDEK to cancel a shipment that was cancelled in Ficusin.
+// CDEK may reject cancellation after hand-off; the caller persists that
+// failure for a manager instead of pretending the parcel was stopped.
+func (client *CDEKClient) CancelOrder(ctx context.Context, uuid string) error {
+	if !client.Configured() {
+		return errors.New("СДЭК не настроен")
+	}
+	if strings.TrimSpace(uuid) == "" {
+		return errors.New("не указан UUID отправления СДЭК")
+	}
+	var result struct {
+		Requests []struct {
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		} `json:"requests"`
+	}
+	if err := client.request(ctx, http.MethodDelete, "/orders/"+url.PathEscape(uuid), nil, &result); err != nil {
+		return err
+	}
+	for _, attempt := range result.Requests {
+		for _, failure := range attempt.Errors {
+			return fmt.Errorf("СДЭК не отменил отправление: %s", failure.Message)
+		}
+	}
+	return nil
+}
+
 func shipmentItems(items []ShipmentItem) []map[string]any {
 	encoded := make([]map[string]any, 0, len(items))
 	for _, item := range items {

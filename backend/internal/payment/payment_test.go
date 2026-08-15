@@ -42,8 +42,8 @@ func TestInvoiceIsOfferedOnlyToWholesale(t *testing.T) {
 func TestCardDisappearsWhenPaymentIsNotConfigured(t *testing.T) {
 	methods := Methods("cdek", false, false)
 
-	if len(methods) != 0 {
-		t.Fatalf("без ключей вариантов быть не должно, получили: %s", methodIDs(methods))
+	if len(methods) != 1 || methods[0].ID != MethodManager {
+		t.Fatalf("без ключей нужна оплата после подтверждения, получили: %s", methodIDs(methods))
 	}
 	if Allowed(MethodOnline, "cdek", false, false) {
 		t.Fatal("оплата картой не должна проходить без ключей")
@@ -55,6 +55,7 @@ func TestInitialStatusFollowsTheChosenMethod(t *testing.T) {
 		MethodOnline:     StatusPending,
 		MethodOnDelivery: StatusOnDelivery,
 		MethodInvoice:    StatusInvoice,
+		MethodManager:    StatusPending,
 	} {
 		if status := InitialStatus(method); status != wanted {
 			t.Fatalf("%s: статус = %s, ожидали %s", method, status, wanted)

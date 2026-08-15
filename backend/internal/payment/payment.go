@@ -22,6 +22,7 @@ const (
 	MethodOnline     = "online"
 	MethodOnDelivery = "on_delivery"
 	MethodInvoice    = "invoice"
+	MethodManager    = "manager_confirmation"
 )
 
 const (
@@ -68,6 +69,13 @@ func Methods(delivery string, wholesaleApproved, onlineConfigured bool) []Method
 			Note:  "Менеджер выставит счёт на организацию",
 		})
 	}
+	if len(methods) == 0 {
+		methods = append(methods, Method{
+			ID:    MethodManager,
+			Title: "После подтверждения менеджером",
+			Note:  "Оплата после подтверждения заказа менеджером",
+		})
+	}
 	return methods
 }
 
@@ -89,6 +97,8 @@ func InitialStatus(method string) string {
 		return StatusOnDelivery
 	case MethodInvoice:
 		return StatusInvoice
+	case MethodManager:
+		return StatusPending
 	default:
 		return StatusPending
 	}
@@ -128,23 +138,26 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		amount      float64
 		feePending  int
 		status      string
+		orderStatus string
 		email       string
 		phone       string
 		method      string
 		existingURL string
+		paymentID  int64
+		key        string
 	)
 	err := service.pool.QueryRow(ctx, `
 		SELECT o.id, o.total::DOUBLE PRECISION, o.delivery_fee_pending,
-			o.payment_status, COALESCE(o.email, ''), o.phone, o.payment_method,
+			o.payment_status, o.status, COALESCE(o.email, ''), o.phone, o.payment_method,
 			COALESCE((
-				SELECT p.confirmation_url FROM payments p
+			SELECT p.confirmation_url FROM payments p
 				WHERE p.order_id = o.id AND p.status = 'pending'
 				ORDER BY p.id DESC LIMIT 1
 			), '')
 		FROM orders o
 		WHERE o.order_number = $1
 	`, orderNumber).Scan(
-		&orderID, &amount, &feePending, &status, &email, &phone, &method, &existingURL,
+		&orderID, &amount, &feePending, &status, &orderStatus, &email, &phone, &method, &existingURL,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("заказ не найден")
@@ -154,6 +167,12 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	}
 	if status == StatusPaid {
 		return "", errors.New("заказ уже оплачен")
+	}
+	if orderStatus == "cancelled" || orderStatus == "completed" {
+		return "", errors.New("этот заказ уже закрыт")
+	}
+	if method != MethodOnline {
+		return "", errors.New("для заказа выбран другой способ оплаты")
 	}
 	if feePending == 1 {
 		return "", errors.New("стоимость доставки ещё не рассчитана — менеджер пришлёт ссылку на оплату")
@@ -178,16 +197,30 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 			Name: "Доставка", Price: deliveryFee, Quantity: 1,
 		})
 	}
-	key, err := idempotenceKey()
+	key, err = idempotenceKey()
 	if err != nil {
 		return "", err
 	}
-	var paymentID int64
-	if err := service.pool.QueryRow(ctx, `
+	err = service.pool.QueryRow(ctx, `
 		INSERT INTO payments (order_id, idempotence_key, amount)
-		VALUES ($1, $2, $3) RETURNING id
-	`, orderID, key, amount).Scan(&paymentID); err != nil {
-		return "", fmt.Errorf("insert payment: %w", err)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (order_id) WHERE status = 'pending' DO NOTHING
+		RETURNING id, idempotence_key
+	`, orderID, key, amount).Scan(&paymentID, &key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Another request won the race. Reuse its durable idempotence key:
+		// YooKassa will then return the same payment instead of charging twice.
+		err = service.pool.QueryRow(ctx, `
+			SELECT id, idempotence_key, confirmation_url
+			FROM payments WHERE order_id = $1 AND status = 'pending'
+			ORDER BY id DESC LIMIT 1
+		`, orderID).Scan(&paymentID, &key, &existingURL)
+		if err == nil && existingURL != "" {
+			return existingURL, nil
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("insert or load payment: %w", err)
 	}
 
 	created, err := service.provider.CreatePayment(ctx, integration.PaymentRequest{
