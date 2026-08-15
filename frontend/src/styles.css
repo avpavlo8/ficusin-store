@@ -563,6 +563,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .admin-form-grid label.wide { grid-column: 1/-1; }
 .admin-form-grid input, .admin-form-grid select, .admin-form-grid textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); font: inherit; font-weight: 400; }
 .admin-form-grid textarea { resize: vertical; line-height: 1.5; }
+.admin-form-grid input[type="number"]::-webkit-inner-spin-button,
+.admin-form-grid input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; }
+.admin-form-grid input[type="number"] { appearance: textfield; }
+.product-form-heading { margin: 10px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink); font-size: 14px; }
+.product-form-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.integration-mapping { display: grid; gap: 5px; padding: 12px; border-radius: 8px; background: #f4f7f4; }
+.integration-mapping small { color: #637067; overflow-wrap: anywhere; }
+.attribute-multi { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 7px; }
+.attribute-multi legend { padding: 0 5px; font-size: 13px; font-weight: 700; }
+.attribute-multi label { display: flex; align-items: center; gap: 7px; font-size: 13px; }
 .admin-form-grid .admin-checkbox { display: flex; gap: 9px; align-items: center; }
 .admin-form-grid .admin-checkbox input { width: auto; }
 .admin-hint { padding: 12px 14px; border-radius: 9px; background: var(--cream); color: #677168; font-size: 11px; line-height: 1.5; }
@@ -924,6 +934,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .category-children { max-height: 390px; padding: 0 0 11px 10px; overflow: auto; }
 .category-children button { width: 100%; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: #58645c; text-align: left; font-size: 13px; cursor: pointer; }
 .category-tree button:hover, .category-tree button.active { background: #edf2ec; color: var(--green); }
+.category-icon { width: 18px; height: 18px; margin-right: 7px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
 .category-children button.leaf { padding-left: 21px; }
 .collection-section { margin: 0 0 42px; padding: 30px; border-radius: 18px; }
 .section-heading.compact { margin-bottom: 20px; }
