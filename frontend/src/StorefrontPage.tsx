@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CheckoutHost from "./CheckoutHost";
 import { StoreHeader } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
-import { searchProducts, suggestions } from "./lib/search";
+import { searchProducts } from "./lib/search";
+import { CatalogSearch } from "./CatalogSearch";
+import { STORAGE_EVENT } from "./StoreHeader";
 
 type Product = {
   id: string;
@@ -22,6 +24,7 @@ type Product = {
   watering?: string;
   categoryId?: number;
   rating: number; reviewsCount: number;
+  popularityScore?: number;
 };
 
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
@@ -50,7 +53,6 @@ export default function StorefrontPage() {
   const [query, setQuery] = useState(
     () => new URLSearchParams(window.location.search).get("q") ?? "",
   );
-  const [suggestOpen, setSuggestOpen] = useState(false);
   const [category, setCategory] = useState<number | null>(null);
   const [opened, setOpened] = useState<Set<number>>(new Set());
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
@@ -77,7 +79,6 @@ export default function StorefrontPage() {
   const [cartOpen, setCartOpen] = useState(
     () => new URLSearchParams(window.location.search).get("cart") === "1",
   );
-  const searchBox = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -106,17 +107,8 @@ export default function StorefrontPage() {
 
   useEffect(() => {
     window.localStorage.setItem("ficusin-cart", JSON.stringify(cart));
+    window.dispatchEvent(new Event(STORAGE_EVENT));
   }, [cart]);
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (searchBox.current && !searchBox.current.contains(event.target as Node)) {
-        setSuggestOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
 
   const searching = query.trim().length > 0;
 
@@ -187,6 +179,7 @@ export default function StorefrontPage() {
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
+    if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0));
     return list;
   }, [found, searching, category, inBranch, selectedPresets, inStockOnly, sort]);
 
@@ -196,11 +189,6 @@ export default function StorefrontPage() {
     else next.add(id);
     return next;
   });
-
-  const hints = useMemo(
-    () => (suggestOpen && searching ? suggestions(products, query) : []),
-    [products, query, searching, suggestOpen],
-  );
 
   const toggle = (id: number) =>
     setOpened((current) => {
@@ -266,44 +254,10 @@ export default function StorefrontPage() {
       />
 
       <div className="storefront-search-bar">
-        <div className="storefront-search" ref={searchBox}>
-          <input
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setSuggestOpen(true);
-            }}
-            onFocus={() => setSuggestOpen(true)}
-            placeholder="Поиск: монстера, фикус, кашпо 15 см"
-            aria-label="Поиск по каталогу"
-            autoComplete="off"
-          />
-          {query && (
-            <button className="storefront-search-clear" onClick={() => setQuery("")} aria-label="Очистить поиск">
-              ×
-            </button>
-          )}
-          {hints.length > 0 && (
-            <div className="storefront-suggestions" role="listbox">
-              {hints.map((hint) => (
-                <button
-                  key={hint.id}
-                  type="button"
-                  onClick={() => {
-                    setQuery(hint.name);
-                    setSuggestOpen(false);
-                  }}
-                >
-                  <b>{hint.name}</b>
-                  <span>{hint.latin}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <CatalogSearch value={query} onChange={setQuery} className="storefront-search" placeholder="Поиск: монстера, фикус, кашпо 15 см" />
       </div>
 
-      <section className="storefront-shell">
+      <section className="storefront-shell" id="catalog">
         <aside className="storefront-side">
           <p className="storefront-side-title">Каталог</p>
           <nav className="storefront-tree">

@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
 import { PushToggle } from "./PushToggle";
+import { useSharedCart } from "./lib/cart";
 
 export type StoreUser = {
   id: number;
@@ -462,7 +463,7 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
       aside={<span>{user.accountType === "wholesale" ? "Оптовый клиент" : "Розничный клиент"}</span>}
     />
 
-    <div className="auth-notice">
+    <div className="auth-notice profile-discount">
       <strong>
         {user.accountType === "wholesale"
           ? "Оптовая заявка на проверке"
@@ -540,6 +541,7 @@ function FavoritesSection() {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
   });
+  const [cart, setCart] = useSharedCart();
 
   useEffect(() => {
     fetch("/api/v1/catalog", { cache: "no-store" })
@@ -573,6 +575,10 @@ function FavoritesSection() {
             <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
             <p>{product.latin}</p>
             <strong>{money.format(product.price)}</strong>
+            <button className={cart[product.id] ? "primary-button" : "secondary-button"} type="button" disabled={product.stock <= 0}
+              onClick={() => setCart((current) => ({ ...current, [product.id]: Math.min(product.stock, (current[product.id] || 0) + 1) }))}>
+              {product.stock <= 0 ? "Нет в наличии" : cart[product.id] ? `Добавить ещё · ${cart[product.id]}` : "В корзину"}
+            </button>
           </article>
         ))}
       </div>

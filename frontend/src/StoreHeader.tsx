@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { InstallHint } from "./InstallHint";
+import { CatalogSearch } from "./CatalogSearch";
 
 export type StoreUser = {
   fullName: string;
@@ -104,26 +105,6 @@ function Icon({ path }: { path: string }) {
 // Pages without their own product list (a product card, the account area)
 // still offer search: submitting hands the query to the catalogue, which is
 // the only page that can display results.
-function goToCatalogSearch(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return;
-  window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
-}
-
-function CatalogSearchForm() {
-  const [value, setValue] = useState("");
-  return <form
-    className="header-search"
-    onSubmit={(event) => {
-      event.preventDefault();
-      goToCatalogSearch(value);
-    }}
-  >
-    <span aria-hidden="true">⌕</span>
-    <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="Поиск по каталогу" />
-  </form>;
-}
-
 // On a phone the search box hides behind the magnifier so the header keeps
 // room for the brand. Opening it focuses the field straight away, because
 // the only reason to tap the magnifier is to start typing.
@@ -136,35 +117,8 @@ function MobileSearch({
   onQueryChange?: (value: string) => void;
   onClose: () => void;
 }) {
-  const [ownValue, setOwnValue] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const filtersInPlace = Boolean(onQueryChange);
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    // The catalogue filters as you type, so submitting there means "done" —
-    // dismissing the keyboard is the useful thing to do.
-    if (filtersInPlace) {
-      inputRef.current?.blur();
-      return;
-    }
-    goToCatalogSearch(ownValue);
-  }
-
   return <div className="mobile-search">
-    <form onSubmit={submit}>
-      <span aria-hidden="true">⌕</span>
-      <input
-        ref={inputRef}
-        value={filtersInPlace ? query || "" : ownValue}
-        onChange={(event) => filtersInPlace
-          ? onQueryChange?.(event.target.value)
-          : setOwnValue(event.target.value)}
-        placeholder="Поиск по каталогу"
-        enterKeyHint="search"
-      />
-    </form>
+    <CatalogSearch value={query} onChange={onQueryChange} className="mobile-catalog-search" autoFocus />
     <button type="button" onClick={onClose} aria-label="Закрыть поиск">×</button>
   </div>;
 }
@@ -190,8 +144,6 @@ function MobileMenu({
     </>}
     <a href="/#catalog" onClick={onClose}>Каталог</a>
     <a href="/favorites">Избранное ({favorites})</a>
-    <a href="/#care" onClick={onClose}>Уход</a>
-    <a href="/#delivery" onClick={onClose}>Доставка</a>
     <a href="/delivery-and-returns">Доставка и возврат</a>
   </aside>;
 }
@@ -230,7 +182,7 @@ function MobileTabBar({
     </a>
     {onCartClick
       ? <button type="button" onClick={onCartClick}>{cartInside}</button>
-      : <a href="/?cart=1">{cartInside}</a>}
+      : <a href="/cart">{cartInside}</a>}
     <a href={user ? "/account" : "/login"}>
       <span className="tab-icon"><Icon path={icons.person} /></span>
       <small>{user ? "Профиль" : "Войти"}</small>
@@ -282,12 +234,10 @@ export function StoreHeader({
         aria-expanded={menuOpen}
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
-      <nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/#care">Уход</a><a href="/#delivery">Доставка</a></nav>
+      <nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a></nav>
       <div className="header-actions">
         {showSearch && <>
-          {onQueryChange
-            ? <label className="header-search"><span aria-hidden="true">⌕</span><input value={query || ""} onChange={(event) => onQueryChange(event.target.value)} placeholder="Поиск по каталогу" /></label>
-            : <CatalogSearchForm />}
+          <CatalogSearch value={query} onChange={onQueryChange} />
           <button
             className="search-toggle"
             onClick={() => setSearchOpen((open) => !open)}
@@ -299,7 +249,7 @@ export function StoreHeader({
         <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites}`}><span aria-hidden="true">♥</span><b>{favorites}</b></a>
         {onCartClick
           ? <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}><span>Корзина</span><b>{cart}</b></button>
-          : <a className="cart-button" href="/?cart=1" aria-label={cartLabel}><span>Корзина</span><b>{cart}</b></a>}
+          : <a className="cart-button" href="/cart" aria-label={cartLabel}><span>Корзина</span><b>{cart}</b></a>}
       </div>
     </header>
     {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onClose={() => setSearchOpen(false)} />}

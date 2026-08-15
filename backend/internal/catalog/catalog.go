@@ -38,8 +38,10 @@ type Product struct {
 	// Collections are the hand-made sets this product belongs to, by slug.
 	// The storefront filters on them without another request.
 	Collections []string `json:"collections"`
-	Rating float64 `json:"rating"`
-	ReviewsCount int `json:"reviewsCount"`
+	Rating      float64  `json:"rating"`
+	ReviewsCount int     `json:"reviewsCount"`
+	// PopularityScore is derived only from paid/completed order quantities.
+	PopularityScore float64 `json:"popularityScore"`
 }
 
 // Collection is one hand-made set as the storefront tab shows it.

@@ -59,9 +59,12 @@ func pushSubscribeHandler(
 			return
 		}
 		endpoint := strings.TrimSpace(body.Endpoint)
+		p256dh := strings.TrimSpace(body.Keys.P256dh)
+		authKey := strings.TrimSpace(body.Keys.Auth)
 		// The endpoint is a URL the push service gave the browser; anything
 		// else is either a mistake or an attempt to make us call a stranger.
-		if !strings.HasPrefix(endpoint, "https://") || len(endpoint) > 1000 {
+		if !strings.HasPrefix(endpoint, "https://") || len(endpoint) > 1000 ||
+			p256dh == "" || len(p256dh) > 256 || authKey == "" || len(authKey) > 256 {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подписка"})
 			return
 		}
@@ -77,8 +80,8 @@ func pushSubscribeHandler(
 
 		if err := push.Subscribe(request.Context(), customerID, notify.Subscription{
 			Endpoint:  endpoint,
-			P256dh:    strings.TrimSpace(body.Keys.P256dh),
-			Auth:      strings.TrimSpace(body.Keys.Auth),
+			P256dh:    p256dh,
+			Auth:      authKey,
 			UserAgent: request.UserAgent(),
 		}); err != nil {
 			logger.Error("store push subscription failed", "error", err)
@@ -100,8 +103,13 @@ func pushUnsubscribeHandler(logger *slog.Logger, push pushService) http.Handler 
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подписка"})
 			return
 		}
+		endpoint := strings.TrimSpace(body.Endpoint)
+		if !strings.HasPrefix(endpoint, "https://") || len(endpoint) > 1000 {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подписка"})
+			return
+		}
 		if push != nil {
-			if err := push.Unsubscribe(request.Context(), strings.TrimSpace(body.Endpoint)); err != nil {
+			if err := push.Unsubscribe(request.Context(), endpoint); err != nil {
 				logger.Error("delete push subscription failed", "error", err)
 			}
 		}
