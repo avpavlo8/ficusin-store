@@ -19,6 +19,7 @@ type CatalogItem struct {
 	Cost        any      `json:"cost"`
 	Balance     any      `json:"balance"`
 	Images      []string `json:"images"`
+	Attributes  any      `json:"attributes"`
 	Published   *bool    `json:"published"`
 	IsParent    bool     `json:"isParent"`
 }

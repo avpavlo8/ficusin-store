@@ -96,6 +96,7 @@ func (repository *PostgresRepository) CreateProduct(
 	if err := saveProductAttributes(ctx, tx, id, input.Attributes); err != nil {
 		return Product{}, err
 	}
+	if err := validateRequiredAttributes(ctx, tx, id); err != nil { return Product{}, err }
 	after, err := productAuditData(ctx, tx, id)
 	if err != nil {
 		return Product{}, err
@@ -187,6 +188,35 @@ func saveProductAttributes(ctx context.Context, tx pgx.Tx, productID int64, attr
 	`, productID); err != nil {
 		return fmt.Errorf("mirror technical attributes: %w", err)
 	}
+	return nil
+}
+
+// validateRequiredAttributes is intentionally enforced in the application,
+// not as a database CHECK: required fields depend on the inherited category
+// schema. Existing published products are grandfathered until an editor
+// changes their category/attributes or explicitly republishes them.
+func validateRequiredAttributes(ctx context.Context, tx pgx.Tx, productID int64) error {
+	rows, err := tx.Query(ctx, `
+		WITH RECURSIVE ancestors AS (
+			SELECT category_id id,0 depth FROM products WHERE id=$1
+			UNION ALL SELECT c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON c.id=a.id WHERE c.parent_id IS NOT NULL
+		), effective AS (
+			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,ca.is_required,a.depth
+			FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+			JOIN attribute_definitions d ON d.id=ca.attribute_id
+			ORDER BY d.id,a.depth
+		)
+		SELECT e.name FROM effective e LEFT JOIN product_attribute_values v
+			ON v.attribute_id=e.id AND v.product_id=$1
+		WHERE e.is_required AND (v.value IS NULL OR v.value='null'::jsonb OR v.value='""'::jsonb OR v.value='[]'::jsonb)
+		ORDER BY e.name
+	`, productID)
+	if err != nil { return fmt.Errorf("validate required attributes: %w",err) }
+	defer rows.Close()
+	missing:=[]string{}
+	for rows.Next(){var name string;if err:=rows.Scan(&name);err!=nil{return err};missing=append(missing,name)}
+	if err:=rows.Err();err!=nil{return err}
+	if len(missing)>0{return fmt.Errorf("%w: заполните обязательные характеристики: %s",ErrInvalidInput,strings.Join(missing,", "))}
 	return nil
 }
 

@@ -325,6 +325,9 @@ try:
         "cost",
         "balance",
         "images",
+        # Raw supplier characteristics are persisted for diagnostics and the
+        # backend maps only a conservative allowlist into category attributes.
+        "attributes",
         "published",
         "isParent",
     )

@@ -255,6 +255,12 @@ func (handlers adminHandlers) categoryAttributes(response http.ResponseWriter, r
 	writeJSON(response, http.StatusOK, map[string]any{"attributes": items})
 }
 
+func (handlers adminHandlers) catalogMediaHealth(response http.ResponseWriter,request *http.Request){
+	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsRead);if !ok{return}
+	provider,ok:=handlers.repository.(interface{CatalogMediaHealth(context.Context)(admin.MediaHealth,error)});if !ok{handlers.failed(response,"catalog media health unavailable",errors.New("catalog media health unavailable"));return}
+	result,err:=provider.CatalogMediaHealth(request.Context());if err!=nil{handlers.failed(response,"catalog media health",err);return};writeJSON(response,http.StatusOK,map[string]any{"media":result})
+}
+
 func (handlers adminHandlers) updateProduct(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
 	if !ok {

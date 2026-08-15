@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -99,6 +100,31 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 		return ProductDetail{}, fmt.Errorf("read product variants: %w", err)
 	}
 	variantRows.Close()
+	attributeRows, err := repository.pool.Query(ctx, `
+		WITH RECURSIVE ancestors AS (
+			SELECT id,parent_id,0 depth FROM categories WHERE id=$2
+			UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+		), effective AS (
+			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,d.unit,d.audience,
+				ca.show_on_pdp,ca.is_badge,ca.sort_order,a.depth
+			FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+			JOIN attribute_definitions d ON d.id=ca.attribute_id
+			ORDER BY d.id,a.depth
+		)
+		SELECT e.code,e.name,e.unit,v.value,e.is_badge
+		FROM effective e JOIN product_attribute_values v ON v.attribute_id=e.id AND v.product_id=$1
+		WHERE e.audience='customer' AND (e.show_on_pdp OR e.is_badge)
+		ORDER BY e.sort_order,e.code
+	`, productID, detail.CategoryID)
+	if err != nil { return ProductDetail{}, fmt.Errorf("query product attributes: %w", err) }
+	detail.Attributes = []ProductAttribute{}
+	for attributeRows.Next() {
+		var item ProductAttribute
+		if err := attributeRows.Scan(&item.Code,&item.Name,&item.Unit,&item.Value,&item.Badge); err != nil { attributeRows.Close(); return ProductDetail{}, err }
+		detail.Attributes=append(detail.Attributes,item)
+	}
+	if err := attributeRows.Err(); err != nil { attributeRows.Close(); return ProductDetail{}, fmt.Errorf("read product attributes: %w",err) }
+	attributeRows.Close()
 	reviewRows, err := repository.pool.Query(ctx, `
 		SELECT r.id, r.rating, r.body, COALESCE(NULLIF(c.full_name, ''), 'Покупатель'),
 			to_char(r.created_at, 'YYYY-MM-DD'), true
@@ -231,7 +257,20 @@ const catalogListQuery = `
 				WHERE cp.product_id = p.id
 			), ARRAY[]::TEXT[]),
 			COALESCE((SELECT AVG(rating)::float8 FROM product_reviews r WHERE r.product_id=p.id AND r.status='published'),0),
-			(SELECT COUNT(*) FROM product_reviews r WHERE r.product_id=p.id AND r.status='published')
+			(SELECT COUNT(*) FROM product_reviews r WHERE r.product_id=p.id AND r.status='published'),
+			COALESCE((
+				WITH RECURSIVE ancestors AS (
+					SELECT id,parent_id,0 depth FROM categories WHERE id=p.category_id
+					UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+				), effective AS (
+					SELECT DISTINCT ON (d.id) d.id,d.code,d.name,d.unit,ca.sort_order,ca.is_filterable,ca.is_badge,a.depth
+					FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id AND (ca.is_filterable OR ca.is_badge)
+					JOIN attribute_definitions d ON d.id=ca.attribute_id AND d.audience='customer'
+					ORDER BY d.id,a.depth
+				)
+				SELECT jsonb_agg(jsonb_build_object('code',e.code,'name',e.name,'unit',e.unit,'value',v.value,'badge',e.is_badge,'filterable',e.is_filterable) ORDER BY e.sort_order,e.code)
+				FROM effective e JOIN product_attribute_values v ON v.attribute_id=e.id AND v.product_id=p.id
+			), '[]'::jsonb)
 		FROM products p
 		JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
 		LEFT JOIN inventory i ON i.variant_id = pv.id
@@ -255,6 +294,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 	for rows.Next() {
 		var product Product
 		var priceMinor int64
+		var filterAttributes []byte
 		if err := rows.Scan(
 			&product.ID,
 			&product.Name,
@@ -278,11 +318,13 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			&product.Collections,
 			&product.Rating,
 			&product.ReviewsCount,
+			&filterAttributes,
 		); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)
 		}
 		product.Price = float64(priceMinor) / 100
 		product.Light = "Уточните у консультанта"
+		if err:=json.Unmarshal(filterAttributes,&product.FilterAttributes);err!=nil{return nil,fmt.Errorf("decode filter attributes: %w",err)}
 		products = append(products, product)
 	}
 	if err := rows.Err(); err != nil {

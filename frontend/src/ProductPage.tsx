@@ -7,6 +7,21 @@ import { ProductReviews } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { money } from "./product/types";
 
+const attributeLabels: Record<string, string> = {
+  sunny: "Яркий свет", diffused: "Рассеянный свет", low_light: "Полутень",
+  frequent: "Частый", moderate: "Умеренный", rare: "Редкий", low: "Низкая",
+  medium: "Средняя", high: "Высокая", easy: "Лёгкий", demanding: "Требовательный",
+  non_toxic: "Нетоксично", toxic: "Токсично", unknown: "Не проверено", safe: "Безопасно",
+  caution: "С осторожностью", bathroom: "Ванная", bedroom: "Спальня", office: "Офис",
+  nursery: "Детская", living_room: "Гостиная", kitchen: "Кухня", upright: "Вертикальная",
+  bushy: "Кустовая", trailing: "Ампельная", climbing: "Вьющаяся", rosette: "Розетка",
+};
+const attributeValue = (value: string | number | boolean | string[], unit?: string) => {
+  const values = Array.isArray(value) ? value : [value];
+  const text = values.map((item) => typeof item === "boolean" ? (item ? "Да" : "Нет") : attributeLabels[String(item)] || String(item)).join(", ");
+  return `${text}${unit ? ` ${unit}` : ""}`;
+};
+
 export default function ProductPage({ slug }: { slug: string }) {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedID, setSelectedID] = useState<number | null>(null);
@@ -27,7 +42,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   useEffect(() => {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
-      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
+      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug]);
 
@@ -57,7 +72,8 @@ export default function ProductPage({ slug }: { slug: string }) {
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
   if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
-  const warningBadges = (product.importantWarnings?.length ? product.importantWarnings : [
+  const schemaBadges = product.attributes.filter((item) => item.badge).map((item) => `${item.name}: ${attributeValue(item.value, item.unit)}`);
+  const warningBadges = (product.importantWarnings?.length ? product.importantWarnings : schemaBadges.length ? schemaBadges : [
     product.petSafety === "toxic" ? "Ядовито для животных" : product.petSafety === "safe" ? "Безопасно для животных" : "",
     product.lightLevel === "sunny" ? "Нужно яркое освещение" : "",
     product.watering === "frequent" ? "Нужен частый полив" : "",
@@ -72,6 +88,7 @@ export default function ProductPage({ slug }: { slug: string }) {
     </section>
     <nav className="pdp-anchor-nav" aria-label="Разделы товара"><a href="#about">О товаре</a><a href="#plant-passport">Паспорт растения</a><a href="#reviews">Отзывы {product.reviewsCount > 0 && `· ${product.reviewsCount}`}</a></nav>
     <section className="pdp-content pdp-section" id="about"><header className="pdp-section-heading"><div><p className="eyebrow">Главное</p><h2>О растении</h2></div></header><div><article><h3>Описание</h3><p>{product.description || "Описание готовится. Подробности можно уточнить у консультанта."}</p></article><article><h3>Базовый уход</h3><p>{product.careInstructions || "Мы приложим рекомендации по поливу, освещению и пересадке к вашему заказу."}</p></article></div></section>
+    {product.attributes.length > 0 && <section className="pdp-section product-attributes" aria-labelledby="product-attributes-title"><header className="pdp-section-heading"><div><p className="eyebrow">Характеристики</p><h2 id="product-attributes-title">Подробно о товаре</h2></div></header><dl>{product.attributes.map((item) => <div key={item.code}><dt>{item.name}</dt><dd>{attributeValue(item.value, item.unit)}</dd></div>)}</dl></section>}
     <PlantPassport name={product.name} passport={product.passport} />
     <ProductReviews slug={slug} rating={product.rating} count={product.reviewsCount} reviews={product.reviews} />
     {product.recommendations.length > 0 && <section className="pdp-related"><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div><div className="product-grid">{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong></div></a>)}</div></section>}

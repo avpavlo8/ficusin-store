@@ -7,12 +7,13 @@ export type PlantPassportData = {
   matureSize?: string; toxicity?: string; problems?: string; pests?: string; faq?: FAQItem[];
 };
 export type ProductReview = { id: number; rating: number; text: string; author: string; date: string; verifiedPurchase: boolean; photos: string[]; media?: Array<{ url: string; contentType: string }> };
+export type ProductAttribute = { code: string; name: string; unit?: string; value: string | number | boolean | string[]; badge: boolean };
 export type ProductDetail = {
   id: string; name: string; latin: string; shortDescription: string; description: string;
   careInstructions: string; images: string[]; variants: ProductVariant[]; recommendations: CatalogProduct[];
   catalogSection: string; plantKind?: string; lightLevel?: string; watering?: string;
   heightClass?: string; careLevel?: string; placement?: string; petSafety?: string; growthHabit?: string;
-  passport: PlantPassportData; importantWarnings: string[]; rating: number; reviewsCount: number; reviews: ProductReview[];
+  passport: PlantPassportData; importantWarnings: string[]; rating: number; reviewsCount: number; reviews: ProductReview[]; attributes: ProductAttribute[];
 };
 
 export const money = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value);

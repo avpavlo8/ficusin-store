@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -46,11 +47,15 @@ type Mirror struct {
 const maxSourceBytes = 25 << 20
 
 func NewMirror(store Store, storage *Storage, logger *slog.Logger) *Mirror {
+	client := &http.Client{Timeout: 60 * time.Second}
+	client.CheckRedirect = func(request *http.Request, _ []*http.Request) error {
+		return validateSourceURL(request.URL)
+	}
 	return &Mirror{
 		store:   store,
 		storage: storage,
 		logger:  logger,
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client:  client,
 		// A deployment must drain a normal catalogue in one pass. Downloads
 		// stay deliberately sequential and Pause caps pressure on Saby/S3.
 		Batch:   250,
@@ -165,11 +170,9 @@ func (mirror *Mirror) copies(
 }
 
 func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, string, error) {
-	// Только https: адрес приходит из чужой системы, и ходить по нему куда
-	// угодно мы не обязаны.
-	if !strings.HasPrefix(source, "https://") {
-		return nil, "", errors.New("ссылка не по https")
-	}
+	parsed, err := url.Parse(source)
+	if err != nil { return nil, "", errors.New("некорректная ссылка") }
+	if err := validateSourceURL(parsed); err != nil { return nil, "", err }
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return nil, "", err
@@ -203,6 +206,19 @@ func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, stri
 	}
 	// Заголовку верить нельзя, поэтому смотрим на сами байты.
 	return raw, http.DetectContentType(raw), nil
+}
+
+// validateSourceURL is the SSRF boundary for the background importer. Product
+// media is writable by integrations/admins, so neither the initial URL nor a
+// redirect may turn the application into a proxy to internal infrastructure.
+func validateSourceURL(source *url.URL) error {
+	if source.Scheme != "https" { return errors.New("ссылка не по https") }
+	host := strings.ToLower(strings.TrimSuffix(source.Hostname(), "."))
+	if host != "sbis.ru" && !strings.HasSuffix(host, ".sbis.ru") {
+		return errors.New("домен источника фотографий не разрешён")
+	}
+	if source.User != nil || source.Port() != "" { return errors.New("небезопасный адрес фотографии") }
+	return nil
 }
 
 // Key — имя файла в хранилище. Оно выводится из самой ссылки, поэтому
