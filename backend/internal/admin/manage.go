@@ -297,8 +297,9 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			COALESCE(p.height_class, ''), COALESCE(p.care_level, ''),
 			COALESCE(p.placement, ''), COALESCE(p.pet_safety, ''),
 			COALESCE(p.growth_habit, ''),
-			COALESCE((SELECT object_key FROM product_media WHERE product_id = p.id
-				ORDER BY is_primary DESC, sort_order LIMIT 1), ''),
+			COALESCE((SELECT COALESCE(mm.card_url, pm.object_key) FROM product_media pm
+				LEFT JOIN media_mirror mm ON mm.source_url=pm.object_key WHERE pm.product_id = p.id
+				ORDER BY pm.is_primary DESC, pm.sort_order LIMIT 1), ''),
 			COALESCE(pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			COALESCE((SELECT SUM(GREATEST(available_qty - reserved_qty, 0))
 				FROM inventory WHERE variant_id = pv.id), 0)::INTEGER,
@@ -309,7 +310,12 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			ARRAY(SELECT DISTINCT unnest(p.override_fields || COALESCE(pv.override_fields, '{}'))),
 			p.saby_fields,
 			COALESCE((SELECT source.code FROM saby_nomenclature source WHERE source.saby_id = p.saby_id), ''),
-			p.saby_updated_at, p.category_id
+			p.saby_updated_at, p.category_id,
+			COALESCE((SELECT jsonb_agg(jsonb_build_object(
+				'provider', e.provider, 'type', e.id_type, 'externalId', e.external_id)
+				ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.product_id=p.id), '[]'::jsonb),
+			COALESCE((SELECT jsonb_object_agg(a.code,v.value) FROM product_attribute_values v
+				JOIN attribute_definitions a ON a.id=v.attribute_id WHERE v.product_id=p.id), '{}'::jsonb)
 		FROM products p
 		LEFT JOIN LATERAL (
 			SELECT * FROM product_variants WHERE product_id = p.id
@@ -324,6 +330,8 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 	products := make([]Product, 0)
 	for rows.Next() {
 		var item Product
+		var externalIDs []byte
+		var attributes []byte
 		if err := rows.Scan(&item.ID, &item.SabyID, &item.Slug, &item.Name,
 			&item.LatinName, &item.ShortDescription, &item.Description,
 			&item.CareInstructions, &item.Status, &item.Featured,
@@ -333,8 +341,14 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
-			&item.SabyUpdatedAt, &item.CategoryID); err != nil {
+			&item.SabyUpdatedAt, &item.CategoryID, &externalIDs, &attributes); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
+		}
+		if err := json.Unmarshal(externalIDs, &item.ExternalIDs); err != nil {
+			return nil, fmt.Errorf("decode product external IDs: %w", err)
+		}
+		if err := json.Unmarshal(attributes, &item.Attributes); err != nil {
+			return nil, fmt.Errorf("decode product attributes: %w", err)
 		}
 		products = append(products, item)
 	}
@@ -429,6 +443,40 @@ func (repository *PostgresRepository) UpdateProduct(
 			return Product{}, fmt.Errorf("update product stock: %w", err)
 		}
 	}
+	for code, value := range update.Attributes {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		raw, marshalErr := json.Marshal(value)
+		if marshalErr != nil {
+			return Product{}, fmt.Errorf("encode product attribute %s: %w", code, marshalErr)
+		}
+		if string(raw) == "null" || string(raw) == `""` || string(raw) == "[]" {
+			if _, err := tx.Exec(ctx, `DELETE FROM product_attribute_values v USING attribute_definitions a
+				WHERE v.attribute_id=a.id AND v.product_id=$1 AND a.code=$2`, id, code); err != nil {
+				return Product{}, fmt.Errorf("clear product attribute %s: %w", code, err)
+			}
+			continue
+		}
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
+			SELECT $1,id,$3::jsonb,'local',CURRENT_TIMESTAMP FROM attribute_definitions
+			WHERE code=$2 AND CASE data_type
+				WHEN 'number' THEN jsonb_typeof($3::jsonb)='number'
+				WHEN 'boolean' THEN jsonb_typeof($3::jsonb)='boolean'
+				WHEN 'multi_enum' THEN jsonb_typeof($3::jsonb)='array'
+				ELSE jsonb_typeof($3::jsonb)='string' END
+			ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,
+				source='local',updated_at=CURRENT_TIMESTAMP
+		`, id, code, string(raw))
+		if err != nil {
+			return Product{}, fmt.Errorf("save product attribute %s: %w", code, err)
+		}
+		if tag.RowsAffected() != 1 {
+			return Product{}, fmt.Errorf("%w: неизвестный атрибут или неверный тип: %s", ErrInvalidInput, code)
+		}
+	}
 	if update.Image != nil {
 		if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id = $1`, id); err != nil {
 			return Product{}, err
@@ -457,7 +505,7 @@ func (repository *PostgresRepository) UpdateProduct(
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT c.id, c.parent_id, c.name, c.slug, c.sort_order,
+		SELECT c.id, c.parent_id, c.name, c.slug, c.sort_order, c.icon,
 			(SELECT COUNT(*) FROM products p WHERE p.category_id=c.id)::int,
 			(SELECT COUNT(*) FROM categories ch WHERE ch.parent_id=c.id)::int
 		FROM categories c WHERE c.active=1 ORDER BY c.sort_order,c.name
@@ -465,7 +513,39 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 	if err != nil { return nil, fmt.Errorf("query admin categories: %w", err) }
 	defer rows.Close()
 	result:=make([]Category,0)
-	for rows.Next(){ var c Category; if err:=rows.Scan(&c.ID,&c.ParentID,&c.Name,&c.Slug,&c.SortOrder,&c.ProductsCount,&c.ChildrenCount); err!=nil{return nil,err}; result=append(result,c)}
+	for rows.Next(){ var c Category; if err:=rows.Scan(&c.ID,&c.ParentID,&c.Name,&c.Slug,&c.SortOrder,&c.Icon,&c.ProductsCount,&c.ChildrenCount); err!=nil{return nil,err}; result=append(result,c)}
+	return result,rows.Err()
+}
+
+// ListCategoryAttributes returns the effective category schema. Definitions
+// on the nearest category override the same code inherited from an ancestor.
+func (repository *PostgresRepository) ListCategoryAttributes(ctx context.Context, categoryID int64) ([]CategoryAttribute, error) {
+	rows, err := repository.pool.Query(ctx, `
+		WITH RECURSIVE ancestors AS (
+			SELECT id,parent_id,0 AS depth FROM categories WHERE id=$1
+			UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+		), effective AS (
+			SELECT DISTINCT ON (definition.code) definition.code,definition.name,definition.data_type,
+				definition.unit,definition.options,definition.audience,link.is_required,link.is_filterable,
+				link.show_on_pdp,link.is_badge,link.sort_order,ancestor.depth
+			FROM ancestors ancestor JOIN category_attributes link ON link.category_id=ancestor.id
+			JOIN attribute_definitions definition ON definition.id=link.attribute_id
+			ORDER BY definition.code,ancestor.depth
+		)
+		SELECT code,name,data_type,unit,options,audience,is_required,is_filterable,show_on_pdp,is_badge,sort_order
+		FROM effective ORDER BY audience,sort_order,code
+	`, categoryID)
+	if err != nil { return nil, fmt.Errorf("query category attributes: %w", err) }
+	defer rows.Close()
+	result := make([]CategoryAttribute,0)
+	for rows.Next() {
+		var item CategoryAttribute
+		var options []byte
+		if err := rows.Scan(&item.Code,&item.Name,&item.DataType,&item.Unit,&options,&item.Audience,
+			&item.Required,&item.Filterable,&item.ShowOnPDP,&item.Badge,&item.SortOrder); err != nil { return nil, err }
+		if err := json.Unmarshal(options,&item.Options); err != nil { return nil, fmt.Errorf("decode attribute options: %w",err) }
+		result=append(result,item)
+	}
 	return result,rows.Err()
 }
 
