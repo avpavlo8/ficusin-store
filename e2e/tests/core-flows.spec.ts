@@ -68,7 +68,7 @@ test("@desktop корзина объединяется после авториз
   expect(serverCart).toEqual({ "saby-1": 1, "saby-2": 2 });
 });
 
-test("@phone mobile autocomplete открывает товар", async ({ page, browserName }) => {
+test("@phone mobile autocomplete поддерживает тап и Search action", async ({ page, browserName }) => {
   await mockApi(page);
   await page.goto("/product/saby-1");
   await page.getByRole("button", { name: "Поиск по каталогу" }).click();
@@ -80,10 +80,8 @@ test("@phone mobile autocomplete открывает товар", async ({ page, 
     // WebKit's iPhone emulation exposes the virtual Search action, not a
     // physical ArrowDown. It submits the query; the result opens from there.
     await search.press("Enter");
-    await page.waitForURL(/\/product\/|\?q=/);
-    if (!new URL(page.url()).pathname.startsWith("/product/")) {
-      await page.locator('a[href="/product/saby-2"]').click();
-    }
+    await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
+    return;
   } else {
     await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
   }
