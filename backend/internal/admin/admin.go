@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 )
 
@@ -194,9 +195,17 @@ type Product struct {
 	SabyFields         []string   `json:"sabyFields"`
 	SabyCode           string     `json:"sabyCode"`
 	SabyUpdatedAt      *time.Time `json:"sabyUpdatedAt"`
-	CategoryID         *int64     `json:"categoryId"`
+	CategoryID         *int64               `json:"categoryId"`
 	Passport           catalog.PlantPassport `json:"passport"`
-	ImportantWarnings  []string `json:"importantWarnings"`
+	ImportantWarnings  []string             `json:"importantWarnings"`
+	ExternalIDs        []ExternalID          `json:"externalIds"`
+	Attributes         map[string]any        `json:"attributes"`
+}
+
+type ExternalID struct {
+	Provider   string `json:"provider"`
+	Type       string `json:"type"`
+	ExternalID string `json:"externalId"`
 }
 
 type ProductUpdate struct {
@@ -228,9 +237,10 @@ type ProductUpdate struct {
 	WholesaleMinQty    *int    `json:"wholesaleMinQty"`
 	Stock              *int    `json:"stock"`
 	SabyFields         *[]string `json:"sabyFields"`
-	CategoryID         *int64  `json:"categoryId"`
+	CategoryID         *int64                `json:"categoryId"`
 	Passport           *catalog.PlantPassport `json:"passport"`
-	ImportantWarnings  *[]string `json:"importantWarnings"`
+	ImportantWarnings  *[]string             `json:"importantWarnings"`
+	Attributes         map[string]any         `json:"attributes"`
 }
 
 // ProductCreate — карточка, заведённая в магазине с нуля.
@@ -244,6 +254,13 @@ type ProductCreate struct {
 	PriceMinor       int64  `json:"priceMinor"`
 	Stock            int    `json:"stock"`
 	Image            string `json:"image"`
+	HeightCM         *int `json:"heightCm"`
+	PotDiameterCM    *int `json:"potDiameterCm"`
+	PackageLengthCM  *int `json:"packageLengthCm"`
+	PackageWidthCM   *int `json:"packageWidthCm"`
+	PackageHeightCM  *int `json:"packageHeightCm"`
+	PackageWeightGrams *int `json:"packageWeightGrams"`
+	Attributes       map[string]any `json:"attributes"`
 }
 
 // ImportRequest — массовый импорт из справочника СБИС по кодам товаров.
@@ -276,6 +293,7 @@ type Category struct {
 	Name          string `json:"name"`
 	Slug          string `json:"slug"`
 	SortOrder     int    `json:"sortOrder"`
+	Icon          string `json:"icon"`
 	ProductsCount int    `json:"productsCount"`
 	ChildrenCount int    `json:"childrenCount"`
 }
@@ -291,6 +309,22 @@ type CategoryUpdate struct {
 	Name      *string `json:"name"`
 	Slug      *string `json:"slug"`
 	SortOrder *int    `json:"sortOrder"`
+}
+
+// CategoryAttribute is the product-editor contract for one category. Audience
+// keeps delivery/integration fields out of the customer-facing PDP contract.
+type CategoryAttribute struct {
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	DataType     string `json:"dataType"`
+	Unit         string `json:"unit"`
+	Options      []string `json:"options"`
+	Audience     string `json:"audience"`
+	Required     bool `json:"required"`
+	Filterable   bool `json:"filterable"`
+	ShowOnPDP    bool `json:"showOnPdp"`
+	Badge        bool `json:"badge"`
+	SortOrder    int `json:"sortOrder"`
 }
 
 type SyncRequest struct {
