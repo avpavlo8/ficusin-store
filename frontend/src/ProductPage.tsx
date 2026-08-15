@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { StoreHeader } from "./StoreHeader";
+import { StoreHeader, STORAGE_EVENT } from "./StoreHeader";
 
 type CatalogProduct = { id: string; name: string; latin: string; price: number; image: string; size: string; stock: number };
 type Variant = { id: number; sku: string; label: string; price: number; stock: number; heightCm?: number; potDiameterCm?: number; wholesaleMinQty: number };
@@ -49,6 +49,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       const next = new Set(current);
       if (next.has(product.id)) next.delete(product.id); else next.add(product.id);
       localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
+      window.dispatchEvent(new Event(STORAGE_EVENT));
       return next;
     });
   };
@@ -59,6 +60,7 @@ export default function ProductPage({ slug }: { slug: string }) {
     try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; }
     stored[product.id] = Math.min(variant.stock, quantity);
     localStorage.setItem("ficusin-cart", JSON.stringify(stored));
+    window.dispatchEvent(new Event(STORAGE_EVENT));
     setCart({ ...stored });
     setNotice(cart[product.id] ? "Количество обновлено" : "Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };

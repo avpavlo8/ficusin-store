@@ -27,6 +27,7 @@ type CheckoutHostProps = {
   cartOpen: boolean;
   onCartOpenChange: (open: boolean) => void;
   onCartChange: (cart: Cart) => void;
+  cartPage?: boolean;
 };
 
 // The storefront owns products and the visible cart counter. This host owns
@@ -39,6 +40,7 @@ export default function CheckoutHost({
   cartOpen,
   onCartOpenChange,
   onCartChange,
+  cartPage = false,
 }: CheckoutHostProps) {
   const [cart, setCart] = useState<Cart>(externalCart);
   const [notice, setNotice] = useState("");
@@ -140,9 +142,9 @@ export default function CheckoutHost({
   }, [cart, user]);
 
   useEffect(() => {
-    document.body.classList.toggle("drawer-open", cartOpen || checkoutOpen);
+    document.body.classList.toggle("drawer-open", (cartOpen && !cartPage) || checkoutOpen);
     return () => document.body.classList.remove("drawer-open");
-  }, [cartOpen, checkoutOpen]);
+  }, [cartOpen, cartPage, checkoutOpen]);
 
   function setQuantity(id: string, quantity: number) {
     setCart((current) => {
@@ -181,7 +183,7 @@ export default function CheckoutHost({
         </div>
       )}
 
-      {(cartOpen || checkoutOpen) && (
+      {((cartOpen && !cartPage) || checkoutOpen) && (
         <button
           className="overlay"
           aria-label="Закрыть"
@@ -199,6 +201,7 @@ export default function CheckoutHost({
         onClose={() => onCartOpenChange(false)}
         onQuantityChange={setQuantity}
         onCheckout={beginCheckout}
+        page={cartPage}
       />
 
       <CheckoutPanel user={!!user} {...checkout.panelProps} />

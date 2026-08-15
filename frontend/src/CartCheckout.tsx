@@ -17,6 +17,7 @@ type CartDrawerProps = {
   onClose: () => void;
   onQuantityChange: (id: string, quantity: number) => void;
   onCheckout: () => void;
+  page?: boolean;
 };
 
 const money = (value: number) =>
@@ -38,9 +39,10 @@ export function CartDrawer({
   onClose,
   onQuantityChange,
   onCheckout,
+  page = false,
 }: CartDrawerProps) {
   return (
-    <aside className={`drawer ${open ? "open" : ""}`} aria-hidden={!open}>
+    <aside className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`} aria-hidden={!open}>
       <div className="drawer-head">
         <div>
           <p className="eyebrow">Ваш выбор</p>

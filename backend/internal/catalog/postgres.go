@@ -187,8 +187,18 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 	return result, rows.Err()
 }
 
-func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Product, error) {
-	const query = `
+const catalogListQuery = `
+		WITH popularity AS (
+			SELECT oi.product_id, SUM(oi.quantity * CASE
+				WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' THEN 1.0
+				WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '90 days' THEN 0.5
+				WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '365 days' THEN 0.2
+				ELSE 0.05 END)::DOUBLE PRECISION AS score
+			FROM order_items oi JOIN orders o ON o.id = oi.order_id
+			WHERE o.status <> 'cancelled'
+			  AND (o.status = 'completed' OR o.payment_status = 'paid')
+			GROUP BY oi.product_id
+		)
 		SELECT
 			p.slug,
 			p.name,
@@ -212,6 +222,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			COALESCE(p.watering, ''), COALESCE(p.height_class, ''),
 			COALESCE(p.care_level, ''), COALESCE(p.placement, ''),
 			COALESCE(p.pet_safety, ''), COALESCE(p.growth_habit, ''), p.category_id,
+			COALESCE(popularity.score, 0),
 			COALESCE((
 				SELECT ARRAY_AGG(c.slug ORDER BY c.sort_order, c.id)
 				FROM collection_products cp
@@ -223,15 +234,17 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 		FROM products p
 		JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
 		LEFT JOIN inventory i ON i.variant_id = pv.id
+		LEFT JOIN popularity ON popularity.product_id = p.slug
 		WHERE p.status = 'published'
-		GROUP BY p.id, pv.id
+		GROUP BY p.id, pv.id, popularity.score
 		ORDER BY
 			COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0) > 0 DESC,
 			p.is_featured DESC, p.name ASC
 		LIMIT 1000
 	`
 
-	rows, err := repository.pool.Query(ctx, query)
+func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Product, error) {
+	rows, err := repository.pool.Query(ctx, catalogListQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query catalog: %w", err)
 	}
@@ -260,7 +273,10 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			&product.PetSafety,
 			&product.GrowthHabit,
 			&product.CategoryID,
-			&product.Collections, &product.Rating, &product.ReviewsCount,
+			&product.PopularityScore,
+			&product.Collections,
+			&product.Rating,
+			&product.ReviewsCount,
 		); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)
 		}

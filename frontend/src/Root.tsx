@@ -3,6 +3,7 @@ import AdminPage from "./AdminPage";
 import ProductPage from "./ProductPage";
 import FavoritesPage from "./FavoritesPage";
 import AccountPage from "./AccountPage";
+import CartPage from "./CartPage";
 import { LoginPage, RegisterPage } from "./AuthPages";
 import {
   DeliveryPage,
@@ -40,6 +41,8 @@ export default function Root() {
       return <AdminPage />;
     case "/favorites":
       return <FavoritesPage />;
+    case "/cart":
+      return <CartPage />;
     case "/offer":
       return <OfferPage />;
     case "/privacy":

@@ -10,11 +10,13 @@ export function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   // Registering after load keeps the worker from competing with the first
   // render for bandwidth.
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+  const register = () => {
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {
       // A failed registration only costs the offline page; the shop works.
     });
-  });
+  };
+  if (document.readyState === "complete") register();
+  else window.addEventListener("load", register, { once: true });
 }
 
 export function isStandalone() {
@@ -42,12 +44,31 @@ export function pushSupported() {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
+async function pushRegistration() {
+  await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+  return navigator.serviceWorker.ready;
+}
+
+async function saveSubscription(subscription: PushSubscription) {
+  return fetch("/api/v1/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(subscription.toJSON()),
+  });
+}
+
 export async function pushState() {
   if (!pushSupported()) return { available: false, subscribed: false, blocked: false };
   const response = await fetch("/api/v1/push/key", { cache: "no-store" });
   const { enabled } = await response.json() as { enabled: boolean };
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await pushRegistration();
   const subscription = await registration.pushManager.getSubscription();
+  // Re-upsert on every profile visit. This repairs a backend row that was
+  // expired or lost while the browser still owns a valid subscription.
+  if (enabled && subscription && Notification.permission === "granted") {
+    await saveSubscription(subscription).catch(() => undefined);
+  }
   return {
     available: enabled,
     subscribed: Boolean(subscription),
@@ -67,18 +88,13 @@ export async function enablePush() {
       : "Разрешение не выдано");
   }
 
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await pushRegistration();
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: decodeKey(publicKey),
   });
 
-  const saved = await fetch("/api/v1/push/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify(subscription.toJSON()),
-  });
+  const saved = await saveSubscription(subscription);
   if (!saved.ok) {
     await subscription.unsubscribe();
     throw new Error("Не удалось включить уведомления");
@@ -86,7 +102,7 @@ export async function enablePush() {
 }
 
 export async function disablePush() {
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await pushRegistration();
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return;
   await fetch("/api/v1/push/unsubscribe", {

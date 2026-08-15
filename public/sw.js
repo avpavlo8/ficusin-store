@@ -10,7 +10,7 @@
 //     the phone is offline.
 //   * /api/** is never cached. Prices, stock and the session must be live.
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = `ficusin-shell-${VERSION}`;
 const ASSETS = `ficusin-assets-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
