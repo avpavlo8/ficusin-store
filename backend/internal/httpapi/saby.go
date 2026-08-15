@@ -52,6 +52,7 @@ func sabyCatalogSyncHandler(logger *slog.Logger, service sabySyncService) http.H
 				return
 			}
 			logger.Error("Saby synchronization failed", "error", err)
+			response.Header().Set("X-Saby-Sync-Error", sabySyncErrorCode(err))
 			writeJSON(response, http.StatusInternalServerError, errorResponse{
 				Error: "Не удалось обновить каталог",
 			})
@@ -59,6 +60,28 @@ func sabyCatalogSyncHandler(logger *slog.Logger, service sabySyncService) http.H
 		}
 		writeJSON(response, http.StatusOK, result)
 	})
+}
+
+func sabySyncErrorCode(err error) string {
+	message := err.Error()
+	for _, candidate := range []struct{ prefix, code string }{
+		{"unsafe Saby catalog", "catalog-health"},
+		{"read previous Saby catalogue health", "catalog-health-read"},
+		{"start Saby sync", "sync-run-start"},
+		{"upsert Saby warehouse", "warehouse-upsert"},
+		{"upsert Saby nomenclature", "catalog-upsert"},
+		{"mark missing Saby items", "catalog-missing"},
+		{"update Saby stock", "stock-update"},
+		{"update Saby names", "names-update"},
+		{"update Saby descriptions", "descriptions-update"},
+		{"update Saby prices", "prices-update"},
+		{"commit Saby sync", "sync-commit"},
+	} {
+		if strings.HasPrefix(message, candidate.prefix) {
+			return candidate.code
+		}
+	}
+	return "store-error"
 }
 
 func sabySalesSyncHandler(logger *slog.Logger, service sabySyncService) http.Handler {

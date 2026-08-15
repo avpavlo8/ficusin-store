@@ -117,3 +117,13 @@ func TestSabyCatalogSyncAcceptsCatalog(t *testing.T) {
 		t.Fatalf("body = %s", response.Body.String())
 	}
 }
+
+func TestSabySyncErrorCodeDoesNotExposeDatabaseError(t *testing.T) {
+	err := errors.New("update Saby stock: duplicate key contains customer data")
+	if got := sabySyncErrorCode(err); got != "stock-update" {
+		t.Fatalf("sabySyncErrorCode() = %q", got)
+	}
+	if got := sabySyncErrorCode(errors.New("unexpected secret")); got != "store-error" {
+		t.Fatalf("fallback sabySyncErrorCode() = %q", got)
+	}
+}
