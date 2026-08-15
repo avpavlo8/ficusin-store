@@ -165,6 +165,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
 	if dependencies.Reviews != nil {
 		mux.HandleFunc("GET /api/v1/admin/reviews", pendingReviewsHandler(adminAPI, dependencies.Reviews))
+		mux.HandleFunc("GET /api/v1/admin/review-media/{id}", moderationMediaHandler(adminAPI, dependencies.Reviews))
 		mux.HandleFunc("PATCH /api/v1/admin/reviews/{id}", moderateReviewHandler(adminAPI, dependencies.Reviews))
 	}
 	mux.HandleFunc("GET /api/v1/admin/collections", adminAPI.collections)

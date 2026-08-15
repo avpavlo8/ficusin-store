@@ -14,6 +14,7 @@ import (
 type reviewStoreStub struct { createID int64; createErr error; input reviews.Input; customerID int64; slug string }
 func (stub *reviewStoreStub) Create(_ context.Context, customerID int64, slug string, input reviews.Input)(int64,error){stub.input=input;stub.customerID=customerID;stub.slug=slug;return stub.createID,stub.createErr}
 func (*reviewStoreStub) Photo(context.Context,int64)(string,[]byte,error){return "image/jpeg",[]byte("photo"),nil}
+func (*reviewStoreStub) ModerationMedia(context.Context,int64)(string,[]byte,error){return "image/jpeg",[]byte("photo"),nil}
 func (*reviewStoreStub) Pending(context.Context)([]reviews.ModerationItem,error){return nil,nil}
 func (*reviewStoreStub) Moderate(context.Context,int64,int64,string)error{return nil}
 

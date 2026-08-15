@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -105,7 +106,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 		WHERE r.product_id = $1 AND r.status = 'published' ORDER BY r.created_at DESC LIMIT 30`, productID)
 	if err != nil { return ProductDetail{}, fmt.Errorf("query reviews: %w", err) }
 	detail.Reviews = []Review{}
-	for reviewRows.Next() { var review Review; if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase); err != nil { reviewRows.Close(); return ProductDetail{}, err }; photos, _ := repository.pool.Query(ctx, `SELECT '/api/v1/review-photos/' || id FROM product_review_photos WHERE review_id=$1 ORDER BY sort_order,id`, review.ID); for photos != nil && photos.Next() { var u string; _ = photos.Scan(&u); review.Photos = append(review.Photos,u) }; if photos != nil { photos.Close() }; detail.Reviews = append(detail.Reviews, review) }
+	for reviewRows.Next() { var review Review; if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase); err != nil { reviewRows.Close(); return ProductDetail{}, err }; mediaRows, _ := repository.pool.Query(ctx, `SELECT '/api/v1/review-photos/' || id, content_type FROM product_review_photos WHERE review_id=$1 ORDER BY sort_order,id`, review.ID); for mediaRows != nil && mediaRows.Next() { var media ReviewMedia; _ = mediaRows.Scan(&media.URL, &media.ContentType); review.Media = append(review.Media, media); if strings.HasPrefix(media.ContentType, "image/") { review.Photos = append(review.Photos, media.URL) } }; if mediaRows != nil { mediaRows.Close() }; detail.Reviews = append(detail.Reviews, review) }
 	reviewRows.Close()
 
 	available, err := repository.ListAvailable(ctx)
