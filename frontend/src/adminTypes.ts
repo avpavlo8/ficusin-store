@@ -2,7 +2,13 @@ export type Role = "owner" | "manager" | "";
 
 export type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement";
 
-export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
+export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string; productsCount: number; childrenCount: number };
+
+export type CategoryAttribute = {
+  code: string; name: string; dataType: "text" | "number" | "boolean" | "enum" | "multi_enum";
+  unit: string; options: string[]; audience: "customer" | "technical";
+  required: boolean; filterable: boolean; showOnPdp: boolean; badge: boolean; sortOrder: number;
+};
 
 export type AdminData = {
   user: { fullName: string };
@@ -45,6 +51,8 @@ export type Product = {
   growthHabit?: string; sabyUpdatedAt?: string;
   categoryId?: number;
   passport: PlantPassport; importantWarnings: string[];
+  externalIds: Array<{ provider: string; type: string; externalId: string }>;
+  attributes: Record<string, string | number | boolean | string[]>;
 };
 
 export type PlantPassport = { origin: string; lighting: string; watering: string; humidity: string; temperature: string; soil: string; fertilizer: string; repotting: string; careDifficulty: string; growthRate: string; matureSize: string; toxicity: string; problems: string; pests: string; faq: Array<{ question: string; answer: string }> };
