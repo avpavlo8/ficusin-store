@@ -171,7 +171,7 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT id, parent_id, name, slug, sort_order
+		SELECT id, parent_id, name, slug, sort_order, icon
 		FROM categories WHERE active = 1 ORDER BY sort_order, name
 	`)
 	if err != nil { return nil, fmt.Errorf("query categories: %w", err) }
@@ -179,7 +179,7 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 	result := make([]Category, 0)
 	for rows.Next() {
 		var item Category
-		if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Slug, &item.SortOrder); err != nil {
+		if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Slug, &item.SortOrder, &item.Icon); err != nil {
 			return nil, fmt.Errorf("scan category: %w", err)
 		}
 		result = append(result, item)

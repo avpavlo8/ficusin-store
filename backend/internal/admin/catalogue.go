@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,6 +28,12 @@ type seed struct {
 	images         []string
 	sabyID         string
 	sabyFields     []string
+	heightCM       *int
+	potDiameterCM  *int
+	packageLengthCM *int
+	packageWidthCM *int
+	packageHeightCM *int
+	packageWeightGrams *int
 }
 
 // CreateProduct заводит карточку в магазине.
@@ -49,6 +56,15 @@ func (repository *PostgresRepository) CreateProduct(
 	if input.PriceMinor < 0 || input.Stock < 0 {
 		return Product{}, fmt.Errorf("%w: цена и остаток не могут быть отрицательными", ErrInvalidInput)
 	}
+	for label, value := range map[string]*int{
+		"высота": input.HeightCM, "диаметр горшка": input.PotDiameterCM,
+		"длина упаковки": input.PackageLengthCM, "ширина упаковки": input.PackageWidthCM,
+		"высота упаковки": input.PackageHeightCM, "вес упаковки": input.PackageWeightGrams,
+	} {
+		if value != nil && (*value < 0 || *value > 100000) {
+			return Product{}, fmt.Errorf("%w: неверное значение поля «%s»", ErrInvalidInput, label)
+		}
+	}
 
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
@@ -70,8 +86,14 @@ func (repository *PostgresRepository) CreateProduct(
 		stock:          input.Stock,
 		images:         images,
 		sabyFields:     []string{},
+		heightCM: input.HeightCM, potDiameterCM: input.PotDiameterCM,
+		packageLengthCM: input.PackageLengthCM, packageWidthCM: input.PackageWidthCM,
+		packageHeightCM: input.PackageHeightCM, packageWeightGrams: input.PackageWeightGrams,
 	})
 	if err != nil {
+		return Product{}, err
+	}
+	if err := saveProductAttributes(ctx, tx, id, input.Attributes); err != nil {
 		return Product{}, err
 	}
 	after, err := productAuditData(ctx, tx, id)
@@ -85,6 +107,110 @@ func (repository *PostgresRepository) CreateProduct(
 		return Product{}, err
 	}
 	return repository.productByID(ctx, id)
+}
+
+// saveProductAttributes is the single validation path for category-driven
+// values. A value must have the declared JSON type, belong to the product's
+// effective category schema, and (for enums) use only configured options.
+func saveProductAttributes(ctx context.Context, tx pgx.Tx, productID int64, attributes map[string]any) error {
+	for code, value := range attributes {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("encode product attribute %s: %w", code, err)
+		}
+		if string(raw) == "null" || string(raw) == `""` || string(raw) == "[]" {
+			if _, err := tx.Exec(ctx, `DELETE FROM product_attribute_values v USING attribute_definitions a
+				WHERE v.attribute_id=a.id AND v.product_id=$1 AND a.code=$2`, productID, code); err != nil {
+				return fmt.Errorf("clear product attribute %s: %w", code, err)
+			}
+			if err := clearLegacyAttribute(ctx, tx, productID, code); err != nil {
+				return err
+			}
+			continue
+		}
+		tag, err := tx.Exec(ctx, `
+			WITH RECURSIVE ancestors AS (
+				SELECT category_id AS id FROM products WHERE id=$1
+				UNION ALL SELECT c.parent_id FROM categories c JOIN ancestors a ON c.id=a.id
+				WHERE c.parent_id IS NOT NULL
+			)
+			INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
+			SELECT $1,d.id,$3::jsonb,'local',CURRENT_TIMESTAMP
+			FROM attribute_definitions d
+			WHERE d.code=$2
+			  AND EXISTS (SELECT 1 FROM category_attributes ca JOIN ancestors a ON a.id=ca.category_id
+				WHERE ca.attribute_id=d.id)
+			  AND CASE d.data_type
+				WHEN 'number' THEN jsonb_typeof($3::jsonb)='number'
+				WHEN 'boolean' THEN jsonb_typeof($3::jsonb)='boolean'
+				WHEN 'enum' THEN jsonb_typeof($3::jsonb)='string' AND d.options ? ($3::jsonb #>> '{}')
+				WHEN 'multi_enum' THEN jsonb_typeof($3::jsonb)='array' AND NOT EXISTS (
+					SELECT 1 FROM jsonb_array_elements_text($3::jsonb) item WHERE NOT d.options ? item)
+				ELSE jsonb_typeof($3::jsonb)='string' END
+			ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,
+				source='local',updated_at=CURRENT_TIMESTAMP
+		`, productID, code, string(raw))
+		if err != nil {
+			return fmt.Errorf("save product attribute %s: %w", code, err)
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("%w: атрибут %s не разрешён для категории или имеет неверное значение", ErrInvalidInput, code)
+		}
+	}
+	// Legacy columns remain the delivery/filter read path during the gradual
+	// migration. Mirror generic writes back so both models stay consistent.
+	if _, err := tx.Exec(ctx, `
+		UPDATE products p SET
+			light_level=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='light_level'),p.light_level),
+			watering=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='watering'),p.watering),
+			care_level=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='care_level'),p.care_level),
+			pet_safety=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='pet_safety'),p.pet_safety),
+			placement=COALESCE((SELECT value->>0 FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='placement'),p.placement),
+			growth_habit=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='growth_habit'),p.growth_habit)
+		WHERE p.id=$1
+	`, productID); err != nil {
+		return fmt.Errorf("mirror customer attributes: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE product_variants pv SET
+			height_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='height_cm'),pv.height_cm),
+			pot_diameter_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='pot_diameter_cm'),pv.pot_diameter_cm),
+			package_length_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_length_cm'),pv.package_length_cm),
+			package_width_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_width_cm'),pv.package_width_cm),
+			package_height_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_height_cm'),pv.package_height_cm),
+			package_weight_grams=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_weight_grams'),pv.package_weight_grams)
+		WHERE pv.id=(SELECT id FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1)
+	`, productID); err != nil {
+		return fmt.Errorf("mirror technical attributes: %w", err)
+	}
+	return nil
+}
+
+func clearLegacyAttribute(ctx context.Context, tx pgx.Tx, productID int64, code string) error {
+	productColumns := map[string]string{
+		"light_level": "light_level", "watering": "watering", "care_level": "care_level",
+		"pet_safety": "pet_safety", "placement": "placement", "growth_habit": "growth_habit",
+	}
+	variantColumns := map[string]string{
+		"height_cm": "height_cm", "pot_diameter_cm": "pot_diameter_cm",
+		"package_length_cm": "package_length_cm", "package_width_cm": "package_width_cm",
+		"package_height_cm": "package_height_cm", "package_weight_grams": "package_weight_grams",
+	}
+	if column, ok := productColumns[code]; ok {
+		if _, err := tx.Exec(ctx, "UPDATE products SET "+column+"=NULL WHERE id=$1", productID); err != nil {
+			return fmt.Errorf("clear legacy product attribute %s: %w", code, err)
+		}
+	}
+	if column, ok := variantColumns[code]; ok {
+		if _, err := tx.Exec(ctx, "UPDATE product_variants SET "+column+"=NULL WHERE id=(SELECT id FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1)", productID); err != nil {
+			return fmt.Errorf("clear legacy variant attribute %s: %w", code, err)
+		}
+	}
+	return nil
 }
 
 // ImportProducts заводит карточки по кодам товаров из справочника СБИС.
@@ -252,12 +378,27 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 	var variantID int64
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO product_variants (
-			product_id, saby_id, sku, label, base_price_minor, is_active, updated_at
+			product_id, saby_id, sku, label, base_price_minor, height_cm, pot_diameter_cm,
+			package_length_cm, package_width_cm, package_height_cm, package_weight_grams,
+			is_active, updated_at
 		)
-		VALUES ($1, $2, $3, 'Основной размер', $4, 1, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, 'FIC-' || LPAD(nextval('ficusin_sku_seq')::TEXT, 6, '0'),
+			'Основной вариант', $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
 		RETURNING id
-	`, id, sabyID, strings.ToUpper(slug), item.priceMinor).Scan(&variantID); err != nil {
+	`, id, sabyID, item.priceMinor, item.heightCM, item.potDiameterCM, item.packageLengthCM,
+		item.packageWidthCM, item.packageHeightCM, item.packageWeightGrams).Scan(&variantID); err != nil {
 		return 0, fmt.Errorf("create product variant: %w", err)
+	}
+	if item.sabyID != "" {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)
+			VALUES ($1,$2,'saby','id',$3)
+			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+				product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+				updated_at=CURRENT_TIMESTAMP
+		`, id, variantID, item.sabyID); err != nil {
+			return 0, fmt.Errorf("map Saby product identity: %w", err)
+		}
 	}
 
 	// Склад заводим на всякий случай: без него товару некуда положить
