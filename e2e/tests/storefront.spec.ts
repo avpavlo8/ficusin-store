@@ -154,7 +154,11 @@ test("@desktop оформление открывается из вынесенн
   await expect(checkout.getByRole("heading", { name: "Оформление заказа" })).toBeVisible();
   await expect(checkout.getByLabel("Имя")).toBeVisible();
   await expect(checkout.getByLabel("Телефон")).toBeVisible();
-  await expect(checkout.getByRole("button", { name: "Подтвердить заказ" })).toBeVisible();
+  const consent = checkout.locator('input[name="consent"]');
+  const submit = checkout.getByRole("button", { name: "Подтвердить заказ" });
+  await expect(consent).toBeVisible();
+  await expect(submit).toBeVisible();
+  expect(await consent.evaluate((node) => Boolean(node.compareDocumentPosition(document.querySelector('.checkout.open button.primary-button')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(page).toHaveURL(/\/$/);
 });
 

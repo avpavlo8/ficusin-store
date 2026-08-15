@@ -45,8 +45,7 @@ func RecordMovement(ctx context.Context, tx pgx.Tx, orderID int64, kind string) 
 // менеджер увидит «клиент ждёт», даже если карточка ещё не сопоставлена, —
 // молча потерять обещание покупателю хуже, чем показать несопоставленную
 // заявку.
-func recordPreorderRequests(ctx context.Context, tx pgx.Tx, orderID int64) error {
-	if _, err := tx.Exec(ctx, `
+const recordPreorderRequestsSQL = `
 		INSERT INTO procurement_requests (
 			kind, saby_id, requested_name, quantity, customer_order_id, status, notes
 		)
@@ -55,11 +54,18 @@ func recordPreorderRequests(ctx context.Context, tx pgx.Tx, orderID int64) error
 			'Предзаказ клиента, заказ ' || o.order_number
 		FROM order_items oi
 		JOIN orders o ON o.id = oi.order_id
-		LEFT JOIN products p ON p.id = oi.product_id
+		-- order_items.product_id is the legacy public slug (TEXT), while
+		-- products.id is BIGINT. The variant is the real relational key and
+		-- is present on every order created by the current checkout.
+		JOIN product_variants pv ON pv.id = oi.variant_id
+		LEFT JOIN products p ON p.id = pv.product_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = p.saby_id
 		WHERE oi.order_id = $1 AND oi.is_preorder = 1
 		GROUP BY n.saby_id, oi.product_name, o.id, o.order_number
-	`, orderID); err != nil {
+`
+
+func recordPreorderRequests(ctx context.Context, tx pgx.Tx, orderID int64) error {
+	if _, err := tx.Exec(ctx, recordPreorderRequestsSQL, orderID); err != nil {
 		return fmt.Errorf("record preorder requests: %w", err)
 	}
 	return nil
