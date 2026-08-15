@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type memoryStore struct {
@@ -68,6 +69,16 @@ func photograph(t *testing.T, width, height int) []byte {
 
 func quiet() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestMirrorDefaultBatchDrainsStoreCatalogue(t *testing.T) {
+	worker := NewMirror(newMemoryStore(), NewStorage("https://s3.example", "ru-1", "photos", "k", "s"), quiet())
+	if worker.Batch < 250 {
+		t.Fatalf("photo migration batch = %d, want at least one full catalogue", worker.Batch)
+	}
+	if worker.Pause < 250*time.Millisecond {
+		t.Fatalf("photo migration pause = %s, supplier throttling was removed", worker.Pause)
+	}
 }
 
 func TestPassMovesPhotos(t *testing.T) {
