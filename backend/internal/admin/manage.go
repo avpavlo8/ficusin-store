@@ -309,7 +309,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			ARRAY(SELECT DISTINCT unnest(p.override_fields || COALESCE(pv.override_fields, '{}'))),
 			p.saby_fields,
 			COALESCE((SELECT source.code FROM saby_nomenclature source WHERE source.saby_id = p.saby_id), ''),
-			p.saby_updated_at, p.category_id
+			p.saby_updated_at, p.category_id, p.plant_passport, p.important_warnings
 		FROM products p
 		LEFT JOIN LATERAL (
 			SELECT * FROM product_variants WHERE product_id = p.id
@@ -333,7 +333,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
-			&item.SabyUpdatedAt, &item.CategoryID); err != nil {
+			&item.SabyUpdatedAt, &item.CategoryID, &item.Passport, &item.ImportantWarnings); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		products = append(products, item)
@@ -395,6 +395,8 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
+	_, err = tx.Exec(ctx, `UPDATE products SET plant_passport=COALESCE($2, plant_passport), important_warnings=COALESCE($3, important_warnings), updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, update.Passport, update.ImportantWarnings)
+	if err != nil { return Product{}, fmt.Errorf("update plant passport: %w", err) }
 	_, err = tx.Exec(ctx, `
 		UPDATE product_variants SET label = COALESCE($2, label),
 			base_price_minor = COALESCE($3, base_price_minor),

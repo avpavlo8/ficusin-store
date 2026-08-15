@@ -100,6 +100,27 @@ test("@desktop на карточке товара выбирается коли�
   await expect(page.getByRole("button", { name: "Обновить корзину" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Безопасно для животных")).toBeVisible();
+  await expect(page.locator("#plant-passport")).toContainText("Тропические леса Азии");
+  await expect(page.locator("#reviews")).toContainText("Подтверждённая покупка");
+});
+
+test("@desktop прямой QR-якорь открывает паспорт без потери контента", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/saby-1#plant-passport");
+  await expect(page.locator("#plant-passport")).toBeVisible();
+  await expect(page.locator("#plant-passport details")).toContainText("Когда пересаживать?");
+});
+
+test("@desktop пустой паспорт остаётся полезным и не рисует фиктивные данные", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/products/empty", (route) => route.fulfill({ json: { product: {
+    id: "empty", name: "Растение без паспорта", latin: "", shortDescription: "", description: "", careInstructions: "",
+    images: ["/assets/product-pothos.png"], variants: [], recommendations: [], passport: {}, importantWarnings: [], rating: 0, reviewsCount: 0, reviews: [], catalogSection: "plants",
+  } } }));
+  await page.goto("/product/empty#plant-passport");
+  await expect(page.locator("#plant-passport")).toContainText("Паспорт этого растения готовится");
+  await expect(page.locator("#reviews")).toContainText("ещё нет опубликованных отзывов");
+  await expect(page.locator(".pdp-rating")).toHaveText("Отзывов пока нет");
 });
 
 test("@desktop сортировка по цене", async ({ page }) => {

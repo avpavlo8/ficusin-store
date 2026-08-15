@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ImportDialog, NewProductDialog, ProductDialog, SyncDialog } from "./AdminCatalogDialogs";
 import { PageHeading, api, money, sabyFieldLabels, statusLabels } from "./adminShared";
-import type { AdminCollection, Category, Product } from "./adminTypes";
+import type { AdminCollection, Category, Product, ReviewModerationItem } from "./adminTypes";
 
 // Flattens the category tree into the order it reads in: each parent is
 // followed by its own children, siblings sorted by sortOrder and then by
@@ -199,8 +199,11 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   const [syncing, setSyncing] = useState<number[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [reviews, setReviews] = useState<ReviewModerationItem[]>([]);
   const reload = () => api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError((error as Error).message));
   useEffect(() => { api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError(error.message)); }, [onError]);
+  useEffect(() => { if (can("products.read")) api<{ reviews?: ReviewModerationItem[] }>("/api/v1/admin/reviews").then((data) => setReviews(data.reviews || [])).catch((error) => onError(error.message)); }, [can, onError]);
+  const moderate = async (id: number, status: "published" | "rejected") => { try { await api(`/api/v1/admin/reviews/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }); setReviews((current) => current.filter((item) => item.id !== id)); } catch (error) { onError((error as Error).message); } };
   const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
   const replace = (product: Product) => setItems((current) => current.map((item) => item.id === product.id ? product : item));
   return <><PageHeading eyebrow="Каталог" title="Товары" text="Контент сайта, цены, упаковка, публикация и выборочная синхронизация со СБИС" />
@@ -217,6 +220,7 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
       <td><strong>{product.sabyId ? (product.sabyCode || "Связан") : "Наш товар"}</strong><small>{product.sabyFields.length ? "Берём: " + product.sabyFields.map((field) => sabyFieldLabels[field] || field).join(", ") : "Ничего не берём"}</small><small>{product.sabyUpdatedAt ? new Date(product.sabyUpdatedAt).toLocaleString("ru-RU") : "Не синхронизировался"}</small>{can("products.sync") && product.sabyId && <button className="text-button" onClick={(event) => { event.stopPropagation(); setSyncing([product.id]); }}>Синхронизировать</button>}</td>
       <td><span className="admin-row-arrow" aria-hidden="true">→</span></td>
     </tr>)}</tbody></table></div>
+    <section className="admin-block review-moderation"><div className="admin-block-heading"><div><p className="eyebrow">Контроль качества</p><h2>Отзывы на модерации</h2></div><span className="admin-pill">{reviews.length}</span></div>{reviews.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар / покупатель</th><th>Оценка</th><th>Отзыв</th><th>Решение</th></tr></thead><tbody>{reviews.map((review) => <tr key={review.id}><td><strong>{review.product}</strong><small>{review.author} · {new Date(review.createdAt).toLocaleDateString("ru-RU")}</small></td><td><span className="review-stars">{'★'.repeat(review.rating)}{'☆'.repeat(5-review.rating)}</span></td><td>{review.text}</td><td><div className="admin-review-actions"><button disabled={!can("products.edit")} onClick={() => void moderate(review.id, "rejected")}>Отклонить</button><button className="admin-primary" disabled={!can("products.edit")} onClick={() => void moderate(review.id, "published")}>Опубликовать</button></div></td></tr>)}</tbody></table></div> : <p className="admin-hint">Новых отзывов нет.</p>}</section>
     {editing && <ProductDialog product={editing} onClose={() => setEditing(null)} onSaved={(product) => { replace(product); setEditing(null); }} onError={onError} />}
     {creating && <NewProductDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} onError={onError} />}
     {importing && <ImportDialog onClose={() => setImporting(false)} onImported={() => { setImporting(false); reload(); }} onError={onError} />}

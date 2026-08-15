@@ -42,6 +42,7 @@ type Dependencies struct {
 	Settings settingsService
 	// Procurement is nil only in tests that do not exercise the purchasing panel.
 	Procurement procurementService
+	Reviews reviewStore
 	// Refunds sends money back for a cancelled order; nil means the panel
 	// says refunds are unavailable.
 	Refunds      refundService
@@ -86,6 +87,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/collections", collectionsHandler(logger, dependencies.Collections))
 	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
+	mux.HandleFunc("POST /api/v1/products/{slug}/reviews", createReviewHandler(logger, dependencies.Auth, dependencies.Reviews))
+	mux.HandleFunc("GET /api/v1/review-photos/{id}", reviewPhotoHandler(dependencies.Reviews))
 	mux.HandleFunc("POST /api/v1/auth/request-code", callLimiter.guard(
 		"Слишком много запросов звонка. Попробуйте через несколько минут",
 		authAPI.requestCode,
@@ -160,6 +163,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/products/import", adminAPI.importProducts)
 	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", adminAPI.updateProduct)
 	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
+	if dependencies.Reviews != nil {
+		mux.HandleFunc("GET /api/v1/admin/reviews", pendingReviewsHandler(adminAPI, dependencies.Reviews))
+		mux.HandleFunc("PATCH /api/v1/admin/reviews/{id}", moderateReviewHandler(adminAPI, dependencies.Reviews))
+	}
 	mux.HandleFunc("GET /api/v1/admin/collections", adminAPI.collections)
 	mux.HandleFunc("PATCH /api/v1/admin/collections/{id}", adminAPI.updateCollection)
 	mux.HandleFunc("GET /api/v1/admin/categories", adminAPI.categories)

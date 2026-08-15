@@ -70,6 +70,8 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .product-image { display: block; flex: none; position: relative; aspect-ratio: 1/1.08; overflow: hidden; border-radius: 14px; background: var(--cream); }
 .product-image img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
 .product-card:hover .product-image img { transform: scale(1.035); }
+.storefront-rating { margin:4px 0; color:#56645a; font-size:12px; }
+.storefront-rating span { color:#d08a24; }
 .badge { position: absolute; left: 14px; top: 14px; padding: 7px 11px; border-radius: 99px; background: var(--terracotta); color: white; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .favorite { position: absolute; right: 14px; top: 14px; width: 38px; height: 38px; border: 0; border-radius: 50%; background: rgba(255,255,255,.88); font-size: 22px; cursor: pointer; }
 .product-info { flex: 1; padding: 18px 5px 0; display: flex; flex-direction: column; }
@@ -528,6 +530,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .admin-product img { width: 58px; height: 65px; object-fit: cover; border-radius: 8px; background: var(--cream); }
 .admin-product div { min-width: 0; }
 .admin-product a { display: block; color: #68766c; font-size: 11px; }
+.review-moderation { margin-top:32px; }
+.review-stars { color:#d08a24; letter-spacing:1px; white-space:nowrap; }
+.admin-review-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .order-details td { background: #faf8f3; }
 .order-details td { display: table-cell; }
 .order-details td > div { width: 50%; padding-right: 30px; display: inline-block; vertical-align: top; }
@@ -600,6 +605,31 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .pdp-summary { padding: 30px 0; }
 .pdp-summary h1 { margin: 7px 0 20px; color: var(--green); font: 400 clamp(42px,5vw,68px) Georgia,serif; line-height: .98; letter-spacing: -.04em; }
 .pdp-lead { color: #667168; font-size: 17px; line-height: 1.7; }
+.pdp-rating { display:flex; gap:9px; align-items:center; width:max-content; color:#69756d; font-size:13px; text-decoration:none; }
+.pdp-rating span { color:#d08a24; letter-spacing:1px; }
+.plant-passport,.pdp-reviews { padding:80px 8vw; background:#faf8f2; }
+.plant-passport > header,.pdp-reviews > header { max-width:760px; margin-bottom:34px; }
+.plant-passport h2,.pdp-reviews h2 { margin:8px 0 14px; color:var(--green); font:400 clamp(38px,5vw,56px) Georgia,serif; }
+.passport-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:18px; overflow:hidden; }
+.passport-grid article { padding:26px; background:#fff; }
+.passport-grid h3 { margin:0 0 10px; color:var(--green); font-size:15px; }
+.passport-grid p,.passport-faq p { margin:0; color:#58655c; line-height:1.65; white-space:pre-line; }
+.passport-faq { max-width:900px; margin-top:45px; }
+.passport-faq details { padding:18px 0; border-bottom:1px solid var(--line); }
+.passport-faq summary { color:var(--green); font-weight:700; cursor:pointer; }
+.passport-empty { padding:25px; border:1px dashed var(--line); border-radius:14px; color:#68756d; }
+.pdp-reviews { background:#fff; }
+.review-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.review-list article { padding:24px; border:1px solid var(--line); border-radius:16px; }
+.review-list article>div:first-child { display:flex; gap:12px; flex-wrap:wrap; }
+.review-list article span { color:#d08a24; }
+.review-list time,.review-list small { color:#748078; font-size:12px; }
+.review-photos { display:flex; gap:8px; }
+.review-photos img { width:84px; height:84px; object-fit:cover; border-radius:10px; }
+.review-form { max-width:720px; margin-top:38px; padding:26px; display:grid; gap:16px; border-radius:16px; background:var(--cream); }
+.review-form label { display:grid; gap:7px; color:var(--green); font-weight:700; }
+.review-form textarea,.review-form select,.review-form input { padding:12px; border:1px solid var(--line); border-radius:9px; background:#fff; font:inherit; }
+.review-form button { width:max-content; padding:13px 20px; border:0; border-radius:9px; background:var(--green); color:#fff; font-weight:700; }
 .variant-picker { margin: 28px 0; display: flex; flex-wrap: wrap; gap: 9px; }
 .variant-picker > span { width: 100%; margin-bottom: 4px; font-size: 12px; font-weight: 700; }
 .variant-picker button { min-width: 130px; padding: 12px; display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 9px; background: white; text-align: left; cursor: pointer; }
@@ -720,6 +750,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 	.pdp-buy { align-items: stretch; flex-direction: column; }
 	.pdp-content { padding: 60px 18px; grid-template-columns: 1fr; gap: 45px; }
 	.pdp-related { padding: 65px 18px; }
+	.plant-passport,.pdp-reviews { padding:60px 18px; }
+	.passport-grid,.review-list { grid-template-columns:1fr; }
 	.pdp-footer { align-items: start; flex-direction: column; gap: 18px; }
 }
 

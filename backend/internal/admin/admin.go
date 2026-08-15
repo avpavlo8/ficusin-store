@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 )
 
 const (
@@ -194,6 +195,8 @@ type Product struct {
 	SabyCode           string     `json:"sabyCode"`
 	SabyUpdatedAt      *time.Time `json:"sabyUpdatedAt"`
 	CategoryID         *int64     `json:"categoryId"`
+	Passport           catalog.PlantPassport `json:"passport"`
+	ImportantWarnings  []string `json:"importantWarnings"`
 }
 
 type ProductUpdate struct {
@@ -226,6 +229,8 @@ type ProductUpdate struct {
 	Stock              *int    `json:"stock"`
 	SabyFields         *[]string `json:"sabyFields"`
 	CategoryID         *int64  `json:"categoryId"`
+	Passport           *catalog.PlantPassport `json:"passport"`
+	ImportantWarnings  *[]string `json:"importantWarnings"`
 }
 
 // ProductCreate — карточка, заведённая в магазине с нуля.

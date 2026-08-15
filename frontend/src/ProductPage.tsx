@@ -8,6 +8,8 @@ type ProductDetail = {
   careInstructions: string; images: string[]; variants: Variant[]; recommendations: CatalogProduct[];
   catalogSection: string; plantKind?: string; lightLevel?: string; watering?: string;
   heightClass?: string; careLevel?: string; placement?: string; petSafety?: string; growthHabit?: string;
+  passport: Record<string, string> & { faq?: Array<{ question: string; answer: string }> }; importantWarnings: string[];
+  rating: number; reviewsCount: number; reviews: Array<{ id: number; rating: number; text: string; author: string; date: string; verifiedPurchase: boolean; photos: string[] }>;
 };
 
 const money = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value);
@@ -19,6 +21,10 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewPhotos, setReviewPhotos] = useState<File[]>([]);
+  const [reviewNotice, setReviewNotice] = useState("");
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
@@ -32,7 +38,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   useEffect(() => {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
-      .then((item) => { setProduct(item); setSelectedID(item.variants[0]?.id ?? null); document.title = `${item.name} — Фикусин`; })
+      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug]);
 
@@ -56,22 +62,29 @@ export default function ProductPage({ slug }: { slug: string }) {
     setCart({ ...stored });
     setNotice(cart[product.id] ? "Количество обновлено" : "Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
+  const submitReview = async () => {
+    const photos = await Promise.all(reviewPhotos.map((file) => new Promise<{contentType:string;data:string}>((resolve,reject) => { const reader=new FileReader(); reader.onload=()=>resolve({contentType:file.type,data:String(reader.result).split(',')[1] || ''}); reader.onerror=reject; reader.readAsDataURL(file); })));
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(slug)}/reviews`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rating:reviewRating,text:reviewText,photos})});
+    const body = await response.json() as {error?:string}; if(!response.ok){setReviewNotice(body.error || 'Не удалось отправить отзыв');return}; setReviewNotice('Спасибо! Отзыв отправлен на модерацию.');setReviewText('');setReviewPhotos([]);
+  };
 
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
   if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
-  const warningBadges = [
+  const warningBadges = (product.importantWarnings?.length ? product.importantWarnings : [
     product.petSafety === "toxic" ? "Ядовито для животных" : product.petSafety === "safe" ? "Безопасно для животных" : "",
     product.lightLevel === "sunny" ? "Нужно яркое освещение" : "",
     product.watering === "frequent" ? "Нужен частый полив" : "",
-  ].filter(Boolean).slice(0, 3);
+  ]).filter(Boolean).slice(0, 4);
+  const passportLabels: Record<string,string> = { origin: "Происхождение", lighting: "Освещение", watering: "Полив", humidity: "Влажность", temperature: "Температура", soil: "Грунт", fertilizer: "Удобрение", repotting: "Пересадка", careDifficulty: "Сложность ухода", growthRate: "Скорость роста", matureSize: "Взрослый размер", toxicity: "Токсичность", problems: "Типичные проблемы и решения", pests: "Вредители" };
+  const passportEntries = Object.entries(passportLabels).filter(([key]) => product.passport?.[key]);
 
   return <main className="product-page">
     <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} />
     <nav className="breadcrumbs"><a href="/">Главная</a><span>→</span><a href="/#catalog">Каталог</a><span>→</span><b>{product.name}</b></nav>
     <section className="pdp-main">
       <div className="pdp-gallery"><div className="pdp-thumbs">{product.images.map((image, index) => <button className={activeImage === index ? "active" : ""} onClick={() => setActiveImage(index)} key={`${image}-${index}`}><img src={image} alt="" /></button>)}</div><div className="pdp-image"><img src={product.images[activeImage] || product.images[0]} alt={product.name} /></div></div>
-      <div className="pdp-summary"><p className="latin">{product.latin}</p><h1>{product.name}</h1><p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
+      <div className="pdp-summary"><p className="latin">{product.latin}</p><h1>{product.name}</h1><a className="pdp-rating" href="#reviews" aria-label={`Рейтинг ${product.rating} из 5`}>{product.reviewsCount ? <><span>{'★'.repeat(Math.round(product.rating))}{'☆'.repeat(5-Math.round(product.rating))}</span><strong>{product.rating.toFixed(1)}</strong><u>{product.reviewsCount} отзывов</u></> : "Отзывов пока нет"}</a><p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
         {product.variants.length > 1 && <div className="variant-picker"><span>Выберите размер</span>{product.variants.map((item) => <button className={item.id === variant?.id ? "active" : ""} onClick={() => { setSelectedID(item.id); setQuantity(1); }} key={item.id}><strong>{item.label}</strong><small>{money(item.price)}</small></button>)}</div>}
         {variant && <div className="pdp-specs">{variant.heightCm && <div><span>Высота</span><strong>{variant.heightCm} см</strong></div>}{variant.potDiameterCm && <div><span>Горшок</span><strong>Ø {variant.potDiameterCm} см</strong></div>}<div><span>Артикул</span><strong>{variant.sku}</strong></div><div><span>Наличие</span><strong>{variant.stock > 0 ? `${variant.stock} шт.` : "Нет"}</strong></div></div>}
         {warningBadges.length > 0 && <div className="pdp-warnings">{warningBadges.map((badge) => <span key={badge}>{badge}</span>)}</div>}
@@ -80,6 +93,8 @@ export default function ProductPage({ slug }: { slug: string }) {
       </div>
     </section>
     <section className="pdp-content"><article><p className="eyebrow">О растении</p><h2>Описание</h2><p>{product.description || "Описание готовится. Подробности можно уточнить у консультанта."}</p></article><article><p className="eyebrow">После покупки</p><h2>Уход</h2><p>{product.careInstructions || "Мы приложим рекомендации по поливу, освещению и пересадке к вашему заказу."}</p></article></section>
+    <section className="plant-passport" id="plant-passport"><header><p className="eyebrow">Полная инструкция</p><h2>Паспорт растения</h2><p>Сохраните эту страницу: QR-код ведёт прямо к актуальным рекомендациям по уходу за {product.name}.</p></header>{passportEntries.length ? <div className="passport-grid">{passportEntries.map(([key,label]) => <article key={key}><h3>{label}</h3><p>{product.passport[key]}</p></article>)}</div> : <p className="passport-empty">Паспорт этого растения готовится. Основные рекомендации указаны в разделе «Уход».</p>}{(product.passport?.faq || []).length > 0 && <div className="passport-faq"><h3>Частые вопросы</h3>{product.passport.faq!.map((item,index) => <details key={`${item.question}-${index}`}><summary>{item.question}</summary><p>{item.answer}</p></details>)}</div>}</section>
+    <section className="pdp-reviews" id="reviews"><header><p className="eyebrow">Опыт покупателей</p><h2>Отзывы {product.reviewsCount ? `— ${product.rating.toFixed(1)} из 5` : ""}</h2><p>Отзыв принимается только от авторизованного владельца завершённого заказа с этим товаром. До модерации он не влияет на рейтинг.</p></header>{product.reviews.length ? <div className="review-list">{product.reviews.map((review) => <article key={review.id}><div><strong>{review.author}</strong><span>{'★'.repeat(review.rating)}{'☆'.repeat(5-review.rating)}</span><time dateTime={review.date}>{new Date(review.date).toLocaleDateString('ru-RU')}</time></div>{review.verifiedPurchase && <small>Подтверждённая покупка</small>}<p>{review.text}</p>{review.photos?.length > 0 && <div className="review-photos">{review.photos.map((photo) => <img key={photo} src={photo} alt="Фото покупателя" />)}</div>}</article>)}</div> : <p className="passport-empty">У этого растения ещё нет опубликованных отзывов.</p>}<form className="review-form" onSubmit={(event)=>{event.preventDefault();void submitReview();}}><h3>Оставить отзыв о покупке</h3><label>Оценка<select value={reviewRating} onChange={(event)=>setReviewRating(Number(event.target.value))}>{[5,4,3,2,1].map((value)=><option key={value} value={value}>{value} из 5</option>)}</select></label><label>Текст<textarea required minLength={10} maxLength={3000} rows={4} value={reviewText} onChange={(event)=>setReviewText(event.target.value)} /></label><label>Фотографии, до 3 файлов<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event)=>setReviewPhotos(Array.from(event.target.files || []).slice(0,3))} /></label><button type="submit">Отправить на модерацию</button>{reviewNotice && <p>{reviewNotice}</p>}</form></section>
     {product.recommendations.length > 0 && <section className="pdp-related"><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div><div className="product-grid">{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong></div></a>)}</div></section>}
     <footer className="pdp-footer"><a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a><p>Рязань, Новосёлов, 40А · +7 915 615-11-00 · ежедневно 08:00–20:00</p></footer>
     {notice && <div className="toast">{notice}</div>}
