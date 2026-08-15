@@ -74,8 +74,9 @@ test("@phone mobile autocomplete открывает товар", async ({ page }
   await page.getByRole("button", { name: "Поиск по каталогу" }).click();
   const search = page.locator(".mobile-catalog-search input");
   await search.fill("фикус");
-  await search.press("ArrowDown");
-  await search.press("Enter");
+  // Touch keyboards have no arrow keys. Physical-keyboard navigation is
+  // covered by the desktop scenario; the phone path verifies the real tap.
+  await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
   await expect(page).toHaveURL(/\/product\/saby-2$/);
 });
 
