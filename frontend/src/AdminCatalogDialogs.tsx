@@ -22,36 +22,48 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
         heightClass: form.heightClass || "", careLevel: form.careLevel || "", placement: form.placement || "",
         petSafety: form.petSafety || "", growthHabit: form.growthHabit || "",
         sabyFields: form.sabyFields,
+        attributes: { ...form.attributes, light_level: form.lightLevel || "", watering: form.watering || "",
+          care_level: form.careLevel || "", pet_safety: form.petSafety || "", growth_habit: form.growthHabit || "",
+          height_cm: form.heightCm ?? null, pot_diameter_cm: form.potDiameterCm ?? null,
+          package_length_cm: form.packageLengthCm ?? null, package_width_cm: form.packageWidthCm ?? null,
+          package_height_cm: form.packageHeightCm ?? null, package_weight_grams: form.packageWeightGrams ?? null },
         ...(form.sabyFields.includes("stock") ? {} : { stock: form.stock }),
       }) }); onSaved(result.product);
     } catch (error) { onError((error as Error).message); }
   };
   const setNumeric = (key: keyof Product, value: string) => setForm({ ...form, [key]: value === "" ? undefined : Number(value) });
   return <Dialog title="Редактирование товара" onClose={onClose}><div className="admin-form-grid product-form">
+    <h3 className="product-form-heading wide">Карточка товара</h3>
     <label className="wide">Название<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
     <label>Латинское название<input value={form.latinName} onChange={(event) => setForm({ ...form, latinName: event.target.value })} /></label>
-    <label>Название размера<input value={form.variantLabel} onChange={(event) => setForm({ ...form, variantLabel: event.target.value })} /></label>
     <label className="wide">Короткое описание<textarea rows={2} value={form.shortDescription} onChange={(event) => setForm({ ...form, shortDescription: event.target.value })} /></label>
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">Уход<textarea rows={4} value={form.careInstructions} onChange={(event) => setForm({ ...form, careInstructions: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
+    <h3 className="product-form-heading wide">Категория и характеристики</h3>
     <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId) => setForm({ ...form, categoryId })} /></div>
     <label>Освещённость<select value={form.lightLevel || ""} onChange={(event) => setForm({ ...form, lightLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.lightLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Полив<select value={form.watering || ""} onChange={(event) => setForm({ ...form, watering: event.target.value })}><option value="">Не указано</option>{catalogOptions.watering.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Влажность<select value={String(form.attributes?.humidity || "")} onChange={(event) => setForm({ ...form, attributes: { ...form.attributes, humidity: event.target.value } })}><option value="">Не указано</option><option value="low">Низкая</option><option value="medium">Средняя</option><option value="high">Высокая</option></select></label>
     <label>Высота<select value={form.heightClass || ""} onChange={(event) => setForm({ ...form, heightClass: event.target.value })}><option value="">Не указано</option>{catalogOptions.heightClass.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Сложность ухода<select value={form.careLevel || ""} onChange={(event) => setForm({ ...form, careLevel: event.target.value })}><option value="">Не указано</option>{catalogOptions.careLevel.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Подходит для<select value={form.placement || ""} onChange={(event) => setForm({ ...form, placement: event.target.value })}><option value="">Не указано</option>{catalogOptions.placement.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Для питомцев<select value={form.petSafety || ""} onChange={(event) => setForm({ ...form, petSafety: event.target.value })}><option value="">Не указано</option>{catalogOptions.petSafety.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Токсичность<select value={String(form.attributes?.toxicity || "")} onChange={(event) => setForm({ ...form, attributes: { ...form.attributes, toxicity: event.target.value } })}><option value="">Не указано</option><option value="unknown">Не проверено</option><option value="non_toxic">Нетоксично</option><option value="toxic">Токсично</option></select></label>
     <label>Форма роста<select value={form.growthHabit || ""} onChange={(event) => setForm({ ...form, growthHabit: event.target.value })}><option value="">Не указано</option>{catalogOptions.growthHabit.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <h3 className="product-form-heading wide">Продажа</h3>
     <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
     <label>Остаток, шт.<input type="number" min="0" disabled={form.sabyFields.includes("stock")} value={form.stock} onChange={(event) => setForm({ ...form, stock: Number(event.target.value) })} /></label>
     <label>Оптовый минимум<input type="number" min="1" value={form.wholesaleMinQty} onChange={(event) => setForm({ ...form, wholesaleMinQty: Number(event.target.value) })} /></label>
     <label>Высота растения, см<input type="number" value={number(form.heightCm)} onChange={(event) => setNumeric("heightCm", event.target.value)} /></label>
     <label>Диаметр горшка, см<input type="number" value={number(form.potDiameterCm)} onChange={(event) => setNumeric("potDiameterCm", event.target.value)} /></label>
+    <h3 className="product-form-heading wide">Упаковка и доставка</h3>
     <label>Упаковка: длина, см<input type="number" value={number(form.packageLengthCm)} onChange={(event) => setNumeric("packageLengthCm", event.target.value)} /></label>
     <label>Ширина, см<input type="number" value={number(form.packageWidthCm)} onChange={(event) => setNumeric("packageWidthCm", event.target.value)} /></label>
     <label>Высота, см<input type="number" value={number(form.packageHeightCm)} onChange={(event) => setNumeric("packageHeightCm", event.target.value)} /></label>
-    <label>Вес, г<input type="number" value={number(form.packageWeightGrams)} onChange={(event) => setNumeric("packageWeightGrams", event.target.value)} /></label>
+    <label>Вес упаковки (брутто), г<input type="number" min="0" value={number(form.packageWeightGrams)} onChange={(event) => setNumeric("packageWeightGrams", event.target.value)} /></label>
+    <h3 className="product-form-heading wide">Интеграции</h3>
+    <div className="wide integration-mapping"><strong>Ficusin SKU: {form.sku}</strong>{form.externalIds?.length ? form.externalIds.map((mapping) => <small key={`${mapping.provider}:${mapping.type}:${mapping.externalId}`}>{mapping.provider.toUpperCase()} · {mapping.type}: {mapping.externalId}</small>) : <small>Внешних идентификаторов нет</small>}</div>
     {form.sabyId && <div className="wide admin-field"><span className="admin-field-label">Что берём из СБИС</span><div className="sync-options">{Object.entries(sabyFieldLabels).map(([field, label]) => <label key={field}><input type="checkbox" checked={form.sabyFields.includes(field)} onChange={(event) => setForm({ ...form, sabyFields: event.target.checked ? [...form.sabyFields, field] : form.sabyFields.filter((item) => item !== field) })} /><span><strong>{label}</strong></span></label>)}</div></div>}
     <label>Статус<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Черновик</option><option value="published">Опубликован</option><option value="archived">Архив</option></select></label>
     <label className="admin-checkbox"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />Поднимать в начало каталога</label>
@@ -61,7 +73,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
 // Карточка, заведённая здесь, с СБИС не связана вовсе: ни цена, ни остаток
 // оттуда не придут, пока товар не импортируют по коду.
 export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: () => void; onError: (value: string) => void }) {
-  const [form, setForm] = useState({ name: "", latinName: "", shortDescription: "", description: "", image: "", price: 0, stock: 0, catalogSection: "plants" });
+  const [form, setForm] = useState({ name: "", latinName: "", shortDescription: "", description: "", image: "", price: 0, stock: 0, catalogSection: "plants", heightCm: "", potDiameterCm: "", packageLengthCm: "", packageWidthCm: "", packageHeightCm: "", packageWeightGrams: "" });
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [categories, setCategories] = useState<Category[]>([]);
   const [saving, setSaving] = useState(false);
@@ -73,11 +85,15 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
         name: form.name, latinName: form.latinName, shortDescription: form.shortDescription,
         description: form.description, image: form.image, catalogSection: form.catalogSection,
         categoryId, priceMinor: Math.round(form.price * 100), stock: form.stock,
+        heightCm: form.heightCm === "" ? null : Number(form.heightCm), potDiameterCm: form.potDiameterCm === "" ? null : Number(form.potDiameterCm),
+        packageLengthCm: form.packageLengthCm === "" ? null : Number(form.packageLengthCm), packageWidthCm: form.packageWidthCm === "" ? null : Number(form.packageWidthCm),
+        packageHeightCm: form.packageHeightCm === "" ? null : Number(form.packageHeightCm), packageWeightGrams: form.packageWeightGrams === "" ? null : Number(form.packageWeightGrams),
       }) });
       onCreated();
     } catch (error) { onError((error as Error).message); setSaving(false); }
   };
   return <Dialog title="Новый товар" onClose={onClose}><div className="admin-form-grid product-form">
+    <h3 className="product-form-heading wide">Карточка товара</h3>
     <label className="wide">Название<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Фикус Бенджамина" /></label>
     <label>Латинское название<input value={form.latinName} onChange={(event) => setForm({ ...form, latinName: event.target.value })} /></label>
     <label>Раздел<select value={form.catalogSection} onChange={(event) => setForm({ ...form, catalogSection: event.target.value })}><option value="plants">Растения</option><option value="pots">Кашпо и горшки</option><option value="soil">Грунт</option><option value="fertilizer">Удобрения</option><option value="accessories">Аксессуары</option></select></label>
@@ -85,8 +101,16 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
     <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+    <h3 className="product-form-heading wide">Продажа</h3>
     <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
     <label>Остаток, шт.<input type="number" min="0" value={form.stock} onChange={(event) => setForm({ ...form, stock: Number(event.target.value) })} /></label>
+    <h3 className="product-form-heading wide">Характеристики и упаковка</h3>
+    <label>Высота растения, см<input type="number" min="0" value={form.heightCm} onChange={(event) => setForm({ ...form, heightCm: event.target.value })} /></label>
+    <label>Диаметр горшка, см<input type="number" min="0" value={form.potDiameterCm} onChange={(event) => setForm({ ...form, potDiameterCm: event.target.value })} /></label>
+    <label>Длина упаковки, см<input type="number" min="0" value={form.packageLengthCm} onChange={(event) => setForm({ ...form, packageLengthCm: event.target.value })} /></label>
+    <label>Ширина упаковки, см<input type="number" min="0" value={form.packageWidthCm} onChange={(event) => setForm({ ...form, packageWidthCm: event.target.value })} /></label>
+    <label>Высота упаковки, см<input type="number" min="0" value={form.packageHeightCm} onChange={(event) => setForm({ ...form, packageHeightCm: event.target.value })} /></label>
+    <label>Вес упаковки (брутто), г<input type="number" min="0" value={form.packageWeightGrams} onChange={(event) => setForm({ ...form, packageWeightGrams: event.target.value })} /></label>
   </div><p className="admin-hint">Товар появится на витрине сразу. Остатком такого товара распоряжаетесь вы: СБИС о нём ничего не знает.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={saving || form.name.trim() === ""} onClick={save}>Создать</button></div></Dialog>;
 }
 
