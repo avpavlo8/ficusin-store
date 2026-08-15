@@ -24,6 +24,7 @@ func setStaticCaching(response http.ResponseWriter, path string) {
 	case strings.HasPrefix(path, "/assets/"):
 		response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	case path == "/manifest.webmanifest":
+		response.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
 		response.Header().Set("Cache-Control", "public, max-age=3600")
 	}
 }
