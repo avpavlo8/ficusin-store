@@ -104,6 +104,19 @@ test("@desktop на карточке товара выбирается коли�
   await expect(page.locator("#reviews")).toContainText("Подтверждённая покупка");
 });
 
+test("@desktop PDP сохраняет коммерческую иерархию и навигацию", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/saby-1");
+
+  const purchase = page.locator(".pdp-summary");
+  await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
+  await expect(purchase.locator(".pdp-commerce-box")).toContainText("В наличии");
+  await expect(purchase.getByRole("button", { name: "Добавить в корзину" })).toBeVisible();
+  await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(3);
+  await expect(page.locator(".passport-sections")).toContainText("Регулярный уход");
+  await expect(page.locator(".reviews-layout .review-form")).toBeVisible();
+});
+
 test("@desktop прямой QR-якорь открывает паспорт без потери контента", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/saby-1#plant-passport");
@@ -118,9 +131,9 @@ test("@desktop пустой паспорт остаётся полезным и 
     images: ["/assets/product-pothos.png"], variants: [], recommendations: [], passport: {}, importantWarnings: [], rating: 0, reviewsCount: 0, reviews: [], catalogSection: "plants",
   } } }));
   await page.goto("/product/empty#plant-passport");
-  await expect(page.locator("#plant-passport")).toContainText("Паспорт этого растения готовится");
-  await expect(page.locator("#reviews")).toContainText("ещё нет опубликованных отзывов");
-  await expect(page.locator(".pdp-rating")).toHaveText("Отзывов пока нет");
+  await expect(page.locator("#plant-passport")).toContainText("Паспорт готовится");
+  await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
+  await expect(page.locator(".pdp-rating")).toContainText("Пока без отзывов");
 });
 
 test("@desktop сортировка по цене", async ({ page }) => {
