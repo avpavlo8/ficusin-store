@@ -2,7 +2,7 @@ export type Role = "owner" | "manager" | "";
 
 export type Section = "dashboard" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement";
 
-export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string; productsCount: number; childrenCount: number };
+export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; productsCount: number; childrenCount: number };
 
 export type AdminData = {
   user: { fullName: string };
@@ -44,8 +44,6 @@ export type Product = {
   heightClass?: string; careLevel?: string; placement?: string; petSafety?: string;
   growthHabit?: string; sabyUpdatedAt?: string;
   categoryId?: number;
-  externalIds: Array<{ provider: string; type: string; externalId: string }>;
-  attributes: Record<string, string | number | boolean | string[]>;
 };
 
 export type ProcurementSupplier = {
