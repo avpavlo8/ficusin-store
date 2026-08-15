@@ -13,6 +13,7 @@ type Category struct {
 	Name      string `json:"name"`
 	Slug      string `json:"slug"`
 	SortOrder int    `json:"sortOrder"`
+	Icon      string `json:"icon"`
 }
 
 type Product struct {
