@@ -22,6 +22,15 @@ test("@desktop autocomplete показывает товары и переход 
   await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
 });
 
+test("@desktop локальный поиск избранного не перехватывает переход ко всей выдаче", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/favorites");
+  const search = page.locator(".header-search input");
+  await search.fill("фикус");
+  await page.getByRole("option", { name: /Все результаты/ }).click();
+  await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
+});
+
 test("@desktop прямой URL корзины меняет количество, badge и сумму", async ({ page }) => {
   await mockApi(page);
   await setStoredCounts(page, [], { "saby-1": 1 });

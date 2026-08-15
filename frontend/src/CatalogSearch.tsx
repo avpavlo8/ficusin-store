@@ -3,9 +3,11 @@ import { searchProducts, suggestions, type Searchable } from "./lib/search";
 
 type SearchProduct = Searchable & { image?: string; price?: number };
 
-export function CatalogSearch({ value, onChange, className = "header-search", placeholder = "Поиск по каталогу", autoFocus = false }: {
+export function CatalogSearch({ value, onChange, inlineResults = false, className = "header-search", placeholder = "Поиск по каталогу", autoFocus = false }: {
   value?: string;
   onChange?: (value: string) => void;
+  /** Keep «Все результаты» on this page. Only the catalogue owns a results section. */
+  inlineResults?: boolean;
   className?: string;
   placeholder?: string;
   autoFocus?: boolean;
@@ -43,7 +45,7 @@ export function CatalogSearch({ value, onChange, className = "header-search", pl
   const allResults = () => {
     const trimmed = query.trim();
     if (!trimmed) return;
-    if (onChange) { setOpen(false); document.getElementById("catalog")?.scrollIntoView(); }
+    if (inlineResults) { setOpen(false); document.getElementById("catalog")?.scrollIntoView(); }
     else window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
   };
   const choose = (index: number) => {
