@@ -57,16 +57,24 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 	}
 }
 
-// Позиции-папки и снятые с продажи в магазин не попадают — это не товары.
+// Позиции-папки и записи без идентификатора/названия не являются товарами.
 func TestNormalizeSkipsUnsellable(t *testing.T) {
-	no := false
 	items := normalizeItems([]CatalogItem{
 		{ID: "1", Name: "Папка", Cost: 100.0, IsParent: true},
-		{ID: "2", Name: "Снят", Cost: 100.0, Published: &no},
 		{ID: "3", Name: "", Cost: 100.0},
 	})
 	if len(items) != 0 {
 		t.Fatalf("ожидали пустой список, получили %d", len(items))
+	}
+}
+
+func TestNormalizeKeepsStockWhenSabyPublicationIsOff(t *testing.T) {
+	no := false
+	items := normalizeItems([]CatalogItem{{
+		ID: "2", Name: "Аглаонема", Balance: "7", Published: &no,
+	}})
+	if len(items) != 1 || items[0].balance != 7 {
+		t.Fatalf("остаток непубличной в Saby позиции потерян: %+v", items)
 	}
 }
 
