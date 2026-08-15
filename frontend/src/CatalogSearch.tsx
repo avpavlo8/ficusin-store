@@ -80,6 +80,11 @@ export function CatalogSearch({ value, onChange, className = "header-search", pl
       if (activeRef.current >= 0) {
         if (!loaded) pendingEnter.current = true;
         else choose(activeRef.current);
+      } else if (matches.length > 0) {
+        // iOS virtual keyboards sometimes submit without emitting ArrowDown.
+        // In an open autocomplete Enter therefore accepts the first visible
+        // product; the explicit «Все результаты» row remains available.
+        choose(0);
       } else allResults();
     }}>
       <span aria-hidden="true">⌕</span>
