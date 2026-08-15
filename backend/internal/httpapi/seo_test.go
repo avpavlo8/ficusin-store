@@ -86,6 +86,8 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 			Latin:    "Monstera deliciosa",
 			Images:   []string{"https://example.test/monstera.jpg"},
 			Variants: []catalog.Variant{{Price: 1290, Stock: 3}},
+			Rating: 4.8, ReviewsCount: 12,
+			Passport: catalog.PlantPassport{FAQ: []catalog.FAQItem{{Question: "Когда пересаживать?", Answer: "Весной."}}},
 		}},
 		"https://ficusin.ru", "monstera", shell,
 	))
@@ -95,6 +97,9 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 		`"price":"1290.00"`,
 		"schema.org/InStock",
 		`rel="canonical" href="https://ficusin.ru/product/monstera"`,
+		`"@type":"AggregateRating"`,
+		`"reviewCount":12`,
+		`"@type":"FAQPage"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("в странице нет %q", want)

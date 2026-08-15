@@ -21,6 +21,7 @@ type Product = {
   placement?: string;
   watering?: string;
   categoryId?: number;
+  rating: number; reviewsCount: number;
 };
 
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number };
@@ -386,6 +387,7 @@ export default function StorefrontPage() {
                   </a>
                   <a className="storefront-name" href={`/product/${product.id}`}>{product.name}</a>
                   <p className="storefront-latin">{product.latin || product.size}</p>
+                  {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
                   {preorder && <p className="storefront-preorder">Под заказ · срок уточнит менеджер</p>}
                   <div className="storefront-buy">
                     <strong>{money(product.price)}</strong>

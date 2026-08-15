@@ -20,6 +20,8 @@ const product = {
   placement: "bathroom",
   petSafety: "safe",
   categoryId: 4,
+  rating: 4.8,
+  reviewsCount: 12,
 };
 
 // Второй вид, другая ветка дерева и другие атрибуты: иначе подборки и
@@ -85,6 +87,11 @@ export async function mockApi(page: Page, session: Session = guest) {
     images: [product.image],
     variants: [{ id: 1, sku: "X100", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
     recommendations: [],
+    importantWarnings: ["Безопасно для животных"],
+    passport: { origin: "Тропические леса Азии", lighting: "Яркий рассеянный свет", watering: "После просыхания верхнего слоя", faq: [{ question: "Когда пересаживать?", answer: "Весной, когда корни заполнят горшок." }] },
+    rating: 5,
+    reviewsCount: 1,
+    reviews: [{ id: 1, rating: 5, text: "Растение приехало здоровым и хорошо упакованным.", author: "Мария", date: "2026-08-01", verifiedPurchase: true, photos: [] }],
   } } }));
 
   // Дерево нарочно трёхуровневое и с пустым разделом — как в настоящей базе.

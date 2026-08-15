@@ -62,8 +62,8 @@ func (authStub) Logout(context.Context, string) error {
 	return nil
 }
 
-func (authStub) UserByToken(context.Context, string) (*auth.User, error) {
-	return nil, nil
+func (stub authStub) UserByToken(context.Context, string) (*auth.User, error) {
+	return stub.user, stub.err
 }
 
 type orderStub struct{}

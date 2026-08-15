@@ -38,6 +38,8 @@ type Product struct {
 	// Collections are the hand-made sets this product belongs to, by slug.
 	// The storefront filters on them without another request.
 	Collections []string `json:"collections"`
+	Rating float64 `json:"rating"`
+	ReviewsCount int `json:"reviewsCount"`
 }
 
 // Collection is one hand-made set as the storefront tab shows it.
@@ -68,7 +70,22 @@ type ProductDetail struct {
 	PetSafety      string    `json:"petSafety,omitempty"`
 	GrowthHabit    string    `json:"growthHabit,omitempty"`
 	CategoryID     *int64    `json:"categoryId,omitempty"`
+	Passport       PlantPassport `json:"passport"`
+	ImportantWarnings []string `json:"importantWarnings"`
+	Rating         float64 `json:"rating"`
+	ReviewsCount   int `json:"reviewsCount"`
+	Reviews        []Review `json:"reviews"`
 }
+
+type PlantPassport struct {
+	Origin string `json:"origin"`; Lighting string `json:"lighting"`; Watering string `json:"watering"`
+	Humidity string `json:"humidity"`; Temperature string `json:"temperature"`; Soil string `json:"soil"`
+	Fertilizer string `json:"fertilizer"`; Repotting string `json:"repotting"`; CareDifficulty string `json:"careDifficulty"`
+	GrowthRate string `json:"growthRate"`; MatureSize string `json:"matureSize"`; Toxicity string `json:"toxicity"`
+	Problems string `json:"problems"`; Pests string `json:"pests"`; FAQ []FAQItem `json:"faq"`
+}
+type FAQItem struct { Question string `json:"question"`; Answer string `json:"answer"` }
+type Review struct { ID int64 `json:"id"`; Rating int `json:"rating"`; Text string `json:"text"`; Author string `json:"author"`; Date string `json:"date"`; VerifiedPurchase bool `json:"verifiedPurchase"`; Photos []string `json:"photos"` }
 
 type Variant struct {
 	ID              int64   `json:"id"`

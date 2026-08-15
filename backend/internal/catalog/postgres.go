@@ -21,13 +21,17 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 		SELECT id, slug, name, latin_name, short_description, description, care_instructions,
 			catalog_section, COALESCE(plant_kind, ''), COALESCE(light_level, ''),
 			COALESCE(watering, ''), COALESCE(height_class, ''), COALESCE(care_level, ''),
-			COALESCE(placement, ''), COALESCE(pet_safety, ''), COALESCE(growth_habit, ''), category_id
+			COALESCE(placement, ''), COALESCE(pet_safety, ''), COALESCE(growth_habit, ''), category_id,
+			plant_passport, important_warnings,
+			COALESCE((SELECT AVG(rating)::float8 FROM product_reviews WHERE product_id = products.id AND status = 'published'), 0),
+			(SELECT COUNT(*) FROM product_reviews WHERE product_id = products.id AND status = 'published')
 		FROM products WHERE slug = $1 AND status = 'published' LIMIT 1
 	`, slug).Scan(&productID, &detail.ID, &detail.Name, &detail.Latin,
 		&detail.ShortDescription, &detail.Description, &detail.CareInstructions,
 		&detail.CatalogSection, &detail.PlantKind, &detail.LightLevel,
 		&detail.Watering, &detail.HeightClass, &detail.CareLevel,
-		&detail.Placement, &detail.PetSafety, &detail.GrowthHabit, &detail.CategoryID)
+		&detail.Placement, &detail.PetSafety, &detail.GrowthHabit, &detail.CategoryID,
+		&detail.Passport, &detail.ImportantWarnings, &detail.Rating, &detail.ReviewsCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ProductDetail{}, ErrNotFound
 	}
@@ -94,6 +98,15 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 		return ProductDetail{}, fmt.Errorf("read product variants: %w", err)
 	}
 	variantRows.Close()
+	reviewRows, err := repository.pool.Query(ctx, `
+		SELECT r.id, r.rating, r.body, COALESCE(NULLIF(c.full_name, ''), 'Покупатель'),
+			to_char(r.created_at, 'YYYY-MM-DD'), true
+		FROM product_reviews r JOIN customers c ON c.id = r.customer_id
+		WHERE r.product_id = $1 AND r.status = 'published' ORDER BY r.created_at DESC LIMIT 30`, productID)
+	if err != nil { return ProductDetail{}, fmt.Errorf("query reviews: %w", err) }
+	detail.Reviews = []Review{}
+	for reviewRows.Next() { var review Review; if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase); err != nil { reviewRows.Close(); return ProductDetail{}, err }; photos, _ := repository.pool.Query(ctx, `SELECT '/api/v1/review-photos/' || id FROM product_review_photos WHERE review_id=$1 ORDER BY sort_order,id`, review.ID); for photos != nil && photos.Next() { var u string; _ = photos.Scan(&u); review.Photos = append(review.Photos,u) }; if photos != nil { photos.Close() }; detail.Reviews = append(detail.Reviews, review) }
+	reviewRows.Close()
 
 	available, err := repository.ListAvailable(ctx)
 	if err != nil {
@@ -204,7 +217,9 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 				FROM collection_products cp
 				JOIN collections c ON c.id = cp.collection_id AND c.is_active = 1
 				WHERE cp.product_id = p.id
-			), ARRAY[]::TEXT[])
+			), ARRAY[]::TEXT[]),
+			COALESCE((SELECT AVG(rating)::float8 FROM product_reviews r WHERE r.product_id=p.id AND r.status='published'),0),
+			(SELECT COUNT(*) FROM product_reviews r WHERE r.product_id=p.id AND r.status='published')
 		FROM products p
 		JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
 		LEFT JOIN inventory i ON i.variant_id = pv.id
@@ -245,7 +260,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 			&product.PetSafety,
 			&product.GrowthHabit,
 			&product.CategoryID,
-			&product.Collections,
+			&product.Collections, &product.Rating, &product.ReviewsCount,
 		); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)
 		}

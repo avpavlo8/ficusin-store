@@ -24,6 +24,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
+	"github.com/avpavlo8/ficusin-store/backend/internal/reviews"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
@@ -130,6 +131,7 @@ func main() {
 			Payments:     paymentService,
 			Settings:     shopSettings,
 			Procurement:  procurementService,
+			Reviews:      reviews.NewStore(pool),
 			Refunds:      paymentService,
 			CookieSecure: cfg.Auth.CookieSecure,
 			StaticDir:    cfg.HTTP.StaticDir,

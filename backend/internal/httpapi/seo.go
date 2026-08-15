@@ -205,6 +205,16 @@ func withProductMeta(
 	if image != "" {
 		structured["image"] = image
 	}
+	if detail.ReviewsCount > 0 {
+		structured["aggregateRating"] = map[string]any{"@type": "AggregateRating", "ratingValue": detail.Rating, "reviewCount": detail.ReviewsCount, "bestRating": 5, "worstRating": 1}
+	}
+	if len(detail.Passport.FAQ) > 0 {
+		questions := make([]map[string]any, 0, len(detail.Passport.FAQ))
+		for _, item := range detail.Passport.FAQ {
+			if strings.TrimSpace(item.Question) != "" && strings.TrimSpace(item.Answer) != "" { questions = append(questions, map[string]any{"@type":"Question", "name":item.Question, "acceptedAnswer":map[string]any{"@type":"Answer", "text":item.Answer}}) }
+		}
+		if len(questions) > 0 { structured["subjectOf"] = map[string]any{"@type":"FAQPage", "mainEntity":questions} }
+	}
 	// json.Marshal экранирует «<», поэтому чужое описание не сможет закрыть
 	// тег script и подсунуть свой код.
 	encoded, err := json.Marshal(structured)
