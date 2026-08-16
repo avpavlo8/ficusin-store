@@ -59,6 +59,11 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 	rows, err := worker.pool.Query(ctx, `
 		SELECT id FROM orders
 		WHERE payment_status = 'pending'
+			-- Только брошенная онлайн-оплата. «После подтверждения
+			-- менеджером» тоже лежит в pending, и по общему условию заказ
+			-- отменялся сам, пока менеджер до него не дошёл: покупатель
+			-- ничего не бросал, а заказ исчезал вместе с резервом.
+			AND payment_method = 'online'
 			AND status NOT IN ('cancelled', 'completed')
 			AND created_at < CURRENT_TIMESTAMP - make_interval(hours => $1)
 		ORDER BY id

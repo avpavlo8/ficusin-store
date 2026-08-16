@@ -118,6 +118,9 @@ type purchasableItem struct {
 	// Preorder means the shelf could not cover this line. The order still
 	// goes through; the manager names the date.
 	Preorder bool
+	// Reserved — сколько штук реально снято со склада. У предзаказа меньше
+	// количества, и вернуть при отмене нужно именно столько.
+	Reserved int
 }
 
 // shippingBox builds the single box the order travels in from the boxes of
@@ -175,6 +178,15 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
 
+	// Скидка берётся из карточки покупателя, а не из браузера, и читается в
+	// той же транзакции, что и цены: между «показали цену» и «записали
+	// заказ» владелец мог её изменить, и заказ должен посчитаться по одному
+	// набору чисел.
+	discountBPS, err := retailDiscountBPS(ctx, transaction, input.CustomerID)
+	if err != nil {
+		return Created{}, err
+	}
+
 	requestedItems := mergeItems(input.Items)
 	items := make([]purchasableItem, 0, len(requestedItems))
 	for _, requested := range requestedItems {
@@ -201,12 +213,13 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("load order product: %w", err)
 		}
 		item.Quantity = max(1, min(20, requested.Quantity))
-		preorder, err := reserveStock(ctx, transaction, item)
+		reserved, preorder, err := reserveStock(ctx, transaction, item)
 		if err != nil {
 			return Created{}, err
 		}
+		item.Reserved = reserved
 		item.Preorder = preorder
-		item.Price = float64(priceMinor) / 100
+		item.Price = float64(discountedMinor(priceMinor, discountBPS)) / 100
 		items = append(items, item)
 	}
 	if len(items) == 0 {
@@ -342,10 +355,10 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		if _, err := transaction.Exec(ctx, `
 			INSERT INTO order_items (
 				order_id, product_id, variant_id, product_name, unit_price, quantity,
-				is_preorder
-			) VALUES ($1, $2, $3, $4, $5, $6, $7)
+				is_preorder, reserved_qty
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		`, orderID, item.ID, item.VariantID, item.Name, item.Price, item.Quantity,
-			boolToInt(item.Preorder)); err != nil {
+			boolToInt(item.Preorder), item.Reserved); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}
@@ -433,7 +446,10 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 // pre-order, the shop takes the order and the manager names the date. A
 // shop that says "закончился" loses the sale and never learns anyone
 // wanted it.
-func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {
+// reserveStock возвращает, сколько штук удалось занять на складе, и был ли
+// заказ полностью обеспечен. Эти числа расходятся у предзаказа, и хранить
+// нужно именно занятое: по нему заказ вернёт ровно своё, а не чужое.
+func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) (int, bool, error) {
 	rows, err := transaction.Query(ctx, `
 		SELECT id, GREATEST(available_qty - reserved_qty, 0)
 		FROM inventory
@@ -442,7 +458,7 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 		FOR UPDATE
 	`, item.VariantID)
 	if err != nil {
-		return false, fmt.Errorf("lock inventory: %w", err)
+		return 0, false, fmt.Errorf("lock inventory: %w", err)
 	}
 	type slot struct {
 		id   int64
@@ -454,19 +470,19 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 		var current slot
 		if err := rows.Scan(&current.id, &current.free); err != nil {
 			rows.Close()
-			return false, fmt.Errorf("scan inventory: %w", err)
+			return 0, false, fmt.Errorf("scan inventory: %w", err)
 		}
 		available += current.free
 		slots = append(slots, current)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return false, fmt.Errorf("read inventory: %w", err)
+		return 0, false, fmt.Errorf("read inventory: %w", err)
 	}
 
 	// Nothing free at all: the whole line is a pre-order and no stock moves.
 	if available == 0 {
-		return true, nil
+		return 0, true, nil
 	}
 	// Partly available is still a pre-order — the parcel waits for the rest,
 	// and the customer is told so rather than being asked to reduce the
@@ -485,11 +501,49 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 		if _, err := transaction.Exec(ctx, `
 			UPDATE inventory SET reserved_qty = reserved_qty + $2 WHERE id = $1
 		`, current.id, take); err != nil {
-			return false, fmt.Errorf("reserve inventory: %w", err)
+			return 0, false, fmt.Errorf("reserve inventory: %w", err)
 		}
 		remaining -= take
 	}
-	return preorder, nil
+	return min(item.Quantity, available), preorder, nil
+}
+
+// retailDiscountBPS — персональная скидка покупателя в базисных пунктах:
+// 500 это пять процентов. У гостя скидки нет.
+//
+// Поле лежало в базе, показывалось в кабинете словами «персональная скидка
+// N%» и правилось владельцем — но к цене не применялось нигде. Магазин
+// обещал условие, которого не выполнял.
+func retailDiscountBPS(ctx context.Context, transaction pgx.Tx, customerID *int64) (int, error) {
+	if customerID == nil {
+		return 0, nil
+	}
+	var bps int
+	if err := transaction.QueryRow(ctx, `
+		SELECT COALESCE(retail_discount_bps, 0) FROM customers WHERE id = $1
+	`, *customerID).Scan(&bps); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("load customer discount: %w", err)
+	}
+	return bps, nil
+}
+
+// discountedMinor применяет скидку к цене в копейках.
+//
+// Считаем в целых копейках и округляем вверх по половине, чтобы копейка
+// расхождения не всплыла при сверке с чеком ЮKassa. Верхняя граница в 90%
+// защищает от опечатки в панели: «9000» вместо «900» не должно раздать
+// растения даром, а отрицательное значение — поднять цену.
+func discountedMinor(priceMinor int64, bps int) int64 {
+	if bps <= 0 {
+		return priceMinor
+	}
+	if bps > 9000 {
+		bps = 9000
+	}
+	return (priceMinor*int64(10000-bps) + 5000) / 10000
 }
 
 // newOrderNumber builds a number a person can say out loud: the customer's

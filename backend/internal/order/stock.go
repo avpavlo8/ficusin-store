@@ -36,7 +36,9 @@ func ReleaseStock(ctx context.Context, tx pgx.Tx, orderID int64) error {
 	// reserved, and only until the order's quantity is covered.
 	if _, err := tx.Exec(ctx, `
 		WITH taken AS (
-			SELECT variant_id, SUM(quantity)::INTEGER AS quantity
+			-- Именно reserved_qty, а не quantity: у предзаказа заказ занял
+			-- меньше, чем просил, и по quantity вернул бы чужой резерв.
+			SELECT variant_id, SUM(reserved_qty)::INTEGER AS quantity
 			FROM order_items
 			WHERE order_id = $1 AND variant_id IS NOT NULL
 			GROUP BY variant_id
