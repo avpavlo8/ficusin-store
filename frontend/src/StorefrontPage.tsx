@@ -25,7 +25,6 @@ type Product = {
   categoryId?: number;
   rating: number; reviewsCount: number;
   popularityScore?: number;
-  filterAttributes?: Array<{ code: string; name: string; unit?: string; value: string | number | boolean | string[]; filterable: boolean; badge: boolean }>;
 };
 
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string };
@@ -69,7 +68,6 @@ export default function StorefrontPage() {
   const [opened, setOpened] = useState<Set<number>>(new Set());
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("popular");
 
   const [cart, setCart] = useState<Cart>(() => {
@@ -191,21 +189,11 @@ export default function StorefrontPage() {
       list = list.filter((product) => rules.every((rule) => rule.match(product)));
     }
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
-    for (const [code, selected] of Object.entries(attributeFilters)) if (selected) list = list.filter((product) => product.filterAttributes?.some((attribute) => attribute.code === code && (Array.isArray(attribute.value) ? attribute.value.map(String).includes(selected) : String(attribute.value) === selected)));
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
     if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0));
     return list;
-  }, [found, searching, category, inBranch, selectedPresets, inStockOnly, attributeFilters, sort]);
-
-  const facets = useMemo(() => {
-    const result = new Map<string, { name: string; unit?: string; values: Set<string> }>();
-    products.forEach((product) => product.filterAttributes?.filter((attribute) => attribute.filterable).forEach((attribute) => {
-      const facet = result.get(attribute.code) || { name: attribute.name, unit: attribute.unit, values: new Set<string>() };
-      const values = Array.isArray(attribute.value) ? attribute.value : [attribute.value]; values.forEach((value) => facet.values.add(String(value))); result.set(attribute.code, facet);
-    }));
-    return [...result.entries()].filter(([, facet]) => facet.values.size > 1);
-  }, [products]);
+  }, [found, searching, category, inBranch, selectedPresets, inStockOnly, sort]);
 
   const togglePreset = (id: string) => setSelectedPresets((current) => {
     const next = new Set(current);
@@ -277,6 +265,27 @@ export default function StorefrontPage() {
         onCartClick={() => setCartOpen(true)}
       />
 
+      <section className="editorial-hero">
+        <div className="editorial-copy">
+          <p className="editorial-kicker">Из Рязани · с заботой</p>
+          <h1>Растения,<br />с которыми<br /><em>хорошо.</em></h1>
+          <a href="#catalog">Выбрать своего <span>↗</span></a>
+          <span className="editorial-scribble" aria-hidden="true" />
+        </div>
+        <div className="editorial-art" aria-hidden="true">
+          <span className="editorial-paper" />
+          <img src="/assets/hero-monstera.png" alt="" />
+          <span className="editorial-delivery">Доставляем<br />по всей России ↗</span>
+          <span className="editorial-care">Аккуратно упакуем<br />и довезём в лучшем виде</span>
+        </div>
+      </section>
+
+      <section className="editorial-picks" aria-label="Популярные подборки">
+        <button type="button" onClick={() => togglePreset("dark")}><b>01</b><span>Для тёмной<br />комнаты</span></button>
+        <button type="button" onClick={() => togglePreset("easy")}><b>02</b><span>Неприхотливые</span></button>
+        <button type="button" onClick={() => togglePreset("pets")}><b>03</b><span>Безопасно<br />питомцам</span></button>
+      </section>
+
       <div className="storefront-search-bar">
         <CatalogSearch value={query} onChange={setQuery} inlineResults className="storefront-search" placeholder="Поиск: монстера, фикус, кашпо 15 см" />
       </div>
@@ -306,7 +315,6 @@ export default function StorefrontPage() {
             />
             Только в наличии
           </label>
-          {facets.length > 0 && <div className="storefront-attribute-filters"><p className="storefront-side-title">Характеристики</p>{facets.map(([code, facet]) => <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label>)}</div>}
         </aside>
 
         <div className="storefront-main">
@@ -341,7 +349,6 @@ export default function StorefrontPage() {
                   setSelectedPresets(new Set());
                   setCategory(null);
                   setInStockOnly(false);
-                  setAttributeFilters({});
                 }}
               >
                 Показать весь каталог
@@ -366,7 +373,6 @@ export default function StorefrontPage() {
                     <img src={product.image} alt={product.name} loading="lazy" />
                   </a>
                   <a className="storefront-name" href={`/product/${product.id}`}>{product.name}</a>
-                  {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0,2).map((attribute) => <span key={attribute.code}>{attribute.name}: {Array.isArray(attribute.value) ? attribute.value.join(", ") : String(attribute.value).replaceAll("_", " ")}{attribute.unit ? ` ${attribute.unit}` : ""}</span>)}</div>}
                   <p className="storefront-latin">{product.latin || product.size}</p>
                   {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
                   {preorder && <p className="storefront-preorder">Под заказ · срок уточнит менеджер</p>}
