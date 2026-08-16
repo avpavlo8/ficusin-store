@@ -23,12 +23,15 @@
 .storefront-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 /* Заголовку — вся свободная ширина, сортировке — ровно её собственная.
    Без этого «Комнатные растения» переносилось на две строки, а список
-   сортировки растягивался на полэкрана: оба поля делили место поровну. */
+   сортировки растягивался на полэкрана и наезжал на счётчик товаров.
+   `width: auto` обязателен: базовое правило задаёт всем полям ввода
+   `width: 100%`, и одного `flex: none` не хватало — замерено на
+   production, select занимал 1234 пикселя вместо 174. */
 .storefront-head > div { flex: 1; min-width: 0; }
 .storefront-head h1 { margin: 0 0 2px; color: var(--green); font: 400 clamp(24px, 2.6vw, 34px)/1.1 Georgia, serif; letter-spacing: -.02em; }
 .storefront-head p { margin: 0; font-size: 15px; font-weight: 700; color: var(--green); }
 .storefront-head span { font-weight: 400; color: #7c857c; }
-.storefront-head select { flex: none; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; font: inherit; font-size: 13px; }
+.storefront-head select { flex: none; width: auto; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; font: inherit; font-size: 13px; }
 
 .storefront-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
 .storefront-card { position: relative; padding: 12px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: 14px; background: white; }
