@@ -32,15 +32,6 @@ const (
 var ErrForbidden = errors.New("admin action is forbidden")
 var ErrCategoryNotEmpty = errors.New("category is not empty")
 
-func ValidRole(role string) bool {
-	switch role {
-	case "", RoleOwner, RoleManager:
-		return true
-	default:
-		return false
-	}
-}
-
 // AssignableRole deliberately excludes owner. Ownership is configured only
 // through ADMIN_EMAILS and cannot be granted from the admin UI or API.
 func AssignableRole(role string) bool {
