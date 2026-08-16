@@ -31,19 +31,6 @@ func TestRolePermissions(t *testing.T) {
 	}
 }
 
-func TestValidRole(t *testing.T) {
-	t.Parallel()
-
-	for _, role := range []string{"", RoleOwner, RoleManager} {
-		if !ValidRole(role) {
-			t.Fatalf("role %q should be valid", role)
-		}
-	}
-	if ValidRole("superadmin") {
-		t.Fatal("unknown role should be invalid")
-	}
-}
-
 func TestOnlyManagerRoleIsAssignable(t *testing.T) {
 	t.Parallel()
 

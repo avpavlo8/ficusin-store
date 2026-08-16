@@ -35,8 +35,9 @@ Vite проксирует запросы `/api` на Go по адресу `http:
 ## Проверка
 
 ```bash
-cd frontend && npm run lint && npm run build
+cd frontend && npm run lint && npm run lint:css && npm run build
 cd backend && go test ./... && go vet ./...
+cd e2e && npm install && npx playwright install && npm test
 docker build -t ficusin-store .
 ```
 

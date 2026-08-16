@@ -22,24 +22,24 @@ Required environment variables:
 - `MIGRATIONS_DIR` to apply ordered `.sql` migrations on startup;
 - `AUTH_COOKIE_SECURE` and `AUTH_SESSION_DAYS`;
 - `CDEK_CLIENT_ID` / `CDEK_CLIENT_SECRET` for pick-up point delivery;
-- `TELEGRAM_ORDER_CHAT_ID`.
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ORDER_CHAT_ID`.
 
-## Current endpoints
+Every integration key comes from the environment only. An empty value means
+"the feature is off", never a crash. The full table with the consequence of
+each empty value is in [`../AGENTS.md`](../AGENTS.md).
 
-- `GET /api/v1/health`;
-- `GET /api/v1/catalog`;
-- `POST /api/v1/auth/register`;
-- `POST /api/v1/auth/login`;
-- `POST /api/v1/auth/logout`;
-- `GET /api/v1/auth/me`;
-- `GET /api/v1/account/orders`;
-- `GET|POST /api/v1/delivery/cdek`;
-- `POST /api/v1/orders`;
-- `GET /api/v1/admin/dashboard`;
-- `POST /api/v1/integrations/saby/catalog` (GitHub Actions OIDC).
+## Endpoints
 
-Online payment is intentionally not enabled in the split runtime yet. Checkout
-saves the order with a pending payment-provider status and sends the new-order
-notification to Telegram.
+The routing table is the single source of truth:
+[`internal/httpapi/router.go`](internal/httpapi/router.go). It is deliberately
+not duplicated here — a hand-kept copy went stale within a week.
 
-The schemas are documented in [`../docs/openapi.yaml`](../docs/openapi.yaml).
+Public schemas are documented in
+[`../docs/openapi.yaml`](../docs/openapi.yaml).
+
+Checkout accepts online card payment through YooKassa
+(`internal/payment`, webhook `POST /api/v1/payments/yookassa/webhook`). Only a
+request to YooKassa marks an order paid; the unsigned webhook is a reason to go
+and ask for status, never a source of truth. Without `YOOKASSA_SHOP_ID` and
+`YOOKASSA_SECRET_KEY` the card option is hidden from checkout instead of
+failing.
