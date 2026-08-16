@@ -5,6 +5,7 @@ import { CollectionStrip, presets } from "./Collections";
 import { searchProducts } from "./lib/search";
 import { CatalogSearch } from "./CatalogSearch";
 import { STORAGE_EVENT } from "./StoreHeader";
+import { attributeLabel, attributeValue } from "./product/types";
 
 type Product = {
   id: string;
@@ -66,6 +67,8 @@ export default function StorefrontPage() {
     () => new URLSearchParams(window.location.search).get("q") ?? "",
   );
   const [category, setCategory] = useState<number | null>(null);
+  // На широком экране подбор раскрыт сразу, на телефоне — по нажатию.
+  const [filtersOpen, setFiltersOpen] = useState(() => window.matchMedia("(min-width: 901px)").matches);
   const [opened, setOpened] = useState<Set<number>>(new Set());
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -129,6 +132,18 @@ export default function StorefrontPage() {
   // единственной веткой и без собственных товаров ничего не решает:
   // «Растения → Комнатные растения → Фикус» заставляет нажать дважды, чтобы
   // увидеть ровно то же самое. Такую ступень пропускаем.
+  // Заголовок страницы идёт за выбранной веткой каталога: покупатель,
+  // пришедший по ссылке на «Аглаонемы», должен увидеть это словом.
+  const activeFilterCount = useMemo(
+    () => Object.values(attributeFilters).filter(Boolean).length + (inStockOnly ? 1 : 0),
+    [attributeFilters, inStockOnly],
+  );
+
+  const categoryName = useMemo(
+    () => categories.find((item) => item.id === category)?.name ?? "",
+    [categories, category],
+  );
+
   const tree = useMemo(() => {
     const kids = new Map<number | null, Category[]>();
     categories.forEach((item) => {
@@ -298,25 +313,37 @@ export default function StorefrontPage() {
             {tree.map((root) => branch(root, 0))}
           </nav>
 
-          <label className="storefront-check">
-            <input
-              type="checkbox"
-              checked={inStockOnly}
-              onChange={(event) => setInStockOnly(event.target.checked)}
-            />
-            Только в наличии
-          </label>
-          {facets.length > 0 && <div className="storefront-attribute-filters"><p className="storefront-side-title">Характеристики</p>{facets.map(([code, facet]) => <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label>)}</div>}
+          {/* На телефоне пять выпадающих списков занимали экран целиком, и
+              покупатель прокручивал страницу фильтров, прежде чем увидеть
+              первое растение. Дерево разделов остаётся на виду — это
+              навигация, а подбор по характеристикам сворачивается. */}
+          <details className="storefront-filters" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
+            <summary>Подбор по характеристикам{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</summary>
+            <label className="storefront-check">
+              <input
+                type="checkbox"
+                checked={inStockOnly}
+                onChange={(event) => setInStockOnly(event.target.checked)}
+              />
+              Только в наличии
+            </label>
+            {facets.length > 0 && <div className="storefront-attribute-filters"><p className="storefront-side-title">Характеристики</p>{facets.map(([code, facet]) => <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{attributeLabel(value)}</option>)}</select></label>)}</div>}
+          </details>
         </aside>
 
         <div className="storefront-main">
           <CollectionStrip products={products} active={selectedPresets} onPick={togglePreset} />
 
           <div className="storefront-head">
-            <p>
-              {searching ? `Нашли ${visible.length}` : `${visible.length} товаров`}
-              {searching && <span> по запросу «{query.trim()}»</span>}
-            </p>
+            <div>
+              {/* Единственный h1 страницы. Без него поисковик и скринридер
+                  видели первым заголовком название случайного товара. */}
+              <h1>{searching ? "Результаты поиска" : categoryName || "Комнатные растения"}</h1>
+              <p>
+                {searching ? `Нашли ${visible.length}` : `${visible.length} товаров`}
+                {searching && <span> по запросу «{query.trim()}»</span>}
+              </p>
+            </div>
             <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка">
               <option value="popular">сначала популярные</option>
               <option value="cheap">сначала дешёвые</option>
@@ -366,8 +393,8 @@ export default function StorefrontPage() {
                     <img src={product.image} alt={product.name} loading="lazy" />
                   </a>
                   <a className="storefront-name" href={`/product/${product.id}`}>{product.name}</a>
-                  {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0,2).map((attribute) => <span key={attribute.code}>{attribute.name}: {Array.isArray(attribute.value) ? attribute.value.join(", ") : String(attribute.value).replaceAll("_", " ")}{attribute.unit ? ` ${attribute.unit}` : ""}</span>)}</div>}
-                  <p className="storefront-latin">{product.latin || product.size}</p>
+                  {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0,2).map((attribute) => <span key={attribute.code}>{attribute.name}: {attributeValue(attribute.value, attribute.unit)}</span>)}</div>}
+                  {product.latin && <p className="storefront-latin">{product.latin}</p>}
                   {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
                   {preorder && <p className="storefront-preorder">Под заказ · срок уточнит менеджер</p>}
                   <div className="storefront-buy">
