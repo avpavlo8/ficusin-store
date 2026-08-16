@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { STORAGE_EVENT } from "../StoreHeader";
 
-export type Cart = Record<string, number>;
-export const CART_KEY = "ficusin-cart";
+type Cart = Record<string, number>;
+const CART_KEY = "ficusin-cart";
 
-export function readCart(): Cart {
+function readCart(): Cart {
   try { return JSON.parse(localStorage.getItem(CART_KEY) || "{}") as Cart; }
   catch { return {}; }
 }
 
-export function storeCart(cart: Cart) {
+function storeCart(cart: Cart) {
   localStorage.setItem(CART_KEY, JSON.stringify(cart));
   window.dispatchEvent(new Event(STORAGE_EVENT));
 }
