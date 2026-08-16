@@ -1,0 +1,124 @@
+/* Витрина: поиск, дерево каталога, подбор, карточки.
+
+   Часть общей таблицы стилей: файл разрезан по границам разделов, порядок
+   правил сохранён ровно тот же, что был в едином styles.css. Каскад от
+   этого не изменился, а на 100 КБ в одном файле больше никто не
+   натыкается. Подключение и порядок — в ../styles.css. */
+
+.storefront-search-bar { position: sticky; top: var(--header-h); z-index: 30; padding: 12px 24px; background: var(--cream); border-bottom: 1px solid var(--line); }
+.storefront-search { position: relative; max-width: 720px; margin: 0 auto; }
+.storefront-search form { position: relative; }
+.storefront-search input { width: 100%; padding: 13px 40px 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; font-size: 15px; }
+.storefront-search input:focus { outline: none; border-color: var(--green); }
+
+.storefront-shell { max-width: 1520px; margin: 0 auto; padding: 20px 24px 0; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+.storefront-side { position: sticky; top: calc(var(--header-h) + 2px); display: grid; gap: 8px; }
+.storefront-side-title { margin: 6px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #8b938b; }
+.storefront-filters { display: grid; gap: 8px; }
+/* На широком экране раскрывающийся блок не нужен: подбор виден целиком. */
+.storefront-filters > summary { display: none; }
+.storefront-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #55605a; cursor: pointer; }
+.storefront-check input { width: 16px; height: 16px; accent-color: var(--green); }
+
+.storefront-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.storefront-head h1 { margin: 0 0 2px; color: var(--green); font: 400 clamp(24px, 2.6vw, 34px)/1.1 Georgia, serif; letter-spacing: -.02em; }
+.storefront-head p { margin: 0; font-size: 15px; font-weight: 700; color: var(--green); }
+.storefront-head span { font-weight: 400; color: #7c857c; }
+.storefront-head select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; font: inherit; font-size: 13px; }
+
+.storefront-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.storefront-card { position: relative; padding: 12px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.storefront-card.preorder { background: #fbf7ef; }
+.storefront-image { display: block; aspect-ratio: 1; overflow: hidden; border-radius: 10px; background: var(--cream); }
+.storefront-image img { width: 100%; height: 100%; object-fit: cover; }
+.storefront-name { font-size: 14px; font-weight: 700; color: var(--green); text-decoration: none; }
+.storefront-latin { margin: 0; font-size: 12px; color: #8b938b; }
+.storefront-preorder { margin: 0; font-size: 12px; font-weight: 700; color: #9a6b25; }
+.storefront-buy { margin-top: auto; padding-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.storefront-buy strong { font-size: 15px; }
+.storefront-buy button { padding: 8px 13px; flex: none; white-space: nowrap; border: 1px solid var(--green); border-radius: 10px; background: transparent; color: var(--green); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.storefront-buy button:hover { background: var(--green); color: white; }
+.storefront-buy button.in-cart { background: var(--green); color: white; }
+.storefront-fav { position: absolute; right: 16px; top: 16px; z-index: 2; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255,255,255,.9); color: #c2c8c2; font-size: 15px; cursor: pointer; }
+.storefront-fav.active { color: #d4537e; }
+
+.storefront-empty { padding: 40px 20px; text-align: center; color: #667067; }
+.storefront-empty strong { display: block; margin-bottom: 6px; font-size: 17px; color: var(--green); }
+.storefront-empty p { margin: 0 auto; max-width: 420px; font-size: 14px; }
+.storefront-empty button { margin-top: 14px; padding: 10px 18px; border: 1px solid var(--green); border-radius: 10px; background: transparent; color: var(--green); font: inherit; font-weight: 700; cursor: pointer; }
+
+@media (max-width: 900px) {
+  .storefront-shell { grid-template-columns: 1fr; gap: 16px; padding: 16px 16px 0; }
+  .storefront-side { position: static; grid-template-columns: 1fr; }
+  /* Подбор по характеристикам сворачивается: пять выпадающих списков
+     занимали весь первый экран телефона, и до растений покупатель
+     доходил прокруткой. */
+  .storefront-filters > summary { min-height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--green); font-size: 14px; font-weight: 700; cursor: pointer; list-style: none; }
+  .storefront-filters > summary::-webkit-details-marker { display: none; }
+  .storefront-filters > summary::after { content: "⌄"; margin-left: auto; font-size: 16px; }
+  .storefront-filters[open] > summary::after { content: "⌃"; }
+  .storefront-filters > summary b { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 99px; background: var(--green); color: #fff; font-size: 11px; }
+  .storefront-filters[open] { padding-bottom: 4px; }
+  .storefront-search-bar { padding: 10px 16px; }
+  .storefront-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+}
+
+.admin-collections { display: grid; gap: 10px; max-width: 640px; }
+.admin-collection { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.admin-collection-head { width: 100%; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 0; background: white; font: inherit; text-align: left; cursor: pointer; }
+.admin-collection-head b { display: block; font-size: 15px; }
+.admin-collection-head small { display: block; margin-top: 2px; font-size: 12px; color: #687269; }
+.admin-collection-count { font-size: 13px; color: #687269; white-space: nowrap; }
+.admin-collection-body { padding: 0 16px 14px; display: grid; gap: 8px; }
+.admin-collection-body > input { padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; }
+.admin-collection-list { max-height: 260px; overflow-y: auto; display: grid; gap: 2px; }
+.admin-collection-list label { padding: 7px 8px; display: flex; align-items: center; gap: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.admin-collection-list label:hover { background: var(--cream); }
+.admin-collection-list input { width: 16px; height: 16px; accent-color: var(--green); }
+.admin-collection-list span { flex: 1; }
+.admin-collection-list small { color: #8b938b; font-size: 12px; }
+
+@media (max-width: 620px) {
+	.procurement-settings-grid, .procurement-costs { grid-template-columns: 1fr; }
+	.procurement-order-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+}
+
+/* Подборки: небольшие плитки над сеткой. Нарочно тише каталога — это
+   подсказка, а не второй уровень навигации. */
+.storefront-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.preset { padding: 7px 13px 7px 9px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 99px; background: white; font: inherit; font-size: 13px; color: #4a544b; cursor: pointer; }
+.preset:hover { border-color: var(--green); color: var(--green); }
+.preset-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--cream); color: var(--green); }
+.preset.active { background: var(--green); border-color: var(--green); color: white; }
+.preset.active .preset-icon { background: rgba(255,255,255,.18); color: white; }
+
+/* Дерево каталога: разделы свёрнуты, вид раскрывается по нажатию на раздел. */
+/* Под «Растениями» больше шестидесяти видов — без прокрутки список
+   растянул бы страницу вдвое и утопил сетку товаров. */
+.storefront-tree { display: grid; gap: 1px; margin-bottom: 14px; max-height: 58vh; overflow-y: auto; scrollbar-width: thin; }
+.storefront-tree button { width: 100%; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--green); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.storefront-tree button > span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.storefront-tree button small { flex: none; color: #9aa39a; font-size: 12px; }
+.storefront-tree button:hover { background: var(--cream); }
+.storefront-tree button.active { background: var(--green); color: white; }
+.storefront-tree button.active small { color: rgba(255,255,255,.65); }
+.storefront-tree .child { padding-left: 26px; font-size: 13px; color: #55605a; }
+.twist { display: inline-block; width: 10px; font-style: normal; transition: transform .18s ease; }
+.twist.open { transform: rotate(90deg); }
+
+/* Карточки витрины под макет: рамка тоньше, скругление мягче, картинка
+   лежит на тёплой подложке, а не на белом. */
+.storefront-card { border-radius: 14px; }
+.storefront-image { border-radius: 12px; background: var(--cream); }
+.storefront-buy button { border-radius: 9px; }
+.storefront-fav.active { color: var(--heart); }
+.storefront-search input { border-radius: 10px; }
+
+/* Переключатели в настройках — такие же, как в остальных местах панели.
+   Флажок не показывает состояние с одного взгляда, а бегунок показывает. */
+.admin-setting.switch { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.admin-setting input[type="checkbox"] { appearance: none; margin: 0; flex: none; width: 42px; height: 24px; border-radius: 999px; background: #d9ded6; position: relative; cursor: pointer; transition: background .15s; order: 2; }
+.admin-setting input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.admin-setting input[type="checkbox"]:checked { background: var(--green); }
+.admin-setting input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.admin-setting input[type="checkbox"]:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
