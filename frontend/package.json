@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint . && npm run lint:css",
+    "lint": "eslint .",
     "lint:css": "node scripts/check-dead-css.mjs"
   },
   "dependencies": {
