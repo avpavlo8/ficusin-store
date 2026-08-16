@@ -1,0 +1,197 @@
+/* Мобильная оболочка: меню, нижняя панель, установка на экран.
+
+   Часть общей таблицы стилей: файл разрезан по границам разделов, порядок
+   правил сохранён ровно тот же, что был в едином styles.css. Каскад от
+   этого не изменился, а на 100 КБ в одном файле больше никто не
+   натыкается. Подключение и порядок — в ../styles.css. */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* Catalog-first storefront */
+.favorites-button { height: 42px; min-width: 48px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 99px; background: transparent; color: var(--green); cursor: pointer; }
+.favorites-button span { font-size: 25px; line-height: 1; }
+.favorites-button b { font-size: 11px; }
+.favorites-button:hover, .favorites-button.active { background: rgba(23,63,50,.08); }
+.product-card { position: relative; }
+.favorite-button {
+  position: absolute;
+  z-index: 3;
+  top: 13px;
+  right: 13px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.92);
+  color: var(--green);
+  box-shadow: 0 5px 18px rgba(23,63,50,.12);
+  font-size: 23px;
+  cursor: pointer;
+}
+.favorite-button.active { background: var(--terracotta); color: #fff; }
+.empty-state { display: flex; flex-direction: column; gap: 9px; }
+.empty-state strong { font: 400 27px Georgia, serif; }
+.empty-state span { color: #6c756f; }
+
+@media (max-width: 700px) {
+  .favorites-button { min-width: 38px; padding: 0; }
+  .favorites-button b { display: none; }
+}
+
+/* Header search, account menu and favorites */
+.header { grid-template-columns: auto 1fr auto; }
+.desktop-nav { justify-self: center; }
+.header-search { width: clamp(180px, 16vw, 270px); height: 44px; margin: 0; padding: 0 13px; display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; border: 1px solid rgba(23,63,50,.14); border-radius: 99px; background: #fff; box-shadow: 0 7px 20px rgba(23,63,50,.06); }
+.header-search input { height: 40px; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.catalog-search { position: relative; }
+.catalog-search form { width: 100%; display: flex; align-items: center; gap: 8px; }
+.catalog-search form input { min-width: 0; flex: 1; }
+.catalog-search-clear { width: 24px; height: 24px; flex: none; padding: 0; border: 0; border-radius: 50%; background: var(--cream); color: #667067; font-size: 17px; line-height: 1; cursor: pointer; }
+.catalog-search-options { position: absolute; z-index: 70; top: calc(100% + 7px); left: 0; width: min(440px, calc(100vw - 24px)); overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: white; box-shadow: 0 18px 42px rgba(23,63,50,.18); }
+.catalog-search-options > button { width: 100%; min-height: 52px; padding: 8px 12px; display: flex; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid var(--line); background: white; color: var(--green); text-align: left; cursor: pointer; }
+.catalog-search-options > button:last-child { border-bottom: 0; }
+.catalog-search-options > button:hover, .catalog-search-options > button.active { background: var(--cream); }
+.catalog-search-options img { width: 38px; height: 38px; flex: none; border-radius: 8px; object-fit: cover; }
+.catalog-search-options b, .catalog-search-options small { display: block; }
+.catalog-search-options small { margin-top: 2px; color: #7c857c; }
+.catalog-search-all { justify-content: space-between; font-weight: 700; }
+.catalog-search-all span { color: #7c857c; font-size: 12px; }
+.account-menu { position: relative; }
+.account-menu summary { list-style: none; cursor: pointer; }
+.account-menu summary::-webkit-details-marker { display: none; }
+.account-menu > div { min-width: 175px; padding: 8px; display: grid; position: absolute; z-index: 50; top: 50px; right: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 16px 40px rgba(23,63,50,.15); }
+.account-menu > div a { padding: 10px 12px; border-radius: 8px; color: var(--green); font-size: 13px; }
+.account-menu > div a:hover { background: var(--cream); }
+.favorites-button, .favorite-button, .pdp-favorite { color: #bd3d3d; }
+.favorite-button.active, .pdp-favorite.active { background: #bd3d3d; color: #fff; }
+.favorites-button:hover { background: rgba(189,61,61,.09); }
+.category-toggle { width: 22px; height: 22px; margin-right: 8px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: #58645c; font-weight: 700; line-height: 1; cursor: pointer; }
+.category-toggle.placeholder { border-color: transparent; background: transparent; }
+.category-expand { gap: 8px; }
+.category-picker { position: relative; }
+.category-picker-toggle { width: 100%; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: inherit; text-align: left; cursor: pointer; }
+.category-picker-list { max-height: 260px; margin-top: 6px; padding: 6px; display: grid; overflow: auto; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.category-picker-list button { padding: 8px 12px; border: 0; border-radius: 7px; background: transparent; color: #58645c; text-align: left; font-size: 13px; cursor: pointer; }
+.category-picker-list button:hover, .category-picker-list button.active { background: #edf2ec; color: var(--green); }
+.admin-field { display: grid; gap: 6px; }
+.admin-field-label { font-size: 13px; font-weight: 600; }
+.category-icon { width: 18px; height: 18px; margin-right: 7px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+.favorites-page { min-height: calc(100vh - 122px); padding: 64px 5vw 100px; }
+.favorites-page > h1 { margin-bottom: 12px; color: var(--green); font-size: clamp(46px,6vw,76px); font-weight: 400; }
+.favorites-page > p:not(.eyebrow) { margin-bottom: 42px; color: #657068; }
+.category-create { flex-wrap: wrap; }
+.category-create input { max-width: 250px; }
+.category-create select { width: min(330px,100%); }
+.text-button.danger { margin-left: 12px; color: #a64a3d; }
+.table-action.danger { color: #a64a3d; border-color: rgba(166, 74, 61, 0.3); }
+
+@media (max-width: 1200px) {
+  .desktop-nav { display: none; }
+}
+@media (max-width: 850px) {
+  .header-search { display: none; }
+}
+@media (max-width: 700px) {
+  .header { padding: 0 18px; }
+  .account-button { padding: 0 7px; }
+  .account-button > span:first-child { display: none; }
+  .favorites-page { padding: 42px 18px 80px; }
+}
+
+/* ---------------------------------------------------------------------
+   Phone layout
+
+   Most visits come from a phone, so the header keeps only what a thumb
+   needs: menu, brand, search, account. Favourites and the cart move to a
+   bar pinned at the bottom of the screen, where they are always one tap
+   away and their counts stay visible.
+   --------------------------------------------------------------------- */
+
+.menu-button { width: 42px; height: 42px; display: none; place-items: center; border: 0; border-radius: 12px; background: transparent; color: var(--green); font-size: 21px; cursor: pointer; }
+.menu-button:hover { background: rgba(23,63,50,.07); }
+
+.search-toggle { width: 42px; height: 42px; display: none; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--green); cursor: pointer; }
+.search-toggle svg { width: 21px; height: 21px; }
+
+.mobile-search { padding: 10px 18px 12px; display: none; gap: 10px; align-items: center; position: sticky; z-index: 29; top: 88px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.mobile-search form { flex: 1; min-width: 0; height: 46px; padding: 0 15px; display: flex; gap: 9px; align-items: center; border: 1px solid rgba(23,63,50,.16); border-radius: 99px; background: #fff; }
+.mobile-search form > span { font-size: 19px; color: #6d7b73; }
+.mobile-search input { width: 100%; height: 44px; border: 0; outline: 0; background: transparent; font-size: 16px; }
+.mobile-search > button { flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: #55605a; font-size: 25px; cursor: pointer; }
+.mobile-catalog-search { position: relative; flex: 1; min-width: 0; }
+.mobile-catalog-search > form { width: 100%; }
+
+.tab-bar { display: none; }
+
+body.menu-open, body.drawer-open { overflow: hidden; }
+
+@media (max-width: 1200px) {
+  .menu-button { display: grid; }
+}
+
+@media (max-width: 850px) {
+  .search-toggle { display: grid; }
+  .mobile-search { display: flex; }
+  /* Favourites and the cart live in the bottom bar on a phone; keeping
+     them in the header too would only crowd the brand. */
+  .header-actions .favorites-button, .header-actions .cart-button { display: none; }
+
+  .tab-bar { display: grid; grid-template-columns: repeat(4, 1fr); position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(245,240,231,.98); backdrop-filter: blur(12px); box-shadow: 0 -6px 24px rgba(23,63,50,.08); }
+  .tab-bar > a, .tab-bar > button { min-height: 52px; padding: 5px 2px; display: grid; gap: 2px; justify-items: center; align-content: center; border: 0; background: transparent; color: var(--green); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .tab-bar small { font-size: 10px; letter-spacing: .01em; }
+  .tab-bar .tab-icon { position: relative; display: grid; place-items: center; }
+  .tab-bar svg { width: 23px; height: 23px; }
+  .tab-bar .tab-icon b { min-width: 17px; height: 17px; padding: 0 4px; display: grid; place-items: center; position: absolute; top: -6px; left: 12px; border-radius: 99px; background: var(--terracotta); color: #fff; font-size: 10px; font-weight: 700; }
+  .tab-bar > a:active, .tab-bar > button:active { opacity: .55; }
+
+  /* Room for the bar, so the last row of a list is never trapped under it. */
+  main { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+  .drawer, .checkout { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 700px) {
+  /* The counter is the whole point of the icon — it stays. */
+  .favorites-button b { display: inline; }
+  .header { grid-template-columns: auto 1fr auto; gap: 6px; }
+  .brand { justify-self: center; font-size: 19px; }
+  .brand-mark { width: 27px; height: 33px; font-size: 21px; }
+  .account-button { width: 40px; height: 40px; padding: 0; justify-content: center; }
+  .account-button > span:last-child { display: none; }
+  .mobile-search { top: 72px; }
+  /* Comfortable touch targets everywhere a finger lands. */
+  .primary-button, .ghost-button, .admin-primary, .tab-bar > a, .tab-bar > button { min-height: 46px; }
+  input, select, textarea { font-size: 16px; }
+}
+
+/* Invitation to keep the shop on the home screen. It floats just above the
+   bottom bar so it never covers what the customer is reading. */
+.install-hint { display: none; }
+
+@media (max-width: 850px) {
+  .install-hint { position: fixed; z-index: 39; right: 10px; bottom: calc(78px + env(safe-area-inset-bottom)); left: 10px; padding: 11px 12px; display: flex; gap: 11px; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(23,63,50,.16); }
+  .install-hint img { width: 38px; height: 38px; flex: none; border-radius: 10px; }
+  .install-hint > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .install-hint strong { color: var(--green); font-size: 13px; font-weight: 700; }
+  .install-hint span { color: #6a746d; font-size: 11px; line-height: 1.35; }
+  .install-hint-action { flex: none; min-height: 38px; padding: 0 15px; border: 0; border-radius: 99px; background: var(--green); color: #fff; font-size: 13px; }
+  .install-hint-close { flex: none; width: 30px; height: 30px; border: 0; background: transparent; color: #8b948d; font-size: 21px; }
+}
+
+/* Order notifications switch, shown in the profile once the browser can
+   actually deliver them. */
+.push-toggle { margin-top: 26px; padding: 17px 18px; display: flex; gap: 16px; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.push-toggle > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.push-toggle strong { color: var(--green); font-size: 14px; }
+.push-toggle span { color: #6a746d; font-size: 12px; line-height: 1.5; }
+.push-toggle-error { color: #a64a3d; font-size: 12px; font-style: normal; }
+.push-toggle button { flex: none; min-height: 42px; }
+
+@media (max-width: 700px) {
+  .push-toggle { align-items: stretch; flex-direction: column; gap: 12px; }
+}
+/* Витрина: товары с первого экрана, поиск занимает страницу целиком */
+.storefront { padding-bottom: 60px; }

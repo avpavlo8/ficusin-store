@@ -8,7 +8,7 @@ const product = {
   latin: "Aglaonema",
   category: "Растения",
   price: 1490,
-  image: "/assets/product-pothos.png",
+  image: "/assets/hero-monstera.png",
   light: "Рассеянный свет",
   size: "D12",
   stock: 5,
@@ -22,6 +22,11 @@ const product = {
   categoryId: 4,
   rating: 4.8,
   reviewsCount: 12,
+  // Значения приходят кодами — витрина обязана перевести их для покупателя.
+  filterAttributes: [
+    { code: "light_level", name: "Освещение", value: "low_light", badge: true, filterable: true },
+    { code: "care_level", name: "Сложность ухода", value: "easy", badge: true, filterable: true },
+  ],
 };
 
 // Второй вид, другая ветка дерева и другие атрибуты: иначе подборки и
@@ -39,6 +44,10 @@ const ficus = {
   placement: "office",
   petSafety: "caution",
   categoryId: 5,
+  filterAttributes: [
+    { code: "light_level", name: "Освещение", value: "diffused", badge: true, filterable: true },
+    { code: "care_level", name: "Сложность ухода", value: "demanding", badge: true, filterable: true },
+  ],
 };
 
 // Ноль на складе — это предзаказ, а не исчезнувшая карточка.

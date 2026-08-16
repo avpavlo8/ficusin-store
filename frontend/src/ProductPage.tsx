@@ -5,22 +5,7 @@ import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PlantPassport } from "./product/PlantPassport";
 import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
-import { money } from "./product/types";
-
-const attributeLabels: Record<string, string> = {
-  sunny: "Яркий свет", diffused: "Рассеянный свет", low_light: "Полутень",
-  frequent: "Частый", moderate: "Умеренный", rare: "Редкий", low: "Низкая",
-  medium: "Средняя", high: "Высокая", easy: "Лёгкий", demanding: "Требовательный",
-  non_toxic: "Нетоксично", toxic: "Токсично", unknown: "Не проверено", safe: "Безопасно",
-  caution: "С осторожностью", bathroom: "Ванная", bedroom: "Спальня", office: "Офис",
-  nursery: "Детская", living_room: "Гостиная", kitchen: "Кухня", upright: "Вертикальная",
-  bushy: "Кустовая", trailing: "Ампельная", climbing: "Вьющаяся", rosette: "Розетка",
-};
-const attributeValue = (value: string | number | boolean | string[], unit?: string) => {
-  const values = Array.isArray(value) ? value : [value];
-  const text = values.map((item) => typeof item === "boolean" ? (item ? "Да" : "Нет") : attributeLabels[String(item)] || String(item)).join(", ");
-  return `${text}${unit ? ` ${unit}` : ""}`;
-};
+import { attributeValue, money } from "./product/types";
 
 export default function ProductPage({ slug }: { slug: string }) {
   const [product, setProduct] = useState<ProductDetail | null>(null);
@@ -72,9 +57,12 @@ export default function ProductPage({ slug }: { slug: string }) {
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
   if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
-  const schemaBadges = product.attributes.filter((item) => item.badge).map((item) => `${item.name}: ${attributeValue(item.value, item.unit)}`);
-  const warningBadges = (product.importantWarnings?.length ? product.importantWarnings : schemaBadges.length ? schemaBadges : [
-    product.petSafety === "toxic" ? "Ядовито для животных" : product.petSafety === "safe" ? "Безопасно для животных" : "",
+  // Здесь только то, о чём покупателя действительно нужно предупредить.
+  // Раньше сюда подставлялись обычные характеристики, и «Освещение:
+  // Полутень» выводилось с оранжевым восклицательным знаком, как ошибка.
+  // Характеристики целиком показаны ниже, в «Подробно о товаре».
+  const warningBadges = (product.importantWarnings?.length ? product.importantWarnings : [
+    product.petSafety === "toxic" ? "Ядовито для животных" : "",
     product.lightLevel === "sunny" ? "Нужно яркое освещение" : "",
     product.watering === "frequent" ? "Нужен частый полив" : "",
   ]).filter(Boolean).slice(0, 4);

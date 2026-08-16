@@ -10,7 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const stylesheet = join(root, "frontend", "src", "styles.css");
+const stylesheetDir = join(root, "frontend", "src", "styles");
 
 // Префиксы классов, которые склеиваются из переменных.
 const dynamicPrefixes = ["sales-sync-", "admin-pill", "procurement-"];
@@ -31,11 +31,14 @@ sources.push(join(root, "frontend", "index.html"));
 walk(join(root, "public"), [".html", ".webmanifest"]);
 
 const usage = sources
-  .filter((path) => !path.endsWith("styles.css"))
+  .filter((path) => !path.endsWith(".css"))
   .map((path) => readFileSync(path, "utf8"))
   .join("\n");
 
-const css = readFileSync(stylesheet, "utf8");
+const css = readdirSync(stylesheetDir)
+  .filter((entry) => entry.endsWith(".css"))
+  .map((entry) => readFileSync(join(stylesheetDir, entry), "utf8"))
+  .join("\n");
 const declared = new Set();
 for (const match of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) declared.add(match[1]);
 
@@ -45,7 +48,7 @@ const dead = [...declared]
   .sort();
 
 if (dead.length > 0) {
-  console.error(`Мёртвые CSS-классы в frontend/src/styles.css (${dead.length}):`);
+  console.error(`Мёртвые CSS-классы в frontend/src/styles/ (${dead.length}):`);
   for (const name of dead) console.error(`  .${name}`);
   console.error("\nУдалите правила или, если класс собирается динамически,");
   console.error("добавьте его префикс в dynamicPrefixes в этом скрипте.");

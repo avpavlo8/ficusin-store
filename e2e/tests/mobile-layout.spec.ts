@@ -86,6 +86,29 @@ test("@phone the cart opens from the bottom bar and keeps its contents", async (
   await expect(page.locator(".drawer.open .quantity span")).toHaveText("1");
 });
 
+test("@phone подбор по характеристикам свёрнут, товар виден сразу", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  // Пять выпадающих списков занимали первый экран целиком, и до растений
+  // покупатель добирался прокруткой.
+  const filters = page.locator(".storefront-filters");
+  await expect(filters).toHaveJSProperty("open", false);
+  await expect(filters.getByText("Подбор по характеристикам")).toBeVisible();
+  await expect(page.getByLabel("Только в наличии")).toBeHidden();
+
+  const card = page.locator(".storefront-card").first();
+  const box = await card.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.y).toBeLessThan(viewport!.height);
+
+  // Свёрнутый — не значит недоступный.
+  await filters.getByText("Подбор по характеристикам").click();
+  await expect(page.getByLabel("Только в наличии")).toBeVisible();
+});
+
 test("@phone no page scrolls sideways", async ({ page }) => {
   await mockApi(page, owner);
   for (const path of [...storePages, "/offer", "/privacy", "/login"]) {
