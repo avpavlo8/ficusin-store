@@ -59,6 +59,14 @@
   .storefront-filters[open] > summary::after { content: "⌃"; }
   .storefront-filters > summary b { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 99px; background: var(--green); color: #fff; font-size: 11px; }
   .storefront-filters[open] { padding-bottom: 4px; }
+  /* Дерево разделов ложится в одну прокручиваемую строку — как боковое
+     меню кабинета на телефоне. Стопкой оно занимало полтора сантиметра
+     экрана на каждый раздел, и первая карточка товара оказывалась ниже
+     сгиба: замерено на iPhone 13, 704 пикселя при высоте экрана 664. */
+  .storefront-side > .storefront-side-title { display: none; }
+  .storefront-tree { grid-auto-flow: column; grid-auto-columns: max-content; gap: 6px; max-height: none; margin-bottom: 10px; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .storefront-tree button { width: auto; padding: 9px 13px; border: 1px solid var(--line); border-radius: 99px; background: #fff; white-space: nowrap; }
+  .storefront-tree .child { padding-left: 13px; }
   .storefront-search-bar { padding: 10px 16px; }
   .storefront-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 }
