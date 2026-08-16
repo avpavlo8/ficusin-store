@@ -31,18 +31,6 @@ export const statusLabels: Record<string, string> = {
   draft: "Черновик", published: "Опубликован", archived: "В архиве",
 };
 
-export const catalogOptions = {
-  catalogSection: [["plants", "Растения"], ["soil", "Грунт"], ["fertilizer", "Удобрения"], ["pots", "Кашпо и горшки"], ["accessories", "Аксессуары"]],
-  plantKind: [["aglaonema", "Аглаонема"], ["alocasia", "Алоказия"], ["pineapple", "Ананас"], ["bonsai", "Бонсай"]],
-  lightLevel: [["sunny", "Солнечная сторона"], ["diffused", "Яркий рассеянный свет"], ["low_light", "Затемнённое место"]],
-  watering: [["frequent", "Частый"], ["moderate", "Умеренный"], ["rare", "Редкий"]],
-  heightClass: [["low", "Низкий"], ["medium", "Средний"], ["high", "Высокий"]],
-  careLevel: [["easy", "Почти не требует ухода"], ["medium", "Обычный уход"], ["demanding", "Капризный"]],
-  placement: [["bathroom", "Ванная"], ["bedroom", "Спальня"], ["office", "Офис"], ["nursery", "Детская"]],
-  petSafety: [["safe", "Безопасно для питомцев"], ["caution", "Требует осторожности"]],
-  growthHabit: [["compact", "Компактный"], ["upright", "Прямостоячий"], ["trailing", "Ампельный"], ["climbing", "Вьющийся"]],
-} satisfies Record<string, string[][]>;
-
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
   if (!(options?.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");

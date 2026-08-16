@@ -27,7 +27,7 @@ function fromLatinLayout(value: string): string {
   return value.replace(/[a-z[\];',.]/g, (letter) => layout[letter] ?? letter);
 }
 
-export function normalise(value: string): string {
+function normalise(value: string): string {
   return value.toLowerCase().replace(/ё/g, "е").trim();
 }
 
@@ -68,7 +68,7 @@ function wordsOf(product: Searchable): string[] {
 // score returns how well a product answers the query, or 0 for no match.
 // Higher is better, so the list can be sorted by relevance rather than
 // alphabetically — the plant someone typed the name of should be first.
-export function score(product: Searchable, query: string): number {
+function score(product: Searchable, query: string): number {
   const terms = normalise(query).split(/\s+/).filter(Boolean);
   if (terms.length === 0) return 0;
   const words = wordsOf(product);
