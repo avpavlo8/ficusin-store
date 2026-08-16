@@ -60,19 +60,6 @@ const monstera = {
   stock: 0,
 };
 
-// Латинского названия у большинства карточек нет. Раньше вместо него
-// подставлялся размер варианта, и под каждым товаром стояла строка
-// «Основной размер», не сообщавшая ничего.
-const noLatin = {
-  ...product,
-  id: "saby-4",
-  name: "Замиокулькас",
-  latin: "",
-  size: "Основной размер",
-  categoryId: 5,
-  filterAttributes: [],
-};
-
 export const guest = { signedIn: false } as const;
 export const owner = {
   signedIn: true,
@@ -99,7 +86,7 @@ export async function mockApi(page: Page, session: Session = guest) {
   await page.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
 
   await page.route("**/api/v1/catalog", (route) =>
-    route.fulfill({ json: { products: [product, ficus, monstera, noLatin] } }));
+    route.fulfill({ json: { products: [product, ficus, monstera] } }));
 
   await page.route("**/api/v1/products/*", (route) => route.fulfill({ json: { product: {
     ...product,
