@@ -14,7 +14,8 @@ COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ficusin-api ./cmd/api
 
 FROM debian:bookworm-slim
-RUN apt-get update \
+RUN printf 'Acquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/99force-ipv4 \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
