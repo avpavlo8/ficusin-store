@@ -7,6 +7,24 @@ import (
 	"testing"
 )
 
+// statementsOnly убирает комментарии: миграция объясняет свои решения
+// словами, и проверка не должна спотыкаться о собственное объяснение.
+// Первая версия этого теста искала CASCADE во всём файле и падала на
+// строке «Без CASCADE намеренно».
+func statementsOnly(sql string) string {
+	lines := strings.Split(sql, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if index := strings.Index(line, "--"); index >= 0 {
+			line = line[:index]
+		}
+		if strings.TrimSpace(line) != "" {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
 // DROP необратим, и миграции применяются автоматически при старте. Эта
 // проверка стережёт ровно две таблицы: если в файл когда-нибудь допишут
 // третью — тест упадёт до выкладки, а не после потери данных.
@@ -15,7 +33,7 @@ func TestDropMigrationRemovesOnlyDeadTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sql := string(raw)
+	sql := statementsOnly(string(raw))
 
 	allowed := map[string]bool{
 		"integration_credentials": true,
@@ -37,9 +55,10 @@ func TestDropMigrationRemovesOnlyDeadTables(t *testing.T) {
 		t.Error("CASCADE удалит зависимости молча — пусть миграция лучше упадёт")
 	}
 
-	// В той же базе живёт Ficusin Content Bot. Его таблицы — чужие.
+	// В той же базе живёт Ficusin Content Bot. Его таблицы — чужие, как и
+	// служебная schema_migrations, которую ведёт сам migrate.Apply.
 	for _, foreign := range []string{"content_bot_state", "content_publication_claims", "schema_migrations"} {
-		if strings.Contains(sql, foreign) && strings.Contains(sql, "DROP TABLE IF EXISTS "+foreign) {
+		if strings.Contains(sql, foreign) {
 			t.Errorf("миграция магазина трогает чужую таблицу %s", foreign)
 		}
 	}
