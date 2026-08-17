@@ -143,8 +143,8 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		phone       string
 		method      string
 		existingURL string
-		paymentID  int64
-		key        string
+		paymentID   int64
+		key         string
 	)
 	err := service.pool.QueryRow(ctx, `
 		SELECT o.id, o.total::DOUBLE PRECISION, o.delivery_fee_pending,
@@ -231,9 +231,9 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		// per-order page: a guest has no account to look at, and a page
 		// showing an order to anyone who knows its number would leak.
 		ReturnURL: service.returnURL + "/?paid=" + orderNumber,
-		Email:          email,
-		Phone:          phone,
-		Items:          items,
+		Email:     email,
+		Phone:     phone,
+		Items:     items,
 	})
 	if err != nil {
 		if _, failed := service.pool.Exec(ctx, `
@@ -268,10 +268,14 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 	}
 	var orderID int64
 	var expected float64
+	var orderNumber string
+	var orderStatus string
 	if err := service.pool.QueryRow(ctx, `
-		SELECT order_id, amount::DOUBLE PRECISION FROM payments
-		WHERE provider_payment_id = $1
-	`, providerPaymentID).Scan(&orderID, &expected); err != nil {
+		SELECT p.order_id, p.amount::DOUBLE PRECISION, o.order_number, o.status
+		FROM payments p
+		JOIN orders o ON o.id = p.order_id
+		WHERE p.provider_payment_id = $1
+	`, providerPaymentID).Scan(&orderID, &expected, &orderNumber, &orderStatus); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Someone else's payment, or one we never started. Not ours to
 			// act on, and not an error worth retrying.
@@ -289,6 +293,23 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 			"payment_id", providerPaymentID, "paid", payment.Amount, "expected", expected,
 		)
 		paid = false
+	}
+	// Деньги за отменённый заказ. Товар уже вернулся на полку, а платёж
+	// всё-таки прошёл — значит его не успели закрыть у провайдера.
+	//
+	// Факт оплаты записываем: деньги реальны, и делать вид, что их нет,
+	// хуже всего. Но заказ остаётся отменённым, и это громкая ошибка, а не
+	// тишина: дальше нужен человек, который вернёт деньги или восстановит
+	// заказ. Тихо «оплатить» отменённый заказ нельзя — товара под него уже
+	// нет, его мог купить кто-то другой.
+	if paid && orderStatus == "cancelled" {
+		service.logger.Error(
+			"оплата пришла за отменённый заказ: нужен возврат или восстановление вручную",
+			"order_number", orderNumber,
+			"order_id", orderID,
+			"payment_id", providerPaymentID,
+			"amount", payment.Amount,
+		)
 	}
 	status := payment.Status
 	if paid {
