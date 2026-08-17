@@ -146,7 +146,10 @@ func main() {
 	}
 	go shopSettings.Run(ctx)
 	// An unpaid order holds its plants in reserve; this puts them back.
-	go order.NewExpiryWorker(pool, shopSettings, logger).Run(ctx)
+	// Платёжный сервис здесь не для красоты: прежде чем вернуть товар на
+	// полку, автоотмена обязана закрыть платёж у провайдера, иначе деньги
+	// придут за заказ, которого уже нет.
+	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
 	// Parcels are handed to CDEK only when the panel switch is on, so test
 	// orders do not turn into real shipments.
 	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
