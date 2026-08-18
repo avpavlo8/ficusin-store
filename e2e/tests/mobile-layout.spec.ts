@@ -105,7 +105,7 @@ test("@phone подбор по характеристикам свёрнут, т
 
 test("@phone no page scrolls sideways", async ({ page }) => {
   await mockApi(page, owner);
-  for (const path of [...storePages, "/offer", "/privacy", "/login"]) {
+  for (const path of [...storePages, "/cart", "/checkout", "/offer", "/privacy", "/login"]) {
     await page.goto(path);
     expect(await horizontalOverflow(page), `${path} шире экрана`).toBeLessThanOrEqual(1);
   }

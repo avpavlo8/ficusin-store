@@ -27,15 +27,13 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
 });
 
-test("@mobile нижний блок остаётся полноширинной кнопкой чата", async ({ page }) => {
+test("@mobile общий подвал остаётся устойчивым и полноширинным", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto("/");
 
-  const footer = page.locator(".home-service");
+  const footer = page.locator(".store-footer");
   await expect(footer.getByRole("link", { name: /Написать в чат/ })).toBeVisible();
-  await expect(footer.getByRole("heading", { name: /Не знаете/ })).toBeHidden();
-  await expect(footer.locator(".home-service-card")).toBeHidden();
   await expect.poll(async () => footer.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(390);
 });
 
@@ -132,7 +130,7 @@ test("@desktop на карточке товара выбирается коли�
   await page.locator(".pdp-quantity button").last().click();
   await page.getByRole("button", { name: "В корзину" }).click();
 
-  await expect(page.getByRole("button", { name: "Обновить корзину" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Удалить из корзины" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Безопасно для животных")).toBeVisible();
   await page.getByRole("button", { name: "Вопросы" }).click();
@@ -149,7 +147,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
   await expect(purchase.locator(".pdp-commerce-box")).toContainText("В наличии");
   await expect(purchase.getByRole("button", { name: "В корзину" })).toBeVisible();
-  await expect(page.locator(".pdp-anchor-nav").getByRole("button")).toHaveCount(3);
+  await expect(page.locator(".pdp-anchor-nav").getByRole("button")).toHaveCount(4);
   await expect(page.locator(".pdp-anchor-nav")).not.toContainText("Паспорт");
   await expect(page.locator(".review-modal")).toHaveCount(0);
   await page.getByRole("radio", { name: "5 из 5" }).click();
@@ -236,7 +234,7 @@ test("@desktop корзина открывается поверх витрины
   await expect(drawer.locator(".quantity span")).toHaveText("1");
 });
 
-test("@desktop оформление открывается из вынесенной корзины", async ({ page }) => {
+test("@desktop корзина ведёт в отдельный пошаговый checkout", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
@@ -245,17 +243,21 @@ test("@desktop оформление открывается из вынесенн
   await card.getByRole("button", { name: /В корзине/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
-  const checkout = page.locator(".checkout.open");
+  await expect(page).toHaveURL(/\/checkout$/);
+  const checkout = page.locator(".checkout-page-panel");
   await expect(checkout).toBeVisible();
   await expect(checkout.getByRole("heading", { name: "Оформление заказа" })).toBeVisible();
   await expect(checkout.getByLabel("Имя")).toBeVisible();
   await expect(checkout.getByLabel("Телефон")).toBeVisible();
-  const consent = checkout.locator('input[name="consent"]');
-  const submit = checkout.getByRole("button", { name: "Подтвердить заказ" });
-  await expect(consent).toBeVisible();
-  await expect(submit).toBeVisible();
-  expect(await consent.evaluate((node) => Boolean(node.compareDocumentPosition(document.querySelector('.checkout.open button.primary-button')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
-  await expect(page).toHaveURL(/\/$/);
+  await expect(checkout.getByText("Способ доставки")).toBeHidden();
+  await checkout.getByLabel("Имя").fill("Мария");
+  await checkout.getByLabel("Телефон").fill("+7 900 123-45-67");
+  await checkout.getByLabel("Email для чека").fill("maria@example.ru");
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await expect(checkout.getByText("Способ доставки")).toBeVisible();
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await expect(checkout.getByText("Способ оплаты")).toBeVisible();
+  await expect(checkout.locator('input[name="consent"]')).toBeVisible();
 });
 
 test("@desktop оформление отправляет заказ с нормализованным телефоном", async ({ page }) => {
