@@ -343,7 +343,7 @@
 .storefront-buy button:hover { background:#c93b20; color:white; transform:translateY(-1px); }
 .storefront-buy button.in-cart { background:var(--home-green); color:white; }
 .storefront-buy > button { display:grid; place-items:center; }
-.storefront-buy > button svg { margin:auto; }
+.storefront-buy > button svg { position:absolute; inset:0; margin:auto; transform:translateX(-1px); }
 .storefront-price { display:grid; gap:3px; }.storefront-price em { color:var(--home-orange); font-size:11px; font-style:normal; font-weight:700; letter-spacing:.01em; }
 .storefront-quantity { height:38px; padding:3px; display:flex; align-items:center; border:1px solid #d8c9b7; border-radius:9px; background:#fffaf3; }
 .storefront-quantity button { width:30px; height:30px; padding:0; display:grid; place-items:center; border:0; border-radius:7px; background:transparent; color:var(--home-ink); font-size:17px; font-weight:600; }.storefront-quantity button:hover { background:#eee7ba; color:var(--home-ink); transform:none; }.storefront-quantity .quantity-value { color:var(--home-green); font-size:13px; }
@@ -388,7 +388,7 @@
 .header-submenu > summary:hover,.header-submenu[open] > summary { background:#eee7ba; color:var(--home-ink); }
 
 /* Печать и два отрывных вкладыша поверх hero. */
-.home-stamp { width:116px; height:116px; padding:0; top:28px; right:20px; border:0; outline:0; border-radius:50%; background:rgba(247,239,228,.76); box-shadow:none; transform:rotate(7deg); }
+.home-stamp { width:132px; height:132px; padding:0; top:22px; right:14px; border:0; outline:0; border-radius:50%; background:rgba(247,239,228,.76); box-shadow:none; transform:rotate(7deg); }
 .home-stamp svg { width:100%; height:100%; overflow:visible; fill:none; stroke:var(--home-green); stroke-width:1.4; }
 .home-stamp text { fill:var(--home-green); stroke:none; font:700 8.5px/1 Arial,sans-serif; letter-spacing:1.35px; }
 .home-stamp .stamp-plant { stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
@@ -432,8 +432,9 @@
 .storefront-grid.list-view .storefront-buy button svg { width:18px; }.storefront-grid.list-view .cart-button-label { display:inline; color:white; font-size:12px; font-weight:700; }
 .storefront-grid.list-view .storefront-quantity { height:46px; }.storefront-grid.list-view .storefront-quantity button { min-width:38px; height:38px; padding:0; }.storefront-grid.list-view .storefront-price { text-align:right; }
 
-/* Нижняя полка повторяет макет: одна зелёная сцена и две светлые карточки. */
-.home-service { min-height:330px; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/home-service-4k.webp') center/cover no-repeat; color:var(--home-ink); }
+/* На широком экране нижняя полка использует утверждённую композицию целиком:
+   так кресло, растения, карточки и зелёная сцена сохраняют точные пропорции. */
+.home-service { min-height:300px; aspect-ratio:1396/300; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/footer-reference.webp') center/100% 100% no-repeat; color:var(--home-ink); }
 .home-service-choice { width:31%; height:100%; min-height:330px; padding:32px 34px; position:absolute; inset:0 auto 0 0; display:flex; flex-direction:column; justify-content:flex-start; overflow:visible; border-radius:0; background:linear-gradient(90deg,rgba(19,54,27,.98),rgba(19,54,27,.84)); color:white; }
 .home-service-choice::before { content:none; }.home-service-choice > * { position:relative; z-index:1; }
 .home-service-choice h2 { margin-bottom:10px; font-size:34px; }.home-service-choice p { margin-bottom:18px; font-size:11px; }
@@ -446,6 +447,11 @@
 .home-service-card.care { left:60%; width:30%; }.home-service-card.care::before { background-image:url('/assets/redesign/service-care-v2.webp'); }
 .home-service-card b { font-size:15px; line-height:1.25; }.home-service-card span { color:#62564b; font-size:11px; }
 .home-service-card > i { position:absolute; right:18px; bottom:20px; color:#473a2f; font:400 25px/1 Georgia,serif; }
+
+@media (min-width:851px) {
+  .home-service-choice,.home-service-card { opacity:0; }
+  .home-service-choice a { width:43%; height:54px; position:absolute; left:8%; bottom:26px; opacity:1; }
+}
 
 @media (max-width:1100px) {
   .home-filter-group { max-width:100%; overflow-x:auto; }

@@ -197,20 +197,20 @@ export default function StorefrontPage() {
   const headerMenus = useMemo(() => {
     const children = new Map<number | null, Category[]>();
     categories.forEach((item) => children.set(item.parentId, [...(children.get(item.parentId) || []), item]));
-    const direct = new Map<number, number>();
-    products.forEach((product) => { if (product.categoryId != null) direct.set(product.categoryId, (direct.get(product.categoryId) || 0) + 1); });
-    const hasProducts = (item: Category): boolean => (direct.get(item.id) || 0) > 0 || (children.get(item.id) || []).some(hasProducts);
-    const visibleChildren = (parentId: number): Category[] => (children.get(parentId) || []).filter(hasProducts).flatMap((item): Category[] => /комнатн(ые|ых) растен/i.test(item.name) ? visibleChildren(item.id) : [item]);
-    const build = (item: Category): HeaderMenuItem => {
-      const nested = visibleChildren(item.id).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
-      return { id:item.id, label:item.name, ...(nested.length ? { children:nested } : {}) };
-    };
-    const roots = (children.get(null) || []).filter(hasProducts).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
+    const order = (items: Category[]) => [...items].sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru"));
+    // «Каталог» показывает именно все корневые разделы. В «Растениях» сразу
+    // показываем конечные виды, не заставляя покупателя открывать служебный
+    // уровень «Комнатные растения».
+    const roots: HeaderMenuItem[] = order(children.get(null) || []).map((item) => ({ id:item.id, label:item.name }));
     const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
     if (!plantRoot) return { catalog: roots, plants: [] };
-    const plants = visibleChildren(plantRoot.id).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
+    const collectPlantKinds = (parentId: number): Category[] => order(children.get(parentId) || []).flatMap((item): Category[] => {
+      const nested = children.get(item.id) || [];
+      return nested.length ? collectPlantKinds(item.id) : [item];
+    });
+    const plants: HeaderMenuItem[] = collectPlantKinds(plantRoot.id).map((item) => ({ id:item.id, label:item.name }));
     return { catalog: roots, plants };
-  }, [categories, products]);
+  }, [categories]);
 
   // Ветка считается выбранной вместе со всеми потомками, даже теми, что
   // пропущены при отрисовке.
@@ -372,7 +372,7 @@ export default function StorefrontPage() {
         </div>
         <div className="home-hero-visual">
           <img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" />
-          <span className="home-stamp" aria-label="Живые растения для живых людей"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><path id="stamp-top" d="M23 59 A37 37 0 0 1 97 59" /><path id="stamp-bottom" d="M23 67 A37 37 0 0 0 97 67" /></defs><circle cx="60" cy="60" r="48" /><circle cx="60" cy="60" r="42" strokeDasharray="2 3" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M60 75V49m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM49 78h22" /></svg></span>
+          <span className="home-stamp" aria-label="Живые растения для живых людей"><svg viewBox="0 0 132 132" aria-hidden="true"><defs><path id="stamp-top" d="M25 64 A41 41 0 0 1 107 64" /><path id="stamp-bottom" d="M25 74 A41 41 0 0 0 107 74" /></defs><circle cx="66" cy="66" r="58" /><circle cx="66" cy="66" r="52" strokeDasharray="2 4" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M66 82V55m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM55 85h22" /></svg></span>
           <span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span>
           <span className="home-note packing"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span>
         </div>
@@ -487,7 +487,7 @@ export default function StorefrontPage() {
                       aria-label="В корзину"
                       title="Добавить в корзину"
                     >
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Zm3 0V6a3 3 0 0 1 6 0v2" /></svg>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg>
                       <span className="cart-button-label">В корзину</span>
                     </button>}
                   </div>
