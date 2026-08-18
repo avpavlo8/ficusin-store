@@ -118,7 +118,7 @@ test("@desktop товар без остатка идёт как предзака
   // Магазин, прячущий то, что кончилось, теряет продажу дважды: покупатель не
   // видит растения и никто не узнаёт, что его хотели.
   await page.getByRole("button", { name: /Фильтры/ }).click();
-  await page.getByLabel("Только в наличии").check();
+  await page.locator(".filter-sheet").getByLabel("Только в наличии").check();
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
 });
 
@@ -132,7 +132,7 @@ test("@desktop на карточке товара выбирается коли�
 
   await expect(page.getByRole("button", { name: "Удалить из корзины" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
-  await expect(page.getByText("Безопасно для животных")).toBeVisible();
+  await expect(page.getByText("Питомцы")).toBeVisible();
   await page.getByRole("button", { name: "Вопросы" }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
   await page.getByRole("button", { name: /Отзывы/ }).click();
@@ -274,12 +274,14 @@ test("@desktop оформление отправляет заказ с норм�
   await card.getByRole("button", { name: /В корзине/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
-  const checkout = page.locator(".checkout.open");
+  const checkout = page.locator(".checkout-page-panel");
   await checkout.getByLabel("Имя").fill("Александр");
   await checkout.getByLabel("Телефон").fill("9151234567");
-  await checkout.getByLabel("Email").fill("buyer@example.com");
+  await checkout.getByLabel("Email для чека").fill("buyer@example.com");
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
   await checkout.locator('input[name="consent"]').check();
-  await checkout.getByRole("button", { name: "Подтвердить заказ" }).click();
+  await checkout.getByRole("button", { name: /Подтвердить заказ/ }).click();
 
   await expect(checkout.getByRole("heading", { name: "Заказ принят" })).toBeVisible();
   expect(order).toMatchObject({
@@ -307,15 +309,17 @@ for (const delivery of [
     await card.getByRole("button", { name: /В корзине/ }).click();
     await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
-    const checkout = page.locator(".checkout.open");
-    await checkout.locator(`input[name="delivery"][value="${delivery.id}"]`).check();
-    await expect(checkout.getByText("Оплата после подтверждения заказа менеджером")).toBeVisible();
+    const checkout = page.locator(".checkout-page-panel");
     await checkout.getByLabel("Имя").fill("Тестовый заказ");
     await checkout.getByLabel("Телефон").fill("9151234567");
-    await checkout.getByLabel("Email").fill("test@example.com");
+    await checkout.getByLabel("Email для чека").fill("test@example.com");
+    await checkout.getByRole("button", { name: /Продолжить/ }).click();
+    await checkout.locator(`input[name="delivery"][value="${delivery.id}"]`).check();
     await checkout.getByLabel("Адрес доставки").fill(delivery.address);
+    await checkout.getByRole("button", { name: /Продолжить/ }).click();
+    await expect(checkout.getByText("Оплата после подтверждения заказа менеджером")).toBeVisible();
     await checkout.locator('input[name="consent"]').check();
-    await checkout.getByRole("button", { name: "Подтвердить заказ" }).click();
+    await checkout.getByRole("button", { name: /Подтвердить заказ/ }).click();
 
     expect(order).toMatchObject({
       customer: { address: delivery.address },
@@ -335,11 +339,11 @@ test("@desktop оформление подставляет профиль авт
   await card.getByRole("button", { name: /В корзине/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
-  const checkout = page.locator(".checkout.open");
+  const checkout = page.locator(".checkout-page-panel");
   await expect(checkout.getByLabel("Имя")).toHaveValue("Александр");
   await expect(checkout.getByLabel("Телефон")).toHaveValue("+79150000000");
-  await expect(checkout.getByLabel("Email")).toHaveValue("owner@example.com");
-  await expect(checkout.locator(".checkout-total > div").first().locator("span").last()).toHaveText("1 490 ₽");
+  await expect(checkout.getByLabel("Email для чека")).toHaveValue("owner@example.com");
+  await expect(checkout.locator(".checkout-order-summary")).toContainText("1 490 ₽");
 });
 
 test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {
