@@ -5,11 +5,6 @@
    этого не изменился, а на 100 КБ в одном файле больше никто не
    натыкается. Подключение и порядок — в ../styles.css. */
 
-.storefront-search-bar { position: sticky; top: var(--header-h); z-index: 30; padding: 12px 24px; background: var(--cream); border-bottom: 1px solid var(--line); }
-.storefront-search { position: relative; max-width: 720px; margin: 0 auto; }
-.storefront-search form { position: relative; }
-.storefront-search input { width: 100%; padding: 13px 40px 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; font-size: 15px; }
-.storefront-search input:focus { outline: none; border-color: var(--green); }
 
 .storefront-shell { max-width: 1520px; margin: 0 auto; padding: 20px 24px 0; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
 .storefront-side { position: sticky; top: calc(var(--header-h) + 2px); display: grid; gap: 8px; }
@@ -74,7 +69,6 @@
   .storefront-tree { grid-auto-flow: column; grid-auto-columns: max-content; gap: 6px; max-height: none; margin-bottom: 10px; overflow-x: auto; overscroll-behavior-inline: contain; }
   .storefront-tree button { width: auto; padding: 9px 13px; border: 1px solid var(--line); border-radius: 99px; background: #fff; white-space: nowrap; }
   .storefront-tree .child { padding-left: 13px; }
-  .storefront-search-bar { padding: 10px 16px; }
   .storefront-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 }
 
@@ -103,9 +97,7 @@
 .storefront-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .preset { padding: 7px 13px 7px 9px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 99px; background: white; font: inherit; font-size: 13px; color: #4a544b; cursor: pointer; }
 .preset:hover { border-color: var(--green); color: var(--green); }
-.preset-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--cream); color: var(--green); }
 .preset.active { background: var(--green); border-color: var(--green); color: white; }
-.preset.active .preset-icon { background: rgba(255,255,255,.18); color: white; }
 
 /* Дерево каталога: разделы свёрнуты, вид раскрывается по нажатию на раздел. */
 /* Под «Растениями» больше шестидесяти видов — без прокрутки список
@@ -127,7 +119,6 @@
 .storefront-image { border-radius: 12px; background: var(--cream); }
 .storefront-buy button { border-radius: 9px; }
 .storefront-fav.active { color: var(--heart); }
-.storefront-search input { border-radius: 10px; }
 
 /* Переключатели в настройках — такие же, как в остальных местах панели.
    Флажок не показывает состояние с одного взгляда, а бегунок показывает. */
@@ -163,13 +154,8 @@
 .home-hero-actions button b { width:44px; height:44px; display:grid; place-items:center; border:1px solid #cfbeaa; border-radius:50%; font-size:12px; }
 .home-team { margin-top:26px; display:flex; align-items:center; gap:14px; color:#4e443c; font-size:12px; line-height:1.35; }
 .home-team b { color:var(--home-orange); }
-.home-avatars { color:var(--home-green); letter-spacing:-1px; font-size:17px; }
 .home-hero-visual { min-height:510px; overflow:hidden; border-radius:180px 18px 18px 18px; }
 .home-hero-visual img { width:100%; height:100%; min-height:510px; object-fit:cover; object-position:center; display:block; }
-
-.home-collections { max-width:1320px; margin:0 auto 38px; padding:0 28px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-.home-collections a { min-height:195px; padding:24px; display:flex; align-items:flex-end; overflow:hidden; border-radius:14px; background-position:center; background-size:cover; color:white; box-shadow:0 13px 30px rgba(75,48,31,.08); }
-.home-collections span { max-width:170px; font:400 22px/1.05 Georgia,serif; text-shadow:0 1px 3px rgba(0,0,0,.3); }
 
 .storefront-shell { max-width:1450px; padding:15px 34px 0; grid-template-columns:235px minmax(0,1fr); gap:26px; }
 .storefront-side { padding:14px 12px; border:1px solid #e3d8ca; border-radius:13px; background:rgba(255,255,255,.35); }
@@ -188,9 +174,6 @@
 .storefront-image { aspect-ratio:1/.96; background:#efe6da; }
 .storefront-name { color:var(--home-ink); font-size:13px; font-weight:500; }
 .storefront-buy strong { color:var(--home-ink); font-size:16px; }
-.storefront-buy button { width:36px; height:36px; padding:0; overflow:hidden; color:transparent; border:0; border-radius:7px; background:var(--home-orange); }
-.storefront-buy button::after { content:"🛒"; color:white; font-size:15px; }
-.storefront-buy button:hover,.storefront-buy button.in-cart { background:var(--home-green); color:transparent; }
 .storefront-fav { color:#766a60; background:transparent; font-size:20px; }
 .storefront-fav.active { color:var(--home-orange); }
 .storefront-more { min-width:280px; min-height:42px; margin:18px auto 8px; padding:0 26px; display:flex; align-items:center; justify-content:center; gap:18px; border:0; border-radius:9px; background:#eee5d9; color:var(--home-ink); cursor:pointer; }
@@ -217,8 +200,6 @@
   .home-team { display:none; }
   .home-hero-visual { min-height:410px; border-radius:110px 14px 14px 14px; }
   .home-hero-visual img { min-height:410px; }
-  .home-collections { margin-bottom:20px; padding:0 16px; display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; }
-  .home-collections a { min-width:82vw; min-height:175px; scroll-snap-align:start; }
   .storefront-shell { padding:18px 16px 0; }
   .storefront-side { padding:0; border:0; background:transparent; }
   .storefront-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -272,23 +253,15 @@
 .home-note.packing i { margin-left:12px; font-style:normal; font-size:24px; }
 .home-team img { width:112px; height:42px; object-fit:cover; object-position:center; border-radius:24px; }
 
-.home-collections button { min-height:195px; padding:22px; position:relative; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; overflow:hidden; border:0; border-radius:14px; background-position:center; background-size:cover; color:white; text-align:left; box-shadow:0 13px 30px rgba(75,48,31,.08); cursor:pointer; isolation:isolate; }
-.home-collections button::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,rgba(21,17,13,.35),transparent 65%); transition:background .22s ease; }
-.home-collections button:hover::before { background:linear-gradient(90deg,rgba(21,17,13,.2),rgba(231,72,39,.17)); }
-.home-collections button b { font:400 32px/1 Georgia,serif; }
-.home-collections button span { margin-top:12px; max-width:175px; font:400 21px/1.08 Georgia,serif; text-shadow:0 1px 3px rgba(0,0,0,.3); }
-.home-collections button i { width:39px; height:39px; margin-top:auto; display:grid; place-items:center; border:1px solid rgba(255,255,255,.8); border-radius:50%; color:white; font-style:normal; font-size:20px; transition:.2s ease; }
-.home-collections button:hover i,.home-collections button:focus-visible i { border-color:var(--home-orange); background:var(--home-orange); transform:translateX(4px); }
-
 .storefront-preset-carousel { max-width:1320px; margin:12px auto 34px; padding:0 46px; position:relative; }
 .storefront-preset-carousel .storefront-presets { margin:0; padding:0; display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 24px)/3); gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
 .storefront-preset-carousel .storefront-presets::-webkit-scrollbar { display:none; }
 .storefront-preset-carousel .preset { min-height:184px; padding:20px; position:relative; display:flex; align-items:flex-start; flex-direction:column; gap:0; overflow:hidden; border:0; border-radius:14px; background-position:center; background-size:cover; color:white; text-align:left; scroll-snap-align:start; box-shadow:none; isolation:isolate; }
-.storefront-preset-carousel .preset::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,rgba(10,18,12,.02),rgba(10,18,12,.68)); }
+.storefront-preset-carousel .preset::before { content:none; }
 .storefront-preset-carousel .preset.active { outline:3px solid var(--home-orange); outline-offset:-3px; }
-.preset-number { font:400 25px/1 Georgia,serif; }
-.preset-title { margin-top:auto; font:700 21px/1.05 Georgia,serif; }
-.preset-count { margin-top:6px; color:rgba(255,255,255,.78); font-size:10px; }
+.preset-number { font:400 25px/1 Georgia,serif; text-shadow:0 1px 5px rgba(0,0,0,.38); }
+.preset-title { margin-top:auto; font:700 21px/1.05 Georgia,serif; text-shadow:0 1px 5px rgba(0,0,0,.48); }
+.preset-count { margin-top:6px; color:white; font-size:10px; text-shadow:0 1px 4px rgba(0,0,0,.55); }
 .preset-go { width:36px; height:36px; position:absolute; right:17px; bottom:17px; display:grid; place-items:center; border:1px solid rgba(255,255,255,.7); border-radius:50%; font-size:18px; transition:.2s ease; }
 .preset:hover .preset-go,.preset:focus-visible .preset-go { background:var(--home-orange); border-color:var(--home-orange); transform:translateX(3px); }
 .preset-arrow { width:40px; height:40px; position:absolute; z-index:3; top:72px; display:grid; place-items:center; border:1px solid #ddcdbb; border-radius:50%; background:#f7efe4; color:var(--home-ink); font-size:18px; cursor:pointer; }
@@ -305,7 +278,6 @@
 .home-catalog-toolbar > label select { width:auto; min-width:28px; height:38px; padding:0 18px 0 4px; border:0; background:transparent; color:var(--home-ink); font:inherit; }
 .home-sort { width:auto; margin-left:auto; padding:0 30px 0 13px; font:inherit; font-size:12px; }
 .storefront-side { top:calc(var(--header-h) + 14px); }
-.storefront-side::after { content:"Уход за растениями\A\AСоветы и инструкции для ваших зелёных питомцев  →"; margin-top:14px; padding:96px 14px 16px; border-radius:11px; background:linear-gradient(180deg,transparent 30%,rgba(247,239,228,.96)),url('/assets/redesign/filters/office.webp') center 30%/cover; color:var(--home-ink); white-space:pre-line; font-size:12px; line-height:1.35; }
 
 .home-service { min-height:330px; padding:48px 52px; position:relative; display:grid; grid-template-columns:34% 22% 22% 22%; align-items:start; overflow:hidden; border-radius:16px; background:url('/assets/redesign/home-service-4k.webp') center/cover no-repeat; color:white; }
 .home-service-choice { align-self:center; }
@@ -319,7 +291,6 @@
   .storefront > .header .account-button.icon-only,.storefront > .header .favorites-button,.storefront > .header .cart-button { display:none; }
   .home-stamp { width:80px; height:80px; top:12px; right:12px; font-size:7px; }
   .home-note { padding:11px 13px; }.home-note > b { font-size:10px; }.home-note.delivery { left:2%; bottom:17%; }.home-note.packing { right:2%; bottom:3%; }
-  .home-collections button { min-width:82vw; min-height:175px; }
   .storefront-preset-carousel { margin:8px auto 24px; padding:0 16px; }
   .storefront-preset-carousel .storefront-presets { grid-auto-columns:82vw; }
   .preset-arrow { display:none; }
@@ -331,4 +302,65 @@
   .home-service::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(21,49,27,.95) 0 58%,rgba(21,49,27,.18)); }
   .home-service-choice { position:relative; z-index:1; max-width:280px; }
   .home-service-card { display:none; }
+}
+
+/* Третья визуальная сверка: широкая композиция, единая карусель и точные
+   состояния каталога. Эти правила намеренно завершают каскад. */
+@media (min-width:851px) {
+  .storefront > .header { width:calc(100% - 36px); max-width:1780px; height:92px; padding:0 22px; gap:38px; }
+  .storefront > .header .brand { font:700 35px/1 Georgia,serif; }
+  .storefront > .header .desktop-nav { gap:34px; }
+  .storefront > .header .desktop-nav a { font-size:15px; letter-spacing:-.015em; }
+  .storefront > .header .header-search { width:clamp(320px,23vw,430px); height:48px; }
+  .storefront > .header .header-search input { font-size:14px; }
+  .storefront > .header .account-button.icon-only,
+  .storefront > .header .favorites-button,
+  .storefront > .header .cart-button { width:46px; min-width:46px; height:46px; }
+
+  .home-hero { width:calc(100% - 36px); max-width:1780px; min-height:620px; padding:32px 34px 18px; grid-template-columns:40% 60%; }
+  .home-hero h1 { font-size:clamp(64px,5.5vw,96px); }
+  .home-hero-copy > p { font-size:17px; }
+  .home-hero-visual,.home-hero-visual img { min-height:565px; }
+
+  .storefront-preset-carousel { width:calc(100% - 36px); max-width:1680px; margin:18px auto 42px; padding:0 52px; }
+  .storefront-preset-carousel .preset { min-height:220px; }
+  .preset-arrow { top:90px; }
+
+  .storefront-shell { width:calc(100% - 36px); max-width:1780px; padding:16px 26px 0; grid-template-columns:240px minmax(0,1fr); gap:28px; }
+  .storefront-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+  .home-service { width:calc(100% - 36px); max-width:1780px; }
+}
+
+.storefront-side::after { content:none; display:none; }
+.home-catalog-toolbar { width:100%; margin:10px 0 20px; overflow:visible; }
+.home-catalog-toolbar > button,.home-catalog-toolbar > label,.home-catalog-toolbar > select { min-height:46px; }
+.home-catalog-toolbar > label { padding-left:15px; font-size:13px; }
+.home-catalog-toolbar > label select { height:42px; font-size:13px; }
+.home-sort { margin-left:auto; min-width:170px; }
+
+.storefront-buy button { width:38px; height:38px; position:relative; display:grid; place-items:center; overflow:visible; color:white; border:0; border-radius:7px; background:var(--home-orange); }
+.storefront-buy button::after { content:none; }
+.storefront-buy button svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.storefront-buy button:hover { background:#c93b20; color:white; transform:translateY(-1px); }
+.storefront-buy button.in-cart { background:var(--home-green); color:white; }
+.storefront-buy .cart-state { width:15px; height:15px; position:absolute; top:-5px; right:-5px; display:grid; place-items:center; border:2px solid #f7efe4; border-radius:50%; background:var(--home-orange); color:white; font-size:8px; font-weight:800; }
+
+.home-service { min-height:340px; padding:44px 48px; grid-template-columns:minmax(330px,1.2fr) minmax(245px,.78fr) minmax(245px,.78fr); gap:14px; align-items:start; background-position:center; }
+.home-service-card { min-height:122px; padding:21px 23px; align-content:center; border:1px solid rgba(74,57,38,.08); border-radius:13px; background:rgba(247,239,228,.9); box-shadow:0 12px 28px rgba(24,39,22,.08); color:var(--home-ink); text-shadow:none; backdrop-filter:blur(2px); }
+.home-service-card b { font-size:16px; }.home-service-card span { color:#5f544a; font-size:12px; }
+
+@media (max-width:1200px) and (min-width:851px) {
+  .storefront > .header .desktop-nav { gap:20px; }
+  .storefront > .header .desktop-nav a { font-size:13px; }
+  .storefront > .header .header-search { width:300px; }
+  .home-catalog-toolbar { flex-wrap:wrap; }
+  .home-sort { margin-left:0; }
+  .home-service { grid-template-columns:1fr 1fr; }
+  .home-service-choice { grid-row:span 2; }
+}
+
+@media (max-width:850px) {
+  .storefront-preset-carousel .preset { min-height:205px; }
+  .home-catalog-toolbar { overflow-x:auto; }
+  .storefront-buy button { width:38px; height:38px; }
 }

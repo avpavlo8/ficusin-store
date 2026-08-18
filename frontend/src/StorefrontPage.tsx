@@ -206,7 +206,13 @@ export default function StorefrontPage() {
       list = list.filter((product) => rules.every((rule) => rule.match(product)));
     }
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
-    for (const [code, selected] of Object.entries(attributeFilters)) if (selected) list = list.filter((product) => product.filterAttributes?.some((attribute) => attribute.code === code && (Array.isArray(attribute.value) ? attribute.value.map(String).includes(selected) : String(attribute.value) === selected)));
+    for (const [code, selected] of Object.entries(attributeFilters)) if (selected) list = list.filter((product) => {
+      if (code === "__diameter") return product.size.match(/D\s*(\d+)/i)?.[1] === selected;
+      if (code === "__light") return product.lightLevel === selected;
+      if (code === "__watering") return product.watering === selected;
+      if (code === "__care") return product.careLevel === selected;
+      return product.filterAttributes?.some((attribute) => attribute.code === code && (Array.isArray(attribute.value) ? attribute.value.map(String).includes(selected) : String(attribute.value) === selected));
+    });
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
     if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0));
@@ -220,6 +226,18 @@ export default function StorefrontPage() {
       const values = Array.isArray(attribute.value) ? attribute.value : [attribute.value]; values.forEach((value) => facet.values.add(String(value))); result.set(attribute.code, facet);
     }));
     return [...result.entries()].filter(([, facet]) => facet.values.size > 1);
+  }, [products]);
+
+  // Четыре главных фильтра из утверждённого макета существуют независимо
+  // от того, настроил ли менеджер дублирующие динамические характеристики.
+  const catalogFacets = useMemo(() => {
+    const values = (pick: (product: Product) => string | undefined) => new Set(products.map(pick).filter((value): value is string => Boolean(value)));
+    return [
+      ["__diameter", { name: "Диаметр горшка", unit: "см", values: values((product) => product.size.match(/D\s*(\d+)/i)?.[1]) }],
+      ["__light", { name: "Освещение", values: values((product) => product.lightLevel) }],
+      ["__watering", { name: "Полив", values: values((product) => product.watering) }],
+      ["__care", { name: "Сложность", values: values((product) => product.careLevel) }],
+    ] as Array<[string, { name: string; unit?: string; values: Set<string> }]>;
   }, [products]);
 
   const togglePreset = (id: string) => setSelectedPresets((current) => {
@@ -312,12 +330,6 @@ export default function StorefrontPage() {
         </div>
       </section>
 
-      <section className="home-collections" aria-label="Подборки растений">
-        <button type="button" onClick={() => togglePreset("dark")} style={{ backgroundImage: "url('/assets/redesign/collection-dark-4k.webp')" }}><b>01</b><span>Для тёмной<br />комнаты</span><i>→</i></button>
-        <button type="button" onClick={() => togglePreset("easy")} style={{ backgroundImage: "url('/assets/redesign/collection-easy-4k.webp')" }}><b>02</b><span>Неприхотливые</span><i>→</i></button>
-        <button type="button" onClick={() => togglePreset("pets")} style={{ backgroundImage: "url('/assets/redesign/collection-pets-4k.webp')" }}><b>03</b><span>Безопасны<br />для питомцев</span><i>→</i></button>
-      </section>
-
       <CollectionStrip products={products} active={selectedPresets} onPick={togglePreset} />
 
       <section className="storefront-shell" id="catalog">
@@ -369,7 +381,7 @@ export default function StorefrontPage() {
 
           <div className="home-catalog-toolbar">
             <button type="button" className="home-filter-button" onClick={() => setFiltersOpen((value) => !value)}>☷ <span>Фильтры</span>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
-            {facets.slice(0, 4).map(([code, facet]) => <label key={code}><span>{facet.name}</span><select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{attributeLabel(value)}</option>)}</select></label>)}
+            {catalogFacets.map(([code, facet]) => <label key={code}><span>{facet.name}</span><select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{attributeLabel(value)}{facet.unit ? ` ${facet.unit}` : ""}</option>)}</select></label>)}
             <select className="home-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка"><option value="popular">По популярности</option><option value="cheap">Сначала дешевле</option><option value="expensive">Сначала дороже</option></select>
           </div>
 
@@ -424,8 +436,11 @@ export default function StorefrontPage() {
                     <button
                       className={inCart ? "in-cart" : ""}
                       onClick={() => (inCart ? setCartOpen(true) : addToCart(product))}
+                      aria-label={inCart ? `Уже в корзине, ${inCart} шт.` : preorder ? "Под заказ" : "Добавить в корзину"}
+                      title={inCart ? `Уже в корзине · ${inCart}` : preorder ? "Под заказ" : "Добавить в корзину"}
                     >
-                      {inCart ? `В корзине · ${inCart}` : preorder ? "Под заказ" : "В корзину"}
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h2l1.7 9.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.5L21 8H7M10 20h.01M18 20h.01" /></svg>
+                      {inCart > 0 && <span className="cart-state">✓</span>}
                     </button>
                   </div>
                 </article>

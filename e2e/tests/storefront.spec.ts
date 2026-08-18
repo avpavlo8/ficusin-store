@@ -10,7 +10,7 @@ test("@desktop главная сохраняет утверждённую виз
 
   await expect(page.locator(".home-hero-visual img")).toHaveAttribute("src", /home-hero-4k\.webp/);
   await expect(page.locator(".home-team img")).toBeVisible();
-  await expect(page.locator(".home-collections button")).toHaveCount(3);
+  await expect(page.locator(".home-collections")).toHaveCount(0);
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
   await expect(page.locator(".home-catalog-toolbar")).toBeVisible();

@@ -52,15 +52,17 @@ export const presets: Preset[] = [
 ];
 
 const visualPresets = [
+  // Первые три — утверждённые пользователем главные подборки. Они являются
+  // обычными фильтрами, а не декоративными ссылками: клик применяет match.
+  { id: "dark", image: "/assets/redesign/collection-dark-4k.webp" },
+  { id: "easy", image: "/assets/redesign/collection-easy-4k.webp" },
+  { id: "pets", image: "/assets/redesign/collection-pets-4k.webp" },
   { id: "bathroom", image: "/assets/redesign/filters/bathroom.webp" },
-  { id: "dark", image: "/assets/redesign/filters/dark-room.webp" },
   { id: "office", image: "/assets/redesign/filters/office.webp" },
   { id: "tall", image: "/assets/redesign/filters/tall.webp" },
   { id: "compact", image: "/assets/redesign/filters/compact.webp" },
-  { id: "easy", image: "/assets/redesign/filters/easy.webp" },
   { id: "rare", image: "/assets/redesign/filters/rare-water.webp" },
   { id: "bedroom", image: "/assets/redesign/filters/bedroom.webp" },
-  { id: "pets", image: "/assets/redesign/filters/pets.webp" },
 ];
 
 export function CollectionStrip<T extends Product>({
@@ -94,7 +96,7 @@ export function CollectionStrip<T extends Product>({
           aria-pressed={active.has(preset.id)}
           onClick={() => onPick(preset.id)}
           title={`${preset.title} — ${count}`}
-          style={{ backgroundImage: `linear-gradient(180deg, rgba(20,28,20,.02), rgba(20,28,20,.58)), url('${image}')` }}
+          style={{ backgroundImage: `url('${image}')` }}
         >
           <span className="preset-number">0{index + 1}</span>
           <span className="preset-title">{preset.title}</span>
