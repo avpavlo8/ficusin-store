@@ -76,7 +76,10 @@ export default function StorefrontPage() {
   const [query, setQuery] = useState(
     () => new URLSearchParams(window.location.search).get("q") ?? "",
   );
-  const [category, setCategory] = useState<number | null>(null);
+  const [category, setCategory] = useState<number | null>(() => {
+    const value = Number(new URLSearchParams(window.location.search).get("category"));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  });
   // На широком экране подбор раскрыт сразу, на телефоне — по нажатию.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [opened, setOpened] = useState<Set<number>>(new Set());

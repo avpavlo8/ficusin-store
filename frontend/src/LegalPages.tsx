@@ -21,13 +21,6 @@ function LegalPage({
         <p className="legal-updated">Редакция от 28 июля 2026 года</p>
         {children}
       </article>
-      <footer className="legal-footer">
-        <span>© 2026 Фикусин</span>
-        <a href="/requisites">Реквизиты</a>
-        <a href="/offer">Оферта</a>
-        <a href="/delivery-and-returns">Доставка и возврат</a>
-        <a href="/privacy">Персональные данные</a>
-      </footer>
     </main>
   );
 }
@@ -80,6 +73,13 @@ export function RequisitesPage() {
       <aside className="legal-callout">Заказы через сайт принимаются круглосуточно. Обработка заказов и ответы покупателям — в часы работы магазина.</aside>
     </LegalPage>
   );
+}
+
+export function ContactsPage() {
+  return <LegalPage eyebrow="Мы рядом" title="Контакты">
+    <section className="contacts-intro"><div><h2>Магазин «Фикусин»</h2><p>Заходите выбрать растение лично или оформляйте заказ на сайте. Поможем подобрать растение, горшок и всё необходимое для ухода.</p><dl className="requisites-list"><div><dt>Адрес</dt><dd>г. Рязань, ул. Новосёлов, д. 40А</dd></div><div><dt>Режим работы</dt><dd>ежедневно, 08:00–20:00</dd></div><div><dt>Телефон</dt><dd><a href="tel:+79156151100">+7 915 615-11-00</a></dd></div><div><dt>Почта</dt><dd><a href="mailto:info@ficusin.ru">info@ficusin.ru</a></dd></div></dl></div><iframe className="contacts-map" title="Магазин Фикусин на карте" src="https://yandex.ru/map-widget/v1/?mode=search&text=%D0%A0%D1%8F%D0%B7%D0%B0%D0%BD%D1%8C%2C%20%D1%83%D0%BB.%20%D0%9D%D0%BE%D0%B2%D0%BE%D1%81%D1%91%D0%BB%D0%BE%D0%B2%2C%2040%D0%90" loading="lazy" allowFullScreen /></section>
+    <section><h2>Мы в социальных сетях</h2><p><a href="https://vk.ru/ficusin" target="_blank" rel="noreferrer">ВКонтакте</a> · <a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Telegram</a> · <a href="https://www.instagram.com/ficusin_62/" target="_blank" rel="noreferrer">Instagram</a> · <a href="https://max.ru/channel_ficusin" target="_blank" rel="noreferrer">MAX</a></p></section>
+  </LegalPage>;
 }
 
 export function DeliveryPage() {
