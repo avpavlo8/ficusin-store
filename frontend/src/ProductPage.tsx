@@ -29,7 +29,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   useEffect(() => {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
-      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
+      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; let stored: Record<string,number> = {}; try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; } setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setQuantity(Math.max(1, stored[item.id] || 1)); document.title = `${normalized.name} — Фикусин`; })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug]);
 
@@ -57,15 +57,29 @@ export default function ProductPage({ slug }: { slug: string }) {
     });
   };
 
-  const addToCart = () => {
+  const persistCart = (next: Record<string, number>) => {
+    localStorage.setItem("ficusin-cart", JSON.stringify(next));
+    window.dispatchEvent(new Event(STORAGE_EVENT));
+    setCart(next);
+  };
+  const toggleCart = () => {
     if (!product || !variant) return;
     let stored: Record<string, number> = {};
     try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; }
+    if (stored[product.id]) {
+      delete stored[product.id];
+      persistCart({ ...stored });
+      setNotice("Товар удалён из корзины"); window.setTimeout(() => setNotice(""), 1800);
+      return;
+    }
     stored[product.id] = variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity;
-    localStorage.setItem("ficusin-cart", JSON.stringify(stored));
-    window.dispatchEvent(new Event(STORAGE_EVENT));
-    setCart({ ...stored });
-    setNotice(cart[product.id] ? "Количество обновлено" : "Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
+    persistCart({ ...stored });
+    setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
+  };
+  const changeQuantity = (value: number) => {
+    setQuantity(value);
+    if (!product || !cart[product.id]) return;
+    persistCart({ ...cart, [product.id]: value });
   };
 
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
@@ -76,7 +90,7 @@ export default function ProductPage({ slug }: { slug: string }) {
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
     <section className="pdp-main">
       <ProductGallery images={product.images} name={product.name} active={activeImage} onSelect={setActiveImage} />
-      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(cart[product.id])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); }} onQuantity={setQuantity} onFavorite={toggleFavorite} onBuy={addToCart} />
+      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(cart[product.id])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); changeQuantity(1); }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
     <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{([['care','О растении'],['characteristics','Характеристики'],['reviews','Отзывы'],['questions','Вопросы']] as const).map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
       <section className="pdp-tab-panel" aria-live="polite">

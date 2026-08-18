@@ -36,8 +36,10 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
       <div className="pdp-order-column">
         <div className="pdp-identity"><h1>{product.name}</h1><p className="latin">{product.latin}</p>{reviewComposer}</div>
         <p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
-        {product.variants.length > 0 && <fieldset className="variant-picker"><legend>Размер растения</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id}><strong>{sizeLabel(item)}</strong>{product.variants.length > 1 && <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>}</button>)}</div></fieldset>}
-        {variant && <dl className="pdp-specs">{variant.heightCm && <div><dt>Высота</dt><dd>{variant.heightCm} см</dd></div>}<div><dt>Артикул</dt><dd>{variant.sku}</dd></div></dl>}
+        <div className="pdp-parameters">
+          {product.variants.length > 0 && <fieldset className="variant-picker"><legend>Размер растения</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id}><strong>{sizeLabel(item)}</strong>{product.variants.length > 1 && <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>}</button>)}</div></fieldset>}
+          {variant && <dl className="pdp-specs">{variant.heightCm && <div><dt>Высота</dt><dd>{variant.heightCm} см</dd></div>}<div><dt>Артикул</dt><dd>{variant.sku}</dd></div></dl>}
+        </div>
       </div>
       <div className="pdp-side-column">
         <div className="pdp-key-characteristics" aria-label="Основные характеристики">
@@ -50,7 +52,7 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
           <div><span><CharacteristicIcon name="pets" /></span><p><small>Питомцы</small><strong>{characteristic(attributeLabel(product.petSafety || product.passport.toxicity || "Не указано"),"питом","безопас","токсич","pet")}</strong></p></div>
         </div>
         <div className="pdp-commerce-box"><div className="pdp-price-row"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><span className={available ? "stock-ok" : "stock-out"}>{available ? "● В наличии" : "Под заказ"}</span></div>
-          <div className="pdp-actions"><div className="pdp-quantity" aria-label="Количество"><button type="button" onClick={() => onQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1} aria-label="Уменьшить количество">−</button><output>{quantity}</output><button type="button" onClick={() => onQuantity(Math.min(available ? Math.min(variant?.stock || 1, 20) : 20, quantity + 1))} disabled={!variant || quantity >= (available ? Math.min(variant.stock, 20) : 20)} aria-label="Увеличить количество">+</button></div><button className={inCart ? "pdp-cart-button in-cart" : "pdp-cart-button"} onClick={onBuy} disabled={!variant}>{inCart ? "Обновить корзину" : "В корзину"}</button><button className={favorite ? "pdp-favorite active" : "pdp-favorite"} onClick={onFavorite} aria-label={favorite ? "Убрать из избранного" : "Добавить в избранное"}>{favorite ? "♥" : "♡"}</button></div>
+          <div className="pdp-actions"><div className="pdp-quantity" aria-label="Количество"><button type="button" onClick={() => onQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1} aria-label="Уменьшить количество">−</button><output>{quantity}</output><button type="button" onClick={() => onQuantity(Math.min(available ? Math.min(variant?.stock || 1, 20) : 20, quantity + 1))} disabled={!variant || quantity >= (available ? Math.min(variant.stock, 20) : 20)} aria-label="Увеличить количество">+</button></div><button className={inCart ? "pdp-cart-button in-cart" : "pdp-cart-button"} onClick={onBuy} disabled={!variant}>{inCart ? "Удалить из корзины" : "В корзину"}</button><button className={favorite ? "pdp-favorite active" : "pdp-favorite"} onClick={onFavorite} aria-label={favorite ? "Убрать из избранного" : "Добавить в избранное"}>{favorite ? "♥" : "♡"}</button></div>
         </div>
       </div>
     </div>
