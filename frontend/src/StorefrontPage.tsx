@@ -302,20 +302,26 @@ export default function StorefrontPage() {
             <a href="#catalog">Выбрать своё растение <span>→</span></a>
             <button type="button" aria-label="Видео о Фикусин"><b>▶</b> Видео о Фикусин</button>
           </div>
-          <div className="home-team"><span className="home-avatars">● ● ● ●</span><span>Над вашими растениями<br />ухаживает <b>команда любителей</b></span></div>
+          <div className="home-team"><img src="/assets/redesign/team-avatars.webp" alt="Команда Фикусин" /><span>За вашими растениями<br />ухаживает <b>команда любителей</b></span></div>
         </div>
-        <div className="home-hero-visual"><img src="/assets/redesign/home-hero.png" alt="Алоказия в керамическом кашпо" /></div>
+        <div className="home-hero-visual">
+          <img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" />
+          <span className="home-stamp">ЖИВЫЕ РАСТЕНИЯ<br />ДЛЯ ЖИВЫХ ЛЮДЕЙ</span>
+          <span className="home-note delivery">♧ <b>Доставка<br />по всей России</b></span>
+          <span className="home-note packing">♧ <b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span>
+        </div>
       </section>
 
       <section className="home-collections" aria-label="Подборки растений">
-        <a href="#catalog" style={{ backgroundImage: "url('/assets/redesign/collection-dark.png')" }}><span>Для тёмной комнаты</span></a>
-        <a href="#catalog" style={{ backgroundImage: "url('/assets/redesign/collection-easy.png')" }}><span>Неприхотливые</span></a>
-        <a href="#catalog" style={{ backgroundImage: "url('/assets/redesign/collection-pets.png')" }}><span>Безопасны для питомцев</span></a>
+        <button type="button" onClick={() => togglePreset("dark")} style={{ backgroundImage: "url('/assets/redesign/collection-dark-4k.webp')" }}><b>01</b><span>Для тёмной<br />комнаты</span><i>→</i></button>
+        <button type="button" onClick={() => togglePreset("easy")} style={{ backgroundImage: "url('/assets/redesign/collection-easy-4k.webp')" }}><b>02</b><span>Неприхотливые</span><i>→</i></button>
+        <button type="button" onClick={() => togglePreset("pets")} style={{ backgroundImage: "url('/assets/redesign/collection-pets-4k.webp')" }}><b>03</b><span>Безопасны<br />для питомцев</span><i>→</i></button>
       </section>
+
+      <CollectionStrip products={products} active={selectedPresets} onPick={togglePreset} />
 
       <section className="storefront-shell" id="catalog">
         <aside className="storefront-side">
-          <p className="storefront-side-title">Каталог</p>
           <nav className="storefront-tree">
             <button
               className={category == null ? "active" : ""}
@@ -349,8 +355,6 @@ export default function StorefrontPage() {
         </aside>
 
         <div className="storefront-main">
-          <CollectionStrip products={products} active={selectedPresets} onPick={togglePreset} />
-
           <div className="storefront-head">
             <div>
               {/* Единственный h1 страницы. Без него поисковик и скринридер
@@ -361,11 +365,12 @@ export default function StorefrontPage() {
                 {searching && <span> по запросу «{query.trim()}»</span>}
               </p>
             </div>
-            <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка">
-              <option value="popular">сначала популярные</option>
-              <option value="cheap">сначала дешёвые</option>
-              <option value="expensive">сначала дорогие</option>
-            </select>
+          </div>
+
+          <div className="home-catalog-toolbar">
+            <button type="button" className="home-filter-button" onClick={() => setFiltersOpen((value) => !value)}>☷ <span>Фильтры</span>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
+            {facets.slice(0, 4).map(([code, facet]) => <label key={code}><span>{facet.name}</span><select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{attributeLabel(value)}</option>)}</select></label>)}
+            <select className="home-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка"><option value="popular">По популярности</option><option value="cheap">Сначала дешевле</option><option value="expensive">Сначала дороже</option></select>
           </div>
 
           {loading && <p className="storefront-empty">Загружаем каталог…</p>}
@@ -431,7 +436,9 @@ export default function StorefrontPage() {
         </div>
       </section>
       <section className="home-service" id="care" aria-label="Помощь с выбором и доставкой">
-        <img src="/assets/redesign/home-service.png" alt="Поможем выбрать растение, доставим и подскажем по уходу" />
+        <div className="home-service-choice"><h2>Не знаете,<br />что выбрать?</h2><p>Напишите нам в чат — подскажем лучшее растение<br />для вашего интерьера и уровня освещения.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>◯</span></a></div>
+        <div className="home-service-card delivery"><b>Бережно доставим<br />по всей России</b><span>Надёжная упаковка<br />и бережная доставка</span></div>
+        <div className="home-service-card care"><b>Поможем с уходом<br />и пересадкой</b><span>Ответим на вопросы<br />и подскажем</span></div>
       </section>
       <CheckoutHost
         cart={cart}

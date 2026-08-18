@@ -74,12 +74,12 @@ function useBodyLock(locked: boolean, name: string) {
   }, [locked, name]);
 }
 
-export function AccountMenu({ user }: { user: StoreUser | null }) {
-  if (!user) return <a className="account-button" href="/login"><span>◯</span><span>Войти</span></a>;
+export function AccountMenu({ user, iconOnly = false }: { user: StoreUser | null; iconOnly?: boolean }) {
+  if (!user) return <a className={iconOnly ? "account-button icon-only" : "account-button"} href="/login" aria-label="Войти"><span>{iconOnly ? <Icon path={icons.person} /> : "◯"}</span>{!iconOnly && <span>Войти</span>}</a>;
   const staff = user.adminRole === "manager" || user.adminRole === "owner";
   const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
-  if (!staff) return <a className="account-button" href="/account"><AccountBadge user={user} /><span>{name}</span></a>;
-  return <details className="account-menu"><summary className="account-button"><AccountBadge user={user} /><span>{name}</span></summary>
+  if (!staff) return <a className={iconOnly ? "account-button icon-only" : "account-button"} href="/account" aria-label="Профиль">{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</a>;
+  return <details className="account-menu"><summary className={iconOnly ? "account-button icon-only" : "account-button"}>{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</summary>
     <div><a href="/account">Личный профиль</a><a href="/admin">Панель управления</a></div>
   </details>;
 }
@@ -255,11 +255,11 @@ export function StoreHeader({
             aria-expanded={searchOpen}
           ><Icon path={icons.search} /></button>
         </>}
-        <AccountMenu user={user} />
-        <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites}`}><span aria-hidden="true">♥</span><b>{favorites}</b></a>
+        <AccountMenu user={user} iconOnly={homeNavigation} />
+        <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites}`}><span aria-hidden="true"><Icon path={icons.heart} /></span>{favorites > 0 && <b>{favorites}</b>}</a>
         {onCartClick
-          ? <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}><span>Корзина</span><b>{cart}</b></button>
-          : <a className="cart-button" href="/cart" aria-label={cartLabel}><span>Корзина</span><b>{cart}</b></a>}
+          ? <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</button>
+          : <a className="cart-button" href="/cart" aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</a>}
       </div>
     </header>
     {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onClose={() => setSearchOpen(false)} />}

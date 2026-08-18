@@ -4,6 +4,19 @@ import { mockApi, owner } from "./helpers";
 // Витрина — это главная страница магазина, и почти всё, что покупатель делает
 // до корзины, происходит здесь. Раньше её не проверял никто.
 
+test("@desktop главная сохраняет утверждённую визуальную структуру", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  await expect(page.locator(".home-hero-visual img")).toHaveAttribute("src", /home-hero-4k\.webp/);
+  await expect(page.locator(".home-team img")).toBeVisible();
+  await expect(page.locator(".home-collections button")).toHaveCount(3);
+  await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
+  await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
+  await expect(page.locator(".home-catalog-toolbar")).toBeVisible();
+  await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
+});
+
 test("@desktop дерево раскрывается сразу до видов", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
