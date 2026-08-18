@@ -358,8 +358,6 @@
 .product-page .pdp-content > div:last-child { display:grid; grid-template-columns:1fr; gap:14px; }
 .product-page .pdp-content h3 { margin:0 0 6px; color:#31482c; font:700 12px Arial,sans-serif; }
 .product-page .pdp-content article p { margin:0; color:#6f655b; font-size:12px; line-height:1.55; }
-.product-page .pdp-compact-attributes dl { margin:0; }.product-page .pdp-compact-attributes dl > div { padding:7px 0; display:flex; justify-content:space-between; gap:15px; border-bottom:1px dashed #ddcfbe; }
-.product-page .pdp-compact-attributes dt { color:#81766b; font-size:11px; }.product-page .pdp-compact-attributes dd { margin:0; color:#3f493d; font-size:11px; text-align:right; }
 .product-page .plant-passport,.product-page .pdp-reviews { padding:22px 24px; background:rgba(255,250,243,.7); }
 .product-page .passport-sections { max-height:470px; overflow:auto; border-top:0; scrollbar-width:thin; }
 .product-page .passport-sections > section { padding:12px 0; }
