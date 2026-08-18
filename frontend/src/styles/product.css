@@ -326,7 +326,7 @@
 .product-page .pdp-cart-button:hover { background:#c93b20; }
 .product-page .pdp-cart-button.in-cart { border-color:#31482c; background:#31482c; color:white; }
 .product-page .pdp-favorite { min-height:52px; border-color:#dfd1c0; border-radius:50%; background:#fffaf3; color:#31482c; }
-.product-page .pdp-key-characteristics { padding:27px 26px; display:grid; align-content:start; border:1px solid #dfd1c0; border-radius:18px; background:rgba(255,250,243,.72); }
+.product-page .pdp-key-characteristics { padding:27px 26px; align-self:start; display:grid; align-content:start; border:1px solid #dfd1c0; border-radius:18px; background:rgba(255,250,243,.72); }
 .product-page .pdp-key-characteristics h2 { margin:0 0 10px; color:#31482c; font:500 22px/1.1 Georgia,serif; }
 .product-page .pdp-key-characteristics > div { min-width:0; min-height:58px; padding:11px 0; display:grid; grid-template-columns:30px minmax(0,.8fr) minmax(90px,1.2fr); gap:8px; align-items:center; border-bottom:1px solid #e4d8c9; }
 .product-page .pdp-key-characteristics > div:last-child { border-bottom:0; }
