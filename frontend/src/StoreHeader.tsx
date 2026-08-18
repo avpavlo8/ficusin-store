@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
 import { CatalogSearch } from "./CatalogSearch";
 
@@ -9,7 +9,19 @@ export type StoreUser = {
   avatarUpdatedAt?: string;
 };
 
-export type HeaderMenuItem = { id: number; label: string };
+export type HeaderMenuItem = { id: number; label: string; children?: HeaderMenuItem[] };
+
+function closeOtherHeaderMenus(current: HTMLDetailsElement) {
+  if (!current.open) return;
+  document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => {
+    if (details !== current && !details.contains(current)) details.removeAttribute("open");
+  });
+}
+
+function HeaderMenuBranch({ item, onPick }: { item: HeaderMenuItem; onPick?: (id: number) => void }) {
+  if (item.children?.length) return <details className="header-submenu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>{item.label}<span>›</span></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
+  return <button type="button" onClick={(event) => { onPick?.(item.id); document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); event.currentTarget.blur(); }}>{item.label}<span>→</span></button>;
+}
 
 function AccountBadge({ user }: { user: StoreUser }) {
   if (user.avatarUpdatedAt) {
@@ -81,7 +93,7 @@ export function AccountMenu({ user, iconOnly = false }: { user: StoreUser | null
   const staff = user.adminRole === "manager" || user.adminRole === "owner";
   const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
   if (!staff) return <a className={iconOnly ? "account-button icon-only" : "account-button"} href="/account" aria-label="Профиль">{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</a>;
-  return <details className="account-menu"><summary className={iconOnly ? "account-button icon-only" : "account-button"}>{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</summary>
+  return <details className="account-menu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary className={iconOnly ? "account-button icon-only" : "account-button"}>{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</summary>
     <div><a href="/account">Личный профиль</a><a href="/admin">Панель управления</a></div>
   </details>;
 }
@@ -238,11 +250,19 @@ export function StoreHeader({
   const cart = cartCount ?? stored.cart;
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
   useBodyLock(menuOpen, "menu-open");
+  useEffect(() => {
+    const close = (event: PointerEvent) => {
+      if (!headerRef.current?.contains(event.target as Node)) headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => details.removeAttribute("open"));
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
 
   const cartLabel = `Корзина, товаров: ${cart}`;
   return <><div className="announcement"><span>Бережно упакуем каждое растение</span><span>Доставка по Рязани и всей России</span></div>
-    <header className="header">
+    <header className="header" ref={headerRef}>
       <button
         className="menu-button"
         onClick={() => setMenuOpen(true)}
@@ -251,8 +271,8 @@ export function StoreHeader({
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav">{homeNavigation ? <>
-        <details className="header-dropdown"><summary>Каталог <span>⌄</span></summary><div>{catalogMenuItems.map((item) => <button type="button" key={item.id} onClick={(event) => { onHomeCategoryPick?.(item.id); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{item.label}<span>→</span></button>)}</div></details>
-        <details className="header-dropdown"><summary>Растения <span>⌄</span></summary><div>{plantMenuItems.map((item) => <button type="button" key={item.id} onClick={(event) => { onHomeCategoryPick?.(item.id); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{item.label}<span>→</span></button>)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{catalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={onHomeCategoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{plantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={onHomeCategoryPick} key={item.id} />)}</div></details>
         <a href="/#care">Уход</a><a href="/delivery-and-returns">Доставка и оплата</a><a href="/#blog">Блог</a><a href="/#about">О нас</a>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a></>}</nav>
       <div className="header-actions">

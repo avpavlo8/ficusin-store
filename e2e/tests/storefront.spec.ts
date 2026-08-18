@@ -14,8 +14,15 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
   await expect(page.locator(".home-catalog-toolbar")).toBeVisible();
-  await page.locator(".header-dropdown summary").filter({ hasText: "Каталог" }).click();
-  await expect(page.locator(".header-dropdown").first().locator("button").first()).toBeVisible();
+  const headerMenus = page.locator(".header-dropdown");
+  await headerMenus.first().locator(":scope > summary").click();
+  await headerMenus.first().locator(".header-submenu > summary").filter({ hasText: "Растения" }).click();
+  await headerMenus.first().locator(".header-submenu > summary").filter({ hasText: "Комнатные растения" }).click();
+  await expect(headerMenus.first().getByRole("button", { name: /Аглаонема/ })).toBeVisible();
+  await headerMenus.nth(1).locator(":scope > summary").click();
+  await expect(headerMenus.first()).not.toHaveAttribute("open", "");
+  await page.locator(".home-hero-copy").click();
+  await expect(headerMenus.nth(1)).not.toHaveAttribute("open", "");
   await page.getByRole("button", { name: "Список" }).click();
   await expect(page.locator(".storefront-grid")).toHaveClass(/list-view/);
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);

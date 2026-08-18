@@ -378,6 +378,11 @@
 .storefront > .header .desktop-nav { align-items:center; }
 .storefront > .header .desktop-nav > a,.header-dropdown summary { min-height:42px; padding:0 8px; display:flex; align-items:center; border-radius:8px; transition:background .18s ease,color .18s ease; }
 .storefront > .header .desktop-nav > a:hover,.header-dropdown summary:hover,.header-dropdown[open] summary { background:rgba(41,29,19,.06); color:var(--home-orange); }
+.header-submenu { position:relative; }
+.header-submenu > summary { min-height:41px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:18px; border-radius:9px; color:var(--home-ink); font-size:13px; cursor:pointer; }
+.header-submenu > summary span { transform:none!important; color:var(--home-orange); font-size:18px; }.header-submenu[open] > summary span { transform:rotate(90deg)!important; }
+.header-submenu > div { padding:2px 0 4px 10px; display:grid; gap:2px; border-left:1px solid #dfd0be; }
+.header-submenu > summary:hover,.header-submenu[open] > summary { background:#eee7ba; color:var(--home-ink); }
 
 /* Печать и два отрывных вкладыша поверх hero. */
 .home-stamp { width:116px; height:116px; padding:0; top:28px; right:20px; border:0; outline:0; border-radius:50%; background:rgba(247,239,228,.76); box-shadow:none; transform:rotate(7deg); }
@@ -387,8 +392,8 @@
 .home-note { min-width:250px; min-height:78px; padding:14px 22px; gap:16px; border:0; box-shadow:0 10px 24px rgba(51,31,18,.13); clip-path:polygon(0 5%,3% 0,6% 4%,9% 0,12% 4%,15% 0,18% 4%,21% 0,24% 4%,27% 0,30% 4%,33% 0,36% 4%,39% 0,42% 4%,45% 0,48% 4%,51% 0,54% 4%,57% 0,60% 4%,63% 0,66% 4%,69% 0,72% 4%,75% 0,78% 4%,81% 0,84% 4%,87% 0,90% 4%,93% 0,96% 4%,100% 1%,98% 50%,100% 99%,96% 96%,93% 100%,90% 96%,87% 100%,84% 96%,81% 100%,78% 96%,75% 100%,72% 96%,69% 100%,66% 96%,63% 100%,60% 96%,57% 100%,54% 96%,51% 100%,48% 96%,45% 100%,42% 96%,39% 100%,36% 96%,33% 100%,30% 96%,27% 100%,24% 96%,21% 100%,18% 96%,15% 100%,12% 96%,9% 100%,6% 96%,3% 100%,0 95%); }
 .note-icon { width:48px; height:58px; flex:none; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
 .home-note > b { font-size:14px; font-weight:500; }
-.home-note.delivery { left:13%; bottom:12%; background:#efe1cc; transform:rotate(-4deg); }
-.home-note.packing { min-width:355px; right:2%; bottom:4%; padding-inline:27px; background:#ed5937; transform:rotate(1deg); }
+.home-note.delivery { right:5%; left:auto; bottom:13%; background:#efe1cc; transform:rotate(-3deg); }
+.home-note.packing { min-width:355px; right:auto; left:7%; bottom:4%; padding-inline:27px; background:#ed5937; transform:rotate(1deg); }
 
 /* Собственные выпадающие списки вместо системных select. */
 .home-catalog-toolbar { gap:12px; }
@@ -432,9 +437,9 @@
 .home-service-team { margin-top:auto; display:flex; align-items:center; gap:10px; color:white; font-size:11px; line-height:1.25; }
 .home-service-team img { width:105px; height:38px; object-fit:cover; border-radius:20px; }
 .home-service-card { width:28%; min-height:146px; padding:27px 22px 22px 48%; position:absolute; top:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; overflow:hidden; border:1px solid #eadfd2; border-radius:14px; background:#f5ecdf; box-shadow:none; text-shadow:none; }
-.home-service-card::before { content:""; width:45%; position:absolute; inset:0 auto 0 0; background-image:url('/assets/redesign/home-service-4k.webp'); background-repeat:no-repeat; background-size:auto 330px; }
-.home-service-card.delivery { left:31%; }.home-service-card.delivery::before { background-position:37% center; }
-.home-service-card.care { left:60%; width:30%; }.home-service-card.care::before { background-position:56% center; }
+.home-service-card::before { content:""; width:45%; position:absolute; inset:0 auto 0 0; background-repeat:no-repeat; background-position:center; background-size:cover; }
+.home-service-card.delivery { left:31%; }.home-service-card.delivery::before { background-image:url('/assets/redesign/service-delivery-v2.webp'); }
+.home-service-card.care { left:60%; width:30%; }.home-service-card.care::before { background-image:url('/assets/redesign/service-care-v2.webp'); }
 .home-service-card b { font-size:15px; line-height:1.25; }.home-service-card span { color:#62564b; font-size:11px; }
 
 @media (max-width:1100px) {
@@ -443,8 +448,18 @@
 }
 
 @media (max-width:850px) {
+  .storefront-shell { width:100%; max-width:100%; padding:18px 16px 0; display:block; }
+  .storefront-side,.storefront-main { width:100%; min-width:0; position:static; }
+  .storefront-side { padding:0; border:0; background:transparent; }
+  .storefront-side > .storefront-filters { display:none; }
+  .storefront-tree { width:100%; max-height:none; margin:0 0 18px; padding-bottom:3px; display:flex; gap:7px; overflow-x:auto; overflow-y:hidden; }
+  .storefront-tree > div { flex:none; }.storefront-tree button { width:auto; min-height:44px; padding:9px 13px!important; border:1px solid #ded1c2; border-radius:11px; background:rgba(255,255,255,.45); white-space:nowrap; }
+  .storefront-head { width:100%; display:block; margin-bottom:12px; }.storefront-head h2 { font-size:38px; }.storefront-head p { margin-top:12px; }
+  .home-catalog-toolbar { width:100%; margin-bottom:14px; display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; }
+  .home-filter-button { min-width:132px; }.catalog-dropdown.home-sort summary { min-width:160px; }.catalog-view-toggle { flex:none; margin-left:0; }
+  .storefront-grid { width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .storefront-card { min-width:0; overflow:hidden; }.storefront-attribute-badges { display:none; }.storefront-name { overflow-wrap:anywhere; }
   .home-filter-group { display:none; }
-  .catalog-view-toggle { margin-left:auto; }
   .home-service { min-height:760px; margin-inline:16px; background-position:70% bottom; }
   .home-service-choice { width:100%; height:300px; min-height:300px; padding:28px 24px; }
   .home-service-card { width:calc(100% - 24px); min-height:145px; left:12px; }
@@ -452,7 +467,7 @@
   .home-stamp { width:82px; height:82px; top:12px; right:12px; }
   .home-stamp text { font-size:8px; letter-spacing:1px; }
   .home-note { min-width:0; min-height:62px; padding:10px 13px; gap:8px; }.note-icon { width:32px; height:40px; }.home-note > b { font-size:10px; }
-  .home-note.delivery { left:2%; bottom:16%; }.home-note.packing { min-width:265px; right:1%; bottom:2%; }
+  .home-note.delivery { right:2%; left:auto; bottom:17%; }.home-note.packing { min-width:265px; right:auto; left:1%; bottom:2%; }
   .storefront-grid.list-view .storefront-card { min-height:145px; padding-left:130px; display:block; }.storefront-grid.list-view .storefront-image { width:105px; height:115px; }.storefront-grid.list-view .storefront-buy { margin-top:14px; flex-direction:row; align-items:center; }
   .home-filter-panel { margin-top:-8px; align-items:flex-start; flex-direction:column; gap:12px; }.home-filter-panel > button { margin-left:0; }
   .storefront-grid.list-view .storefront-buy button { min-width:130px; }
