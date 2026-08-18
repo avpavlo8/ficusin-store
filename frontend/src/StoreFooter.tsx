@@ -23,11 +23,10 @@ export function StoreFooter() {
   }, []);
   return <footer className="store-footer">
     <div className="store-footer-grid">
-      <section className="store-footer-brand"><a href="/">Фикусин</a><p>Растения, с которыми хорошо</p></section>
-      <details open><summary>Каталог</summary><nav>{categories.map((item)=><a key={item.id} href={`/?category=${item.id}#catalog`}>{item.name}</a>)}</nav></details>
-      <details open><summary>Покупателям</summary><nav><a href="/delivery-and-returns">Доставка, оплата и возврат</a><a href="/favorites">Избранное</a><a href="/account">Личный кабинет</a></nav></details>
-      <details open><summary>Информация</summary><nav><a href="/#about">О компании</a><a href="/contacts">Контакты</a><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></nav></details>
       <section className="store-footer-connect"><a className="store-footer-chat" href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>◯</span></a><p>Мы в соцсетях</p><div className="store-footer-socials"><a href="https://vk.ru/ficusin" target="_blank" rel="noreferrer" aria-label="Фикусин во ВКонтакте"><SocialIcon path={socialIcons.vk}/></a><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer" aria-label="Фикусин в Telegram"><SocialIcon path={socialIcons.telegram}/></a><a href="https://www.instagram.com/ficusin_62/" target="_blank" rel="noreferrer" aria-label="Фикусин в Instagram"><SocialIcon path={socialIcons.instagram}/></a><a href="https://max.ru/channel_ficusin" target="_blank" rel="noreferrer" aria-label="Фикусин в MAX"><SocialIcon path={socialIcons.max}/></a></div></section>
+      <div className="store-footer-menu"><details open><summary>Каталог</summary><nav>{categories.map((item)=><a key={item.id} href={`/?category=${item.id}#catalog`}>{item.name}</a>)}</nav></details><details open><summary>Покупателям</summary><nav><a href="/delivery-and-returns">Доставка, оплата и возврат</a><a href="/favorites">Избранное</a><a href="/account">Личный кабинет</a></nav></details><details open><summary>Информация</summary><nav><a href="/#about">О компании</a><a href="/contacts">Контакты</a><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></nav></details></div>
+      <section className="store-footer-contact"><a href="tel:+79156151100">+7 915 615-11-00</a><span>Ежедневно, 08:00–20:00</span><a href="mailto:info@ficusin.ru">info@ficusin.ru</a><span>Рязань, Новосёлов, 40А</span></section>
+      <section className="store-footer-brand"><a href="/">Фикусин</a><p>Растения, с которыми хорошо</p></section>
     </div>
     <div className="store-footer-bottom"><span>© Фикусин, {new Date().getFullYear()}</span><a href="/privacy">Политика конфиденциальности</a><a href="/offer">Публичная оферта</a><span>Растения, с которыми хорошо</span></div>
   </footer>;

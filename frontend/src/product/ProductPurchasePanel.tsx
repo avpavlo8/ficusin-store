@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ProductDetail, ProductVariant } from "./types";
-import { attributeLabel, money } from "./types";
+import { attributeLabel, attributeValue, money } from "./types";
 
 const characteristicIcons: Record<string, string> = {
   light: "M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z",
@@ -21,10 +21,14 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
   onVariant: (id: number) => void; onQuantity: (value: number) => void; onFavorite: () => void; onBuy: () => void;
 }) {
   const available = Boolean(variant && variant.stock > 0);
+  const characteristic = (fallback: string, ...tokens: string[]) => {
+    const item = product.attributes.find((entry) => tokens.some((token) => `${entry.code} ${entry.name}`.toLocaleLowerCase("ru").includes(token)));
+    return item ? attributeValue(item.value, item.unit) : fallback;
+  };
   return <aside className="pdp-summary" aria-label="Покупка товара">
-    <div className="pdp-identity"><h1>{product.name}</h1><p className="latin">{product.latin}</p>{reviewComposer}</div>
     <div className="pdp-purchase-layout">
       <div className="pdp-order-column">
+        <div className="pdp-identity"><h1>{product.name}</h1><p className="latin">{product.latin}</p>{reviewComposer}</div>
         <p className="pdp-lead">{product.shortDescription || product.description || "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем."}</p>
         {product.variants.length > 0 && <fieldset className="variant-picker"><legend>Размер растения</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id}><strong>{item.potDiameterCm ? `Ø ${item.potDiameterCm} см` : item.label}</strong>{product.variants.length > 1 && <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>}</button>)}</div></fieldset>}
         {variant && <dl className="pdp-specs">{variant.heightCm && <div><dt>Высота</dt><dd>{variant.heightCm} см</dd></div>}<div><dt>Артикул</dt><dd>{variant.sku}</dd></div></dl>}
@@ -33,12 +37,13 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
         </div>
       </div>
       <div className="pdp-key-characteristics" aria-label="Основные характеристики">
-        <div><span><CharacteristicIcon name="light" /></span><p><small>Освещение</small><strong>{attributeLabel(product.lightLevel || product.passport.lighting || "Не указано")}</strong></p></div>
-        <div><span><CharacteristicIcon name="water" /></span><p><small>Полив</small><strong>{attributeLabel(product.watering || product.passport.watering || "Не указано")}</strong></p></div>
-        <div><span><CharacteristicIcon name="height" /></span><p><small>Высота</small><strong>{variant?.heightCm ? `${variant.heightCm} см` : attributeLabel(product.heightClass || "Не указано")}</strong></p></div>
-        <div><span><CharacteristicIcon name="pot" /></span><p><small>Диаметр горшка</small><strong>{variant?.potDiameterCm ? `${variant.potDiameterCm} см` : "Не указан"}</strong></p></div>
-        <div><span><CharacteristicIcon name="care" /></span><p><small>Уход</small><strong>{attributeLabel(product.careLevel || product.passport.careDifficulty || "Не указано")}</strong></p></div>
-        <div><span><CharacteristicIcon name="pets" /></span><p><small>Питомцы</small><strong>{attributeLabel(product.petSafety || product.passport.toxicity || "Не указано")}</strong></p></div>
+        <h2>Характеристики растения</h2>
+        <div><span><CharacteristicIcon name="light" /></span><p><small>Освещение</small><strong>{characteristic(attributeLabel(product.lightLevel || product.passport.lighting || "Не указано"),"освещ","light")}</strong></p></div>
+        <div><span><CharacteristicIcon name="water" /></span><p><small>Полив</small><strong>{characteristic(attributeLabel(product.watering || product.passport.watering || "Не указано"),"полив","water")}</strong></p></div>
+        <div><span><CharacteristicIcon name="height" /></span><p><small>Высота</small><strong>{characteristic(variant?.heightCm ? `${variant.heightCm} см` : attributeLabel(product.heightClass || "Не указано"),"высот","height")}</strong></p></div>
+        <div><span><CharacteristicIcon name="pot" /></span><p><small>Диаметр горшка</small><strong>{variant?.potDiameterCm ? `${variant.potDiameterCm} см` : characteristic("Не указан","диаметр","горш")}</strong></p></div>
+        <div><span><CharacteristicIcon name="care" /></span><p><small>Уход</small><strong>{characteristic(attributeLabel(product.careLevel || product.passport.careDifficulty || "Не указано"),"уход","сложност","care")}</strong></p></div>
+        <div><span><CharacteristicIcon name="pets" /></span><p><small>Питомцы</small><strong>{characteristic(attributeLabel(product.petSafety || product.passport.toxicity || "Не указано"),"питом","безопас","токсич","pet")}</strong></p></div>
       </div>
     </div>
   </aside>;
