@@ -119,6 +119,7 @@ test("@desktop товар без остатка идёт как предзака
 
   // Магазин, прячущий то, что кончилось, теряет продажу дважды: покупатель не
   // видит растения и никто не узнаёт, что его хотели.
+  await page.getByRole("button", { name: /Фильтры/ }).click();
   await page.getByLabel("Только в наличии").check();
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
 });
@@ -198,10 +199,13 @@ test("@desktop сортировка по цене", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
-  await page.getByLabel("Сортировка").selectOption("cheap");
+  const sort = page.locator(".catalog-dropdown.home-sort");
+  await sort.locator("summary").click();
+  await sort.getByRole("option", { name: "Сначала дешевле" }).click();
   await expect(page.locator(".storefront-name").first()).toHaveText("Аглаонема Мария");
 
-  await page.getByLabel("Сортировка").selectOption("expensive");
+  await sort.locator("summary").click();
+  await sort.getByRole("option", { name: "Сначала дороже" }).click();
   await expect(page.locator(".storefront-name").first()).toHaveText("Монстера Делициоза");
 });
 

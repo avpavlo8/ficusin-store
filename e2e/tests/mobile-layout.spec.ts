@@ -89,9 +89,9 @@ test("@phone подбор по характеристикам свёрнут, т
 
   // Пять выпадающих списков занимали первый экран целиком, и до растений
   // покупатель добирался прокруткой.
-  const filters = page.locator(".storefront-filters");
-  await expect(filters).toHaveJSProperty("open", false);
-  await expect(filters.getByText("Подбор по характеристикам")).toBeVisible();
+  const filters = page.getByRole("button", { name: /Фильтры/ });
+  await expect(filters).toBeVisible();
+  await expect(filters).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByLabel("Только в наличии")).toBeHidden();
 
   const card = page.locator(".storefront-card").first();
@@ -99,7 +99,7 @@ test("@phone подбор по характеристикам свёрнут, т
   await expect(card).toBeVisible();
 
   // Свёрнутый — не значит недоступный.
-  await filters.getByText("Подбор по характеристикам").click();
+  await filters.click();
   await expect(page.getByLabel("Только в наличии")).toBeVisible();
 });
 
