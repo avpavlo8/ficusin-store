@@ -134,7 +134,9 @@ test("@desktop на карточке товара выбирается коли�
   await expect(page.getByRole("button", { name: "Обновить корзину" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Безопасно для животных")).toBeVisible();
-  await expect(page.locator("#plant-passport")).toContainText("Тропические леса Азии");
+  await page.getByRole("button", { name: "Вопросы" }).click();
+  await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
+  await page.getByRole("button", { name: /Отзывы/ }).click();
   await expect(page.locator("#reviews")).toContainText("Подтверждённая покупка");
 });
 
@@ -146,8 +148,8 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
   await expect(purchase.locator(".pdp-commerce-box")).toContainText("В наличии");
   await expect(purchase.getByRole("button", { name: "В корзину" })).toBeVisible();
-  await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(3);
-  await expect(page.locator(".passport-sections")).toContainText("Регулярный уход");
+  await expect(page.locator(".pdp-anchor-nav").getByRole("button")).toHaveCount(3);
+  await expect(page.locator(".pdp-anchor-nav")).not.toContainText("Паспорт");
   await expect(page.locator(".review-modal")).toHaveCount(0);
   await page.getByRole("radio", { name: "5 из 5" }).click();
   await expect(page.locator(".review-modal")).toBeVisible();
@@ -160,23 +162,25 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(page.locator(".review-media-preview figure")).toHaveCount(2);
 });
 
-test("@desktop прямой QR-якорь открывает паспорт без потери контента", async ({ page }) => {
+test("@desktop вопросы открываются отдельной вкладкой", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1#plant-passport");
-  await expect(page.locator("#plant-passport")).toBeVisible();
-  await expect(page.locator("#plant-passport details")).toContainText("Когда пересаживать?");
+  await page.goto("/product/saby-1");
+  await page.getByRole("button", { name: "Вопросы" }).click();
+  await expect(page.locator("#questions details")).toContainText("Когда пересаживать?");
 });
 
-test("@desktop пустой паспорт остаётся полезным и не рисует фиктивные данные", async ({ page }) => {
+test("@desktop пустые вопросы и отзывы остаются полезными", async ({ page }) => {
   await mockApi(page);
   await page.route("**/api/v1/products/empty", (route) => route.fulfill({ json: { product: {
     id: "empty", name: "Растение без паспорта", latin: "", shortDescription: "", description: "", careInstructions: "",
     images: ["/assets/product-pothos.png"], variants: [], recommendations: [], passport: {}, importantWarnings: [], rating: 0, reviewsCount: 0, reviews: [], catalogSection: "plants",
   } } }));
-  await page.goto("/product/empty#plant-passport");
+  await page.goto("/product/empty");
   const singlePhoto = await page.locator(".pdp-gallery.single .pdp-image").boundingBox();
   expect(singlePhoto?.width || 0).toBeGreaterThan(400);
-  await expect(page.locator("#plant-passport")).toContainText("Паспорт готовится");
+  await page.getByRole("button", { name: "Вопросы" }).click();
+  await expect(page.locator("#questions")).toContainText("Остались вопросы?");
+  await page.getByRole("button", { name: "Отзывы" }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
   await expect(page.locator(".purchase-review-meta")).toContainText("Пока без отзывов");
 });

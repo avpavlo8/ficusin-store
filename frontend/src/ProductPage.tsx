@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
-import { StoreHeader, STORAGE_EVENT } from "./StoreHeader";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { StoreHeader, STORAGE_EVENT, type HeaderMenuItem } from "./StoreHeader";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
-import { PlantPassport } from "./product/PlantPassport";
 import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 
 export default function ProductPage({ slug }: { slug: string }) {
+  const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; sortOrder:number }>>([]);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedID, setSelectedID] = useState<number | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [activeTab, setActiveTab] = useState<"care"|"reviews"|"questions">("care");
+  const relatedTrack = useRef<HTMLDivElement>(null);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
@@ -30,6 +32,18 @@ export default function ProductPage({ slug }: { slug: string }) {
       .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug]);
+
+  useEffect(() => { fetch("/api/v1/categories").then((response) => response.json()).then((body: { categories?: typeof categories }) => setCategories(body.categories || [])).catch(() => setCategories([])); }, []);
+
+  const headerMenus = useMemo(() => {
+    const children = new Map<number|null,typeof categories>();
+    categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
+    const order = (items:typeof categories) => [...items].sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ru"));
+    const catalog:HeaderMenuItem[] = order(children.get(null)||[]).map((item)=>({id:item.id,label:item.name}));
+    const plantRoot = categories.find((item)=>item.parentId==null&&/растен/i.test(item.name));
+    const leaves = (parentId:number):typeof categories => order(children.get(parentId)||[]).flatMap((item)=>children.get(item.id)?.length?leaves(item.id):[item]);
+    return {catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name})):[]};
+  },[categories]);
 
   const variant = useMemo(() => product?.variants.find((item) => item.id === selectedID) || product?.variants[0], [product, selectedID]);
   const toggleFavorite = () => {
@@ -68,19 +82,20 @@ export default function ProductPage({ slug }: { slug: string }) {
   ]).filter(Boolean).slice(0, 4);
 
   return <main className="product-page">
-    <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} />
+    <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={() => { window.location.href="/#catalog"; }} />
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
     <section className="pdp-main">
       <ProductGallery images={product.images} name={product.name} active={activeImage} onSelect={setActiveImage} />
       <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(cart[product.id])} warnings={warningBadges} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); }} onQuantity={setQuantity} onFavorite={toggleFavorite} onBuy={addToCart} />
     </section>
-    <nav className="pdp-anchor-nav" aria-label="Разделы товара"><a href="#about">О растении</a><a href="#plant-passport">Паспорт</a><a href="#reviews">Отзывы {product.reviewsCount > 0 && <span>{product.reviewsCount}</span>}</a></nav>
-    <section className="pdp-info-grid" aria-label="Информация о растении">
-      <section className="pdp-content pdp-section pdp-info-card" id="about"><header className="pdp-section-heading"><h2>Уход за растением</h2></header><div><article><h3>О растении</h3><p>{product.description || "Описание готовится. Подробности можно уточнить у консультанта."}</p></article><article><h3>Базовый уход</h3><p>{product.careInstructions || "Мы приложим рекомендации по поливу, освещению и пересадке к вашему заказу."}</p></article>{product.attributes.length > 0 && <article className="pdp-compact-attributes"><h3>Характеристики</h3><dl>{product.attributes.slice(0,6).map((item) => <div key={item.code}><dt>{item.name}</dt><dd>{attributeValue(item.value, item.unit)}</dd></div>)}</dl></article>}</div></section>
-      <PlantPassport name={product.name} passport={product.passport} />
-      <ProductReviews reviews={product.reviews} />
-    </section>
-    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div><a href="/#catalog">Смотреть все <span>→</span></a></header><div className="pdp-related-track">{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div></section>}
+    <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{([['care','О растении'],['reviews','Отзывы'],['questions','Вопросы']] as const).map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
+      <section className="pdp-tab-panel" aria-live="polite">
+        {activeTab==='care'&&<section className="pdp-content pdp-section pdp-info-card" id="about"><header className="pdp-section-heading"><h2>Уход за растением</h2></header><div><article><h3>О растении</h3><p>{product.description || "Описание готовится. Подробности можно уточнить у консультанта."}</p></article><article><h3>Базовый уход</h3><p>{product.careInstructions || "Мы приложим рекомендации по поливу, освещению и пересадке к вашему заказу."}</p></article>{product.attributes.length>0&&<article className="pdp-compact-attributes"><h3>Характеристики</h3><dl>{product.attributes.slice(0,8).map((item)=><div key={item.code}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>)}</dl></article>}</div></section>}
+        {activeTab==='reviews'&&<ProductReviews reviews={product.reviews}/>}
+        {activeTab==='questions'&&<section className="pdp-questions pdp-info-card" id="questions"><header className="pdp-section-heading"><h2>Вопросы о растении</h2></header>{(product.passport.faq||[]).length?product.passport.faq!.map((item,index)=><details key={`${item.question}-${index}`}><summary>{item.question}</summary><p>{item.answer}</p></details>):<div className="pdp-question-empty"><strong>Остались вопросы?</strong><p>Напишите нам — подскажем по уходу, размеру и доставке.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос →</a></div>}</section>}
+      </section>
+    </div>
+    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div><div className="pdp-related-controls"><button type="button" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие растения">←</button><button type="button" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие растения">→</button></div></header><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div></section>}
     <footer className="pdp-footer"><a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a><p>Рязань, Новосёлов, 40А · +7 915 615-11-00 · ежедневно 08:00–20:00</p></footer>
     {notice && <div className="toast">{notice}</div>}
   </main>;
