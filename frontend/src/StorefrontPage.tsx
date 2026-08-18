@@ -200,7 +200,7 @@ export default function StorefrontPage() {
     const direct = new Map<number, number>();
     products.forEach((product) => { if (product.categoryId != null) direct.set(product.categoryId, (direct.get(product.categoryId) || 0) + 1); });
     const hasProducts = (item: Category): boolean => (direct.get(item.id) || 0) > 0 || (children.get(item.id) || []).some(hasProducts);
-    const visibleChildren = (parentId: number) => (children.get(parentId) || []).filter(hasProducts).flatMap((item) => /комнатн(ые|ых) растен/i.test(item.name) ? visibleChildren(item.id) : [item]);
+    const visibleChildren = (parentId: number): Category[] => (children.get(parentId) || []).filter(hasProducts).flatMap((item): Category[] => /комнатн(ые|ых) растен/i.test(item.name) ? visibleChildren(item.id) : [item]);
     const build = (item: Category): HeaderMenuItem => {
       const nested = visibleChildren(item.id).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
       return { id:item.id, label:item.name, ...(nested.length ? { children:nested } : {}) };
