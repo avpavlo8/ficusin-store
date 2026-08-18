@@ -38,10 +38,11 @@ type UseCheckoutArgs = {
   cartCount: number;
   setCart: Dispatch<SetStateAction<Cart>>;
   setNotice: Dispatch<SetStateAction<string>>;
+  initialOpen?: boolean;
 };
 
-export function useCheckout({ cartLines, cartCount, setCart, setNotice }: UseCheckoutArgs) {
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
+export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen = false }: UseCheckoutArgs) {
+  const [checkoutOpen, setCheckoutOpen] = useState(initialOpen);
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");

@@ -28,6 +28,7 @@ type CheckoutHostProps = {
   onCartOpenChange: (open: boolean) => void;
   onCartChange: (cart: Cart) => void;
   cartPage?: boolean;
+  checkoutPage?: boolean;
 };
 
 // The storefront owns products and the visible cart counter. This host owns
@@ -41,6 +42,7 @@ export default function CheckoutHost({
   onCartOpenChange,
   onCartChange,
   cartPage = false,
+  checkoutPage = false,
 }: CheckoutHostProps) {
   const [cart, setCart] = useState<Cart>(externalCart);
   const [notice, setNotice] = useState("");
@@ -53,7 +55,7 @@ export default function CheckoutHost({
     .map((product) => ({ ...product, quantity: cart[product.id] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice });
+  const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen: checkoutPage });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
 
   useEffect(() => {
@@ -142,9 +144,9 @@ export default function CheckoutHost({
   }, [cart, user]);
 
   useEffect(() => {
-    document.body.classList.toggle("drawer-open", (cartOpen && !cartPage) || checkoutOpen);
+    document.body.classList.toggle("drawer-open", ((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage);
     return () => document.body.classList.remove("drawer-open");
-  }, [cartOpen, cartPage, checkoutOpen]);
+  }, [cartOpen, cartPage, checkoutOpen, checkoutPage]);
 
   function setQuantity(id: string, quantity: number) {
     setCart((current) => {
@@ -161,8 +163,7 @@ export default function CheckoutHost({
   }
 
   function beginCheckout() {
-    onCartOpenChange(false);
-    checkout.beginCheckout();
+    window.location.assign("/checkout");
   }
 
   return (
@@ -183,7 +184,7 @@ export default function CheckoutHost({
         </div>
       )}
 
-      {((cartOpen && !cartPage) || checkoutOpen) && (
+      {((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage && (
         <button
           className="overlay"
           aria-label="Закрыть"
@@ -194,7 +195,7 @@ export default function CheckoutHost({
         />
       )}
 
-      <CartDrawer
+      {!checkoutPage && <CartDrawer
         open={cartOpen}
         lines={cartLines}
         subtotal={subtotal}
@@ -202,9 +203,9 @@ export default function CheckoutHost({
         onQuantityChange={setQuantity}
         onCheckout={beginCheckout}
         page={cartPage}
-      />
+      />}
 
-      <CheckoutPanel user={!!user} {...checkout.panelProps} />
+      <CheckoutPanel user={!!user} page={checkoutPage} {...checkout.panelProps} />
     </div>
   );
 }

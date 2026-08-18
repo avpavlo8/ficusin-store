@@ -1,4 +1,5 @@
 import type { Dispatch, FormEventHandler, SetStateAction } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput } from "./lib/phone";
 
 export type CartLine = {
@@ -136,6 +137,7 @@ type CdekQuote = {
 };
 
 type CheckoutPanelProps = {
+  page?: boolean;
   checkoutOpen: boolean;
   setCheckoutOpen: (open: boolean) => void;
   orderNumber: string;
@@ -183,6 +185,7 @@ type CheckoutPanelProps = {
 
 export function CheckoutPanel(props: CheckoutPanelProps) {
   const {
+    page = false,
     checkoutOpen,
     setCheckoutOpen,
     orderNumber,
@@ -227,10 +230,20 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     total,
     submitting,
   } = props;
+  const [step, setStep] = useState<1|2|3>(1);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => { if (checkoutOpen && !orderNumber) setStep(1); }, [checkoutOpen, orderNumber]);
+  const advance = (next: 2|3) => {
+    const current = formRef.current?.querySelector<HTMLElement>(`[data-checkout-step="${step}"]`);
+    const fields = Array.from(current?.querySelectorAll<HTMLInputElement>("input,textarea,select") || []);
+    if (fields.some((field) => !field.reportValidity())) return;
+    setStep(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
-  <aside className={`checkout ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
-    <div className="drawer-head"><div><p className="eyebrow">Последний шаг</p><h2>Оформление заказа</h2></div><button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button></div>
+  <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
+    <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
     {orderNumber ? (
       <div className="success">
         <span>✓</span><h2>Заказ принят</h2><p>Номер заказа: <strong>{orderNumber}</strong></p>
@@ -238,8 +251,9 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
         <button className="primary-button" onClick={() => setCheckoutOpen(false)}>Вернуться в магазин</button>
       </div>
     ) : (
-      <form onSubmit={submitOrder}>
-        <fieldset>
+      <form ref={formRef} onSubmit={submitOrder}>
+        <nav className="checkout-steps" aria-label="Этапы оформления">{([[1,"Контактные данные"],[2,"Доставка"],[3,"Оплата"],[4,"Подтверждение"]] as const).map(([number,label])=><span className={(step===number||(number===4&&!!orderNumber))?"active":number<step?"complete":""} key={number}><b>{number<step?"✓":number}</b><small>{label}</small></span>)}</nav>
+        <fieldset data-checkout-step="1" hidden={step!==1}>
           <legend>Контактные данные</legend>
           {user && <p className="profile-prefill">Данные заполнены из личного кабинета</p>}
           <div className="field-grid">
@@ -288,9 +302,10 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
               }
             />
           </label>
+          <div className="checkout-navigation"><a href="/cart">← Вернуться в корзину</a><button type="button" className="primary-button" onClick={() => advance(2)}>Продолжить →</button></div>
         </fieldset>
-        <fieldset>
-          <legend>Получение</legend>
+        <fieldset data-checkout-step="2" hidden={step!==2}>
+          <legend>Способ доставки</legend>
           <div className="delivery-options">
             {availableDelivery.map((item) => (
               <label className={delivery === item.id ? "selected" : ""} key={item.id}>
@@ -475,10 +490,12 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
               />
             </label>
           )}
+          <div className="checkout-navigation"><button type="button" onClick={() => setStep(1)}>← Назад</button><button type="button" className="primary-button" disabled={delivery === "cdek" && !cdekOfficeCode} onClick={() => advance(3)}>Продолжить →</button></div>
         </fieldset>
+        <div data-checkout-step="3" hidden={step!==3}>
         {paymentMethods.length > 0 && (
           <fieldset>
-            <legend>Оплата</legend>
+            <legend>Способ оплаты</legend>
             <div className="delivery-options">
               {paymentMethods.map((option) => (
                 <label key={option.id} className={paymentMethod === option.id ? "active" : ""}>
@@ -506,7 +523,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
         <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekOfficeCode ? "после выбора ПВЗ" : cdekFeePending ? "рассчитает менеджер" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{cdekFeePending && cdekOfficeCode ? `${money(total)} + доставка` : money(total)}</strong></div>{cdekFeePending && cdekOfficeCode && <p className="cdek-status">Оплата после подтверждения заказа менеджером.</p>}</div>
         {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
         <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
-        <button className="primary-button full" disabled={submitting || !paymentMethods.length || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : paymentMethod === "online" && !cdekFeePending && paymentMethods.length ? "Перейти к оплате" : "Подтвердить заказ"}</button>
+        <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : paymentMethod === "online" && !cdekFeePending && paymentMethods.length ? "Перейти к оплате →" : "Подтвердить заказ →"}</button></div>
+        </div>
       </form>
     )}
   </aside>

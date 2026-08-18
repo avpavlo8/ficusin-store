@@ -49,6 +49,8 @@ export default function Root() {
       return withFooter(<FavoritesPage />);
     case "/cart":
       return withFooter(<CartPage />);
+    case "/checkout":
+      return withFooter(<CartPage checkout />);
     case "/offer":
       return withFooter(<OfferPage />);
     case "/privacy":
