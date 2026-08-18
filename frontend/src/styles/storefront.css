@@ -337,14 +337,14 @@
 .home-catalog-toolbar > label select { height:42px; font-size:13px; }
 .home-sort { margin-left:auto; min-width:170px; }
 
-.storefront-buy button { width:38px; height:38px; position:relative; display:grid; place-items:center; overflow:visible; color:white; border:0; border-radius:7px; background:var(--home-orange); }
+.storefront-buy button { width:44px; height:44px; position:relative; display:grid; place-items:center; overflow:visible; color:white; border:0; border-radius:9px; background:var(--home-orange); }
 .storefront-buy button::after { content:none; }
-.storefront-buy button svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.storefront-buy button svg { width:23px; height:23px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 .storefront-buy button:hover { background:#c93b20; color:white; transform:translateY(-1px); }
 .storefront-buy button.in-cart { background:var(--home-green); color:white; }
 .storefront-buy > button { display:grid; place-items:center; }
 .storefront-buy > button svg { position:absolute; inset:0; margin:auto; transform:translateX(-1px); }
-.storefront-price { display:grid; gap:3px; }.storefront-price em { color:var(--home-orange); font-size:11px; font-style:normal; font-weight:700; letter-spacing:.01em; }
+.storefront-price { display:flex; align-items:baseline; gap:8px; white-space:nowrap; }.storefront-price em { color:var(--home-orange); font-size:11px; font-style:normal; font-weight:700; letter-spacing:.01em; }
 .storefront-quantity { height:38px; padding:3px; display:flex; align-items:center; border:1px solid #d8c9b7; border-radius:9px; background:#fffaf3; }
 .storefront-quantity button { width:30px; height:30px; padding:0; display:grid; place-items:center; border:0; border-radius:7px; background:transparent; color:var(--home-ink); font-size:17px; font-weight:600; }.storefront-quantity button:hover { background:#eee7ba; color:var(--home-ink); transform:none; }.storefront-quantity .quantity-value { color:var(--home-green); font-size:13px; }
 
@@ -365,7 +365,7 @@
 @media (max-width:850px) {
   .storefront-preset-carousel .preset { min-height:205px; }
   .home-catalog-toolbar { overflow-x:auto; }
-  .storefront-buy button { width:38px; height:38px; }
+  .storefront-buy button { width:44px; height:44px; }
 }
 
 /* Навигация главной раскрывается на месте, не уводя пользователя к якорю. */
@@ -434,7 +434,7 @@
 
 /* На широком экране нижняя полка использует утверждённую композицию целиком:
    так кресло, растения, карточки и зелёная сцена сохраняют точные пропорции. */
-.home-service { min-height:300px; aspect-ratio:1396/300; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/footer-reference.webp') center/100% 100% no-repeat; color:var(--home-ink); }
+.home-service { min-height:300px; aspect-ratio:2188/718; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/home-service-v3.webp') center/cover no-repeat; color:var(--home-ink); }
 .home-service-choice { width:31%; height:100%; min-height:330px; padding:32px 34px; position:absolute; inset:0 auto 0 0; display:flex; flex-direction:column; justify-content:flex-start; overflow:visible; border-radius:0; background:linear-gradient(90deg,rgba(19,54,27,.98),rgba(19,54,27,.84)); color:white; }
 .home-service-choice::before { content:none; }.home-service-choice > * { position:relative; z-index:1; }
 .home-service-choice h2 { margin-bottom:10px; font-size:34px; }.home-service-choice p { margin-bottom:18px; font-size:11px; }
@@ -449,8 +449,12 @@
 .home-service-card > i { position:absolute; right:18px; bottom:20px; color:#473a2f; font:400 25px/1 Georgia,serif; }
 
 @media (min-width:851px) {
-  .home-service-choice,.home-service-card { opacity:0; }
-  .home-service-choice a { width:43%; height:54px; position:absolute; left:8%; bottom:26px; opacity:1; }
+  .home-service-choice { width:32%; min-height:100%; padding:34px 38px; background:transparent; }
+  .home-service-choice h2 { font-size:36px; }.home-service-choice p { font-size:12px; }
+  .home-service-card { top:7%; min-height:40%; border:0; background:transparent; box-shadow:none; backdrop-filter:none; }
+  .home-service-card::before { content:none; }
+  .home-service-card.delivery { left:33.2%; width:28.2%; padding-left:14%; }
+  .home-service-card.care { left:61.7%; width:35%; padding-left:14%; }
 }
 
 @media (max-width:1100px) {
