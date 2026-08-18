@@ -14,6 +14,10 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
   await expect(page.locator(".home-catalog-toolbar")).toBeVisible();
+  await page.locator(".header-dropdown summary").filter({ hasText: "Каталог" }).click();
+  await expect(page.locator(".header-dropdown").first().locator("button").first()).toBeVisible();
+  await page.getByRole("button", { name: "Список" }).click();
+  await expect(page.locator(".storefront-grid")).toHaveClass(/list-view/);
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
 });
 

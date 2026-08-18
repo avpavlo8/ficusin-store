@@ -131,7 +131,7 @@
 
 /* Утверждённая главная 2026: визуально самостоятельна, но продолжает
    использовать живой каталог, поиск, фильтры, избранное и корзину. */
-.storefront { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; background:#f7efe4; color:var(--home-ink); }
+.storefront { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; max-width:100%; overflow-x:hidden; background:#f7efe4; color:var(--home-ink); }
 .storefront > .announcement { display:none; }
 .storefront > .header { max-width:1500px; height:76px; margin:0 auto; padding:0 34px; grid-template-columns:auto 1fr auto; gap:28px; border:0; background:transparent; box-shadow:none; }
 .storefront > .header .brand-mark,.storefront > .header .brand-text small { display:none; }
@@ -363,4 +363,67 @@
   .storefront-preset-carousel .preset { min-height:205px; }
   .home-catalog-toolbar { overflow-x:auto; }
   .storefront-buy button { width:38px; height:38px; }
+}
+
+/* Навигация главной раскрывается на месте, не уводя пользователя к якорю. */
+.header-dropdown { position:relative; }
+.header-dropdown summary { padding:10px 0; display:flex; align-items:center; gap:6px; list-style:none; color:var(--home-ink); cursor:pointer; font-size:15px; }
+.header-dropdown summary::-webkit-details-marker { display:none; }
+.header-dropdown summary span { color:var(--home-orange); font-size:12px; transition:transform .2s ease; }
+.header-dropdown[open] summary span { transform:rotate(180deg); }
+.header-dropdown > div { min-width:235px; max-height:430px; padding:9px; position:absolute; z-index:80; top:44px; left:-14px; display:grid; gap:2px; overflow-y:auto; border:1px solid #dfd0be; border-radius:14px; background:#fbf5ec; box-shadow:0 20px 45px rgba(53,34,20,.16); }
+.header-dropdown button { min-height:41px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:20px; border:0; border-radius:9px; background:transparent; color:var(--home-ink); text-align:left; font:inherit; font-size:13px; cursor:pointer; }
+.header-dropdown button span { color:var(--home-orange); }
+.header-dropdown button:hover { background:#eee7ba; }
+
+/* Печать и два отрывных вкладыша поверх hero. */
+.home-stamp { width:116px; height:116px; padding:21px 10px; border:2px solid rgba(39,63,36,.72); outline:1px dashed rgba(39,63,36,.58); outline-offset:-7px; background:rgba(247,239,228,.78); font-size:9px; letter-spacing:.06em; box-shadow:0 3px 0 rgba(39,63,36,.13); }
+.home-note { min-width:245px; min-height:82px; padding:17px 24px; gap:15px; box-shadow:0 13px 28px rgba(51,31,18,.14); clip-path:polygon(0 8%,2% 0,5% 6%,8% 0,11% 6%,14% 0,17% 6%,20% 0,23% 6%,26% 0,29% 6%,32% 0,35% 6%,38% 0,41% 6%,44% 0,47% 6%,50% 0,53% 6%,56% 0,59% 6%,62% 0,65% 6%,68% 0,71% 6%,74% 0,77% 6%,80% 0,83% 6%,86% 0,89% 6%,92% 0,95% 6%,98% 0,100% 8%,98% 100%,95% 94%,92% 100%,89% 94%,86% 100%,83% 94%,80% 100%,77% 94%,74% 100%,71% 94%,68% 100%,65% 94%,62% 100%,59% 94%,56% 100%,53% 94%,50% 100%,47% 94%,44% 100%,41% 94%,38% 100%,35% 94%,32% 100%,29% 94%,26% 100%,23% 94%,20% 100%,17% 94%,14% 100%,11% 94%,8% 100%,5% 94%,2% 100%,0 92%); }
+.home-note::first-letter { font-size:31px; }
+.home-note > b { font-size:14px; }
+.home-note.delivery { left:2%; bottom:14%; background:#eee0ca; }
+.home-note.packing { min-width:330px; right:1%; bottom:3%; padding-inline:28px; background:#e95a37; }
+
+/* Собственные выпадающие списки вместо системных select. */
+.home-catalog-toolbar { gap:12px; }
+.home-filter-group { padding:4px; display:flex; align-items:center; gap:3px; border:1px solid #dfd1c0; border-radius:11px; background:rgba(255,255,255,.42); }
+.catalog-dropdown { position:relative; flex:none; }
+.catalog-dropdown summary { min-width:130px; min-height:38px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:20px; list-style:none; border-radius:8px; color:var(--home-ink); font-size:12px; cursor:pointer; }
+.catalog-dropdown summary::-webkit-details-marker { display:none; }
+.catalog-dropdown summary:hover,.catalog-dropdown[open] summary { background:#f2e8dc; }
+.catalog-dropdown summary i { color:#8e7b6a; font-style:normal; transition:transform .2s ease; }.catalog-dropdown[open] summary i { transform:rotate(180deg); }
+.catalog-dropdown > div { min-width:220px; max-height:290px; padding:7px; position:absolute; z-index:60; top:calc(100% + 7px); left:0; display:grid; gap:2px; overflow-y:auto; border:1px solid #dfd1c0; border-radius:12px; background:#fffaf3; box-shadow:0 18px 42px rgba(52,33,19,.15); }
+.catalog-dropdown > div button { min-height:39px; padding:0 11px; display:flex; align-items:center; justify-content:space-between; gap:16px; border:0; border-radius:8px; background:transparent; color:var(--home-ink); text-align:left; font:inherit; font-size:12px; cursor:pointer; }
+.catalog-dropdown > div button:hover { background:#f0e8ba; }.catalog-dropdown > div button.active { background:#e5e8b0; color:#263d23; font-weight:700; }
+.catalog-dropdown.home-sort { margin-left:auto; border:1px solid #dfd1c0; border-radius:11px; background:rgba(255,255,255,.42); }
+.catalog-dropdown.home-sort summary { min-width:175px; min-height:46px; }
+.catalog-view-toggle { height:46px; padding:4px; display:flex; border:1px solid #dfd1c0; border-radius:11px; background:rgba(255,255,255,.42); }
+.catalog-view-toggle button { width:38px; border:0; border-radius:7px; background:transparent; color:#7f7165; font-size:19px; cursor:pointer; }.catalog-view-toggle button.active { background:#fffaf3; color:var(--home-green); box-shadow:0 2px 7px rgba(40,28,18,.08); }
+
+.storefront-grid.list-view { grid-template-columns:1fr; }
+.storefront-grid.list-view .storefront-card { min-height:170px; padding:14px 16px 14px 190px; position:relative; display:grid; grid-template-columns:minmax(180px,1fr) auto; grid-template-rows:auto auto 1fr auto; column-gap:24px; }
+.storefront-grid.list-view .storefront-image { width:160px; height:142px; position:absolute; top:14px; left:14px; }
+.storefront-grid.list-view .storefront-name { font-size:17px; }.storefront-grid.list-view .storefront-buy { grid-column:2; grid-row:1 / span 4; min-width:125px; align-self:center; flex-direction:column; align-items:flex-end; }
+
+/* Три независимых нижних блока: зелёный помощник и две светлые услуги. */
+.home-service { min-height:310px; padding:0; display:grid; grid-template-columns:1.05fr .95fr .95fr; gap:12px; overflow:visible; border-radius:0; background:none; color:var(--home-ink); }
+.home-service-choice,.home-service-card { min-height:310px; padding:34px; position:relative; overflow:hidden; border-radius:16px; box-shadow:none; }
+.home-service-choice { align-self:stretch; display:flex; flex-direction:column; justify-content:center; background:#183b22 url('/assets/redesign/home-service-4k.webp') left center/auto 100% no-repeat; color:white; }
+.home-service-choice::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(20,55,28,.98) 0 58%,rgba(20,55,28,.38)); }.home-service-choice > * { position:relative; z-index:1; }
+.home-service-card { padding:34px 30px; align-content:start; border:1px solid #e5dacd; background-color:#f4eadf; background-image:linear-gradient(180deg,rgba(244,234,223,.98) 0 42%,rgba(244,234,223,.08) 74%),url('/assets/redesign/home-service-4k.webp'); background-size:auto 100%; background-repeat:no-repeat; }
+.home-service-card.delivery { background-position:center,54% center; }.home-service-card.care { background-position:center,100% center; }
+.home-service-card b { font-size:18px; }.home-service-card span { font-size:13px; }
+
+@media (max-width:1100px) {
+  .home-filter-group { max-width:100%; overflow-x:auto; }
+  .catalog-dropdown.home-sort { margin-left:0; }
+}
+
+@media (max-width:850px) {
+  .home-filter-group { display:none; }
+  .catalog-view-toggle { margin-left:auto; }
+  .home-service { display:grid; grid-template-columns:1fr; padding-bottom:82px; }
+  .home-service-choice,.home-service-card { min-height:280px; display:flex; flex-direction:column; justify-content:flex-start; }
+  .home-service-card { display:flex; }
+  .storefront-grid.list-view .storefront-card { min-height:145px; padding-left:130px; display:block; }.storefront-grid.list-view .storefront-image { width:105px; height:115px; }.storefront-grid.list-view .storefront-buy { margin-top:14px; flex-direction:row; align-items:center; }
 }

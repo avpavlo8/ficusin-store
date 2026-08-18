@@ -9,6 +9,8 @@ export type StoreUser = {
   avatarUpdatedAt?: string;
 };
 
+export type HeaderMenuItem = { id: number; label: string };
+
 function AccountBadge({ user }: { user: StoreUser }) {
   if (user.avatarUpdatedAt) {
     return <img
@@ -205,6 +207,9 @@ export function StoreHeader({
   showTabBar = true,
   showSearch = true,
   homeNavigation = false,
+  catalogMenuItems = [],
+  plantMenuItems = [],
+  onHomeCategoryPick,
 }: {
   cartCount?: number;
   favoritesCount?: number;
@@ -219,6 +224,9 @@ export function StoreHeader({
   // is the only way to search at all.
   showSearch?: boolean;
   homeNavigation?: boolean;
+  catalogMenuItems?: HeaderMenuItem[];
+  plantMenuItems?: HeaderMenuItem[];
+  onHomeCategoryPick?: (id: number) => void;
 }) {
   const user = useStoreUser();
   // Pages that own the cart and favourites (the catalogue, a product card)
@@ -243,7 +251,9 @@ export function StoreHeader({
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav">{homeNavigation ? <>
-        <a href="/#catalog">Каталог</a><a href="/#catalog">Растения</a><a href="/#care">Уход</a><a href="/delivery-and-returns">Доставка и оплата</a><a href="/#blog">Блог</a><a href="/#about">О нас</a>
+        <details className="header-dropdown"><summary>Каталог <span>⌄</span></summary><div>{catalogMenuItems.map((item) => <button type="button" key={item.id} onClick={(event) => { onHomeCategoryPick?.(item.id); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{item.label}<span>→</span></button>)}</div></details>
+        <details className="header-dropdown"><summary>Растения <span>⌄</span></summary><div>{plantMenuItems.map((item) => <button type="button" key={item.id} onClick={(event) => { onHomeCategoryPick?.(item.id); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{item.label}<span>→</span></button>)}</div></details>
+        <a href="/#care">Уход</a><a href="/delivery-and-returns">Доставка и оплата</a><a href="/#blog">Блог</a><a href="/#about">О нас</a>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a></>}</nav>
       <div className="header-actions">
         {showSearch && <>
@@ -255,8 +265,8 @@ export function StoreHeader({
             aria-expanded={searchOpen}
           ><Icon path={icons.search} /></button>
         </>}
-        <AccountMenu user={user} iconOnly={homeNavigation} />
         <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites}`}><span aria-hidden="true"><Icon path={icons.heart} /></span>{favorites > 0 && <b>{favorites}</b>}</a>
+        <AccountMenu user={user} iconOnly={homeNavigation} />
         {onCartClick
           ? <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</button>
           : <a className="cart-button" href="/cart" aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</a>}

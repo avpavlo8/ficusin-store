@@ -48,6 +48,17 @@ const categoryIconPaths: Record<string, string> = {
   fertilizer: "M9 3h6v4l3 4v9H6v-9l3-4V3Zm0 10h6",
   tools: "M14 5a4 4 0 0 0 5 5l-9 9-4-4 9-9",
 };
+
+function CatalogDropdown({ label, value, options, onChange, className = "" }: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void; className?: string }) {
+  const selected = options.find((option) => option.value === value)?.label;
+  return <details className={`catalog-dropdown ${className}`}>
+    <summary><span>{selected || label}</span><i>⌄</i></summary>
+    <div role="listbox" aria-label={label}>
+      <button type="button" className={!value ? "active" : ""} onClick={(event) => { onChange(""); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Все варианты</button>
+      {options.map((option) => <button type="button" role="option" aria-selected={value === option.value} className={value === option.value ? "active" : ""} key={option.value} onClick={(event) => { onChange(option.value); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{option.label}<span>{value === option.value ? "✓" : ""}</span></button>)}
+    </div>
+  </details>;
+}
 function CategoryIcon({ name }: { name: string }) {
   return <svg className="category-icon" viewBox="0 0 24 24" aria-hidden="true"><path d={categoryIconPaths[name] || categoryIconPaths.leaf} /></svg>;
 }
@@ -73,6 +84,7 @@ export default function StorefrontPage() {
   const [inStockOnly, setInStockOnly] = useState(false);
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("popular");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [visibleLimit, setVisibleLimit] = useState(12);
 
   const [cart, setCart] = useState<Cart>(() => {
@@ -175,6 +187,18 @@ export default function StorefrontPage() {
     return order(kids.get(null) ?? []).map(build);
   }, [categories, products]);
 
+  const headerMenus = useMemo(() => {
+    const roots = categories.filter((item) => item.parentId == null).map((item) => ({ id: item.id, label: item.name }));
+    const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
+    if (!plantRoot) return { catalog: roots, plants: [] as Array<{ id: number; label: string }> };
+    const descendants = new Set<number>([plantRoot.id]);
+    let changed = true;
+    while (changed) { changed = false; categories.forEach((item) => { if (item.parentId != null && descendants.has(item.parentId) && !descendants.has(item.id)) { descendants.add(item.id); changed = true; } }); }
+    const parentIds = new Set(categories.filter((item) => item.parentId != null && descendants.has(item.parentId)).map((item) => item.parentId as number));
+    const plants = categories.filter((item) => descendants.has(item.id) && item.id !== plantRoot.id && !parentIds.has(item.id)).sort((a,b) => a.name.localeCompare(b.name,"ru")).map((item) => ({ id:item.id, label:item.name }));
+    return { catalog: roots, plants };
+  }, [categories]);
+
   // Ветка считается выбранной вместе со всеми потомками, даже теми, что
   // пропущены при отрисовке.
   const inBranch = useMemo(() => {
@@ -233,10 +257,10 @@ export default function StorefrontPage() {
   const catalogFacets = useMemo(() => {
     const values = (pick: (product: Product) => string | undefined) => new Set(products.map(pick).filter((value): value is string => Boolean(value)));
     return [
-      ["__diameter", { name: "Диаметр горшка", unit: "см", values: values((product) => product.size.match(/D\s*(\d+)/i)?.[1]) }],
-      ["__light", { name: "Освещение", values: values((product) => product.lightLevel) }],
+      ["__light", { name: "Освещённость", values: values((product) => product.lightLevel) }],
       ["__watering", { name: "Полив", values: values((product) => product.watering) }],
-      ["__care", { name: "Сложность", values: values((product) => product.careLevel) }],
+      ["__care", { name: "Уход", values: values((product) => product.careLevel) }],
+      ["__diameter", { name: "Размеры", unit: "см", values: values((product) => product.size.match(/D\s*(\d+)/i)?.[1]) }],
     ] as Array<[string, { name: string; unit?: string; values: Set<string> }]>;
   }, [products]);
 
@@ -310,6 +334,9 @@ export default function StorefrontPage() {
         onQueryChange={setQuery}
         onCartClick={() => setCartOpen(true)}
         homeNavigation
+        catalogMenuItems={headerMenus.catalog}
+        plantMenuItems={headerMenus.plants}
+        onHomeCategoryPick={(id) => { setQuery(""); setCategory(id); requestAnimationFrame(() => document.getElementById("catalog")?.scrollIntoView({ behavior:"smooth" })); }}
       />
 
       <section className="home-hero" aria-labelledby="home-title">
@@ -381,8 +408,9 @@ export default function StorefrontPage() {
 
           <div className="home-catalog-toolbar">
             <button type="button" className="home-filter-button" onClick={() => setFiltersOpen((value) => !value)}>☷ <span>Фильтры</span>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
-            {catalogFacets.map(([code, facet]) => <label key={code}><span>{facet.name}</span><select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое</option>{[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => <option key={value} value={value}>{attributeLabel(value)}{facet.unit ? ` ${facet.unit}` : ""}</option>)}</select></label>)}
-            <select className="home-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка"><option value="popular">По популярности</option><option value="cheap">Сначала дешевле</option><option value="expensive">Сначала дороже</option></select>
+            <div className="home-filter-group">{catalogFacets.map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={attributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => ({ value, label:`${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
+            <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{value:"popular",label:"По популярности"},{value:"cheap",label:"Сначала дешевле"},{value:"expensive",label:"Сначала дороже"}]} />
+            <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка">⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список">☰</button></div>
           </div>
 
           {loading && <p className="storefront-empty">Загружаем каталог…</p>}
@@ -410,7 +438,7 @@ export default function StorefrontPage() {
             </div>
           )}
 
-          <div className="storefront-grid">
+          <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
             {visible.slice(0, visibleLimit).map((product) => {
               const inCart = cart[product.id] ?? 0;
               const preorder = (product.stock ?? 0) <= 0;
@@ -436,7 +464,7 @@ export default function StorefrontPage() {
                     <button
                       className={inCart ? "in-cart" : ""}
                       onClick={() => (inCart ? setCartOpen(true) : addToCart(product))}
-                      aria-label={inCart ? `Уже в корзине, ${inCart} шт.` : preorder ? "Под заказ" : "Добавить в корзину"}
+                      aria-label={inCart ? `В корзине · ${inCart}` : preorder ? "Под заказ" : "В корзину"}
                       title={inCart ? `Уже в корзине · ${inCart}` : preorder ? "Под заказ" : "Добавить в корзину"}
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h2l1.7 9.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.5L21 8H7M10 20h.01M18 20h.01" /></svg>
