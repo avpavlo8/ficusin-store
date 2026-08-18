@@ -140,7 +140,7 @@ body.menu-open, body.drawer-open { overflow: hidden; }
      them in the header too would only crowd the brand. */
   .header-actions .favorites-button, .header-actions .cart-button { display: none; }
 
-  .tab-bar { display: grid; grid-template-columns: repeat(4, 1fr); position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(245,240,231,.98); backdrop-filter: blur(12px); box-shadow: 0 -6px 24px rgba(23,63,50,.08); }
+  .tab-bar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(245,240,231,.98); backdrop-filter: blur(12px); box-shadow: 0 -6px 24px rgba(23,63,50,.08); }
   .tab-bar > a, .tab-bar > button { min-height: 52px; padding: 5px 2px; display: grid; gap: 2px; justify-items: center; align-content: center; border: 0; background: transparent; color: var(--green); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .tab-bar small { font-size: 10px; letter-spacing: .01em; }
   .tab-bar .tab-icon { position: relative; display: grid; place-items: center; }

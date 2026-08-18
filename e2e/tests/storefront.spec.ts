@@ -174,7 +174,7 @@ test("@desktop ссылка с запросом сразу показывает 
   // открывались по-старому.
   await page.goto("/?q=бенджамина");
 
-  await expect(page.locator(".storefront-search input")).toHaveValue("бенджамина");
+  await expect(page.locator(".header-search input")).toHaveValue("бенджамина");
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
   await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toHaveCount(0);
 });

@@ -137,3 +137,106 @@
 .admin-setting input[type="checkbox"]:checked { background: var(--green); }
 .admin-setting input[type="checkbox"]:checked::after { transform: translateX(18px); }
 .admin-setting input[type="checkbox"]:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* Утверждённая главная 2026: визуально самостоятельна, но продолжает
+   использовать живой каталог, поиск, фильтры, избранное и корзину. */
+.storefront { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; background:#f7efe4; color:var(--home-ink); }
+.storefront > .announcement { display:none; }
+.storefront > .header { max-width:1500px; height:76px; margin:0 auto; padding:0 34px; grid-template-columns:auto 1fr auto; gap:28px; border:0; background:transparent; box-shadow:none; }
+.storefront > .header .brand-mark,.storefront > .header .brand-text small { display:none; }
+.storefront > .header .brand { color:var(--home-ink); font:700 30px/1 Georgia,serif; letter-spacing:-.04em; }
+.storefront > .header .desktop-nav { justify-self:start; gap:32px; }
+.storefront > .header .desktop-nav a { color:var(--home-ink); font-size:13px; }
+.storefront > .header .header-search { width:290px; background:rgba(255,255,255,.38); border-color:#d8c9b8; box-shadow:none; }
+.storefront > .header .account-button,.storefront > .header .favorites-button,.storefront > .header .cart-button { color:var(--home-ink); }
+
+.home-hero { max-width:1435px; min-height:570px; margin:0 auto; padding:35px 45px 12px; display:grid; grid-template-columns:42% 58%; align-items:center; }
+.home-hero-copy { position:relative; z-index:2; padding-left:18px; }
+.home-hero h1 { margin:0; color:var(--home-ink); font:700 clamp(54px,5.4vw,82px)/.92 Georgia,serif; letter-spacing:-.055em; }
+.home-hero h1 em { color:var(--home-green); font-weight:400; }
+.home-hero h1 i { color:var(--home-orange); font-style:normal; }
+.home-hero-copy > p { margin:26px 0 0; color:#3a312b; font-size:16px; line-height:1.55; }
+.home-hero-actions { margin-top:28px; display:flex; align-items:center; gap:18px; }
+.home-hero-actions a { min-height:56px; padding:0 24px; display:flex; align-items:center; gap:28px; border-radius:9px; background:var(--home-orange); color:white; font-weight:700; }
+.home-hero-actions a span { font-size:24px; }
+.home-hero-actions button { min-height:48px; padding:0 14px; display:flex; align-items:center; gap:11px; border:0; background:transparent; color:var(--home-ink); cursor:pointer; }
+.home-hero-actions button b { width:44px; height:44px; display:grid; place-items:center; border:1px solid #cfbeaa; border-radius:50%; font-size:12px; }
+.home-team { margin-top:26px; display:flex; align-items:center; gap:14px; color:#4e443c; font-size:12px; line-height:1.35; }
+.home-team b { color:var(--home-orange); }
+.home-avatars { color:var(--home-green); letter-spacing:-1px; font-size:17px; }
+.home-hero-visual { min-height:510px; overflow:hidden; border-radius:180px 18px 18px 18px; }
+.home-hero-visual img { width:100%; height:100%; min-height:510px; object-fit:cover; object-position:center; display:block; }
+
+.home-collections { max-width:1320px; margin:0 auto 38px; padding:0 28px; display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.home-collections a { min-height:195px; padding:24px; display:flex; align-items:flex-end; overflow:hidden; border-radius:14px; background-position:center; background-size:cover; color:white; box-shadow:0 13px 30px rgba(75,48,31,.08); }
+.home-collections span { max-width:170px; font:400 22px/1.05 Georgia,serif; text-shadow:0 1px 3px rgba(0,0,0,.3); }
+
+.storefront-shell { max-width:1450px; padding:15px 34px 0; grid-template-columns:235px minmax(0,1fr); gap:26px; }
+.storefront-side { padding:14px 12px; border:1px solid #e3d8ca; border-radius:13px; background:rgba(255,255,255,.35); }
+.storefront-side-title { color:var(--home-ink); font-weight:700; }
+.storefront-tree button { color:var(--home-ink); }
+.storefront-tree button.active { background:#e6e7b6; color:var(--home-ink); }
+.storefront-main .storefront-presets { margin-bottom:12px; }
+.storefront-head h2 { position:relative; margin:0 0 8px; color:var(--home-ink); font:400 clamp(34px,3vw,50px)/1 Georgia,serif; letter-spacing:-.04em; }
+.storefront-head h2::after { content:""; width:105px; height:8px; position:absolute; left:0; bottom:-8px; border-top:2px solid var(--home-orange); border-radius:50%; transform:rotate(-2deg); }
+.storefront-head p { color:#766a60; font-size:12px; font-weight:400; }
+.storefront-head select,.preset { border-color:#ded1c2; background:rgba(255,255,255,.42); color:var(--home-ink); box-shadow:none; }
+.preset.active { background:var(--home-green); color:white; }
+.storefront-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:13px; }
+.storefront-card { min-width:0; padding:10px; gap:5px; border:0; background:rgba(255,255,255,.44); box-shadow:0 8px 28px rgba(73,45,27,.035); }
+.storefront-card.preorder { background:rgba(255,255,255,.28); }
+.storefront-image { aspect-ratio:1/.96; background:#efe6da; }
+.storefront-name { color:var(--home-ink); font-size:13px; font-weight:500; }
+.storefront-buy strong { color:var(--home-ink); font-size:16px; }
+.storefront-buy button { width:36px; height:36px; padding:0; overflow:hidden; color:transparent; border:0; border-radius:7px; background:var(--home-orange); }
+.storefront-buy button::after { content:"🛒"; color:white; font-size:15px; }
+.storefront-buy button:hover,.storefront-buy button.in-cart { background:var(--home-green); color:transparent; }
+.storefront-fav { color:#766a60; background:transparent; font-size:20px; }
+.storefront-fav.active { color:var(--home-orange); }
+.storefront-more { min-width:280px; min-height:42px; margin:18px auto 8px; padding:0 26px; display:flex; align-items:center; justify-content:center; gap:18px; border:0; border-radius:9px; background:#eee5d9; color:var(--home-ink); cursor:pointer; }
+.home-service { max-width:1450px; margin:42px auto 0; padding:0 34px; }
+.home-service img { width:100%; display:block; border-radius:14px; }
+
+@media (max-width:1100px) {
+  .storefront > .header { padding:0 22px; }
+  .home-hero { grid-template-columns:48% 52%; padding-inline:24px; }
+  .home-hero h1 { font-size:58px; }
+  .storefront-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+
+@media (max-width:850px) {
+  .storefront > .header { height:68px; padding:0 16px; }
+  .storefront > .header .brand { font-size:24px; }
+  .home-hero { min-height:0; padding:24px 16px 14px; grid-template-columns:1fr; }
+  .home-hero-copy { padding:0 4px 24px; }
+  .home-hero h1 { font-size:clamp(46px,13vw,66px); }
+  .home-hero-copy > p { margin-top:20px; font-size:14px; }
+  .home-hero-actions { align-items:stretch; flex-direction:column; }
+  .home-hero-actions a { min-height:50px; justify-content:space-between; }
+  .home-hero-actions button { justify-content:flex-start; }
+  .home-team { display:none; }
+  .home-hero-visual { min-height:410px; border-radius:110px 14px 14px 14px; }
+  .home-hero-visual img { min-height:410px; }
+  .home-collections { margin-bottom:20px; padding:0 16px; display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; }
+  .home-collections a { min-width:82vw; min-height:175px; scroll-snap-align:start; }
+  .storefront-shell { padding:18px 16px 0; }
+  .storefront-side { padding:0; border:0; background:transparent; }
+  .storefront-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .storefront-head { align-items:flex-start; }
+  .storefront-head h2 { font-size:40px; }
+  .storefront-head select { max-width:145px; }
+  .home-service { margin-top:28px; padding:0 16px 80px; overflow:hidden; }
+  .home-service img { width:auto; height:190px; max-width:none; object-fit:cover; object-position:left; }
+}
+
+@media (max-width:430px) {
+  .home-hero h1 { font-size:49px; }
+  .home-hero-visual { min-height:360px; }
+  .home-hero-visual img { min-height:360px; }
+  .storefront-card { padding:7px; }
+  .storefront-image { aspect-ratio:1/1.12; }
+  .storefront-name { font-size:12px; }
+  .storefront-buy strong { font-size:14px; }
+  .storefront-head { display:grid; grid-template-columns:1fr auto; }
+  .storefront-head h2 { font-size:36px; }
+}

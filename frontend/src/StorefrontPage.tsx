@@ -3,7 +3,6 @@ import CheckoutHost from "./CheckoutHost";
 import { StoreHeader } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
 import { searchProducts } from "./lib/search";
-import { CatalogSearch } from "./CatalogSearch";
 import { STORAGE_EVENT } from "./StoreHeader";
 import { attributeLabel, attributeValue } from "./product/types";
 
@@ -74,6 +73,7 @@ export default function StorefrontPage() {
   const [inStockOnly, setInStockOnly] = useState(false);
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("popular");
+  const [visibleLimit, setVisibleLimit] = useState(12);
 
   const [cart, setCart] = useState<Cart>(() => {
     try {
@@ -288,13 +288,30 @@ export default function StorefrontPage() {
       <StoreHeader
         cartCount={cartCount}
         favoritesCount={favorites.size}
-        showSearch={false}
+        query={query}
+        onQueryChange={setQuery}
         onCartClick={() => setCartOpen(true)}
+        homeNavigation
       />
 
-      <div className="storefront-search-bar">
-        <CatalogSearch value={query} onChange={setQuery} inlineResults className="storefront-search" placeholder="Поиск: монстера, фикус, кашпо 15 см" />
-      </div>
+      <section className="home-hero" aria-labelledby="home-title">
+        <div className="home-hero-copy">
+          <h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1>
+          <p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p>
+          <div className="home-hero-actions">
+            <a href="#catalog">Выбрать своё растение <span>→</span></a>
+            <button type="button" aria-label="Видео о Фикусин"><b>▶</b> Видео о Фикусин</button>
+          </div>
+          <div className="home-team"><span className="home-avatars">● ● ● ●</span><span>Над вашими растениями<br />ухаживает <b>команда любителей</b></span></div>
+        </div>
+        <div className="home-hero-visual"><img src="/assets/redesign/home-hero.png" alt="Алоказия в керамическом кашпо" /></div>
+      </section>
+
+      <section className="home-collections" aria-label="Подборки растений">
+        <a href="#catalog" style={{ backgroundImage: "url('/assets/redesign/collection-dark.png')" }}><span>Для тёмной комнаты</span></a>
+        <a href="#catalog" style={{ backgroundImage: "url('/assets/redesign/collection-easy.png')" }}><span>Неприхотливые</span></a>
+        <a href="#catalog" style={{ backgroundImage: "url('/assets/redesign/collection-pets.png')" }}><span>Безопасны для питомцев</span></a>
+      </section>
 
       <section className="storefront-shell" id="catalog">
         <aside className="storefront-side">
@@ -338,7 +355,7 @@ export default function StorefrontPage() {
             <div>
               {/* Единственный h1 страницы. Без него поисковик и скринридер
                   видели первым заголовком название случайного товара. */}
-              <h1>{searching ? "Результаты поиска" : categoryName || "Комнатные растения"}</h1>
+              <h2>{searching ? "Результаты поиска" : categoryName || "Каталог"}</h2>
               <p>
                 {searching ? `Нашли ${visible.length}` : `${visible.length} товаров`}
                 {searching && <span> по запросу «{query.trim()}»</span>}
@@ -377,7 +394,7 @@ export default function StorefrontPage() {
           )}
 
           <div className="storefront-grid">
-            {visible.map((product) => {
+            {visible.slice(0, visibleLimit).map((product) => {
               const inCart = cart[product.id] ?? 0;
               const preorder = (product.stock ?? 0) <= 0;
               return (
@@ -410,7 +427,11 @@ export default function StorefrontPage() {
               );
             })}
           </div>
+          {visible.length > visibleLimit && <button className="storefront-more" type="button" onClick={() => setVisibleLimit((value) => value + 12)}>Показать ещё растения <span>⌄</span></button>}
         </div>
+      </section>
+      <section className="home-service" id="care" aria-label="Помощь с выбором и доставкой">
+        <img src="/assets/redesign/home-service.png" alt="Поможем выбрать растение, доставим и подскажем по уходу" />
       </section>
       <CheckoutHost
         cart={cart}

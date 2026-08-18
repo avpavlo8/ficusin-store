@@ -155,11 +155,13 @@ function MobileTabBar({
   favorites,
   cart,
   onCartClick,
+  onSearchClick,
 }: {
   user: StoreUser | null;
   favorites: number;
   cart: number;
   onCartClick?: () => void;
+  onSearchClick: () => void;
 }) {
   const cartInside = <>
     <span className="tab-icon">
@@ -173,6 +175,10 @@ function MobileTabBar({
       <span className="tab-icon"><Icon path={icons.catalog} /></span>
       <small>Каталог</small>
     </a>
+    <button type="button" onClick={onSearchClick}>
+      <span className="tab-icon"><Icon path={icons.search} /></span>
+      <small>Поиск</small>
+    </button>
     <a href="/favorites">
       <span className="tab-icon">
         <Icon path={icons.heart} />
@@ -198,6 +204,7 @@ export function StoreHeader({
   onCartClick,
   showTabBar = true,
   showSearch = true,
+  homeNavigation = false,
 }: {
   cartCount?: number;
   favoritesCount?: number;
@@ -211,6 +218,7 @@ export function StoreHeader({
   // for the header field to step aside. Every other page keeps it: there it
   // is the only way to search at all.
   showSearch?: boolean;
+  homeNavigation?: boolean;
 }) {
   const user = useStoreUser();
   // Pages that own the cart and favourites (the catalogue, a product card)
@@ -234,7 +242,9 @@ export function StoreHeader({
         aria-expanded={menuOpen}
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
-      <nav className="desktop-nav"><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a></nav>
+      <nav className="desktop-nav">{homeNavigation ? <>
+        <a href="/#catalog">Каталог</a><a href="/#catalog">Растения</a><a href="/#care">Уход</a><a href="/delivery-and-returns">Доставка и оплата</a><a href="/#blog">Блог</a><a href="/#about">О нас</a>
+      </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a></>}</nav>
       <div className="header-actions">
         {showSearch && <>
           <CatalogSearch value={query} onChange={onQueryChange} />
@@ -259,7 +269,7 @@ export function StoreHeader({
     </>}
     {showTabBar && <>
       <InstallHint />
-      <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} />
+      <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} onSearchClick={() => setSearchOpen(true)} />
     </>}
   </>;
 }
