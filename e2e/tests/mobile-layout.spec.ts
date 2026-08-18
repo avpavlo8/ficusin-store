@@ -92,7 +92,7 @@ test("@phone подбор по характеристикам свёрнут, т
   const filters = page.getByRole("button", { name: /Фильтры/ });
   await expect(filters).toBeVisible();
   await expect(filters).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".filter-sheet").getByLabel("Только в наличии")).toBeHidden();
+  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
 
   const card = page.locator(".storefront-card").first();
   await card.scrollIntoViewIfNeeded();
@@ -100,7 +100,7 @@ test("@phone подбор по характеристикам свёрнут, т
 
   // Свёрнутый — не значит недоступный.
   await filters.click();
-  await expect(page.locator(".filter-sheet").getByLabel("Только в наличии")).toBeVisible();
+  await expect(page.locator(".home-filter-panel").getByLabel("Только в наличии")).toBeVisible();
 });
 
 test("@phone no page scrolls sideways", async ({ page }) => {

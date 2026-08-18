@@ -118,7 +118,7 @@ test("@desktop товар без остатка идёт как предзака
   // Магазин, прячущий то, что кончилось, теряет продажу дважды: покупатель не
   // видит растения и никто не узнаёт, что его хотели.
   await page.getByRole("button", { name: /Фильтры/ }).click();
-  await page.locator(".filter-sheet").getByLabel("Только в наличии").check();
+  await page.locator(".home-filter-panel").getByLabel("Только в наличии").check();
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
 });
 
@@ -283,7 +283,7 @@ test("@desktop оформление отправляет заказ с норм�
   await checkout.locator('input[name="consent"]').check();
   await checkout.getByRole("button", { name: /Подтвердить заказ/ }).click();
 
-  await expect(checkout.getByRole("heading", { name: "Заказ принят" })).toBeVisible();
+  await expect(checkout.getByRole("heading", { name: "Заказ принят" }).last()).toBeVisible();
   expect(order).toMatchObject({
     customer: { name: "Александр", phone: "+79151234567", email: "buyer@example.com" },
     delivery: "pickup",
