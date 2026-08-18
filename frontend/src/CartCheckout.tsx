@@ -1,5 +1,5 @@
 import type { Dispatch, FormEventHandler, SetStateAction } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { formatRussianPhoneInput } from "./lib/phone";
 
 export type CartLine = {
@@ -232,7 +232,6 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   } = props;
   const [step, setStep] = useState<1|2|3>(1);
   const formRef = useRef<HTMLFormElement>(null);
-  useEffect(() => { if (checkoutOpen && !orderNumber) setStep(1); }, [checkoutOpen, orderNumber]);
   const advance = (next: 2|3) => {
     const current = formRef.current?.querySelector<HTMLElement>(`[data-checkout-step="${step}"]`);
     const fields = Array.from(current?.querySelectorAll<HTMLInputElement>("input,textarea,select") || []);
