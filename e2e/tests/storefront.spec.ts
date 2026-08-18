@@ -27,6 +27,18 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
 });
 
+test("@mobile нижний блок остаётся полноширинной кнопкой чата", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto("/");
+
+  const footer = page.locator(".home-service");
+  await expect(footer.getByRole("link", { name: /Написать в чат/ })).toBeVisible();
+  await expect(footer.getByRole("heading", { name: /Не знаете/ })).toBeHidden();
+  await expect(footer.locator(".home-service-card")).toBeHidden();
+  await expect.poll(async () => footer.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(390);
+});
+
 test("@desktop дерево раскрывается сразу до видов", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");

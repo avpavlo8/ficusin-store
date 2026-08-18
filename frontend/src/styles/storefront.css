@@ -434,7 +434,7 @@
 
 /* На широком экране нижняя полка использует утверждённую композицию целиком:
    так кресло, растения, карточки и зелёная сцена сохраняют точные пропорции. */
-.home-service { min-height:300px; aspect-ratio:2188/718; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/home-service-v3.webp') center/cover no-repeat; color:var(--home-ink); }
+.home-service { min-height:300px; aspect-ratio:2188/560; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/home-service-v4.webp') center/cover no-repeat; color:var(--home-ink); }
 .home-service-choice { width:31%; height:100%; min-height:330px; padding:32px 34px; position:absolute; inset:0 auto 0 0; display:flex; flex-direction:column; justify-content:flex-start; overflow:visible; border-radius:0; background:linear-gradient(90deg,rgba(19,54,27,.98),rgba(19,54,27,.84)); color:white; }
 .home-service-choice::before { content:none; }.home-service-choice > * { position:relative; z-index:1; }
 .home-service-choice h2 { margin-bottom:10px; font-size:34px; }.home-service-choice p { margin-bottom:18px; font-size:11px; }
@@ -486,4 +486,53 @@
   .storefront-grid.list-view .storefront-card { min-height:145px; padding-left:130px; display:block; }.storefront-grid.list-view .storefront-image { width:105px; height:115px; }.storefront-grid.list-view .storefront-buy { margin-top:14px; flex-direction:row; align-items:center; }
   .home-filter-panel { margin-top:-8px; align-items:flex-start; flex-direction:column; gap:12px; }.home-filter-panel > button { margin-left:0; }
   .storefront-grid.list-view .storefront-buy button { min-width:130px; }
+}
+
+/* Устойчивый подвал: полная сцена только там, где для неё хватает места.
+   На телефоне, в PWA и на узком планшете остаётся одна понятная CTA. */
+@media (min-width:1101px) {
+  .home-service {
+    width:100%; max-width:none; min-height:0; aspect-ratio:2188/560;
+    margin:42px 0 0; padding:0; border-radius:18px;
+    background:#183b22 url('/assets/redesign/home-service-v4.webp') center/100% 100% no-repeat;
+  }
+  .home-service-choice {
+    width:31%; height:100%; min-height:0; padding:7.5% 0 4% 3.7%;
+    position:absolute; inset:0 auto 0 0; display:flex; overflow:hidden;
+    flex-direction:column; justify-content:flex-start; background:transparent;
+  }
+  .home-service-choice h2 { margin:0 0 2%; font-size:clamp(27px,2.25vw,41px); line-height:1.03; }
+  .home-service-choice p { margin:0 0 5%; font-size:clamp(10px,.78vw,14px); line-height:1.45; }
+  .home-service-choice a {
+    width:clamp(168px,12vw,220px); min-height:clamp(42px,3.2vw,54px); padding:0 18px;
+    justify-content:space-between; flex:none; font-size:clamp(11px,.8vw,14px);
+  }
+  .home-service-team { margin-top:auto; margin-bottom:1%; gap:10px; font-size:clamp(9px,.68vw,12px); }
+  .home-service-team img { width:clamp(88px,7vw,116px); height:auto; aspect-ratio:105/38; }
+  .home-service-card {
+    top:6%; min-height:42%; padding-top:2%; padding-bottom:2%;
+    border:0; background:transparent; box-shadow:none; backdrop-filter:none;
+  }
+  .home-service-card::before { content:none; }
+  .home-service-card.delivery { left:33%; width:28.5%; padding-left:14%; }
+  .home-service-card.care { left:61.5%; width:36%; padding-left:14%; }
+  .home-service-card b { font-size:clamp(12px,.9vw,16px); }
+  .home-service-card span { font-size:clamp(9px,.68vw,12px); }
+}
+
+@media (max-width:1100px) {
+  .home-service {
+    width:100%; max-width:none; min-height:0; height:auto; aspect-ratio:auto;
+    margin:30px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+    border-radius:0; background:#183b22; overflow:hidden;
+  }
+  .home-service-choice {
+    width:100%; height:auto; min-height:0; padding:0; position:static;
+    display:flex; align-items:center; background:transparent;
+  }
+  .home-service-choice h2,.home-service-choice p,.home-service-team,.home-service-card { display:none; }
+  .home-service-choice a {
+    width:100%; max-width:420px; min-height:54px; margin:0 auto; padding:0 22px;
+    justify-content:center; gap:18px; border-radius:11px; font-size:15px;
+  }
 }
