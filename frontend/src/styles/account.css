@@ -149,10 +149,6 @@
 .storefront-attribute-badges span { padding: 4px 7px; border-radius: 999px; background: #eef5ed; color: #426044; font-size: 10px; font-weight: 700; }
 /* Заголовок секции ограничен 1264px, а таблица тянулась от края до края
    экрана — строки уезжали за колонку и висели сами по себе. */
-.product-attributes dl { max-width: 1264px; margin: 0 auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--line); }
-.product-attributes dl div { display: flex; justify-content: space-between; gap: 18px; padding: 14px 16px; background: white; }
-.product-attributes dt { color: #657268; }
-.product-attributes dd { margin: 0; color: var(--ink); font-weight: 700; text-align: right; }
 .integration-mapping { display: grid; gap: 5px; padding: 12px; border-radius: 8px; background: #f4f7f4; }
 .integration-mapping small { color: #637067; overflow-wrap: anywhere; }
 .attribute-multi { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 7px; }

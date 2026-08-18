@@ -129,7 +129,7 @@ test("@desktop на карточке товара выбирается коли�
 
   await expect(page.locator(".pdp-quantity output")).toHaveText("1");
   await page.locator(".pdp-quantity button").last().click();
-  await page.getByRole("button", { name: "Добавить в корзину" }).click();
+  await page.getByRole("button", { name: "В корзину" }).click();
 
   await expect(page.getByRole("button", { name: "Обновить корзину" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
@@ -145,7 +145,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   const purchase = page.locator(".pdp-summary");
   await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
   await expect(purchase.locator(".pdp-commerce-box")).toContainText("В наличии");
-  await expect(purchase.getByRole("button", { name: "Добавить в корзину" })).toBeVisible();
+  await expect(purchase.getByRole("button", { name: "В корзину" })).toBeVisible();
   await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(3);
   await expect(page.locator(".passport-sections")).toContainText("Регулярный уход");
   await expect(page.locator(".review-modal")).toHaveCount(0);
