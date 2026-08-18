@@ -176,8 +176,6 @@
 .storefront-fav { color:#766a60; background:transparent; font-size:20px; }
 .storefront-fav.active { color:var(--home-orange); }
 .storefront-more { min-width:280px; min-height:42px; margin:18px auto 8px; padding:0 26px; display:flex; align-items:center; justify-content:center; gap:18px; border:0; border-radius:9px; background:#eee5d9; color:var(--home-ink); cursor:pointer; }
-.home-service { max-width:1450px; margin:42px auto 0; padding:0 34px; }
-.home-service img { width:100%; display:block; border-radius:14px; }
 
 @media (max-width:1100px) {
   .storefront > .header { padding:0 22px; }
@@ -205,8 +203,6 @@
   .storefront-head { align-items:flex-start; }
   .storefront-head h2 { font-size:40px; }
   .storefront-head select { max-width:145px; }
-  .home-service { margin-top:28px; padding:0 16px 80px; overflow:hidden; }
-  .home-service img { width:auto; height:190px; max-width:none; object-fit:cover; object-position:left; }
 }
 
 @media (max-width:430px) {
@@ -278,13 +274,6 @@
 .home-sort { width:auto; margin-left:auto; padding:0 30px 0 13px; font:inherit; font-size:12px; }
 .storefront-side { top:calc(var(--header-h) + 14px); }
 
-.home-service { min-height:330px; padding:48px 52px; position:relative; display:grid; grid-template-columns:34% 22% 22% 22%; align-items:start; overflow:hidden; border-radius:16px; background:url('/assets/redesign/home-service-4k.webp') center/cover no-repeat; color:white; }
-.home-service-choice { align-self:center; }
-.home-service-choice h2 { margin:0 0 12px; color:white; font:400 36px/1.03 Georgia,serif; }
-.home-service-choice p { margin:0 0 22px; color:rgba(255,255,255,.8); font-size:11px; line-height:1.5; }
-.home-service-choice a { width:max-content; min-height:46px; padding:0 20px; display:flex; align-items:center; gap:20px; border-radius:8px; background:#d7dc8f; color:var(--home-green); font-size:12px; font-weight:700; }
-.home-service-card { padding:15px; display:grid; gap:10px; color:var(--home-ink); text-shadow:0 1px 5px rgba(255,255,255,.8); }
-.home-service-card b { font-size:14px; line-height:1.3; }.home-service-card span { font-size:11px; line-height:1.4; }
 
 @media (max-width:850px) {
   .storefront > .header .account-button.icon-only,.storefront > .header .favorites-button,.storefront > .header .cart-button { display:none; }
@@ -297,10 +286,6 @@
   .home-catalog-toolbar > label { display:none; }
   .home-sort { margin-left:0; }
   .storefront-side::after { display:none; }
-  .home-service { min-height:470px; padding:30px 22px 90px; display:block; background-position:62% center; }
-  .home-service::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(21,49,27,.95) 0 58%,rgba(21,49,27,.18)); }
-  .home-service-choice { position:relative; z-index:1; max-width:280px; }
-  .home-service-card { display:none; }
 }
 
 /* Третья визуальная сверка: широкая композиция, единая карусель и точные
@@ -327,7 +312,6 @@
 
   .storefront-shell { width:calc(100% - 36px); max-width:1780px; padding:16px 26px 0; grid-template-columns:240px minmax(0,1fr); gap:28px; }
   .storefront-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
-  .home-service { width:calc(100% - 36px); max-width:1780px; }
 }
 
 .storefront-side::after { content:none; display:none; }
@@ -348,9 +332,6 @@
 .storefront-quantity { height:38px; padding:3px; display:flex; align-items:center; border:1px solid #d8c9b7; border-radius:9px; background:#fffaf3; }
 .storefront-quantity button { width:30px; height:30px; padding:0; display:grid; place-items:center; border:0; border-radius:7px; background:transparent; color:var(--home-ink); font-size:17px; font-weight:600; }.storefront-quantity button:hover { background:#eee7ba; color:var(--home-ink); transform:none; }.storefront-quantity .quantity-value { color:var(--home-green); font-size:13px; }
 
-.home-service { min-height:340px; padding:44px 48px; grid-template-columns:minmax(330px,1.2fr) minmax(245px,.78fr) minmax(245px,.78fr); gap:14px; align-items:start; background-position:center; }
-.home-service-card { min-height:122px; padding:21px 23px; align-content:center; border:1px solid rgba(74,57,38,.08); border-radius:13px; background:rgba(247,239,228,.9); box-shadow:0 12px 28px rgba(24,39,22,.08); color:var(--home-ink); text-shadow:none; backdrop-filter:blur(2px); }
-.home-service-card b { font-size:16px; }.home-service-card span { color:#5f544a; font-size:12px; }
 
 @media (max-width:1200px) and (min-width:851px) {
   .storefront > .header .desktop-nav { gap:20px; }
@@ -358,8 +339,6 @@
   .storefront > .header .header-search { width:300px; }
   .home-catalog-toolbar { flex-wrap:wrap; }
   .home-sort { margin-left:0; }
-  .home-service { grid-template-columns:1fr 1fr; }
-  .home-service-choice { grid-row:span 2; }
 }
 
 @media (max-width:850px) {
@@ -432,31 +411,6 @@
 .storefront-grid.list-view .storefront-buy button svg { width:18px; }.storefront-grid.list-view .cart-button-label { display:inline; color:white; font-size:12px; font-weight:700; }
 .storefront-grid.list-view .storefront-quantity { height:46px; }.storefront-grid.list-view .storefront-quantity button { min-width:38px; height:38px; padding:0; }.storefront-grid.list-view .storefront-price { text-align:right; }
 
-/* На широком экране нижняя полка использует утверждённую композицию целиком:
-   так кресло, растения, карточки и зелёная сцена сохраняют точные пропорции. */
-.home-service { min-height:300px; aspect-ratio:2188/560; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/home-service-v4.webp') center/cover no-repeat; color:var(--home-ink); }
-.home-service-choice { width:31%; height:100%; min-height:330px; padding:32px 34px; position:absolute; inset:0 auto 0 0; display:flex; flex-direction:column; justify-content:flex-start; overflow:visible; border-radius:0; background:linear-gradient(90deg,rgba(19,54,27,.98),rgba(19,54,27,.84)); color:white; }
-.home-service-choice::before { content:none; }.home-service-choice > * { position:relative; z-index:1; }
-.home-service-choice h2 { margin-bottom:10px; font-size:34px; }.home-service-choice p { margin-bottom:18px; font-size:11px; }
-.home-service-choice a { min-height:45px; }
-.home-service-team { margin-top:auto; display:flex; align-items:center; gap:10px; color:white; font-size:11px; line-height:1.25; }
-.home-service-team img { width:105px; height:38px; object-fit:cover; border-radius:20px; }
-.home-service-card { width:28%; min-height:146px; padding:27px 38px 22px 48%; position:absolute; top:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; overflow:hidden; border:1px solid #eadfd2; border-radius:14px; background:#f5ecdf; box-shadow:none; text-shadow:none; }
-.home-service-card::before { content:""; width:45%; position:absolute; inset:0 auto 0 0; background-repeat:no-repeat; background-position:center; background-size:cover; }
-.home-service-card.delivery { left:31%; }.home-service-card.delivery::before { background-image:url('/assets/redesign/service-delivery-v2.webp'); }
-.home-service-card.care { left:60%; width:30%; }.home-service-card.care::before { background-image:url('/assets/redesign/service-care-v2.webp'); }
-.home-service-card b { font-size:15px; line-height:1.25; }.home-service-card span { color:#62564b; font-size:11px; }
-.home-service-card > i { position:absolute; right:18px; bottom:20px; color:#473a2f; font:400 25px/1 Georgia,serif; }
-
-@media (min-width:851px) {
-  .home-service-choice { width:32%; min-height:100%; padding:34px 38px; background:transparent; }
-  .home-service-choice h2 { font-size:36px; }.home-service-choice p { font-size:12px; }
-  .home-service-card { top:7%; min-height:40%; border:0; background:transparent; box-shadow:none; backdrop-filter:none; }
-  .home-service-card::before { content:none; }
-  .home-service-card.delivery { left:33.2%; width:28.2%; padding-left:14%; }
-  .home-service-card.care { left:61.7%; width:35%; padding-left:14%; }
-}
-
 @media (max-width:1100px) {
   .home-filter-group { max-width:100%; overflow-x:auto; }
   .catalog-dropdown.home-sort { margin-left:0; }
@@ -475,10 +429,6 @@
   .storefront-grid { width:100%; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
   .storefront-card { min-width:0; overflow:hidden; }.storefront-attribute-badges { display:none; }.storefront-name { overflow-wrap:anywhere; }
   .home-filter-group { display:none; }
-  .home-service { min-height:760px; margin-inline:16px; background-position:70% bottom; }
-  .home-service-choice { width:100%; height:300px; min-height:300px; padding:28px 24px; }
-  .home-service-card { width:calc(100% - 24px); min-height:145px; left:12px; }
-  .home-service-card.delivery { top:312px; left:12px; }.home-service-card.care { top:469px; left:12px; width:calc(100% - 24px); }
   .home-stamp { width:82px; height:82px; top:12px; right:12px; }
   .home-stamp text { font-size:8px; letter-spacing:1px; }
   .home-note { min-width:0; min-height:62px; padding:10px 13px; gap:8px; }.note-icon { width:32px; height:40px; }.home-note > b { font-size:10px; }
@@ -486,53 +436,4 @@
   .storefront-grid.list-view .storefront-card { min-height:145px; padding-left:130px; display:block; }.storefront-grid.list-view .storefront-image { width:105px; height:115px; }.storefront-grid.list-view .storefront-buy { margin-top:14px; flex-direction:row; align-items:center; }
   .home-filter-panel { margin-top:-8px; align-items:flex-start; flex-direction:column; gap:12px; }.home-filter-panel > button { margin-left:0; }
   .storefront-grid.list-view .storefront-buy button { min-width:130px; }
-}
-
-/* Устойчивый подвал: полная сцена только там, где для неё хватает места.
-   На телефоне, в PWA и на узком планшете остаётся одна понятная CTA. */
-@media (min-width:1101px) {
-  .home-service {
-    width:100%; max-width:none; min-height:0; aspect-ratio:2188/560;
-    margin:42px 0 0; padding:0; border-radius:18px;
-    background:#183b22 url('/assets/redesign/home-service-v4.webp') center/100% 100% no-repeat;
-  }
-  .home-service-choice {
-    width:31%; height:100%; min-height:0; padding:7.5% 0 4% 3.7%;
-    position:absolute; inset:0 auto 0 0; display:flex; overflow:hidden;
-    flex-direction:column; justify-content:flex-start; background:transparent;
-  }
-  .home-service-choice h2 { margin:0 0 2%; font-size:clamp(27px,2.25vw,41px); line-height:1.03; }
-  .home-service-choice p { margin:0 0 5%; font-size:clamp(10px,.78vw,14px); line-height:1.45; }
-  .home-service-choice a {
-    width:clamp(168px,12vw,220px); min-height:clamp(42px,3.2vw,54px); padding:0 18px;
-    justify-content:space-between; flex:none; font-size:clamp(11px,.8vw,14px);
-  }
-  .home-service-team { margin-top:auto; margin-bottom:1%; gap:10px; font-size:clamp(9px,.68vw,12px); }
-  .home-service-team img { width:clamp(88px,7vw,116px); height:auto; aspect-ratio:105/38; }
-  .home-service-card {
-    top:6%; min-height:42%; padding-top:2%; padding-bottom:2%;
-    border:0; background:transparent; box-shadow:none; backdrop-filter:none;
-  }
-  .home-service-card::before { content:none; }
-  .home-service-card.delivery { left:33%; width:28.5%; padding-left:14%; }
-  .home-service-card.care { left:61.5%; width:36%; padding-left:14%; }
-  .home-service-card b { font-size:clamp(12px,.9vw,16px); }
-  .home-service-card span { font-size:clamp(9px,.68vw,12px); }
-}
-
-@media (max-width:1100px) {
-  .home-service {
-    width:100%; max-width:none; min-height:0; height:auto; aspect-ratio:auto;
-    margin:30px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom));
-    border-radius:0; background:#183b22; overflow:hidden;
-  }
-  .home-service-choice {
-    width:100%; height:auto; min-height:0; padding:0; position:static;
-    display:flex; align-items:center; background:transparent;
-  }
-  .home-service-choice h2,.home-service-choice p,.home-service-team,.home-service-card { display:none; }
-  .home-service-choice a {
-    width:100%; max-width:420px; min-height:54px; margin:0 auto; padding:0 22px;
-    justify-content:center; gap:18px; border-radius:11px; font-size:15px;
-  }
 }

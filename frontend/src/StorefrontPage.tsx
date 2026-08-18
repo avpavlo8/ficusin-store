@@ -501,11 +501,6 @@ export default function StorefrontPage() {
           {visible.length > visibleLimit && <button className="storefront-more" type="button" onClick={() => setVisibleLimit((value) => value + 12)}>Показать ещё растения <span>⌄</span></button>}
         </div>
       </section>
-      <section className="home-service" id="care" aria-label="Помощь с выбором и доставкой">
-        <div className="home-service-choice"><h2>Не знаете,<br />что выбрать?</h2><p>Напишите нам в чат — подскажем лучшее растение<br />для вашего интерьера и уровня освещения.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>◯</span></a><div className="home-service-team"><img src="/assets/redesign/team-avatars.webp" alt="" /><span>Команда Фикусин<br />всегда на связи</span></div></div>
-        <div className="home-service-card delivery"><b>Бережно доставим<br />по всей России</b><span>Надёжная упаковка<br />и бережная доставка</span><i aria-hidden="true">→</i></div>
-        <div className="home-service-card care"><b>Поможем с уходом<br />и пересадкой</b><span>Ответим на вопросы<br />и подскажем</span></div>
-      </section>
       <CheckoutHost
         cart={cart}
         products={products}
