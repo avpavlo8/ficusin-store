@@ -78,7 +78,7 @@ export default function StorefrontPage() {
   );
   const [category, setCategory] = useState<number | null>(null);
   // На широком экране подбор раскрыт сразу, на телефоне — по нажатию.
-  const [filtersOpen, setFiltersOpen] = useState(() => window.matchMedia("(min-width: 901px)").matches);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [opened, setOpened] = useState<Set<number>>(new Set());
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -235,6 +235,7 @@ export default function StorefrontPage() {
       if (code === "__light") return product.lightLevel === selected;
       if (code === "__watering") return product.watering === selected;
       if (code === "__care") return product.careLevel === selected;
+      if (code === "__pets") return product.petSafety === selected;
       return product.filterAttributes?.some((attribute) => attribute.code === code && (Array.isArray(attribute.value) ? attribute.value.map(String).includes(selected) : String(attribute.value) === selected));
     });
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
@@ -261,6 +262,7 @@ export default function StorefrontPage() {
       ["__watering", { name: "Полив", values: values((product) => product.watering) }],
       ["__care", { name: "Уход", values: values((product) => product.careLevel) }],
       ["__diameter", { name: "Размеры", unit: "см", values: values((product) => product.size.match(/D\s*(\d+)/i)?.[1]) }],
+      ["__pets", { name: "Для питомцев", values: values((product) => product.petSafety) }],
     ] as Array<[string, { name: string; unit?: string; values: Set<string> }]>;
   }, [products]);
 
@@ -351,9 +353,9 @@ export default function StorefrontPage() {
         </div>
         <div className="home-hero-visual">
           <img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" />
-          <span className="home-stamp">ЖИВЫЕ РАСТЕНИЯ<br />ДЛЯ ЖИВЫХ ЛЮДЕЙ</span>
-          <span className="home-note delivery">♧ <b>Доставка<br />по всей России</b></span>
-          <span className="home-note packing">♧ <b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span>
+          <span className="home-stamp" aria-label="Живые растения для живых людей"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><path id="stamp-circle" d="M60,60 m-43,0 a43,43 0 1,1 86,0 a43,43 0 1,1 -86,0" /></defs><text><textPath href="#stamp-circle" startOffset="2%">ЖИВЫЕ РАСТЕНИЯ • ДЛЯ ЖИВЫХ ЛЮДЕЙ • </textPath></text><path className="stamp-plant" d="M60 77V49m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM49 79h22" /></svg></span>
+          <span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span>
+          <span className="home-note packing"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span>
         </div>
       </section>
 
@@ -407,11 +409,12 @@ export default function StorefrontPage() {
           </div>
 
           <div className="home-catalog-toolbar">
-            <button type="button" className="home-filter-button" onClick={() => setFiltersOpen((value) => !value)}>☷ <span>Фильтры</span>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
+            <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><span className="filter-sliders" aria-hidden="true">☷</span><span>Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
             <div className="home-filter-group">{catalogFacets.map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={attributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => ({ value, label:`${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
             <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{value:"popular",label:"По популярности"},{value:"cheap",label:"Сначала дешевле"},{value:"expensive",label:"Сначала дороже"}]} />
             <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка">⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список">☰</button></div>
           </div>
+          {filtersOpen && <div className="home-filter-panel"><strong>Все фильтры</strong><label className="storefront-check"><input type="checkbox" checked={inStockOnly} onChange={(event) => setInStockOnly(event.target.checked)} />Только в наличии</label><button type="button" onClick={() => { setInStockOnly(false); setAttributeFilters({}); setSelectedPresets(new Set()); }}>Сбросить фильтры</button></div>}
 
           {loading && <p className="storefront-empty">Загружаем каталог…</p>}
           {!loading && error && <p className="storefront-empty">{error}</p>}
@@ -468,6 +471,7 @@ export default function StorefrontPage() {
                       title={inCart ? `Уже в корзине · ${inCart}` : preorder ? "Под заказ" : "Добавить в корзину"}
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h2l1.7 9.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.5L21 8H7M10 20h.01M18 20h.01" /></svg>
+                      <span className="cart-button-label">{inCart ? "Уже в корзине" : preorder ? "Под заказ" : "В корзину"}</span>
                       {inCart > 0 && <span className="cart-state">✓</span>}
                     </button>
                   </div>
@@ -479,7 +483,7 @@ export default function StorefrontPage() {
         </div>
       </section>
       <section className="home-service" id="care" aria-label="Помощь с выбором и доставкой">
-        <div className="home-service-choice"><h2>Не знаете,<br />что выбрать?</h2><p>Напишите нам в чат — подскажем лучшее растение<br />для вашего интерьера и уровня освещения.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>◯</span></a></div>
+        <div className="home-service-choice"><h2>Не знаете,<br />что выбрать?</h2><p>Напишите нам в чат — подскажем лучшее растение<br />для вашего интерьера и уровня освещения.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>◯</span></a><div className="home-service-team"><img src="/assets/redesign/team-avatars.webp" alt="" /><span>Команда Фикусин<br />всегда на связи</span></div></div>
         <div className="home-service-card delivery"><b>Бережно доставим<br />по всей России</b><span>Надёжная упаковка<br />и бережная доставка</span></div>
         <div className="home-service-card care"><b>Поможем с уходом<br />и пересадкой</b><span>Ответим на вопросы<br />и подскажем</span></div>
       </section>

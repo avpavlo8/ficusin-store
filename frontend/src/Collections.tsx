@@ -57,12 +57,12 @@ const visualPresets = [
   { id: "dark", image: "/assets/redesign/collection-dark-4k.webp" },
   { id: "easy", image: "/assets/redesign/collection-easy-4k.webp" },
   { id: "pets", image: "/assets/redesign/collection-pets-4k.webp" },
-  { id: "bathroom", image: "/assets/redesign/filters/bathroom.webp" },
-  { id: "office", image: "/assets/redesign/filters/office.webp" },
-  { id: "tall", image: "/assets/redesign/filters/tall.webp" },
-  { id: "compact", image: "/assets/redesign/filters/compact.webp" },
-  { id: "rare", image: "/assets/redesign/filters/rare-water.webp" },
-  { id: "bedroom", image: "/assets/redesign/filters/bedroom.webp" },
+  { id: "bathroom", image: "/assets/redesign/filters/bathroom-wall-v2.webp" },
+  { id: "office", image: "/assets/redesign/filters/office-wall-v2.webp" },
+  { id: "tall", image: "/assets/redesign/filters/tall-wall-v2.webp" },
+  { id: "compact", image: "/assets/redesign/filters/compact-wall-v2.webp" },
+  { id: "rare", image: "/assets/redesign/filters/rare-water-wall-v2.webp" },
+  { id: "bedroom", image: "/assets/redesign/filters/bedroom-wall-v2.webp" },
 ];
 
 export function CollectionStrip<T extends Product>({
