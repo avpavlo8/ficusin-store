@@ -197,16 +197,20 @@ export default function StorefrontPage() {
   const headerMenus = useMemo(() => {
     const children = new Map<number | null, Category[]>();
     categories.forEach((item) => children.set(item.parentId, [...(children.get(item.parentId) || []), item]));
+    const direct = new Map<number, number>();
+    products.forEach((product) => { if (product.categoryId != null) direct.set(product.categoryId, (direct.get(product.categoryId) || 0) + 1); });
+    const hasProducts = (item: Category): boolean => (direct.get(item.id) || 0) > 0 || (children.get(item.id) || []).some(hasProducts);
+    const visibleChildren = (parentId: number) => (children.get(parentId) || []).filter(hasProducts).flatMap((item) => /комнатн(ые|ых) растен/i.test(item.name) ? visibleChildren(item.id) : [item]);
     const build = (item: Category): HeaderMenuItem => {
-      const nested = (children.get(item.id) || []).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
+      const nested = visibleChildren(item.id).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
       return { id:item.id, label:item.name, ...(nested.length ? { children:nested } : {}) };
     };
-    const roots = (children.get(null) || []).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
+    const roots = (children.get(null) || []).filter(hasProducts).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
     const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
     if (!plantRoot) return { catalog: roots, plants: [] };
-    const plants = (children.get(plantRoot.id) || []).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
+    const plants = visibleChildren(plantRoot.id).sort((a,b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name,"ru")).map(build);
     return { catalog: roots, plants };
-  }, [categories]);
+  }, [categories, products]);
 
   // Ветка считается выбранной вместе со всеми потомками, даже теми, что
   // пропущены при отрисовке.
@@ -324,6 +328,12 @@ export default function StorefrontPage() {
         (current[product.id] ?? 0) + 1,
       ),
     }));
+  const changeCartQuantity = (product: Product, delta: number) => setCart((current) => {
+    const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
+    const nextQuantity = Math.max(0, Math.min(maximum, (current[product.id] || 0) + delta));
+    if (nextQuantity === 0) { const next = { ...current }; delete next[product.id]; return next; }
+    return { ...current, [product.id]: nextQuantity };
+  });
 
   const toggleFavorite = (id: string) =>
     setFavorites((current) => {
@@ -362,7 +372,7 @@ export default function StorefrontPage() {
         </div>
         <div className="home-hero-visual">
           <img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" />
-          <span className="home-stamp" aria-label="Живые растения для живых людей"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><path id="stamp-top" d="M18 60 A42 42 0 0 1 102 60" /><path id="stamp-bottom" d="M102 67 A42 42 0 0 1 18 67" /></defs><circle cx="60" cy="60" r="48" /><circle cx="60" cy="60" r="42" strokeDasharray="2 3" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M60 75V49m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM49 78h22" /></svg></span>
+          <span className="home-stamp" aria-label="Живые растения для живых людей"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><path id="stamp-top" d="M23 59 A37 37 0 0 1 97 59" /><path id="stamp-bottom" d="M23 67 A37 37 0 0 0 97 67" /></defs><circle cx="60" cy="60" r="48" /><circle cx="60" cy="60" r="42" strokeDasharray="2 3" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M60 75V49m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM49 78h22" /></svg></span>
           <span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span>
           <span className="home-note packing"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span>
         </div>
@@ -470,19 +480,16 @@ export default function StorefrontPage() {
                   {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0,2).map((attribute) => <span key={attribute.code}>{attribute.name}: {attributeValue(attribute.value, attribute.unit)}</span>)}</div>}
                   {product.latin && <p className="storefront-latin">{product.latin}</p>}
                   {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
-                  {preorder && <p className="storefront-preorder">Под заказ · срок уточнит менеджер</p>}
                   <div className="storefront-buy">
-                    <strong>{money(product.price)}</strong>
-                    <button
-                      className={inCart ? "in-cart" : ""}
-                      onClick={() => (inCart ? setCartOpen(true) : addToCart(product))}
-                      aria-label={inCart ? `В корзине · ${inCart}` : preorder ? "Под заказ" : "В корзину"}
-                      title={inCart ? `Уже в корзине · ${inCart}` : preorder ? "Под заказ" : "Добавить в корзину"}
+                    <span className="storefront-price"><strong>{money(product.price)}</strong>{preorder && <em>Под заказ</em>}</span>
+                    {inCart > 0 ? <div className="storefront-quantity"><button type="button" onClick={() => changeCartQuantity(product,-1)} aria-label="Уменьшить количество">−</button><button type="button" className="quantity-value" onClick={() => setCartOpen(true)} aria-label={`В корзине · ${inCart}`}>{inCart}</button><button type="button" onClick={() => changeCartQuantity(product,1)} aria-label="Увеличить количество">+</button></div> : <button
+                      onClick={() => addToCart(product)}
+                      aria-label="В корзину"
+                      title="Добавить в корзину"
                     >
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h2l1.7 9.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 1.9-1.5L21 8H7M10 20h.01M18 20h.01" /></svg>
-                      <span className="cart-button-label">{inCart ? "Уже в корзине" : preorder ? "Под заказ" : "В корзину"}</span>
-                      {inCart > 0 && <span className="cart-state">✓</span>}
-                    </button>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Zm3 0V6a3 3 0 0 1 6 0v2" /></svg>
+                      <span className="cart-button-label">В корзину</span>
+                    </button>}
                   </div>
                 </article>
               );
@@ -493,7 +500,7 @@ export default function StorefrontPage() {
       </section>
       <section className="home-service" id="care" aria-label="Помощь с выбором и доставкой">
         <div className="home-service-choice"><h2>Не знаете,<br />что выбрать?</h2><p>Напишите нам в чат — подскажем лучшее растение<br />для вашего интерьера и уровня освещения.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>◯</span></a><div className="home-service-team"><img src="/assets/redesign/team-avatars.webp" alt="" /><span>Команда Фикусин<br />всегда на связи</span></div></div>
-        <div className="home-service-card delivery"><b>Бережно доставим<br />по всей России</b><span>Надёжная упаковка<br />и бережная доставка</span></div>
+        <div className="home-service-card delivery"><b>Бережно доставим<br />по всей России</b><span>Надёжная упаковка<br />и бережная доставка</span><i aria-hidden="true">→</i></div>
         <div className="home-service-card care"><b>Поможем с уходом<br />и пересадкой</b><span>Ответим на вопросы<br />и подскажем</span></div>
       </section>
       <CheckoutHost

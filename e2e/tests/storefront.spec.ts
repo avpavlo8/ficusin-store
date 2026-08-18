@@ -17,7 +17,6 @@ test("@desktop главная сохраняет утверждённую виз
   const headerMenus = page.locator(".header-dropdown");
   await headerMenus.first().locator(":scope > summary").click();
   await headerMenus.first().locator(".header-submenu > summary").filter({ hasText: "Растения" }).click();
-  await headerMenus.first().locator(".header-submenu > summary").filter({ hasText: "Комнатные растения" }).click();
   await expect(headerMenus.first().getByRole("button", { name: /Аглаонема/ })).toBeVisible();
   await headerMenus.nth(1).locator(":scope > summary").click();
   await expect(headerMenus.first()).not.toHaveAttribute("open", "");
@@ -102,10 +101,9 @@ test("@desktop товар без остатка идёт как предзака
 
   const card = page.locator(".storefront-card", { hasText: "Монстера Делициоза" });
   await expect(card).toHaveClass(/preorder/);
-  // «Под заказ» на карточке написано дважды — подписью и на кнопке, поэтому
-  // проверяем каждое место отдельно, а не по тексту вообще.
-  await expect(card.locator(".storefront-preorder")).toContainText("срок уточнит менеджер");
-  await expect(card.getByRole("button", { name: "Под заказ" })).toBeVisible();
+  await expect(card.locator(".storefront-price em")).toHaveText("Под заказ");
+  await expect(card.locator(".storefront-preorder")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "В корзину" })).toBeVisible();
 
   // Магазин, прячущий то, что кончилось, теряет продажу дважды: покупатель не
   // видит растения и никто не узнаёт, что его хотели.

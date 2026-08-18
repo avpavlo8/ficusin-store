@@ -35,7 +35,6 @@
 .storefront-image img { width: 100%; height: 100%; object-fit: cover; }
 .storefront-name { font-size: 14px; font-weight: 700; color: var(--green); text-decoration: none; }
 .storefront-latin { margin: 0; font-size: 12px; color: #8b938b; }
-.storefront-preorder { margin: 0; font-size: 12px; font-weight: 700; color: #9a6b25; }
 .storefront-buy { margin-top: auto; padding-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .storefront-buy strong { font-size: 15px; }
 .storefront-buy button { padding: 8px 13px; flex: none; white-space: nowrap; border: 1px solid var(--green); border-radius: 10px; background: transparent; color: var(--green); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
@@ -343,7 +342,11 @@
 .storefront-buy button svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
 .storefront-buy button:hover { background:#c93b20; color:white; transform:translateY(-1px); }
 .storefront-buy button.in-cart { background:var(--home-green); color:white; }
-.storefront-buy .cart-state { width:15px; height:15px; position:absolute; top:-5px; right:-5px; display:grid; place-items:center; border:2px solid #f7efe4; border-radius:50%; background:var(--home-orange); color:white; font-size:8px; font-weight:800; }
+.storefront-buy > button { display:grid; place-items:center; }
+.storefront-buy > button svg { margin:auto; }
+.storefront-price { display:grid; gap:3px; }.storefront-price em { color:var(--home-orange); font-size:11px; font-style:normal; font-weight:700; letter-spacing:.01em; }
+.storefront-quantity { height:38px; padding:3px; display:flex; align-items:center; border:1px solid #d8c9b7; border-radius:9px; background:#fffaf3; }
+.storefront-quantity button { width:30px; height:30px; padding:0; display:grid; place-items:center; border:0; border-radius:7px; background:transparent; color:var(--home-ink); font-size:17px; font-weight:600; }.storefront-quantity button:hover { background:#eee7ba; color:var(--home-ink); transform:none; }.storefront-quantity .quantity-value { color:var(--home-green); font-size:13px; }
 
 .home-service { min-height:340px; padding:44px 48px; grid-template-columns:minmax(330px,1.2fr) minmax(245px,.78fr) minmax(245px,.78fr); gap:14px; align-items:start; background-position:center; }
 .home-service-card { min-height:122px; padding:21px 23px; align-content:center; border:1px solid rgba(74,57,38,.08); border-radius:13px; background:rgba(247,239,228,.9); box-shadow:0 12px 28px rgba(24,39,22,.08); color:var(--home-ink); text-shadow:none; backdrop-filter:blur(2px); }
@@ -426,7 +429,8 @@
 .storefront-grid.list-view .storefront-latin { margin-top:5px; font-size:13px; }.storefront-grid.list-view .storefront-rating { font-size:13px; }
 .storefront-grid.list-view .storefront-buy { min-width:180px; gap:15px; }.storefront-grid.list-view .storefront-buy strong { font-size:21px; }
 .storefront-grid.list-view .storefront-buy button { width:auto; min-width:155px; height:46px; padding:0 18px; display:flex; align-items:center; justify-content:center; gap:10px; border-radius:9px; }
-.storefront-grid.list-view .storefront-buy button svg { width:18px; }.storefront-grid.list-view .cart-button-label { display:inline; color:white; font-size:12px; font-weight:700; }.storefront-grid.list-view .cart-state { top:-6px; right:-6px; }
+.storefront-grid.list-view .storefront-buy button svg { width:18px; }.storefront-grid.list-view .cart-button-label { display:inline; color:white; font-size:12px; font-weight:700; }
+.storefront-grid.list-view .storefront-quantity { height:46px; }.storefront-grid.list-view .storefront-quantity button { min-width:38px; height:38px; padding:0; }.storefront-grid.list-view .storefront-price { text-align:right; }
 
 /* Нижняя полка повторяет макет: одна зелёная сцена и две светлые карточки. */
 .home-service { min-height:330px; padding:0; position:relative; display:block; overflow:hidden; border-radius:16px; background:#183b22 url('/assets/redesign/home-service-4k.webp') center/cover no-repeat; color:var(--home-ink); }
@@ -436,11 +440,12 @@
 .home-service-choice a { min-height:45px; }
 .home-service-team { margin-top:auto; display:flex; align-items:center; gap:10px; color:white; font-size:11px; line-height:1.25; }
 .home-service-team img { width:105px; height:38px; object-fit:cover; border-radius:20px; }
-.home-service-card { width:28%; min-height:146px; padding:27px 22px 22px 48%; position:absolute; top:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; overflow:hidden; border:1px solid #eadfd2; border-radius:14px; background:#f5ecdf; box-shadow:none; text-shadow:none; }
+.home-service-card { width:28%; min-height:146px; padding:27px 38px 22px 48%; position:absolute; top:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:8px; overflow:hidden; border:1px solid #eadfd2; border-radius:14px; background:#f5ecdf; box-shadow:none; text-shadow:none; }
 .home-service-card::before { content:""; width:45%; position:absolute; inset:0 auto 0 0; background-repeat:no-repeat; background-position:center; background-size:cover; }
 .home-service-card.delivery { left:31%; }.home-service-card.delivery::before { background-image:url('/assets/redesign/service-delivery-v2.webp'); }
 .home-service-card.care { left:60%; width:30%; }.home-service-card.care::before { background-image:url('/assets/redesign/service-care-v2.webp'); }
 .home-service-card b { font-size:15px; line-height:1.25; }.home-service-card span { color:#62564b; font-size:11px; }
+.home-service-card > i { position:absolute; right:18px; bottom:20px; color:#473a2f; font:400 25px/1 Georgia,serif; }
 
 @media (max-width:1100px) {
   .home-filter-group { max-width:100%; overflow-x:auto; }
