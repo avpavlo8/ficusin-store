@@ -14,7 +14,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState<"care"|"reviews"|"questions">("care");
+  const [activeTab, setActiveTab] = useState<"care"|"characteristics"|"reviews"|"questions">("care");
   const relatedTrack = useRef<HTMLDivElement>(null);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
@@ -58,10 +58,10 @@ export default function ProductPage({ slug }: { slug: string }) {
   };
 
   const addToCart = () => {
-    if (!product || !variant || variant.stock <= 0) return;
+    if (!product || !variant) return;
     let stored: Record<string, number> = {};
     try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; }
-    stored[product.id] = Math.min(variant.stock, quantity);
+    stored[product.id] = variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity;
     localStorage.setItem("ficusin-cart", JSON.stringify(stored));
     window.dispatchEvent(new Event(STORAGE_EVENT));
     setCart({ ...stored });
@@ -71,32 +71,23 @@ export default function ProductPage({ slug }: { slug: string }) {
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
   if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
-  // Здесь только то, о чём покупателя действительно нужно предупредить.
-  // Раньше сюда подставлялись обычные характеристики, и «Освещение:
-  // Полутень» выводилось с оранжевым восклицательным знаком, как ошибка.
-  // Характеристики целиком показаны ниже, в «Подробно о товаре».
-  const warningBadges = (product.importantWarnings?.length ? product.importantWarnings : [
-    product.petSafety === "toxic" ? "Ядовито для животных" : "",
-    product.lightLevel === "sunny" ? "Нужно яркое освещение" : "",
-    product.watering === "frequent" ? "Нужен частый полив" : "",
-  ]).filter(Boolean).slice(0, 4);
-
   return <main className="product-page">
     <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={() => { window.location.href="/#catalog"; }} />
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
     <section className="pdp-main">
       <ProductGallery images={product.images} name={product.name} active={activeImage} onSelect={setActiveImage} />
-      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(cart[product.id])} warnings={warningBadges} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); }} onQuantity={setQuantity} onFavorite={toggleFavorite} onBuy={addToCart} />
+      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(cart[product.id])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); }} onQuantity={setQuantity} onFavorite={toggleFavorite} onBuy={addToCart} />
     </section>
-    <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{([['care','О растении'],['reviews','Отзывы'],['questions','Вопросы']] as const).map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
+    <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{([['care','О растении'],['characteristics','Характеристики'],['reviews','Отзывы'],['questions','Вопросы']] as const).map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
       <section className="pdp-tab-panel" aria-live="polite">
-        {activeTab==='care'&&<section className="pdp-content pdp-section pdp-info-card" id="about"><header className="pdp-section-heading"><h2>Уход за растением</h2></header><div><article><h3>О растении</h3><p>{product.description || "Описание готовится. Подробности можно уточнить у консультанта."}</p></article><article><h3>Базовый уход</h3><p>{product.careInstructions || "Мы приложим рекомендации по поливу, освещению и пересадке к вашему заказу."}</p></article>{product.attributes.length>0&&<article className="pdp-compact-attributes"><h3>Характеристики</h3><dl>{product.attributes.slice(0,8).map((item)=><div key={item.code}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>)}</dl></article>}</div></section>}
+        {activeTab==='care'&&<section className="pdp-content pdp-section pdp-info-card" id="about"><header className="pdp-section-heading"><h2>Уход за растением</h2></header><div><article><h3>О растении</h3><p>{product.description || "Описание готовится. Подробности можно уточнить у консультанта."}</p></article><article><h3>Базовый уход</h3><p>{product.careInstructions || "Мы приложим рекомендации по поливу, освещению и пересадке к вашему заказу."}</p></article></div></section>}
+        {activeTab==='characteristics'&&<section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики растения</h2><p>Полная информация о растении и условиях содержания</p></header><dl>{product.attributes.length>0?product.attributes.map((item)=><div key={item.code}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>):<><div><dt>Освещение</dt><dd>{attributeValue(product.lightLevel||product.passport.lighting||'Не указано')}</dd></div><div><dt>Полив</dt><dd>{attributeValue(product.watering||product.passport.watering||'Не указано')}</dd></div><div><dt>Уровень ухода</dt><dd>{attributeValue(product.careLevel||product.passport.careDifficulty||'Не указано')}</dd></div><div><dt>Безопасность для питомцев</dt><dd>{attributeValue(product.petSafety||product.passport.toxicity||'Не указано')}</dd></div></>}</dl></section>}
         {activeTab==='reviews'&&<ProductReviews reviews={product.reviews}/>}
         {activeTab==='questions'&&<section className="pdp-questions pdp-info-card" id="questions"><header className="pdp-section-heading"><h2>Вопросы о растении</h2></header>{(product.passport.faq||[]).length?product.passport.faq!.map((item,index)=><details key={`${item.question}-${index}`}><summary>{item.question}</summary><p>{item.answer}</p></details>):<div className="pdp-question-empty"><strong>Остались вопросы?</strong><p>Напишите нам — подскажем по уходу, размеру и доставке.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос →</a></div>}</section>}
       </section>
     </div>
-    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div><div className="pdp-related-controls"><button type="button" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие растения">←</button><button type="button" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие растения">→</button></div></header><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div></section>}
-    <footer className="pdp-footer"><a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a><p>Рязань, Новосёлов, 40А · +7 915 615-11-00 · ежедневно 08:00–20:00</p></footer>
+    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div></header><div className="pdp-related-carousel"><button type="button" className="pdp-related-side prev" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие растения">←</button><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div><button type="button" className="pdp-related-side next" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие растения">→</button></div></section>}
+    <footer className="pdp-footer"><div className="pdp-footer-main"><div className="pdp-footer-intro"><a className="pdp-footer-logo" href="/">Фикусин</a><p>Живые растения для дома и офиса.<br/>Бережно доставляем по всей России.</p><a className="pdp-footer-chat" href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в чат <span>→</span></a></div><nav aria-label="Каталог в подвале"><strong>Каталог</strong><a href="/#catalog">Растения</a><a href="/#catalog">Грунты и дренаж</a><a href="/#catalog">Горшки и кашпо</a><a href="/#catalog">Уход и удобрения</a></nav><nav aria-label="Покупателям"><strong>Покупателям</strong><a href="/#care">Уход</a><a href="/#delivery">Доставка и оплата</a><a href="/blog">Блог</a><a href="/about">О нас</a></nav><div className="pdp-footer-contact"><strong>Мы на связи</strong><a href="tel:+79156151100">+7 915 615-11-00</a><span>Ежедневно, 08:00–20:00</span><span>Рязань, Новосёлов, 40А</span></div></div><div className="pdp-footer-bottom"><span>© Фикусин, {new Date().getFullYear()}</span><a href="/legal/privacy">Политика конфиденциальности</a><span>Растения, с которыми хорошо.</span></div></footer>
     {notice && <div className="toast">{notice}</div>}
   </main>;
 }
