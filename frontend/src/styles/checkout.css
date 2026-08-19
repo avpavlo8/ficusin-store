@@ -285,3 +285,16 @@
 }
 .checkout-page-panel.checkout-order-complete .success-catalog-link:hover{border-color:#294326;background:rgba(255,253,247,.92);transform:translateY(-2px)}
 .checkout-page-panel.checkout-order-complete .success-catalog-link span{font-size:18px;font-weight:400}
+
+/* Show one checkout action at a time. When the in-flow action leaves the
+   viewport, this compact fallback stays reachable without duplicating it. */
+.cart-page-panel .cart-summary .cart-summary-checkout{
+  width:auto;min-width:230px;max-width:calc(100vw - 32px);min-height:58px;margin:0;padding:0 22px;
+  position:fixed;right:max(24px,env(safe-area-inset-right));bottom:max(24px,calc(env(safe-area-inset-bottom) + 12px));z-index:40;
+  display:flex;align-items:center;justify-content:center;gap:18px;border:1px solid rgba(255,255,255,.35);
+  box-shadow:0 18px 42px rgba(87,38,21,.3);animation:cart-checkout-in .2s ease-out both
+}
+@keyframes cart-checkout-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:700px){
+  .cart-page-panel .cart-summary .cart-summary-checkout{right:12px;bottom:calc(82px + env(safe-area-inset-bottom));width:calc(100vw - 24px);max-width:none}
+}

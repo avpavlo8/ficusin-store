@@ -49,6 +49,14 @@
   background: rgba(41,29,19,.06);
   color: var(--store-header-orange);
 }
+.header.store-header .desktop-nav > a::after {
+  left: 8px;
+  right: calc(100% - 8px);
+  bottom: 3px;
+  height: 2px;
+  border-radius: 999px;
+}
+.header.store-header .desktop-nav > a:hover::after { right: 8px; }
 .header.store-header .header-search {
   width: clamp(320px,23vw,430px);
   height: 48px;

@@ -1,5 +1,5 @@
 import type { Dispatch, FormEventHandler, SetStateAction } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput } from "./lib/phone";
 
 export type CartLine = {
@@ -64,6 +64,17 @@ export function CartDrawer({
   onCheckout,
   page = false,
 }: CartDrawerProps) {
+  const checkoutActionRef = useRef<HTMLButtonElement>(null);
+  const [checkoutActionVisible, setCheckoutActionVisible] = useState(false);
+  useEffect(() => {
+    if (!page || !lines.length || !checkoutActionRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setCheckoutActionVisible(entry.isIntersecting),
+      { threshold: 0.55 },
+    );
+    observer.observe(checkoutActionRef.current);
+    return () => observer.disconnect();
+  }, [page, lines.length]);
   const lineCards = lines.map((item) => (
     <div className="cart-line" key={item.id}>
       <img src={item.image} alt="" />
@@ -106,7 +117,7 @@ export function CartDrawer({
           </div>
         )}
         </div>
-        {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
+        {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button ref={checkoutActionRef} className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
       </section>
       {!!lines.length && (
         <aside className="cart-summary">
@@ -116,7 +127,7 @@ export function CartDrawer({
           {!page && <button className="primary-button" onClick={onCheckout}>
             Оформить заказ <span>→</span>
           </button>}
-          {page && <button className="primary-button cart-summary-checkout" onClick={onCheckout}>
+          {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" onClick={onCheckout}>
             Оформить заказ <span>→</span>
           </button>}
           {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
