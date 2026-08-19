@@ -11,6 +11,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
+	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,6 +29,7 @@ type Service struct {
 	pool     *pgxpool.Pool
 	cdek     CDEK
 	notifier Notifier
+	settings settingsReader
 	logger   *slog.Logger
 }
 
@@ -160,9 +162,16 @@ func NewService(
 	pool *pgxpool.Pool,
 	cdek CDEK,
 	notifier Notifier,
+	shopSettings settingsReader,
 	logger *slog.Logger,
 ) *Service {
-	return &Service{pool: pool, cdek: cdek, notifier: notifier, logger: logger}
+	return &Service{
+		pool:     pool,
+		cdek:     cdek,
+		notifier: notifier,
+		settings: shopSettings,
+		logger:   logger,
+	}
 }
 
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
@@ -211,12 +220,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("load order product: %w", err)
 		}
 		item.Quantity = max(1, min(20, requested.Quantity))
-		reserved, preorder, err := reserveStock(ctx, transaction, item)
-		if err != nil {
-			return Created{}, err
-		}
-		item.Reserved = reserved
-		item.Preorder = preorder
 		item.Price = float64(discountedMinor(priceMinor, discountBPS)) / 100
 		items = append(items, item)
 	}
@@ -225,12 +228,14 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	subtotal := 0.0
-	hasPreorder := false
 	for _, item := range items {
 		subtotal += item.Price * float64(item.Quantity)
-		hasPreorder = hasPreorder || item.Preorder
 	}
-	deliveryFees := map[string]float64{"pickup": 0, "courier": 490, "post": 590}
+	deliveryFees := map[string]float64{
+		"pickup":  0,
+		"courier": service.deliveryFee(settings.CourierFee),
+		"post":    service.deliveryFee(settings.PostFee),
+	}
 	deliveryFee, regularDelivery := deliveryFees[input.Delivery]
 	deliveryAddress := input.Customer.Address
 	var cityCode, tariffCode *int
@@ -314,6 +319,23 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		input.OnlinePaymentReady,
 	) {
 		return Created{}, invalid("Выберите доступный способ оплаты")
+	}
+
+	// Резерв — последним действием перед записью заказа, и намеренно после
+	// разговора с СДЭК. Он блокирует строки склада до конца транзакции, и
+	// пока блокировка держится, никто другой не может купить то же растение.
+	// Пока резерв стоял выше, каждый чужой заказ ждал, сколько СДЭК будет
+	// считать нашу доставку, — а СДЭК отвечает секундами и иногда не
+	// отвечает вовсе.
+	hasPreorder := false
+	for index := range items {
+		reserved, preorder, err := reserveStock(ctx, transaction, items[index])
+		if err != nil {
+			return Created{}, err
+		}
+		items[index].Reserved = reserved
+		items[index].Preorder = preorder
+		hasPreorder = hasPreorder || preorder
 	}
 
 	orderNumber, err := newOrderNumber(ctx, transaction, input.CustomerID)
@@ -436,6 +458,21 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod)}, nil
+}
+
+// deliveryFee — цена простой доставки из панели.
+//
+// Раньше 490 и 590 были вписаны прямо здесь, и поменять их можно было
+// только выкладкой. Ноль — законное значение: владелец вправе возить
+// бесплатно, поэтому умолчание подставляется только когда настроек нет
+// вовсе, а не когда цена оказалась нулевой. Правило про отрицательную цену
+// живёт в settings — его же читает витрина, и разойтись они не должны.
+func (service *Service) deliveryFee(key string) float64 {
+	value := settings.DefaultNumber(key)
+	if service.settings != nil {
+		value = service.settings.Number(key)
+	}
+	return float64(settings.NonNegative(value))
 }
 
 // reserveStock holds what it can and reports what it could not.

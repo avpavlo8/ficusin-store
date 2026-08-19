@@ -1,5 +1,5 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
 import { normalizeRussianPhone } from "./lib/phone";
 
@@ -26,11 +26,16 @@ type CdekQuote = {
   daysMax: number;
 };
 
-const deliveryOptions = [
+// Цены курьера и почты живут в панели магазина. Здесь они только на тот
+// случай, если ответ не пришёл: показать пустое место вместо цены хуже, чем
+// показать ту же цену, по которой посчитает заказ, — умолчания совпадают.
+const defaultDeliveryFees: Record<string, number> = { courier: 490, post: 590 };
+
+const baseDeliveryOptions = [
   { id: "pickup", title: "Самовывоз в Рязани", detail: "Бесплатно", fee: 0 },
-  { id: "courier", title: "Курьер по Рязани", detail: "от 250 ₽", fee: 250 },
-  { id: "cdek", title: "СДЭК по России", detail: "от 350 ₽", fee: null },
-  { id: "post", title: "Почта России", detail: "от 350 ₽", fee: 350 },
+  { id: "courier", title: "Курьер по Рязани", detail: "Стоимость из настроек магазина", fee: 490 },
+  { id: "cdek", title: "СДЭК по России", detail: "Рассчитаем по адресу", fee: null },
+  { id: "post", title: "Почта России", detail: "Стоимость из настроек магазина", fee: 590 },
 ];
 
 type UseCheckoutArgs = {
@@ -56,6 +61,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
   const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
   const [cdekTariffCode, setCdekTariffCode] = useState(0);
   const [cdekRepack, setCdekRepack] = useState(false);
+  const [deliveryFees, setDeliveryFees] =
+    useState<Record<string, number>>(defaultDeliveryFees);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("online");
   const [cdekLoading, setCdekLoading] = useState(false);
@@ -90,6 +97,19 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       cancelled = true;
     };
   }, [delivery]);
+
+  useEffect(() => {
+    fetch("/api/v1/delivery/fees", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: Record<string, unknown>) => {
+        setDeliveryFees({
+          courier:
+            typeof data.courier === "number" ? data.courier : defaultDeliveryFees.courier,
+          post: typeof data.post === "number" ? data.post : defaultDeliveryFees.post,
+        });
+      })
+      .catch(() => setDeliveryFees(defaultDeliveryFees));
+  }, []);
 
   useEffect(() => {
     fetch("/api/v1/delivery/cdek?action=status", { cache: "no-store" })
@@ -132,6 +152,13 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
     };
   }, [delivery, cdekCityQuery, cdekCity]);
 
+  const deliveryOptions = useMemo(
+    () =>
+      baseDeliveryOptions.map((item) =>
+        item.id in deliveryFees ? { ...item, fee: deliveryFees[item.id] } : item,
+      ),
+    [deliveryFees],
+  );
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const availableDelivery = deliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable);
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];

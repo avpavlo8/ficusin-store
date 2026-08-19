@@ -29,6 +29,8 @@ const (
 	TelegramEnabled   = "telegram.enabled"
 	AutoCancelHours   = "orders.auto_cancel_hours"
 	SabyStockEnabled  = "saby.stock_enabled"
+	CourierFee        = "delivery.courier_fee"
+	PostFee           = "delivery.post_fee"
 )
 
 // Definition is what the panel needs to draw one setting.
@@ -72,6 +74,18 @@ var Definitions = []Definition{
 		Kind:  "number",
 	},
 	{
+		Key:   CourierFee,
+		Title: "Курьер по городу, ₽",
+		Note:  "Сколько покупатель платит за доставку курьером. 0 — возим бесплатно.",
+		Kind:  "number",
+	},
+	{
+		Key:   PostFee,
+		Title: "Почта России, ₽",
+		Note:  "Сколько покупатель платит за отправку почтой. 0 — возим бесплатно.",
+		Kind:  "number",
+	},
+	{
 		Key:   CDEKSenderName,
 		Title: "Отправитель: имя",
 		Note:  "Кого СДЭК указывает отправителем.",
@@ -100,6 +114,8 @@ var defaults = map[string]string{
 	TelegramEnabled:   "1",
 	AutoCancelHours:   "24",
 	SabyStockEnabled:  "0",
+	CourierFee:        "490",
+	PostFee:           "590",
 	CDEKSenderName:    "",
 	CDEKSenderPhone:   "",
 	CDEKSenderAddress: "",
@@ -189,6 +205,25 @@ func (service *Service) Number(key string) int {
 	if err != nil {
 		fallback, _ := strconv.Atoi(defaults[key])
 		return fallback
+	}
+	return value
+}
+
+// DefaultNumber — умолчание настройки для тех, у кого самих настроек нет.
+// Нужно там, где сервис собирают без панели: в тестах цена доставки всё
+// равно обязана быть настоящей, иначе тест проверяет выдуманный магазин.
+func DefaultNumber(key string) int {
+	value, _ := strconv.Atoi(defaults[key])
+	return value
+}
+
+// NonNegative — правило для цены: отрицательного счёта за доставку не
+// бывает. Живёт здесь, а не в двух местах: цену доставки читают и витрина,
+// и оформление заказа, и разойтись они не должны — покупатель увидит одно
+// число, а заплатит другое.
+func NonNegative(value int) int {
+	if value < 0 {
+		return 0
 	}
 	return value
 }

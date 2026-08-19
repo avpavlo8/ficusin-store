@@ -143,6 +143,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
+	// Цена курьера и почты живёт в панели. Витрина спрашивает её здесь,
+	// чтобы показывать ровно то число, по которому посчитается заказ.
+	mux.Handle("GET /api/v1/delivery/fees", deliveryFeesHandler(dependencies.Settings))
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
 		createOrderHandler(

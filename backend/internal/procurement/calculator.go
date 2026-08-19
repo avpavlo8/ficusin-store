@@ -2,14 +2,6 @@ package procurement
 
 import "math"
 
-type calculationLine struct {
-	Kind          string
-	Quantity      int
-	UnitPrice     float64
-	PotDiameterCM float64
-	HeightCM      float64
-}
-
 type calculatedLine struct {
 	PurchaseUnitRUB              float64
 	TrolleyDeliveryUnitRUB       float64
@@ -20,49 +12,14 @@ type calculatedLine struct {
 	ProposedMarketplaceStrikeRUB int64
 }
 
-// calculateLine is the versioned replacement for the Excel formulas. The
-// Ryazan leg is distributed over the whole delivery by height; when its total
-// is zero the share is zero, rather than silently inventing a cost.
-func calculateLine(settings PricingSettings, costs OrderCosts, line calculationLine, totalHeightUnits float64) calculatedLine {
-	purchase := line.UnitPrice
-	if line.Kind == KindInternational {
-		purchase *= costs.ExchangeRate
-	}
-
-	trolleyDelivery := 0.0
-	if line.Kind == KindInternational && line.PotDiameterCM > 0 && line.HeightCM > 0 {
-		volume := math.Pi * math.Pow(line.PotDiameterCM/2, 2) * line.HeightCM
-		usableTrolleyVolume := settings.TrolleyVolumeCM3 * settings.TrolleyFillRatio
-		if usableTrolleyVolume > 0 {
-			trolleyDelivery = costs.TrolleyCostCurrency * costs.ExchangeRate * volume / usableTrolleyVolume
-		}
-	}
-
-	ryazanDelivery := 0.0
-	if totalHeightUnits > 0 && line.HeightCM > 0 {
-		ryazanDelivery = costs.DeliveryToRyazanRUB * line.HeightCM / totalHeightUnits
-	}
-	unitCost := purchase + trolleyDelivery + ryazanDelivery
-
-	retailBase := unitCost * settings.RetailMarkupMultiplier
-	retail := roundRetail(retailBase, settings.RoundPrices)
-	marketplaceBase := float64(retail) + settings.PackageRUB
-	marketplaceRate := 1 + settings.ReturnLossRate + settings.MarketplaceCostRate + settings.TaxRate + settings.ReserveRate
-	marketplace := int64(math.Floor(marketplaceBase * marketplaceRate))
-	strike := int64(math.Floor(float64(marketplace) * (1 + settings.MarketplaceStrikeMarkup)))
-
-	return calculatedLine{
-		PurchaseUnitRUB: purchase, TrolleyDeliveryUnitRUB: trolleyDelivery,
-		RyazanDeliveryUnitRUB: ryazanDelivery, UnitCostRUB: unitCost,
-		ProposedRetailRUB: retail, ProposedMarketplaceRUB: marketplace,
-		ProposedMarketplaceStrikeRUB: strike,
-	}
-}
-
 // calculateAllocatedLine applies the pricing formula after logistics has been
 // reconciled at order level. This keeps every trolley and the Ryazan delivery
 // exact instead of letting each row independently approximate its share.
-func calculateAllocatedLine(settings PricingSettings, kind string, unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit float64) calculatedLine {
+func calculateAllocatedLine(
+	settings PricingSettings,
+	kind string,
+	unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit, heightCM float64,
+) calculatedLine {
 	purchase := unitPrice
 	if kind == KindInternational {
 		purchase *= exchangeRate
@@ -70,7 +27,10 @@ func calculateAllocatedLine(settings PricingSettings, kind string, unitPrice, ex
 	unitCost := purchase + trolleyPerUnit + ryazanPerUnit
 	retailBase := unitCost * settings.RetailMarkupMultiplier
 	retail := roundRetail(retailBase, settings.RoundPrices)
-	marketplaceBase := float64(retail) + settings.PackageRUB
+	// Доставка площадки считается от высоты растения: чем оно выше, тем
+	// больше коробка. Слагаемое есть в исходной книге и при переносе
+	// формулы в код потерялось — магазин продавал дешевле своего расчёта.
+	marketplaceBase := float64(retail) + settings.PackageRUB + marketplaceLogistics(settings, heightCM)
 	marketplaceRate := 1 + settings.ReturnLossRate + settings.MarketplaceCostRate + settings.TaxRate + settings.ReserveRate
 	marketplace := int64(math.Floor(marketplaceBase * marketplaceRate))
 	strike := int64(math.Floor(float64(marketplace) * (1 + settings.MarketplaceStrikeMarkup)))
@@ -80,6 +40,17 @@ func calculateAllocatedLine(settings PricingSettings, kind string, unitPrice, ex
 		ProposedRetailRUB: retail, ProposedMarketplaceRUB: marketplace,
 		ProposedMarketplaceStrikeRUB: strike,
 	}
+}
+
+// marketplaceLogistics — плата площадки за доставку одного растения.
+//
+// Отрицательная высота или отрицательная ставка означают незаполненные
+// данные, а не скидку: в таком случае слагаемого просто нет.
+func marketplaceLogistics(settings PricingSettings, heightCM float64) float64 {
+	if heightCM <= 0 || settings.MarketplaceLogisticsPerCM <= 0 {
+		return 0
+	}
+	return heightCM * settings.MarketplaceLogisticsPerCM
 }
 
 func roundRetail(value float64, enabled bool) int64 {
