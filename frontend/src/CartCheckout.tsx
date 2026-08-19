@@ -127,7 +127,7 @@ export function CartDrawer({
           {!page && <button className="primary-button" onClick={onCheckout}>
             Оформить заказ <span>→</span>
           </button>}
-          {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" onClick={onCheckout}>
+          {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" aria-label="Перейти к оформлению" onClick={onCheckout}>
             Оформить заказ <span>→</span>
           </button>}
           {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}

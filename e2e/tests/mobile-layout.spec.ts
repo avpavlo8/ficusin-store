@@ -69,9 +69,11 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
 });
 
 test("@phone the cart opens as a separate page and keeps its contents", async ({ page }) => {
-  await setStoredCounts(page, [], { "saby-1": 1 });
   await mockApi(page);
   await page.goto("/");
+
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
 
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
