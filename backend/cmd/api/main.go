@@ -73,7 +73,10 @@ func main() {
 		logger.Error("Telegram configuration failed", "error", err)
 		os.Exit(1)
 	}
-	orderService := order.NewService(pool, cdekClient, telegramClient, logger)
+	// Настройки читает и оформление заказа: цена простой доставки живёт в
+	// панели, а не в коде.
+	shopSettings := settings.NewService(pool, logger)
+	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger)
 	notificationWorker := order.NewNotificationWorker(pool, telegramClient, logger)
 	pushService, err := notify.NewService(
 		pool, cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Subject, logger,
@@ -88,7 +91,6 @@ func main() {
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
-	shopSettings := settings.NewService(pool, logger)
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
 	// Payments stay nil-safe: without YooKassa keys the shop simply does not
 	// offer card payment, exactly like CDEK without its own keys.
