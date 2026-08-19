@@ -72,8 +72,15 @@ test("@phone the cart opens as a separate page and keeps its contents", async ({
   await mockApi(page);
   await page.goto("/");
 
+  // Корзина живёт на сервере, а нижняя панель ведёт на настоящий адрес:
+  // браузер уходит со страницы и обрывает незавершённые запросы. Между
+  // «В корзину» и переходом лежит запись, и ждать нужно именно её — иначе
+  // проверка меряет, чей браузер быстрее, а не то, что увидит покупатель.
+  const saved = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/cart") && response.request().method() === "PUT");
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
+  await saved;
 
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
