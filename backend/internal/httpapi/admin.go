@@ -48,6 +48,16 @@ type refundService interface {
 	Refund(ctx context.Context, orderID int64) error
 }
 
+// pendingPaymentCanceller — та часть платёжного сервиса, которая закрывает
+// незавершённый платёж у провайдера.
+//
+// Отдельным интерфейсом, а не строкой в refundService: панель обязана
+// работать и с провайдером, который отменять не умеет, и с магазином без
+// оплаты картой вовсе.
+type pendingPaymentCanceller interface {
+	CancelPending(ctx context.Context, orderID int64) error
+}
+
 func newAdminHandlers(
 	logger *slog.Logger,
 	authentication authService,
@@ -219,6 +229,28 @@ func (handlers adminHandlers) updateOrder(response http.ResponseWriter, request 
 		"on_delivery", "invoice", "cancelled"}, body.PaymentStatus) {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус оплаты"})
 		return
+	}
+	// Отмена руками менеджера — та же дыра, что и автоотмена, только дверь
+	// ходовее. Заказ закрывался у нас, а платёж оставался живым у ЮKassa:
+	// покупатель открывал старую ссылку и платил за заказ, которого больше
+	// нет. Гасим платёж до того, как закроем заказ.
+	//
+	// Отказ провайдера останавливает отмену: отменить можно только
+	// неоплаченный платёж, значит покупатель либо платит прямо сейчас, либо
+	// уже заплатил — и возвращать товар на полку нельзя.
+	if body.Status == "cancelled" {
+		if canceller, able := handlers.payments.(pendingPaymentCanceller); able {
+			if err := canceller.CancelPending(request.Context(), id); err != nil {
+				handlers.logger.Error(
+					"cancel payment before manual order cancel failed",
+					"error", err, "order_id", id,
+				)
+				writeJSON(response, http.StatusConflict, errorResponse{
+					Error: "Платёж по заказу не удалось закрыть — возможно, покупатель как раз платит. Обновите страницу и попробуйте ещё раз",
+				})
+				return
+			}
+		}
 	}
 	order, err := handlers.repository.UpdateOrderStatus(request.Context(), actor, id, body.Status, body.PaymentStatus)
 	if err != nil {
