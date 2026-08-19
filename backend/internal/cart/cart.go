@@ -1,14 +1,13 @@
-// Package cart stores the basket of a signed-in customer.
-//
-// The browser remains the working copy while a person shops; this is the
-// backup that survives a cleared browser or a switch to another device. A
-// cart is only ever emptied by the customer or by placing an order.
+// Package cart stores customer and anonymous baskets in PostgreSQL.
 package cart
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -29,8 +28,30 @@ func (store *Store) Load(ctx context.Context, customerID int64) (map[string]int,
 		`SELECT items FROM customer_carts WHERE customer_id = $1`,
 		customerID,
 	).Scan(&raw)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return map[string]int{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	items := map[string]int{}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return map[string]int{}, nil
+	}
+	return items, nil
+}
+
+func (store *Store) LoadGuest(ctx context.Context, tokenHash string) (map[string]int, error) {
+	var raw []byte
+	err := store.pool.QueryRow(ctx,
+		`SELECT items FROM guest_carts WHERE token_hash = $1 AND expires_at > CURRENT_TIMESTAMP`,
+		tokenHash,
+	).Scan(&raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return map[string]int{}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	items := map[string]int{}
 	if err := json.Unmarshal(raw, &items); err != nil {
@@ -55,6 +76,24 @@ func (store *Store) Save(ctx context.Context, customerID int64, items map[string
 		 DO UPDATE SET items = EXCLUDED.items, updated_at = CURRENT_TIMESTAMP`,
 		customerID,
 		encoded,
+	)
+	return err
+}
+
+func (store *Store) SaveGuest(ctx context.Context, tokenHash string, items map[string]int, expiresAt time.Time) error {
+	if items == nil {
+		items = map[string]int{}
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return err
+	}
+	_, err = store.pool.Exec(ctx,
+		`INSERT INTO guest_carts (token_hash, items, updated_at, expires_at)
+		 VALUES ($1, $2, CURRENT_TIMESTAMP, $3)
+		 ON CONFLICT (token_hash)
+		 DO UPDATE SET items = EXCLUDED.items, updated_at = CURRENT_TIMESTAMP, expires_at = EXCLUDED.expires_at`,
+		tokenHash, encoded, expiresAt,
 	)
 	return err
 }

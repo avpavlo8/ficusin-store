@@ -2,8 +2,6 @@ package order
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -589,13 +587,22 @@ func discountedMinor(priceMinor int64, bps int) int64 {
 // phone and told nobody anything.
 //
 // Guests have no customer number, so they share 0000 with a running count of
-// their own. The counting happens inside the order transaction, so two
-// simultaneous orders cannot end up with the same number.
+// their own. The transaction-level advisory lock serializes numbering for one
+// prefix across all API instances, so simultaneous orders cannot receive the
+// same readable number.
 func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) (string, error) {
 	prefix := "0000"
-	var placed int
 	if customerID != nil {
 		prefix = fmt.Sprintf("%04d", *customerID)
+	}
+	if _, err := transaction.Exec(ctx, `
+		SELECT pg_advisory_xact_lock(hashtext('ficusin-order-number:' || $1))
+	`, prefix); err != nil {
+		return "", fmt.Errorf("lock order number: %w", err)
+	}
+
+	var placed int
+	if customerID != nil {
 		if err := transaction.QueryRow(ctx, `
 			SELECT COUNT(*)::INTEGER FROM orders WHERE customer_id = $1
 		`, *customerID).Scan(&placed); err != nil {
@@ -606,14 +613,11 @@ func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) 
 	`).Scan(&placed); err != nil {
 		return "", fmt.Errorf("count guest orders: %w", err)
 	}
-	// The old sequential number was both guessable (the payment endpoint uses
-	// it as a capability for guest checkout) and racy for concurrent orders.
-	// Keep the readable prefix/counter for managers and add 64 bits of entropy.
-	random := make([]byte, 8)
-	if _, err := rand.Read(random); err != nil {
-		return "", fmt.Errorf("generate order number: %w", err)
-	}
-	return fmt.Sprintf("%s-%d-%s", prefix, placed+1, hex.EncodeToString(random)), nil
+	return formatOrderNumber(prefix, placed+1), nil
+}
+
+func formatOrderNumber(prefix string, sequence int) string {
+	return fmt.Sprintf("%s-%d", prefix, sequence)
 }
 
 // letterLines turns the order's contents into what the letter prints.

@@ -78,6 +78,7 @@ export const owner = {
 } as const;
 
 type Session = typeof guest | typeof owner;
+const carts = new WeakMap<Page, Record<string, number>>();
 
 export async function mockApi(page: Page, session: Session = guest) {
   // Playwright checks routes in reverse order of registration, so this
@@ -87,6 +88,15 @@ export async function mockApi(page: Page, session: Session = guest) {
 
   await page.route("**/api/v1/catalog", (route) =>
     route.fulfill({ json: { products: [product, ficus, monstera] } }));
+
+  if (!carts.has(page)) carts.set(page, {});
+  await page.route("**/api/v1/cart", async (route) => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON() as { items?: Record<string, number> };
+      carts.set(page, body.items || {});
+    }
+    await route.fulfill({ json: { items: carts.get(page) || {} } });
+  });
 
   await page.route("**/api/v1/products/*", (route) => route.fulfill({ json: { product: {
     ...product,
@@ -144,8 +154,8 @@ export async function horizontalOverflow(page: Page) {
 }
 
 export function setStoredCounts(page: Page, favorites: string[], cart: Record<string, number>) {
-  return page.addInitScript(([f, c]) => {
+  carts.set(page, { ...cart });
+  return page.addInitScript((f) => {
     localStorage.setItem("ficusin-favorites", JSON.stringify(f));
-    localStorage.setItem("ficusin-cart", JSON.stringify(c));
-  }, [favorites, cart] as const);
+  }, favorites);
 }

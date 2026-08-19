@@ -1,30 +1,35 @@
+import type { ReactNode } from "react";
 import StorefrontPage from "./StorefrontPage";
 import AdminPage from "./AdminPage";
 import ProductPage from "./ProductPage";
 import FavoritesPage from "./FavoritesPage";
 import AccountPage from "./AccountPage";
 import CartPage from "./CartPage";
+import { StoreFooter } from "./StoreFooter";
 import { LoginPage, RegisterPage } from "./AuthPages";
+import NotFoundPage from "./NotFoundPage";
 import {
   DeliveryPage,
   OfferPage,
   PrivacyPage,
   RequisitesPage,
+  ContactsPage,
 } from "./LegalPages";
 
 export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const withFooter = (page: ReactNode) => <>{page}<StoreFooter /></>;
   if (path.startsWith("/product/")) {
-    return <ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />;
+    return withFooter(<ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />);
   }
   if (path.startsWith("/account/orders/")) {
-    return <AccountPage
+    return withFooter(<AccountPage
       section="orders"
       orderNumber={decodeURIComponent(path.slice("/account/orders/".length))}
-    />;
+    />);
   }
   if (path === "/") {
-    return <StorefrontPage />;
+    return withFooter(<StorefrontPage />);
   }
   switch (path) {
     case "/login":
@@ -32,28 +37,32 @@ export default function Root() {
     case "/register":
       return <RegisterPage />;
     case "/account":
-      return <AccountPage section="orders" />;
+      return withFooter(<AccountPage section="orders" />);
     case "/account/profile":
-      return <AccountPage section="profile" />;
+      return withFooter(<AccountPage section="profile" />);
     case "/account/favorites":
-      return <AccountPage section="favorites" />;
+      return withFooter(<AccountPage section="favorites" />);
     case "/account/reviews":
-      return <AccountPage section="reviews" />;
+      return withFooter(<AccountPage section="reviews" />);
     case "/admin":
       return <AdminPage />;
     case "/favorites":
-      return <FavoritesPage />;
+      return withFooter(<FavoritesPage />);
     case "/cart":
-      return <CartPage />;
+      return withFooter(<CartPage />);
+    case "/checkout":
+      return withFooter(<CartPage checkout />);
     case "/offer":
-      return <OfferPage />;
+      return withFooter(<OfferPage />);
     case "/privacy":
-      return <PrivacyPage />;
+      return withFooter(<PrivacyPage />);
     case "/requisites":
-      return <RequisitesPage />;
+      return withFooter(<RequisitesPage />);
+    case "/contacts":
+      return withFooter(<ContactsPage />);
     case "/delivery-and-returns":
-      return <DeliveryPage />;
+      return withFooter(<DeliveryPage />);
     default:
-      return <StorefrontPage />;
+      return withFooter(<NotFoundPage />);
   }
 }

@@ -90,6 +90,19 @@
 .auth-error { margin: 15px 0; padding: 13px 15px; border-radius: 10px; background: #f5e1d8; color: #8b3f28; font-size: 13px; }
 .auth-switch { margin: 20px 0 0; color: #6c756d; text-align: center; font-size: 13px; }
 .auth-switch a { color: var(--green); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+
+/* New editorial authorization screen. It deliberately uses the same
+   storefront header instead of maintaining a second, drifting header. */
+.auth-page{min-height:100vh;background:#f8f0e5;color:#2b2118}
+.auth-page .auth-shell{width:min(1480px,calc(100% - 64px));margin:28px auto 72px;display:grid;grid-template-columns:minmax(0,1.18fr) minmax(430px,.82fr);gap:0;align-items:stretch;border:1px solid #ddcfbd;border-radius:30px;overflow:hidden;background:rgba(255,252,246,.88);box-shadow:0 24px 70px rgba(70,52,34,.06)}
+.auth-page .auth-intro{min-height:690px;padding:0;position:relative;background:url('/assets/redesign/auth-calathea-v1.webp') center/cover no-repeat}
+.auth-intro-copy{width:min(560px,72%);padding:62px;position:absolute;left:0;bottom:0;border-radius:0 28px 0 0;background:rgba(249,241,229,.9);backdrop-filter:blur(10px)}
+.auth-intro-copy h1{margin:8px 0 18px;color:#24452e;font:400 clamp(48px,5vw,78px)/.94 Georgia,serif;letter-spacing:-.045em}
+.auth-intro-copy>p:last-child{margin:0;color:#4e594f;font-size:17px;line-height:1.6}
+.auth-page .auth-form{margin:38px;align-self:center;padding:38px;border:1px solid #e0d2c0;border-radius:24px;background:rgba(255,252,246,.82);box-shadow:none}
+.auth-page .is-register .auth-intro{min-height:930px}.auth-page .is-register .auth-form{align-self:start}
+@media(max-width:900px){.auth-page .auth-shell{width:calc(100% - 28px);grid-template-columns:1fr}.auth-page .auth-intro{min-height:360px}.auth-intro-copy{width:80%;padding:30px}.auth-page .auth-form{margin:14px;padding:25px}.auth-page .is-register .auth-intro{min-height:360px}}
+@media(max-width:560px){.auth-page .auth-shell{margin-top:12px;border-radius:22px}.auth-page .auth-intro{min-height:300px;background-position:64% center}.auth-intro-copy{width:100%;padding:24px;background:linear-gradient(0deg,rgba(249,241,229,.96),rgba(249,241,229,.72))}.auth-intro-copy h1{font-size:43px}.auth-intro-copy>p:last-child{font-size:15px}}
 .signout-link { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
 
 .admin-message { margin-bottom: 18px; padding: 13px 16px; display: flex; justify-content: space-between; border-radius: 10px; background: #e5eee8; color: var(--green); }
@@ -149,10 +162,6 @@
 .storefront-attribute-badges span { padding: 4px 7px; border-radius: 999px; background: #eef5ed; color: #426044; font-size: 10px; font-weight: 700; }
 /* Заголовок секции ограничен 1264px, а таблица тянулась от края до края
    экрана — строки уезжали за колонку и висели сами по себе. */
-.product-attributes dl { max-width: 1264px; margin: 0 auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--line); }
-.product-attributes dl div { display: flex; justify-content: space-between; gap: 18px; padding: 14px 16px; background: white; }
-.product-attributes dt { color: #657268; }
-.product-attributes dd { margin: 0; color: var(--ink); font-weight: 700; text-align: right; }
 .integration-mapping { display: grid; gap: 5px; padding: 12px; border-radius: 8px; background: #f4f7f4; }
 .integration-mapping small { color: #637067; overflow-wrap: anywhere; }
 .attribute-multi { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 7px; }
@@ -176,3 +185,48 @@
 .confirm-dialog > header { margin-bottom: 14px; }
 .confirm-dialog > header h2 { font-size: 28px; }
 .confirm-dialog > p { margin: 0; color: #58635b; line-height: 1.6; }
+
+/* Bright editorial account system shared by orders, profile, favourites and reviews. */
+.account-page{background:#f8f0e5;color:#2b2118}
+.account-shell{width:min(1540px,calc(100% - 64px));margin:32px auto 72px;grid-template-columns:280px minmax(0,1fr);gap:22px}
+.account-sidebar,.account-content{border-color:#ddcfbd;background:rgba(255,252,246,.76);box-shadow:0 18px 55px rgba(70,52,34,.045)}
+.account-sidebar{padding:28px;top:18px;border-radius:24px}.account-avatar{box-shadow:0 8px 24px rgba(43,67,38,.18)}
+.account-sidebar h1,.account-title h2{color:#294326;letter-spacing:-.025em}
+.account-sidebar nav a,.account-sidebar nav button{min-height:46px;align-items:center;border-radius:12px!important;transition:background .2s ease,color .2s ease,transform .2s ease}
+.account-sidebar nav a:hover,.account-sidebar nav button:hover{background:#f3eadc;transform:translateX(3px)}
+.account-sidebar nav .active,.account-sidebar nav button.active{background:#e3e5bd!important;color:#294326!important}
+.account-content{padding:0 38px 40px;overflow:hidden;border-radius:24px}
+.account-content:before{content:"";height:230px;margin:0 -38px 34px;display:block;background-image:linear-gradient(90deg,rgba(255,252,246,.03),rgba(255,252,246,0)),url('/assets/redesign/account-scene-v1.webp');background-position:center;background-size:cover}
+.account-title{margin-top:-142px;min-height:105px;padding:0 34px 28px;position:relative;z-index:1;align-items:flex-end}
+.account-title .eyebrow{color:#8a4a34}.account-title h2{font-family:Georgia,serif;text-shadow:0 2px 16px rgba(255,252,246,.7)}
+.orders-list,.profile-card,.order-items{position:relative;z-index:1}
+.order-row,.profile-card,.order-items,.orders-list article{border-color:#dfd2c2;background:rgba(255,253,248,.88);box-shadow:0 10px 28px rgba(70,52,34,.04);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.order-row:hover,.orders-list article:hover{border-color:#9aa36b;transform:translateY(-2px);box-shadow:0 15px 32px rgba(70,52,34,.08)}
+.secondary-button,.account-content .primary-button{border-radius:11px}.account-content .primary-button{background:linear-gradient(135deg,#e84b2c,#d73a20);box-shadow:0 12px 28px rgba(190,58,29,.18)}
+@media(max-width:900px){.account-shell{width:calc(100% - 24px);grid-template-columns:1fr;margin:16px 12px 44px}.account-sidebar{position:static}.account-content{padding:0 18px 28px}.account-content:before{height:190px;margin:0 -18px 26px}.account-title{margin-top:-118px;padding:0 18px 24px}.account-title h2{font-size:40px}}
+@media(max-width:560px){.account-content:before{height:165px;background-position:62% center}.account-title{margin-top:-100px;min-height:82px}.order-row{grid-template-columns:1fr!important}.account-title>span{display:none}}
+
+/* Account v2 — rebuilt composition, not a recolour of the legacy shell. */
+.account-page:not(.admin-page) .account-shell{grid-template-columns:300px minmax(0,1fr);gap:24px;align-items:stretch}
+.account-page:not(.admin-page) .account-sidebar{padding:34px 30px;position:relative;overflow:hidden;border:0;background:linear-gradient(155deg,#17361f,#294b2e 70%,#3e5b35);color:#f8f1e5;box-shadow:0 24px 60px rgba(31,56,34,.16)}
+.account-page:not(.admin-page) .account-sidebar:after{content:"";width:260px;height:260px;position:absolute;right:-88px;bottom:-90px;border-radius:50%;background:radial-gradient(circle,rgba(190,199,124,.24),transparent 67%);pointer-events:none}
+.account-page:not(.admin-page) .account-avatar{width:70px;height:70px;margin-bottom:25px;border:2px solid rgba(235,236,190,.58);background:#e7e7b3;color:#294326;box-shadow:none}
+.account-page:not(.admin-page) .account-sidebar h1{color:#fff9ed;font:500 29px/1.1 Georgia,serif}.account-page:not(.admin-page) .account-sidebar>p{color:#cbd8c9;line-height:1.55}
+.account-page:not(.admin-page) .account-sidebar nav{gap:7px}.account-page:not(.admin-page) .account-sidebar nav a{padding:13px 15px;color:#f5f0e5}.account-page:not(.admin-page) .account-sidebar nav a:hover{background:rgba(255,255,255,.08)}
+.account-page:not(.admin-page) .account-sidebar nav a{display:grid;grid-template-columns:23px 1fr;justify-content:start;gap:12px}.account-page:not(.admin-page) .account-sidebar nav svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.account-page:not(.admin-page) .account-sidebar nav a.active{background:#e3e59e!important;color:#294326!important;box-shadow:0 10px 24px rgba(7,30,14,.16)}
+.account-page:not(.admin-page) .account-switch{color:#e5e7b5}.account-page:not(.admin-page) .signout-link{color:#e8c8b7;border-color:rgba(255,255,255,.18)}
+.account-page:not(.admin-page) .account-content{min-height:760px;padding:0 40px 46px;border:1px solid #ddcfbd;background:rgba(255,252,246,.78)}
+.account-page:not(.admin-page) .account-content:before{height:300px;margin:0 -40px 36px;background-color:#f2e5d3;background-image:linear-gradient(90deg,rgba(255,249,239,.96) 0%,rgba(255,249,239,.68) 42%,rgba(255,249,239,0) 65%),url('/assets/redesign/account-scene-v1.webp');background-repeat:no-repeat;background-position:center,right center;background-size:cover,auto 100%}
+.account-page:not(.admin-page) .account-title{margin-top:-210px;min-height:165px;padding:0 38px 34px;align-items:flex-end}.account-page:not(.admin-page) .account-title .eyebrow{margin-bottom:12px;color:#9c4d34;font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+.account-page:not(.admin-page) .account-title h2{max-width:620px;color:#24482e;font:500 clamp(48px,5vw,72px)/.98 Georgia,serif;text-shadow:none}
+.account-page:not(.admin-page) .orders-list{margin-top:24px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.account-page:not(.admin-page) .order-row{min-height:155px;padding:22px;position:relative;grid-template-columns:1fr 1fr;gap:18px;border-radius:17px}.account-page:not(.admin-page) .order-row .order-row-arrow{position:absolute;right:20px;bottom:18px}
+.account-page:not(.admin-page) .profile-card{max-width:none;padding:20px 24px;border-radius:18px}.account-page:not(.admin-page) .profile-form{max-width:760px}.account-page:not(.admin-page) .avatar-editor{max-width:760px}
+.account-page:not(.admin-page) .orders-empty{grid-column:1/-1;background:rgba(255,253,248,.7)}
+.account-help{margin-top:32px;padding:22px;position:relative;z-index:1;border:1px solid rgba(255,255,255,.2);border-radius:18px;background:rgba(255,255,255,.06)}.account-help strong{display:block;color:#fff9ed;font:500 23px/1.08 Georgia,serif}.account-help p{margin:12px 0 18px;color:#d5dfd2!important;font-size:13px;line-height:1.45}.account-help a{padding:12px 14px;display:flex;justify-content:space-between;align-items:center;border-radius:10px;background:#e4e59d;color:#294326;font-size:13px;font-weight:800;text-decoration:none}.account-help a:hover{background:#f0efa9}
+.account-page:not(.admin-page) .order-row small{font-size:11px;letter-spacing:.03em;text-transform:none}.account-page:not(.admin-page) .order-row strong{font-size:18px}.account-page:not(.admin-page) .order-row>div:last-of-type small{width:max-content;padding:5px 9px;border-radius:99px;background:#e4e6bd;color:#405331;font-weight:800}
+.account-page:not(.admin-page) .order-items,.account-page:not(.admin-page) .order-facts,.account-page:not(.admin-page) .order-totals{padding:20px;border:1px solid #dfd2c2;border-radius:18px;background:rgba(255,253,248,.9)}.account-page:not(.admin-page) .order-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.account-page:not(.admin-page) .order-totals{max-width:none;margin-top:16px}.account-page:not(.admin-page) .profile-card dt,.account-page:not(.admin-page) .order-facts small{font-size:12px}.account-page:not(.admin-page) .profile-card dd,.account-page:not(.admin-page) .order-facts span{font-size:15px}
+@media(max-width:1100px){.account-page:not(.admin-page) .account-shell{grid-template-columns:250px minmax(0,1fr)}.account-page:not(.admin-page) .orders-list{grid-template-columns:1fr}.account-page:not(.admin-page) .account-content:before{background-position:center,right center;background-size:cover,auto 100%}}
+@media(max-width:900px){.account-page:not(.admin-page) .account-shell{grid-template-columns:1fr}.account-page:not(.admin-page) .account-sidebar{padding:24px}.account-page:not(.admin-page) .account-content{padding:0 20px 32px}.account-page:not(.admin-page) .account-content:before{height:250px;margin:0 -20px 28px;background-size:cover,auto 100%}.account-page:not(.admin-page) .account-title{margin-top:-180px;min-height:140px;padding:0 20px 28px}}
+@media(max-width:560px){.account-page:not(.admin-page) .account-content:before{height:225px;background-image:linear-gradient(90deg,rgba(255,249,239,.94),rgba(255,249,239,.44)),url('/assets/redesign/account-scene-v1.webp');background-position:center,right center;background-size:cover,auto 100%}.account-page:not(.admin-page) .account-title{margin-top:-165px;min-height:130px}.account-page:not(.admin-page) .account-title h2{font-size:42px}.account-page:not(.admin-page) .order-row{grid-template-columns:1fr!important}.account-page:not(.admin-page) .order-facts{grid-template-columns:1fr}.account-help{display:none}}

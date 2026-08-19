@@ -32,10 +32,10 @@ type CdekQuote = {
 const defaultDeliveryFees: Record<string, number> = { courier: 490, post: 590 };
 
 const baseDeliveryOptions = [
-  { id: "pickup", title: "Самовывоз в Рязани", detail: "из магазина, бесплатно", fee: 0 },
-  { id: "courier", title: "Курьер по Рязани", detail: "в согласованный день", fee: 490 },
-  { id: "cdek", title: "СДЭК по России", detail: "до выбранного пункта выдачи", fee: null },
-  { id: "post", title: "Почта России", detail: "для населённых пунктов без СДЭК", fee: 590 },
+  { id: "pickup", title: "Самовывоз в Рязани", detail: "Бесплатно", fee: 0 },
+  { id: "courier", title: "Курьер по Рязани", detail: "Стоимость из настроек магазина", fee: 490 },
+  { id: "cdek", title: "СДЭК по России", detail: "Рассчитаем по адресу", fee: null },
+  { id: "post", title: "Почта России", detail: "Стоимость из настроек магазина", fee: 590 },
 ];
 
 type UseCheckoutArgs = {
@@ -43,10 +43,11 @@ type UseCheckoutArgs = {
   cartCount: number;
   setCart: Dispatch<SetStateAction<Cart>>;
   setNotice: Dispatch<SetStateAction<string>>;
+  initialOpen?: boolean;
 };
 
-export function useCheckout({ cartLines, cartCount, setCart, setNotice }: UseCheckoutArgs) {
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
+export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen = false }: UseCheckoutArgs) {
+  const [checkoutOpen, setCheckoutOpen] = useState(initialOpen);
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
@@ -279,6 +280,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice }: UseChe
       }
       setOrderNumber(data.orderNumber);
       setCart({});
+      window.scrollTo({ top: 0, behavior: "auto" });
       if (paymentMethod === "online" && !cdekFeePending) {
         try {
           const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {

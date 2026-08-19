@@ -41,7 +41,7 @@ test("@desktop прямой URL корзины меняет количество
   await drawer.getByRole("button", { name: "Увеличить" }).click();
   await expect(drawer.locator(".quantity span")).toHaveText("2");
   await expect(page.getByLabel(/Корзина, товаров: 2/)).toBeVisible();
-  await expect(drawer.locator(".cart-summary strong")).toHaveText("2 980 ₽");
+  await expect(drawer.locator(".cart-summary-total strong")).toHaveText("2 980 ₽");
 });
 
 test("@desktop избранное добавляет в корзину без навигации", async ({ page }) => {
@@ -54,27 +54,20 @@ test("@desktop избранное добавляет в корзину без н
   await expect(page.getByLabel(/Корзина, товаров: 1/)).toBeVisible();
 });
 
-test("@desktop корзина объединяется после авторизации и сохраняется после reload", async ({ page }) => {
+test("@desktop удалённый товар не возвращается после reload", async ({ page }) => {
   await mockApi(page, owner);
-  await setStoredCounts(page, [], { "saby-1": 1 });
-  let serverCart: Record<string, number> = { "saby-2": 2 };
-  await page.route("**/api/v1/account/cart", async (route) => {
-    if (route.request().method() === "PUT") {
-      serverCart = (route.request().postDataJSON() as { items: Record<string, number> }).items;
-      await route.fulfill({ json: { ok: true } });
-      return;
-    }
-    await route.fulfill({ json: { items: serverCart } });
-  });
+  await setStoredCounts(page, [], { "saby-1": 1, "saby-2": 2 });
   await page.goto("/cart");
   const drawer = page.locator(".drawer.open");
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
   await expect(drawer.getByText("Фикус Бенджамина")).toBeVisible();
   await expect(page.getByLabel(/Корзина, товаров: 3/)).toBeVisible();
-  await page.waitForTimeout(900);
+  await drawer.getByRole("button", { name: "Удалить Аглаонема Мария" }).click();
+  await expect(page.getByLabel(/Корзина, товаров: 2/)).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel(/Корзина, товаров: 3/)).toBeVisible();
-  expect(serverCart).toEqual({ "saby-1": 1, "saby-2": 2 });
+  await expect(page.getByLabel(/Корзина, товаров: 2/)).toBeVisible();
+  await expect(drawer.getByText("Аглаонема Мария")).toHaveCount(0);
+  await expect(drawer.getByText("Фикус Бенджамина")).toBeVisible();
 });
 
 test("@phone mobile autocomplete поддерживает тап и Search action", async ({ page, browserName }) => {

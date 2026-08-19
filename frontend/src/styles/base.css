@@ -40,6 +40,7 @@ h1, h2, h3, p { margin-top: 0; }
 h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 
 .announcement { min-height: 34px; padding: 9px 5vw; display: flex; justify-content: space-between; gap: 16px; background: var(--green); color: #eef2ea; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+.announcement[hidden] { display: none !important; }
 /* Шапка выше строки поиска по слою. Пока приоритет был одинаковым,
    выпадающее меню под именем пряталось за поиском: строка идёт в разметке
    позже и рисовалась поверх. */
@@ -167,3 +168,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .admin-refund { margin-bottom: 16px; padding: 14px 16px; display: grid; gap: 8px; max-width: 460px; border: 1px solid #e3c9c0; border-radius: 12px; background: #fbf0ec; }
 .admin-refund button { padding: 10px 16px; justify-self: start; border: 1px solid #9a4f34; border-radius: 10px; background: white; color: #9a4f34; font: inherit; font-weight: 700; cursor: pointer; }
 .admin-refund small { color: #7a5245; font-size: 12px; }
+
+/* Unified information pages: shared storefront header and a bright delivery scene. */
+.legal-page{background:#f8f0e5;color:#2b2118}.legal-page>.store-header{margin-bottom:0}
+.legal-document{width:min(1240px,calc(100% - 64px));margin:24px auto 86px;padding:54px 64px;border:1px solid #ddcfbd;border-radius:26px;background:rgba(255,252,246,.76);box-shadow:0 18px 55px rgba(70,52,34,.045)}
+.legal-document>h1{color:#294326;font-family:Georgia,serif;font-size:clamp(48px,6vw,76px)}.legal-document>.eyebrow{color:#d94a2b}.legal-document section{border-color:#e0d4c6}.legal-document section h2{color:#294326;font-family:Georgia,serif}.legal-document section p,.legal-document section li{color:#51483f}
+.legal-scene{height:330px;margin:-54px -64px 42px;border-radius:26px 26px 18px 18px;background-image:url('/assets/redesign/info-delivery-scene-v1.webp');background-position:center;background-size:cover}.legal-page-scenic .legal-document>h1{max-width:970px}
+.contacts-intro{display:grid!important;grid-template-columns:minmax(0,.9fr) minmax(420px,1.1fr);gap:30px;align-items:stretch}.contacts-map{min-height:440px;border:1px solid #ddcfbd!important;border-radius:18px;filter:saturate(.8) contrast(.95)}
+.requisites-list{border-color:#ddcfbd;background:rgba(255,255,255,.46)}.requisites-list>div{border-color:#e4d9cc}.legal-callout{border-left-color:#df4829;background:#f3e7d8}
+@media(max-width:800px){.legal-document{width:calc(100% - 24px);margin:14px 12px 48px;padding:32px 22px;border-radius:20px}.legal-scene{height:230px;margin:-32px -22px 30px;border-radius:20px 20px 14px 14px;background-position:62% center}.contacts-intro{grid-template-columns:1fr}.contacts-map{min-height:350px}.requisites-list>div{grid-template-columns:1fr;gap:5px}}

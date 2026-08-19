@@ -155,7 +155,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, slug str
 	detail.Recommendations = []Product{}
 	for _, candidate := range candidates {
 		detail.Recommendations = append(detail.Recommendations, candidate.product)
-		if len(detail.Recommendations) == 4 {
+		if len(detail.Recommendations) == 8 {
 			break
 		}
 	}

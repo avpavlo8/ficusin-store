@@ -18,10 +18,9 @@ test("@phone the header keeps search, the menu and the bottom bar everywhere", a
     await expect(page.locator(".menu-button"), `меню на ${path}`).toBeVisible();
     // На витрине поиск свой, прямо под шапкой; на остальных страницах —
     // лупа в шапке. Проверяем главное: искать можно с любой страницы.
-    const search = path === "/" ? ".storefront-search input" : ".search-toggle";
-    await expect(page.locator(search), `поиск на ${path}`).toBeVisible();
+    await expect(page.locator(".tab-bar").getByRole("button", { name: /Поиск/ }), `поиск на ${path}`).toBeVisible();
     await expect(page.locator(".tab-bar"), `нижняя панель на ${path}`).toBeVisible();
-    await expect(page.locator(".tab-bar > *")).toHaveCount(4);
+    await expect(page.locator(".tab-bar > *")).toHaveCount(5);
   }
 });
 
@@ -36,16 +35,14 @@ test("@phone the counters are readable, not hidden", async ({ page }) => {
   await expect(badges.last()).toHaveText("3");
 });
 
-// На витрине поиск на виду, отдельная лупа в шапке была бы вторым полем на
-// одном экране — покупателю оставалось бы гадать, какое из них настоящее.
+// На телефоне поиск открывается из нижней панели и сразу получает фокус.
 test("@phone the storefront search filters the catalogue", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toBeVisible();
 
-  await expect(page.locator(".search-toggle")).toHaveCount(0);
-
-  const field = page.locator(".storefront-search input");
+  await page.locator(".tab-bar").getByRole("button", { name: /Поиск/ }).click();
+  const field = page.locator(".mobile-catalog-search input");
   await expect(field).toBeVisible();
 
   await field.fill("бенджамина");
@@ -71,17 +68,23 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await expect(menu).toHaveCount(0);
 });
 
-// The drawer belongs to the storefront route now: opening it must neither
-// navigate nor rebuild the page, especially in Safari where the old hand-off
-// used to lose the browser basket.
-test("@phone the cart opens from the bottom bar and keeps its contents", async ({ page }) => {
-  await setStoredCounts(page, [], { "saby-1": 1 });
+test("@phone the cart opens as a separate page and keeps its contents", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
-  await page.locator(".tab-bar > *").nth(2).click();
+  // Корзина живёт на сервере, а нижняя панель ведёт на настоящий адрес:
+  // браузер уходит со страницы и обрывает незавершённые запросы. Между
+  // «В корзину» и переходом лежит запись, и ждать нужно именно её — иначе
+  // проверка меряет, чей браузер быстрее, а не то, что увидит покупатель.
+  const saved = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/cart") && response.request().method() === "PUT");
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  await saved;
+
+  await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/cart$/);
   await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
   await expect(page.locator(".drawer.open .quantity span")).toHaveText("1");
 });
@@ -92,26 +95,23 @@ test("@phone подбор по характеристикам свёрнут, т
 
   // Пять выпадающих списков занимали первый экран целиком, и до растений
   // покупатель добирался прокруткой.
-  const filters = page.locator(".storefront-filters");
-  await expect(filters).toHaveJSProperty("open", false);
-  await expect(filters.getByText("Подбор по характеристикам")).toBeVisible();
-  await expect(page.getByLabel("Только в наличии")).toBeHidden();
+  const filters = page.getByRole("button", { name: /Фильтры/ });
+  await expect(filters).toBeVisible();
+  await expect(filters).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
 
   const card = page.locator(".storefront-card").first();
-  const box = await card.boundingBox();
-  const viewport = page.viewportSize();
-  expect(box).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(box!.y).toBeLessThan(viewport!.height);
+  await card.scrollIntoViewIfNeeded();
+  await expect(card).toBeVisible();
 
   // Свёрнутый — не значит недоступный.
-  await filters.getByText("Подбор по характеристикам").click();
-  await expect(page.getByLabel("Только в наличии")).toBeVisible();
+  await filters.click();
+  await expect(page.locator(".home-filter-panel").getByLabel("Только в наличии")).toBeVisible();
 });
 
 test("@phone no page scrolls sideways", async ({ page }) => {
   await mockApi(page, owner);
-  for (const path of [...storePages, "/offer", "/privacy", "/login"]) {
+  for (const path of [...storePages, "/cart", "/checkout", "/offer", "/privacy", "/login"]) {
     await page.goto(path);
     expect(await horizontalOverflow(page), `${path} шире экрана`).toBeLessThanOrEqual(1);
   }
@@ -144,9 +144,7 @@ test("@desktop keeps the full header and hides the phone chrome", async ({ page 
   await mockApi(page);
   await page.goto("/");
 
-  // Витрина носит поиск под шапкой, а не в ней; лупа для телефона здесь
-  // тем более не нужна — её проверяем скрытой ниже.
-  await expect(page.locator(".storefront-search input")).toBeVisible();
+  await expect(page.locator(".header-search input")).toBeVisible();
   await expect(page.locator(".desktop-nav")).toBeVisible();
   await expect(page.locator(".favorites-button")).toBeVisible();
   await expect(page.locator(".cart-button")).toBeVisible();

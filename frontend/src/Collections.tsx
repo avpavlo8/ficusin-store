@@ -1,3 +1,5 @@
+import { useRef } from "react";
+
 // Подборки собираются из атрибутов товара, а не из отдельного списка:
 // менеджер отмечает в панели «ванная», «затемнённое место», «высокий» — и
 // подборка наполняется сама. Отдельный список пришлось бы вести руками
@@ -37,16 +39,30 @@ const icons = {
 
 export const presets: Preset[] = [
   { id: "bathroom", title: "Для ванной", icon: icons.drop, match: (p) => p.placement === "bathroom" },
-  { id: "dark", title: "В тёмную комнату", icon: icons.moon, match: (p) => p.lightLevel === "low_light" },
+  { id: "dark", title: "Для тёмной комнаты", icon: icons.moon, match: (p) => p.lightLevel === "low_light" },
   { id: "office", title: "Для офиса", icon: icons.case, match: (p) => p.placement === "office" },
   { id: "tall", title: "Вырастает высоким", icon: icons.tall, match: (p) => p.heightClass === "high" },
   { id: "compact", title: "Компактные", icon: icons.small, match: (p) => p.heightClass === "low" },
-  { id: "easy", title: "Почти без ухода", icon: icons.leaf, match: (p) => p.careLevel === "easy" },
+  { id: "easy", title: "Неприхотливые", icon: icons.leaf, match: (p) => p.careLevel === "easy" },
   { id: "rare", title: "Редкий полив", icon: icons.water, match: (p) => p.watering === "rare" },
   { id: "sunny", title: "На солнечное окно", icon: icons.sun, match: (p) => p.lightLevel === "sunny" },
-  { id: "bedroom", title: "В спальню", icon: icons.bed, match: (p) => p.placement === "bedroom" },
+  { id: "bedroom", title: "Для спальни", icon: icons.bed, match: (p) => p.placement === "bedroom" },
   { id: "nursery", title: "В детскую", icon: icons.star, match: (p) => p.placement === "nursery" },
-  { id: "pets", title: "Безопасно питомцам", icon: icons.paw, match: (p) => p.petSafety === "safe" },
+  { id: "pets", title: "Безопасно для питомцев", icon: icons.paw, match: (p) => p.petSafety === "safe" },
+];
+
+const visualPresets = [
+  // Первые три — утверждённые пользователем главные подборки. Они являются
+  // обычными фильтрами, а не декоративными ссылками: клик применяет match.
+  { id: "dark", image: "/assets/redesign/collection-dark-4k.webp" },
+  { id: "easy", image: "/assets/redesign/collection-easy-4k.webp" },
+  { id: "pets", image: "/assets/redesign/collection-pets-4k.webp" },
+  { id: "bathroom", image: "/assets/redesign/filters/bathroom-wall-v2.webp" },
+  { id: "office", image: "/assets/redesign/filters/office-wall-v2.webp" },
+  { id: "tall", image: "/assets/redesign/filters/tall-wall-v2.webp" },
+  { id: "compact", image: "/assets/redesign/filters/compact-wall-v2.webp" },
+  { id: "rare", image: "/assets/redesign/filters/rare-water-wall-v2.webp" },
+  { id: "bedroom", image: "/assets/redesign/filters/bedroom-wall-v2.webp" },
 ];
 
 export function CollectionStrip<T extends Product>({
@@ -60,14 +76,18 @@ export function CollectionStrip<T extends Product>({
 }) {
   // Пустые подборки не показываем совсем: плитка, ведущая в «ничего не
   // нашли», хуже, чем её отсутствие.
-  const shown = presets
-    .map((preset) => ({ preset, count: products.filter(preset.match).length }))
-    .filter((entry) => entry.count > 0);
+  const rail = useRef<HTMLDivElement>(null);
+  const shown = visualPresets.map(({ id, image }) => {
+    const preset = presets.find((item) => item.id === id)!;
+    return { preset, image, count: products.filter(preset.match).length };
+  });
   if (shown.length === 0) return null;
 
   return (
-    <div className="storefront-presets" role="list">
-      {shown.map(({ preset, count }) => (
+    <section className="storefront-preset-carousel" aria-label="Подборки по помещению">
+      <button className="preset-arrow previous" type="button" onClick={() => rail.current?.scrollBy({ left: -420, behavior: "smooth" })} aria-label="Предыдущие подборки">←</button>
+      <div className="storefront-presets" role="list" ref={rail}>
+      {shown.map(({ preset, image, count }, index) => (
         <button
           key={preset.id}
           type="button"
@@ -76,15 +96,16 @@ export function CollectionStrip<T extends Product>({
           aria-pressed={active.has(preset.id)}
           onClick={() => onPick(preset.id)}
           title={`${preset.title} — ${count}`}
+          style={{ backgroundImage: `url('${image}')` }}
         >
-          <span className="preset-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d={preset.icon} />
-            </svg>
-          </span>
+          <span className="preset-number">0{index + 1}</span>
           <span className="preset-title">{preset.title}</span>
+          <span className="preset-count">{count} растений</span>
+          <span className="preset-go" aria-hidden="true">→</span>
         </button>
       ))}
-    </div>
+      </div>
+      <button className="preset-arrow next" type="button" onClick={() => rail.current?.scrollBy({ left: 420, behavior: "smooth" })} aria-label="Следующие подборки">→</button>
+    </section>
   );
 }
