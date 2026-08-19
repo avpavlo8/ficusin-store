@@ -47,7 +47,9 @@ export default function CheckoutHost({
   const cart = externalCart;
   const setCart = onCartChange;
   const [notice, setNotice] = useState("");
-  const [paymentReturn, setPaymentReturn] = useState("");
+  const [paymentReturn, setPaymentReturn] = useState(
+    () => new URLSearchParams(window.location.search).get("paid") || "",
+  );
   const [user, setUser] = useState<StoreUser | null>(null);
 
   const cartLines = products
@@ -59,9 +61,7 @@ export default function CheckoutHost({
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
 
   useEffect(() => {
-    const paidOrder = new URLSearchParams(window.location.search).get("paid");
-    if (!paidOrder) return;
-    setPaymentReturn(paidOrder);
+    if (!new URLSearchParams(window.location.search).has("paid")) return;
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
 

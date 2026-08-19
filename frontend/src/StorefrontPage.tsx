@@ -3,7 +3,6 @@ import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
 import { searchProducts } from "./lib/search";
-import { STORAGE_EVENT } from "./StoreHeader";
 import { useSharedCart } from "./lib/cart";
 import { attributeLabel, attributeValue } from "./product/types";
 
