@@ -281,9 +281,10 @@ test("@desktop оформление отправляет заказ с норм�
   await checkout.getByRole("button", { name: /Продолжить/ }).click();
   await checkout.getByRole("button", { name: /Продолжить/ }).click();
   await checkout.locator('input[name="consent"]').check();
-  await checkout.getByRole("button", { name: /Подтвердить заказ/ }).click();
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
 
   await expect(checkout.getByRole("heading", { name: "Заказ принят" }).last()).toBeVisible();
+  await expect(checkout.getByText("#WEB-1001")).toBeVisible();
   expect(order).toMatchObject({
     customer: { name: "Александр", phone: "+79151234567", email: "buyer@example.com" },
     delivery: "pickup",
@@ -319,7 +320,7 @@ for (const delivery of [
     await checkout.getByRole("button", { name: /Продолжить/ }).click();
     await expect(checkout.getByText("Оплата после подтверждения заказа менеджером")).toBeVisible();
     await checkout.locator('input[name="consent"]').check();
-    await checkout.getByRole("button", { name: /Подтвердить заказ/ }).click();
+    await checkout.getByRole("button", { name: /Продолжить/ }).click();
 
     expect(order).toMatchObject({
       customer: { address: delivery.address },

@@ -261,11 +261,11 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const deliveryIcon = (id: string): CheckoutIconName => id === "pickup" ? "pickup" : id === "cdek" ? "cdek" : id.includes("post") ? "post" : "courier";
 
   return (
-  <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
+  <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
     <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
     {orderNumber ? (
       <div className="success">
-        <div className="success-copy"><span>♡</span><h2>Заказ принят</h2><p>Спасибо! Мы уже готовим ваши растения к отправке.</p><div className="success-number"><small>Номер заказа</small><strong>{orderNumber}</strong></div><p>Письмо с деталями заказа отправили на указанную почту.</p><a className="primary-button" href="/account/orders">Отслеживать заказ →</a></div>
+        <div className="success-copy"><span aria-hidden="true">♡</span><h2>Заказ принят</h2><p>Спасибо! Мы уже готовим<br />ваши растения к отправке.</p><div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div><p>На почту отправили письмо<br />с деталями заказа.</p><a className="primary-button" href="/account/orders">Отслеживать заказ</a></div>
         <img src="/assets/redesign/checkout-success-art.png" alt="" />
       </div>
     ) : (
