@@ -262,7 +262,7 @@ export function StoreHeader({
 
   const cartLabel = `Корзина, товаров: ${cart}`;
   return <><div className="announcement" hidden />
-    <header className="header" ref={headerRef}>
+    <header className="header store-header" ref={headerRef}>
       <button
         className="menu-button"
         onClick={() => setMenuOpen(true)}
