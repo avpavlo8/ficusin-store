@@ -259,14 +259,36 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const deliveryIcon = (id: string): CheckoutIconName => id === "pickup" ? "pickup" : id === "cdek" ? "cdek" : id.includes("post") ? "post" : "courier";
+  const selectedDelivery = availableDelivery.find((item) => item.id === delivery);
+  const selectedPayment = paymentMethods.find((item) => item.id === paymentMethod);
 
   return (
   <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
     <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
     {orderNumber ? (
       <div className="success">
-        <div className="success-copy"><span aria-hidden="true">♡</span><h2>Заказ принят</h2><p>Спасибо! Мы уже готовим<br />ваши растения к отправке.</p><div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div><p>Заказ сохранён в личном кабинете.<br />Там можно следить за его статусом.</p><a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Отслеживать заказ</a></div>
-        <img src="/assets/redesign/checkout-success-art.png" alt="" loading="eager" fetchPriority="high" />
+        <div className="success-copy">
+          <span className="success-heart" aria-hidden="true">♡</span>
+          <h2>Заказ принят</h2>
+          <p className="success-lead">Спасибо! Растения уже готовятся к встрече с вами.</p>
+          <div className="success-columns">
+            <div className="success-order-info">
+              <div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div>
+              <p><i aria-hidden="true">⌖</i>{selectedDelivery?.title || "Способ получения выбран"}</p>
+              <p><i aria-hidden="true">▱</i>{selectedPayment?.title || "Способ оплаты выбран"}</p>
+              <a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Следить за заказом <span aria-hidden="true">→</span></a>
+              <a className="success-catalog-link" href="/">Вернуться в каталог</a>
+            </div>
+            <div className="success-next">
+              <h3>Что будет дальше</h3>
+              <ol>
+                <li><b>1</b><span>Соберём и проверим растения</span></li>
+                <li><b>2</b><span>Аккуратно упакуем</span></li>
+                <li><b>3</b><span>{delivery === "pickup" ? "Сообщим, когда заказ будет готов" : "Передадим заказ в доставку"}</span></li>
+              </ol>
+            </div>
+          </div>
+        </div>
       </div>
     ) : (
       <div className="checkout-layout"><form ref={formRef} onSubmit={submitOrder}>
