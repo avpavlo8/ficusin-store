@@ -40,6 +40,7 @@ h1, h2, h3, p { margin-top: 0; }
 h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 
 .announcement { min-height: 34px; padding: 9px 5vw; display: flex; justify-content: space-between; gap: 16px; background: var(--green); color: #eef2ea; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+.announcement[hidden] { display: none !important; }
 /* Шапка выше строки поиска по слою. Пока приоритет был одинаковым,
    выпадающее меню под именем пряталось за поиском: строка идёт в разметке
    позже и рисовалась поверх. */
