@@ -219,7 +219,7 @@ test("@desktop ссылка с запросом сразу показывает 
   await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toHaveCount(0);
 });
 
-test("@desktop корзина открывается поверх витрины без навигации", async ({ page }) => {
+test("@desktop корзина открывается отдельной страницей", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
@@ -227,7 +227,7 @@ test("@desktop корзина открывается поверх витрины
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /В корзине/ }).click();
 
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/cart$/);
   const drawer = page.locator(".drawer.open");
   await expect(drawer).toBeVisible();
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
@@ -346,10 +346,10 @@ test("@desktop оформление подставляет профиль авт
   await expect(checkout.locator(".checkout-order-summary")).toContainText("1 490 ₽");
 });
 
-test("@desktop старая ссылка на корзину открывает новую панель один раз", async ({ page }) => {
+test("@desktop старая ссылка на корзину ведёт на отдельную страницу", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?cart=1");
 
   await expect(page.locator(".drawer.open")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/cart$/);
 });

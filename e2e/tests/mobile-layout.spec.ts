@@ -68,17 +68,14 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await expect(menu).toHaveCount(0);
 });
 
-// The drawer belongs to the storefront route now: opening it must neither
-// navigate nor rebuild the page, especially in Safari where the old hand-off
-// used to lose the browser basket.
-test("@phone the cart opens from the bottom bar and keeps its contents", async ({ page }) => {
+test("@phone the cart opens as a separate page and keeps its contents", async ({ page }) => {
   await setStoredCounts(page, [], { "saby-1": 1 });
   await mockApi(page);
   await page.goto("/");
 
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/cart$/);
   await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
   await expect(page.locator(".drawer.open .quantity span")).toHaveText("1");
 });

@@ -114,15 +114,12 @@ export default function StorefrontPage() {
       return new Set();
     }
   });
-  const [cartOpen, setCartOpen] = useState(
-    () => new URLSearchParams(window.location.search).get("cart") === "1",
-  );
+  const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
     if (!url.searchParams.has("cart")) return;
-    url.searchParams.delete("cart");
-    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    window.location.replace("/cart");
   }, []);
 
   useEffect(() => {
@@ -356,7 +353,7 @@ export default function StorefrontPage() {
         favoritesCount={favorites.size}
         query={query}
         onQueryChange={setQuery}
-        onCartClick={() => setCartOpen(true)}
+        onCartClick={() => window.location.assign("/cart")}
         homeNavigation
         catalogMenuItems={headerMenus.catalog}
         plantMenuItems={headerMenus.plants}
@@ -485,7 +482,7 @@ export default function StorefrontPage() {
                   {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
                   <div className="storefront-buy">
                     <span className="storefront-price"><strong>{money(product.price)}</strong>{preorder && <em>Под заказ</em>}</span>
-                    {inCart > 0 ? <div className="storefront-quantity"><button type="button" onClick={() => changeCartQuantity(product,-1)} aria-label="Уменьшить количество">−</button><button type="button" className="quantity-value" onClick={() => setCartOpen(true)} aria-label={`В корзине · ${inCart}`}>{inCart}</button><button type="button" onClick={() => changeCartQuantity(product,1)} aria-label="Увеличить количество">+</button></div> : <button
+                    {inCart > 0 ? <div className="storefront-quantity"><button type="button" onClick={() => changeCartQuantity(product,-1)} aria-label="Уменьшить количество">−</button><button type="button" className="quantity-value" onClick={() => window.location.assign("/cart")} aria-label={`В корзине · ${inCart}`}>{inCart}</button><button type="button" onClick={() => changeCartQuantity(product,1)} aria-label="Увеличить количество">+</button></div> : <button
                       onClick={() => addToCart(product)}
                       aria-label="В корзину"
                       title="Добавить в корзину"

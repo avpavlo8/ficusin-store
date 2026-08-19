@@ -41,7 +41,7 @@ test("@desktop прямой URL корзины меняет количество
   await drawer.getByRole("button", { name: "Увеличить" }).click();
   await expect(drawer.locator(".quantity span")).toHaveText("2");
   await expect(page.getByLabel(/Корзина, товаров: 2/)).toBeVisible();
-  await expect(drawer.locator(".cart-summary strong")).toHaveText("2 980 ₽");
+  await expect(drawer.locator(".cart-summary-total strong")).toHaveText("3 230 ₽");
 });
 
 test("@desktop избранное добавляет в корзину без навигации", async ({ page }) => {

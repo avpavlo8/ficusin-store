@@ -61,7 +61,8 @@ export function CartDrawer({
       <img src={item.image} alt="" />
       <div className="cart-line-copy">
         <h3>{item.name}</h3>
-        <small>Живое растение · бережная упаковка</small>
+        <small>Живое растение</small>
+        <span className="cart-stock">В наличии</span>
         <div className="cart-line-mobile-price">{money(item.price)}</div>
       </div>
       <strong className="cart-unit-price">{money(item.price)}</strong>
@@ -97,16 +98,17 @@ export function CartDrawer({
           </div>
         )}
         </div>
+        {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
       </section>
       {!!lines.length && (
         <aside className="cart-summary">
           <h3>Ваш заказ</h3>
-          <dl><div><dt>Товаров</dt><dd>{itemCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>при оформлении</dd></div></dl>
-          <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal)}</strong></div>
-          <div className="cart-bonus">Будет начислено бонусов <b>+{Math.max(1, Math.floor(subtotal / 100))}</b></div>
-          <button className="primary-button" onClick={onCheckout}>
+          <dl><div><dt>Итого товаров</dt><dd>{itemCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{page ? "от 250 ₽" : "при оформлении"}</dd></div></dl>
+          <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal + (page ? 250 : 0))}</strong></div>
+          <div className="cart-bonus">Будет начислено бонусов <b>+{Math.max(1, Math.floor((subtotal + (page ? 250 : 0)) / 100))}</b></div>
+          {!page && <button className="primary-button" onClick={onCheckout}>
             Оформить заказ <span>→</span>
-          </button>
+          </button>}
           {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
         </aside>
       )}
