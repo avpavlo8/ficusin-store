@@ -113,7 +113,7 @@
 /* Final checkout state follows the approved full-width confirmation card. */
 .checkout-order-complete{padding:0!important;background:transparent!important;border:0!important}
 .checkout-order-complete>.drawer-head{display:none}
-.checkout-page-panel.checkout-order-complete .success{width:100%;min-height:650px;margin:0;padding:78px 7%;position:relative;display:block;overflow:hidden;border:1px solid #98a06a;border-radius:28px;background-color:#aeb67a;background-image:radial-gradient(circle at 18% 20%,rgba(255,255,255,.12),transparent 28%),linear-gradient(125deg,rgba(255,255,255,.08),transparent 45%);color:#243421}
+.checkout-page-panel.checkout-order-complete .success{width:100%;max-width:none;min-height:650px;margin:0;padding:78px 7%;box-sizing:border-box;position:relative;display:block;overflow:hidden;border:1px solid #98a06a;border-radius:28px;background-color:#aeb67a;background-image:radial-gradient(circle at 18% 20%,rgba(255,255,255,.12),transparent 28%),linear-gradient(125deg,rgba(255,255,255,.08),transparent 45%);color:#243421;text-align:left}
 .checkout-order-complete .success-copy{width:48%;position:relative;z-index:2}
 .checkout-order-complete .success-copy>span{position:absolute;top:-36px;left:320px;color:#e54a29;font:400 58px/1 Georgia,serif;transform:rotate(-12deg)}
 .checkout-page-panel.checkout-order-complete .success h2{margin:0 0 24px;font:500 clamp(48px,5vw,76px)/1 Georgia,serif;letter-spacing:-.025em}
