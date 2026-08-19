@@ -277,7 +277,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
               <p><i aria-hidden="true">⌖</i>{selectedDelivery?.title || "Способ получения выбран"}</p>
               <p><i aria-hidden="true">▱</i>{selectedPayment?.title || "Способ оплаты выбран"}</p>
               <a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Следить за заказом <span aria-hidden="true">→</span></a>
-              <a className="success-catalog-link" href="/">Вернуться в каталог</a>
+              <a className="success-catalog-link" href="/#catalog">Вернуться в каталог <span aria-hidden="true">↗</span></a>
             </div>
             <div className="success-next">
               <h3>Что будет дальше</h3>
