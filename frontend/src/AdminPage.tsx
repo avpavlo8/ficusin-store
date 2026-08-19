@@ -78,5 +78,5 @@ export default function AdminPage() {
 }
 
 export function Nav({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button className={active ? "active" : ""} onClick={onClick}>{children}</button>;
+  return <button className={active ? "active" : ""} onClick={onClick}><span className="admin-nav-dot" aria-hidden="true" />{children}</button>;
 }

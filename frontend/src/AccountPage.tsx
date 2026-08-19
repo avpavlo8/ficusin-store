@@ -96,6 +96,17 @@ function fullNameOf(user: StoreUser) {
   return [user.lastName, user.fullName, user.patronymic].filter(Boolean).join(" ") || user.fullName;
 }
 
+const accountIcons: Record<Section, string> = {
+  orders: "M5 4h14v16H5zM8 2v4M16 2v4M8 10h8M8 14h5",
+  profile: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0",
+  favorites: "M12 21S3 16 3 9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 7-9 12-9 12Z",
+  reviews: "M4 5h16v12H8l-4 4V5ZM8 9h8M8 13h5",
+};
+
+function AccountNavIcon({ name }: { name: Section }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24"><path d={accountIcons[name]} /></svg>;
+}
+
 // ---------------------------------------------------------------- shell
 
 /**
@@ -127,11 +138,12 @@ function AccountShell({ user, section, children, onSignOut }: {
             {user.email ? <><br />{user.email}</> : null}
           </p>
           <nav aria-label="Разделы личного кабинета">
-            <a className={section === "orders" ? "active" : ""} href="/account">Мои заказы</a>
-            <a className={section === "profile" ? "active" : ""} href="/account/profile">Мои данные</a>
-            <a className={section === "favorites" ? "active" : ""} href="/account/favorites">Избранное</a>
-            <a className={section === "reviews" ? "active" : ""} href="/account/reviews">Мои отзывы</a>
+            <a className={section === "orders" ? "active" : ""} href="/account"><AccountNavIcon name="orders"/><span>Мои заказы</span></a>
+            <a className={section === "profile" ? "active" : ""} href="/account/profile"><AccountNavIcon name="profile"/><span>Мои данные</span></a>
+            <a className={section === "favorites" ? "active" : ""} href="/account/favorites"><AccountNavIcon name="favorites"/><span>Избранное</span></a>
+            <a className={section === "reviews" ? "active" : ""} href="/account/reviews"><AccountNavIcon name="reviews"/><span>Мои отзывы</span></a>
           </nav>
+          <div className="account-help"><strong>Мы рядом,<br/>если нужен совет</strong><p>Поможем с заказом и уходом за растениями.</p><a href="https://max.ru/channel_ficusin" target="_blank" rel="noreferrer">Написать в чат <span>○</span></a></div>
           {staff && <a className="account-switch" href="/admin">Панель управления →</a>}
           <button className="signout-link" type="button" onClick={onSignOut}>
             Выйти из аккаунта
