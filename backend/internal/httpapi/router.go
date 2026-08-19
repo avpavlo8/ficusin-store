@@ -105,7 +105,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
 	if dependencies.Cart != nil {
-		cartAPI := cartHandler(logger, dependencies.Auth, dependencies.Cart)
+		cartAPI := cartHandler(logger, dependencies.Auth, dependencies.Cart, dependencies.CookieSecure)
+		mux.Handle("GET /api/v1/cart", cartAPI)
+		mux.Handle("PUT /api/v1/cart", cartAPI)
 		mux.Handle("GET /api/v1/account/cart", cartAPI)
 		mux.Handle("PUT /api/v1/account/cart", cartAPI)
 	}

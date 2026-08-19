@@ -5,6 +5,7 @@ import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
+import { useSharedCart } from "./lib/cart";
 
 export default function ProductPage({ slug }: { slug: string }) {
   const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; sortOrder:number }>>([]);
@@ -20,20 +21,23 @@ export default function ProductPage({ slug }: { slug: string }) {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
   });
-  const [cart, setCart] = useState<Record<string, number>>(() => {
-    try { return JSON.parse(localStorage.getItem("ficusin-cart") || "{}") as Record<string, number>; }
-    catch { return {}; }
-  });
+  const [cart, setCart] = useSharedCart();
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   useEffect(() => {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
-      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; let stored: Record<string,number> = {}; try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; } setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setQuantity(Math.max(1, stored[item.id] || 1)); document.title = `${normalized.name} — Фикусин`; })
+      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug]);
 
   useEffect(() => { fetch("/api/v1/categories").then((response) => response.json()).then((body: { categories?: typeof categories }) => setCategories(body.categories || [])).catch(() => setCategories([])); }, []);
+
+  useEffect(() => {
+    if (!product || !cart[product.id]) return;
+    const timer = window.setTimeout(() => setQuantity(cart[product.id]), 0);
+    return () => window.clearTimeout(timer);
+  }, [cart, product]);
 
   const headerMenus = useMemo(() => {
     const children = new Map<number|null,typeof categories>();
@@ -57,29 +61,20 @@ export default function ProductPage({ slug }: { slug: string }) {
     });
   };
 
-  const persistCart = (next: Record<string, number>) => {
-    localStorage.setItem("ficusin-cart", JSON.stringify(next));
-    window.dispatchEvent(new Event(STORAGE_EVENT));
-    setCart(next);
-  };
   const toggleCart = () => {
     if (!product || !variant) return;
-    let stored: Record<string, number> = {};
-    try { stored = JSON.parse(localStorage.getItem("ficusin-cart") || "{}"); } catch { stored = {}; }
-    if (stored[product.id]) {
-      delete stored[product.id];
-      persistCart({ ...stored });
+    if (cart[product.id]) {
+      setCart((current) => { const next = { ...current }; delete next[product.id]; return next; });
       setNotice("Товар удалён из корзины"); window.setTimeout(() => setNotice(""), 1800);
       return;
     }
-    stored[product.id] = variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity;
-    persistCart({ ...stored });
+    setCart((current) => ({ ...current, [product.id]: variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity }));
     setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
   const changeQuantity = (value: number) => {
     setQuantity(value);
     if (!product || !cart[product.id]) return;
-    persistCart({ ...cart, [product.id]: value });
+    setCart((current) => ({ ...current, [product.id]: value }));
   };
 
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;

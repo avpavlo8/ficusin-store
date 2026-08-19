@@ -4,6 +4,7 @@ import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
 import { searchProducts } from "./lib/search";
 import { STORAGE_EVENT } from "./StoreHeader";
+import { useSharedCart } from "./lib/cart";
 import { attributeLabel, attributeValue } from "./product/types";
 
 type Product = {
@@ -32,8 +33,6 @@ type Category = { id: number; parentId: number | null; name: string; slug: strin
 // Не Node: так называется узел DOM, и подмена ломает проверку клика мимо
 // подсказок поиска.
 type CategoryNode = { id: number; name: string; icon: string; count: number; children: CategoryNode[] };
-type Cart = Record<string, number>;
-
 const money = (value: number) =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -97,14 +96,7 @@ export default function StorefrontPage() {
     return () => document.removeEventListener("pointerdown", closeDropdowns);
   }, []);
 
-  const [cart, setCart] = useState<Cart>(() => {
-    try {
-      const saved = window.localStorage.getItem("ficusin-cart");
-      return saved ? (JSON.parse(saved) as Cart) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [cart, setCart] = useSharedCart();
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
       return new Set(
@@ -139,11 +131,6 @@ export default function StorefrontPage() {
       .then((data: { categories?: Category[] }) => setCategories(data.categories ?? []))
       .catch(() => setCategories([]));
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("ficusin-cart", JSON.stringify(cart));
-    window.dispatchEvent(new Event(STORAGE_EVENT));
-  }, [cart]);
 
   const searching = query.trim().length > 0;
 

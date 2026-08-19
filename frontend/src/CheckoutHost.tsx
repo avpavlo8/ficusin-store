@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { CartDrawer, CheckoutPanel } from "./CartCheckout";
 import { useCheckout } from "./useCheckout";
 
@@ -26,7 +26,7 @@ type CheckoutHostProps = {
   products: CartProduct[];
   cartOpen: boolean;
   onCartOpenChange: (open: boolean) => void;
-  onCartChange: (cart: Cart) => void;
+  onCartChange: Dispatch<SetStateAction<Cart>>;
   cartPage?: boolean;
   checkoutPage?: boolean;
 };
@@ -44,11 +44,11 @@ export default function CheckoutHost({
   cartPage = false,
   checkoutPage = false,
 }: CheckoutHostProps) {
-  const [cart, setCart] = useState<Cart>(externalCart);
+  const cart = externalCart;
+  const setCart = onCartChange;
   const [notice, setNotice] = useState("");
   const [paymentReturn, setPaymentReturn] = useState("");
   const [user, setUser] = useState<StoreUser | null>(null);
-  const cartSynced = useRef(false);
 
   const cartLines = products
     .filter((product) => cart[product.id])
@@ -57,16 +57,6 @@ export default function CheckoutHost({
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen: checkoutPage });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
-
-  useEffect(() => {
-    if (JSON.stringify(externalCart) !== JSON.stringify(cart)) setCart(externalCart);
-    // Parent changes pull inward; local changes are pushed by the next effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalCart]);
-
-  useEffect(() => {
-    onCartChange(cart);
-  }, [cart, onCartChange]);
 
   useEffect(() => {
     const paidOrder = new URLSearchParams(window.location.search).get("paid");
@@ -101,47 +91,6 @@ export default function CheckoutHost({
       cancelled = true;
     };
   }, [setCheckoutProfile]);
-
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    fetch("/api/v1/account/cart", { credentials: "same-origin", cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : { items: {} }))
-      .then((data: { items?: Cart }) => {
-        if (cancelled) return;
-        const stored = data.items || {};
-        setCart((current) => {
-          const merged: Cart = { ...stored };
-          for (const [id, quantity] of Object.entries(current)) {
-            merged[id] = Math.max(merged[id] || 0, quantity);
-          }
-          return merged;
-        });
-        cartSynced.current = true;
-      })
-      .catch(() => {
-        cartSynced.current = true;
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
-    window.localStorage.setItem("ficusin-cart", JSON.stringify(cart));
-    if (!user || !cartSynced.current) return;
-    const timer = window.setTimeout(() => {
-      fetch("/api/v1/account/cart", {
-        method: "PUT",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: cart }),
-      }).catch(() => {
-        // The browser copy is already durable; retry on a later change.
-      });
-    }, 800);
-    return () => window.clearTimeout(timer);
-  }, [cart, user]);
 
   useEffect(() => {
     document.body.classList.toggle("drawer-open", ((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage);

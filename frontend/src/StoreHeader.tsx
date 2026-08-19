@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
 import { CatalogSearch } from "./CatalogSearch";
+import { useSharedCart } from "./lib/cart";
 
 export type StoreUser = {
   fullName: string;
@@ -36,21 +37,18 @@ function AccountBadge({ user }: { user: StoreUser }) {
   </span>;
 }
 
-// Cart and favourites live in localStorage, shared by every page. Changes
-// made in this tab fire "ficusin-storage"; changes made in another tab
-// arrive as the browser's own "storage" event.
+// Favourites remain local for now. Cart contents are never stored here: the
+// header reads the same server-backed cart as the catalogue and checkout.
 export const STORAGE_EVENT = "ficusin-storage";
 
 function readStoredCounts() {
   try {
     const favorites = JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[];
-    const cart = JSON.parse(localStorage.getItem("ficusin-cart") || "{}") as Record<string, number>;
     return {
       favorites: favorites.length,
-      cart: Object.values(cart).reduce((sum, value) => sum + value, 0),
     };
   } catch {
-    return { favorites: 0, cart: 0 };
+    return { favorites: 0 };
   }
 }
 
@@ -246,8 +244,9 @@ export function StoreHeader({
   // keep that state, so the header reads it from storage itself instead of
   // showing zeroes.
   const stored = useStoredCounts();
+  const [serverCart] = useSharedCart();
   const favorites = favoritesCount ?? stored.favorites;
-  const cart = cartCount ?? stored.cart;
+  const cart = cartCount ?? Object.values(serverCart).reduce((sum, value) => sum + value, 0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);

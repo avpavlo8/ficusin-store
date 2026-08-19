@@ -1,34 +1,71 @@
 import { useCallback, useEffect, useState } from "react";
-import { STORAGE_EVENT } from "../StoreHeader";
 
-type Cart = Record<string, number>;
-const CART_KEY = "ficusin-cart";
+export type Cart = Record<string, number>;
+type CartUpdate = Cart | ((current: Cart) => Cart);
 
-function readCart(): Cart {
-  try { return JSON.parse(localStorage.getItem(CART_KEY) || "{}") as Cart; }
-  catch { return {}; }
+let snapshot: Cart = {};
+let loaded = false;
+let loading: Promise<void> | null = null;
+let writes: Promise<void> = Promise.resolve();
+const listeners = new Set<(cart: Cart) => void>();
+
+function clean(cart: Cart): Cart {
+  return Object.fromEntries(Object.entries(cart).filter(([id, quantity]) => id && Number.isInteger(quantity) && quantity > 0));
 }
 
-function storeCart(cart: Cart) {
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  window.dispatchEvent(new Event(STORAGE_EVENT));
+function publish(cart: Cart) {
+  snapshot = clean(cart);
+  listeners.forEach((listener) => listener(snapshot));
+}
+
+function loadCart(force = false): Promise<void> {
+  if (loaded && !force) return Promise.resolve();
+  if (loading && !force) return loading;
+  loading = fetch("/api/v1/cart", { credentials: "same-origin", cache: "no-store" })
+    .then(async (response) => {
+      if (!response.ok) throw new Error("Не удалось загрузить корзину");
+      const body = await response.json() as { items?: Cart };
+      publish(body.items || {});
+      loaded = true;
+    })
+    .finally(() => { loading = null; });
+  return loading;
+}
+
+function saveCart(cart: Cart): Promise<void> {
+  const expected = clean(cart);
+  writes = writes.then(async () => {
+    const response = await fetch("/api/v1/cart", {
+      method: "PUT",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: expected }),
+    });
+    if (!response.ok) throw new Error("Не удалось сохранить корзину");
+  }).catch(async () => {
+    await loadCart(true).catch(() => undefined);
+  });
+  return writes;
 }
 
 export function useSharedCart() {
-  const [cart, setCartState] = useState<Cart>(readCart);
+  const [cart, setCartState] = useState<Cart>(snapshot);
   useEffect(() => {
-    const sync = () => setCartState(readCart());
-    window.addEventListener("storage", sync);
-    window.addEventListener(STORAGE_EVENT, sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(STORAGE_EVENT, sync);
-    };
+    // Remove the obsolete durable browser copy left by earlier releases.
+    window.localStorage.removeItem("ficusin-cart");
+    const sync = (next: Cart) => setCartState(next);
+    listeners.add(sync);
+    void loadCart().catch(() => undefined);
+    return () => { listeners.delete(sync); };
   }, []);
-  const setCart = useCallback((next: Cart | ((current: Cart) => Cart)) => setCartState((current) => {
-    const value = typeof next === "function" ? next(current) : next;
-    storeCart(value);
-    return value;
-  }), []);
+  const setCart = useCallback((update: CartUpdate) => {
+    const apply = () => {
+      const next = clean(typeof update === "function" ? update(snapshot) : update);
+      publish(next);
+      void saveCart(next);
+    };
+    if (loaded) apply(); else void loadCart().then(apply).catch(() => undefined);
+  }, []);
   return [cart, setCart] as const;
 }
