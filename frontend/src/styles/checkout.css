@@ -113,7 +113,7 @@
 /* Final checkout state follows the approved full-width confirmation card. */
 .checkout-order-complete{padding:0!important;background:transparent!important;border:0!important}
 .checkout-order-complete>.drawer-head{display:none}
-.checkout-page-panel.checkout-order-complete .success{width:100%;max-width:none;min-height:650px;margin:0;padding:78px 7%;box-sizing:border-box;position:relative;display:block;overflow:hidden;border:1px solid #98a06a;border-radius:28px;background-color:#aeb67a;background-image:radial-gradient(circle at 18% 20%,rgba(255,255,255,.12),transparent 28%),linear-gradient(125deg,rgba(255,255,255,.08),transparent 45%);color:#243421;text-align:left}
+.checkout-page-panel.checkout-order-complete .success{width:100%;max-width:none;min-height:650px;margin:0;padding:78px 7%;box-sizing:border-box;position:relative;display:block;overflow:hidden;border:1px solid #98a06a;border-radius:28px;background-color:#aeb67a;background-image:url('/assets/redesign/checkout-success-art.png'),radial-gradient(circle at 18% 20%,rgba(255,255,255,.12),transparent 28%),linear-gradient(125deg,rgba(255,255,255,.08),transparent 45%);background-repeat:no-repeat;background-position:right -18px bottom -12px,center,center;background-size:auto 104%,auto,auto;color:#243421;text-align:left}
 .checkout-order-complete .success-copy{width:48%;position:relative;z-index:2}
 .checkout-order-complete .success-copy>span{position:absolute;top:-36px;left:320px;color:#e54a29;font:400 58px/1 Georgia,serif;transform:rotate(-12deg)}
 .checkout-page-panel.checkout-order-complete .success h2{margin:0 0 24px;font:500 clamp(48px,5vw,76px)/1 Georgia,serif;letter-spacing:-.025em}
@@ -122,19 +122,17 @@
 .checkout-order-complete .success-number small{margin-bottom:8px;color:#566043;font-size:14px}
 .checkout-order-complete .success-number strong{display:block;color:#26321f;font:600 clamp(26px,2.3vw,38px)/1.15 Georgia,serif;overflow-wrap:anywhere}
 .checkout-page-panel.checkout-order-complete .success .primary-button{min-width:300px;min-height:66px;padding:0 28px;justify-content:center;border-radius:13px;background:#e4e39a;color:#273b24;font-size:17px;box-shadow:0 12px 30px rgba(43,58,32,.12)}
-.checkout-page-panel.checkout-order-complete .success>img{width:58%;height:100%;position:absolute;right:-2%;bottom:-2%;object-fit:contain;object-position:right bottom;pointer-events:none}
+.checkout-page-panel.checkout-order-complete .success>img{display:none}
 @media(max-width:900px){
-  .checkout-page-panel.checkout-order-complete .success{min-height:760px;padding:52px 30px 340px}
+  .checkout-page-panel.checkout-order-complete .success{min-height:760px;padding:52px 30px 340px;background-position:right -65px bottom -18px,center,center;background-size:auto 55%,auto,auto}
   .checkout-order-complete .success-copy{width:100%}
   .checkout-order-complete .success-copy>span{top:-25px;left:min(74vw,300px)}
   .checkout-page-panel.checkout-order-complete .success h2{font-size:48px}
   .checkout-page-panel.checkout-order-complete .success p{font-size:17px}
-  .checkout-page-panel.checkout-order-complete .success>img{width:100%;height:430px;right:-12%;bottom:-25px}
 }
 @media(max-width:520px){
-  .checkout-page-panel.checkout-order-complete .success{min-height:700px;padding:38px 22px 300px;border-radius:20px}
+  .checkout-page-panel.checkout-order-complete .success{min-height:700px;padding:38px 22px 300px;border-radius:20px;background-position:right -78px bottom -16px,center,center;background-size:auto 48%,auto,auto}
   .checkout-page-panel.checkout-order-complete .success h2{font-size:40px}
   .checkout-order-complete .success-number{padding:21px 20px}
   .checkout-page-panel.checkout-order-complete .success .primary-button{width:100%;min-width:0}
-  .checkout-page-panel.checkout-order-complete .success>img{height:350px;right:-18%}
 }

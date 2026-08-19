@@ -265,8 +265,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
     {orderNumber ? (
       <div className="success">
-        <div className="success-copy"><span aria-hidden="true">♡</span><h2>Заказ принят</h2><p>Спасибо! Мы уже готовим<br />ваши растения к отправке.</p><div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div><p>На почту отправили письмо<br />с деталями заказа.</p><a className="primary-button" href="/account/orders">Отслеживать заказ</a></div>
-        <img src="/assets/redesign/checkout-success-art.png" alt="" />
+        <div className="success-copy"><span aria-hidden="true">♡</span><h2>Заказ принят</h2><p>Спасибо! Мы уже готовим<br />ваши растения к отправке.</p><div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div><p>Заказ сохранён в личном кабинете.<br />Там можно следить за его статусом.</p><a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Отслеживать заказ</a></div>
+        <img src="/assets/redesign/checkout-success-art.png" alt="" loading="eager" fetchPriority="high" />
       </div>
     ) : (
       <div className="checkout-layout"><form ref={formRef} onSubmit={submitOrder}>

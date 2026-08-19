@@ -253,6 +253,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       }
       setOrderNumber(data.orderNumber);
       setCart({});
+      window.scrollTo({ top: 0, behavior: "auto" });
       if (paymentMethod === "online" && !cdekFeePending) {
         try {
           const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
