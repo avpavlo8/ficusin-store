@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput, normalizeRussianPhone } from "./lib/phone";
+import { StoreHeader } from "./StoreHeader";
 
 type AuthFlow = "login" | "register";
 
@@ -35,18 +36,6 @@ const emptyRegistration: RegistrationDraft = {
 
 const RESEND_COOLDOWN_SECONDS = 45;
 const POLL_INTERVAL_MS = 3000;
-
-function AuthHeader() {
-  return (
-    <header className="account-header">
-      <a className="brand" href="/">
-        <span className="brand-mark">⌇</span>
-        <span>Фикусин</span>
-      </a>
-      <a className="account-back" href="/">← Вернуться в магазин</a>
-    </header>
-  );
-}
 
 function AuthPage({ flow }: { flow: AuthFlow }) {
   const isRegistration = flow === "register";
@@ -190,10 +179,10 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
 
   return (
     <main className="auth-page">
-      <AuthHeader />
-      <section className="auth-shell auth-shell-compact">
+      <StoreHeader />
+      <section className={`auth-shell auth-shell-compact ${isRegistration ? "is-register" : "is-login"}`}>
         <div className="auth-intro">
-          <p className="eyebrow">Профиль покупателя</p>
+          <div className="auth-intro-copy"><p className="eyebrow">Профиль покупателя</p>
           <h1>
             {step === "waiting"
               ? "Подтвердите номер звонком"
@@ -208,7 +197,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
               : isRegistration
                 ? "Заполните профиль один раз. При следующих заказах данные подставятся автоматически."
                 : "Введите телефон, указанный при регистрации. Пароль не нужен."}
-          </p>
+          </p></div>
         </div>
 
         {step === "form" && (

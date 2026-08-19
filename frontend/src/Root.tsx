@@ -7,6 +7,7 @@ import AccountPage from "./AccountPage";
 import CartPage from "./CartPage";
 import { StoreFooter } from "./StoreFooter";
 import { LoginPage, RegisterPage } from "./AuthPages";
+import NotFoundPage from "./NotFoundPage";
 import {
   DeliveryPage,
   OfferPage,
@@ -62,6 +63,6 @@ export default function Root() {
     case "/delivery-and-returns":
       return withFooter(<DeliveryPage />);
     default:
-      return withFooter(<StorefrontPage />);
+      return withFooter(<NotFoundPage />);
   }
 }

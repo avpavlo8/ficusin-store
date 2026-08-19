@@ -15,7 +15,7 @@ export default function FavoritesPage() {
   const remove = (id: string) => { const next = new Set(favorites); next.delete(id); setFavorites(next); localStorage.setItem("ficusin-favorites", JSON.stringify([...next])); window.dispatchEvent(new Event(STORAGE_EVENT)); };
   const add = (product: Product) => setCart((current) => ({ ...current, [product.id]: Math.min(product.stock, (current[product.id] || 0) + 1) }));
   return <main><StoreHeader query={query} onQueryChange={setQuery} favoritesCount={favorites.size} cartCount={Object.values(cart).reduce((sum, value) => sum + value, 0)} />
-    <section className="favorites-page"><p className="eyebrow">Сохранённые товары</p><h1>Избранное</h1><p>Здесь собраны растения и товары, к которым вы хотите вернуться.</p>
+    <section className="favorites-page"><div className="favorites-hero"><div><p className="eyebrow">Сохранённые товары</p><h1>Ваши любимые<br/>растения</h1><p>Сохраняйте находки и возвращайтесь к ним, когда будете готовы выбрать.</p></div></div>
       <div className="product-grid">{items.map((product) => <article className="product-card" key={product.id}>
         <button className="favorite-button active" onClick={() => remove(product.id)} aria-label="Убрать из избранного">♥</button>
         <a className="product-image" href={`/product/${product.id}`}><img src={product.image} alt={product.name} /></a>
