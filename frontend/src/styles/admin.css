@@ -39,9 +39,6 @@
 .cdek-tariff b { display: block; font-size: 14px; }
 .cdek-tariff small { color: #687269; font-size: 12px; }
 .cdek-tariff strong { font-size: 16px; white-space: nowrap; }
-.checkout-total { padding: 20px 0; border-top: 1px solid var(--line); }
-.checkout-total > div { padding: 6px 0; display: flex; justify-content: space-between; }
-.checkout-total .total { margin-top: 12px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 22px; }
 .payment-note { margin-bottom: 18px; padding: 16px; border-radius: 12px; background: #f5e7df; color: #6c3d2c; }
 .payment-note p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }
 .primary-button.full { width: 100%; }
@@ -59,7 +56,6 @@
 .mobile-menu a { padding-bottom: 17px; border-bottom: 1px solid var(--line); font: 400 28px Georgia, serif; }
 
 .legal-page { min-height: 100vh; background: var(--paper); }
-.legal-header { height: 88px; padding: 0 5vw; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); background: var(--cream); }
 .legal-document { width: min(920px, 90vw); margin: 72px auto 100px; }
 .legal-document > h1 { max-width: 820px; margin-bottom: 16px; color: var(--green); font-size: clamp(46px, 7vw, 82px); font-weight: 400; line-height: .98; letter-spacing: -.04em; }
 .legal-updated { margin-bottom: 54px; color: #7a827b; font-size: 13px; }
@@ -77,8 +73,6 @@
 .requisites-list dd { margin: 0; color: var(--green); line-height: 1.45; }
 
 .account-page { min-height: 100vh; background: var(--cream); }
-.account-header { height: 88px; padding: 0 5vw; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); background: var(--paper); }
-.account-back { padding-bottom: 4px; border-bottom: 1px solid var(--green); color: var(--green); font-size: 14px; }
 .account-shell { width: min(1320px, 90vw); margin: 58px auto; display: grid; grid-template-columns: 300px 1fr; gap: 28px; align-items: start; }
 .account-sidebar, .account-content { border: 1px solid var(--line); border-radius: 22px; background: var(--paper); }
 .account-sidebar { padding: 32px; position: sticky; top: 24px; }

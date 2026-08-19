@@ -195,8 +195,6 @@
   .auth-intro h1 { font-size: 50px; }
   .auth-form { padding: 24px 18px; border-radius: 18px; }
   .account-type-options { grid-template-columns: 1fr; }
-  .legal-header { height: 72px; padding: 0 18px; }
-  .legal-header .account-back { max-width: 120px; text-align: right; }
   .legal-document { width: auto; margin: 52px 18px 72px; }
   .legal-document > h1 { font-size: 45px; }
   .legal-updated { margin-bottom: 38px; }
@@ -222,8 +220,6 @@
   footer { grid-template-columns: 1fr 1fr; padding: 55px 18px 25px; }
   .drawer, .checkout { padding: 22px 18px; }
   .field-grid, .delivery-options { grid-template-columns: 1fr; }
-  .account-header { height: 72px; padding: 0 18px; }
-  .account-back { font-size: 12px; }
   .account-shell { width: auto; margin: 22px 18px; grid-template-columns: 1fr; }
   .account-sidebar { padding: 14px; position: static; overflow: hidden; }
   .account-sidebar .account-avatar, .account-sidebar > h1, .account-sidebar > p, .account-sidebar > .account-switch { display: none; }
