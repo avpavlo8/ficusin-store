@@ -216,7 +216,7 @@ export function StoreHeader({
   onCartClick,
   showTabBar = true,
   showSearch = true,
-  homeNavigation = false,
+  homeNavigation = true,
   catalogMenuItems = [],
   plantMenuItems = [],
   onHomeCategoryPick,
@@ -249,6 +249,7 @@ export function StoreHeader({
   const cart = cartCount ?? Object.values(serverCart).reduce((sum, value) => sum + value, 0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [fallbackMenus, setFallbackMenus] = useState<{catalog:HeaderMenuItem[];plants:HeaderMenuItem[]}>({catalog:[],plants:[]});
   const headerRef = useRef<HTMLElement>(null);
   useBodyLock(menuOpen, "menu-open");
   useEffect(() => {
@@ -258,6 +259,24 @@ export function StoreHeader({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
+  useEffect(() => {
+    if (!homeNavigation || catalogMenuItems.length || plantMenuItems.length) return;
+    fetch("/api/v1/categories", { cache: "no-store" }).then((response) => response.json()).then((body: {categories?:Array<{id:number;parentId:number|null;name:string;sortOrder:number}>}) => {
+      const categories = body.categories || [];
+      const children = new Map<number|null,typeof categories>();
+      categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
+      const order = (items:typeof categories) => [...items].sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ru"));
+      const branch = (item:typeof categories[number]):HeaderMenuItem => ({id:item.id,label:item.name,children:order(children.get(item.id)||[]).map(branch)});
+      const catalog = order(children.get(null)||[]).map(branch);
+      const plantRoot = categories.find((item)=>item.parentId==null&&/растен/i.test(item.name));
+      const leaves = (parentId:number):typeof categories => order(children.get(parentId)||[]).flatMap((item)=>children.get(item.id)?.length?leaves(item.id):[item]);
+      setFallbackMenus({catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name})):[]});
+    }).catch(() => setFallbackMenus({catalog:[],plants:[]}));
+  },[homeNavigation,catalogMenuItems.length,plantMenuItems.length]);
+
+  const resolvedCatalogMenuItems = catalogMenuItems.length ? catalogMenuItems : fallbackMenus.catalog;
+  const resolvedPlantMenuItems = plantMenuItems.length ? plantMenuItems : fallbackMenus.plants;
+  const categoryPick = onHomeCategoryPick ?? ((id: number) => window.location.assign(`/?category=${id}#catalog`));
 
   const cartLabel = `Корзина, товаров: ${cart}`;
   return <><div className="announcement" hidden />
@@ -270,8 +289,8 @@ export function StoreHeader({
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav">{homeNavigation ? <>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{catalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={onHomeCategoryPick} key={item.id} />)}</div></details>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{plantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={onHomeCategoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{resolvedPlantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
         <a href="/#care">Уход</a><a href="/delivery-and-returns">Доставка и оплата</a><a href="/#blog">Блог</a><a href="/#about">О нас</a>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a></>}</nav>
       <div className="header-actions">
@@ -285,7 +304,7 @@ export function StoreHeader({
           ><Icon path={icons.search} /></button>
         </>}
         <a className="favorites-button" href="/favorites" aria-label={`Избранное, товаров: ${favorites}`}><span aria-hidden="true"><Icon path={icons.heart} /></span>{favorites > 0 && <b>{favorites}</b>}</a>
-        <AccountMenu user={user} iconOnly={homeNavigation} />
+        <AccountMenu user={user} iconOnly />
         {onCartClick
           ? <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</button>
           : <a className="cart-button" href="/cart" aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</a>}
