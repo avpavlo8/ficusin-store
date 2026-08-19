@@ -29,7 +29,7 @@ export default function AdminPage() {
     setSection(next);
   };
 
-  if (!data) return <main className="account-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
+  if (!data) return <main className="account-page admin-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
     <StoreHeader showTabBar={false} />
     <section className="account-shell"><div className="account-content"><p>{error || "Загружаем панель…"}</p></div></section>
   </main>;
@@ -37,7 +37,7 @@ export default function AdminPage() {
   const can = (permission: string) => data.permissions.includes(permission);
   const initial = data.user.fullName.trim().charAt(0).toUpperCase() || "Ф";
   return (
-    <main className="account-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
+    <main className="account-page admin-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
       <StoreHeader showTabBar={false} />
       <section className="account-shell">
         <aside className="account-sidebar">

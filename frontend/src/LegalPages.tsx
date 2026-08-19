@@ -1,21 +1,22 @@
 import type { ReactNode } from "react";
+import { StoreHeader } from "./StoreHeader";
 
 function LegalPage({
   eyebrow,
   title,
+  scenic = false,
   children,
 }: {
   eyebrow: string;
   title: string;
+  scenic?: boolean;
   children: ReactNode;
 }) {
   return (
-    <main className="legal-page">
-      <header className="legal-header">
-        <a className="brand" href="/"><span className="brand-mark">⌇</span><span>Фикусин</span></a>
-        <a className="account-back" href="/">← Вернуться в магазин</a>
-      </header>
+    <main className={`legal-page ${scenic ? "legal-page-scenic" : ""}`}>
+      <StoreHeader />
       <article className="legal-document">
+        {scenic && <div className="legal-scene" aria-hidden="true" />}
         <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>
         <p className="legal-updated">Редакция от 28 июля 2026 года</p>
@@ -76,7 +77,7 @@ export function RequisitesPage() {
 }
 
 export function ContactsPage() {
-  return <LegalPage eyebrow="Мы рядом" title="Контакты">
+  return <LegalPage eyebrow="Мы рядом" title="Контакты" scenic>
     <section className="contacts-intro"><div><h2>Магазин «Фикусин»</h2><p>Заходите выбрать растение лично или оформляйте заказ на сайте. Поможем подобрать растение, горшок и всё необходимое для ухода.</p><dl className="requisites-list"><div><dt>Адрес</dt><dd>г. Рязань, ул. Новосёлов, д. 40А</dd></div><div><dt>Режим работы</dt><dd>ежедневно, 08:00–20:00</dd></div><div><dt>Телефон</dt><dd><a href="tel:+79156151100">+7 915 615-11-00</a></dd></div><div><dt>Почта</dt><dd><a href="mailto:info@ficusin.ru">info@ficusin.ru</a></dd></div></dl></div><iframe className="contacts-map" title="Магазин Фикусин на карте" src="https://yandex.ru/map-widget/v1/?mode=search&text=%D0%A0%D1%8F%D0%B7%D0%B0%D0%BD%D1%8C%2C%20%D1%83%D0%BB.%20%D0%9D%D0%BE%D0%B2%D0%BE%D1%81%D1%91%D0%BB%D0%BE%D0%B2%2C%2040%D0%90" loading="lazy" allowFullScreen /></section>
     <section><h2>Мы в социальных сетях</h2><p><a href="https://vk.ru/ficusin" target="_blank" rel="noreferrer">ВКонтакте</a> · <a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Telegram</a> · <a href="https://www.instagram.com/ficusin_62/" target="_blank" rel="noreferrer">Instagram</a> · <a href="https://max.ru/channel_ficusin" target="_blank" rel="noreferrer">MAX</a></p></section>
   </LegalPage>;
@@ -84,7 +85,7 @@ export function ContactsPage() {
 
 export function DeliveryPage() {
   return (
-    <LegalPage eyebrow="Покупателям" title="Доставка, оплата и возврат">
+    <LegalPage eyebrow="Покупателям" title="Доставка, оплата и возврат" scenic>
       <section><h2>Получение заказа</h2><ul><li><b>Самовывоз:</b> г. Рязань, ул. Новосёлов, д. 40А, бесплатно.</li><li><b>Курьер по Рязани:</b> срок и интервал согласуются с покупателем.</li><li><b>СДЭК по России:</b> стоимость и ориентировочный срок рассчитываются при оформлении заказа.</li><li><b>Почта России:</b> доступность, стоимость и срок подтверждаются менеджером.</li></ul><p>Живые растения отправляются только в подходящей упаковке и при погодных условиях, позволяющих сохранить товар. Если выбранный способ доставки небезопасен для растения, мы предложим другой способ или вернём оплату.</p></section>
       <section><h2>Оплата</h2><p>Доступные способы оплаты показываются при оформлении заказа. До подключения онлайн-эквайринга заказ не считается оплаченным: менеджер подтверждает наличие, итоговую стоимость и порядок оплаты.</p></section>
       <section><h2>Отказ от заказа надлежащего качества</h2><p>При дистанционной продаже покупатель вправе отказаться от товара до его передачи, а после передачи — в течение срока, установленного статьёй 26.1 Закона РФ «О защите прав потребителей». Для возврата должны быть сохранены товарный вид и потребительские свойства товара.</p><p>Расходы на обратную доставку товара надлежащего качества оплачивает покупатель. Денежные средства возвращаются не позднее 10 дней со дня получения требования, за исключением расходов продавца на доставку возвращённого товара от покупателя.</p></section>

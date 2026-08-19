@@ -250,3 +250,17 @@
 .auth-call-number b { color: var(--green); font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
 .auth-call-number small { color: #778078; font-size: 12px; }
 .auth-saved { margin: 0; color: var(--green); font-size: 13px; font-weight: 600; }
+
+/* Administration uses the same materials with its own bonsai workspace scene. */
+.admin-page{--admin-coral:#df4829;--admin-olive:#6f7b48;background:#f4ecdf}
+.admin-page .account-shell{width:min(1760px,calc(100% - 40px));grid-template-columns:270px minmax(0,1fr);margin-top:22px}
+.admin-page .account-sidebar{background:#203b2d;color:#f8f0e5;border-color:#203b2d}.admin-page .account-sidebar h1{color:#fff}.admin-page .account-sidebar>p{color:#cbd5c9}
+.admin-page .account-sidebar nav button{color:#edf2e9}.admin-page .account-sidebar nav button:hover{background:rgba(255,255,255,.08)}.admin-page .account-sidebar nav button.active{background:#e3e59e!important;color:#294326!important}.admin-page .account-switch{color:#e5e7b5}
+.admin-page .account-content{padding:0 28px 34px;background:rgba(255,252,246,.82)}
+.admin-page .account-content:before{height:205px;margin:0 -28px 28px;background-image:linear-gradient(90deg,rgba(255,252,246,.04),rgba(255,252,246,0)),url('/assets/redesign/admin-workspace-v1.webp')}
+.admin-page .account-title{margin-top:-128px;min-height:95px;padding:0 26px 24px}.admin-page .admin-stats{position:relative;z-index:1;gap:14px}
+.admin-page .admin-stats article,.admin-page .admin-stats button,.admin-page .admin-table-wrap,.admin-page .admin-setting,.admin-page .procurement-block{border-color:#ddcfbd;background:rgba(255,253,248,.9);box-shadow:0 10px 28px rgba(70,52,34,.045)}
+.admin-page .admin-stats article strong,.admin-page .admin-stats button strong{color:#294326}.admin-page .admin-primary,.admin-page .admin-settings-actions button{background:linear-gradient(135deg,#e84b2c,#d73a20);box-shadow:0 9px 22px rgba(190,58,29,.16)}
+.admin-page .admin-table th{background:#e9dfcf;color:#5f584f}.admin-page .admin-table tr.clickable:hover td{background:#fff8ed}
+@media(max-width:900px){.admin-page .account-shell{width:calc(100% - 20px);margin:10px}.admin-page .account-content{padding:0 14px 24px}.admin-page .account-content:before{height:170px;margin:0 -14px 22px}.admin-page .account-title{margin-top:-105px;padding:0 16px 20px}.admin-page .admin-stats{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.admin-page .admin-stats{grid-template-columns:1fr}.admin-page .account-content:before{background-position:66% center}}
