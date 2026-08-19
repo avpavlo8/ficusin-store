@@ -39,6 +39,13 @@ function saveCart(cart: Cart): Promise<void> {
       method: "PUT",
       credentials: "same-origin",
       cache: "no-store",
+      // Корзина живёт только на сервере, а ссылки шапки и нижней панели
+      // ведут на настоящий адрес, а не внутрь приложения. Браузер уходит
+      // со страницы и обрывает незавершённые запросы — растение, только
+      // что положенное в корзину, до сервера не доезжает. keepalive велит
+      // довезти запрос даже после ухода; тело здесь крошечное и в лимит в
+      // 64 КБ корзина не упрётся.
+      keepalive: true,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: expected }),
     });
