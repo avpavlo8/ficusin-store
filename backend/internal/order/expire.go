@@ -14,6 +14,14 @@ type settingsReader interface {
 	Number(key string) int
 }
 
+// paymentCanceller закрывает неоплаченный платёж на стороне провайдера.
+//
+// Нужен именно здесь: отмена заказа без отмены платежа оставляет
+// покупателю рабочую ссылку на оплату заказа, которого больше нет.
+type paymentCanceller interface {
+	CancelPending(ctx context.Context, orderID int64) error
+}
+
 // ExpiryWorker cancels orders nobody paid for.
 //
 // An order holds its plants in reserve from the moment it is placed. Without
@@ -22,6 +30,7 @@ type settingsReader interface {
 type ExpiryWorker struct {
 	pool     *pgxpool.Pool
 	settings settingsReader
+	payments paymentCanceller
 	logger   *slog.Logger
 	interval time.Duration
 }
@@ -29,10 +38,15 @@ type ExpiryWorker struct {
 func NewExpiryWorker(
 	pool *pgxpool.Pool,
 	shopSettings settingsReader,
+	payments paymentCanceller,
 	logger *slog.Logger,
 ) *ExpiryWorker {
 	return &ExpiryWorker{
-		pool: pool, settings: shopSettings, logger: logger, interval: 10 * time.Minute,
+		pool:     pool,
+		settings: shopSettings,
+		payments: payments,
+		logger:   logger,
+		interval: 10 * time.Minute,
 	}
 }
 
@@ -95,6 +109,19 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 // Everything happens in one transaction: stock released without the order
 // being cancelled would let the same plants be sold twice.
 func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
+	// Сначала гасим платёж у провайдера — и только потом трогаем заказ.
+	//
+	// Порядок важен дважды. Во-первых, отказ провайдера означает, что
+	// платёж жив или уже оплачен: тогда заказ отменять нельзя, товар
+	// остаётся за покупателем, а следующий проход попробует снова.
+	// Во-вторых, сетевой запрос идёт до открытия транзакции: под
+	// блокировками склада он держал бы чужие оформления.
+	if worker.payments != nil {
+		if err := worker.payments.CancelPending(ctx, orderID); err != nil {
+			return err
+		}
+	}
+
 	transaction, err := worker.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
