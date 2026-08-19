@@ -11,3 +11,6 @@
 .cart-page-panel .cart-summary{height:510px;align-self:start}.cart-page>.header .favorites-button,.cart-page>.header .account-button.icon-only,.cart-page>.header .cart-button{width:46px;min-width:46px;height:46px;padding:0;display:grid;place-items:center;border:0;background:transparent}.cart-page>.header .favorites-button svg,.cart-page>.header .account-button svg,.cart-page>.header .cart-button svg{width:25px;height:25px}.cart-page>.header .favorites-button>span,.cart-page>.header .cart-button>span{display:grid;place-items:center;font-size:0}
 @media(max-width:1450px) and (min-width:901px){.cart-page>.header{gap:18px}.cart-page>.header .desktop-nav{gap:18px}.cart-page>.header .header-search{width:250px}.cart-page>.header .header-actions{gap:2px}}
 @media(max-width:900px){.cart-page-actions{padding:14px;align-items:stretch;flex-direction:column}.cart-page-actions>a,.cart-page-actions .primary-button{width:100%;min-width:0;justify-content:center}.cart-page-panel .cart-lines{padding:0 12px}}
+
+/* Keep the decorative cart collage fully visible inside the order card. */
+.cart-page-panel .cart-summary-art{width:100%;height:270px;right:-4%;bottom:-14px}
