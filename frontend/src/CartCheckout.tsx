@@ -28,17 +28,26 @@ const money = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-function LineIcon({ name }: { name: "close" | "trash" | "plant" | "courier" | "post" | "card" | "wallet" }) {
+function LineIcon({ name }: { name: "close" | "trash" }) {
   const paths = {
     close: <><path d="m7 7 10 10M17 7 7 17" /></>,
     trash: <><path d="M8 8h8l-.7 11H8.7L8 8Z" /><path d="M6.5 8h11M10 5h4l1 3M11 11v5M14 11v5" /></>,
-    plant: <><path d="M7 19h10l1-7H6l1 7Z" /><path d="M12 12V5M12 8c-3 0-5-1.5-5-4 3 0 5 1.5 5 4ZM12 10c3 0 5-1.5 5-4-3 0-5 1.5-5 4Z" /></>,
-    courier: <><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /><path d="M5 17H3l2-6h8l2 6M10 11l2-4h3M15 9h3l2 5h-5" /></>,
-    post: <><path d="M4 7h16v11H4z" /><path d="m4 8 8 6 8-6" /></>,
-    card: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></>,
-    wallet: <><path d="M4 7h14a2 2 0 0 1 2 2v10H6a2 2 0 0 1-2-2V7Z" /><path d="M4 7l12-3v3M15 12h6v4h-6a2 2 0 1 1 0-4Z" /></>,
   } as const;
   return <svg className="line-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+}
+
+type CheckoutIconName = "pickup" | "courier" | "cdek" | "post" | "card" | "wallet";
+
+function CheckoutOptionIcon({ name }: { name: CheckoutIconName }) {
+  if (name === "cdek") return <span className="checkout-brand-icon cdek-icon" aria-hidden="true">CDEK</span>;
+  if (name === "post") return <span className="checkout-brand-icon post-icon" aria-hidden="true"><svg viewBox="0 0 64 48"><path d="M7 35c13-2 20-10 27-25 3 11 11 18 23 20-10 3-18 3-25-1-7 7-15 9-25 6Z"/><path d="M13 40c16-1 28-8 36-20"/></svg></span>;
+  const artwork = {
+    pickup: <><path fill="#d5a35f" d="m9 28 15-7 14 7-15 8Z"/><path fill="#bd8146" d="m9 28 14 8v17L9 45Z"/><path fill="#e4bb7d" d="m23 36 15-8v17l-15 8Z"/><path fill="#f5e3c2" d="m18 24 14 8 4-2-14-8Z"/><path fill="#355b2d" d="M34 23c-2-10 3-16 11-18-1 8-4 13-11 18Z"/><path fill="#5e7b38" d="M34 24c1-9-4-14-11-16 0 8 4 13 11 16Z"/><path d="M34 13v18"/></>,
+    courier: <><circle cx="17" cy="46" r="7" fill="#263f28"/><circle cx="47" cy="46" r="7" fill="#263f28"/><path fill="#c9a86f" d="M15 42h29l-4-17H23l-7 9Z"/><path fill="#e4c792" d="M34 16h12l6 19H39Z"/><path d="M28 25h15M42 16l-3-7h-8M8 37h10"/><path fill="#9f5c30" d="M10 24h14v11H10Z"/></>,
+    card: <><rect x="7" y="15" width="50" height="34" rx="6" fill="#e8bb72"/><rect x="7" y="20" width="50" height="8" fill="#2b332a"/><rect x="13" y="35" width="13" height="7" rx="2" fill="#f7e9cf"/><circle cx="49" cy="40" r="5" fill="#d84b2b" opacity=".85"/></>,
+    wallet: <><path fill="#d8ad72" d="M9 19h43a6 6 0 0 1 6 6v27H15a6 6 0 0 1-6-6Z"/><path fill="#f1d29e" d="m12 19 34-10 3 10Z"/><path fill="#bc7b43" d="M40 31h20v13H40a6 6 0 1 1 0-13Z"/><circle cx="45" cy="37.5" r="2.5" fill="#fff1d4"/></>,
+  } as const;
+  return <svg className={`checkout-option-icon ${name}`} viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke="#3d3a2f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{artwork[name]}</svg>;
 }
 
 /**
@@ -249,7 +258,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const deliveryIcon = (id: string) => id === "pickup" ? "plant" : id === "cdek" ? "post" : id.includes("post") ? "post" : "courier";
+  const deliveryIcon = (id: string): CheckoutIconName => id === "pickup" ? "pickup" : id === "cdek" ? "cdek" : id.includes("post") ? "post" : "courier";
 
   return (
   <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
@@ -325,7 +334,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                   checked={delivery === item.id}
                   onChange={() => setDelivery(item.id)}
                 />
-                <i className="option-icon"><LineIcon name={deliveryIcon(item.id)} /></i><span><b>{item.title}</b><small>{item.detail}</small></span>
+                <i className="option-icon"><CheckoutOptionIcon name={deliveryIcon(item.id)} /></i><span><b>{item.title}</b><small>{item.detail}</small></span>
                 <strong>
                   {item.id === "cdek"
                     ? cdekQuote
@@ -514,7 +523,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                     checked={paymentMethod === option.id}
                     onChange={() => setPaymentMethod(option.id)}
                   />
-                  <i className="option-icon"><LineIcon name={option.id === "online" ? "card" : "wallet"} /></i><span>
+                  <i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span>
                     <b>{option.title}</b>
                     <small>{option.note}</small>
                   </span>
@@ -528,11 +537,9 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             )}
           </fieldset>
         )}
-        <fieldset><legend>Комментарий</legend><label><textarea name="comment" rows={3} placeholder="Удобное время, пожелания к заказу" /></label></fieldset>
-        <div className="checkout-total"><div><span>Товары</span><span>{money(subtotal)}</span></div><div><span>Доставка</span><span>{delivery === "cdek" && !cdekOfficeCode ? "после выбора ПВЗ" : cdekFeePending ? "рассчитает менеджер" : money(deliveryFee)}</span></div><div className="total"><strong>Итого</strong><strong>{cdekFeePending && cdekOfficeCode ? `${money(total)} + доставка` : money(total)}</strong></div>{cdekFeePending && cdekOfficeCode && <p className="cdek-status">Оплата после подтверждения заказа менеджером.</p>}</div>
         {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
         <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
-        <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : paymentMethod === "online" && !cdekFeePending && paymentMethods.length ? "Перейти к оплате →" : "Подтвердить заказ →"}</button></div>
+        <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
         </div>
       </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div><img src="/assets/redesign/checkout-summary-art.png" alt="" /></aside></div>
     )}

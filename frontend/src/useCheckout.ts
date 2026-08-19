@@ -27,10 +27,10 @@ type CdekQuote = {
 };
 
 const deliveryOptions = [
-  { id: "pickup", title: "Самовывоз в Рязани", detail: "из магазина, бесплатно", fee: 0 },
-  { id: "courier", title: "Курьер по Рязани", detail: "в согласованный день", fee: 490 },
-  { id: "cdek", title: "СДЭК по России", detail: "до выбранного пункта выдачи", fee: null },
-  { id: "post", title: "Почта России", detail: "для населённых пунктов без СДЭК", fee: 590 },
+  { id: "pickup", title: "Самовывоз в Рязани", detail: "Бесплатно", fee: 0 },
+  { id: "courier", title: "Курьер по Рязани", detail: "от 250 ₽", fee: 250 },
+  { id: "cdek", title: "СДЭК по России", detail: "от 350 ₽", fee: null },
+  { id: "post", title: "Почта России", detail: "от 350 ₽", fee: 350 },
 ];
 
 type UseCheckoutArgs = {
