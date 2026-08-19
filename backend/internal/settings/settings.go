@@ -217,6 +217,17 @@ func DefaultNumber(key string) int {
 	return value
 }
 
+// NonNegative — правило для цены: отрицательного счёта за доставку не
+// бывает. Живёт здесь, а не в двух местах: цену доставки читают и витрина,
+// и оформление заказа, и разойтись они не должны — покупатель увидит одно
+// число, а заплатит другое.
+func NonNegative(value int) int {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
 // All returns every setting with its current value, for the panel.
 func (service *Service) All() map[string]string {
 	values := make(map[string]string, len(Definitions))
