@@ -261,7 +261,7 @@ export function StoreHeader({
   }, []);
 
   const cartLabel = `Корзина, товаров: ${cart}`;
-  return <><div className="announcement"><span>Бережно упакуем каждое растение</span><span>Доставка по Рязани и всей России</span></div>
+  return <><div className="announcement" hidden />
     <header className="header" ref={headerRef}>
       <button
         className="menu-button"

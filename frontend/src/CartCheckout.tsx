@@ -55,7 +55,6 @@ export function CartDrawer({
   onCheckout,
   page = false,
 }: CartDrawerProps) {
-  const itemCount = lines.reduce((sum, item) => sum + item.quantity, 0);
   const lineCards = lines.map((item) => (
     <div className="cart-line" key={item.id}>
       <img src={item.image} alt="" />
@@ -102,10 +101,9 @@ export function CartDrawer({
       </section>
       {!!lines.length && (
         <aside className="cart-summary">
-          <h3>Ваш заказ</h3>
-          <dl><div><dt>Итого товаров</dt><dd>{itemCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{page ? "от 250 ₽" : "при оформлении"}</dd></div></dl>
+          <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{page ? "от 250 ₽" : "при оформлении"}</dd></div></dl>
           <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal + (page ? 250 : 0))}</strong></div>
-          <div className="cart-bonus">Будет начислено бонусов <b>+{Math.max(1, Math.floor((subtotal + (page ? 250 : 0)) / 100))}</b></div>
+          {!page && <div className="cart-bonus" hidden />}
           {!page && <button className="primary-button" onClick={onCheckout}>
             Оформить заказ <span>→</span>
           </button>}
