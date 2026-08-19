@@ -72,6 +72,7 @@ export function ProcurementSettingsPanel({ settings, onSaved, onError }: { setti
       <PercentField label="Налог" value={draft.taxRate} onChange={(value) => setDraft({ ...draft, taxRate: value })} />
       <PercentField label="Резерв" value={draft.reserveRate} onChange={(value) => setDraft({ ...draft, reserveRate: value })} />
       <label>Упаковка, ₽<input type="number" value={draft.packageRub} onChange={(event) => number("packageRub", event.target.value)} /></label>
+      <label>Логистика маркетплейса, ₽ за см высоты<input type="number" step="0.5" min="0" value={draft.marketplaceLogisticsPerCm} onChange={(event) => number("marketplaceLogisticsPerCm", event.target.value)} /></label>
       <PercentField label="Менять цену при отклонении более" value={draft.priceChangeThreshold} onChange={(value) => setDraft({ ...draft, priceChangeThreshold: value })} />
       <PercentField label="Наценка на закупочную стоимость" value={draft.retailMarkupMultiplier - 1} onChange={(value) => setDraft({ ...draft, retailMarkupMultiplier: 1 + value })} />
       <PercentField label="Цена МП без скидки" value={draft.marketplaceStrikeMarkup} onChange={(value) => setDraft({ ...draft, marketplaceStrikeMarkup: value })} />

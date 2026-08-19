@@ -18,7 +18,7 @@ func TestAllocatedLineUsesReconciledLogisticsWithoutCurrencyConversion(t *testin
 	settings := PricingSettings{
 		RetailMarkupMultiplier: 2,
 	}
-	result := calculateAllocatedLine(settings, KindInternational, 10, 100, 250, 50)
+	result := calculateAllocatedLine(settings, KindInternational, 10, 100, 250, 50, 0)
 	if result.PurchaseUnitRUB != 1000 || result.TrolleyDeliveryUnitRUB != 250 || result.RyazanDeliveryUnitRUB != 50 || result.UnitCostRUB != 1300 {
 		t.Fatalf("allocated calculation = %#v", result)
 	}
@@ -45,7 +45,7 @@ func TestMarketplacePriceAddsPackagingAndRates(t *testing.T) {
 		ReserveRate:             0.25,
 		MarketplaceStrikeMarkup: 0.5,
 	}
-	result := calculateAllocatedLine(settings, KindDomestic, 500, 1, 0, 0)
+	result := calculateAllocatedLine(settings, KindDomestic, 500, 1, 0, 0, 0)
 
 	if result.ProposedRetailRUB != 1000 {
 		t.Fatalf("розница = %d, ожидали 1000", result.ProposedRetailRUB)
@@ -60,6 +60,60 @@ func TestMarketplacePriceAddsPackagingAndRates(t *testing.T) {
 	}
 }
 
+// Слагаемое «логистика площадки» потерялось при переносе формулы из книги
+// «04.08.26.xlsx»: там столбец Y считал её как высоту растения, умноженную
+// на десять рублей. Магазин из-за этого продавал на WB и Ozon дешевле
+// собственного расчёта — на 552 ₽ для тридцатисантиметрового растения.
+func TestMarketplacePriceIncludesHeightLogistics(t *testing.T) {
+	settings := PricingSettings{
+		RetailMarkupMultiplier:    2,
+		PackageRUB:                150,
+		ReturnLossRate:            0.25,
+		MarketplaceCostRate:       0.5,
+		ReserveRate:               0.25,
+		MarketplaceLogisticsPerCM: 10,
+	}
+	// Розница 1000, упаковка 150, логистика 30 см × 10 ₽ = 300.
+	result := calculateAllocatedLine(settings, KindDomestic, 500, 1, 0, 0, 30)
+	if result.ProposedMarketplaceRUB != 2900 {
+		t.Fatalf("цена маркетплейса = %d, ожидали 2900", result.ProposedMarketplaceRUB)
+	}
+	// Розница логистику площадки не видит: в магазине растение отдают в руки.
+	if result.ProposedRetailRUB != 1000 {
+		t.Fatalf("розница = %d, ожидали 1000", result.ProposedRetailRUB)
+	}
+}
+
+// У растения без замеров высоты слагаемого просто нет: придумывать за
+// поставщика габариты хуже, чем посчитать без них.
+func TestUnknownHeightAddsNoLogistics(t *testing.T) {
+	settings := PricingSettings{
+		RetailMarkupMultiplier:    2,
+		PackageRUB:                150,
+		ReturnLossRate:            0.25,
+		MarketplaceCostRate:       0.5,
+		ReserveRate:               0.25,
+		MarketplaceLogisticsPerCM: 10,
+	}
+	result := calculateAllocatedLine(settings, KindDomestic, 500, 1, 0, 0, 0)
+	if result.ProposedMarketplaceRUB != 2300 {
+		t.Fatalf("цена маркетплейса = %d, ожидали 2300", result.ProposedMarketplaceRUB)
+	}
+}
+
+// Нулевая ставка выключает слагаемое и возвращает прежнее поведение —
+// это способ откатиться, не выкатывая код.
+func TestZeroLogisticsRateDisablesTheTerm(t *testing.T) {
+	settings := PricingSettings{
+		RetailMarkupMultiplier: 2, PackageRUB: 150,
+		ReturnLossRate: 0.25, MarketplaceCostRate: 0.5, ReserveRate: 0.25,
+	}
+	result := calculateAllocatedLine(settings, KindDomestic, 500, 1, 0, 0, 30)
+	if result.ProposedMarketplaceRUB != 2300 {
+		t.Fatalf("цена маркетплейса = %d, ожидали 2300", result.ProposedMarketplaceRUB)
+	}
+}
+
 // Упаковка входит в цену маркетплейса и не входит в розницу: в магазине
 // растение отдают в руки, на площадке его нужно упаковать и отправить.
 func TestPackagingOnlyAffectsMarketplacePrice(t *testing.T) {
@@ -67,8 +121,8 @@ func TestPackagingOnlyAffectsMarketplacePrice(t *testing.T) {
 	withPackage := base
 	withPackage.PackageRUB = 300
 
-	plain := calculateAllocatedLine(base, KindDomestic, 500, 1, 0, 0)
-	packed := calculateAllocatedLine(withPackage, KindDomestic, 500, 1, 0, 0)
+	plain := calculateAllocatedLine(base, KindDomestic, 500, 1, 0, 0, 0)
+	packed := calculateAllocatedLine(withPackage, KindDomestic, 500, 1, 0, 0, 0)
 
 	if plain.ProposedRetailRUB != packed.ProposedRetailRUB {
 		t.Fatalf("упаковка изменила розницу: %d против %d",

@@ -73,6 +73,10 @@ type PricingSettings struct {
 	TargetCoverDays               int     `json:"targetCoverDays"`
 	RetailMarkupMultiplier        float64 `json:"retailMarkupMultiplier"`
 	RoundPrices                   bool    `json:"roundPrices"`
+	// MarketplaceLogisticsPerCM — сколько рублей за сантиметр высоты
+	// растения площадка берёт за доставку. В исходной книге это был
+	// столбец «Логистика» = высота × 10.
+	MarketplaceLogisticsPerCM float64 `json:"marketplaceLogisticsPerCm"`
 }
 
 type Supplier struct {
