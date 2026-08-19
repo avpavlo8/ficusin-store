@@ -467,17 +467,14 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 // Раньше 490 и 590 были вписаны прямо здесь, и поменять их можно было
 // только выкладкой. Ноль — законное значение: владелец вправе возить
 // бесплатно, поэтому умолчание подставляется только когда настроек нет
-// вовсе, а не когда цена оказалась нулевой. Отрицательная цена — опечатка,
-// и доставка, уменьшающая счёт, магазину не нужна.
+// вовсе, а не когда цена оказалась нулевой. Правило про отрицательную цену
+// живёт в settings — его же читает витрина, и разойтись они не должны.
 func (service *Service) deliveryFee(key string) float64 {
 	value := settings.DefaultNumber(key)
 	if service.settings != nil {
 		value = service.settings.Number(key)
 	}
-	if value < 0 {
-		return 0
-	}
-	return float64(value)
+	return float64(settings.NonNegative(value))
 }
 
 // reserveStock holds what it can and reports what it could not.
