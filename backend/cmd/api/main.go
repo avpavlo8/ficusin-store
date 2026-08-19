@@ -150,6 +150,9 @@ func main() {
 	// полку, автоотмена обязана закрыть платёж у провайдера, иначе деньги
 	// придут за заказ, которого уже нет.
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
+	// Кабинет обещает покупателю, что скидка растёт после выполненных
+	// заказов. Вот то, что выполняет обещание.
+	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
 	// Parcels are handed to CDEK only when the panel switch is on, so test
 	// orders do not turn into real shipments.
 	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
