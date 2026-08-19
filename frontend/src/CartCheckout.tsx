@@ -102,7 +102,7 @@ export function CartDrawer({
       {!!lines.length && (
         <aside className="cart-summary">
           <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{page ? "от 250 ₽" : "при оформлении"}</dd></div></dl>
-          <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal + (page ? 250 : 0))}</strong></div>
+          <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal)}</strong></div>
           {!page && <div className="cart-bonus" hidden />}
           {!page && <button className="primary-button" onClick={onCheckout}>
             Оформить заказ <span>→</span>
@@ -265,8 +265,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
         <fieldset data-checkout-step="1" hidden={step!==1}>
           <legend>Контактные данные</legend>
           {user && <p className="profile-prefill">Данные заполнены из личного кабинета</p>}
-          <div className="field-grid">
-            <label>
+          <div className="checkout-contact-fields">
+            <label className="checkout-contact-name">
               Имя
               <input
                 name="name"
@@ -279,7 +279,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                 }
               />
             </label>
-            <label>
+            <div className="checkout-contact-row"><label>
               Телефон
               <input
                 name="phone"
@@ -295,23 +295,23 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                   setCheckoutProfile((current) => ({ ...current, phone: value }));
                 }}
               />
-            </label>
+            </label><label>
+              Email для чека
+              <input
+                name="email"
+                required
+                type="email"
+                autoComplete="email"
+                placeholder="mail@example.ru"
+                value={checkoutProfile.email}
+                onChange={(event) =>
+                  setCheckoutProfile((current) => ({ ...current, email: event.target.value }))
+                }
+              />
+            </label></div>
           </div>
-          <label>
-            Email для чека
-            <input
-              name="email"
-              required
-              type="email"
-              autoComplete="email"
-              placeholder="mail@example.ru"
-              value={checkoutProfile.email}
-              onChange={(event) =>
-                setCheckoutProfile((current) => ({ ...current, email: event.target.value }))
-              }
-            />
-          </label>
-          <div className="checkout-navigation"><a href="/cart">← Вернуться в корзину</a><button type="button" className="primary-button" onClick={() => advance(2)}>Продолжить →</button></div>
+          <label className="checkout-care-optin"><input type="checkbox" defaultChecked /><span>Хочу получать полезные советы по уходу за растениями</span></label>
+          <div className="checkout-navigation"><a href="/cart">← Назад</a><button type="button" className="primary-button" onClick={() => advance(2)}>Продолжить <span>→</span></button></div>
         </fieldset>
         <fieldset data-checkout-step="2" hidden={step!==2}>
           <legend>Способ доставки</legend>

@@ -45,3 +45,25 @@
 .cart-page-actions .primary-button{width:clamp(190px,32%,250px);min-width:0;max-width:100%;padding:0 15px;flex:0 1 250px;overflow:hidden;white-space:nowrap}
 .cart-page-panel .cart-summary .cart-summary-checkout{width:48%;min-width:0;min-height:54px;margin-top:28px;padding:0 14px;position:relative;z-index:2;display:flex;justify-content:center;gap:10px;white-space:nowrap;font-size:14px}
 @media(max-width:700px){.cart-page-actions{align-items:stretch;flex-direction:column}.cart-page-actions>a,.cart-page-actions .primary-button{width:100%;max-width:none;flex:none;justify-content:center}.cart-page-panel .cart-summary .cart-summary-checkout{width:100%;margin-top:22px}}
+
+/* Checkout step 1 follows the approved cart composition: quiet form on the
+   left, one integrated plant collage around the totals on the right. */
+.checkout-page-panel>.drawer-head .eyebrow,.checkout-page-panel>.drawer-head>a{display:none}
+.checkout-page-panel>.drawer-head h2:after{content:"";width:285px;height:8px;display:block;margin-top:8px;border-top:2px solid var(--co-green);border-radius:50%;transform:rotate(-1deg)}
+.checkout-page-panel .checkout-layout{grid-template-columns:minmax(0,1.75fr) minmax(470px,.82fr)}
+.checkout-page-panel form{padding:0;overflow:hidden;background:rgba(255,250,243,.54)}
+.checkout-page-panel .checkout-steps{margin:0;padding:30px 34px;border-bottom:1px solid var(--co-line)}
+.checkout-page-panel [data-checkout-step="1"]{min-height:430px;padding:34px;border:0;border-radius:0;background:transparent}
+.checkout-page-panel [data-checkout-step="1"] legend{padding:0;color:var(--co-ink);font:600 24px/1.2 Arial,sans-serif}
+.checkout-contact-fields{max-width:720px;margin-top:20px;display:grid;gap:20px}
+.checkout-contact-fields label{display:grid;gap:8px}
+.checkout-contact-row{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.checkout-care-optin{margin-top:28px;display:flex!important;align-items:center;gap:12px;font-size:13px!important}
+.checkout-care-optin input{width:24px!important;min-width:24px!important;height:24px!important;min-height:24px!important;margin:0;accent-color:var(--co-orange)}
+.checkout-page-panel [data-checkout-step="1"] .checkout-navigation{margin:38px -34px -34px;padding:22px 34px;border-top:1px solid var(--co-line);background:rgba(255,255,255,.18)}
+.checkout-page-panel [data-checkout-step="1"] .checkout-navigation>a{min-width:190px;min-height:54px;padding:0 24px;display:inline-flex;align-items:center;border-radius:10px;background:#f2e7d7;color:var(--co-ink);text-decoration:none}
+.checkout-page-panel [data-checkout-step="1"] .checkout-navigation .primary-button{min-width:330px;display:flex;align-items:center;justify-content:center;gap:32px}
+.checkout-order-summary{height:510px;padding:42px 28px;align-self:start;background-color:#faf3e8;background-image:url('/assets/redesign/checkout-summary-art-alpha.webp');background-repeat:no-repeat;background-position:calc(100% + 65px) calc(100% + 28px);background-size:auto 86%}
+.checkout-order-summary h3{display:none}.checkout-order-summary dl,.checkout-order-summary>div{width:48%;position:relative;z-index:2}.checkout-order-summary img{display:none}
+@media(max-width:1100px){.checkout-page-panel .checkout-layout{grid-template-columns:1fr}.checkout-order-summary{min-height:410px;background-position:calc(100% + 35px) calc(100% + 20px);background-size:auto 88%}.checkout-order-summary dl,.checkout-order-summary>div{width:52%}}
+@media(max-width:700px){.checkout-page-panel .checkout-steps{padding:22px 18px}.checkout-page-panel [data-checkout-step="1"]{padding:24px 18px}.checkout-contact-row{grid-template-columns:1fr}.checkout-page-panel [data-checkout-step="1"] .checkout-navigation{margin:30px -18px -24px;padding:18px}.checkout-page-panel [data-checkout-step="1"] .checkout-navigation>a,.checkout-page-panel [data-checkout-step="1"] .checkout-navigation .primary-button{width:100%;min-width:0;justify-content:center}.checkout-order-summary{height:430px;padding:28px 20px;background-position:calc(100% + 34px) calc(100% + 22px);background-size:auto 68%}.checkout-order-summary dl,.checkout-order-summary>div{width:100%}}
