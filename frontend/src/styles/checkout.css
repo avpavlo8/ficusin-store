@@ -38,3 +38,10 @@
   .cart-page-panel .cart-summary{height:440px;padding:28px 20px;background-position:calc(100% + 34px) calc(100% + 22px);background-size:auto 68%}
   .cart-page-panel .cart-summary dl,.cart-page-panel .cart-summary-total{width:100%}
 }
+
+/* Both checkout actions stay inside their cards at every browser zoom. */
+.cart-page-actions{width:100%;min-width:0;box-sizing:border-box;position:relative;z-index:3}
+.cart-page-actions>a{min-width:0;flex:0 1 auto;white-space:nowrap}
+.cart-page-actions .primary-button{width:clamp(190px,32%,250px);min-width:0;max-width:100%;padding:0 15px;flex:0 1 250px;overflow:hidden;white-space:nowrap}
+.cart-page-panel .cart-summary .cart-summary-checkout{width:48%;min-width:0;min-height:54px;margin-top:28px;padding:0 14px;position:relative;z-index:2;display:flex;justify-content:center;gap:10px;white-space:nowrap;font-size:14px}
+@media(max-width:700px){.cart-page-actions{align-items:stretch;flex-direction:column}.cart-page-actions>a,.cart-page-actions .primary-button{width:100%;max-width:none;flex:none;justify-content:center}.cart-page-panel .cart-summary .cart-summary-checkout{width:100%;margin-top:22px}}
