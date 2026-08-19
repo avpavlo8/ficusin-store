@@ -75,7 +75,7 @@ export type ProcurementSettings = {
   reserveRate: number; packageRub: number; priceChangeThreshold: number; domesticRetailMultiplier: number;
   internationalCostMultiplier: number; internationalRetailMultiplier: number; marketplaceStrikeMarkup: number;
   retailRoundStep: number; avoidRoundHundreds: boolean; recommendationDays: number; targetCoverDays: number;
-  retailMarkupMultiplier: number; roundPrices: boolean;
+  retailMarkupMultiplier: number; roundPrices: boolean; marketplaceLogisticsPerCm: number;
 };
 
 export type ProcurementAlias = {
