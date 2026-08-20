@@ -15,9 +15,6 @@ const russianPostAPIBaseURL = "https://otpravka-api.pochta.ru"
 
 var ErrRussianPostAddress = errors.New("russian post address is not recognized")
 
-// DeliveryQuote is the provider-neutral price shown at checkout. Price is in
-// roubles, while delivery times are whole calendar days when the provider
-// supplies them.
 type DeliveryQuote struct {
 	Price    float64 `json:"price"`
 	DaysMin  int     `json:"daysMin,omitempty"`
@@ -25,9 +22,6 @@ type DeliveryQuote struct {
 	Service  string  `json:"service,omitempty"`
 }
 
-// RussianPostClient uses the contract API "Отправка". The application token
-// and user authorization key are deliberately kept in the environment: they
-// must never be persisted in shop settings or sent to the browser.
 type RussianPostClient struct {
 	accessToken string
 	userAuthKey string
@@ -65,10 +59,10 @@ type russianPostTariffResponse struct {
 	} `json:"delivery-time"`
 }
 
-// Calculate quotes a normal domestic parcel to the customer's address. The
-// address is normalized by Russian Post first, so a typo cannot silently turn
-// into a quote for another postcode. Dimensions are sent in millimetres as
-// required by the Отправка API; our catalog stores centimetres.
+// Calculate returns an empty successful quote when the carrier cannot
+// normalize the customer's address. That is not a reason to lose the order:
+// callers treat Price=0 as "manager must price delivery" and block payment
+// until it is resolved. Transport/API failures remain real errors.
 func (client *RussianPostClient) Calculate(ctx context.Context, address string, parcel Parcel) (DeliveryQuote, error) {
 	if !client.Configured() {
 		return DeliveryQuote{}, errors.New("russian post is not configured")
@@ -78,15 +72,18 @@ func (client *RussianPostClient) Calculate(ctx context.Context, address string, 
 	}
 	address = strings.TrimSpace(address)
 	if address == "" {
-		return DeliveryQuote{}, ErrRussianPostAddress
+		return DeliveryQuote{}, nil
 	}
 
 	cleaned, err := client.normalizeAddress(ctx, address)
+	if errors.Is(err, ErrRussianPostAddress) {
+		return DeliveryQuote{}, nil
+	}
 	if err != nil {
 		return DeliveryQuote{}, err
 	}
 	if len(cleaned.Index) != 6 || cleaned.QualityCode == "UNDEF_05" {
-		return DeliveryQuote{}, ErrRussianPostAddress
+		return DeliveryQuote{}, nil
 	}
 
 	requestBody := map[string]any{
@@ -110,8 +107,6 @@ func (client *RussianPostClient) Calculate(ctx context.Context, address string, 
 		return DeliveryQuote{}, errors.New("russian post returned an empty tariff")
 	}
 	return DeliveryQuote{
-		// Отправка returns the contract rate and VAT separately. The customer
-		// must see the final amount that will actually be charged.
 		Price:   float64(tariff.TotalRate+tariff.TotalVAT) / 100,
 		DaysMin: tariff.Delivery.MinDays,
 		DaysMax: tariff.Delivery.MaxDays,
