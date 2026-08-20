@@ -18,6 +18,8 @@ type Config struct {
 	YandexSuggestKey string
 	AdminEmails      []string
 	CDEK             CDEK
+	RussianPost      RussianPost
+	YandexDelivery   YandexDelivery
 	Push             Push
 	Payments         Payments
 	SiteURL          string
@@ -91,6 +93,25 @@ type CDEK struct {
 	ClientSecret string
 }
 
+// RussianPost is the contract API "Отправка". UserAuthKey is the value that
+// goes after "Basic" in X-User-Authorization; it is not returned to clients.
+type RussianPost struct {
+	AccessToken string
+	UserAuthKey string
+	FromIndex   string
+}
+
+// YandexDelivery holds the corporate Yandex Delivery token plus the sender
+// point. The Delivery API requires coordinates for both ends of the route,
+// therefore a Geocoder API key is separate from the existing Geosuggest key.
+type YandexDelivery struct {
+	Token           string
+	GeocoderKey     string
+	SenderAddress   string
+	SenderLongitude float64
+	SenderLatitude  float64
+}
+
 // Push holds the VAPID key pair that identifies this shop to the browsers'
 // push services. Empty keys simply turn notifications off; nothing else
 // breaks.
@@ -162,6 +183,18 @@ func Load() (Config, error) {
 		CDEK: CDEK{
 			ClientID:     strings.TrimSpace(os.Getenv("CDEK_CLIENT_ID")),
 			ClientSecret: strings.TrimSpace(os.Getenv("CDEK_CLIENT_SECRET")),
+		},
+		RussianPost: RussianPost{
+			AccessToken: strings.TrimSpace(os.Getenv("RUSSIAN_POST_ACCESS_TOKEN")),
+			UserAuthKey: strings.TrimSpace(os.Getenv("RUSSIAN_POST_USER_AUTH_KEY")),
+			FromIndex:   strings.TrimSpace(os.Getenv("RUSSIAN_POST_FROM_INDEX")),
+		},
+		YandexDelivery: YandexDelivery{
+			Token:           strings.TrimSpace(os.Getenv("YANDEX_DELIVERY_TOKEN")),
+			GeocoderKey:     strings.TrimSpace(os.Getenv("YANDEX_GEOCODER_API_KEY")),
+			SenderAddress:   strings.TrimSpace(os.Getenv("YANDEX_DELIVERY_SENDER_ADDRESS")),
+			SenderLongitude: float64FromEnv("YANDEX_DELIVERY_SENDER_LONGITUDE", 0),
+			SenderLatitude:  float64FromEnv("YANDEX_DELIVERY_SENDER_LATITUDE", 0),
 		},
 		SiteURL: defaultString(os.Getenv("SITE_URL"), "https://ficusin.ru"),
 		Mail: Mail{
@@ -279,6 +312,14 @@ func intFromEnv(name string, fallback int) int {
 func int64FromEnv(name string, fallback int64) int64 {
 	value, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(name)), 10, 64)
 	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func float64FromEnv(name string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(name)), 64)
+	if err != nil {
 		return fallback
 	}
 	return value
