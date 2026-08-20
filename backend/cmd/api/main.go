@@ -68,15 +68,26 @@ func main() {
 	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
 	orderRepository := order.NewPostgresRepository(pool)
 	cdekClient := integration.NewCDEKClient(cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
+	russianPostClient := integration.NewRussianPostClient(
+		cfg.RussianPost.AccessToken,
+		cfg.RussianPost.UserAuthKey,
+		cfg.RussianPost.FromIndex,
+	)
+	yandexDeliveryClient := integration.NewYandexDeliveryClient(
+		cfg.YandexDelivery.Token,
+		cfg.YandexDelivery.GeocoderKey,
+		cfg.YandexDelivery.SenderAddress,
+		cfg.YandexDelivery.SenderLongitude,
+		cfg.YandexDelivery.SenderLatitude,
+	)
 	telegramClient, err := integration.NewTelegramClient(cfg.TelegramChatID, cfg.TelegramBotToken)
 	if err != nil {
 		logger.Error("Telegram configuration failed", "error", err)
 		os.Exit(1)
 	}
-	// Настройки читает и оформление заказа: цена простой доставки живёт в
-	// панели, а не в коде.
 	shopSettings := settings.NewService(pool, logger)
-	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger)
+	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger).
+		WithDeliveryPricers(russianPostClient, yandexDeliveryClient)
 	notificationWorker := order.NewNotificationWorker(pool, telegramClient, logger)
 	pushService, err := notify.NewService(
 		pool, cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Subject, logger,
@@ -91,9 +102,13 @@ func main() {
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
+	if !russianPostClient.Configured() {
+		logger.Warn("Russian Post delivery is off; set RUSSIAN_POST_ACCESS_TOKEN, RUSSIAN_POST_USER_AUTH_KEY and RUSSIAN_POST_FROM_INDEX")
+	}
+	if !yandexDeliveryClient.Configured() {
+		logger.Warn("Yandex Delivery is off; set YANDEX_DELIVERY_TOKEN, YANDEX_GEOCODER_API_KEY and sender point coordinates")
+	}
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
-	// Payments stay nil-safe: without YooKassa keys the shop simply does not
-	// offer card payment, exactly like CDEK without its own keys.
 	paymentService := payment.NewService(
 		pool,
 		integration.NewYooKassaClient(
@@ -120,25 +135,26 @@ func main() {
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
 		Handler: httpapi.NewRouter(logger, httpapi.Dependencies{
-			Catalog:      catalogRepository,
-			Auth:         authService,
-			Orders:       orderRepository,
-			OrderCreator: orderService,
-			CDEK:         cdekClient,
-			Admin:        adminRepository,
-			Saby:         sabyService,
-			Push:         pushService,
-			Cart:         cart.NewStore(pool),
-			Packages:     catalogRepository,
-			Collections:  catalogRepository,
-			Payments:     paymentService,
-			Settings:     shopSettings,
-			Procurement:  procurementService,
-			Reviews:      reviews.NewStore(pool, photoStorage),
-			Refunds:      paymentService,
-			CookieSecure: cfg.Auth.CookieSecure,
-			StaticDir:    cfg.HTTP.StaticDir,
-
+			Catalog:        catalogRepository,
+			Auth:           authService,
+			Orders:         orderRepository,
+			OrderCreator:   orderService,
+			CDEK:           cdekClient,
+			RussianPost:    russianPostClient,
+			YandexDelivery: yandexDeliveryClient,
+			Admin:          adminRepository,
+			Saby:           sabyService,
+			Push:           pushService,
+			Cart:           cart.NewStore(pool),
+			Packages:       catalogRepository,
+			Collections:    catalogRepository,
+			Payments:       paymentService,
+			Settings:       shopSettings,
+			Procurement:    procurementService,
+			Reviews:        reviews.NewStore(pool, photoStorage),
+			Refunds:        paymentService,
+			CookieSecure:   cfg.Auth.CookieSecure,
+			StaticDir:      cfg.HTTP.StaticDir,
 			YandexSuggestKey: cfg.YandexSuggestKey,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -147,19 +163,9 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	go shopSettings.Run(ctx)
-	// An unpaid order holds its plants in reserve; this puts them back.
-	// Платёжный сервис здесь не для красоты: прежде чем вернуть товар на
-	// полку, автоотмена обязана закрыть платёж у провайдера, иначе деньги
-	// придут за заказ, которого уже нет.
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
-	// Кабинет обещает покупателю, что скидка растёт после выполненных
-	// заказов. Вот то, что выполняет обещание.
 	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
-	// Parcels are handed to CDEK only when the panel switch is on, so test
-	// orders do not turn into real shipments.
 	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
-	// Letters go out from a queue: a slow mail server must never hold up an
-	// order or a status change.
 	go order.NewLetterWorker(pool, mail.NewSender(mail.Config{
 		Host:     cfg.Mail.Host,
 		Port:     cfg.Mail.Port,
@@ -168,10 +174,6 @@ func main() {
 		From:     cfg.Mail.From,
 		FromName: cfg.Mail.FromName,
 	}, logger), logger).Run(ctx)
-	// Снимки товаров приходят от поставщика оригиналами по три тысячи
-	// пикселей. Фоновый перенос кладёт свои копии поменьше в наше хранилище:
-	// покупатель с телефона перестаёт ждать, а витрина — зависеть от чужого
-	// сервера. Без ключей перенос просто не запускается.
 	if photoStorage.Configured() {
 		go photos.NewMirror(photos.NewPostgresStore(pool), photoStorage, logger).Run(ctx)
 	} else {
@@ -179,12 +181,7 @@ func main() {
 	}
 	go notificationWorker.Run(ctx)
 	go procurement.NewActionWorker(procurementStore, procurementExecutor, logger).Run(ctx)
-	// Продажи сайта пересчитываются из своей базы, WB и Ozon забираются из
-	// seller API. СБИС присылает офлайн-продажи тем же защищённым заданием,
-	// которое раз в шесть часов обновляет каталог и остатки.
 	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
-	// The safety net under YooKassa's notifications: a lost one would
-	// otherwise leave a paid order looking unpaid.
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
 
 	go func() {

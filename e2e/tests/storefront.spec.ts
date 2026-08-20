@@ -322,12 +322,16 @@ test("@desktop оформление отправляет заказ с норм�
 });
 
 for (const delivery of [
-  { id: "courier", label: "Курьер по Рязани", address: "Рязань, Почтовая, 1" },
-  { id: "post", label: "Почта России", address: "390000, Рязань, Почтовая, 1" },
+  { id: "courier", label: "Курьер по Рязани", address: "Рязань, Почтовая, 1", price: 430, service: "Яндекс Доставка · Курьер" },
+  { id: "post", label: "Почта России", address: "390000, Рязань, Почтовая, 1", price: 615, service: "Почта России" },
 ]) {
   test(`@desktop ${delivery.label}: адрес и оплата после подтверждения сохраняются`, async ({ page }) => {
     await mockApi(page);
     let order: Record<string, unknown> | undefined;
+    await page.route("**/api/v1/delivery/providers", (route) =>
+      route.fulfill({ json: { courier: true, post: true } }));
+    await page.route(`**/api/v1/delivery/${delivery.id}`, (route) =>
+      route.fulfill({ json: { quote: { price: delivery.price, service: delivery.service } } }));
     await page.route("**/api/v1/orders", async (route) => {
       order = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({ json: { orderNumber: "TEST-CHECKOUT-1" } });
@@ -345,6 +349,8 @@ for (const delivery of [
     await checkout.getByRole("button", { name: /Продолжить/ }).click();
     await checkout.locator(`input[name="delivery"][value="${delivery.id}"]`).check();
     await checkout.getByLabel("Адрес доставки").fill(delivery.address);
+    await checkout.getByRole("button", { name: "Рассчитать доставку" }).click();
+    await expect(checkout.locator(".cdek-quote > b")).toHaveText(`${delivery.price} ₽`);
     await checkout.getByRole("button", { name: /Продолжить/ }).click();
     await expect(checkout.getByText("Оплата после подтверждения заказа менеджером")).toBeVisible();
     await checkout.locator('input[name="consent"]').check();

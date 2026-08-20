@@ -79,11 +79,8 @@ test("@phone mobile autocomplete поддерживает тап и Search actio
   // Touch keyboards have no arrow keys. Physical-keyboard navigation is
   // covered by the desktop scenario; the phone path verifies the real tap.
   if (browserName === "webkit") {
-    // WebKit's iPhone emulation exposes the virtual Search action, not a
-    // physical ArrowDown. It submits the query; the result opens from there.
+    // iOS Search/Enter accepts the first visible autocomplete product.
     await search.press("Enter");
-    await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
-    return;
   } else {
     await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
   }

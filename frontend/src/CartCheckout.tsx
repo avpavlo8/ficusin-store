@@ -50,11 +50,6 @@ function CheckoutOptionIcon({ name }: { name: CheckoutIconName }) {
   return <svg className={`checkout-option-icon ${name}`} viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke="#3d3a2f" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{artwork[name]}</svg>;
 }
 
-/**
- * The storefront owns the basket state; this component owns only its panel.
- * Keeping that boundary explicit prevents the product grid and checkout from
- * quietly growing back into one page-sized component.
- */
 export function CartDrawer({
   open,
   lines,
@@ -97,60 +92,42 @@ export function CartDrawer({
   return (
     <aside className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`} aria-hidden={!open}>
       <div className="drawer-head">
-        <div>
-          <p className="eyebrow">Ваш выбор</p>
-          <h2>Корзина</h2>
-        </div>
+        <div><p className="eyebrow">Ваш выбор</p><h2>Корзина</h2></div>
         <button onClick={onClose} aria-label="Закрыть корзину"><LineIcon name="close" /></button>
       </div>
       <div className="cart-content">
-      <section className="cart-table">
-        {page && !!lines.length && <div className="cart-table-head"><span>Товар</span><span>Цена</span><span>Количество</span><span>Сумма</span><i /></div>}
-        <div className="cart-lines">
-        {lineCards}
-        {!lines.length && (
-          <div className="empty-cart">
-            <span>⌁</span>
-            <h3>Корзина пока пуста</h3>
-            <p>Добавьте растения из каталога — они появятся здесь.</p>
-            <button onClick={onClose}>Перейти в каталог</button>
+        <section className="cart-table">
+          {page && !!lines.length && <div className="cart-table-head"><span>Товар</span><span>Цена</span><span>Количество</span><span>Сумма</span><i /></div>}
+          <div className="cart-lines">
+            {lineCards}
+            {!lines.length && (
+              <div className="empty-cart">
+                <span>⌁</span><h3>Корзина пока пуста</h3>
+                <p>Добавьте растения из каталога — они появятся здесь.</p>
+                <button onClick={onClose}>Перейти в каталог</button>
+              </div>
+            )}
           </div>
+          {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button ref={checkoutActionRef} className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
+        </section>
+        {!!lines.length && (
+          <aside className="cart-summary">
+            <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>при оформлении</dd></div></dl>
+            <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal)}</strong></div>
+            {!page && <div className="cart-bonus" hidden />}
+            {!page && <button className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
+            {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" aria-label="Перейти к оформлению" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
+            {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
+          </aside>
         )}
-        </div>
-        {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button ref={checkoutActionRef} className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
-      </section>
-      {!!lines.length && (
-        <aside className="cart-summary">
-          <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{page ? "от 250 ₽" : "при оформлении"}</dd></div></dl>
-          <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal)}</strong></div>
-          {!page && <div className="cart-bonus" hidden />}
-          {!page && <button className="primary-button" onClick={onCheckout}>
-            Оформить заказ <span>→</span>
-          </button>}
-          {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" aria-label="Перейти к оформлению" onClick={onCheckout}>
-            Оформить заказ <span>→</span>
-          </button>}
-          {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
-        </aside>
-      )}
       </div>
     </aside>
   );
 }
-type CheckoutProfile = {
-  name: string;
-  phone: string;
-  email: string;
-  address: string;
-};
 
+type CheckoutProfile = { name: string; phone: string; email: string; address: string };
 type PaymentMethod = { id: string; title: string; note: string };
-type DeliveryOption = {
-  id: string;
-  title: string;
-  detail: string;
-  fee: number | null;
-};
+type DeliveryOption = { id: string; title: string; detail: string; fee: number | null };
 type CdekCity = { code: number; city: string; region?: string };
 type CdekOffice = {
   code: string;
@@ -158,13 +135,8 @@ type CdekOffice = {
   location: { city: string; address: string; address_full?: string };
   work_time?: string;
 };
-type CdekQuote = {
-  tariffCode: number;
-  tariffName: string;
-  price: number;
-  daysMin: number;
-  daysMax: number;
-};
+type CdekQuote = { tariffCode: number; tariffName: string; price: number; daysMin: number; daysMax: number };
+type AddressDeliveryQuote = { price: number; daysMin?: number; daysMax?: number; service?: string };
 
 type CheckoutPanelProps = {
   page?: boolean;
@@ -211,54 +183,34 @@ type CheckoutPanelProps = {
   deliveryFee: number;
   total: number;
   submitting: boolean;
+  deliveryQuote: AddressDeliveryQuote | null;
+  deliveryQuoteLoading: boolean;
+  deliveryQuotePending: boolean;
+  deliveryQuoteError: string;
+  deliveryFeePending: boolean;
+  addressDeliveryNeedsQuote: boolean;
+  calculateAddressDelivery: () => void | Promise<void>;
 };
+
+function deliveryDays(quote: AddressDeliveryQuote) {
+  if (!quote.daysMin && !quote.daysMax) return "";
+  if (quote.daysMin === quote.daysMax) return `${quote.daysMin} дн.`;
+  return `${quote.daysMin || 1}–${quote.daysMax || quote.daysMin} дн.`;
+}
 
 export function CheckoutPanel(props: CheckoutPanelProps) {
   const {
-    page = false,
-    checkoutOpen,
-    setCheckoutOpen,
-    orderNumber,
-    submitOrder,
-    user,
-    checkoutProfile,
-    setCheckoutProfile,
-    availableDelivery,
-    delivery,
-    setDelivery,
-    cdekQuote,
-    cdekCityQuery,
-    setCdekCityQuery,
-    setCdekCity,
-    setCdekCities,
-    setCdekOffices,
-    cdekOfficeCode,
-    setCdekOfficeCode,
-    cdekOfficeQuery,
-    setCdekOfficeQuery,
-    setCdekQuotes,
-    setCdekTariffCode,
-    cdekCities,
-    chooseCdekCity,
-    cdekLoading,
-    cdekError,
-    cdekOffices,
-    setCdekOfficeListOpen,
-    cdekOfficeListOpen,
-    cdekOfficeMatches,
-    selectedOffice,
-    cdekFeePending,
-    cdekRepack,
-    setCdekRepack,
-    cartCount,
-    cdekQuotes,
-    paymentMethods,
-    paymentMethod,
-    setPaymentMethod,
-    subtotal,
-    deliveryFee,
-    total,
-    submitting,
+    page = false, checkoutOpen, setCheckoutOpen, orderNumber, submitOrder, user,
+    checkoutProfile, setCheckoutProfile, availableDelivery, delivery, setDelivery,
+    cdekQuote, cdekCityQuery, setCdekCityQuery, setCdekCity, setCdekCities,
+    setCdekOffices, cdekOfficeCode, setCdekOfficeCode, cdekOfficeQuery,
+    setCdekOfficeQuery, setCdekQuotes, setCdekTariffCode, cdekCities, chooseCdekCity,
+    cdekLoading, cdekError, cdekOffices, setCdekOfficeListOpen, cdekOfficeListOpen,
+    cdekOfficeMatches, selectedOffice, cdekFeePending, cdekRepack, setCdekRepack,
+    cartCount, cdekQuotes, paymentMethods, paymentMethod, setPaymentMethod, subtotal,
+    deliveryFee, total, submitting, deliveryQuote, deliveryQuoteLoading,
+    deliveryQuotePending, deliveryQuoteError, deliveryFeePending,
+    addressDeliveryNeedsQuote, calculateAddressDelivery,
   } = props;
   const [step, setStep] = useState<1|2|3>(1);
   const formRef = useRef<HTMLFormElement>(null);
@@ -272,310 +224,99 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const deliveryIcon = (id: string): CheckoutIconName => id === "pickup" ? "pickup" : id === "cdek" ? "cdek" : id.includes("post") ? "post" : "courier";
   const selectedDelivery = availableDelivery.find((item) => item.id === delivery);
   const selectedPayment = paymentMethods.find((item) => item.id === paymentMethod);
+  const addressDelivery = delivery === "courier" || delivery === "post";
+  const deliveryBlocked = (delivery === "cdek" && !cdekOfficeCode) || addressDeliveryNeedsQuote || deliveryQuoteLoading;
 
   return (
-  <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
-    <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
-    {orderNumber ? (
-      <div className="success">
-        <div className="success-copy">
-          <span className="success-heart" aria-hidden="true">♡</span>
-          <h2>Заказ принят</h2>
-          <p className="success-lead">Спасибо! Растения уже готовятся к встрече с вами.</p>
-          <div className="success-columns">
-            <div className="success-order-info">
-              <div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div>
-              <p><i aria-hidden="true">⌖</i>{selectedDelivery?.title || "Способ получения выбран"}</p>
-              <p><i aria-hidden="true">▱</i>{selectedPayment?.title || "Способ оплаты выбран"}</p>
-              <a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Следить за заказом <span aria-hidden="true">→</span></a>
-              <a className="success-catalog-link" href="/#catalog">Вернуться в каталог <span aria-hidden="true">↗</span></a>
-            </div>
-            <div className="success-next">
-              <h3>Что будет дальше</h3>
-              <ol>
+    <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
+      <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
+      {orderNumber ? (
+        <div className="success">
+          <div className="success-copy">
+            <span className="success-heart" aria-hidden="true">♡</span>
+            <h2>Заказ принят</h2>
+            <p className="success-lead">Спасибо! Растения уже готовятся к встрече с вами.</p>
+            <div className="success-columns">
+              <div className="success-order-info">
+                <div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div>
+                <p><i aria-hidden="true">⌖</i>{selectedDelivery?.title || "Способ получения выбран"}</p>
+                <p><i aria-hidden="true">▱</i>{selectedPayment?.title || "Способ оплаты выбран"}</p>
+                <a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Следить за заказом <span aria-hidden="true">→</span></a>
+                <a className="success-catalog-link" href="/#catalog">Вернуться в каталог <span aria-hidden="true">↗</span></a>
+              </div>
+              <div className="success-next"><h3>Что будет дальше</h3><ol>
                 <li><b>1</b><span>Соберём и проверим растения</span></li>
                 <li><b>2</b><span>Аккуратно упакуем</span></li>
                 <li><b>3</b><span>{delivery === "pickup" ? "Сообщим, когда заказ будет готов" : "Передадим заказ в доставку"}</span></li>
-              </ol>
+              </ol></div>
             </div>
           </div>
         </div>
-      </div>
-    ) : (
-      <div className="checkout-layout"><form ref={formRef} onSubmit={submitOrder}>
-        <nav className="checkout-steps" aria-label="Этапы оформления">{([[1,"Контактные данные"],[2,"Доставка"],[3,"Оплата"],[4,"Подтверждение"]] as const).map(([number,label])=><span className={(step===number||(number===4&&!!orderNumber))?"active":number<step?"complete":""} key={number}><b>{number<step?"✓":number}</b><small>{label}</small></span>)}</nav>
-        <fieldset data-checkout-step="1" hidden={step!==1}>
-          <legend>Контактные данные</legend>
-          {user && <p className="profile-prefill">Данные заполнены из личного кабинета</p>}
-          <div className="checkout-contact-fields">
-            <label className="checkout-contact-name">
-              Имя
-              <input
-                name="name"
-                required
-                placeholder="Александр"
-                autoComplete="name"
-                value={checkoutProfile.name}
-                onChange={(event) =>
-                  setCheckoutProfile((current) => ({ ...current, name: event.target.value }))
-                }
-              />
-            </label>
-            <div className="checkout-contact-row"><label>
-              Телефон
-              <input
-                name="phone"
-                required
-                inputMode="tel"
-                autoComplete="tel"
-                maxLength={18}
-                placeholder="+7 900 000-00-00"
-                value={checkoutProfile.phone}
-                onChange={(event) => {
-                  event.currentTarget.setCustomValidity("");
-                  const value = formatRussianPhoneInput(event.currentTarget.value);
-                  setCheckoutProfile((current) => ({ ...current, phone: value }));
-                }}
-              />
-            </label><label>
-              Email для чека
-              <input
-                name="email"
-                required
-                type="email"
-                autoComplete="email"
-                placeholder="mail@example.ru"
-                value={checkoutProfile.email}
-                onChange={(event) =>
-                  setCheckoutProfile((current) => ({ ...current, email: event.target.value }))
-                }
-              />
-            </label></div>
-          </div>
-          <label className="checkout-care-optin"><input type="checkbox" defaultChecked /><span>Хочу получать полезные советы по уходу за растениями</span></label>
-          <div className="checkout-navigation"><a href="/cart">← Назад</a><button type="button" className="primary-button" onClick={() => advance(2)}>Продолжить <span>→</span></button></div>
-        </fieldset>
-        <fieldset data-checkout-step="2" hidden={step!==2}>
-          <legend>Способ доставки</legend>
-          <div className="delivery-options">
-            {availableDelivery.map((item) => (
-              <label className={delivery === item.id ? "selected" : ""} key={item.id}>
-                <input
-                  type="radio"
-                  name="delivery"
-                  value={item.id}
-                  checked={delivery === item.id}
-                  onChange={() => setDelivery(item.id)}
-                />
-                <i className="option-icon"><CheckoutOptionIcon name={deliveryIcon(item.id)} /></i><span><b>{item.title}</b><small>{item.detail}</small></span>
-                <strong>
-                  {item.id === "cdek"
-                    ? cdekQuote
-                      ? money(cdekQuote.price)
-                      : "Рассчитать"
-                    : item.fee
-                      ? money(item.fee)
-                      : "0 ₽"}
-                </strong>
-              </label>
-            ))}
-          </div>
-          {delivery === "cdek" ? (
-            <div className="cdek-picker">
-              <label>
-                Город получения
-                <input
-                  value={cdekCityQuery}
-                  onChange={(event) => {
-                    setCdekCityQuery(event.target.value);
-                    setCdekCity(null);
-                    setCdekCities([]);
-                    setCdekOffices([]);
-                    setCdekOfficeCode("");
-                    setCdekOfficeQuery("");
-                    setCdekQuotes([]);
-                    setCdekTariffCode(0);
-                  }}
-                  autoComplete="off"
-                  placeholder="Начните вводить город"
-                />
-              </label>
-              {!!cdekCities.length && (
-                <div className="cdek-suggestions" role="listbox" aria-label="Найденные города">
-                  {cdekCities.map((city) => (
-                    <button
-                      type="button"
-                      key={city.code}
-                      onClick={() => chooseCdekCity(city)}
-                    >
-                      <b>{city.city}</b>
-                      <span>{city.region || "Россия"}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {cdekLoading && <p className="cdek-status">Получаем данные СДЭК…</p>}
-              {cdekError && <p className="cdek-status error">{cdekError}</p>}
-              {!!cdekOffices.length && (
-                <label>
-                  Пункт выдачи
-                  <input
-                    value={cdekOfficeQuery}
-                    onChange={(event) => {
-                      setCdekOfficeQuery(event.target.value);
-                      setCdekOfficeCode("");
-                      setCdekOfficeListOpen(true);
-                    }}
-                    onFocus={() => setCdekOfficeListOpen(true)}
-                    autoComplete="off"
-                    placeholder="Улица или дом — покажем ближайшие пункты"
-                  />
-                </label>
-              )}
-              {cdekOfficeListOpen && !!cdekOfficeMatches.length && !cdekOfficeCode && (
-                <div className="cdek-suggestions" role="listbox" aria-label="Пункты выдачи">
-                  {cdekOfficeMatches.map((office) => (
-                    <button
-                      type="button"
-                      key={office.code}
-                      onClick={() => {
-                        setCdekOfficeCode(office.code);
-                        setCdekOfficeQuery(office.location.address);
-                        setCdekOfficeListOpen(false);
-                      }}
-                    >
-                      <b>{office.location.address}</b>
-                      <span>{office.work_time || office.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {!!cdekOffices.length && !cdekOfficeMatches.length && (
-                <p className="cdek-status">Ничего не нашлось — попробуйте другую улицу</p>
-              )}
-              {selectedOffice && (
-                <p className="cdek-status">Пункт выбран: {selectedOffice.location.address}</p>
-              )}
-              {cdekFeePending && !!cdekOffices.length && (
-                <div className="cdek-quote pending">
-                  <b>Рассчитает менеджер</b>
-                  <span>после оформления</span>
-                  <small>
-                    {cdekRepack
-                      ? "Менеджер проверит, поместятся ли растения в одну коробку, посчитает доставку и свяжется с вами до отправки."
-                      : "Стоимость доставки менеджер посчитает и сообщит вам до отправки заказа. Оформить заказ можно уже сейчас."}
-                  </small>
-                </div>
-              )}
-              {/* Three of the same plant are three boxes too, so the
-                  offer depends on how many go in the van, not on how
-                  many lines the cart has. */}
-              {cartCount > 1 && !!cdekQuotes.length && (
-                <div className="cdek-repack">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={cdekRepack}
-                      onChange={(event) => setCdekRepack(event.target.checked)}
-                    />
-                    Упаковать в одну коробку, если поместятся
-                  </label>
-                  <small>
-                    Сейчас доставка посчитана по отдельной коробке на каждое растение. Менеджер
-                    проверит, поместятся ли они вместе, и пересчитает — обычно выходит дешевле.
-                  </small>
-                </div>
-              )}
-              {!cdekRepack && cdekQuotes.length > 1 && (
-                <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">
-                  {cdekQuotes.map((option) => (
-                    <label key={option.tariffCode} className="cdek-tariff">
-                      <input
-                        type="radio"
-                        name="cdek-tariff"
-                        checked={option.tariffCode === cdekQuote?.tariffCode}
-                        onChange={() => setCdekTariffCode(option.tariffCode)}
-                      />
-                      <span>
-                        <b>{option.tariffName}</b>
-                        <small>
-                          {option.daysMin === option.daysMax
-                            ? `${option.daysMin} дн.`
-                            : `${option.daysMin}–${option.daysMax} дн.`}
-                        </small>
-                      </span>
-                      <strong>{money(option.price)}</strong>
-                    </label>
-                  ))}
-                </div>
-              )}
-              {!cdekRepack && cdekQuote && cdekQuotes.length === 1 && (
-                <div className="cdek-quote">
-                  <b>{money(cdekQuote.price)}</b>
-                  <span>
-                    {cdekQuote.daysMin === cdekQuote.daysMax
-                      ? `${cdekQuote.daysMin} дн.`
-                      : `${cdekQuote.daysMin}–${cdekQuote.daysMax} дн.`}
-                  </span>
-                  <small>Расчёт по габаритам упаковки выбранных растений</small>
-                </div>
-              )}
+      ) : (
+        <div className="checkout-layout"><form ref={formRef} onSubmit={submitOrder}>
+          <nav className="checkout-steps" aria-label="Этапы оформления">{([[1,"Контактные данные"],[2,"Доставка"],[3,"Оплата"],[4,"Подтверждение"]] as const).map(([number,label])=><span className={(step===number||(number===4&&!!orderNumber))?"active":number<step?"complete":""} key={number}><b>{number<step?"✓":number}</b><small>{label}</small></span>)}</nav>
+          <fieldset data-checkout-step="1" hidden={step!==1}>
+            <legend>Контактные данные</legend>
+            {user && <p className="profile-prefill">Данные заполнены из личного кабинета</p>}
+            <div className="checkout-contact-fields">
+              <label className="checkout-contact-name">Имя<input name="name" required placeholder="Александр" autoComplete="name" value={checkoutProfile.name} onChange={(event) => setCheckoutProfile((current) => ({ ...current, name: event.target.value }))} /></label>
+              <div className="checkout-contact-row"><label>Телефон<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={18} placeholder="+7 900 000-00-00" value={checkoutProfile.phone} onChange={(event) => { event.currentTarget.setCustomValidity(""); const value = formatRussianPhoneInput(event.currentTarget.value); setCheckoutProfile((current) => ({ ...current, phone: value })); }} /></label><label>Email для чека<input name="email" required type="email" autoComplete="email" placeholder="mail@example.ru" value={checkoutProfile.email} onChange={(event) => setCheckoutProfile((current) => ({ ...current, email: event.target.value }))} /></label></div>
             </div>
-          ) : (
-            <label>
-              {delivery === "pickup" ? "Самовывоз" : "Адрес доставки"}
-              <input
-                name="address"
-                required={delivery !== "pickup"}
-                disabled={delivery === "pickup"}
-                autoComplete="street-address"
-                value={checkoutProfile.address}
-                onChange={(event) =>
-                  setCheckoutProfile((current) => ({ ...current, address: event.target.value }))
-                }
-                placeholder={
-                  delivery === "pickup"
-                    ? "Рязань, Новосёлов, 40А"
-                    : "Город, улица, дом, квартира"
-                }
-              />
-            </label>
-          )}
-          <div className="checkout-navigation"><button type="button" onClick={() => setStep(1)}>← Назад</button><button type="button" className="primary-button" disabled={delivery === "cdek" && !cdekOfficeCode} onClick={() => advance(3)}>Продолжить →</button></div>
-        </fieldset>
-        <div data-checkout-step="3" hidden={step!==3}>
-        {paymentMethods.length > 0 && (
-          <fieldset>
-            <legend>Способ оплаты</legend>
-            <div className="delivery-options">
-              {paymentMethods.map((option) => (
-                <label key={option.id} className={paymentMethod === option.id ? "active" : ""}>
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    checked={paymentMethod === option.id}
-                    onChange={() => setPaymentMethod(option.id)}
-                  />
-                  <i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span>
-                    <b>{option.title}</b>
-                    <small>{option.note}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
-            {paymentMethod === "online" && cdekFeePending && (
-              <p className="cdek-status">
-                Оплата после подтверждения заказа менеджером.
-              </p>
-            )}
+            <label className="checkout-care-optin"><input type="checkbox" defaultChecked /><span>Хочу получать полезные советы по уходу за растениями</span></label>
+            <div className="checkout-navigation"><a href="/cart">← Назад</a><button type="button" className="primary-button" onClick={() => advance(2)}>Продолжить <span>→</span></button></div>
           </fieldset>
-        )}
-        {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
-        <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
-        <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || (delivery === "cdek" && !cdekOfficeCode)}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
-        </div>
-      </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div><img src="/assets/redesign/checkout-summary-art.png" alt="" /></aside></div>
-    )}
-  </aside>
+
+          <fieldset data-checkout-step="2" hidden={step!==2}>
+            <legend>Способ доставки</legend>
+            <div className="delivery-options">
+              {availableDelivery.map((item) => {
+                const dynamic = item.id === "courier" || item.id === "post";
+                const selectedDynamicQuote = dynamic && delivery === item.id ? deliveryQuote : null;
+                return <label className={delivery === item.id ? "selected" : ""} key={item.id}>
+                  <input type="radio" name="delivery" value={item.id} checked={delivery === item.id} onChange={() => setDelivery(item.id)} />
+                  <i className="option-icon"><CheckoutOptionIcon name={deliveryIcon(item.id)} /></i><span><b>{item.title}</b><small>{item.detail}</small></span>
+                  <strong>{item.id === "cdek" ? (delivery === "cdek" && cdekQuote ? money(cdekQuote.price) : "Рассчитать") : dynamic ? (selectedDynamicQuote ? money(selectedDynamicQuote.price) : "Рассчитать") : "0 ₽"}</strong>
+                </label>;
+              })}
+            </div>
+
+            {delivery === "cdek" ? (
+              <div className="cdek-picker">
+                <label>Город получения<input value={cdekCityQuery} onChange={(event) => { setCdekCityQuery(event.target.value); setCdekCity(null); setCdekCities([]); setCdekOffices([]); setCdekOfficeCode(""); setCdekOfficeQuery(""); setCdekQuotes([]); setCdekTariffCode(0); }} autoComplete="off" placeholder="Начните вводить город" /></label>
+                {!!cdekCities.length && <div className="cdek-suggestions" role="listbox" aria-label="Найденные города">{cdekCities.map((city) => <button type="button" key={city.code} onClick={() => chooseCdekCity(city)}><b>{city.city}</b><span>{city.region || "Россия"}</span></button>)}</div>}
+                {cdekLoading && <p className="cdek-status">Получаем данные СДЭК…</p>}
+                {cdekError && <p className="cdek-status error">{cdekError}</p>}
+                {!!cdekOffices.length && <label>Пункт выдачи<input value={cdekOfficeQuery} onChange={(event) => { setCdekOfficeQuery(event.target.value); setCdekOfficeCode(""); setCdekOfficeListOpen(true); }} onFocus={() => setCdekOfficeListOpen(true)} autoComplete="off" placeholder="Улица или дом — покажем ближайшие пункты" /></label>}
+                {cdekOfficeListOpen && !!cdekOfficeMatches.length && !cdekOfficeCode && <div className="cdek-suggestions" role="listbox" aria-label="Пункты выдачи">{cdekOfficeMatches.map((office) => <button type="button" key={office.code} onClick={() => { setCdekOfficeCode(office.code); setCdekOfficeQuery(office.location.address); setCdekOfficeListOpen(false); }}><b>{office.location.address}</b><span>{office.work_time || office.name}</span></button>)}</div>}
+                {!!cdekOffices.length && !cdekOfficeMatches.length && <p className="cdek-status">Ничего не нашлось — попробуйте другую улицу</p>}
+                {selectedOffice && <p className="cdek-status">Пункт выбран: {selectedOffice.location.address}</p>}
+                {cdekFeePending && !!cdekOffices.length && <div className="cdek-quote pending"><b>Рассчитает менеджер</b><span>после оформления</span><small>{cdekRepack ? "Менеджер проверит, поместятся ли растения в одну коробку, посчитает доставку и свяжется с вами до отправки." : "Стоимость доставки менеджер посчитает и сообщит вам до отправки заказа. Оформить заказ можно уже сейчас."}</small></div>}
+                {cartCount > 1 && !!cdekQuotes.length && <div className="cdek-repack"><label><input type="checkbox" checked={cdekRepack} onChange={(event) => setCdekRepack(event.target.checked)} />Упаковать в одну коробку, если поместятся</label><small>Сейчас доставка посчитана по отдельной коробке на каждое растение. Менеджер проверит, поместятся ли они вместе, и пересчитает — обычно выходит дешевле.</small></div>}
+                {!cdekRepack && cdekQuotes.length > 1 && <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">{cdekQuotes.map((option) => <label key={option.tariffCode} className="cdek-tariff"><input type="radio" name="cdek-tariff" checked={option.tariffCode === cdekQuote?.tariffCode} onChange={() => setCdekTariffCode(option.tariffCode)} /><span><b>{option.tariffName}</b><small>{option.daysMin === option.daysMax ? `${option.daysMin} дн.` : `${option.daysMin}–${option.daysMax} дн.`}</small></span><strong>{money(option.price)}</strong></label>)}</div>}
+                {!cdekRepack && cdekQuote && cdekQuotes.length === 1 && <div className="cdek-quote"><b>{money(cdekQuote.price)}</b><span>{cdekQuote.daysMin === cdekQuote.daysMax ? `${cdekQuote.daysMin} дн.` : `${cdekQuote.daysMin}–${cdekQuote.daysMax} дн.`}</span><small>Расчёт по габаритам упаковки выбранных растений</small></div>}
+              </div>
+            ) : (
+              <div className={addressDelivery ? "cdek-picker" : undefined}>
+                <label>{delivery === "pickup" ? "Самовывоз" : "Адрес доставки"}<input name="address" required={delivery !== "pickup"} disabled={delivery === "pickup"} autoComplete="street-address" value={checkoutProfile.address} onChange={(event) => setCheckoutProfile((current) => ({ ...current, address: event.target.value }))} placeholder={delivery === "pickup" ? "Рязань, Новосёлов, 40А" : delivery === "courier" ? "Рязань, улица, дом, квартира" : "Город, улица, дом, квартира"} /></label>
+                {addressDelivery && <>
+                  <button type="button" className="primary-button" disabled={deliveryQuoteLoading || checkoutProfile.address.trim().length < 5} onClick={() => void calculateAddressDelivery()}>{deliveryQuoteLoading ? "Считаем…" : deliveryQuote ? "Пересчитать доставку" : "Рассчитать доставку"}</button>
+                  {deliveryQuote && <div className="cdek-quote"><b>{money(deliveryQuote.price)}</b><span>{deliveryDays(deliveryQuote)}</span><small>{deliveryQuote.service || (delivery === "post" ? "Почта России" : "Яндекс Доставка")}. Расчёт по габаритам упаковки заказа.</small></div>}
+                  {deliveryQuotePending && <div className="cdek-quote pending"><b>Стоимость уточнит менеджер</b><span>до оплаты</span><small>{deliveryQuoteError || "Заказ можно оформить сейчас; оплатить его получится после уточнения доставки."}</small></div>}
+                  {!deliveryQuotePending && deliveryQuoteError && <p className="cdek-status error">{deliveryQuoteError}</p>}
+                </>}
+              </div>
+            )}
+            <div className="checkout-navigation"><button type="button" onClick={() => setStep(1)}>← Назад</button><button type="button" className="primary-button" disabled={deliveryBlocked} onClick={() => advance(3)}>Продолжить →</button></div>
+          </fieldset>
+
+          <div data-checkout-step="3" hidden={step!==3}>
+            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" checked={paymentMethod === option.id} onChange={() => setPaymentMethod(option.id)} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div>{paymentMethod === "online" && deliveryFeePending && <p className="cdek-status">Оплата после подтверждения стоимости доставки менеджером.</p>}</fieldset>}
+            {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
+            <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
+            <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
+          </div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div><img src="/assets/redesign/checkout-summary-art.png" alt="" /></aside></div>
+      )}
+    </aside>
   );
 }

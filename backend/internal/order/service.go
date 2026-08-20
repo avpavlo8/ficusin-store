@@ -21,6 +21,11 @@ type CDEK interface {
 	CalculatePVZ(context.Context, int, integration.Parcel) ([]integration.CDEKQuote, error)
 }
 
+type DeliveryPricer interface {
+	Configured() bool
+	Calculate(context.Context, string, integration.Parcel) (integration.DeliveryQuote, error)
+}
+
 type Notifier interface {
 	SendOrder(context.Context, integration.TelegramOrder) error
 }
@@ -28,6 +33,8 @@ type Notifier interface {
 type Service struct {
 	pool     *pgxpool.Pool
 	cdek     CDEK
+	post     DeliveryPricer
+	courier  DeliveryPricer
 	notifier Notifier
 	settings settingsReader
 	logger   *slog.Logger
@@ -174,6 +181,16 @@ func NewService(
 	}
 }
 
+// WithDeliveryPricers wires the two address-delivery providers without
+// changing the old constructor used by focused unit tests. Production always
+// supplies real clients; empty credentials leave the corresponding method
+// unavailable instead of silently falling back to a made-up fixed price.
+func (service *Service) WithDeliveryPricers(post, courier DeliveryPricer) *Service {
+	service.post = post
+	service.courier = courier
+	return service
+}
+
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
 	if !input.Consent {
 		return Created{}, invalid("Подтвердите согласие на обработку персональных данных")
@@ -231,12 +248,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	for _, item := range items {
 		subtotal += item.Price * float64(item.Quantity)
 	}
-	deliveryFees := map[string]float64{
-		"pickup":  0,
-		"courier": service.deliveryFee(settings.CourierFee),
-		"post":    service.deliveryFee(settings.PostFee),
-	}
-	deliveryFee, regularDelivery := deliveryFees[input.Delivery]
+	deliveryFee := 0.0
+	regularDelivery := input.Delivery == "pickup"
 	deliveryAddress := input.Customer.Address
 	var cityCode, tariffCode *int
 	var cityName, officeCode *string
@@ -305,6 +318,33 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			}
 		}
 		cityName = &resolvedCityName
+	} else if input.Delivery == "post" || input.Delivery == "courier" {
+		regularDelivery = true
+		pricer := service.post
+		providerName := "Почта России"
+		if input.Delivery == "courier" {
+			pricer = service.courier
+			providerName = "Яндекс Доставка"
+		}
+		if pricer == nil || !pricer.Configured() {
+			return Created{}, invalid(providerName + " временно недоступна. Выберите другой способ доставки")
+		}
+		box, measured := shippingBox(items)
+		if !measured {
+			feePending = true
+		} else if quote, quoteErr := pricer.Calculate(ctx, deliveryAddress, box); errors.Is(quoteErr, integration.ErrRussianPostAddress) {
+			return Created{}, invalid("Почта России не смогла определить адрес. Укажите его точнее")
+		} else if errors.Is(quoteErr, integration.ErrYandexOutsideRyazan) {
+			return Created{}, invalid("Курьер Яндекс Доставки доступен только по Рязани")
+		} else if quoteErr != nil {
+			service.logger.Error("delivery quote failed at checkout", "provider", providerName, "error", quoteErr)
+			feePending = true
+		} else if quote.Price <= 0 {
+			service.logger.Error("delivery provider returned empty price", "provider", providerName)
+			feePending = true
+		} else {
+			deliveryFee = quote.Price
+		}
 	} else if !regularDelivery {
 		return Created{}, invalid("Выберите способ получения")
 	}
@@ -322,11 +362,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	// Резерв — последним действием перед записью заказа, и намеренно после
-	// разговора с СДЭК. Он блокирует строки склада до конца транзакции, и
-	// пока блокировка держится, никто другой не может купить то же растение.
-	// Пока резерв стоял выше, каждый чужой заказ ждал, сколько СДЭК будет
-	// считать нашу доставку, — а СДЭК отвечает секундами и иногда не
-	// отвечает вовсе.
+	// разговора с перевозчиком. Он блокирует строки склада до конца транзакции,
+	// и пока блокировка держится, никто другой не может купить то же растение.
 	hasPreorder := false
 	for index := range items {
 		reserved, preorder, err := reserveStock(ctx, transaction, items[index])
@@ -382,20 +419,12 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}
-	// Заказ занял растения на настоящем складе — записываем это в журнал
-	// движений, даже если наружу, в СБИС, оно пока не уходит.
 	if err := RecordMovement(ctx, transaction, orderID, MovementReserve); err != nil {
 		return Created{}, err
 	}
-	// Предзаказ — это обещание купить то, чего сейчас нет. Такое обещание
-	// должно дойти до закупки, иначе растение никто не закажет и обещание
-	// останется невыполненным. Пишем в той же транзакции, что и заказ:
-	// заявка, потерявшаяся при откате, хуже отсутствующей.
 	if err := recordPreorderRequests(ctx, transaction, orderID); err != nil {
 		return Created{}, err
 	}
-	// The agreement is written in the same transaction as the order, so an
-	// order can never exist without the record of the consent behind it.
 	if err := consent.Record(ctx, transaction, consent.Event{
 		CustomerID: input.CustomerID,
 		OrderID:    &orderID,
@@ -406,9 +435,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}); err != nil {
 		return Created{}, err
 	}
-	// The confirmation goes into the outbox inside the same transaction as
-	// the order: a letter promised to a customer should not be lost because
-	// the process restarted a second later.
 	letter := mail.Confirmation(mail.OrderLetter{
 		Number:        orderNumber,
 		CustomerName:  input.Customer.Name,
@@ -460,13 +486,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod)}, nil
 }
 
-// deliveryFee — цена простой доставки из панели.
-//
-// Раньше 490 и 590 были вписаны прямо здесь, и поменять их можно было
-// только выкладкой. Ноль — законное значение: владелец вправе возить
-// бесплатно, поэтому умолчание подставляется только когда настроек нет
-// вовсе, а не когда цена оказалась нулевой. Правило про отрицательную цену
-// живёт в settings — его же читает витрина, и разойтись они не должны.
+// deliveryFee is retained for old settings tests and existing installations.
+// New customer-facing courier and post prices are authoritative provider
+// quotes; these fixed numbers are no longer used to create new orders.
 func (service *Service) deliveryFee(key string) float64 {
 	value := settings.DefaultNumber(key)
 	if service.settings != nil {
@@ -475,15 +497,6 @@ func (service *Service) deliveryFee(key string) float64 {
 	return float64(settings.NonNegative(value))
 }
 
-// reserveStock holds what it can and reports what it could not.
-//
-// Nothing on the shelf is no longer a refusal: the plant becomes a
-// pre-order, the shop takes the order and the manager names the date. A
-// shop that says "закончился" loses the sale and never learns anyone
-// wanted it.
-// reserveStock возвращает, сколько штук удалось занять на складе, и был ли
-// заказ полностью обеспечен. Эти числа расходятся у предзаказа, и хранить
-// нужно именно занятое: по нему заказ вернёт ровно своё, а не чужое.
 func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) (int, bool, error) {
 	rows, err := transaction.Query(ctx, `
 		SELECT id, GREATEST(available_qty - reserved_qty, 0)
@@ -514,16 +527,10 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 	if err := rows.Err(); err != nil {
 		return 0, false, fmt.Errorf("read inventory: %w", err)
 	}
-
-	// Nothing free at all: the whole line is a pre-order and no stock moves.
 	if available == 0 {
 		return 0, true, nil
 	}
-	// Partly available is still a pre-order — the parcel waits for the rest,
-	// and the customer is told so rather than being asked to reduce the
-	// quantity at the last step.
 	preorder := available < item.Quantity
-
 	remaining := min(item.Quantity, available)
 	for _, current := range slots {
 		if remaining == 0 {
@@ -543,12 +550,6 @@ func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem)
 	return min(item.Quantity, available), preorder, nil
 }
 
-// retailDiscountBPS — персональная скидка покупателя в базисных пунктах:
-// 500 это пять процентов. У гостя скидки нет.
-//
-// Поле лежало в базе, показывалось в кабинете словами «персональная скидка
-// N%» и правилось владельцем — но к цене не применялось нигде. Магазин
-// обещал условие, которого не выполнял.
 func retailDiscountBPS(ctx context.Context, transaction pgx.Tx, customerID *int64) (int, error) {
 	if customerID == nil {
 		return 0, nil
@@ -565,12 +566,6 @@ func retailDiscountBPS(ctx context.Context, transaction pgx.Tx, customerID *int6
 	return bps, nil
 }
 
-// discountedMinor применяет скидку к цене в копейках.
-//
-// Считаем в целых копейках и округляем вверх по половине, чтобы копейка
-// расхождения не всплыла при сверке с чеком ЮKassa. Верхняя граница в 90%
-// защищает от опечатки в панели: «9000» вместо «900» не должно раздать
-// растения даром, а отрицательное значение — поднять цену.
 func discountedMinor(priceMinor int64, bps int) int64 {
 	if bps <= 0 {
 		return priceMinor
@@ -581,15 +576,6 @@ func discountedMinor(priceMinor int64, bps int) int64 {
 	return (priceMinor*int64(10000-bps) + 5000) / 10000
 }
 
-// newOrderNumber builds a number a person can say out loud: the customer's
-// own number and which of their orders this is — 0001-15 is the fifteenth
-// order of customer one. The old ZR-260805-5A61B was unreadable over the
-// phone and told nobody anything.
-//
-// Guests have no customer number, so they share 0000 with a running count of
-// their own. The transaction-level advisory lock serializes numbering for one
-// prefix across all API instances, so simultaneous orders cannot receive the
-// same readable number.
 func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) (string, error) {
 	prefix := "0000"
 	if customerID != nil {
@@ -620,7 +606,6 @@ func formatOrderNumber(prefix string, sequence int) string {
 	return fmt.Sprintf("%s-%d", prefix, sequence)
 }
 
-// letterLines turns the order's contents into what the letter prints.
 func letterLines(items []purchasableItem) []mail.OrderLine {
 	lines := make([]mail.OrderLine, 0, len(items))
 	for _, item := range items {
