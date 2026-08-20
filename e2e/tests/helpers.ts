@@ -82,10 +82,9 @@ const carts = new WeakMap<Page, Record<string, number>>();
 
 // Состав корзины из тела запроса.
 //
-// postDataJSON в WebKit возвращает не то же, что в Chromium, и разбор
-// молча давал пустоту: запись «проходила», а следующий запрос отдавал
-// пустую корзину — проверка падала только в Safari. Читаем тело руками и
-// при неудаче честно возвращаем null, чтобы стенд не стирал корзину.
+// При неудачном разборе возвращаем null, а не пустой объект: стенд, молча
+// стирающий корзину, врёт убедительнее любой поломки — на такой лжи здесь
+// один раз уже потеряли день, разыскивая несуществующую ошибку в магазине.
 function cartFromRequest(raw: string | null): Record<string, number> | null {
   if (!raw) return null;
   try {
@@ -114,8 +113,7 @@ export async function mockApi(page: Page, session: Session = guest) {
   await context.route("**/api/v1/cart", async (route) => {
     if (route.request().method() === "PUT") {
       const items = cartFromRequest(route.request().postData());
-      // Не прочитали тело — оставляем прежний состав. Стенд, молча
-      // стирающий корзину, врёт убедительнее любой поломки.
+      // Тело не прочиталось — оставляем прежний состав.
       if (items) carts.set(page, items);
     }
     await route.fulfill({ json: { items: carts.get(page) || {} } });

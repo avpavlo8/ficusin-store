@@ -11,7 +11,17 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["list"]] : [["list"]],
-  use: { baseURL, trace: "on-first-retry" },
+  use: {
+    baseURL,
+    trace: "on-first-retry",
+    // Витрина регистрирует service worker, и через секунду после загрузки он
+    // берёт страницу под контроль. Запросы такой страницы Playwright видит
+    // только в Chromium — в WebKit они проходят мимо моков к preview-серверу,
+    // тот проксирует /api на бэкенд, которого в проверке нет, и отвечает 502.
+    // Корзина после перехода приходила пустой ровно поэтому. Выключаем worker:
+    // моки без этого работают не везде, и подмена сети становится враньём.
+    serviceWorkers: "block",
+  },
   webServer: {
     command: `npm run preview -- --port ${port} --strictPort --host 127.0.0.1`,
     cwd: "../frontend",

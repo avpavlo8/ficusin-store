@@ -97,13 +97,20 @@ test("@desktop профиль сохраняет адресные подсказ
   await expect(page.getByLabel("Адрес доставки")).toBeVisible();
 });
 
-test("@desktop запрет push объясняется без повторного запроса permission", async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(Notification, "permission", { configurable: true, get: () => "denied" });
+// Остальным проверкам service worker выключен: он перехватывает запросы и
+// прячет их от моков. Переключателю уведомлений он, наоборот, нужен —
+// подписка живёт именно в нём, — поэтому здесь worker разрешён.
+test.describe("уведомления о заказе", () => {
+  test.use({ serviceWorkers: "allow" });
+
+  test("@desktop запрет push объясняется без повторного запроса permission", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Notification, "permission", { configurable: true, get: () => "denied" });
+    });
+    await mockApi(page, owner);
+    await page.route("**/api/v1/push/key", (route) => route.fulfill({ json: { enabled: true, publicKey: "unused" } }));
+    await page.goto("/account/profile");
+    await expect(page.getByText(/Уведомления запрещены в настройках браузера/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Включить" })).toBeDisabled();
   });
-  await mockApi(page, owner);
-  await page.route("**/api/v1/push/key", (route) => route.fulfill({ json: { enabled: true, publicKey: "unused" } }));
-  await page.goto("/account/profile");
-  await expect(page.getByText(/Уведомления запрещены в настройках браузера/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Включить" })).toBeDisabled();
 });
