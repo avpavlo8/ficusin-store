@@ -6,6 +6,7 @@ on:
     paths:
       - scripts/sync-saby.py
       - scripts/saby_catalog_merge.py
+      - timeweb/migrations/*saby*.sql
       - .github/workflows/saby-catalog-sync.yml
   schedule:
     - cron: '0 */6 * * *'
