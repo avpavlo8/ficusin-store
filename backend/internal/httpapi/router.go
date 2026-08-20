@@ -16,46 +16,60 @@ type catalogRepository interface {
 }
 
 type Dependencies struct {
-	Catalog          catalogRepository
-	Auth             authService
-	Orders           orderRepository
-	OrderCreator     orderCreator
-	CDEK             cdekService
-	RussianPost      deliveryPricer
-	YandexDelivery   deliveryPricer
-	Admin            adminRepository
-	Saby             sabySyncService
-	Push             pushService
-	Cart             cartStore
-	Packages         packageRepository
-	Collections      collectionRepository
-	Payments         paymentService
-	Settings         settingsService
-	Procurement      procurementService
-	Reviews          reviewStore
-	Refunds          refundService
-	ProductPhotos    productPhotoStorage
-	CookieSecure     bool
-	StaticDir        string
+	Catalog      catalogRepository
+	Auth         authService
+	Orders       orderRepository
+	OrderCreator orderCreator
+	CDEK         cdekService
+	RussianPost  deliveryPricer
+	YandexDelivery deliveryPricer
+	Admin        adminRepository
+	Saby         sabySyncService
+	Push pushService
+	Cart cartStore
+	Packages packageRepository
+	Collections collectionRepository
+	Payments paymentService
+	Settings settingsService
+	Procurement procurementService
+	Reviews reviewStore
+	Refunds      refundService
+	ProductPhotos productPhotoStorage
+	CookieSecure bool
+	StaticDir    string
 	YandexSuggestKey string
 }
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	authAPI := authHandlers{logger: logger, service: dependencies.Auth, cookieSecure: dependencies.CookieSecure}
-	cdekAPI := cdekHandlers{logger: logger, service: dependencies.CDEK, packages: dependencies.Packages}
-	deliveryAPI := deliveryQuoteHandlers{
-		logger: logger, post: dependencies.RussianPost, courier: dependencies.YandexDelivery,
+	authAPI := authHandlers{
+		logger:       logger,
+		service:      dependencies.Auth,
+		cookieSecure: dependencies.CookieSecure,
+	}
+	cdekAPI := cdekHandlers{
+		logger:   logger,
+		service:  dependencies.CDEK,
 		packages: dependencies.Packages,
 	}
-	adminAPI := newAdminHandlers(logger, dependencies.Auth, dependencies.Admin, dependencies.Refunds)
+	deliveryAPI := deliveryQuoteHandlers{
+		logger: logger,
+		post: dependencies.RussianPost,
+		courier: dependencies.YandexDelivery,
+		packages: dependencies.Packages,
+	}
+	adminAPI := newAdminHandlers(
+		logger,
+		dependencies.Auth,
+		dependencies.Admin,
+		dependencies.Refunds,
+	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
 
 	callLimiter := newRateLimiter(5, 10*time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
 	deliveryLimiter := newRateLimiter(60, time.Minute)
-
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -69,14 +83,17 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/account/reviews", accountReviewsHandler(dependencies.Auth, dependencies.Reviews))
 		mux.HandleFunc("PATCH /api/v1/account/reviews/{id}", updateAccountReviewHandler(dependencies.Auth, dependencies.Reviews))
 	}
-
 	mux.HandleFunc("POST /api/v1/auth/request-code", callLimiter.guard(
-		"Слишком много запросов звонка. Попробуйте через несколько минут", authAPI.requestCode,
+		"Слишком много запросов звонка. Попробуйте через несколько минут",
+		authAPI.requestCode,
 	))
 	mux.HandleFunc("POST /api/v1/auth/verify-code", authAPI.verifyCode)
 	mux.HandleFunc("POST /api/v1/auth/logout", authAPI.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", authAPI.me)
-	mux.Handle("GET /api/v1/account/orders", accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders))
+	mux.Handle(
+		"GET /api/v1/account/orders",
+		accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders),
+	)
 	if dependencies.Cart != nil {
 		cartAPI := cartHandler(logger, dependencies.Auth, dependencies.Cart, dependencies.CookieSecure)
 		mux.Handle("GET /api/v1/cart", cartAPI)
@@ -88,36 +105,60 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PUT /api/v1/account/avatar", authAPI.uploadAvatar)
 	mux.HandleFunc("DELETE /api/v1/account/avatar", authAPI.deleteAvatar)
 	mux.HandleFunc("GET /api/v1/account/avatar", authAPI.avatar)
-	mux.Handle("GET /api/v1/account/orders/{orderNumber}", accountOrderHandler(logger, dependencies.Auth, dependencies.Orders))
+	mux.Handle(
+		"GET /api/v1/account/orders/{orderNumber}",
+		accountOrderHandler(logger, dependencies.Auth, dependencies.Orders),
+	)
 	mux.HandleFunc("GET /api/v1/address/suggest", suggestLimiter.guard(
 		"Слишком много запросов. Введите адрес вручную",
 		addressSuggestHandler(logger, dependencies.YandexSuggestKey).ServeHTTP,
 	))
 	mux.Handle("GET /api/v1/push/key", pushKeyHandler(dependencies.Push))
-	mux.Handle("POST /api/v1/push/subscribe", pushSubscribeHandler(logger, dependencies.Auth, dependencies.Push))
+	mux.Handle(
+		"POST /api/v1/push/subscribe",
+		pushSubscribeHandler(logger, dependencies.Auth, dependencies.Push),
+	)
 	mux.Handle("POST /api/v1/push/unsubscribe", pushUnsubscribeHandler(logger, dependencies.Push))
-	mux.Handle("GET /api/v1/payments/methods", paymentMethodsHandler(dependencies.Auth, dependencies.Payments))
-	mux.Handle("POST /api/v1/payments/orders/{orderNumber}", startPaymentHandler(logger, dependencies.Payments))
-	mux.Handle("POST /api/v1/payments/yookassa/webhook", yooKassaWebhookHandler(logger, dependencies.Payments))
-
+	mux.Handle(
+		"GET /api/v1/payments/methods",
+		paymentMethodsHandler(dependencies.Auth, dependencies.Payments),
+	)
+	mux.Handle(
+		"POST /api/v1/payments/orders/{orderNumber}",
+		startPaymentHandler(logger, dependencies.Payments),
+	)
+	mux.Handle(
+		"POST /api/v1/payments/yookassa/webhook",
+		yooKassaWebhookHandler(logger, dependencies.Payments),
+	)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
 	mux.HandleFunc("GET /api/v1/delivery/providers", deliveryAPI.providers)
 	mux.HandleFunc("POST /api/v1/delivery/post", deliveryLimiter.guard(
-		"Слишком много расчётов доставки. Попробуйте через несколько минут", deliveryAPI.postQuote,
+		"Слишком много расчётов доставки. Попробуйте через несколько минут",
+		deliveryAPI.postQuote,
 	))
 	mux.HandleFunc("POST /api/v1/delivery/courier", deliveryLimiter.guard(
-		"Слишком много расчётов доставки. Попробуйте через несколько минут", deliveryAPI.courierQuote,
+		"Слишком много расчётов доставки. Попробуйте через несколько минут",
+		deliveryAPI.courierQuote,
 	))
-	// Backward compatibility for older clients. The current checkout does not
-	// use fixed courier/post prices.
+	// Оставляем старую ручку для обратной совместимости со старыми клиентами.
+	// Новая витрина не использует фиксированные цены курьера и почты.
 	mux.Handle("GET /api/v1/delivery/fees", deliveryFeesHandler(dependencies.Settings))
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
-		createOrderHandler(logger, dependencies.Auth, dependencies.OrderCreator, dependencies.Payments).ServeHTTP,
+		createOrderHandler(
+			logger,
+			dependencies.Auth,
+			dependencies.OrderCreator,
+			dependencies.Payments,
+		).ServeHTTP,
 	))
-
-	settingsAPI := settingsHandlers{logger: logger, auth: dependencies.Auth, settings: dependencies.Settings}
+	settingsAPI := settingsHandlers{
+		logger:   logger,
+		auth:     dependencies.Auth,
+		settings: dependencies.Settings,
+	}
 	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
@@ -144,7 +185,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/categories", adminAPI.createCategory)
 	mux.HandleFunc("PATCH /api/v1/admin/categories/{id}", adminAPI.updateCategory)
 	mux.HandleFunc("DELETE /api/v1/admin/categories/{id}", adminAPI.deleteCategory)
-
 	mux.HandleFunc("GET /api/v1/admin/procurement", procurementAPI.dashboard)
 	mux.HandleFunc("PUT /api/v1/admin/procurement/settings", procurementAPI.updateSettings)
 	mux.HandleFunc("POST /api/v1/admin/procurement/suppliers", procurementAPI.createSupplier)
@@ -172,24 +212,39 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/retry", procurementAPI.retryBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/check", procurementAPI.checkIntegration)
 	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/catalog", procurementAPI.syncChannelCatalog)
-	mux.Handle("POST /api/v1/integrations/saby/catalog", sabyCatalogSyncHandler(logger, dependencies.Saby))
-	mux.Handle("POST /api/v1/integrations/saby/sales", sabySalesSyncHandler(logger, dependencies.Saby))
+	mux.Handle(
+		"POST /api/v1/integrations/saby/catalog",
+		sabyCatalogSyncHandler(logger, dependencies.Saby),
+	)
+	mux.Handle(
+		"POST /api/v1/integrations/saby/sales",
+		sabySalesSyncHandler(logger, dependencies.Saby),
+	)
 
 	var handler http.Handler = mux
 	if dependencies.StaticDir != "" {
-		handler = spaFallback(logger, mux, dependencies.StaticDir,
-			sitemapHandler(logger, dependencies.Catalog), dependencies.Catalog)
+		handler = spaFallback(
+			logger, mux, dependencies.StaticDir,
+			sitemapHandler(logger, dependencies.Catalog), dependencies.Catalog,
+		)
 	}
-	return requestLogger(logger,
-		securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)))
+
+	return requestLogger(
+		logger,
+		securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)),
+	)
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		startedAt := time.Now()
 		next.ServeHTTP(response, request)
-		logger.Info("http request", "method", request.Method, "path", request.URL.Path,
-			"duration_ms", time.Since(startedAt).Milliseconds())
+		logger.Info(
+			"http request",
+			"method", request.Method,
+			"path", request.URL.Path,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+		)
 	})
 }
 
