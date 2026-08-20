@@ -11,10 +11,9 @@ import (
 
 type catalogToolRepositoryStub struct {
 	*adminRepositoryStub
-	products       []admin.Product
-	updates        []admin.ProductUpdate
-	importAllCalls []bool
-	media          []admin.ProductMedia
+	products []admin.Product
+	updates  []admin.ProductUpdate
+	media    []admin.ProductMedia
 }
 
 func newCatalogToolRepositoryStub() *catalogToolRepositoryStub {
@@ -37,14 +36,6 @@ func valueOrEmpty(value *string) string {
 	return *value
 }
 
-func (stub *catalogToolRepositoryStub) ImportAllProducts(_ context.Context, _ admin.Actor, dryRun bool) (admin.ImportResult, error) {
-	stub.importAllCalls = append(stub.importAllCalls, dryRun)
-	return admin.ImportResult{Created: 1, Entries: []admin.ImportEntry{
-		{Code: "SABY-1", Status: "exists"},
-		{Code: "SABY-2", Status: "new"},
-	}}, nil
-}
-
 func (stub *catalogToolRepositoryStub) ListProductMedia(context.Context, int64) ([]admin.ProductMedia, error) {
 	return stub.media, nil
 }
@@ -59,38 +50,6 @@ func (stub *catalogToolRepositoryStub) DeleteProductMedia(context.Context, admin
 
 func (stub *catalogToolRepositoryStub) SetPrimaryProductMedia(context.Context, admin.Actor, int64, int64) error {
 	return nil
-}
-
-func TestImportAllProductsPassesDryRun(t *testing.T) {
-	t.Parallel()
-
-	repository := newCatalogToolRepositoryStub()
-	request := adminRequest(http.MethodPost, "/api/v1/admin/products/import-all", `{"dryRun":true}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
-	}
-	if len(repository.importAllCalls) != 1 || !repository.importAllCalls[0] {
-		t.Fatalf("bulk import calls = %v, want [true]", repository.importAllCalls)
-	}
-}
-
-func TestImportAllProductsRejectsNonAdmin(t *testing.T) {
-	t.Parallel()
-
-	repository := newCatalogToolRepositoryStub()
-	request := adminRequest(http.MethodPost, "/api/v1/admin/products/import-all", `{"dryRun":true}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, "", "client@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
-	}
-	if len(repository.importAllCalls) != 0 {
-		t.Fatal("forbidden bulk import reached repository")
-	}
 }
 
 func TestProductUpdateDoesNotReplaceGalleryWhenPrimaryImageIsUnchanged(t *testing.T) {
