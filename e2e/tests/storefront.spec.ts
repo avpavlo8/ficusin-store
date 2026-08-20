@@ -27,7 +27,35 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
 });
 
-test("@mobile общий подвал остаётся устойчивым и полноширинным", async ({ page }) => {
+// Значения характеристик хранятся кодами: low_light, easy, caution. Однажды
+// они уезжали на витрину как есть, и покупатель читал «low_light» вместо
+// «Полутень». Словарь один на карточку, фильтры и паспорт — проверяем его
+// там, где ошибку видно первой.
+test("@desktop характеристики подписаны по-русски, а не кодами", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  const badges = page.locator(".storefront-card", { hasText: "Аглаонема Мария" })
+    .locator(".storefront-attribute-badges span");
+  await expect(badges.first()).toHaveText("Освещение: Полутень");
+  await expect(badges.nth(1)).toHaveText("Сложность ухода: Лёгкий");
+
+  // Ни один код не должен просочиться в сетку целиком.
+  await expect(page.locator(".storefront-grid")).not.toContainText("low_light");
+  await expect(page.locator(".storefront-grid")).not.toContainText("easy");
+});
+
+// Заголовок первого уровня — это то, что читает поисковик и произносит
+// экранный диктор. Их должно быть ровно столько же, сколько страниц: одна.
+test("@desktop у витрины ровно один заголовок первого уровня", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator("h1")).toContainText("Растения");
+});
+
+test("@phone общий подвал остаётся устойчивым и полноширинным", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto("/");
