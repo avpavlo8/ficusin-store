@@ -84,7 +84,14 @@ test("@phone the cart opens as a separate page and keeps its contents", async ({
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\/cart$/);
-  await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
+
+  // Проверяем текст ящика целиком, а не отдельный узел: «не нашли элемент»
+  // не отличает пустую корзину от корзины без каталога, и разбираться
+  // приходится вслепую. Так сообщение показывает, что там на самом деле.
+  await expect
+    .poll(async () => (await page.locator(".drawer.open").innerText()).replace(/\s+/g, " ").trim(),
+      { message: "содержимое корзины после перехода" })
+    .toContain("Аглаонема Мария");
   await expect(page.locator(".drawer.open .quantity span")).toHaveText("1");
 });
 
