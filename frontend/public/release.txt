@@ -1,0 +1,2 @@
+ficusin-store orders-editor release 2026-08-20 18:51 MSK
+includes PR #162 editable order contents
