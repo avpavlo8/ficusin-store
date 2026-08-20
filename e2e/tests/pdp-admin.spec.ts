@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { mockApi, owner } from "./helpers";
 
+const adminOwner = {
+  ...owner,
+  user: { ...owner.user, adminRole: "owner" as const },
+};
+
 const adminProduct = {
   id: 1,
   sabyId: "saby-1",
@@ -36,7 +41,7 @@ test("@desktop покупатель не видит инструменты ре�
 });
 
 test("@desktop владелец редактирует описание прямо из PDP", async ({ page }) => {
-  await mockApi(page, owner);
+  await mockApi(page, adminOwner);
   await page.route("**/api/v1/admin/products", (route) => route.fulfill({ json: { products: [adminProduct] } }));
   await page.route("**/api/v1/admin/categories", (route) => route.fulfill({ json: { categories: [] } }));
   let update: Record<string, unknown> | undefined;
@@ -57,7 +62,7 @@ test("@desktop владелец редактирует описание прям
 });
 
 test("@desktop владелец управляет галереей товара из PDP", async ({ page }) => {
-  await mockApi(page, owner);
+  await mockApi(page, adminOwner);
   await page.route("**/api/v1/admin/products", (route) => route.fulfill({ json: { products: [adminProduct] } }));
   let uploadCount = 0;
   let deleted = 0;
@@ -88,7 +93,7 @@ test("@desktop владелец управляет галереей товара
 });
 
 test("@desktop массовый импорт сначала показывает dry-run и не создаёт дубли", async ({ page }) => {
-  await mockApi(page, owner);
+  await mockApi(page, adminOwner);
   const calls: boolean[] = [];
   await page.route("**/api/v1/admin/products/import-all", async (route) => {
     const body = route.request().postDataJSON() as { dryRun: boolean };
