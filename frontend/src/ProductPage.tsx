@@ -28,7 +28,6 @@ export default function ProductPage({ slug }: { slug: string }) {
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   useEffect(() => {
-    setError("");
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
       .then((item) => {
