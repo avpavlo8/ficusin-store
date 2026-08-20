@@ -24,44 +24,11 @@ type productPhotoStorage interface {
 	PublicURL(string) string
 }
 
-type bulkSabyImporter interface {
-	ImportAllProducts(context.Context, admin.Actor, bool) (admin.ImportResult, error)
-}
-
 type productMediaRepository interface {
 	ListProductMedia(context.Context, int64) ([]admin.ProductMedia, error)
 	AddUploadedProductMedia(context.Context, admin.Actor, int64, string, string, string) (admin.ProductMedia, error)
 	DeleteProductMedia(context.Context, admin.Actor, int64, int64) error
 	SetPrimaryProductMedia(context.Context, admin.Actor, int64, int64) error
-}
-
-func importAllProductsHandler(adminAPI adminHandlers) http.HandlerFunc {
-	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
-		if !ok {
-			return
-		}
-		var body struct {
-			DryRun bool `json:"dryRun"`
-		}
-		if request.ContentLength != 0 {
-			if decodeJSON(request, &body) != nil {
-				writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
-				return
-			}
-		}
-		provider, ok := adminAPI.repository.(bulkSabyImporter)
-		if !ok {
-			adminAPI.failed(response, "bulk Saby import unavailable", errors.New("bulk Saby import unavailable"))
-			return
-		}
-		result, err := provider.ImportAllProducts(request.Context(), actor, body.DryRun)
-		if err != nil {
-			adminAPI.failed(response, "import all Saby products", err)
-			return
-		}
-		writeJSON(response, http.StatusOK, result)
-	}
 }
 
 func listProductMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
