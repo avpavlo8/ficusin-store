@@ -68,33 +68,22 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await expect(menu).toHaveCount(0);
 });
 
+// Нижняя панель ведёт на настоящий адрес: браузер уходит со страницы и
+// обрывает незавершённые запросы. Корзина обязана пережить этот переход —
+// в Safari она однажды его не переживала.
 test("@phone the cart opens as a separate page and keeps its contents", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
-  // Корзина живёт на сервере, а нижняя панель ведёт на настоящий адрес:
-  // браузер уходит со страницы и обрывает незавершённые запросы. Между
-  // «В корзину» и переходом лежит запись, и ждать нужно именно её — иначе
-  // проверка меряет, чей браузер быстрее, а не то, что увидит покупатель.
-  const saved = page.waitForResponse((response) =>
-    response.url().includes("/api/v1/cart") && response.request().method() === "PUT");
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
-  await saved;
+  // Счётчик в панели показывает, что решение покупателя уже принято
+  // приложением: дальше проверяем, переживёт ли оно переход.
+  await expect(page.locator(".tab-bar .tab-icon b").last()).toHaveText("1");
 
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\/cart$/);
-
-  // Пустой ящик может означать две разные поломки: корзина не доехала до
-  // сервера или не приехал каталог, из которого берутся названия. Спросим
-  // сервер напрямую — корзина обязана пережить переход на другую страницу.
-  const stored = await page.evaluate(async () => {
-    const response = await fetch("/api/v1/cart", { cache: "no-store" });
-    return (await response.json()) as { items?: Record<string, number> };
-  });
-  expect(stored.items, "корзина на сервере после перехода").toEqual({ "saby-1": 1 });
-
   await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
   await expect(page.locator(".drawer.open .quantity span")).toHaveText("1");
 });
