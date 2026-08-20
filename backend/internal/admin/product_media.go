@@ -38,6 +38,19 @@ func (repository *PostgresRepository) ListProductMedia(ctx context.Context, prod
 	return result, rows.Err()
 }
 
+// Once a manager changes the gallery by hand, Saby must stop owning only the
+// photo field. Name/price/stock synchronization choices are preserved.
+func detachSabyPhotoSync(ctx context.Context, tx interface {
+	Exec(context.Context, string, ...any) (any, error)
+}, productID int64) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE products
+		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1
+	`, productID)
+	return err
+}
+
 // AddUploadedProductMedia links two already prepared S3 sizes to a product.
 // sourceKey is intentionally not an HTTP URL (upload://...): the background
 // Saby mirror therefore never downloads and recompresses our own upload.
@@ -59,6 +72,13 @@ func (repository *PostgresRepository) AddUploadedProductMedia(
 	var productName string
 	if err := tx.QueryRow(ctx, "SELECT name FROM products WHERE id=$1 FOR UPDATE", productID).Scan(&productName); err != nil {
 		return ProductMedia{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE products
+		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1
+	`, productID); err != nil {
+		return ProductMedia{}, fmt.Errorf("detach Saby photo sync: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO media_mirror(source_url, card_url, large_url, attempts, failure, mirrored_at, checked_at)
@@ -116,6 +136,13 @@ func (repository *PostgresRepository) DeleteProductMedia(ctx context.Context, ac
 	`, mediaID, productID).Scan(&source, &primary); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE products
+		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1
+	`, productID); err != nil {
+		return fmt.Errorf("detach Saby photo sync: %w", err)
+	}
 	if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE id=$1 AND product_id=$2", mediaID, productID); err != nil {
 		return fmt.Errorf("delete product media: %w", err)
 	}
@@ -157,6 +184,13 @@ func (repository *PostgresRepository) SetPrimaryProductMedia(ctx context.Context
 	}
 	if !exists {
 		return fmt.Errorf("media not found")
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE products
+		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1
+	`, productID); err != nil {
+		return fmt.Errorf("detach Saby photo sync: %w", err)
 	}
 	if _, err := tx.Exec(ctx, "UPDATE product_media SET is_primary=CASE WHEN id=$2 THEN 1 ELSE 0 END WHERE product_id=$1", productID, mediaID); err != nil {
 		return fmt.Errorf("set primary product media: %w", err)
