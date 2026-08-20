@@ -38,19 +38,6 @@ func (repository *PostgresRepository) ListProductMedia(ctx context.Context, prod
 	return result, rows.Err()
 }
 
-// Once a manager changes the gallery by hand, Saby must stop owning only the
-// photo field. Name/price/stock synchronization choices are preserved.
-func detachSabyPhotoSync(ctx context.Context, tx interface {
-	Exec(context.Context, string, ...any) (any, error)
-}, productID int64) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE products
-		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
-		WHERE id=$1
-	`, productID)
-	return err
-}
-
 // AddUploadedProductMedia links two already prepared S3 sizes to a product.
 // sourceKey is intentionally not an HTTP URL (upload://...): the background
 // Saby mirror therefore never downloads and recompresses our own upload.
