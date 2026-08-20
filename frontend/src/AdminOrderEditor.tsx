@@ -210,7 +210,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       {!payment.ready && payment.due > 0 && <p>Оплата закрыта до подтверждения наличия всех товаров и доставки.</p>}
       {payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>Создать ссылку на доплату</button>}
       {paymentLink && <p><a href={paymentLink} target="_blank" rel="noreferrer">Ссылка на оплату</a> <small>скопирована в буфер, если браузер разрешил</small></p>}
-      {payment.netPaid > 0 && <div className="admin-order-refund-form">
+      {payment.netPaid > 0 && <div className="admin-refund admin-order-refund-form">
         <input type="number" min="1" max={payment.netPaid} step="1" placeholder="Сумма возврата"
           value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} />
         <button type="button" className="admin-action" disabled={busy} onClick={() => refund(Number(refundAmount))}>Вернуть часть</button>
