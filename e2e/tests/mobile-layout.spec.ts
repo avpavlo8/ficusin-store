@@ -81,6 +81,14 @@ test("@phone the cart opens as a separate page and keeps its contents", async ({
   // приложением: дальше проверяем, переживёт ли оно переход.
   await expect(page.locator(".tab-bar .tab-icon b").last()).toHaveText("1");
 
+  // Черновик в браузере — это страховка на случай, если запись не доедет до
+  // сервера. Проверяем её здесь: без этого «пустая корзина» после перехода
+  // не отличает потерянную запись от неподхваченного черновика.
+  await expect
+    .poll(async () => page.evaluate(() => window.localStorage.getItem("ficusin-cart-pending")),
+      { message: "черновик корзины в браузере" })
+    .toContain("saby-1");
+
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\/cart$/);
