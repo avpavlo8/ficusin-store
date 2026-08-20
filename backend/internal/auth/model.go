@@ -45,7 +45,11 @@ type User struct {
 	AccountType       string `json:"accountType"`
 	WholesaleStatus   string `json:"wholesaleStatus"`
 	RetailDiscountBPS int    `json:"retailDiscountBps"`
-	AdminRole         string `json:"adminRole,omitempty"`
+	// LifetimeSpendMinor — сумма выполненных заказов в копейках. Кабинет
+	// считает по ней, сколько осталось до следующей ступени скидки: без
+	// этого числа обещание «скидка растёт» проверить нечем.
+	LifetimeSpendMinor int64  `json:"lifetimeSpendMinor"`
+	AdminRole          string `json:"adminRole,omitempty"`
 	// AvatarUpdatedAt is empty when no photo was uploaded. The account page
 	// uses it both to decide whether to show one and to bust the image
 	// cache after a new upload.

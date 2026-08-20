@@ -389,6 +389,7 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 			c.id, COALESCE(c.email, ''), c.phone, c.full_name, c.last_name, c.patronymic,
 			c.delivery_address, c.account_type, c.wholesale_status,
 			c.retail_discount_bps,
+			c.lifetime_spend_minor,
 			COALESCE((
 				SELECT au.role
 				FROM admin_users au
@@ -413,6 +414,7 @@ func (service *Service) UserByToken(ctx context.Context, rawToken string) (*User
 		&user.AccountType,
 		&user.WholesaleStatus,
 		&user.RetailDiscountBPS,
+		&user.LifetimeSpendMinor,
 		&user.AdminRole,
 		&user.AvatarUpdatedAt,
 	)
