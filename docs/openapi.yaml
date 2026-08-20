@@ -277,7 +277,8 @@ components:
     User:
       type: object
       required:
-        [id, email, phone, fullName, accountType, wholesaleStatus, retailDiscountBps]
+        [id, email, phone, fullName, accountType, wholesaleStatus, retailDiscountBps,
+         lifetimeSpendMinor]
       properties:
         id:
           type: integer
@@ -295,6 +296,12 @@ components:
           type: string
         retailDiscountBps:
           type: integer
+        lifetimeSpendMinor:
+          type: integer
+          format: int64
+          description: >-
+            Сумма выполненных заказов в копейках. Кабинет считает по ней,
+            сколько осталось до следующей ступени скидки.
     OrderSummary:
       type: object
       required: [orderNumber, deliveryMethod, total, status, createdAt, itemsCount]
