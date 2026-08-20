@@ -8,6 +8,7 @@
 
 @import "./styles/base.css";
 @import "./styles/admin.css";
+@import "./styles/admin-orders.css";
 @import "./styles/account.css";
 @import "./styles/product.css";
 @import "./styles/pdp-admin.css";
