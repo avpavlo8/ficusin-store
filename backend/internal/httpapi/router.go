@@ -166,6 +166,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/admin/customers/{id}", adminAPI.updateCustomer)
 	mux.HandleFunc("GET /api/v1/admin/orders", adminAPI.orders)
 	mux.HandleFunc("PATCH /api/v1/admin/orders/{id}", adminAPI.updateOrder)
+	mux.HandleFunc("GET /api/v1/admin/orders/{id}/adjustment", adminAPI.orderAdjustmentState)
+	mux.HandleFunc("PATCH /api/v1/admin/orders/{id}/contents", adminAPI.editOrderContents)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refund", adminAPI.refundOrderAmount)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
 	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
 	mux.HandleFunc("POST /api/v1/admin/products", adminAPI.createProduct)
 	mux.HandleFunc("POST /api/v1/admin/products/import", adminAPI.importProducts)
@@ -255,7 +259,6 @@ func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 				logger.Error("request panic", "value", recovered)
 				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "Внутренняя ошибка сервера"})
 			}
-		}()
 		next.ServeHTTP(response, request)
 	})
 }
