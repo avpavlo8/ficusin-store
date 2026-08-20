@@ -39,7 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
 	defer stop()
 
 	pool, err := store.Open(ctx, cfg.Database)
@@ -53,6 +57,7 @@ func main() {
 		logger.Error("database migrations failed", "error", err)
 		os.Exit(1)
 	}
+
 	if err := admin.BootstrapOwners(ctx, pool, logger, cfg.AdminEmails); err != nil {
 		logger.Error("administrator bootstrap failed", "error", err)
 		os.Exit(1)
@@ -127,31 +132,30 @@ func main() {
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
-
 	server := &http.Server{
 		Addr: cfg.HTTP.Address,
 		Handler: httpapi.NewRouter(logger, httpapi.Dependencies{
-			Catalog:          catalogRepository,
-			Auth:             authService,
-			Orders:           orderRepository,
-			OrderCreator:     orderService,
-			CDEK:             cdekClient,
-			RussianPost:      russianPostClient,
-			YandexDelivery:   yandexDeliveryClient,
-			Admin:            adminRepository,
-			Saby:             sabyService,
-			Push:             pushService,
-			Cart:             cart.NewStore(pool),
-			Packages:         catalogRepository,
-			Collections:      catalogRepository,
-			Payments:         paymentService,
-			Settings:         shopSettings,
-			Procurement:      procurementService,
-			Reviews:          reviews.NewStore(pool, photoStorage),
-			Refunds:          paymentService,
-			ProductPhotos:    photoStorage,
-			CookieSecure:     cfg.Auth.CookieSecure,
-			StaticDir:        cfg.HTTP.StaticDir,
+			Catalog:        catalogRepository,
+			Auth:           authService,
+			Orders:         orderRepository,
+			OrderCreator:   orderService,
+			CDEK:           cdekClient,
+			RussianPost:    russianPostClient,
+			YandexDelivery: yandexDeliveryClient,
+			Admin:          adminRepository,
+			Saby:           sabyService,
+			Push:           pushService,
+			Cart:           cart.NewStore(pool),
+			Packages:       catalogRepository,
+			Collections:    catalogRepository,
+			Payments:       paymentService,
+			Settings:       shopSettings,
+			Procurement:    procurementService,
+			Reviews:        reviews.NewStore(pool, photoStorage),
+			Refunds:        paymentService,
+			ProductPhotos:  photoStorage,
+			CookieSecure:   cfg.Auth.CookieSecure,
+			StaticDir:      cfg.HTTP.StaticDir,
 			YandexSuggestKey: cfg.YandexSuggestKey,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -159,14 +163,17 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-
 	go shopSettings.Run(ctx)
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
 	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
 	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
 	go order.NewLetterWorker(pool, mail.NewSender(mail.Config{
-		Host: cfg.Mail.Host, Port: cfg.Mail.Port, Username: cfg.Mail.Username,
-		Password: cfg.Mail.Password, From: cfg.Mail.From, FromName: cfg.Mail.FromName,
+		Host:     cfg.Mail.Host,
+		Port:     cfg.Mail.Port,
+		Username: cfg.Mail.Username,
+		Password: cfg.Mail.Password,
+		From:     cfg.Mail.From,
+		FromName: cfg.Mail.FromName,
 	}, logger), logger).Run(ctx)
 	if photoStorage.Configured() {
 		go photos.NewMirror(photos.NewPostgresStore(pool), photoStorage, logger).Run(ctx)
