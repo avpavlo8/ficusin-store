@@ -54,7 +54,7 @@ test("@desktop владелец редактирует описание прям
   await page.getByRole("button", { name: "Редактировать карточку" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Редактирование товара" })).toBeVisible();
-  await dialog.getByLabel("Описание").fill("Новое описание из PDP");
+  await dialog.getByLabel("Описание", { exact: true }).fill("Новое описание из PDP");
   await dialog.getByRole("button", { name: "Сохранить" }).click();
 
   expect(update?.description).toBe("Новое описание из PDP");
