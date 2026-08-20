@@ -14,6 +14,7 @@ export type StoreUser = {
   accountType: "retail" | "wholesale";
   wholesaleStatus: string;
   retailDiscountBps: number;
+  lifetimeSpendMinor: number;
   adminRole?: "manager" | "owner";
   avatarUpdatedAt?: string;
 };
@@ -88,6 +89,29 @@ const money = new Intl.NumberFormat("ru-RU", {
   currency: "RUB",
   maximumFractionDigits: 0,
 });
+
+// Ступени скидки повторяют backend/internal/order/loyalty.go: каждые
+// 10 000 ₽ выполненных заказов — один процент, потолок — десять процентов.
+// Кабинет обещал, что скидка растёт, но не говорил, сколько до следующей
+// ступени, и обещание нечем было проверить.
+const stepSpend = 10_000;
+const maxDiscountPercent = 10;
+
+function discountLadder(spendMinor: number, currentBps: number) {
+  const spend = Math.max(0, spendMinor) / 100;
+  const earned = Math.min(maxDiscountPercent, Math.floor(spend / stepSpend));
+  if (earned >= maxDiscountPercent) return { top: true as const };
+  const next = earned + 1;
+  return {
+    top: false as const,
+    next,
+    spend,
+    remaining: next * stepSpend - spend,
+    // Владелец может назначить скидку больше накопленной. Тогда следующая
+    // ступень ничего не изменит, и обещать её было бы обманом.
+    raises: next * 100 > currentBps,
+  };
+}
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
@@ -179,7 +203,7 @@ function OrdersSection({ orders, error }: { orders: AccountOrder[]; error: strin
         </a>
       )) : (
         <div className="orders-empty">
-          <span>⌁</span>
+          <span>⎁</span>
           <h3>Заказов пока нет</h3>
           <p>Новые заказы, оформленные в этом аккаунте, появятся здесь.</p>
           <a className="primary-button" href="/#catalog">Перейти в каталог</a>
@@ -442,6 +466,7 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
   const [saved, setSaved] = useState(false);
 
   const discount = user.retailDiscountBps / 100;
+  const ladder = discountLadder(user.lifetimeSpendMinor, user.retailDiscountBps);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -487,6 +512,11 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
           ? "После проверки реквизитов мы включим оптовые условия."
           : "Скидка увеличивается автоматически после выполненных заказов."}
       </p>
+      {user.accountType !== "wholesale" && <p>{ladder.top
+        ? <>Это верхняя ступень: {maxDiscountPercent}% — максимум.</>
+        : ladder.raises
+          ? <>Выполнено заказов на {money.format(ladder.spend)}. До {ladder.next}% осталось ещё {money.format(ladder.remaining)}.</>
+          : <>Скидка назначена вручную и выше накопленной — она не уменьшится.</>}</p>}
     </div>
 
     <AvatarEditor user={user} onUpdated={onUpdated} onError={setError} />
