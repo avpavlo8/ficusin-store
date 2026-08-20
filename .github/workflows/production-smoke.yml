@@ -1,0 +1,33 @@
+name: Production smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for Timeweb and verify deployed frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='ficusin-store orders-editor release 2026-08-20 18:51 MSK'
+          for attempt in $(seq 1 30); do
+            health="$(curl -fsS --max-time 10 https://ficusin.ru/api/v1/health || true)"
+            release="$(curl -fsS --max-time 10 https://ficusin.ru/release.txt || true)"
+            echo "attempt=${attempt} health=${health}"
+            if [[ "$health" == *'"status":"ok"'* && "$release" == *"$marker"* ]]; then
+              echo 'Production serves the frontend that includes PR #162.'
+              exit 0
+            fi
+            sleep 20
+          done
+          echo 'Timeweb did not expose the expected release marker in time.' >&2
+          exit 1
