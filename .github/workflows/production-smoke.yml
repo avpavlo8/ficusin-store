@@ -23,10 +23,21 @@ jobs:
           release="$(curl -fsS --max-time 10 https://ficusin.ru/release.txt || true)"
           adjustment_status="$(curl -sS --max-time 10 -o /tmp/adjustment -w '%{http_code}' https://ficusin.ru/api/v1/admin/orders/1/adjustment || true)"
           adjustment_body="$(cat /tmp/adjustment 2>/dev/null || true)"
+          html="$(curl -fsS --max-time 10 https://ficusin.ru/admin || true)"
+          asset="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
+          editor_bundle=no
+          if [[ -n "$asset" ]]; then
+            curl -fsS --max-time 20 "https://ficusin.ru${asset}" -o /tmp/app.js || true
+            if grep -Fq 'Состав заказа' /tmp/app.js 2>/dev/null && grep -Fq 'Добавить товар' /tmp/app.js 2>/dev/null; then
+              editor_bundle=yes
+            fi
+          fi
           echo "health=${health}"
           echo "release=${release}"
           echo "adjustment_status=${adjustment_status}"
           echo "adjustment_body=${adjustment_body}"
+          echo "asset=${asset}"
+          echo "editor_bundle=${editor_bundle}"
 
   smoke:
     runs-on: ubuntu-latest
