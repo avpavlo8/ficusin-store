@@ -142,8 +142,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"Слишком много расчётов доставки. Попробуйте через несколько минут",
 		deliveryAPI.courierQuote,
 	))
-	// Оставляем старую ручку для обратной совместимости со старыми клиентами.
-	// Новая витрина не использует фиксированные цены курьера и почты.
 	mux.Handle("GET /api/v1/delivery/fees", deliveryFeesHandler(dependencies.Settings))
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
@@ -155,9 +153,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		).ServeHTTP,
 	))
 	settingsAPI := settingsHandlers{
-		logger:   logger,
-		auth:     dependencies.Auth,
-		settings: dependencies.Settings,
+		logger: logger, auth: dependencies.Auth, settings: dependencies.Settings,
 	}
 	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
@@ -216,14 +212,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/retry", procurementAPI.retryBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/check", procurementAPI.checkIntegration)
 	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/catalog", procurementAPI.syncChannelCatalog)
-	mux.Handle(
-		"POST /api/v1/integrations/saby/catalog",
-		sabyCatalogSyncHandler(logger, dependencies.Saby),
-	)
-	mux.Handle(
-		"POST /api/v1/integrations/saby/sales",
-		sabySalesSyncHandler(logger, dependencies.Saby),
-	)
+	mux.Handle("POST /api/v1/integrations/saby/catalog", sabyCatalogSyncHandler(logger, dependencies.Saby))
+	mux.Handle("POST /api/v1/integrations/saby/sales", sabySalesSyncHandler(logger, dependencies.Saby))
 
 	var handler http.Handler = mux
 	if dependencies.StaticDir != "" {
@@ -232,23 +222,14 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			sitemapHandler(logger, dependencies.Catalog), dependencies.Catalog,
 		)
 	}
-
-	return requestLogger(
-		logger,
-		securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)),
-	)
+	return requestLogger(logger, securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		startedAt := time.Now()
 		next.ServeHTTP(response, request)
-		logger.Info(
-			"http request",
-			"method", request.Method,
-			"path", request.URL.Path,
-			"duration_ms", time.Since(startedAt).Milliseconds(),
-		)
+		logger.Info("http request", "method", request.Method, "path", request.URL.Path, "duration_ms", time.Since(startedAt).Milliseconds())
 	})
 }
 
@@ -259,6 +240,7 @@ func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 				logger.Error("request panic", "value", recovered)
 				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "Внутренняя ошибка сервера"})
 			}
+		}()
 		next.ServeHTTP(response, request)
 	})
 }
