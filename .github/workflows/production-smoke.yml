@@ -9,25 +9,55 @@ concurrency:
   group: production-smoke
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
-      - name: Wait for Timeweb and verify deployed frontend
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build expected frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Wait for Timeweb and verify exact deployed bundle
         shell: bash
         run: |
           set -euo pipefail
-          marker='ficusin-store orders-editor release 2026-08-20 18:51 MSK'
-          for attempt in $(seq 1 30); do
-            health="$(curl -fsS --max-time 10 https://ficusin.ru/api/v1/health || true)"
-            release="$(curl -fsS --max-time 10 https://ficusin.ru/release.txt || true)"
-            echo "attempt=${attempt} health=${health}"
-            if [[ "$health" == *'"status":"ok"'* && "$release" == *"$marker"* ]]; then
-              echo 'Production serves the frontend that includes PR #162.'
+
+          expected_js="$(grep -oE 'src="/assets/[^"]+\.js"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
+          expected_css="$(grep -oE 'href="/assets/[^"]+\.css"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
+
+          if [[ -z "$expected_js" || -z "$expected_css" ]]; then
+            echo 'Could not determine expected frontend assets.' >&2
+            exit 1
+          fi
+
+          echo "expected_js=${expected_js}"
+          echo "expected_css=${expected_css}"
+
+          for attempt in $(seq 1 36); do
+            health="$(curl -fsS --max-time 10 "https://ficusin.ru/api/v1/health?deploy=${GITHUB_SHA}" || true)"
+            html="$(curl -fsS --max-time 15 "https://ficusin.ru/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
+            actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
+
+            echo "attempt=${attempt} health=${health} js=${actual_js} css=${actual_css}"
+
+            if [[ "$health" == *'"status":"ok"'* && "$actual_js" == "$expected_js" && "$actual_css" == "$expected_css" ]]; then
+              echo "Production serves the exact frontend bundle for ${GITHUB_SHA}."
               exit 0
             fi
             sleep 20
           done
-          echo 'Timeweb did not expose the expected release marker in time.' >&2
+
+          echo 'Timeweb did not expose the expected frontend bundle in time.' >&2
           exit 1
