@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { ProductDialog } from "./AdminCatalogDialogs";
 import { Dialog, api } from "./adminShared";
-import type { Product } from "./adminTypes";
+import type { ImportEntry, Product } from "./adminTypes";
 
 export type ProductMedia = { id: number; url: string; primary: boolean; sortOrder: number };
+
+type ImportResult = { created: number; entries: ImportEntry[] };
 
 function ProductMediaDialog({ product, onClose, onChanged }: {
   product: Product; onClose: () => void; onChanged: () => void;
@@ -94,12 +96,35 @@ export function PdpAdminTools({ slug, adminRole, onChanged }: {
     finally { setLoading(false); }
   };
 
+  const importAll = async () => {
+    setLoading(true); setError("");
+    try {
+      const preview = await api<ImportResult>("/api/v1/admin/products/import-all", {
+        method: "POST", body: JSON.stringify({ dryRun: true }),
+      });
+      const fresh = preview.entries.filter((entry) => entry.status === "new").length;
+      const existing = preview.entries.filter((entry) => entry.status === "exists").length;
+      if (fresh === 0) {
+        window.alert(`Каталог уже полный: ${existing} позиций СБИС уже есть на сайте.`);
+        return;
+      }
+      if (!window.confirm(`В СБИС найдено ${preview.entries.length} актуальных позиций. Новых карточек: ${fresh}, уже есть: ${existing}. Создать недостающие карточки?`)) return;
+      const result = await api<ImportResult>("/api/v1/admin/products/import-all", {
+        method: "POST", body: JSON.stringify({ dryRun: false }),
+      });
+      window.alert(`Готово. Создано карточек: ${result.created}. Повторы не создавались.`);
+      onChanged();
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setLoading(false); }
+  };
+
   if (!allowed) return null;
   return <>
     <div className="pdp-admin-toolbar" aria-label="Управление товаром">
       <span>Режим администратора</span>
       <button type="button" disabled={loading} onClick={() => void open("edit")}>Редактировать карточку</button>
       <button type="button" disabled={loading} onClick={() => void open("media")}>Фотографии</button>
+      <button type="button" disabled={loading} onClick={() => void importAll()}>Загрузить весь каталог СБИС</button>
       {error && <small>{error}</small>}
     </div>
     {product && mode === "edit" && <ProductDialog
