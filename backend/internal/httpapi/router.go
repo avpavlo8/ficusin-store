@@ -34,6 +34,7 @@ type Dependencies struct {
 	Procurement procurementService
 	Reviews reviewStore
 	Refunds      refundService
+	ProductPhotos productPhotoStorage
 	CookieSecure bool
 	StaticDir    string
 	YandexSuggestKey string
@@ -168,8 +169,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
 	mux.HandleFunc("POST /api/v1/admin/products", adminAPI.createProduct)
 	mux.HandleFunc("POST /api/v1/admin/products/import", adminAPI.importProducts)
-	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", adminAPI.updateProduct)
+	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", safeAdminProductUpdateHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
+	registerAdminCatalogToolRoutes(mux, adminAPI, dependencies.ProductPhotos)
 	if dependencies.Reviews != nil {
 		mux.HandleFunc("GET /api/v1/admin/reviews", pendingReviewsHandler(adminAPI, dependencies.Reviews))
 		mux.HandleFunc("GET /api/v1/admin/review-media/{id}", moderationMediaHandler(adminAPI, dependencies.Reviews))
@@ -251,9 +253,7 @@ func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				logger.Error("request panic", "value", recovered)
-				writeJSON(response, http.StatusInternalServerError, errorResponse{
-					Error: "Внутренняя ошибка сервера",
-				})
+				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "Внутренняя ошибка сервера"})
 			}
 		}()
 		next.ServeHTTP(response, request)

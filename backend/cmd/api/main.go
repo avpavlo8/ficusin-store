@@ -153,6 +153,7 @@ func main() {
 			Procurement:    procurementService,
 			Reviews:        reviews.NewStore(pool, photoStorage),
 			Refunds:        paymentService,
+			ProductPhotos:  photoStorage,
 			CookieSecure:   cfg.Auth.CookieSecure,
 			StaticDir:      cfg.HTTP.StaticDir,
 			YandexSuggestKey: cfg.YandexSuggestKey,
