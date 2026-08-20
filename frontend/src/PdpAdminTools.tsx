@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ProductDialog } from "./AdminCatalogDialogs";
 import { Dialog, api } from "./adminShared";
 import type { ImportEntry, Product } from "./adminTypes";
@@ -14,10 +14,10 @@ function ProductMediaDialog({ product, onClose, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const load = () => api<{ media: ProductMedia[] }>(`/api/v1/admin/products/${product.id}/media`)
+  const load = useCallback(() => api<{ media: ProductMedia[] }>(`/api/v1/admin/products/${product.id}/media`)
     .then((data) => setItems(data.media || []))
-    .catch((reason) => setError((reason as Error).message));
-  useEffect(() => { void load(); }, [product.id]);
+    .catch((reason) => setError((reason as Error).message)), [product.id]);
+  useEffect(() => { void load(); }, [load]);
 
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
