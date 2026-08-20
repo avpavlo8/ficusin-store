@@ -3,6 +3,9 @@ name: Production smoke
 on:
   push:
     branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
 concurrency:
