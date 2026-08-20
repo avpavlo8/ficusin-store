@@ -4,16 +4,24 @@ from saby_catalog_merge import merge_catalog_items
 
 
 class MergeCatalogItemsTest(unittest.TestCase):
-    def test_price_list_cannot_zero_catalog_stock(self):
+    def test_price_list_stock_overrides_zero_from_full_catalog(self):
+        merged, conflicts = merge_catalog_items(
+            [{"id": 42, "name": "Лиметта Росса", "balance": "0"}],
+            [{"id": 42, "name": "Лиметта Росса", "balance": "5", "cost": 2990}],
+        )
+        self.assertEqual(merged[0]["balance"], "5")
+        self.assertEqual(merged[0]["cost"], 2990)
+        self.assertEqual(conflicts, 1)
+
+    def test_price_list_zero_can_really_zero_store_stock(self):
         merged, conflicts = merge_catalog_items(
             [{"id": 42, "name": "Лиметта Росса", "balance": "7"}],
             [{"id": 42, "name": "Лиметта Росса", "balance": "0", "cost": 2990}],
         )
-        self.assertEqual(merged[0]["balance"], "7")
-        self.assertEqual(merged[0]["cost"], 2990)
+        self.assertEqual(merged[0]["balance"], "0")
         self.assertEqual(conflicts, 1)
 
-    def test_price_list_balance_is_fallback_when_catalog_omits_it(self):
+    def test_price_list_balance_is_used_when_catalog_omits_it(self):
         merged, conflicts = merge_catalog_items(
             [{"id": 42, "name": "Лиметта Росса"}],
             [{"id": 42, "balance": "3", "cost": 2990}],
@@ -29,6 +37,14 @@ class MergeCatalogItemsTest(unittest.TestCase):
         self.assertEqual(merged[0]["name"], "Правильное название")
         self.assertEqual(merged[0]["description"], "Описание")
         self.assertEqual(merged[0]["cost"], 2990)
+
+    def test_item_absent_from_price_list_keeps_full_catalog_stock(self):
+        merged, conflicts = merge_catalog_items(
+            [{"id": 77, "name": "Справочный товар", "balance": 4}],
+            [],
+        )
+        self.assertEqual(merged[0]["balance"], 4)
+        self.assertEqual(conflicts, 0)
 
     def test_price_only_item_is_not_lost(self):
         merged, conflicts = merge_catalog_items([], [{"id": 99, "name": "Товар", "balance": 2, "cost": 100}])
