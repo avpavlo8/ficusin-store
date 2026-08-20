@@ -80,16 +80,26 @@ export const owner = {
 type Session = typeof guest | typeof owner;
 const carts = new WeakMap<Page, Record<string, number>>();
 
+// Состав корзины из тела запроса.
+//
+// postDataJSON в WebKit возвращает не то же, что в Chromium, и разбор
+// молча давал пустоту: запись «проходила», а следующий запрос отдавал
+// пустую корзину — проверка падала только в Safari. Читаем тело руками и
+// при неудаче честно возвращаем null, чтобы стенд не стирал корзину.
+function cartFromRequest(raw: string | null): Record<string, number> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { items?: Record<string, number> };
+    return parsed.items ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function mockApi(page: Page, session: Session = guest) {
-  // Моки держим на контексте, а не на странице.
-  //
-  // Ссылки шапки и нижней панели ведут на настоящий адрес, и браузер
-  // загружает новый документ. В WebKit моки уровня страницы за такой сменой
-  // не успевают: запросы нового документа уходят мимо них, vite пытается
-  // достучаться до несуществующего бэкенда, и страница получает не JSON.
-  // Проверка корзины падала именно так — и только в Safari.
-  //
-  // Охват от переноса не меняется: контекст у каждого теста свой.
+  // Моки держим на контексте, а не на странице: ссылки шапки и нижней
+  // панели ведут на настоящий адрес, и браузер загружает новый документ.
+  // Контекст у теста свой, так что охват не меняется.
   const context = page.context();
 
   // Playwright checks routes in reverse order of registration, so this
@@ -103,8 +113,10 @@ export async function mockApi(page: Page, session: Session = guest) {
   if (!carts.has(page)) carts.set(page, {});
   await context.route("**/api/v1/cart", async (route) => {
     if (route.request().method() === "PUT") {
-      const body = route.request().postDataJSON() as { items?: Record<string, number> };
-      carts.set(page, body.items || {});
+      const items = cartFromRequest(route.request().postData());
+      // Не прочитали тело — оставляем прежний состав. Стенд, молча
+      // стирающий корзину, врёт убедительнее любой поломки.
+      if (items) carts.set(page, items);
     }
     await route.fulfill({ json: { items: carts.get(page) || {} } });
   });
