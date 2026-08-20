@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StoreHeader, STORAGE_EVENT, type HeaderMenuItem } from "./StoreHeader";
+import { StoreHeader, STORAGE_EVENT, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
+import { PdpAdminTools } from "./PdpAdminTools";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
@@ -15,8 +16,10 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [revision, setRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<"care"|"characteristics"|"reviews"|"questions">("care");
   const relatedTrack = useRef<HTMLDivElement>(null);
+  const adminUser = useStoreUser();
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
     catch { return new Set(); }
@@ -25,11 +28,16 @@ export default function ProductPage({ slug }: { slug: string }) {
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   useEffect(() => {
+    setError("");
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
-      .then((item) => { const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 }; setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); document.title = `${normalized.name} — Фикусин`; })
+      .then((item) => {
+        const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
+        setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setActiveImage(0);
+        document.title = `${normalized.name} — Фикусин`;
+      })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
-  }, [slug]);
+  }, [slug, revision]);
 
   useEffect(() => { fetch("/api/v1/categories").then((response) => response.json()).then((body: { categories?: typeof categories }) => setCategories(body.categories || [])).catch(() => setCategories([])); }, []);
 
@@ -83,6 +91,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   return <main className="product-page">
     <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={() => { window.location.href="/#catalog"; }} />
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
+    <PdpAdminTools slug={slug} adminRole={adminUser?.adminRole} onChanged={() => setRevision((value) => value + 1)} />
     <section className="pdp-main">
       <ProductGallery images={product.images} name={product.name} active={activeImage} onSelect={setActiveImage} />
       <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(cart[product.id])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); changeQuantity(1); }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
