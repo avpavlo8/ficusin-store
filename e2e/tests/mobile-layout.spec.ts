@@ -85,6 +85,16 @@ test("@phone the cart opens as a separate page and keeps its contents", async ({
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\/cart$/);
+
+  // Пустой ящик может означать две разные поломки: корзина не доехала до
+  // сервера или не приехал каталог, из которого берутся названия. Спросим
+  // сервер напрямую — корзина обязана пережить переход на другую страницу.
+  const stored = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/cart", { cache: "no-store" });
+    return (await response.json()) as { items?: Record<string, number> };
+  });
+  expect(stored.items, "корзина на сервере после перехода").toEqual({ "saby-1": 1 });
+
   await expect(page.locator(".drawer.open").getByText("Аглаонема Мария")).toBeVisible();
   await expect(page.locator(".drawer.open .quantity span")).toHaveText("1");
 });
