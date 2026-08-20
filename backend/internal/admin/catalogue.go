@@ -269,13 +269,26 @@ func (repository *PostgresRepository) ImportProducts(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// Код товара зовётся в выгрузке по-разному, поэтому ищем сразу по всем
-	// колонкам: менеджеру не нужно помнить, что именно он скопировал.
+	// Во время перехода со старого X-кода на внутренний catalogue ID в
+	// saby_nomenclature могли остаться две строки одного товара: историческая
+	// X... с missing_since и текущая с тем же code. Для каждого введённого
+	// менеджером кода выбираем ровно одну строку: сначала активную, затем самую
+	// свежую. Иначе результат зависел от случайного порядка строк PostgreSQL.
 	rows, err := tx.Query(ctx, `
-		SELECT saby_id, code, article, barcode, name, description, price_minor, balance, images
-		FROM saby_nomenclature
-		WHERE UPPER(code) = ANY($1::text[]) OR UPPER(article) = ANY($1::text[])
-			OR UPPER(barcode) = ANY($1::text[]) OR UPPER(saby_id) = ANY($1::text[])
+		SELECT requested.code, candidate.saby_id, candidate.name, candidate.description,
+			candidate.price_minor, candidate.balance, candidate.images
+		FROM UNNEST($1::text[]) WITH ORDINALITY AS requested(code, position)
+		JOIN LATERAL (
+			SELECT saby_id, name, description, price_minor, balance, images
+			FROM saby_nomenclature
+			WHERE UPPER(BTRIM(code)) = requested.code
+				OR UPPER(BTRIM(article)) = requested.code
+				OR UPPER(BTRIM(barcode)) = requested.code
+				OR UPPER(BTRIM(saby_id)) = requested.code
+			ORDER BY (missing_since IS NULL) DESC, seen_at DESC, saby_id
+			LIMIT 1
+		) candidate ON TRUE
+		ORDER BY requested.position
 	`, codes)
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("search Saby nomenclature: %w", err)
@@ -288,20 +301,16 @@ func (repository *PostgresRepository) ImportProducts(
 		balance     int
 		images      []string
 	}
-	byCode := make(map[string]found)
+	byCode := make(map[string]found, len(codes))
 	for rows.Next() {
+		var key string
 		var item found
-		var code, article, barcode string
-		if err := rows.Scan(&item.sabyID, &code, &article, &barcode, &item.name,
-			&item.description, &item.priceMinor, &item.balance, &item.images); err != nil {
+		if err := rows.Scan(&key, &item.sabyID, &item.name, &item.description,
+			&item.priceMinor, &item.balance, &item.images); err != nil {
 			rows.Close()
 			return ImportResult{}, fmt.Errorf("scan Saby nomenclature: %w", err)
 		}
-		for _, key := range []string{code, article, barcode, item.sabyID} {
-			if key = strings.ToUpper(strings.TrimSpace(key)); key != "" {
-				byCode[key] = item
-			}
-		}
+		byCode[key] = item
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -323,9 +332,24 @@ func (repository *PostgresRepository) ImportProducts(
 		}
 		var existingID int64
 		var existingSlug string
-		err := tx.QueryRow(ctx,
-			"SELECT id, slug FROM products WHERE saby_id = $1", item.sabyID,
-		).Scan(&existingID, &existingSlug)
+		// Повторный импорт не должен создать дубль даже у карточки, которую
+		// когда-то связали со старым X... как saby_id. Проверяем и текущий ID,
+		// и стабильный человекочитаемый код товара.
+		err := tx.QueryRow(ctx, `
+			SELECT p.id, p.slug
+			FROM products p
+			LEFT JOIN saby_nomenclature linked ON linked.saby_id = p.saby_id
+			WHERE p.saby_id = $1
+				OR UPPER(BTRIM(linked.code)) = $2
+				OR EXISTS (
+					SELECT 1 FROM product_external_ids external
+					WHERE external.product_id = p.id
+						AND external.provider = 'saby' AND external.id_type = 'code'
+						AND UPPER(BTRIM(external.external_id)) = $2
+				)
+			ORDER BY (p.saby_id = $1) DESC, p.id
+			LIMIT 1
+		`, item.sabyID, code).Scan(&existingID, &existingSlug)
 		if err == nil {
 			entry.Status = "exists"
 			entry.ProductID = &existingID
