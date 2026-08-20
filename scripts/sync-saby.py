@@ -6,6 +6,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from saby_catalog_merge import merge_catalog_items
+
 stage = "settings"
 
 
@@ -140,11 +142,10 @@ try:
             )
         return collected
 
-    # Прайс-лист сужает выдачу до продаваемых позиций с ценой. Он нужен
-    # для витрины, но не годится для справочника: товар, которого в этом
-    # прайс-листе нет, менеджер всё равно должен уметь завести по коду.
-    # Поэтому ходим дважды и склеиваем, отдавая предпочтение позиции с
-    # ценой.
+    # Полный каталог точки является источником остатков. Прайс-лист нужен
+    # только для цены. Раньше второй ответ целиком заменял первый по id, и
+    # нулевой/устаревший balance одной позиции из прайса мог обнулить товар
+    # на сайте, хотя в общем каталоге точки остаток был положительным.
     def load(with_price_list):
         query = {
             "pointId": os.environ["SABY_POINT_ID"],
@@ -157,16 +158,11 @@ try:
             query["noStopList"] = "true"
         return load_section(query, None, set(), 0)
 
-    by_id = {}
-    for item in load(False):
-        key = str(item.get("id"))
-        if key:
-            by_id[key] = item
-    for item in load(True):
-        key = str(item.get("id"))
-        if key:
-            by_id[key] = item
-    catalog_items = list(by_id.values())
+    full_catalog = load(False)
+    price_catalog = load(True)
+    catalog_items, balance_conflicts = merge_catalog_items(
+        full_catalog, price_catalog
+    )
     if not catalog_items:
         raise RuntimeError("empty catalog")
 
@@ -352,7 +348,8 @@ try:
     print(
         "Saby catalog health: "
         f"items={len(public_catalog)} balanceFields={balances_present} "
-        f"positiveBalances={positive_balances} point={os.environ['SABY_POINT_ID']}"
+        f"positiveBalances={positive_balances} "
+        f"balanceConflicts={balance_conflicts} point={os.environ['SABY_POINT_ID']}"
     )
 
     stage = "store"
