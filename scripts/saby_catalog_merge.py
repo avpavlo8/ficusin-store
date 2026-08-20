@@ -1,8 +1,9 @@
-"""Правила объединения полного каталога Saby и прайс-листа.
+"""Правила объединения полного каталога Saby и «Общего прайс-листа».
 
-Полный каталог точки — источник складского остатка. Прайс-лист нужен только
-для цены: он не должен обнулять или менять balance, который уже пришёл из
-полного каталога той же точки.
+Полный каталог нужен, чтобы менеджер мог найти любую номенклатуру по коду.
+Для товара, который присутствует в выбранном прайс-листе, именно прайс-лист
+является источником боевой цены и остатка витрины. Это соответствует тому,
+что оператор видит в Saby в контексте этого прайс-листа.
 """
 
 
@@ -27,10 +28,11 @@ def _number(value):
 
 
 def merge_catalog_items(catalog_items, price_items):
-    """Merge Saby snapshots without letting a price-list row replace stock.
+    """Merge Saby snapshots with the selected price list authoritative for sale data.
 
-    Returns ``(items, balance_conflicts)``. A conflict is only diagnostic: the
-    full catalogue balance remains authoritative.
+    Returns ``(items, balance_conflicts)``. A conflict is diagnostic only: if
+    the price-list row contains ``balance``, that value wins. The full catalog
+    remains the fallback for items absent from the price list and for metadata.
     """
     by_id = {}
     for item in catalog_items:
@@ -59,20 +61,19 @@ def merge_catalog_items(catalog_items, price_items):
 
         for field, value in priced.items():
             if field == "balance":
-                # Если полный каталог вообще не прислал balance, используем
-                # запасное значение из прайс-листа. Ноль в полном каталоге —
-                # полноценное значение и не заменяется.
-                if _empty(merged.get(field)) and not _empty(value):
+                # Для продаваемой позиции остаток выбранного прайс-листа
+                # авторитетнее общего справочника. Ноль здесь тоже валиден:
+                # товар действительно может закончиться.
+                if "balance" in priced and not _empty(value):
                     merged[field] = value
                 continue
             if field == "cost":
-                # Цена — как раз то, ради чего второй запрос выполняется.
+                # Цена выбранного прайс-листа всегда важнее общей карточки.
                 if not _empty(value):
                     merged[field] = value
                 continue
-            # Прайс-лист может содержать поле, которого нет в общем каталоге.
-            # Заполняем только пробелы и не превращаем второй ответ в источник
-            # названия, описания, фотографий или идентичности товара.
+            # Название, описание, фотографии и идентичность берём из полного
+            # каталога. Прайс-лист лишь заполняет отсутствующие значения.
             if field not in merged or _empty(merged[field]):
                 merged[field] = value
 
