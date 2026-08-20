@@ -9,61 +9,51 @@ let loading: Promise<void> | null = null;
 let writes: Promise<void> = Promise.resolve();
 const listeners = new Set<(cart: Cart) => void>();
 
-// Черновик последней незаписанной корзины. Ссылки шапки и нижней панели
-// ведут на настоящий адрес, браузер уходит со страницы и обрывает
-// незавершённые запросы — растение, только что положенное в корзину, до
-// сервера не доезжает. Заметнее всего это в Safari.
+// Зеркало последнего показанного состава корзины.
 //
-// Пять минут — это про «не потерять по дороге». Вечная вторая копия
-// корзины в браузере однажды уже расходилась с сервером, и её убрали.
-const pendingKey = "ficusin-cart-pending";
-const pendingLifetimeMs = 5 * 60 * 1000;
+// Корзина живёт только на сервере, а страницы магазина открываются по
+// настоящим адресам: каждый переход — новая загрузка и новый запрос. Если
+// он не дошёл, показывать пустую корзину нельзя: это не факт, а домысел.
+// Пустая корзина вместо собранной выглядит как потеря, и покупатель уходит.
+//
+// Пять минут — это страховка на переход и на пропавшую связь, а не вторая
+// вечная копия. Прежнюю вечную копию убрали именно потому, что она умела
+// расходиться с сервером и жить своей жизнью.
+const mirrorKey = "ficusin-cart-mirror";
+const mirrorLifetimeMs = 5 * 60 * 1000;
 
 function clean(cart: Cart): Cart {
   return Object.fromEntries(Object.entries(cart).filter(([id, quantity]) => id && Number.isInteger(quantity) && quantity > 0));
 }
 
-function same(left: Cart, right: Cart): boolean {
-  const keys = Object.keys(left);
-  return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
-}
-
-function rememberPending(cart: Cart) {
+function rememberMirror(cart: Cart) {
   try {
-    window.localStorage.setItem(pendingKey, JSON.stringify({ at: Date.now(), items: cart }));
+    window.localStorage.setItem(mirrorKey, JSON.stringify({ at: Date.now(), items: cart }));
   } catch {
-    // Приватный режим Safari умеет запрещать запись. Это ухудшает надёжность,
-    // но не должно ронять корзину.
+    // Приватный режим Safari умеет запрещать запись. Магазин от этого
+    // теряет страховку, но работать не перестаёт.
   }
 }
 
-function forgetPending() {
+function readMirror(): Cart | null {
   try {
-    window.localStorage.removeItem(pendingKey);
-  } catch {
-    // см. rememberPending
-  }
-}
-
-function readPending(): Cart | null {
-  try {
-    const raw = window.localStorage.getItem(pendingKey);
+    const raw = window.localStorage.getItem(mirrorKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { at?: number; items?: Cart };
     if (!parsed.items || typeof parsed.at !== "number") return null;
-    if (Date.now() - parsed.at > pendingLifetimeMs) {
-      forgetPending();
+    if (Date.now() - parsed.at > mirrorLifetimeMs) {
+      window.localStorage.removeItem(mirrorKey);
       return null;
     }
     return clean(parsed.items);
   } catch {
-    forgetPending();
     return null;
   }
 }
 
 function publish(cart: Cart) {
   snapshot = clean(cart);
+  rememberMirror(snapshot);
   listeners.forEach((listener) => listener(snapshot));
 }
 
@@ -78,24 +68,14 @@ function loadCart(force = false): Promise<void> {
     })
     .catch(() => null)
     .then((server) => {
-      const pending = readPending();
       if (server === null) {
-        // Сервер не ответил. Пустая корзина здесь не факт, а домысел: мы
-        // просто не смогли спросить. Показываем последнее решение
-        // покупателя, если оно сохранилось, и не трогаем черновик — он
-        // ещё пригодится следующей попытке.
-        if (pending) publish(pending);
+        // Спросить не получилось. Показываем то, что покупатель видел
+        // последним, и не делаем вид, что корзина пуста.
+        const mirror = readMirror();
+        if (mirror) publish(mirror);
         return;
       }
       loaded = true;
-      // Черновик побеждает: он и есть последнее решение покупателя, просто
-      // не доехавшее до сервера. Дописываем и стираем черновик.
-      if (pending && !same(pending, server)) {
-        publish(pending);
-        void saveCart(pending);
-        return;
-      }
-      forgetPending();
       publish(server);
     })
     .finally(() => { loading = null; });
@@ -104,7 +84,6 @@ function loadCart(force = false): Promise<void> {
 
 function saveCart(cart: Cart): Promise<void> {
   const expected = clean(cart);
-  rememberPending(expected);
   writes = writes.then(async () => {
     const response = await fetch("/api/v1/cart", {
       method: "PUT",
@@ -114,7 +93,6 @@ function saveCart(cart: Cart): Promise<void> {
       body: JSON.stringify({ items: expected }),
     });
     if (!response.ok) throw new Error("Не удалось сохранить корзину");
-    forgetPending();
   }).catch(async () => {
     await loadCart(true).catch(() => undefined);
   });
@@ -138,7 +116,7 @@ export function useSharedCart() {
       void saveCart(next);
     };
     // Корзина, которая не загрузилась, не повод не дать положить растение:
-    // решение покупателя сохранится черновиком и уедет следующей попыткой.
+    // решение покупателя сохранится в зеркале и уедет следующей попыткой.
     if (loaded) apply(); else void loadCart().catch(() => undefined).then(apply);
   }, []);
   return [cart, setCart] as const;
