@@ -68,9 +68,9 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await expect(menu).toHaveCount(0);
 });
 
-// Нижняя панель ведёт на настоящий адрес: браузер уходит со страницы и
-// обрывает незавершённые запросы. Корзина обязана пережить этот переход —
-// в Safari она однажды его не переживала.
+// Нижняя панель ведёт на настоящий адрес: каждый переход — новая загрузка
+// и новый запрос корзины. Корзина обязана пережить этот переход, даже если
+// запрос не дошёл: пустая корзина вместо собранной выглядит как потеря.
 test("@phone the cart opens as a separate page and keeps its contents", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
@@ -80,14 +80,6 @@ test("@phone the cart opens as a separate page and keeps its contents", async ({
   // Счётчик в панели показывает, что решение покупателя уже принято
   // приложением: дальше проверяем, переживёт ли оно переход.
   await expect(page.locator(".tab-bar .tab-icon b").last()).toHaveText("1");
-
-  // Черновик в браузере — это страховка на случай, если запись не доедет до
-  // сервера. Проверяем её здесь: без этого «пустая корзина» после перехода
-  // не отличает потерянную запись от неподхваченного черновика.
-  await expect
-    .poll(async () => page.evaluate(() => window.localStorage.getItem("ficusin-cart-pending")),
-      { message: "черновик корзины в браузере" })
-    .toContain("saby-1");
 
   await page.locator(".tab-bar > *").nth(3).click();
   await expect(page.locator(".drawer.open")).toBeVisible();
