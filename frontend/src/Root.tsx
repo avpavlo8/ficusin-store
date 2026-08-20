@@ -4,6 +4,7 @@ import AdminPage from "./AdminPage";
 import ProductPage from "./ProductPage";
 import FavoritesPage from "./FavoritesPage";
 import AccountPage from "./AccountPage";
+import AccountOrderPage from "./AccountOrderPage";
 import CartPage from "./CartPage";
 import { StoreFooter } from "./StoreFooter";
 import { LoginPage, RegisterPage } from "./AuthPages";
@@ -23,8 +24,7 @@ export default function Root() {
     return withFooter(<ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />);
   }
   if (path.startsWith("/account/orders/")) {
-    return withFooter(<AccountPage
-      section="orders"
+    return withFooter(<AccountOrderPage
       orderNumber={decodeURIComponent(path.slice("/account/orders/".length))}
     />);
   }
