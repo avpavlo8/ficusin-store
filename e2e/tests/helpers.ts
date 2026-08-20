@@ -81,16 +81,27 @@ type Session = typeof guest | typeof owner;
 const carts = new WeakMap<Page, Record<string, number>>();
 
 export async function mockApi(page: Page, session: Session = guest) {
+  // Моки держим на контексте, а не на странице.
+  //
+  // Ссылки шапки и нижней панели ведут на настоящий адрес, и браузер
+  // загружает новый документ. В WebKit моки уровня страницы за такой сменой
+  // не успевают: запросы нового документа уходят мимо них, vite пытается
+  // достучаться до несуществующего бэкенда, и страница получает не JSON.
+  // Проверка корзины падала именно так — и только в Safari.
+  //
+  // Охват от переноса не меняется: контекст у каждого теста свой.
+  const context = page.context();
+
   // Playwright checks routes in reverse order of registration, so this
   // catch-all goes first: anything the page asks for that is not listed
   // below still gets an answer instead of hanging the test.
-  await page.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
+  await context.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
 
-  await page.route("**/api/v1/catalog", (route) =>
+  await context.route("**/api/v1/catalog", (route) =>
     route.fulfill({ json: { products: [product, ficus, monstera] } }));
 
   if (!carts.has(page)) carts.set(page, {});
-  await page.route("**/api/v1/cart", async (route) => {
+  await context.route("**/api/v1/cart", async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON() as { items?: Record<string, number> };
       carts.set(page, body.items || {});
@@ -98,7 +109,7 @@ export async function mockApi(page: Page, session: Session = guest) {
     await route.fulfill({ json: { items: carts.get(page) || {} } });
   });
 
-  await page.route("**/api/v1/products/*", (route) => route.fulfill({ json: { product: {
+  await context.route("**/api/v1/products/*", (route) => route.fulfill({ json: { product: {
     ...product,
     shortDescription: "Неприхотливое растение",
     description: "Подходит для дома",
@@ -116,7 +127,7 @@ export async function mockApi(page: Page, session: Session = guest) {
   // Дерево нарочно трёхуровневое и с пустым разделом — как в настоящей базе.
   // Пока стенд был плоским, витрина рисовала два уровня и никто этого не
   // замечал: виды растений просто не показывались.
-  await page.route("**/api/v1/categories", (route) =>
+  await context.route("**/api/v1/categories", (route) =>
     route.fulfill({ json: { categories: [
       { id: 1, parentId: null, name: "Растения", slug: "plants", sortOrder: 1 },
       { id: 2, parentId: null, name: "Кашпо и горшки", slug: "pots", sortOrder: 2 },
@@ -125,14 +136,14 @@ export async function mockApi(page: Page, session: Session = guest) {
       { id: 5, parentId: 3, name: "Фикус", slug: "ficus", sortOrder: 2 },
     ] } }));
 
-  await page.route("**/api/v1/auth/me", (route) => session.signedIn
+  await context.route("**/api/v1/auth/me", (route) => session.signedIn
     ? route.fulfill({ json: { user: session.user } })
     : route.fulfill({ status: 401, json: { error: "Требуется авторизация" } }));
 
-  await page.route("**/api/v1/account/**", (route) =>
+  await context.route("**/api/v1/account/**", (route) =>
     route.fulfill({ json: { orders: [] } }));
 
-  await page.route("**/api/v1/payments/methods?delivery=*", (route) => {
+  await context.route("**/api/v1/payments/methods?delivery=*", (route) => {
     const delivery = new URL(route.request().url()).searchParams.get("delivery");
     const methods = delivery === "pickup"
       ? [{ id: "on_delivery", title: "При получении", note: "Оплатите, когда заберёте заказ" }]
@@ -140,7 +151,7 @@ export async function mockApi(page: Page, session: Session = guest) {
     return route.fulfill({ json: { methods } });
   });
 
-  await page.route("**/api/v1/delivery/cdek?action=status", (route) =>
+  await context.route("**/api/v1/delivery/cdek?action=status", (route) =>
     route.fulfill({ json: { available: false } }));
 }
 
