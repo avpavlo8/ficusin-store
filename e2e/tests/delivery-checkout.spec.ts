@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mockApi, setStoredCounts } from "./helpers";
 
-async function openDeliveryStep(page: Parameters<typeof test>[0] extends never ? never : any) {
+async function openDeliveryStep(page: Page) {
   await setStoredCounts(page, [], { "saby-1": 1 });
   await page.goto("/checkout");
   const contact = page.locator('[data-checkout-step="1"]');
