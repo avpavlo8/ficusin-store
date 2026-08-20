@@ -37,9 +37,9 @@ test("@desktop кабинет показывает возврат и оплач�
 
   await page.goto("/account/orders/0001-7");
 
-  await expect(page.getByText("Оплачено")).toBeVisible();
-  await expect(page.getByText("Возвращено")).toBeVisible();
-  await expect(page.getByText("К доплате")).toBeVisible();
+  await expect(page.getByText("Оплачено", { exact: true })).toBeVisible();
+  await expect(page.getByText("Возвращено", { exact: true })).toBeVisible();
+  await expect(page.getByText("К доплате", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить 1.?500/ })).toBeVisible();
 });
 
