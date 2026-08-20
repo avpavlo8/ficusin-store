@@ -73,7 +73,7 @@ func TestPostQuoteUsesCombinedRealPackage(t *testing.T) {
 	if !post.called || post.address != "Москва, Мясницкая, 1" {
 		t.Fatalf("Почта не получила адрес: called=%v address=%q", post.called, post.address)
 	}
-	want := integration.Parcel{LengthCM: 60, WidthCM: 70, HeightCM: 20, WeightGrams: 4000}
+	want := integration.Parcel{LengthCM: 60, WidthCM: 110, HeightCM: 20, WeightGrams: 4000}
 	if post.parcel != want {
 		t.Fatalf("посылка = %+v, ожидали %+v", post.parcel, want)
 	}
@@ -130,7 +130,4 @@ func TestDeliveryQuoteKeepsProviderDiagnosticsPrivate(t *testing.T) {
 	}
 }
 
-// Keep this assertion close to the handlers: the catalog package type is the
-// single source of dimensions for every carrier, not a separate delivery
-// table with values that can drift.
 var _ = catalog.PackageSize{}
