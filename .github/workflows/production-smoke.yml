@@ -13,6 +13,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show current production responses
+        shell: bash
+        run: |
+          health="$(curl -fsS --max-time 10 https://ficusin.ru/api/v1/health || true)"
+          release="$(curl -fsS --max-time 10 https://ficusin.ru/release.txt || true)"
+          echo "health=${health}"
+          echo "release=${release}"
+
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 12
