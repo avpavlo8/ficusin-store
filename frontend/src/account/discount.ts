@@ -17,7 +17,11 @@ export type DiscountProgress = {
   percent: number;
   /** Следующая ступень или null, если покупатель уже на потолке. */
   nextPercent: number | null;
-  /** Сколько ещё нужно выполненных заказов, в копейках. */
+  /**
+   * Сколько ещё нужно выполненных заказов, в копейках, округлённое вверх до
+   * рубля: кабинет печатает сумму без копеек, и «осталось 0 ₽» при живой
+   * прежней скидке выглядит поломкой.
+   */
   remainingMinor: number;
 };
 
@@ -27,9 +31,10 @@ export function discountProgress(spendMinor: number): DiscountProgress {
   if (percent >= maxPercent) {
     return { percent: maxPercent, nextPercent: null, remainingMinor: 0 };
   }
+  const remaining = (percent + 1) * stepMinor - spend;
   return {
     percent,
     nextPercent: percent + 1,
-    remainingMinor: (percent + 1) * stepMinor - spend,
+    remainingMinor: Math.ceil(remaining / 100) * 100,
   };
 }
