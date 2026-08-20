@@ -90,6 +90,14 @@ test("@phone mobile autocomplete поддерживает тап и Search actio
   await expect(page).toHaveURL(/\/product\/saby-2$/);
 });
 
+// Кабинет обещал, что скидка растёт после выполненных заказов, но не говорил,
+// сколько осталось. Обещание без числа проверить нечем.
+test("@desktop кабинет называет, сколько осталось до следующей ступени скидки", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.goto("/account/profile");
+  await expect(page.getByText(/До 1% осталось ещё/)).toBeVisible();
+});
+
 test("@desktop профиль сохраняет адресные подсказки после обновления UI", async ({ page }) => {
   await mockApi(page, owner);
   await page.goto("/account/profile");

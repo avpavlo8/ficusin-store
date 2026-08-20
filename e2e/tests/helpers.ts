@@ -74,6 +74,9 @@ export const owner = {
     accountType: "retail",
     wholesaleStatus: "not_requested",
     retailDiscountBps: 0,
+    // 6 400 ₽ выполненных заказов — первая ступень скидки ещё не взята,
+    // до неё остаётся 3 600 ₽. Кабинет обязан назвать это число.
+    lifetimeSpendMinor: 640_000,
   },
 } as const;
 
