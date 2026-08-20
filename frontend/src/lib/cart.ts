@@ -23,6 +23,11 @@ function clean(cart: Cart): Cart {
   return Object.fromEntries(Object.entries(cart).filter(([id, quantity]) => id && Number.isInteger(quantity) && quantity > 0));
 }
 
+function same(left: Cart, right: Cart): boolean {
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
+}
+
 function rememberPending(cart: Cart) {
   try {
     window.localStorage.setItem(pendingKey, JSON.stringify({ at: Date.now(), items: cart }));
@@ -69,12 +74,23 @@ function loadCart(force = false): Promise<void> {
     .then(async (response) => {
       if (!response.ok) throw new Error("Не удалось загрузить корзину");
       const body = await response.json() as { items?: Cart };
-      const server = body.items || {};
+      return clean(body.items || {});
+    })
+    .catch(() => null)
+    .then((server) => {
       const pending = readPending();
+      if (server === null) {
+        // Сервер не ответил. Пустая корзина здесь не факт, а домысел: мы
+        // просто не смогли спросить. Показываем последнее решение
+        // покупателя, если оно сохранилось, и не трогаем черновик — он
+        // ещё пригодится следующей попытке.
+        if (pending) publish(pending);
+        return;
+      }
       loaded = true;
       // Черновик побеждает: он и есть последнее решение покупателя, просто
       // не доехавшее до сервера. Дописываем и стираем черновик.
-      if (pending && JSON.stringify(pending) !== JSON.stringify(clean(server))) {
+      if (pending && !same(pending, server)) {
         publish(pending);
         void saveCart(pending);
         return;
@@ -121,7 +137,9 @@ export function useSharedCart() {
       publish(next);
       void saveCart(next);
     };
-    if (loaded) apply(); else void loadCart().then(apply).catch(() => undefined);
+    // Корзина, которая не загрузилась, не повод не дать положить растение:
+    // решение покупателя сохранится черновиком и уедет следующей попыткой.
+    if (loaded) apply(); else void loadCart().catch(() => undefined).then(apply);
   }, []);
   return [cart, setCart] as const;
 }
