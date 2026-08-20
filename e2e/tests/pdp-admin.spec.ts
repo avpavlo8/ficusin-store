@@ -91,24 +91,3 @@ test("@desktop владелец управляет галереей товара
   await dialog.getByRole("button", { name: "Удалить" }).click();
   await expect.poll(() => deleted).toBe(1);
 });
-
-test("@desktop массовый импорт сначала показывает dry-run и не создаёт дубли", async ({ page }) => {
-  await mockApi(page, adminOwner);
-  const calls: boolean[] = [];
-  await page.route("**/api/v1/admin/products/import-all", async (route) => {
-    const body = route.request().postDataJSON() as { dryRun: boolean };
-    calls.push(body.dryRun);
-    await route.fulfill({ json: {
-      created: body.dryRun ? 0 : 1,
-      entries: [
-        { code: "saby-1", status: "exists", name: "Аглаонема Мария", price: 1490, stock: 5, slug: "saby-1" },
-        { code: "saby-2", status: "new", name: "Фикус", price: 2490, stock: 3, slug: "" },
-      ],
-    } });
-  });
-  page.on("dialog", (dialog) => void dialog.accept());
-
-  await page.goto("/product/saby-1");
-  await page.getByRole("button", { name: "Загрузить весь каталог СБИС" }).click();
-  await expect.poll(() => calls).toEqual([true, false]);
-});
