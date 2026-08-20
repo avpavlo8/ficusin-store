@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
 import { PushToggle } from "./PushToggle";
+import { discountProgress } from "./account/discount";
 import { useSharedCart } from "./lib/cart";
 
 export type StoreUser = {
@@ -14,6 +15,7 @@ export type StoreUser = {
   accountType: "retail" | "wholesale";
   wholesaleStatus: string;
   retailDiscountBps: number;
+  lifetimeSpendMinor: number;
   adminRole?: "manager" | "owner";
   avatarUpdatedAt?: string;
 };
@@ -442,6 +444,11 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
   const [saved, setSaved] = useState(false);
 
   const discount = user.retailDiscountBps / 100;
+  const progress = discountProgress(user.lifetimeSpendMinor);
+  // Владелец может выдать скидку больше заработанной. Тогда путь до
+  // следующей ступени показывать нельзя: «персональная скидка 15%» и «до
+  // 3% осталось» рядом выглядят как ошибка магазина.
+  const earnedBySpending = discount <= progress.percent;
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -485,7 +492,11 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
       <p>
         {user.accountType === "wholesale"
           ? "После проверки реквизитов мы включим оптовые условия."
-          : "Скидка увеличивается автоматически после выполненных заказов."}
+          : !earnedBySpending
+            ? "Скидка увеличивается автоматически после выполненных заказов."
+            : progress.nextPercent
+              ? `До ${progress.nextPercent}% осталось выполненных заказов на ${money.format(progress.remainingMinor / 100)}.`
+              : "Это наибольшая скидка магазина — дальше расти некуда."}
       </p>
     </div>
 
