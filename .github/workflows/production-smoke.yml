@@ -21,8 +21,12 @@ jobs:
         run: |
           health="$(curl -fsS --max-time 10 https://ficusin.ru/api/v1/health || true)"
           release="$(curl -fsS --max-time 10 https://ficusin.ru/release.txt || true)"
+          adjustment_status="$(curl -sS --max-time 10 -o /tmp/adjustment -w '%{http_code}' https://ficusin.ru/api/v1/admin/orders/1/adjustment || true)"
+          adjustment_body="$(cat /tmp/adjustment 2>/dev/null || true)"
           echo "health=${health}"
           echo "release=${release}"
+          echo "adjustment_status=${adjustment_status}"
+          echo "adjustment_body=${adjustment_body}"
 
   smoke:
     runs-on: ubuntu-latest
