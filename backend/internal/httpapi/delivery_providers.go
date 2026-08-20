@@ -66,7 +66,8 @@ func (handlers deliveryQuoteHandlers) quote(response http.ResponseWriter, reques
 	}
 	quote, err := pricer.Calculate(request.Context(), strings.TrimSpace(body.Address), box)
 	if errors.Is(err, integration.ErrRussianPostAddress) {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Почта России не смогла определить адрес. Выберите адрес из подсказки или укажите его точнее"})
+		// Неизвестный адрес — повод уточнить заказ, а не выкинуть корзину.
+		writeJSON(response, http.StatusOK, quoteUnavailable)
 		return
 	}
 	if errors.Is(err, integration.ErrYandexOutsideRyazan) {
@@ -75,9 +76,10 @@ func (handlers deliveryQuoteHandlers) quote(response http.ResponseWriter, reques
 	}
 	if err != nil {
 		handlers.logger.Error("delivery quote failed", "provider", providerName, "error", err)
-		// A temporary carrier outage is our problem, not a reason to throw
-		// away a ready cart. The order can still be placed and priced by the
-		// manager; online payment waits until the fee is known.
+		writeJSON(response, http.StatusOK, quoteUnavailable)
+		return
+	}
+	if quote.Price <= 0 {
 		writeJSON(response, http.StatusOK, quoteUnavailable)
 		return
 	}
