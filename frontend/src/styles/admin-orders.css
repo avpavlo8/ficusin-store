@@ -1,0 +1,357 @@
+/* Заказы в панели управления: читаемая таблица и полноценный редактор. */
+
+/* Sidebar: button reset. Without this, global button borders collapse into
+   the small rounded boxes seen to the left of navigation labels. */
+.admin-page .account-sidebar nav button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.admin-page .account-sidebar nav button .admin-nav-dot {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  background: rgba(237, 242, 233, .42);
+  box-shadow: 0 0 0 1px rgba(237, 242, 233, .18);
+}
+.admin-page .account-sidebar nav button.active .admin-nav-dot {
+  background: #294326;
+  box-shadow: none;
+}
+
+/* The previous 235px cover crop cut the bonsai at the top. Give the artwork
+   enough height and anchor it to the right so the whole focal plant reads. */
+.admin-page .account-content::before {
+  height: 300px;
+  margin-bottom: 34px;
+  background-position: right center;
+  background-size: cover;
+  border-radius: 0 0 18px 18px;
+}
+.admin-page .account-title {
+  margin-top: -158px;
+  min-height: 124px;
+  padding-bottom: 30px;
+}
+
+/* Expanded order must stop behaving like a second table layout. */
+.admin-page .admin-table tr.order-details > td {
+  display: table-cell;
+  padding: 24px !important;
+  background: #f8f2e9;
+  border-top: 1px solid #ddcfbd;
+}
+.admin-page .admin-table tr.order-details:hover > td {
+  background: #f8f2e9;
+}
+.admin-page .order-details > td > .admin-order-editor {
+  width: 100%;
+  margin: 0;
+}
+.admin-page .order-details > td > .admin-order-editor + div {
+  margin-top: 16px;
+  padding: 18px 20px;
+  border: 1px solid #ddcfbd;
+  border-radius: 16px;
+  background: rgba(255, 253, 248, .94);
+}
+.admin-page .order-details > td > .admin-order-editor + div strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #294326;
+  font-size: 13px;
+}
+.admin-page .order-details > td > .admin-order-editor + div p {
+  margin: 0;
+  color: #697169;
+  line-height: 1.5;
+}
+
+/* Editor container. Keep the workflow vertical: composition -> delivery ->
+   save -> money. It is much easier for a manager during a phone call. */
+.admin-page .admin-order-editor {
+  display: grid;
+  gap: 16px;
+}
+.admin-page .admin-order-editor > .admin-block {
+  margin: 0;
+  padding: 22px;
+  border: 1px solid #ddcfbd;
+  border-radius: 18px;
+  background: rgba(255, 253, 248, .96);
+  box-shadow: 0 8px 24px rgba(70, 52, 34, .04);
+}
+.admin-page .admin-order-editor .admin-block-heading {
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+.admin-page .admin-order-editor .admin-block-heading strong,
+.admin-page .admin-order-editor > .admin-block > strong {
+  color: #294326;
+  font: 700 15px/1.25 inherit;
+}
+.admin-page .admin-order-editor .admin-block-heading small {
+  display: block;
+  margin-top: 4px;
+  color: #858b84;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* One product = one clear row. */
+.admin-page .admin-order-edit-line {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 110px 120px auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid #eadfce;
+}
+.admin-page .admin-order-edit-line:first-of-type {
+  border-top: 0;
+}
+.admin-page .admin-order-edit-line > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.admin-page .admin-order-edit-line > span strong {
+  overflow: hidden;
+  color: #2f302c;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-page .admin-order-edit-line > span small {
+  color: #858b84;
+  font-size: 12px;
+}
+.admin-page .admin-order-edit-line > input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 11px;
+  text-align: center;
+  font-weight: 700;
+}
+.admin-page .admin-order-edit-line > strong {
+  color: #294326;
+  font-size: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+.admin-page .admin-order-edit-line > .admin-action {
+  min-width: 86px;
+  padding: 9px 12px;
+  border: 1px solid #e0c9bb;
+  border-radius: 10px;
+  background: #fff8f3;
+  color: #9a4f34;
+  font-weight: 700;
+}
+.admin-page .admin-order-edit-line > .admin-action:hover {
+  border-color: #cf9f87;
+  background: #f8e8de;
+}
+
+.admin-page .admin-order-add-line {
+  margin-top: 10px;
+  padding-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  border-top: 1px solid #eadfce;
+}
+.admin-page .admin-order-add-line select {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 11px;
+}
+.admin-page .admin-order-add-line .admin-action {
+  min-width: 110px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 11px;
+  background: #294326;
+  color: #fff;
+  font-weight: 700;
+}
+.admin-page .admin-order-add-line .admin-action:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* Delivery card. */
+.admin-page .admin-order-editor .admin-form-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) minmax(260px, 1fr);
+  gap: 16px 22px;
+  align-items: end;
+}
+.admin-page .admin-order-editor .admin-form-grid label:not(.admin-checkbox) {
+  display: grid;
+  gap: 6px;
+  color: #666b65;
+  font-size: 12px;
+  font-weight: 700;
+}
+.admin-page .admin-order-editor .admin-form-grid input[type="number"] {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 11px;
+  font-size: 14px;
+}
+.admin-page .admin-order-editor .admin-checkbox {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #515851;
+  font-size: 13px;
+  font-weight: 600;
+}
+.admin-page .admin-order-editor .admin-checkbox input {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  accent-color: #294326;
+}
+
+.admin-page .admin-order-editor > .dialog-actions {
+  margin: 0;
+  padding: 0;
+  justify-content: flex-start;
+}
+.admin-page .admin-order-editor > .dialog-actions .primary {
+  min-width: 210px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 11px;
+  background: #294326;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(41, 67, 38, .14);
+}
+
+/* Payment is a distinct financial card. */
+.admin-page .admin-order-editor > .admin-block:last-child {
+  border-color: #cfd9ca;
+  background: #f4f7f0;
+}
+.admin-page .admin-order-editor > .admin-block:last-child > p {
+  margin: 12px 0 0;
+  color: #626b61;
+  line-height: 1.55;
+}
+.admin-page .admin-order-editor > .admin-block:last-child > p:first-of-type {
+  padding: 13px 15px;
+  border-radius: 12px;
+  background: #fff;
+}
+.admin-page .admin-order-editor > .admin-block:last-child .admin-action {
+  padding: 10px 14px;
+  border: 1px solid #c9d3c5;
+  border-radius: 10px;
+  background: #fff;
+  color: #294326;
+  font-weight: 700;
+}
+.admin-page .admin-order-refund-form {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+.admin-page .admin-order-refund-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+/* The table itself needs breathing room so opening a row does not look like
+   a broken spreadsheet. */
+.admin-page .admin-table-wrap {
+  overflow: hidden;
+  border-radius: 18px;
+}
+.admin-page .admin-table td,
+.admin-page .admin-table th {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.admin-page .admin-row-arrow {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f0eadf;
+  color: #294326;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+@media (max-width: 1180px) {
+  .admin-page .admin-order-edit-line {
+    grid-template-columns: minmax(180px, 1fr) 90px 105px auto;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-page .account-content::before {
+    height: 210px;
+    background-position: 68% center;
+  }
+  .admin-page .account-title {
+    margin-top: -122px;
+    min-height: 92px;
+  }
+  .admin-page .admin-table tr.order-details > td {
+    padding: 14px !important;
+  }
+  .admin-page .admin-order-editor > .admin-block {
+    padding: 17px;
+  }
+  .admin-page .admin-order-edit-line {
+    grid-template-columns: 1fr 86px;
+  }
+  .admin-page .admin-order-edit-line > strong {
+    text-align: left;
+  }
+  .admin-page .admin-order-edit-line > .admin-action {
+    justify-self: end;
+  }
+  .admin-page .admin-order-editor .admin-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-page .admin-order-edit-line {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .admin-page .admin-order-edit-line > input {
+    max-width: 120px;
+    text-align: left;
+  }
+  .admin-page .admin-order-edit-line > .admin-action {
+    justify-self: start;
+  }
+  .admin-page .admin-order-add-line,
+  .admin-page .admin-order-refund-form {
+    grid-template-columns: 1fr;
+  }
+  .admin-page .admin-order-add-line .admin-action,
+  .admin-page .admin-order-refund-form .admin-action {
+    width: 100%;
+  }
+}
