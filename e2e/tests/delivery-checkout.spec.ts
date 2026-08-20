@@ -29,7 +29,7 @@ test("@desktop Почта России показывает договорной
   await step.getByLabel("Адрес доставки").fill("Москва, Мясницкая улица, 1");
   await expect(step.getByRole("button", { name: "Продолжить →" })).toBeDisabled();
   await step.getByRole("button", { name: "Рассчитать доставку" }).click();
-  await expect(step.getByText("615 ₽")).toBeVisible();
+  await expect(step.locator(".cdek-quote > b")).toHaveText("615 ₽");
   await expect(step.getByText("2–4 дн.")).toBeVisible();
   await expect(step.getByRole("button", { name: "Продолжить →" })).toBeEnabled();
 });
@@ -46,7 +46,7 @@ test("@desktop курьер по Рязани получает цену Янде
   const step = page.locator('[data-checkout-step="2"]');
   await step.getByLabel("Адрес доставки").fill("Рязань, улица Ленина, 1");
   await step.getByRole("button", { name: "Рассчитать доставку" }).click();
-  await expect(step.getByText("430 ₽")).toBeVisible();
+  await expect(step.locator(".cdek-quote > b")).toHaveText("430 ₽");
   await expect(step.getByText(/Яндекс Доставка · Курьер/)).toBeVisible();
 });
 
