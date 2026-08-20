@@ -16,6 +16,11 @@ type paymentService interface {
 	Sync(ctx context.Context, providerPaymentID string) error
 }
 
+type adjustablePaymentService interface {
+	StartOutstanding(ctx context.Context, orderNumber string) (string, payment.Balance, error)
+	SyncOutstanding(ctx context.Context, providerPaymentID string) error
+}
+
 // paymentMethodsHandler tells the checkout which options to draw. The list
 // depends on who is asking and how they collect, so it is built here rather
 // than hardcoded in the browser.
@@ -34,9 +39,9 @@ func paymentMethodsHandler(authentication authService, payments paymentService) 
 	})
 }
 
-// startPaymentHandler hands back the page to pay on. It is deliberately
-// callable for an order the customer already has: coming back to an unpaid
-// order and paying it later is normal.
+// startPaymentHandler hands back the page to pay on. Mutable orders use the
+// outstanding balance, not their original total. Most importantly, an order
+// with a preorder or an unknown delivery price cannot open YooKassa at all.
 func startPaymentHandler(logger *slog.Logger, payments paymentService) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if !available(payments) {
@@ -46,6 +51,23 @@ func startPaymentHandler(logger *slog.Logger, payments paymentService) http.Hand
 			return
 		}
 		orderNumber := strings.TrimSpace(request.PathValue("orderNumber"))
+		if advanced, ok := payments.(adjustablePaymentService); ok {
+			url, balance, err := advanced.StartOutstanding(request.Context(), orderNumber)
+			if err != nil {
+				logger.Info("payment not started", "error", err, "order", orderNumber)
+				message := "Не удалось начать оплату. Проверьте заказ или попробуйте ещё раз позже"
+				if !balance.Ready {
+					message = "Заказ принят. Оплата будет доступна после подтверждения наличия и стоимости доставки менеджером"
+				} else if balance.Due <= 0 {
+					message = "Заказ уже полностью оплачен"
+				}
+				writeJSON(response, http.StatusConflict, errorResponse{Error: message})
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
+			return
+		}
+
 		url, err := payments.Start(request.Context(), orderNumber)
 		if err != nil {
 			logger.Error("start payment failed", "error", err, "order", orderNumber)
@@ -70,16 +92,18 @@ func yooKassaWebhookHandler(logger *slog.Logger, payments paymentService) http.H
 			} `json:"object"`
 		}
 		if err := decodeJSON(request, &body); err != nil || body.Object.ID == "" {
-			// Answering 200 stops YooKassa from retrying something we will
-			// never understand.
 			writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
 			return
 		}
 		if available(payments) {
-			if err := payments.Sync(request.Context(), body.Object.ID); err != nil {
+			var err error
+			if advanced, ok := payments.(adjustablePaymentService); ok {
+				err = advanced.SyncOutstanding(request.Context(), body.Object.ID)
+			} else {
+				err = payments.Sync(request.Context(), body.Object.ID)
+			}
+			if err != nil {
 				logger.Error("payment sync failed", "error", err, "payment_id", body.Object.ID)
-				// A 500 makes YooKassa try again later, which is what we
-				// want when our own database is the thing that failed.
 				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "retry"})
 				return
 			}

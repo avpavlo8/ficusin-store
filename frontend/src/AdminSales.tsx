@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { DeliveryFeeForm } from "./AdminSettings";
+import { AdminOrderEditor } from "./AdminOrderEditor";
 import { Dialog, PageHeading, api, money, orderStatuses, paymentLabels, paymentMethodLabels, roleLabel, roles, statusLabels } from "./adminShared";
 import type { AdminData, Customer, Order, Role, Section } from "./adminTypes";
 
@@ -96,7 +96,6 @@ export function Orders({ focusOrder, onError }: { focusOrder?: string; onError: 
   useEffect(() => {
     api<{ orders: Order[] }>("/api/v1/admin/orders").then((data) => {
       setItems(data.orders);
-      // Arriving from "последние заказы": open the row that was clicked.
       if (focusOrder) {
         const match = data.orders.find((order) => order.orderNumber === focusOrder);
         if (match) setOpened(match.id);
@@ -107,27 +106,10 @@ export function Orders({ focusOrder, onError }: { focusOrder?: string; onError: 
     try { const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status, paymentStatus: "" }) }); setItems((current) => current.map((item) => item.id === order.id ? result.order : item)); }
     catch (error) { onError((error as Error).message); }
   };
-  // Cancelling an order and giving the money back are separate decisions:
-  // an order can be cancelled for someone who paid at the counter, and a
-  // refund is real money leaving, so it is asked for explicitly.
-  const refund = async (order: Order) => {
-    if (!window.confirm(`Вернуть ${money.format(order.total)} по заказу ${order.orderNumber}?`)) return;
-    try {
-      const result = await api<{ order?: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ refund: true }) });
-      if (result.order) setItems((current) => current.map((item) => item.id === order.id ? result.order as Order : item));
-    } catch (error) { onError((error as Error).message); }
-  };
-  // Finishes an order the shop could not price itself. Once the fee is set,
-  // the customer gets a notification and can pay from their account.
-  const setDeliveryFee = async (order: Order, fee: number) => {
-    try {
-      const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ deliveryFee: fee }) });
-      setItems((current) => current.map((item) => item.id === order.id ? result.order : item));
-    } catch (error) { onError((error as Error).message); }
-  };
+  const updateOrder = (value: Order) => setItems((current) => current.map((item) => item.id === value.id ? value : item));
   return <><PageHeading eyebrow="Продажи" title="Заказы" text="Состав заказа, контакты, доставка, оплата и текущий статус" />
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Заказ</th><th>Клиент</th><th>Получение</th><th>Сумма</th><th>Статус</th><th /></tr></thead><tbody>{items.map((order) => <Fragment key={order.id}>
-      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.trackNumber && <small>Трек: {order.trackNumber}</small>}{order.hasPreorder && <small className="admin-flag">Есть позиции под заказ</small>}{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
-      {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}>{order.paymentStatus === "paid" && <div className="admin-refund"><button onClick={() => refund(order)}>Вернуть деньги покупателю</button><small>Деньги уйдут обратно на карту через ЮKassa. Отменить возврат нельзя.</small></div>}{order.deliveryFeePending && <DeliveryFeeForm order={order} onSubmit={setDeliveryFee} />}<div><strong>Товары</strong>{order.items.map((item) => <p key={`${item.productId}-${item.productName}`}>{item.productName} × {item.quantity} <span>{money.format(item.unitPrice * item.quantity)}</span></p>)}</div><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
+      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{order.deliveryMethod}</strong><small>{order.address}</small>{order.trackNumber && <small>Трек: {order.trackNumber}</small>}{order.hasPreorder && <small className="admin-flag">Есть позиции под заказ</small>}{order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" || order.paymentStatus === "partially_paid" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</small>{order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><select value={order.status} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><span className="admin-row-arrow" aria-hidden="true">{opened === order.id ? "−" : "→"}</span></td></tr>
+      {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}><AdminOrderEditor order={order} onSaved={updateOrder} onError={onError} /><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
     </Fragment>)}</tbody></table></div></>;
 }

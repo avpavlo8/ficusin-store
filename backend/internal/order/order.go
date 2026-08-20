@@ -28,17 +28,17 @@ type Detail struct {
 	Status         string    `json:"status"`
 	PaymentStatus  string    `json:"paymentStatus"`
 	PaymentMethod  string    `json:"paymentMethod"`
-	// TrackNumber is what the customer types into the CDEK site. It appears
-	// a minute or two after the parcel is registered, not immediately.
 	TrackNumber string `json:"trackNumber"`
 	HasPreorder bool   `json:"hasPreorder"`
 	DeliveryFee    float64   `json:"deliveryFee"`
-	// DeliveryFeePending means the shop still owes the customer a price:
-	// the manager works it out and calls back before shipping.
 	DeliveryFeePending bool `json:"deliveryFeePending"`
 	RepackRequested    bool `json:"repackRequested"`
 	Subtotal       float64   `json:"subtotal"`
 	Total          float64   `json:"total"`
+	PaidAmount     float64   `json:"paidAmount"`
+	RefundedAmount float64   `json:"refundedAmount"`
+	AmountDue      float64   `json:"amountDue"`
+	PaymentReady   bool      `json:"paymentReady"`
 	CreatedAt      time.Time `json:"createdAt"`
 	Items          []Item    `json:"items"`
 }

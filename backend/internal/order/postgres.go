@@ -74,15 +74,23 @@ func (repository *PostgresRepository) DetailForCustomer(
 	var orderID int64
 	err := repository.pool.QueryRow(ctx, `
 		SELECT
-			id, order_number, delivery_method, address, comment,
-			customer_name, phone, email, status, payment_method, payment_status,
-			COALESCE(cdek_track_number, ''), has_preorder = 1,
-			delivery_fee::DOUBLE PRECISION,
-			delivery_fee_pending = 1, delivery_repack_requested = 1,
-			subtotal::DOUBLE PRECISION,
-			total::DOUBLE PRECISION, created_at
-		FROM orders
-		WHERE customer_id = $1 AND order_number = $2
+			o.id, o.order_number, o.delivery_method, o.address, o.comment,
+			o.customer_name, o.phone, o.email, o.status, o.payment_method, o.payment_status,
+			COALESCE(o.cdek_track_number, ''), o.has_preorder = 1,
+			o.delivery_fee::DOUBLE PRECISION,
+			o.delivery_fee_pending = 1, o.delivery_repack_requested = 1,
+			o.subtotal::DOUBLE PRECISION,
+			o.total::DOUBLE PRECISION,
+			COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id=o.id AND p.status='paid'),0)::DOUBLE PRECISION,
+			COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.order_id=o.id AND r.status='succeeded'),0)::DOUBLE PRECISION,
+			GREATEST(o.total
+				- COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id=o.id AND p.status='paid'),0)
+				+ COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.order_id=o.id AND r.status='succeeded'),0),0)::DOUBLE PRECISION,
+			(o.delivery_fee_pending=0 AND o.has_preorder=0 AND o.payment_method='online'
+				AND o.status NOT IN ('cancelled','completed')),
+			o.created_at
+		FROM orders o
+		WHERE o.customer_id = $1 AND o.order_number = $2
 		LIMIT 1
 	`, customerID, orderNumber).Scan(
 		&orderID,
@@ -103,6 +111,10 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.RepackRequested,
 		&detail.Subtotal,
 		&detail.Total,
+		&detail.PaidAmount,
+		&detail.RefundedAmount,
+		&detail.AmountDue,
+		&detail.PaymentReady,
 		&detail.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
