@@ -21,35 +21,21 @@ type Dependencies struct {
 	Orders       orderRepository
 	OrderCreator orderCreator
 	CDEK         cdekService
+	RussianPost  deliveryPricer
+	YandexDelivery deliveryPricer
 	Admin        adminRepository
 	Saby         sabySyncService
-	// Push is nil when no VAPID keys are configured, which simply means the
-	// shop sends no notifications.
 	Push pushService
-	// Cart is nil in tests that do not exercise the basket; the routes then
-	// behave as they do for a guest.
 	Cart cartStore
-	// Packages supplies box dimensions for delivery quotes; nil simply
-	// means every item is quoted at the fallback box size.
 	Packages packageRepository
-	// Collections are the hand-made sets shown as tabs on the storefront.
 	Collections collectionRepository
-	// Payments is nil when no YooKassa keys are set, which means the shop
-	// simply does not offer card payment.
 	Payments paymentService
-	// Settings is nil in tests; the routes then answer 503 and nothing
-	// else in the shop notices.
 	Settings settingsService
-	// Procurement is nil only in tests that do not exercise the purchasing panel.
 	Procurement procurementService
 	Reviews reviewStore
-	// Refunds sends money back for a cancelled order; nil means the panel
-	// says refunds are unavailable.
 	Refunds      refundService
 	CookieSecure bool
 	StaticDir    string
-	// YandexSuggestKey enables address autocomplete; empty simply turns the
-	// suggestions off and leaves the address field as plain text.
 	YandexSuggestKey string
 }
 
@@ -65,6 +51,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		service:  dependencies.CDEK,
 		packages: dependencies.Packages,
 	}
+	deliveryAPI := deliveryQuoteHandlers{
+		logger: logger,
+		post: dependencies.RussianPost,
+		courier: dependencies.YandexDelivery,
+		packages: dependencies.Packages,
+	}
 	adminAPI := newAdminHandlers(
 		logger,
 		dependencies.Auth,
@@ -73,13 +65,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
 
-	// Nothing behind these three routes is free for us: a call costs money
-	// at SMS.ru, an order pings a person, and every address suggestion is
-	// billed by Yandex against our key. Without a ceiling a single script
-	// could drain all three.
 	callLimiter := newRateLimiter(5, 10*time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
+	deliveryLimiter := newRateLimiter(60, time.Minute)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -143,8 +132,17 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
-	// Цена курьера и почты живёт в панели. Витрина спрашивает её здесь,
-	// чтобы показывать ровно то число, по которому посчитается заказ.
+	mux.HandleFunc("GET /api/v1/delivery/providers", deliveryAPI.providers)
+	mux.HandleFunc("POST /api/v1/delivery/post", deliveryLimiter.guard(
+		"Слишком много расчётов доставки. Попробуйте через несколько минут",
+		deliveryAPI.postQuote,
+	))
+	mux.HandleFunc("POST /api/v1/delivery/courier", deliveryLimiter.guard(
+		"Слишком много расчётов доставки. Попробуйте через несколько минут",
+		deliveryAPI.courierQuote,
+	))
+	// Оставляем старую ручку для обратной совместимости со старыми клиентами.
+	// Новая витрина не использует фиксированные цены курьера и почты.
 	mux.Handle("GET /api/v1/delivery/fees", deliveryFeesHandler(dependencies.Settings))
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",
