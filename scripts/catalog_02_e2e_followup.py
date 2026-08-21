@@ -54,13 +54,18 @@ source = source.replace('page.goto("/product/saby-1")', 'page.goto("/product/1")
 pdp.write_text(source, encoding="utf-8")
 print("patched e2e/tests/pdp-admin.spec.ts")
 
-# A test or a partially configured category can legitimately return an empty
-# schema object. Rendering the product form must not remount/crash while the
-# owner is typing; an absent array is simply an empty schema.
+# Partial admin responses must degrade to empty lists instead of crashing the
+# entire product dialog. This also protects the owner editor while migrations
+# roll out across instances.
 replace(
     "frontend/src/AdminCatalogDialogs.tsx",
     "if (active) setSchema(data.attributes);",
     "if (active) setSchema(data.attributes || []);",
+)
+replace(
+    "frontend/src/AdminPim.tsx",
+    "then((data) => setVariants(data.variants))",
+    "then((data) => setVariants(data.variants || []))",
 )
 
 print("catalogue E2E identity follow-up applied")
