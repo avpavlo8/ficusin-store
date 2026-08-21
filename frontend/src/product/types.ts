@@ -1,5 +1,13 @@
-export type CatalogProduct = { id: string; name: string; latin: string; price: number; image: string; size: string; stock: number };
-export type ProductVariant = { id: number; sku: string; label: string; price: number; stock: number; heightCm?: number; potDiameterCm?: number; wholesaleMinQty: number };
+export type CatalogProduct = { id: string; sku: string; name: string; latin: string; price: number; image: string; size: string; stock: number };
+export type ProductAttribute = {
+  code: string; name: string; unit?: string; value: string | number | boolean | string[];
+  badge: boolean; filterable?: boolean; summaryPosition?: number; showInCharacteristics?: boolean;
+};
+export type ProductVariant = {
+  id: number; sku: string; label: string; price: number; stock: number;
+  heightCm?: number; potDiameterCm?: number; wholesaleMinQty: number;
+  attributes: ProductAttribute[];
+};
 export type FAQItem = { question: string; answer: string };
 export type PlantPassportData = {
   origin?: string; lighting?: string; watering?: string; humidity?: string; temperature?: string;
@@ -7,7 +15,6 @@ export type PlantPassportData = {
   matureSize?: string; toxicity?: string; problems?: string; pests?: string; faq?: FAQItem[];
 };
 export type ProductReview = { id: number; rating: number; text: string; author: string; date: string; verifiedPurchase: boolean; photos: string[]; media?: Array<{ url: string; contentType: string }> };
-export type ProductAttribute = { code: string; name: string; unit?: string; value: string | number | boolean | string[]; badge: boolean };
 export type ProductDetail = {
   id: string; name: string; latin: string; shortDescription: string; description: string;
   careInstructions: string; images: string[]; variants: ProductVariant[]; recommendations: CatalogProduct[];
@@ -16,11 +23,8 @@ export type ProductDetail = {
   passport: PlantPassportData; importantWarnings: string[]; rating: number; reviewsCount: number; reviews: ProductReview[]; attributes: ProductAttribute[];
 };
 
-// Значения характеристик хранятся кодами (`low_light`, `demanding`), потому
-// что по ним фильтруют и сверяют интеграции. Покупателю код показывать
-// нельзя: на витрине месяц висело «Освещение: low light». Словарь один на
-// весь клиент — карточка товара, бейджи и выпадающие фильтры обязаны
-// называть одно и то же значение одинаково.
+// Attribute codes are stable machine values. The API now carries labels for
+// owner-defined options; this fallback only covers the seeded catalogue.
 export const attributeLabels: Record<string, string> = {
   sunny: "Яркий свет", diffused: "Рассеянный свет", low_light: "Полутень",
   frequent: "Частый", moderate: "Умеренный", rare: "Редкий", low: "Низкая",
@@ -29,9 +33,10 @@ export const attributeLabels: Record<string, string> = {
   caution: "С осторожностью", bathroom: "Ванная", bedroom: "Спальня", office: "Офис",
   nursery: "Детская", living_room: "Гостиная", kitchen: "Кухня", upright: "Вертикальная",
   bushy: "Кустовая", trailing: "Ампельная", climbing: "Вьющаяся", rosette: "Розетка",
+  palm: "Пальма", cactus: "Кактус", bonsai: "Бонсай", succulent: "Суккулент",
+  fern: "Папоротник", orchid: "Орхидея", flowering: "Цветущее", decorative_leaf: "Декоративно-лиственное",
 };
 
-// Незнакомый код лучше показать хотя бы без подчёркиваний, чем «low_light».
 export const attributeLabel = (value: string | number | boolean) => {
   if (typeof value === "boolean") return value ? "Да" : "Нет";
   const key = String(value);
