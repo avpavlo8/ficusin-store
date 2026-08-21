@@ -77,6 +77,55 @@ ALTER TABLE order_items ADD COLUMN IF NOT EXISTS sku TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_label TEXT NOT NULL DEFAULT '';
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB;
 
+-- Very old orders can outlive the catalogue row they referenced. 055 can only
+-- map an old textual product id when that product still exists. Do not make one
+-- deleted product block the whole shop startup: create a hidden draft PRODUCT
+-- and inactive SKU per distinct orphan identity, then keep the original order
+-- name/price/quantity as its immutable purchase snapshot.
+DO $$
+DECLARE
+  orphan RECORD;
+  archive_code BIGINT;
+  archive_product_id BIGINT;
+  archive_variant_id BIGINT;
+  archive_sku TEXT;
+BEGIN
+  FOR orphan IN
+    SELECT item.product_id AS legacy_product_id,
+           MIN(item.product_name) AS product_name
+    FROM order_items item
+    WHERE item.variant_id IS NULL
+    GROUP BY item.product_id
+  LOOP
+    archive_code := nextval('ficusin_product_code_seq');
+
+    INSERT INTO products(
+      name, slug, product_code, short_description, description,
+      search_text, status, is_featured
+    ) VALUES (
+      COALESCE(NULLIF(BTRIM(orphan.product_name), ''), 'Архивный товар'),
+      archive_code::TEXT,
+      archive_code,
+      'Архивная карточка для сохранения истории заказа',
+      '',
+      COALESCE(orphan.legacy_product_id, ''),
+      'draft',
+      0
+    ) RETURNING id INTO archive_product_id;
+
+    INSERT INTO product_variants(product_id, sku, label, is_active)
+    VALUES (archive_product_id, DEFAULT, 'Архивный SKU', 0)
+    RETURNING id, sku INTO archive_variant_id, archive_sku;
+
+    UPDATE order_items item
+    SET variant_id = archive_variant_id,
+        product_id = archive_sku
+    WHERE item.variant_id IS NULL
+      AND item.product_id = orphan.legacy_product_id;
+  END LOOP;
+END;
+$$;
+
 UPDATE order_items item
 SET product_ref_id = variant.product_id,
     sku = COALESCE(item.sku, variant.sku),
@@ -91,12 +140,13 @@ SET product_ref_id = variant.product_id,
 FROM product_variants variant
 WHERE variant.id = item.variant_id;
 
--- Every existing line should have been attached to a variant by 055. Abort
--- rather than silently losing identity if old data violates that invariant.
+-- At this point every line has either its original variant or a hidden archive
+-- variant created above. Keep an explicit guard so truly inconsistent rows do
+-- not get silently converted to broken foreign keys.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM order_items WHERE variant_id IS NULL OR product_ref_id IS NULL OR sku IS NULL) THEN
-    RAISE EXCEPTION 'catalog v2 cannot migrate order_items without variant identity';
+    RAISE EXCEPTION 'catalog v2 could not preserve order_items variant identity';
   END IF;
 END;
 $$;
