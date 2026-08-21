@@ -116,8 +116,12 @@ func boolToInt(value bool) int {
 }
 
 type purchasableItem struct {
-	ID        string
+	ID        string // immutable SKU snapshot
+	ProductID int64
 	VariantID int64
+	VariantLabel string
+	HeightCM *int
+	PotDiameterCM *int
 	Name      string
 	Price     float64
 	Quantity  int
@@ -217,16 +221,16 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		var item purchasableItem
 		var priceMinor int64
 		err := transaction.QueryRow(ctx, `
-			SELECT p.slug, p.name, pv.id, pv.base_price_minor,
+			SELECT pv.sku, p.id, p.name, pv.id, pv.label, pv.height_cm, pv.pot_diameter_cm, pv.base_price_minor,
 				COALESCE(pv.package_length_cm, 0), COALESCE(pv.package_width_cm, 0),
 				COALESCE(pv.package_height_cm, 0), COALESCE(pv.package_weight_grams, 0)
 			FROM products p
-			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
-			WHERE p.slug = $1 AND p.status = 'published'
-			ORDER BY pv.id
+			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND pv.archived_at IS NULL
+			WHERE pv.sku = $1 AND p.status = 'published'
 			LIMIT 1
 		`, requested.ID).Scan(
-			&item.ID, &item.Name, &item.VariantID, &priceMinor,
+			&item.ID, &item.ProductID, &item.Name, &item.VariantID, &item.VariantLabel,
+			&item.HeightCM, &item.PotDiameterCM, &priceMinor,
 			&item.Parcel.LengthCM, &item.Parcel.WidthCM,
 			&item.Parcel.HeightCM, &item.Parcel.WeightGrams,
 		)
@@ -411,10 +415,13 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	for _, item := range items {
 		if _, err := transaction.Exec(ctx, `
 			INSERT INTO order_items (
-				order_id, product_id, variant_id, product_name, unit_price, quantity,
-				is_preorder, reserved_qty
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		`, orderID, item.ID, item.VariantID, item.Name, item.Price, item.Quantity,
+				order_id, product_id, variant_id, sku, product_name, variant_label, variant_snapshot,
+				unit_price, quantity, is_preorder, reserved_qty
+			) VALUES ($1, $2, $3, $4, $5, $6,
+				jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)),
+				$9, $10, $11, $12)
+		`, orderID, item.ProductID, item.VariantID, item.ID, item.Name, item.VariantLabel,
+			item.HeightCM, item.PotDiameterCM, item.Price, item.Quantity,
 			boolToInt(item.Preorder), item.Reserved); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}

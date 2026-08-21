@@ -128,10 +128,8 @@ patch(
 )
 patch(
     "frontend/src/adminTypes.ts",
-    "items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>;
-",
-    "items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
-",
+    "items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>;\n",
+    "items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;\n",
 )
 
 # Remove the stale comment that documents the legacy order relation.

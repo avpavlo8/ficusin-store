@@ -436,7 +436,7 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 			package_length_cm, package_width_cm, package_height_cm, package_weight_grams,
 			is_active, updated_at
 		)
-		VALUES ($1, $2, 'FIC-' || LPAD(nextval('ficusin_sku_seq')::TEXT, 6, '0'),
+		VALUES ($1, $2, DEFAULT,
 			'Основной вариант', $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
 		RETURNING id
 	`, id, sabyID, item.priceMinor, item.heightCM, item.potDiameterCM, item.packageLengthCM,

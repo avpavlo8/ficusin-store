@@ -35,7 +35,7 @@ export type Order = {
   deliveryMethod: string; deliveryFeePending?: boolean; repackRequested?: boolean;
   paymentMethod?: string; paymentStatus: string; trackNumber?: string; hasPreorder?: boolean;
   status: string; total: number;
-  createdAt: string; items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>;
+  createdAt: string; items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
 };
 
 export type Product = {

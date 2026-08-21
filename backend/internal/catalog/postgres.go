@@ -23,14 +23,14 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	var detail ProductDetail
 	var productID int64
 	err := repository.pool.QueryRow(ctx, `
-		SELECT id, slug, name, latin_name, short_description, description, care_instructions,
+		SELECT id, product_code::TEXT, name, latin_name, short_description, description, care_instructions,
 			catalog_section, COALESCE(plant_kind, ''), COALESCE(light_level, ''),
 			COALESCE(watering, ''), COALESCE(height_class, ''), COALESCE(care_level, ''),
 			COALESCE(placement, ''), COALESCE(pet_safety, ''), COALESCE(growth_habit, ''), category_id,
 			plant_passport, important_warnings,
 			COALESCE((SELECT AVG(rating)::float8 FROM product_reviews WHERE product_id = products.id AND status = 'published'), 0),
 			(SELECT COUNT(*) FROM product_reviews WHERE product_id = products.id AND status = 'published')
-		FROM products WHERE slug = $1 AND status = 'published' LIMIT 1
+		FROM products WHERE product_code::TEXT = $1 AND status = 'published' LIMIT 1
 	`, code).Scan(&productID, &detail.ID, &detail.Name, &detail.Latin,
 		&detail.ShortDescription, &detail.Description, &detail.CareInstructions,
 		&detail.CatalogSection, &detail.PlantKind, &detail.LightLevel,
@@ -240,15 +240,15 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 
 const catalogListQuery = `
 	WITH popularity AS (
-		SELECT variant.product_id, SUM(item.quantity * CASE
-			WHEN orders.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' THEN 1.0
-			WHEN orders.created_at >= CURRENT_TIMESTAMP - INTERVAL '90 days' THEN 0.5
-			WHEN orders.created_at >= CURRENT_TIMESTAMP - INTERVAL '365 days' THEN 0.2
+		SELECT variant.product_id, SUM(oi.quantity * CASE
+			WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' THEN 1.0
+			WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '90 days' THEN 0.5
+			WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '365 days' THEN 0.2
 			ELSE 0.05 END)::DOUBLE PRECISION AS score
-		FROM order_items item
-		JOIN product_variants variant ON variant.id=item.variant_id
-		JOIN orders ON orders.id=item.order_id
-		WHERE orders.status <> 'cancelled' AND (orders.status='completed' OR orders.payment_status='paid')
+		FROM order_items oi
+		JOIN product_variants variant ON variant.id=oi.variant_id
+		JOIN orders o ON o.id=oi.order_id
+		WHERE o.status <> 'cancelled' AND (o.status='completed' OR o.payment_status='paid')
 		GROUP BY variant.product_id
 	), default_variants AS (
 		SELECT product.id AS product_id, chosen.id, chosen.sku, chosen.label, chosen.base_price_minor, chosen.stock
@@ -263,7 +263,7 @@ const catalogListQuery = `
 		) chosen ON TRUE
 	)
 	SELECT
-		product.slug, default_variant.sku, product.name, product.latin_name, 'Растения',
+		product.product_code::TEXT, default_variant.sku, product.name, product.latin_name, 'Растения',
 		default_variant.base_price_minor,
 		COALESCE((
 			SELECT COALESCE(mirror.card_url,media.object_key)

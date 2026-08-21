@@ -8,6 +8,7 @@ import { attributeLabel, attributeValue } from "./product/types";
 
 type Product = {
   id: string;
+  sku: string;
   name: string;
   latin: string;
   price: number;
@@ -309,16 +310,16 @@ export default function StorefrontPage() {
   const addToCart = (product: Product) =>
     setCart((current) => ({
       ...current,
-      [product.id]: Math.min(
+      [product.sku]: Math.min(
         product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20,
-        (current[product.id] ?? 0) + 1,
+        (current[product.sku] ?? 0) + 1,
       ),
     }));
   const changeCartQuantity = (product: Product, delta: number) => setCart((current) => {
     const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
-    const nextQuantity = Math.max(0, Math.min(maximum, (current[product.id] || 0) + delta));
-    if (nextQuantity === 0) { const next = { ...current }; delete next[product.id]; return next; }
-    return { ...current, [product.id]: nextQuantity };
+    const nextQuantity = Math.max(0, Math.min(maximum, (current[product.sku] || 0) + delta));
+    if (nextQuantity === 0) { const next = { ...current }; delete next[product.sku]; return next; }
+    return { ...current, [product.sku]: nextQuantity };
   });
 
   const toggleFavorite = (id: string) =>
@@ -448,7 +449,7 @@ export default function StorefrontPage() {
 
           <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
             {visible.slice(0, visibleLimit).map((product) => {
-              const inCart = cart[product.id] ?? 0;
+              const inCart = cart[product.sku] ?? 0;
               const preorder = (product.stock ?? 0) <= 0;
               return (
                 <article key={product.id} className={preorder ? "storefront-card preorder" : "storefront-card"}>

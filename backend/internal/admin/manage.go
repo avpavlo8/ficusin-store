@@ -181,7 +181,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		return orders, err
 	}
 	itemRows, err := repository.pool.Query(ctx, `
-		SELECT order_id, product_id, product_name, unit_price::DOUBLE PRECISION, quantity
+		SELECT order_id, product_id, sku, variant_label, product_name, unit_price::DOUBLE PRECISION, quantity
 		FROM order_items WHERE order_id = ANY($1::bigint[]) ORDER BY id
 	`, ids)
 	if err != nil {
@@ -195,7 +195,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 	for itemRows.Next() {
 		var orderID int64
 		var item OrderItem
-		if err := itemRows.Scan(&orderID, &item.ProductID, &item.ProductName,
+		if err := itemRows.Scan(&orderID, &item.ProductID, &item.SKU, &item.VariantLabel, &item.ProductName,
 			&item.UnitPrice, &item.Quantity); err != nil {
 			return nil, fmt.Errorf("scan admin order item: %w", err)
 		}
