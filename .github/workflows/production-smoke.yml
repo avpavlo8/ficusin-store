@@ -1,5 +1,6 @@
 name: Production smoke
 
+# Ephemeral verification trigger for the catalog v2 production rollout.
 on:
   push:
     branches: [main]
