@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -67,11 +68,11 @@ func bootstrapHTTPHandler(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
 	if request.URL.Path == "/api/v1/health" {
 		writer.WriteHeader(http.StatusOK)
-		_, _ = writer.Write([]byte(`{"status":"starting"}`))
+		_ = json.NewEncoder(writer).Encode(map[string]string{"status": "starting"})
 		return
 	}
 	writer.WriteHeader(http.StatusServiceUnavailable)
-	_, _ = writer.Write([]byte(`{"error":"Сервис запускается"}`))
+	_ = json.NewEncoder(writer).Encode(map[string]string{"error": "Сервис запускается"})
 }
 
 func main() {
