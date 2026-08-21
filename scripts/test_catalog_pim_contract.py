@@ -116,7 +116,7 @@ class CatalogPIMContractTest(unittest.TestCase):
         migration = text("timeweb/migrations/056_catalog_pim_final.sql")
         detach = migration.index("ALTER TABLE products ALTER COLUMN slug DROP DEFAULT;")
         drop_sequence = migration.index("DROP SEQUENCE IF EXISTS ficusin_product_code_seq;")
-        product_default = migration.index("ALTER TABLE products ALTER COLUMN product_code")
+        product_default = migration.index("ALTER TABLE products ALTER COLUMN product_code\n  SET DEFAULT nextval('ficusin_product_code_seq');")
         self.assertLess(detach, drop_sequence)
         self.assertLess(drop_sequence, product_default)
 
