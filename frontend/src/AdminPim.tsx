@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 import { VariantMediaManager } from "./VariantMediaManager";
+import { VariantMediaManager } from "./VariantMediaManager";
 import type { Category } from "./adminTypes";
 
 export type AttributeOption = { id?: number; code: string; label: string; sortOrder: number; active: boolean };
