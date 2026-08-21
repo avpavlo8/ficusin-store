@@ -82,13 +82,17 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)", pim)
         self.assertIn("проданный SKU можно только архивировать", pim)
 
-    def test_old_applied_migrations_are_not_rewritten(self):
-        # Their old concepts are deliberately superseded by 055/056, not edited in place.
+    def test_old_applied_migrations_keep_their_original_integrity_contracts(self):
+        # Old applied migrations are superseded by 055/056, never edited in
+        # place. The branch/base diff additionally verifies 044/046 are absent
+        # from the changed-file set; these assertions pin stable original
+        # markers so the repository test is not coupled to comment wording.
         migration_44 = text("timeweb/migrations/044_catalog_identity_attributes.sql")
         migration_46 = text("timeweb/migrations/046_catalog_identity_integrity.sql")
         migration_56 = text("timeweb/migrations/056_catalog_pim_final.sql")
         self.assertIn("FIC-", migration_44)
-        self.assertIn("legacy", migration_46.lower())
+        self.assertIn("product_external_ids_product_level_uidx", migration_46)
+        self.assertIn("validate_external_id_variant_owner", migration_46)
         self.assertIn("Migration 055 was an intermediate bridge", migration_56)
 
 
