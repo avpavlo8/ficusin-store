@@ -112,6 +112,14 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("WHERE review.id = match.review_id", migration)
         self.assertNotIn("FROM LATERAL (\n  SELECT item.variant_id", migration)
 
+    def test_product_code_sequence_detaches_legacy_slug_before_drop(self):
+        migration = text("timeweb/migrations/056_catalog_pim_final.sql")
+        detach = migration.index("ALTER TABLE products ALTER COLUMN slug DROP DEFAULT;")
+        drop_sequence = migration.index("DROP SEQUENCE IF EXISTS ficusin_product_code_seq;")
+        product_default = migration.index("ALTER TABLE products ALTER COLUMN product_code")
+        self.assertLess(detach, drop_sequence)
+        self.assertLess(drop_sequence, product_default)
+
     def test_old_applied_migrations_keep_their_original_integrity_contracts(self):
         # Old applied migrations are superseded by 055/056, never edited in
         # place. The branch/base diff additionally verifies 044/046 are absent
