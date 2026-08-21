@@ -1,0 +1,36 @@
+name: Catalogue model rewrite helper
+
+on:
+  push:
+    branches: [feature/catalog-attribute-system-v2]
+    paths:
+      - scripts/catalog_model_rewrite.py
+      - .github/workflows/catalog-model-rewrite.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/catalog-attribute-system-v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 scripts/catalog_model_rewrite.py
+      - run: git diff --check
+      - name: Commit generated catalogue refactor
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: apply catalogue model rewrite"
+          git push origin HEAD:feature/catalog-attribute-system-v2
