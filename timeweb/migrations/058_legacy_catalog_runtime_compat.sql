@@ -40,3 +40,19 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Compile and execute the exact cross-type comparison used by the previous
+-- catalogue runtime. If operator resolution is wrong, fail this migration in
+-- CI rather than discovering it on the live storefront.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM (VALUES (1::BIGINT)) AS legacy_order(product_id)
+    JOIN (VALUES ('1'::TEXT)) AS legacy_product(slug)
+      ON legacy_order.product_id = legacy_product.slug
+  ) THEN
+    RAISE EXCEPTION 'legacy BIGINT = TEXT catalogue compatibility check failed';
+  END IF;
+END;
+$$;
