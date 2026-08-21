@@ -82,6 +82,30 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)", pim)
         self.assertIn("проданный SKU можно только архивировать", pim)
 
+    def test_dynamic_collections_are_live_pim_queries(self):
+        migration = text("timeweb/migrations/057_dynamic_collection_rules.sql")
+        public = text("backend/internal/catalog/postgres.go")
+        admin = text("backend/internal/admin/collection_rules.go")
+        ui = text("frontend/src/AdminCollectionsV2.tsx")
+        self.assertIn("collection_rules_match_product", migration)
+        self.assertIn("variant_attribute_values", migration)
+        self.assertIn("product_attribute_values", migration)
+        self.assertIn("collection_rules_match_product(product.id,collection.rules)", public)
+        self.assertIn('Mode      string', admin)
+        self.assertIn('mode: "manual" | "dynamic"', ui)
+        self.assertIn("Все строки применяются одновременно (AND)", ui)
+
+    def test_sku_media_has_repository_routes_and_admin_ui(self):
+        repository = text("backend/internal/admin/variant_media.go")
+        routes = text("backend/internal/httpapi/admin_catalog_routes.go")
+        ui = text("frontend/src/VariantMediaManager.tsx")
+        pim = text("frontend/src/AdminPim.tsx")
+        self.assertIn("variant_id", repository)
+        self.assertIn('GET /api/v1/admin/variants/{id}/media', routes)
+        self.assertIn('POST /api/v1/admin/variants/{id}/media', routes)
+        self.assertIn("Фото SKU имеют приоритет", ui)
+        self.assertIn("VariantMediaManager", pim)
+
     def test_old_applied_migrations_keep_their_original_integrity_contracts(self):
         # Old applied migrations are superseded by 055/056, never edited in
         # place. The branch/base diff additionally verifies 044/046 are absent
