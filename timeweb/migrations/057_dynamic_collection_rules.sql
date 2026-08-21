@@ -37,11 +37,16 @@ BEGIN
     IF jsonb_typeof(actual) = 'array' THEN
       RETURN EXISTS (
         SELECT 1
-        FROM jsonb_array_elements_text(actual) current_value
-        JOIN jsonb_array_elements_text(expected) wanted_value ON current_value = wanted_value
+        FROM jsonb_array_elements_text(actual) AS current_values(value)
+        JOIN jsonb_array_elements_text(expected) AS wanted_values(value)
+          ON current_values.value = wanted_values.value
       );
     END IF;
-    RETURN EXISTS (SELECT 1 FROM jsonb_array_elements_text(expected) wanted WHERE wanted = actual_text);
+    RETURN EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(expected) AS wanted_values(value)
+      WHERE wanted_values.value = actual_text
+    );
   ELSIF op = 'contains' THEN
     IF jsonb_typeof(actual) <> 'array' THEN
       RETURN FALSE;
@@ -49,12 +54,16 @@ BEGIN
     IF jsonb_typeof(expected) = 'array' THEN
       RETURN actual @> expected;
     END IF;
-    RETURN EXISTS (SELECT 1 FROM jsonb_array_elements_text(actual) current_value WHERE current_value = expected_text);
+    RETURN EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(actual) AS current_values(value)
+      WHERE current_values.value = expected_text
+    );
   ELSIF op IN ('gte', 'lte') THEN
     BEGIN
       actual_number := actual_text::NUMERIC;
       expected_number := expected_text::NUMERIC;
-    EXCEPTION WHEN invalid_text_representation THEN
+    EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
       RETURN FALSE;
     END;
     IF op = 'gte' THEN RETURN actual_number >= expected_number; END IF;
@@ -80,8 +89,10 @@ BEGIN
     RETURN FALSE;
   END IF;
 
-  FOR rule IN SELECT value FROM jsonb_array_elements(rule_set)
+  FOR rule IN SELECT rule_elements.element FROM jsonb_array_elements(rule_set) AS rule_elements(element)
   LOOP
+    definition_id := NULL;
+    definition_scope := NULL;
     SELECT id, value_scope INTO definition_id, definition_scope
     FROM attribute_definitions
     WHERE code = BTRIM(rule->>'attribute') AND is_active
@@ -92,10 +103,11 @@ BEGIN
     END IF;
 
     IF definition_scope = 'product' THEN
-      SELECT COALESCE(BOOL_OR(collection_rule_value_matches(value, rule)), FALSE)
+      SELECT COALESCE(BOOL_OR(collection_rule_value_matches(attribute_value.value, rule)), FALSE)
       INTO matched
-      FROM product_attribute_values
-      WHERE product_id = target_product AND attribute_id = definition_id;
+      FROM product_attribute_values attribute_value
+      WHERE attribute_value.product_id = target_product
+        AND attribute_value.attribute_id = definition_id;
     ELSE
       SELECT COALESCE(BOOL_OR(collection_rule_value_matches(attribute_value.value, rule)), FALSE)
       INTO matched
