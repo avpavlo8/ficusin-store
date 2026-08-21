@@ -8,7 +8,7 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
-# Technical trigger: verify production after legacy order migration hotfix.
+# Technical trigger: diagnose production after failed deploy.
 concurrency:
   group: production-smoke
   cancel-in-progress: true
@@ -27,6 +27,18 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Diagnose current production API
+        shell: bash
+        run: |
+          set -u
+          for endpoint in /api/v1/health /api/v1/catalog /api/v1/categories /api/v1/collections; do
+            echo "===== ${endpoint} ====="
+            curl -sS --max-time 15 -D /tmp/headers -o /tmp/body "https://ficusin.ru${endpoint}?diagnostic=${GITHUB_SHA}" || true
+            head -n 1 /tmp/headers || true
+            grep -i '^content-type:' /tmp/headers || true
+            head -c 8000 /tmp/body || true
+            echo
+          done
       - name: Build expected frontend
         working-directory: frontend
         run: |
