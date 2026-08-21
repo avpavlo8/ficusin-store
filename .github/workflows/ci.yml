@@ -135,11 +135,25 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
-  # Dockerfile — часть production-кода. Собираем и загружаем image локально,
-  # затем отдельно проверяем инструменты, от которых зависит production:
-  # pdftotext для закупок и wget для Docker HEALTHCHECK.
+  # Dockerfile — часть production-кода. Кроме сборки запускаем именно финальный
+  # image с PostgreSQL и ждём его Docker HEALTHCHECK. Это ловит ошибки startup,
+  # миграций, прав пользователя и runtime-инструментов до Timeweb.
   image:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ficusin_runtime
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d ficusin_runtime"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -153,3 +167,39 @@ jobs:
         run: |
           docker run --rm --entrypoint pdftotext ficusin-ci:verify -v
           docker run --rm --entrypoint wget ficusin-ci:verify --help >/dev/null
+      - name: Boot production image and wait for health
+        run: |
+          set -euo pipefail
+          docker run -d \
+            --name ficusin-runtime \
+            --network host \
+            -e DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/ficusin_runtime?sslmode=disable' \
+            -e DATABASE_SSL_VERIFY=false \
+            -e TELEGRAM_BOT_TOKEN=ci-dummy-token \
+            -e TELEGRAM_ORDER_CHAT_ID=-100000000001 \
+            -e AUTH_COOKIE_SECURE=false \
+            ficusin-ci:verify
+
+          cleanup() {
+            docker logs ficusin-runtime 2>&1 || true
+            docker rm -f ficusin-runtime >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 60); do
+            state="$(docker inspect -f '{{.State.Status}}' ficusin-runtime)"
+            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' ficusin-runtime)"
+            echo "attempt=${attempt} state=${state} health=${health}"
+            if [[ "$health" == "healthy" ]]; then
+              curl -fsS http://127.0.0.1:3000/api/v1/health | grep -q '"status":"ok"'
+              exit 0
+            fi
+            if [[ "$state" == "exited" || "$state" == "dead" ]]; then
+              echo 'Production container exited before becoming healthy.' >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo 'Production container did not become healthy in time.' >&2
+          exit 1
