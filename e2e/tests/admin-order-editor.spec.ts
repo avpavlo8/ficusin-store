@@ -33,7 +33,6 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     status: "new",
     items: [...order.items],
   };
-  let savedItems: Array<{ productId: string; quantity: number }> = [];
 
   await page.addInitScript(({ user, order, adjustment }) => {
     const originalFetch = window.fetch.bind(window);
@@ -105,7 +104,7 @@ test("@desktop добавленный товар сохраняется и су�
 
   await expect(editor.getByText("Аглаонема Мария Кристина D12")).toBeVisible();
   await expect(page.locator(".admin-table tbody tr.clickable").first()).toContainText(/3.?970/);
-  savedItems = await state.savedItems();
+  const savedItems = await state.savedItems();
   expect(savedItems).toHaveLength(3);
   expect(savedItems[2]).toEqual({ productId: "aglaonema-mariya-kristina-d12", quantity: 1 });
 });
