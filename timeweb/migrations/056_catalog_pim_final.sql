@@ -24,6 +24,10 @@ FROM missing WHERE p.id = missing.id;
 ALTER TABLE products ALTER COLUMN product_code SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS products_product_code_uidx ON products(product_code);
 
+-- 055 temporarily used this sequence as the legacy slug default. PostgreSQL
+-- refuses to drop a sequence while that DEFAULT still depends on it, so detach
+-- slug first and then reuse the sequence name for the real product_code.
+ALTER TABLE products ALTER COLUMN slug DROP DEFAULT;
 DROP SEQUENCE IF EXISTS ficusin_product_code_seq;
 CREATE SEQUENCE ficusin_product_code_seq;
 SELECT setval(
@@ -159,7 +163,7 @@ CREATE INDEX IF NOT EXISTS product_media_variant_sort_idx
 
 -- Slug is no longer public/business identity. Existing internal integrations
 -- may still carry it during this deployment, so keep the column temporarily
--- but remove the numeric-code constraints/default/immutability introduced by
--- the bridge. Application code after this migration must use product_code.
+-- but remove the numeric-code constraint introduced by the bridge. The legacy
+-- DEFAULT was already removed before recycling ficusin_product_code_seq above.
+-- Application code after this migration must use product_code.
 ALTER TABLE products DROP CONSTRAINT IF EXISTS products_code_numeric;
-ALTER TABLE products ALTER COLUMN slug DROP DEFAULT;
