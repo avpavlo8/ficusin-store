@@ -1,3 +1,4 @@
+# Verification trigger after migration 055 PostgreSQL fix.
 name: Production smoke
 
 on:
