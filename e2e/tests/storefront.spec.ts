@@ -152,7 +152,7 @@ test("@desktop товар без остатка идёт как предзака
 
 test("@desktop на карточке товара выбирается количество", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
 
   await expect(page.locator(".pdp-quantity output")).toHaveText("1");
   await page.locator(".pdp-quantity button").last().click();
@@ -169,7 +169,7 @@ test("@desktop на карточке товара выбирается коли�
 
 test("@desktop PDP сохраняет коммерческую иерархию и навигацию", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
 
   const purchase = page.locator(".pdp-summary");
   await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
@@ -191,7 +191,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
 
 test("@desktop вопросы открываются отдельной вкладкой", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   await page.getByRole("button", { name: "Вопросы" }).click();
   await expect(page.locator("#questions details")).toContainText("Когда пересаживать?");
 });
@@ -214,7 +214,7 @@ test("@desktop пустые вопросы и отзывы остаются по
 
 test("@desktop фотография открывается в полноэкранной галерее", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   await page.getByRole("button", { name: "Открыть фотографию на весь экран" }).click();
   await expect(page.getByRole("dialog", { name: /Фотографии/ })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -316,7 +316,7 @@ test("@desktop оформление отправляет заказ с норм�
   expect(order).toMatchObject({
     customer: { name: "Александр", phone: "+79151234567", email: "buyer@example.com" },
     delivery: "pickup",
-    items: [{ id: "saby-1", quantity: 1 }],
+    items: [{ id: "1", quantity: 1 }],
     consent: true,
   });
 });

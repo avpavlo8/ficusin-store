@@ -9,7 +9,7 @@ const adminOwner = {
 const adminProduct = {
   id: 1,
   sabyId: "saby-1",
-  slug: "saby-1",
+  slug: "1",
   name: "Аглаонема Мария",
   latinName: "Aglaonema",
   shortDescription: "Неприхотливое растение",
@@ -20,7 +20,7 @@ const adminProduct = {
   image: "/assets/hero-monstera.png",
   price: 1490,
   stock: 5,
-  sku: "FIC-000001",
+  sku: "1",
   variantLabel: "D12",
   wholesaleMinQty: 1,
   overrideFields: [],
@@ -36,7 +36,7 @@ const adminProduct = {
 
 test("@desktop покупатель не видит инструменты редактирования PDP", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   await expect(page.getByText("Режим администратора")).toHaveCount(0);
 });
 
@@ -50,7 +50,7 @@ test("@desktop владелец редактирует описание прям
     await route.fulfill({ json: { product: { ...adminProduct, description: String(update.description || "") } } });
   });
 
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   await page.getByRole("button", { name: "Редактировать карточку" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Редактирование товара" })).toBeVisible();
@@ -80,7 +80,7 @@ test("@desktop владелец управляет галереей товара
   });
   page.on("dialog", (dialog) => void dialog.accept());
 
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   await page.getByRole("button", { name: "Фотографии" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Главная")).toBeVisible();

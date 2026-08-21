@@ -3,13 +3,13 @@ import { mockApi, owner, setStoredCounts } from "./helpers";
 
 test("@desktop autocomplete с клавиатуры работает вне главной", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   const search = page.locator(".header-search input");
   await search.fill("фикус");
   await expect(page.getByRole("option", { name: /Фикус Бенджамина/ })).toBeVisible();
   await search.press("ArrowDown");
   await search.press("Enter");
-  await expect(page).toHaveURL(/\/product\/saby-2$/);
+  await expect(page).toHaveURL(/\/product\/2$/);
 });
 
 test("@desktop autocomplete показывает товары и переход ко всей выдаче", async ({ page }) => {
@@ -33,7 +33,7 @@ test("@desktop локальный поиск избранного не пере�
 
 test("@desktop прямой URL корзины меняет количество, badge и сумму", async ({ page }) => {
   await mockApi(page);
-  await setStoredCounts(page, [], { "saby-1": 1 });
+  await setStoredCounts(page, [], { "1": 1 });
   await page.goto("/cart");
   const drawer = page.locator(".drawer.open");
   await expect(page).toHaveURL(/\/cart$/);
@@ -46,7 +46,7 @@ test("@desktop прямой URL корзины меняет количество
 
 test("@desktop избранное добавляет в корзину без навигации", async ({ page }) => {
   await mockApi(page);
-  await setStoredCounts(page, ["saby-1"], {});
+  await setStoredCounts(page, ["1"], {});
   await page.goto("/favorites");
   await page.getByRole("button", { name: "В корзину" }).click();
   await expect(page).toHaveURL(/\/favorites$/);
@@ -56,7 +56,7 @@ test("@desktop избранное добавляет в корзину без н
 
 test("@desktop удалённый товар не возвращается после reload", async ({ page }) => {
   await mockApi(page, owner);
-  await setStoredCounts(page, [], { "saby-1": 1, "saby-2": 2 });
+  await setStoredCounts(page, [], { "1": 1, "2": 2 });
   await page.goto("/cart");
   const drawer = page.locator(".drawer.open");
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
@@ -72,7 +72,7 @@ test("@desktop удалённый товар не возвращается по�
 
 test("@phone mobile autocomplete поддерживает тап и Search action", async ({ page, browserName }) => {
   await mockApi(page);
-  await page.goto("/product/saby-1");
+  await page.goto("/product/1");
   await page.getByRole("button", { name: "Поиск по каталогу" }).click();
   const search = page.locator(".mobile-catalog-search input");
   await search.fill("фикус");
@@ -84,7 +84,7 @@ test("@phone mobile autocomplete поддерживает тап и Search actio
   } else {
     await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
   }
-  await expect(page).toHaveURL(/\/product\/saby-2$/);
+  await expect(page).toHaveURL(/\/product\/2$/);
 });
 
 // Кабинет обещал, что скидка растёт после выполненных заказов, но не говорил,

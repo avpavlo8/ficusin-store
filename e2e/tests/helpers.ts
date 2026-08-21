@@ -3,7 +3,8 @@ import { Page } from "@playwright/test";
 // The preview server only serves the built files, so every API call has to
 // be answered here. The shapes below mirror what the Go handlers return.
 const product = {
-  id: "saby-1",
+  id: "1",
+  sku: "1",
   name: "Аглаонема Мария",
   latin: "Aglaonema",
   category: "Растения",
@@ -33,7 +34,8 @@ const product = {
 // каталог нечем отличить друг от друга в проверках.
 const ficus = {
   ...product,
-  id: "saby-2",
+  id: "2",
+  sku: "2",
   name: "Фикус Бенджамина",
   latin: "Ficus benjamina",
   price: 2490,
@@ -53,7 +55,8 @@ const ficus = {
 // Ноль на складе — это предзаказ, а не исчезнувшая карточка.
 const monstera = {
   ...ficus,
-  id: "saby-3",
+  id: "3",
+  sku: "3",
   name: "Монстера Делициоза",
   latin: "Monstera deliciosa",
   price: 3200,
@@ -128,7 +131,7 @@ export async function mockApi(page: Page, session: Session = guest) {
     description: "Подходит для дома",
     careInstructions: "Поливать после просыхания грунта",
     images: [product.image],
-    variants: [{ id: 1, sku: "X100", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
+    variants: [{ id: 1, sku: "1", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
     recommendations: [],
     importantWarnings: ["Безопасно для животных"],
     passport: { origin: "Тропические леса Азии", lighting: "Яркий рассеянный свет", watering: "После просыхания верхнего слоя", faq: [{ question: "Когда пересаживать?", answer: "Весной, когда корни заполнят горшок." }] },

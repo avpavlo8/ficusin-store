@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mockApi, setStoredCounts } from "./helpers";
 
 async function openDeliveryStep(page: Page) {
-  await setStoredCounts(page, [], { "saby-1": 1 });
+  await setStoredCounts(page, [], { "1": 1 });
   await page.goto("/checkout");
   const contact = page.locator('[data-checkout-step="1"]');
   await contact.getByLabel("Имя").fill("Александр");
@@ -19,7 +19,7 @@ test("@desktop Почта России показывает договорной
   await page.route("**/api/v1/delivery/post", async (route) => {
     const body = route.request().postDataJSON() as { address?: string; items?: Array<{ id: string; quantity: number }> };
     expect(body.address).toContain("Москва");
-    expect(body.items).toEqual([{ id: "saby-1", quantity: 1 }]);
+    expect(body.items).toEqual([{ id: "1", quantity: 1 }]);
     await route.fulfill({ json: { quote: { price: 615, daysMin: 2, daysMax: 4, service: "Почта России" } } });
   });
 

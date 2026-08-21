@@ -46,7 +46,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
   const [categories, setCategories] = useState<Category[]>([]);
   const [schema, setSchema] = useState<CategoryAttribute[]>([]);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
-  useEffect(() => { let active = true; if (form.categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${form.categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [form.categoryId, onError]);
+  useEffect(() => { let active = true; if (form.categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${form.categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes || []); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [form.categoryId, onError]);
   const save = async () => {
     const missing = missingRequired(schema, form.attributes || {});
     if (form.status === "published" && missing.length) { onError(`Заполните обязательные характеристики: ${missing.join(", ")}`); return; }
@@ -91,7 +91,7 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
   const [attributes, setAttributes] = useState<Record<string, string | number | boolean | string[] | null>>({});
   const [saving, setSaving] = useState(false);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
-  useEffect(() => { let active = true; if (categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [categoryId, onError]);
+  useEffect(() => { let active = true; if (categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes || []); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [categoryId, onError]);
   const save = async () => {
     const missing = missingRequired(schema, attributes);
     if (missing.length) { onError(`Заполните обязательные характеристики: ${missing.join(", ")}`); return; }
