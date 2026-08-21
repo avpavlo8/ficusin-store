@@ -131,9 +131,24 @@ jobs:
           done
 
           orphan_preserved="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM order_items item JOIN products product ON product.id=item.product_id JOIN product_variants variant ON variant.id=item.variant_id WHERE item.product_name='CI orphan order item' AND item.unit_price=321 AND item.quantity=2 AND item.sku=variant.sku AND product.status='draft' AND variant.is_active=0")"
+            "SELECT COUNT(*) FROM order_items WHERE product_name='CI orphan order item' AND unit_price=321 AND quantity=2 AND legacy_product_ref='deleted-product-from-history' AND product_id IS NULL AND variant_id IS NULL AND sku IS NULL")"
           if [[ "$orphan_preserved" != "1" ]]; then
-            echo "Expected one preserved orphan order line, got ${orphan_preserved}." >&2
+            echo "Expected one preserved legacy order line, got ${orphan_preserved}." >&2
+            exit 1
+          fi
+
+          archive_products="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM products WHERE short_description='Архивная карточка для сохранения истории заказа'")"
+          if [[ "$archive_products" != "0" ]]; then
+            echo "Migration must not fabricate catalogue products for history; found ${archive_products}." >&2
+            exit 1
+          fi
+
+          # A normal new row has no legacy_product_ref and therefore must carry
+          # the full catalogue identity. This insert must be rejected by CHECK.
+          if psql -h 127.0.0.1 -U postgres -d ficusin_ci -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO order_items(order_id, product_name, unit_price, quantity) SELECT id, 'invalid new row', 1, 1 FROM orders WHERE order_number='CI-ORPHAN-ORDER'"; then
+            echo 'order_items_catalog_identity_check accepted a new row without PRODUCT/SKU.' >&2
             exit 1
           fi
 

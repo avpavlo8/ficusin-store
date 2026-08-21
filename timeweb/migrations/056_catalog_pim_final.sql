@@ -72,59 +72,16 @@ FOR EACH ROW EXECUTE FUNCTION prevent_variant_sku_change();
 -- Historical rows must be self-contained. `product_id` used to be TEXT and
 -- held a slug (then briefly a SKU in 055); replace it with the real PRODUCT
 -- FK and snapshot the SKU/variant label/specification at purchase time.
+--
+-- A very old order may reference a catalogue row that was deleted years ago.
+-- Never invent a new PRODUCT/SKU for such history: keep the original textual
+-- reference in `legacy_product_ref`. New writes do not set that field and are
+-- protected by a CHECK requiring the complete PRODUCT + variant + SKU tuple.
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_ref_id BIGINT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS legacy_product_ref TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_label TEXT NOT NULL DEFAULT '';
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB;
-
--- Very old orders can outlive the catalogue row they referenced. 055 can only
--- map an old textual product id when that product still exists. Do not make one
--- deleted product block the whole shop startup: create a hidden draft PRODUCT
--- and inactive SKU per distinct orphan identity, then keep the original order
--- name/price/quantity as its immutable purchase snapshot.
-DO $$
-DECLARE
-  orphan RECORD;
-  archive_code BIGINT;
-  archive_product_id BIGINT;
-  archive_variant_id BIGINT;
-  archive_sku TEXT;
-BEGIN
-  FOR orphan IN
-    SELECT item.product_id AS legacy_product_id,
-           MIN(item.product_name) AS product_name
-    FROM order_items item
-    WHERE item.variant_id IS NULL
-    GROUP BY item.product_id
-  LOOP
-    archive_code := nextval('ficusin_product_code_seq');
-
-    INSERT INTO products(
-      name, slug, product_code, short_description, description,
-      search_text, status, is_featured
-    ) VALUES (
-      COALESCE(NULLIF(BTRIM(orphan.product_name), ''), 'Архивный товар'),
-      archive_code::TEXT,
-      archive_code,
-      'Архивная карточка для сохранения истории заказа',
-      '',
-      COALESCE(orphan.legacy_product_id, ''),
-      'draft',
-      0
-    ) RETURNING id INTO archive_product_id;
-
-    INSERT INTO product_variants(product_id, sku, label, is_active)
-    VALUES (archive_product_id, DEFAULT, 'Архивный SKU', 0)
-    RETURNING id, sku INTO archive_variant_id, archive_sku;
-
-    UPDATE order_items item
-    SET variant_id = archive_variant_id,
-        product_id = archive_sku
-    WHERE item.variant_id IS NULL
-      AND item.product_id = orphan.legacy_product_id;
-  END LOOP;
-END;
-$$;
 
 UPDATE order_items item
 SET product_ref_id = variant.product_id,
@@ -140,29 +97,33 @@ SET product_ref_id = variant.product_id,
 FROM product_variants variant
 WHERE variant.id = item.variant_id;
 
--- At this point every line has either its original variant or a hidden archive
--- variant created above. Keep an explicit guard so truly inconsistent rows do
--- not get silently converted to broken foreign keys.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM order_items WHERE variant_id IS NULL OR product_ref_id IS NULL OR sku IS NULL) THEN
-    RAISE EXCEPTION 'catalog v2 could not preserve order_items variant identity';
-  END IF;
-END;
-$$;
+-- 055 can only resolve a historical line while its old catalogue product is
+-- still present. Preserve the original reference for anything left unresolved
+-- instead of aborting the whole production startup or fabricating an SKU.
+UPDATE order_items item
+SET legacy_product_ref = item.product_id
+WHERE item.legacy_product_ref IS NULL
+  AND (item.product_ref_id IS NULL OR item.variant_id IS NULL OR item.sku IS NULL);
 
 ALTER TABLE order_items DROP COLUMN product_id;
 ALTER TABLE order_items RENAME COLUMN product_ref_id TO product_id;
-ALTER TABLE order_items ALTER COLUMN product_id SET NOT NULL;
-ALTER TABLE order_items ALTER COLUMN variant_id SET NOT NULL;
-ALTER TABLE order_items ALTER COLUMN sku SET NOT NULL;
+
+ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_catalog_identity_check;
+ALTER TABLE order_items ADD CONSTRAINT order_items_catalog_identity_check CHECK (
+  legacy_product_ref IS NOT NULL
+  OR (product_id IS NOT NULL AND variant_id IS NOT NULL AND sku IS NOT NULL)
+);
+
 ALTER TABLE order_items
   ADD CONSTRAINT order_items_product_fk FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE RESTRICT;
 CREATE INDEX IF NOT EXISTS order_items_product_idx ON order_items(product_id);
 CREATE INDEX IF NOT EXISTS order_items_sku_idx ON order_items(sku);
+CREATE INDEX IF NOT EXISTS order_items_legacy_product_ref_idx
+  ON order_items(legacy_product_ref) WHERE legacy_product_ref IS NOT NULL;
 
 -- Reviews stay attached to PRODUCT but remember which purchased SKU created
--- the verified-purchase context.
+-- the verified-purchase context. Unresolved legacy lines intentionally do not
+-- qualify as a verified PRODUCT/SKU purchase because their identity is unknown.
 ALTER TABLE product_reviews ADD COLUMN IF NOT EXISTS purchased_sku TEXT;
 UPDATE product_reviews review
 SET purchased_sku = variant.sku
