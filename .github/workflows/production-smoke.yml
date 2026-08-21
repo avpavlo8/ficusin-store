@@ -8,6 +8,7 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
+# Technical trigger: verify production after legacy order migration hotfix.
 concurrency:
   group: production-smoke
   cancel-in-progress: true
