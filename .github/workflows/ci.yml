@@ -1,66 +1,30 @@
 name: Verify
 
+# Раньше стояло просто "push" и "pull_request" без условий: каждый коммит в
+# ветку запускал сборку дважды, и половина минут уходила на дубликаты. Ветки
+# проверяются через pull request, main — при вливании.
 on:
   push:
     branches: [main]
   pull_request:
 
+# Пока правишь замечания, коммиты идут один за другим. Старые прогоны больше
+# не досиживают до конца впустую — новый отменяет предыдущий.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  catalog-rewrite:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
-      - name: Apply one-shot catalogue patches
-        shell: bash
-        run: |
-          changed=0
-          if [ -f scripts/catalog_model_rewrite.py ]; then
-            python3 - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/catalog_model_rewrite.py')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace('quantity: number }>;\n",', 'quantity: number }>;\\n",')
-          path.write_text(text, encoding='utf-8')
-          PY
-            python3 scripts/catalog_model_rewrite.py
-            changed=1
-          fi
-          for helper in scripts/catalog_*followup.py; do
-            if [ -f "$helper" ]; then
-              python3 "$helper"
-              changed=1
-            fi
-          done
-          git diff --check
-          if [ "$changed" = "0" ] || git diff --quiet; then
-            echo "No generated changes"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "refactor: apply catalogue v2 PIM model"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
-
   frontend:
-    needs: catalog-rewrite
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -70,13 +34,12 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
+  # Guards the phone layout: it broke once without anyone noticing, because
+  # nothing here ever looked at the site at a phone's width.
   layout:
-    needs: catalog-rewrite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -88,6 +51,9 @@ jobs:
         working-directory: frontend
       - run: npm install
         working-directory: e2e
+      # Браузеры весят сотни мегабайт и раньше качались заново каждый раз —
+      # однажды это растянулось на двадцать шесть минут. Теперь они лежат в
+      # кэше, а с нуля ставятся только когда меняется сам Playwright.
       - id: browsers
         uses: actions/cache@v4
         with:
@@ -96,6 +62,7 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
         if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: e2e
+      # Системные библиотеки в кэш не попадают, их всё равно нужно доставить.
       - run: npx playwright install-deps chromium webkit
         if: steps.browsers.outputs.cache-hit == 'true'
         working-directory: e2e
@@ -109,15 +76,12 @@ jobs:
           retention-days: 7
 
   backend:
-    needs: catalog-rewrite
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
@@ -127,17 +91,15 @@ jobs:
       - run: go build ./cmd/api
 
   saby-sync-tests:
-    needs: catalog-rewrite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
+  # Собирается только перед выкладкой: на ветках это проверяло Dockerfile,
+  # который меняется раз в месяц, и стоило минуты на каждом коммите.
   image:
     if: github.ref == 'refs/heads/main'
-    needs: catalog-rewrite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
