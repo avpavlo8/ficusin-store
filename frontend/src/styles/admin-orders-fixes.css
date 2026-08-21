@@ -1,0 +1,73 @@
+/* Точечные исправления экрана заказов после проверки production. */
+
+/* Базовый account.css стилизует любой span внутри nav как отдельный пункт.
+   admin-nav-dot тоже span, поэтому превращался в серый квадрат 28x28. */
+.admin-page .account-sidebar nav button > .admin-nav-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  min-height: 8px;
+  padding: 0;
+  display: block;
+  flex: none;
+  gap: 0;
+  justify-content: initial;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(237, 242, 233, .5);
+  box-shadow: none;
+}
+.admin-page .account-sidebar nav button.active > .admin-nav-dot {
+  background: #294326;
+}
+
+/* Не режем исходный баннер через cover. Картинка целиком помещается по
+   высоте справа, а светлая часть слева естественно продолжается фоном. */
+.admin-page .account-content::before {
+  height: 300px;
+  background-color: #eee4d4;
+  background-image:
+    linear-gradient(90deg, #eee4d4 0%, rgba(238, 228, 212, .96) 30%, rgba(238, 228, 212, .28) 62%, rgba(238, 228, 212, 0) 78%),
+    url('/assets/redesign/admin-workspace-v1.webp');
+  background-size: 100% 100%, auto 100%;
+  background-position: center, right center;
+  background-repeat: no-repeat, no-repeat;
+}
+
+.admin-order-draft-total {
+  margin-top: 14px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid #eadfce;
+  color: #697169;
+  font-size: 13px;
+}
+.admin-order-draft-total strong {
+  color: #294326;
+  font-size: 18px;
+}
+.admin-order-draft-total small {
+  margin-right: auto;
+  color: #8b918a;
+}
+
+@media (max-width: 900px) {
+  .admin-page .account-content::before {
+    height: 220px;
+    background-size: 100% 100%, auto 100%;
+    background-position: center, right center;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-order-draft-total {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .admin-order-draft-total small {
+    margin-right: 0;
+  }
+}
