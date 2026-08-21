@@ -64,3 +64,5 @@ jobs:
 
           echo 'Timeweb did not expose the expected frontend bundle in time.' >&2
           exit 1
+
+# technical trigger for production smoke: main a752ec0
