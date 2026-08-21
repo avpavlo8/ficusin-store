@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS frontend
+FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -6,18 +6,17 @@ COPY frontend/ ./
 COPY public/ /src/public/
 RUN npm run build
 
-FROM golang:1.26-bookworm AS backend
+FROM golang:1.26-bookworm@sha256:6ef6e30f0ea5c384f6d111cf856e024e3086bbdcb1779da3f3b3fbba0aea53d2 AS backend
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ficusin-api ./cmd/api
 
-# Timeweb build workers have intermittently failed while reaching Debian apt
-# mirrors. The runtime image therefore performs no package-manager/network
-# operations at build time. minidocks/poppler already contains pdftotext,
-# BusyBox wget and CA certificates, which are the runtime tools we need.
-FROM minidocks/poppler:latest
+# No package-manager/network operations are allowed in the runtime stage.
+# Pin every base image by digest so a mutable upstream tag cannot change a
+# production build without a repository change and a green CI run.
+FROM minidocks/poppler:latest@sha256:fc646c55459b604e8b47262bb8b45ac27cd35caadde5a278465f908883ba18c3
 WORKDIR /app
 COPY --from=backend /out/ficusin-api /app/ficusin-api
 COPY --from=frontend /src/frontend/dist /app/web
