@@ -20,10 +20,19 @@ class CatalogPIMContractTest(unittest.TestCase):
     def test_orders_snapshot_product_variant_and_sku(self):
         migration = text("timeweb/migrations/056_catalog_pim_final.sql")
         service = text("backend/internal/order/service.go")
-        for fragment in ("variant_id SET NOT NULL", "sku SET NOT NULL", "variant_snapshot", "order_items_product_fk"):
+        for fragment in ("variant_snapshot", "order_items_product_fk", "legacy_product_ref TEXT", "order_items_catalog_identity_check"):
             self.assertIn(fragment, migration)
+        self.assertIn("product_id IS NOT NULL AND variant_id IS NOT NULL AND sku IS NOT NULL", migration)
         self.assertIn("item.ProductID, item.VariantID, item.ID", service)
         self.assertIn("WHERE pv.sku = $1", service)
+
+    def test_unresolved_historical_order_keeps_legacy_reference_without_fake_sku(self):
+        migration = text("timeweb/migrations/056_catalog_pim_final.sql")
+        self.assertIn("SET legacy_product_ref = item.product_id", migration)
+        self.assertNotIn("Архивный SKU", migration)
+        self.assertNotIn("Архивная карточка", migration)
+        self.assertNotIn("variant_id SET NOT NULL", migration)
+        self.assertNotIn("sku SET NOT NULL", migration)
 
     def test_external_ids_are_not_catalogue_identity(self):
         pim = text("backend/internal/admin/catalog_pim.go")
