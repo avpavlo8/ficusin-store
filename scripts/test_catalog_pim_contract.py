@@ -106,6 +106,12 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("Фото SKU имеют приоритет", ui)
         self.assertIn("VariantMediaManager", pim)
 
+    def test_review_backfill_avoids_illegal_update_target_lateral_reference(self):
+        migration = text("timeweb/migrations/055_catalog_spu_sku_attributes.sql")
+        self.assertIn("WITH review_variant AS", migration)
+        self.assertIn("WHERE review.id = match.review_id", migration)
+        self.assertNotIn("FROM LATERAL (\n  SELECT item.variant_id", migration)
+
     def test_old_applied_migrations_keep_their_original_integrity_contracts(self):
         # Old applied migrations are superseded by 055/056, never edited in
         # place. The branch/base diff additionally verifies 044/046 are absent
