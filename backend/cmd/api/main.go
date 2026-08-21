@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,6 +33,48 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/store"
 )
 
+// switchHandler lets the container bind its HTTP port before PostgreSQL
+// migrations and integration bootstrap finish. Timeweb uses the Docker
+// healthcheck as a liveness gate; the real external production smoke still
+// waits for the final router, whose health response is {"status":"ok"}.
+//
+// During bootstrap only /api/v1/health is 200. Everything else is explicitly
+// unavailable, so no request can accidentally be handled against a half-ready
+// database.
+type switchHandler struct {
+	mu      sync.RWMutex
+	handler http.Handler
+}
+
+func newSwitchHandler(initial http.Handler) *switchHandler {
+	return &switchHandler{handler: initial}
+}
+
+func (handler *switchHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	handler.mu.RLock()
+	current := handler.handler
+	handler.mu.RUnlock()
+	current.ServeHTTP(writer, request)
+}
+
+func (handler *switchHandler) Swap(next http.Handler) {
+	handler.mu.Lock()
+	handler.handler = next
+	handler.mu.Unlock()
+}
+
+func bootstrapHTTPHandler(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-store")
+	if request.URL.Path == "/api/v1/health" {
+		writer.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(writer).Encode(map[string]string{"status": "starting"})
+		return
+	}
+	writer.WriteHeader(http.StatusServiceUnavailable)
+	_ = json.NewEncoder(writer).Encode(map[string]string{"error": "Сервис запускается"})
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
@@ -45,6 +90,30 @@ func main() {
 		syscall.SIGTERM,
 	)
 	defer stop()
+
+	liveHandler := newSwitchHandler(http.HandlerFunc(bootstrapHTTPHandler))
+	server := &http.Server{
+		Addr:              cfg.HTTP.Address,
+		Handler:           liveHandler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	listener, err := net.Listen("tcp", cfg.HTTP.Address)
+	if err != nil {
+		logger.Error("bind http listener failed", "error", err)
+		os.Exit(1)
+	}
+	serverErrors := make(chan error, 1)
+	go func() {
+		logger.Info("bootstrap health endpoint started", "address", cfg.HTTP.Address)
+		err := server.Serve(listener)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrors <- err
+		}
+		close(serverErrors)
+	}()
 
 	pool, err := store.Open(ctx, cfg.Database)
 	if err != nil {
@@ -132,37 +201,32 @@ func main() {
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
-	server := &http.Server{
-		Addr: cfg.HTTP.Address,
-		Handler: httpapi.NewRouter(logger, httpapi.Dependencies{
-			Catalog:        catalogRepository,
-			Auth:           authService,
-			Orders:         orderRepository,
-			OrderCreator:   orderService,
-			CDEK:           cdekClient,
-			RussianPost:    russianPostClient,
-			YandexDelivery: yandexDeliveryClient,
-			Admin:          adminRepository,
-			Saby:           sabyService,
-			Push:           pushService,
-			Cart:           cart.NewStore(pool),
-			Packages:       catalogRepository,
-			Collections:    catalogRepository,
-			Payments:       paymentService,
-			Settings:       shopSettings,
-			Procurement:    procurementService,
-			Reviews:        reviews.NewStore(pool, photoStorage),
-			Refunds:        paymentService,
-			ProductPhotos:  photoStorage,
-			CookieSecure:   cfg.Auth.CookieSecure,
-			StaticDir:      cfg.HTTP.StaticDir,
-			YandexSuggestKey: cfg.YandexSuggestKey,
-		}),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
+
+	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
+		Catalog:           catalogRepository,
+		Auth:              authService,
+		Orders:            orderRepository,
+		OrderCreator:      orderService,
+		CDEK:              cdekClient,
+		RussianPost:       russianPostClient,
+		YandexDelivery:    yandexDeliveryClient,
+		Admin:             adminRepository,
+		Saby:              sabyService,
+		Push:              pushService,
+		Cart:              cart.NewStore(pool),
+		Packages:          catalogRepository,
+		Collections:       catalogRepository,
+		Payments:          paymentService,
+		Settings:          shopSettings,
+		Procurement:       procurementService,
+		Reviews:           reviews.NewStore(pool, photoStorage),
+		Refunds:           paymentService,
+		ProductPhotos:     photoStorage,
+		CookieSecure:      cfg.Auth.CookieSecure,
+		StaticDir:         cfg.HTTP.StaticDir,
+		YandexSuggestKey: cfg.YandexSuggestKey,
+	}))
+
 	go shopSettings.Run(ctx)
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
 	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
@@ -185,18 +249,18 @@ func main() {
 	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
 
-	go func() {
-		<-ctx.Done()
+	logger.Info("api ready", "address", cfg.HTTP.Address)
+	select {
+	case err := <-serverErrors:
+		if err != nil {
+			logger.Error("api stopped unexpectedly", "error", err)
+			os.Exit(1)
+		}
+	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed", "error", err)
 		}
-	}()
-
-	logger.Info("api started", "address", cfg.HTTP.Address)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error("api stopped unexpectedly", "error", err)
-		os.Exit(1)
 	}
 }
