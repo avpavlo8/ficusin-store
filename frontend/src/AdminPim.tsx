@@ -177,7 +177,7 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
   const [selectedId, setSelectedId] = useState<number | "new" | null>(null);
   const empty = useMemo<AdminVariant>(() => ({ id: 0, productId, sku: "авто", label: "Новый вариант", price: 0, stock: 0, wholesaleMinQty: 1, active: true, archived: false, attributes: {}, externalIds: [], images: [] }), [productId]);
   const [draft, setDraft] = useState<AdminVariant>(empty);
-  const load = useCallback(() => api<{ variants: AdminVariant[] }>(`/api/v1/admin/products/${productId}/variants`).then((data) => setVariants(data.variants)).catch((error) => onError(error.message)), [productId, onError]);
+  const load = useCallback(() => api<{ variants: AdminVariant[] }>(`/api/v1/admin/products/${productId}/variants`).then((data) => setVariants(data.variants || [])).catch((error) => onError(error.message)), [productId, onError]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (!categoryId) return; void api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setSchema(data.attributes.filter((item) => item.scope === "variant" && item.active && !item.excluded))).catch((error) => onError(error.message)); }, [categoryId, onError]);
   const select = (variant: AdminVariant | "new") => { setSelectedId(variant === "new" ? "new" : variant.id); setDraft(variant === "new" ? empty : structuredClone(variant)); };
