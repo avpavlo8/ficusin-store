@@ -1,15 +1,10 @@
 name: Verify
 
-# Раньше стояло просто "push" и "pull_request" без условий: каждый коммит в
-# ветку запускал сборку дважды, и половина минут уходила на дубликаты. Ветки
-# проверяются через pull request, main — при вливании.
 on:
   push:
     branches: [main]
   pull_request:
 
-# Пока правишь замечания, коммиты идут один за другим. Старые прогоны больше
-# не досиживают до конца впустую — новый отменяет предыдущий.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -34,8 +29,6 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
-  # Guards the phone layout: it broke once without anyone noticing, because
-  # nothing here ever looked at the site at a phone's width.
   layout:
     runs-on: ubuntu-latest
     steps:
@@ -51,9 +44,6 @@ jobs:
         working-directory: frontend
       - run: npm install
         working-directory: e2e
-      # Браузеры весят сотни мегабайт и раньше качались заново каждый раз —
-      # однажды это растянулось на двадцать шесть минут. Теперь они лежат в
-      # кэше, а с нуля ставятся только когда меняется сам Playwright.
       - id: browsers
         uses: actions/cache@v4
         with:
@@ -62,7 +52,6 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
         if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: e2e
-      # Системные библиотеки в кэш не попадают, их всё равно нужно доставить.
       - run: npx playwright install-deps chromium webkit
         if: steps.browsers.outputs.cache-hit == 'true'
         working-directory: e2e
@@ -90,10 +79,6 @@ jobs:
       - run: go vet ./...
       - run: go build ./cmd/api
 
-  # Production запускает миграции до HTTP-сервера. Раньше CI проверял только
-  # текстовые контракты, поэтому синтаксические/зависимые ошибки 055/056
-  # обнаруживались уже в Timeweb. Здесь применяем весь каталог миграций к
-  # настоящему PostgreSQL в том же лексикографическом порядке и транзакционно.
   migrations:
     runs-on: ubuntu-latest
     services:
@@ -114,10 +99,26 @@ jobs:
       PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
-      - name: Apply every production migration
+      - name: Apply every production migration with historical orphan fixture
         run: |
           set -euo pipefail
           for migration in $(find timeweb/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            if [[ "$(basename "$migration")" == "055_catalog_spu_sku_attributes.sql" ]]; then
+              echo 'Seeding an order line whose original catalogue product no longer exists.'
+              psql -h 127.0.0.1 -U postgres -d ficusin_ci -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO orders(
+            order_number, customer_name, phone, email, address, comment,
+            delivery_method, delivery_fee, subtotal, total
+          ) VALUES (
+            'CI-ORPHAN-ORDER', 'Migration test', '+70000000000', 'ci@example.invalid', '', '',
+            'pickup', 0, 642, 642
+          );
+          INSERT INTO order_items(order_id, product_id, product_name, unit_price, quantity)
+          SELECT id, 'deleted-product-from-history', 'CI orphan order item', 321, 2
+          FROM orders WHERE order_number='CI-ORPHAN-ORDER';
+          SQL
+            fi
+
             echo "::group::${migration}"
             psql \
               -h 127.0.0.1 \
@@ -129,15 +130,19 @@ jobs:
             echo "::endgroup::"
           done
 
+          orphan_preserved="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM order_items item JOIN products product ON product.id=item.product_id JOIN product_variants variant ON variant.id=item.variant_id WHERE item.product_name='CI orphan order item' AND item.unit_price=321 AND item.quantity=2 AND item.sku=variant.sku AND product.status='draft' AND variant.is_active=0")"
+          if [[ "$orphan_preserved" != "1" ]]; then
+            echo "Expected one preserved orphan order line, got ${orphan_preserved}." >&2
+            exit 1
+          fi
+
   saby-sync-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
-  # Dockerfile — часть production-кода. Кроме сборки запускаем именно финальный
-  # image с PostgreSQL и ждём его Docker HEALTHCHECK. Это ловит ошибки startup,
-  # миграций, прав пользователя и runtime-инструментов до Timeweb.
   image:
     runs-on: ubuntu-latest
     services:
