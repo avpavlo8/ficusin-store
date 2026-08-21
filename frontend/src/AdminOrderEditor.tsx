@@ -69,6 +69,12 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     return products.filter((product) => !used.has(product.slug));
   }, [products, lines]);
 
+  const draftSubtotal = useMemo(
+    () => lines.reduce((total, line) => total + line.unitPrice * line.quantity, 0),
+    [lines],
+  );
+  const draftTotal = draftSubtotal + Math.max(0, deliveryFee);
+
   const compositionChanged = () => {
     if (order.deliveryMethod !== "pickup") setConfirmDelivery(false);
     setPaymentLink("");
@@ -122,8 +128,10 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       setPayment(result.payment);
       onSaved({ ...result.order, paymentStatus: result.payment.paymentStatus });
     } catch (error) {
+      // Do not reload the old order here. A failed save must leave the
+      // manager's draft visible so it can be retried instead of making an
+      // added product look as if the editor silently deleted it.
       onError((error as Error).message);
-      await load();
     } finally {
       setBusy(false);
     }
@@ -184,6 +192,13 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
           </option>)}
         </select>
         <button type="button" className="admin-action" disabled={!addProduct} onClick={appendProduct}>Добавить</button>
+      </div>
+      <div className="admin-order-draft-total">
+        <small>{order.deliveryMethod !== "pickup" && !confirmDelivery
+          ? "Предварительно с текущей стоимостью доставки — после изменения состава доставку нужно подтвердить заново"
+          : "После сохранения эта сумма станет итогом заказа"}</small>
+        <span>Новая сумма</span>
+        <strong>{money.format(draftTotal)}</strong>
       </div>
     </section>
 
