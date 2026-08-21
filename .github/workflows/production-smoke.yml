@@ -31,7 +31,7 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Wait for Timeweb and verify exact deployed bundle
+      - name: Wait for Timeweb and verify production
         shell: bash
         run: |
           set -euo pipefail
@@ -52,15 +52,22 @@ jobs:
             html="$(curl -fsS --max-time 15 "https://ficusin.ru/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
+            catalog_count="$(curl -fsS --max-time 20 "https://ficusin.ru/api/v1/catalog?deploy=${GITHUB_SHA}&attempt=${attempt}" \
+              | python3 -c 'import json,sys; data=json.load(sys.stdin); products=data.get("products"); print(len(products) if isinstance(products, list) else 0)' \
+              2>/dev/null || printf '0')"
 
-            echo "attempt=${attempt} health=${health} js=${actual_js} css=${actual_css}"
+            echo "attempt=${attempt} health=${health} js=${actual_js} css=${actual_css} catalog_products=${catalog_count}"
 
-            if [[ "$health" == *'"status":"ok"'* && "$actual_js" == "$expected_js" && "$actual_css" == "$expected_css" ]]; then
-              echo "Production serves the exact frontend bundle for ${GITHUB_SHA}."
+            if [[ "$health" == *'"status":"ok"'* \
+              && "$actual_js" == "$expected_js" \
+              && "$actual_css" == "$expected_css" \
+              && "$catalog_count" =~ ^[0-9]+$ \
+              && "$catalog_count" -gt 0 ]]; then
+              echo "Production is healthy, serves the exact frontend bundle and a non-empty catalog for ${GITHUB_SHA}."
               exit 0
             fi
             sleep 20
           done
 
-          echo 'Timeweb did not expose the expected frontend bundle in time.' >&2
+          echo 'Timeweb did not expose a healthy exact production release with a non-empty catalog in time.' >&2
           exit 1
