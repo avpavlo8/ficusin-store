@@ -109,7 +109,43 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
     }
   }, [orderNumber]);
 
+  const refreshOrder = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/v1/account/orders/${encodeURIComponent(orderNumber)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.status === 401) {
+        window.location.assign(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`);
+        return;
+      }
+      const body = await response.json() as { order?: OrderDetail };
+      if (response.ok && body.order) {
+        setOrder(body.order);
+        setError("");
+      }
+    } catch {
+      // Фоновая проверка не должна заменять рабочую карточку сетевой ошибкой.
+      // Следующая проверка или фокус окна попробует снова.
+    }
+  }, [orderNumber]);
+
   useEffect(() => { void load(); }, [load]);
+
+  // Клиент не редактирует заказ. Пока он ждёт решения менеджера, карточка
+  // сама подхватывает подтверждение: после сохранения в админке кнопка оплаты
+  // появляется без ручного F5. Фокус окна даёт мгновенную проверку, таймер —
+  // запасной путь, если вкладка всё время открыта.
+  useEffect(() => {
+    if (!order || order.paymentReady || order.amountDue <= 0) return;
+    const timer = window.setInterval(() => { void refreshOrder(); }, 8_000);
+    const refreshOnFocus = () => { void refreshOrder(); };
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
+  }, [order, refreshOrder]);
 
   const pay = async () => {
     if (!order || !order.paymentReady || order.amountDue <= 0) return;
@@ -184,7 +220,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             {order.paymentReady && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
               {paying ? "Открываем оплату…" : `Оплатить ${money.format(order.amountDue)}`}
             </button>}
-            {!order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер подтвердит наличие и доставку, после этого здесь появится кнопка оплаты.</p>}
+            {!order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит состав и доставку, после сохранения здесь автоматически появится кнопка оплаты.</p>}
             {order.amountDue === 0 && order.paymentStatus === "paid" && <p className="order-note">Заказ полностью оплачен.</p>}
             <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
             {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
