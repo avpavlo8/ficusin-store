@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,5 +76,14 @@ replace_once(
     '  const visibleSchema = categoryId ? schema : [];\n  const variantAttributes = visibleSchema.filter((item) => item.audience === "customer");\n  const technicalAttributes = visibleSchema.filter((item) => item.audience === "technical");\n  const completeness = visibleSchema.length ? Math.round(visibleSchema.filter((item) => !item.required || draft.attributes[item.code] !== undefined && draft.attributes[item.code] !== null && draft.attributes[item.code] !== "").length / visibleSchema.length * 100) : 100;',
 )
 replace_once("frontend/src/AdminPim.tsx", '{money(variant.price)}', '{money.format(variant.price)}')
+
+# ExternalMappings was removed when marketplace/provider IDs moved to concrete
+# SKU rows. Drop only the now-orphaned single-line rules for that old wrapper.
+for css in (ROOT / "frontend/src/styles").glob("*.css"):
+    source = css.read_text(encoding="utf-8")
+    cleaned, count = re.subn(r'(?m)^[ \t]*\.integration-mapping(?:[ :>+~.#\[][^,{]*)?\s*\{[^\n]*\}\s*\n?', '', source)
+    if count:
+        css.write_text(cleaned, encoding="utf-8")
+        print(f"removed {count} obsolete integration-mapping rule(s) from {css.relative_to(ROOT)}")
 
 print("catalogue compile/lint follow-up applied")
