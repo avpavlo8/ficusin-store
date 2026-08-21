@@ -1,8 +1,5 @@
 name: Verify
 
-# Раньше стояло просто "push" и "pull_request" без условий: каждый коммит в
-# ветку запускал сборку дважды, и половина минут уходила на дубликаты. Ветки
-# проверяются через pull request, main — при вливании.
 on:
   push:
     branches: [main]
@@ -29,6 +26,13 @@ jobs:
             echo "Catalogue helper already removed"
             exit 0
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/catalog_model_rewrite.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('quantity: number }>;\n",', 'quantity: number }>;\\n",')
+          path.write_text(text, encoding='utf-8')
+          PY
           python3 scripts/catalog_model_rewrite.py
           git diff --check
           if git diff --quiet; then
