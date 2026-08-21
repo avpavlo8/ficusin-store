@@ -296,15 +296,24 @@ ON CONFLICT(code) DO UPDATE SET title=EXCLUDED.title,attribute_id=EXCLUDED.attri
  display_mode=EXCLUDED.display_mode,sort_order=EXCLUDED.sort_order;
 
 -- Reviews are shown on the product card but remember exactly which SKU was
--- purchased. Existing reviews are backfilled from their order line.
+-- purchased. Existing reviews are backfilled from their order line. PostgreSQL
+-- does not allow an UPDATE target alias to be referenced from a LATERAL item in
+-- the UPDATE's FROM clause, so resolve the match first and update by review id.
 ALTER TABLE product_reviews ADD COLUMN IF NOT EXISTS variant_id BIGINT REFERENCES product_variants(id) ON DELETE SET NULL;
+WITH review_variant AS (
+  SELECT review.id AS review_id,
+         (
+           SELECT item.variant_id
+           FROM order_items item
+           JOIN product_variants variant ON variant.id=item.variant_id
+           WHERE item.order_id=review.order_id AND variant.product_id=review.product_id
+           ORDER BY item.id
+           LIMIT 1
+         ) AS variant_id
+  FROM product_reviews review
+  WHERE review.variant_id IS NULL
+)
 UPDATE product_reviews review
-SET variant_id = line.variant_id
-FROM LATERAL (
-  SELECT item.variant_id
-  FROM order_items item
-  JOIN product_variants variant ON variant.id=item.variant_id
-  WHERE item.order_id=review.order_id AND variant.product_id=review.product_id
-  ORDER BY item.id LIMIT 1
-) line
-WHERE review.variant_id IS NULL;
+SET variant_id = match.variant_id
+FROM review_variant match
+WHERE review.id = match.review_id AND match.variant_id IS NOT NULL;
