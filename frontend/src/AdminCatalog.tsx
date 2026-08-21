@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ImportDialog, NewProductDialog, ProductDialog, SyncDialog } from "./AdminCatalogDialogs";
 import { PageHeading, api, money, sabyFieldLabels, statusLabels } from "./adminShared";
 import { AttributeManager } from "./AdminPim";
-import type { AdminCollection, Category, Product, ReviewModerationItem } from "./adminTypes";
+import { CollectionsV2 } from "./AdminCollectionsV2";
+import type { Category, Product, ReviewModerationItem } from "./adminTypes";
 
 // Flattens the category tree into the order it reads in: each parent is
 // followed by its own children, siblings sorted by sortOrder and then by
@@ -141,56 +142,8 @@ export function Categories({ canEdit, owner, onError }: { canEdit: boolean; owne
   </>;
 }
 
-// Collections are assembled by hand: the manager knows a particular ficus is
-// fussy despite its label, and a rule over attributes never will.
 export function Collections({ onError }: { onError: (value: string) => void }) {
-  const [collections, setCollections] = useState<AdminCollection[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [opened, setOpened] = useState<number | null>(null);
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    api<{ collections: AdminCollection[] }>("/api/v1/admin/collections")
-      .then((data) => setCollections(data.collections))
-      .catch((error) => onError((error as Error).message));
-    api<{ products: Product[] }>("/api/v1/admin/products")
-      .then((data) => setProducts(data.products))
-      .catch((error) => onError((error as Error).message));
-  }, [onError]);
-
-  const toggle = async (collection: AdminCollection, productId: number) => {
-    const next = collection.products.includes(productId)
-      ? collection.products.filter((id) => id !== productId)
-      : [...collection.products, productId];
-    try {
-      const result = await api<{ collections: AdminCollection[] }>(`/api/v1/admin/collections/${collection.id}`, { method: "PATCH", body: JSON.stringify({ products: next }) });
-      setCollections(result.collections);
-    } catch (error) { onError((error as Error).message); }
-  };
-
-  const shown = products.filter((item) => `${item.name} ${item.latinName}`.toLowerCase().includes(query.toLowerCase()));
-
-  return <><PageHeading eyebrow="Витрина" title="Подборки" text="Вкладки над каталогом: что в них попадает, решаете вы" />
-    <div className="admin-collections">
-      {collections.map((collection) => <div key={collection.id} className="admin-collection">
-        <button className="admin-collection-head" onClick={() => setOpened(opened === collection.id ? null : collection.id)}>
-          <span><b>{collection.title}</b><small>{collection.note}</small></span>
-          <span className="admin-collection-count">{collection.products.length} товаров</span>
-        </button>
-        {opened === collection.id && <div className="admin-collection-body">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти товар" />
-          <div className="admin-collection-list">
-            {shown.map((product) => <label key={product.id}>
-              <input type="checkbox" checked={collection.products.includes(product.id)} onChange={() => toggle(collection, product.id)} />
-              <span>{product.name}</span>
-              <small>{product.stock > 0 ? `${product.stock} шт.` : "под заказ"}</small>
-            </label>)}
-          </div>
-        </div>}
-      </div>)}
-      {!collections.length && <p className="admin-hint">Подборки появятся после первого деплоя миграции.</p>}
-    </div>
-  </>;
+  return <CollectionsV2 onError={onError} />;
 }
 
 export function Products({ can, onError }: { can: (permission: string) => boolean; onError: (value: string) => void }) {

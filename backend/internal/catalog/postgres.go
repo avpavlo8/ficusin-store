@@ -281,8 +281,9 @@ const catalogListQuery = `
 		COALESCE(product.placement,''),COALESCE(product.pet_safety,''),COALESCE(product.growth_habit,''),product.category_id,
 		COALESCE(popularity.score,0),
 		COALESCE((SELECT ARRAY_AGG(collection.slug ORDER BY collection.sort_order,collection.id)
-			FROM collection_products member JOIN collections collection ON collection.id=member.collection_id AND collection.is_active=1
-			WHERE member.product_id=product.id),ARRAY[]::TEXT[]),
+			FROM collections collection
+			WHERE collection.is_active=1 AND ((collection.mode='manual' AND EXISTS(SELECT 1 FROM collection_products member WHERE member.collection_id=collection.id AND member.product_id=product.id))
+				OR (collection.mode='dynamic' AND collection_rules_match_product(product.id,collection.rules)))),ARRAY[]::TEXT[]),
 		COALESCE((SELECT AVG(rating)::float8 FROM product_reviews review WHERE review.product_id=product.id AND review.status='published'),0),
 		(SELECT COUNT(*) FROM product_reviews review WHERE review.product_id=product.id AND review.status='published'),
 		COALESCE((
@@ -363,10 +364,11 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 
 func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Collection,error) {
 	rows,err:=repository.pool.Query(ctx,`
-		SELECT collection.slug,collection.title,collection.note,COUNT(member.product_id)::INTEGER
-		FROM collections collection JOIN collection_products member ON member.collection_id=collection.id
-		JOIN products product ON product.id=member.product_id AND product.status='published'
-		WHERE collection.is_active=1 GROUP BY collection.id HAVING COUNT(member.product_id)>0
+		SELECT collection.slug,collection.title,collection.note,COUNT(product.id)::INTEGER
+		FROM collections collection
+		JOIN products product ON product.status='published' AND ((collection.mode='manual' AND EXISTS(SELECT 1 FROM collection_products member WHERE member.collection_id=collection.id AND member.product_id=product.id))
+			OR (collection.mode='dynamic' AND collection_rules_match_product(product.id,collection.rules)))
+		WHERE collection.is_active=1 GROUP BY collection.id HAVING COUNT(product.id)>0
 		ORDER BY collection.sort_order,collection.id
 	`)
 	if err!=nil{return nil,fmt.Errorf("query collections: %w",err)};defer rows.Close();collections:=make([]Collection,0)
