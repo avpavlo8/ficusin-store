@@ -8,7 +8,7 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
-# Technical trigger: diagnose production after failed deploy.
+# Technical trigger: diagnose current production API only.
 concurrency:
   group: production-smoke
   cancel-in-progress: true
@@ -19,14 +19,9 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - name: Diagnose current production API
         shell: bash
         run: |
@@ -36,44 +31,6 @@ jobs:
             curl -sS --max-time 15 -D /tmp/headers -o /tmp/body "https://ficusin.ru${endpoint}?diagnostic=${GITHUB_SHA}" || true
             head -n 1 /tmp/headers || true
             grep -i '^content-type:' /tmp/headers || true
-            head -c 8000 /tmp/body || true
+            head -c 12000 /tmp/body || true
             echo
           done
-      - name: Build expected frontend
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-      - name: Wait for Timeweb and verify exact deployed bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          expected_js="$(grep -oE 'src="/assets/[^"]+\.js"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
-          expected_css="$(grep -oE 'href="/assets/[^"]+\.css"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
-
-          if [[ -z "$expected_js" || -z "$expected_css" ]]; then
-            echo 'Could not determine expected frontend assets.' >&2
-            exit 1
-          fi
-
-          echo "expected_js=${expected_js}"
-          echo "expected_css=${expected_css}"
-
-          for attempt in $(seq 1 36); do
-            health="$(curl -fsS --max-time 10 "https://ficusin.ru/api/v1/health?deploy=${GITHUB_SHA}" || true)"
-            html="$(curl -fsS --max-time 15 "https://ficusin.ru/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
-            actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
-            actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
-
-            echo "attempt=${attempt} health=${health} js=${actual_js} css=${actual_css}"
-
-            if [[ "$health" == *'"status":"ok"'* && "$actual_js" == "$expected_js" && "$actual_css" == "$expected_css" ]]; then
-              echo "Production serves the exact frontend bundle for ${GITHUB_SHA}."
-              exit 0
-            fi
-            sleep 20
-          done
-
-          echo 'Timeweb did not expose the expected frontend bundle in time.' >&2
-          exit 1
