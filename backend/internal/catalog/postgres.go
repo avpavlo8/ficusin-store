@@ -91,6 +91,9 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		SELECT pv.id, pv.sku, pv.label, pv.base_price_minor,
 			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=pv.id),0)::INTEGER,
 			pv.height_cm, pv.pot_diameter_cm, pv.wholesale_min_qty,
+			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,media.object_key) ORDER BY media.is_primary DESC,media.sort_order,media.id)
+				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
+				WHERE media.variant_id=pv.id),'[]'::jsonb),
 			COALESCE((
 				WITH RECURSIVE ancestors AS (
 					SELECT id,parent_id,0 depth FROM categories WHERE id=$2
@@ -115,7 +118,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 				  AND (e.show_in_summary OR e.show_in_characteristics OR e.is_badge OR e.is_filterable)
 			), '[]'::jsonb)
 		FROM product_variants pv
-		WHERE pv.product_id = $1 AND pv.is_active = 1
+		WHERE pv.product_id = $1 AND pv.is_active = 1 AND pv.archived_at IS NULL
 		ORDER BY pv.id
 	`, productID, detail.CategoryID)
 	if err != nil {
@@ -125,14 +128,15 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	for variantRows.Next() {
 		var variant Variant
 		var priceMinor int64
-		var attributes []byte
+		var attributes, images []byte
 		if err := variantRows.Scan(&variant.ID, &variant.SKU, &variant.Label, &priceMinor,
 			&variant.Stock, &variant.HeightCM, &variant.PotDiameterCM,
-			&variant.WholesaleMinQty, &attributes); err != nil {
+			&variant.WholesaleMinQty, &images, &attributes); err != nil {
 			variantRows.Close()
 			return ProductDetail{}, err
 		}
 		variant.Price = float64(priceMinor) / 100
+		if err := json.Unmarshal(images, &variant.Images); err != nil { variantRows.Close(); return ProductDetail{}, fmt.Errorf("decode variant images: %w", err) }
 		if err := json.Unmarshal(attributes, &variant.Attributes); err != nil {
 			variantRows.Close()
 			return ProductDetail{}, fmt.Errorf("decode variant attributes: %w", err)
@@ -248,7 +252,7 @@ const catalogListQuery = `
 		FROM order_items oi
 		JOIN product_variants variant ON variant.id=oi.variant_id
 		JOIN orders o ON o.id=oi.order_id
-		WHERE o.status <> 'cancelled' AND (o.status='completed' OR o.payment_status='paid')
+		WHERE o.status <> 'cancelled' AND (o.status = 'completed' OR o.payment_status = 'paid')
 		GROUP BY variant.product_id
 	), default_variants AS (
 		SELECT product.id AS product_id, chosen.id, chosen.sku, chosen.label, chosen.base_price_minor, chosen.stock
@@ -257,7 +261,7 @@ const catalogListQuery = `
 			SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
 				COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory WHERE inventory.variant_id=variant.id),0)::INTEGER AS stock
 			FROM product_variants variant
-			WHERE variant.product_id=product.id AND variant.is_active=1
+			WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
 			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory WHERE inventory.variant_id=variant.id),0)>0) DESC, variant.id
 			LIMIT 1
 		) chosen ON TRUE
@@ -293,14 +297,14 @@ const catalogListQuery = `
 				JOIN attribute_definitions definition ON definition.id=assignment.attribute_id AND definition.audience='customer' AND definition.is_active
 				ORDER BY definition.id,ancestor.depth
 			), values AS (
-				SELECT effective.code,effective.name,effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
+				SELECT effective.code,COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name),effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN product_attribute_values value ON value.attribute_id=effective.id AND value.product_id=product.id
-				WHERE effective.value_scope='product' AND NOT effective.is_excluded AND (effective.is_filterable OR effective.is_badge)
+				WHERE effective.value_scope='product' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 				UNION ALL
-				SELECT effective.code,effective.name,effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
+				SELECT effective.code,COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name),effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN variant_attribute_values value ON value.attribute_id=effective.id
 				JOIN product_variants variant ON variant.id=value.variant_id AND variant.product_id=product.id AND variant.is_active=1
-				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_filterable OR effective.is_badge)
+				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 			)
 			SELECT jsonb_agg(jsonb_build_object('code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
 				'badge',value.is_badge,'filterable',value.is_filterable,'showInCharacteristics',true)

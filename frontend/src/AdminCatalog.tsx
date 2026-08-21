@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ImportDialog, NewProductDialog, ProductDialog, SyncDialog } from "./AdminCatalogDialogs";
 import { PageHeading, api, money, sabyFieldLabels, statusLabels } from "./adminShared";
+import { AttributeManager } from "./AdminPim";
 import type { AdminCollection, Category, Product, ReviewModerationItem } from "./adminTypes";
 
 // Flattens the category tree into the order it reads in: each parent is
@@ -77,7 +78,7 @@ export function CategoryPicker({ categories, value, onChange }: {
   </div>;
 }
 
-export function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: string) => void }) {
+export function Categories({ canEdit, owner, onError }: { canEdit: boolean; owner: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Category[]>([]);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -121,8 +122,8 @@ export function Categories({ canEdit, onError }: { canEdit: boolean; onError: (v
     try { await api(`/api/v1/admin/categories/${item.id}`, { method: "DELETE" }); load(); }
     catch (error) { onError((error as Error).message); }
   };
-  return <><PageHeading eyebrow="Структура каталога" title="Категории" text="Три уровня: раздел, группа и вид растения. Категории с товарами защищены от удаления." />
-    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.filter((item) => depth(item) < 2).map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
+  return <><PageHeading eyebrow="Структура каталога" title="Категории и атрибуты" text="Дерево любой глубины. Категории с товарами или дочерними узлами защищены от удаления." />
+    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
     <div className="admin-toolbar category-expand">
       <button className="admin-action" onClick={() => setExpanded(new Set(items.map((item) => item.id)))}>Раскрыть всё</button>
       <button className="admin-action" onClick={() => setExpanded(new Set())}>Свернуть всё</button>
@@ -136,6 +137,7 @@ export function Categories({ canEdit, onError }: { canEdit: boolean; onError: (v
         {item.name}
       </strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <button className="text-button danger" onClick={(event) => { event.stopPropagation(); remove(item); }}>Удалить</button>}</td></tr>;
     })}</tbody></table></div>
+    {owner && <AttributeManager categories={items} onError={onError} />}
   </>;
 }
 

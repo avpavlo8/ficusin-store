@@ -13,7 +13,7 @@ func TestPreorderRequestUsesExplicitProductAndVariantRelations(t *testing.T) {
 	if !strings.Contains(recordPreorderRequestsSQL, explicitProductJoin) {
 		t.Fatal("order item must use the explicit products.id foreign key")
 	}
-	if strings.Contains(recordPreorderRequestsSQL, "LEFT JOIN products p ON p.id = pv.product_id") {
+	if strings.Contains(recordPreorderRequestsSQL, "LEFT JOIN products p ON p.id = oi.product_id") {
 		t.Fatal("product identity must come from the order snapshot, not be reconstructed through the current variant")
 	}
 }

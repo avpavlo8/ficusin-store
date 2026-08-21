@@ -5,7 +5,7 @@ export type ProductAttribute = {
 };
 export type ProductVariant = {
   id: number; sku: string; label: string; price: number; stock: number;
-  heightCm?: number; potDiameterCm?: number; wholesaleMinQty: number;
+  heightCm?: number; potDiameterCm?: number; wholesaleMinQty: number; images: string[];
   attributes: ProductAttribute[];
 };
 export type FAQItem = { question: string; answer: string };

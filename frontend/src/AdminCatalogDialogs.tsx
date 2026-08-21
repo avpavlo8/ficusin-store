@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CategoryPicker } from "./AdminCatalog";
 import { Dialog, api, money, sabyFieldLabels } from "./adminShared";
+import { VariantsEditor } from "./AdminPim";
 import type { Category, CategoryAttribute, ImportEntry, Product } from "./adminTypes";
 
 const attributeOptionLabels: Record<string, string> = {
@@ -64,19 +65,10 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
       const result = await api<{ product: Product }>(`/api/v1/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify({
         name: form.name, latinName: form.latinName, shortDescription: form.shortDescription,
         description: form.description, careInstructions: form.careInstructions, status: form.status,
-        featured: form.featured, image: form.image, priceMinor: Math.round(form.price * 100),
-        variantLabel: form.variantLabel, heightCm: form.heightCm, potDiameterCm: form.potDiameterCm,
-        packageLengthCm: form.packageLengthCm, packageWidthCm: form.packageWidthCm,
-        packageHeightCm: form.packageHeightCm, packageWeightGrams: form.packageWeightGrams,
-        wholesaleMinQty: form.wholesaleMinQty, catalogSection: form.catalogSection, categoryId: form.categoryId,
-        plantKind: form.plantKind || "", lightLevel: form.lightLevel || "", watering: form.watering || "",
-        heightClass: form.heightClass || "", careLevel: form.careLevel || "", placement: form.placement || "",
-        petSafety: form.petSafety || "", growthHabit: form.growthHabit || "",
+        featured: form.featured, image: form.image, catalogSection: form.catalogSection, categoryId: form.categoryId,
         passport: form.passport, importantWarnings: form.importantWarnings,
         sabyFields: form.sabyFields,
-        attributes: validAttributes(schema, form.attributes || {}),
-        externalIds: form.externalIds,
-        ...(form.sabyFields.includes("stock") ? {} : { stock: form.stock }),
+        attributes: validAttributes(schema.filter((item) => item.scope === "product"), form.attributes || {}),
       }) }); onSaved(result.product);
     } catch (error) { onError((error as Error).message); }
   };
@@ -92,16 +84,8 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
     <h3 className="product-form-heading wide">Категория и характеристики</h3>
     <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId) => { setSchema([]); setForm({ ...form, categoryId }); }} /></div>
-    <AttributeFields schema={schema.filter((item) => item.audience === "customer")} values={form.attributes || {}} onChange={(code, value) => setForm((current) => ({ ...current, attributes: { ...current.attributes, [code]: value as never } }))} />
-    <h3 className="product-form-heading wide">Продажа</h3>
-    <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
-    <label>Остаток, шт.<input type="number" min="0" disabled={form.sabyFields.includes("stock")} value={form.stock} onChange={(event) => setForm({ ...form, stock: Number(event.target.value) })} /></label>
-    <label>Оптовый минимум<input type="number" min="1" value={form.wholesaleMinQty} onChange={(event) => setForm({ ...form, wholesaleMinQty: Number(event.target.value) })} /></label>
-    <h3 className="product-form-heading wide">Упаковка и доставка</h3>
-    <AttributeFields schema={schema.filter((item) => item.audience === "technical")} values={form.attributes || {}} onChange={(code, value) => setForm((current) => ({ ...current, attributes: { ...current.attributes, [code]: value as never } }))} />
-    <h3 className="product-form-heading wide">Интеграции</h3>
-    <div className="wide integration-mapping"><strong>Ficusin SKU: {form.sku}</strong><small>Неизменяемый внутренний идентификатор</small></div>
-    <ExternalMappings value={form.externalIds || []} onChange={(externalIds) => setForm({ ...form, externalIds })} />
+    <AttributeFields schema={schema.filter((item) => item.scope === "product" && item.audience === "customer")} values={form.attributes || {}} onChange={(code, value) => setForm((current) => ({ ...current, attributes: { ...current.attributes, [code]: value as never } }))} />
+<VariantsEditor productId={product.id} categoryId={form.categoryId} onError={onError} />
     {form.sabyId && <div className="wide admin-field"><span className="admin-field-label">Что берём из СБИС</span><div className="sync-options">{Object.entries(sabyFieldLabels).map(([field, label]) => <label key={field}><input type="checkbox" checked={form.sabyFields.includes(field)} onChange={(event) => setForm({ ...form, sabyFields: event.target.checked ? [...form.sabyFields, field] : form.sabyFields.filter((item) => item !== field) })} /><span><strong>{label}</strong></span></label>)}</div></div>}
     <label>Статус<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Черновик</option><option value="published">Опубликован</option><option value="archived">Архив</option></select></label>
     <label className="admin-checkbox"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />Поднимать в начало каталога</label>

@@ -324,6 +324,7 @@ type CategoryAttribute struct {
 	Unit         string `json:"unit"`
 	Options      []string `json:"options"`
 	Audience     string `json:"audience"`
+	Scope        string `json:"scope"`
 	Required     bool `json:"required"`
 	Filterable   bool `json:"filterable"`
 	ShowOnPDP    bool `json:"showOnPdp"`

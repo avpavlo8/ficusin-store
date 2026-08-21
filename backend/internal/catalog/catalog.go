@@ -116,6 +116,7 @@ type Variant struct {
 	HeightCM        *int    `json:"heightCm"`
 	PotDiameterCM   *int    `json:"potDiameterCm"`
 	WholesaleMinQty int     `json:"wholesaleMinQty"`
+	Images          []string `json:"images"`
 	Attributes      []ProductAttribute `json:"attributes"`
 }
 

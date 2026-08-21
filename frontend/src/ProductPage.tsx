@@ -31,7 +31,7 @@ export default function ProductPage({ slug }: { slug: string }) {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
       .then((item) => {
-        const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, attributes: variant.attributes || [] })), reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
+        const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
         setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setActiveImage(0);
         document.title = `${normalized.name} — Фикусин`;
       })
@@ -91,14 +91,15 @@ export default function ProductPage({ slug }: { slug: string }) {
   if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
 
   const customerAttributes = [...product.attributes, ...(variant?.attributes || [])].filter((item) => item.showInCharacteristics !== false);
+  const gallery = variant?.images?.length ? variant.images : product.images;
 
   return <main className="product-page">
     <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={() => { window.location.href="/#catalog"; }} />
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
     <PdpAdminTools slug={slug} adminRole={adminUser?.adminRole} onChanged={() => setRevision((value) => value + 1)} />
     <section className="pdp-main">
-      <ProductGallery images={product.images} name={product.name} active={activeImage} onSelect={setActiveImage} />
-      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
+      <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
+      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); setActiveImage(0); }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
     <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{([['care','О растении'],['characteristics','Характеристики'],['reviews','Отзывы'],['questions','Вопросы']] as const).map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
       <section className="pdp-tab-panel" aria-live="polite">

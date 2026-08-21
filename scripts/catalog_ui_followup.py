@@ -133,7 +133,7 @@ replace(
 )
 
 # No native +/- spinner in compact PIM numeric controls.
-css = ROOT / "frontend/src/index.css"
+css = ROOT / "frontend/src/styles/admin.css"
 text = css.read_text(encoding="utf-8")
 addition = r'''
 /* Catalogue PIM ---------------------------------------------------------- */

@@ -6,7 +6,7 @@ export type Category = { id: number; parentId: number | null; name: string; slug
 
 export type CategoryAttribute = {
   code: string; name: string; dataType: "text" | "number" | "boolean" | "enum" | "multi_enum";
-  unit: string; options: string[]; audience: "customer" | "technical";
+  unit: string; options: string[]; audience: "customer" | "technical"; scope: "product" | "variant";
   required: boolean; filterable: boolean; showOnPdp: boolean; badge: boolean; sortOrder: number;
 };
 
