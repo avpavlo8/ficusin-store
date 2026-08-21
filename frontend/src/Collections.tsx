@@ -25,9 +25,8 @@ type CollectionDefinition = {
 };
 
 // These definitions are only a graceful fallback for a server/database that
-// has not exposed /api/v1/collections yet. As soon as the API returns real
-// collections, this array is replaced in-place with matchers over the
-// canonical product.collections membership calculated by the backend.
+// has not exposed /api/v1/collections yet. As soon as the API returns the
+// collections field (even an empty array), the backend becomes authoritative.
 const legacyPresets: Preset[] = [
   { id: "bathroom", title: "Для ванной", match: (p) => p.placement === "bathroom" },
   { id: "dark", title: "Для тёмной комнаты", match: (p) => p.lightLevel === "low_light" },
@@ -83,7 +82,7 @@ export function CollectionStrip<T extends Product>({
 }) {
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
-  const [serverLoaded, setServerLoaded] = useState(false);
+  const [serverAuthoritative, setServerAuthoritative] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -91,23 +90,23 @@ export function CollectionStrip<T extends Product>({
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("collections unavailable")))
       .then((data: { collections?: CollectionDefinition[] }) => {
         if (!alive) return;
-        const collections = data.collections ?? [];
+        if (!Array.isArray(data.collections)) throw new Error("collections contract unavailable");
+        const collections = data.collections;
         setServerCollections(collections);
-        setServerLoaded(collections.length > 0);
-        if (collections.length > 0) presets.splice(0, presets.length, ...collections.map(serverPreset));
-        else presets.splice(0, presets.length, ...legacyPresets);
+        setServerAuthoritative(true);
+        presets.splice(0, presets.length, ...collections.map(serverPreset));
       })
       .catch(() => {
         if (!alive) return;
         setServerCollections([]);
-        setServerLoaded(false);
+        setServerAuthoritative(false);
         presets.splice(0, presets.length, ...legacyPresets);
       });
     return () => { alive = false; };
   }, []);
 
   const shown = useMemo(() => {
-    if (serverLoaded) {
+    if (serverAuthoritative) {
       return serverCollections.map((collection) => {
         const preset = serverPreset(collection);
         const firstProductImage = products.find((product) => preset.match(product))?.image;
@@ -129,7 +128,7 @@ export function CollectionStrip<T extends Product>({
         note: "",
       };
     }).filter((item) => item.count > 0);
-  }, [products, serverCollections, serverLoaded]);
+  }, [products, serverCollections, serverAuthoritative]);
 
   if (shown.length === 0) return null;
 
