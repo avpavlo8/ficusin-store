@@ -8,9 +8,9 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
-# Technical trigger: diagnose current production API only.
+# Technical trigger: diagnose current production API and frontend bundle only.
 concurrency:
-  group: production-smoke
+  group: production-smoke-diagnostic
   cancel-in-progress: true
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Diagnose current production API
+      - name: Diagnose current production
         shell: bash
         run: |
           set -u
@@ -31,6 +31,13 @@ jobs:
             curl -sS --max-time 15 -D /tmp/headers -o /tmp/body "https://ficusin.ru${endpoint}?diagnostic=${GITHUB_SHA}" || true
             head -n 1 /tmp/headers || true
             grep -i '^content-type:' /tmp/headers || true
-            head -c 12000 /tmp/body || true
+            if [[ "$endpoint" == "/api/v1/catalog" ]]; then
+              head -c 2000 /tmp/body || true
+            else
+              head -c 500 /tmp/body || true
+            fi
             echo
           done
+          echo '===== frontend bundle ====='
+          html="$(curl -fsS --max-time 15 "https://ficusin.ru/admin?diagnostic=${GITHUB_SHA}" || true)"
+          printf '%s' "$html" | grep -oE '(src|href)="/assets/[^"]+\.(js|css)"' || true
