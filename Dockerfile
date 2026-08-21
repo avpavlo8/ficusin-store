@@ -17,6 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ficusin
 # Pin every base image by digest so a mutable upstream tag cannot change a
 # production build without a repository change and a green CI run.
 FROM minidocks/poppler:latest@sha256:fc646c55459b604e8b47262bb8b45ac27cd35caadde5a278465f908883ba18c3
+LABEL org.opencontainers.image.title="ficusin-store"
 WORKDIR /app
 COPY --from=backend /out/ficusin-api /app/ficusin-api
 COPY --from=frontend /src/frontend/dist /app/web
