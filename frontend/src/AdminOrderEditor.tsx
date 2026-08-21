@@ -75,8 +75,25 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   );
   const draftTotal = draftSubtotal + Math.max(0, deliveryFee);
 
+  const compositionSaved = useMemo(() => {
+    if (!adjustment || adjustment.items.length !== lines.length) return false;
+    return adjustment.items.every((line, index) =>
+      line.productId === lines[index]?.productId && line.quantity === lines[index]?.quantity,
+    );
+  }, [adjustment, lines]);
+  const savedDeliveryConfirmed = order.deliveryMethod === "pickup" || !adjustment?.deliveryFeePending;
+  const deliverySaved = !!adjustment && Math.abs(deliveryFee - adjustment.deliveryFee) < 0.005 &&
+    confirmDelivery === savedDeliveryConfirmed;
+  const hasUnsavedChanges = !compositionSaved || !deliverySaved;
+  const shownTotal = hasUnsavedChanges ? draftTotal : payment.total;
+  const shownDue = Math.max(0, shownTotal - payment.netPaid);
+  const shownOverpaid = Math.max(0, payment.netPaid - shownTotal);
+
   const compositionChanged = () => {
-    if (order.deliveryMethod !== "pickup") setConfirmDelivery(false);
+    // A manager has already confirmed the current delivery amount. Editing the
+    // contents must not silently revoke that confirmation: pressing Save is
+    // the explicit confirmation of the whole updated order. If delivery really
+    // needs recalculation, the manager can uncheck it manually.
     setPaymentLink("");
   };
 
@@ -195,7 +212,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       </div>
       <div className="admin-order-draft-total">
         <small>{order.deliveryMethod !== "pickup" && !confirmDelivery
-          ? "Предварительно с текущей стоимостью доставки — после изменения состава доставку нужно подтвердить заново"
+          ? "Предварительно с текущей стоимостью доставки — подтвердите доставку перед сохранением"
           : "После сохранения эта сумма станет итогом заказа"}</small>
         <span>Новая сумма</span>
         <strong>{money.format(draftTotal)}</strong>
@@ -208,7 +225,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
         <label>Стоимость доставки, ₽<input type="number" min="0" step="1" value={deliveryFee}
           onChange={(event) => { setDeliveryFee(Math.max(0, Number(event.target.value))); setConfirmDelivery(true); setPaymentLink(""); }} /></label>
         <label className="admin-checkbox"><input type="checkbox" checked={confirmDelivery}
-          onChange={(event) => setConfirmDelivery(event.target.checked)} />Стоимость подтверждена менеджером</label>
+          onChange={(event) => { setConfirmDelivery(event.target.checked); setPaymentLink(""); }} />Стоимость подтверждена менеджером</label>
       </div>
       {!confirmDelivery && <small className="admin-flag">Пока доставка не подтверждена, клиент оплатить заказ не сможет.</small>}
     </section>}
@@ -217,13 +234,14 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       <button type="button" className="primary" disabled={busy} onClick={save}>Сохранить изменения</button>
     </div>
 
-    <section className="admin-block">
+    <section className="admin-block admin-order-payment-block">
       <strong>Оплата</strong>
-      <p>Итого: <b>{money.format(payment.total)}</b> · получено: <b>{money.format(payment.paid)}</b> · возвращено: <b>{money.format(payment.refunded)}</b></p>
-      {payment.due > 0 && <p className="admin-flag">К доплате: <b>{money.format(payment.due)}</b></p>}
-      {payment.overpaid > 0 && <p className="admin-flag">Переплата: <b>{money.format(payment.overpaid)}</b></p>}
-      {!payment.ready && payment.due > 0 && <p>Оплата закрыта до подтверждения наличия всех товаров и доставки.</p>}
-      {payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>Создать ссылку на доплату</button>}
+      <p>Итого: <b>{money.format(shownTotal)}</b>{hasUnsavedChanges && <small> · после сохранения</small>} · получено: <b>{money.format(payment.paid)}</b> · возвращено: <b>{money.format(payment.refunded)}</b></p>
+      {shownDue > 0 && <p className="admin-flag">К доплате: <b>{money.format(shownDue)}</b></p>}
+      {shownOverpaid > 0 && <p className="admin-flag">Переплата: <b>{money.format(shownOverpaid)}</b></p>}
+      {hasUnsavedChanges && shownDue > 0 && <p>Сначала сохраните изменения — ссылка будет создана уже на новую сумму.</p>}
+      {!hasUnsavedChanges && !payment.ready && payment.due > 0 && <p>Оплата закрыта до подтверждения наличия всех товаров и доставки.</p>}
+      {!hasUnsavedChanges && payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>Создать ссылку на доплату</button>}
       {paymentLink && <p><a href={paymentLink} target="_blank" rel="noreferrer">Ссылка на оплату</a> <small>скопирована в буфер, если браузер разрешил</small></p>}
       {payment.netPaid > 0 && <div className="admin-refund admin-order-refund-form">
         <input type="number" min="1" max={payment.netPaid} step="1" placeholder="Сумма возврата"
