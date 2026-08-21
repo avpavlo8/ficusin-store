@@ -21,8 +21,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 scripts/catalog_model_rewrite.py
+      - name: Remove one-shot helper
+        run: rm -f scripts/catalog_model_rewrite.py .github/workflows/catalog-model-rewrite.yml
       - run: git diff --check
-      - name: Commit generated catalogue refactor
+      - name: Commit catalogue refactor
         shell: bash
         run: |
           if git diff --quiet; then
@@ -32,5 +34,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: apply catalogue model rewrite"
+          git commit -m "refactor: apply catalogue v2 identity model"
           git push origin HEAD:feature/catalog-attribute-system-v2
