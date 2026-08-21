@@ -12,7 +12,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     address: "Москва, 1-й Ботанический пр-д, 5",
     comment: "",
     deliveryMethod: "cdek",
-    deliveryFeePending: false,
+    deliveryFeePending: true,
     paymentMethod: "online",
     paymentStatus: "pending",
     status: "new",
@@ -28,7 +28,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     orderNumber: "0001-30",
     subtotal: 1480,
     deliveryFee: 1000,
-    deliveryFeePending: false,
+    deliveryFeePending: true,
     hasPreorder: false,
     status: "new",
     items: [...order.items],
@@ -51,7 +51,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
       if (path === "/api/v1/admin/orders") return json({ orders: [order] });
       if (path === "/api/v1/admin/orders/30/adjustment") return json({
         order: adjustment,
-        payment: { total: order.total, paid: 0, refunded: 0, netPaid: 0, due: order.total, overpaid: 0, ready: true, paymentStatus: "pending" },
+        payment: { total: order.total, paid: 0, refunded: 0, netPaid: 0, due: order.total, overpaid: 0, ready: false, paymentStatus: "pending" },
       });
       if (path === "/api/v1/admin/products") return json({ products: [
         { id: 1, slug: "azaliya-d9", name: "Азалия D9", price: 790, stock: 4, status: "published" },
@@ -61,7 +61,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
       if (path === "/api/v1/admin/orders/30/contents" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body || "{}")) as {
           items: Array<{ productId: string; quantity: number }>;
-          deliveryFee?: number;
+          deliveryFee: number;
         };
         (window as typeof window & { __savedOrderEdit?: typeof body }).__savedOrderEdit = body;
         adjustment.items = body.items.map((line) => {
@@ -69,19 +69,18 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
           if (line.productId === "alokaziya-d6") return { productId: line.productId, productName: "Алоказия D6", unitPrice: 690, quantity: line.quantity };
           return { productId: line.productId, productName: "Аглаонема Мария Кристина D12", unitPrice: 1490, quantity: line.quantity };
         });
-        const deliveryConfirmed = typeof body.deliveryFee === "number";
-        if (deliveryConfirmed) adjustment.deliveryFee = body.deliveryFee as number;
+        adjustment.deliveryFee = body.deliveryFee;
         adjustment.subtotal = 2970;
-        adjustment.deliveryFeePending = !deliveryConfirmed;
+        adjustment.deliveryFeePending = false;
         order.items = [...adjustment.items];
         order.total = 2970 + adjustment.deliveryFee;
-        order.deliveryFeePending = !deliveryConfirmed;
+        order.deliveryFeePending = false;
         return json({
           order,
           adjustment,
           payment: {
             total: order.total, paid: 0, refunded: 0, netPaid: 0,
-            due: order.total, overpaid: 0, ready: deliveryConfirmed, paymentStatus: "pending",
+            due: order.total, overpaid: 0, ready: true, paymentStatus: "pending",
           },
         });
       }
@@ -100,13 +99,13 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
 
   return {
     savedEdit: async () => page.evaluate(() => (window as typeof window & {
-      __savedOrderEdit?: { items: Array<{ productId: string; quantity: number }>; deliveryFee?: number };
+      __savedOrderEdit?: { items: Array<{ productId: string; quantity: number }>; deliveryFee: number };
     }).__savedOrderEdit),
     paymentLinkCalls: async () => page.evaluate(() => (window as typeof window & { __paymentLinkCalls?: number }).__paymentLinkCalls || 0),
   };
 }
 
-test("@desktop добавленный товар сохраняется, пересчитывает оплату и оставляет ссылку доступной", async ({ page }) => {
+test("@desktop сохранение менеджером подтверждает состав, доставку и открывает оплату", async ({ page }) => {
   const state = await mockOrderEditor(page);
   await page.goto("/admin");
   await page.getByRole("button", { name: "Заказы", exact: true }).click();
@@ -114,6 +113,11 @@ test("@desktop добавленный товар сохраняется, пер�
 
   const editor = page.locator(".admin-order-editor");
   const payment = editor.locator(".admin-order-payment-block");
+
+  // В редакторе больше нет отдельной галочки подтверждения: сохранить = подтвердить.
+  await expect(editor.getByRole("checkbox")).toHaveCount(0);
+  await expect(editor.getByText(/Сохранить изменения.*подтверждает эту стоимость/i)).toBeVisible();
+
   await editor.locator("select").first().selectOption("aglaonema-mariya-kristina-d12");
   await editor.getByRole("button", { name: "Добавить", exact: true }).click();
 
@@ -121,22 +125,21 @@ test("@desktop добавленный товар сохраняется, пер�
   await expect(editor.locator(".admin-order-draft-total")).toContainText(/3.?970/);
   await expect(payment).toContainText(/Итого:\s*3.?970/);
   await expect(payment).toContainText("Сначала сохраните изменения");
-  await expect(payment.getByRole("button", { name: "Создать ссылку на доплату" })).toHaveCount(0);
+  await expect(payment.getByRole("button", { name: "Создать ссылку на оплату" })).toHaveCount(0);
 
   await editor.getByRole("button", { name: "Сохранить изменения" }).click();
 
   await expect(editor.getByText("Аглаонема Мария Кристина D12")).toBeVisible();
   await expect(page.locator(".admin-table tbody tr.clickable").first()).toContainText(/3.?970/);
   await expect(payment).toContainText(/Итого:\s*3.?970/);
-  await expect(payment).not.toContainText("Оплата закрыта до подтверждения");
-  await expect(payment.getByRole("button", { name: "Создать ссылку на доплату" })).toBeVisible();
+  await expect(payment.getByRole("button", { name: "Создать ссылку на оплату" })).toBeVisible();
 
   const saved = await state.savedEdit();
   expect(saved?.items).toHaveLength(3);
   expect(saved?.items[2]).toEqual({ productId: "aglaonema-mariya-kristina-d12", quantity: 1 });
   expect(saved?.deliveryFee).toBe(1000);
 
-  await payment.getByRole("button", { name: "Создать ссылку на доплату" }).click();
+  await payment.getByRole("button", { name: "Создать ссылку на оплату" }).click();
   await expect(payment.getByRole("link", { name: "Ссылка на оплату" })).toHaveAttribute("href", "https://pay.example.test/order-30");
   expect(await state.paymentLinkCalls()).toBe(1);
 });
