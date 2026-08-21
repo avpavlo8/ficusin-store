@@ -189,3 +189,19 @@ export async function mockApi(page: Page, session: Session = guest) {
     order: { id: 101, status: "new", paymentStatus: "payment_provider_pending" },
   } }));
 }
+
+// Nothing may stick out sideways: a horizontal scrollbar on a phone is the
+// classic sign of a fixed width that survived into the mobile layout.
+export async function horizontalOverflow(page: Page) {
+  return page.evaluate(() => {
+    const doc = document.documentElement;
+    return doc.scrollWidth - doc.clientWidth;
+  });
+}
+
+export function setStoredCounts(page: Page, favorites: string[], cart: Record<string, number>) {
+  carts.set(page, { ...cart });
+  return page.addInitScript((f) => {
+    localStorage.setItem("ficusin-favorites", JSON.stringify(f));
+  }, favorites);
+}
