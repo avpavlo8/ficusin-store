@@ -1,5 +1,6 @@
 name: Production smoke
 
+# One-off probe trigger after PR #168. This comment does not affect the built frontend.
 on:
   push:
     branches: [main]
