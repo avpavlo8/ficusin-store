@@ -8,6 +8,7 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
+# Technical verification trigger for production commit 74f310.
 concurrency:
   group: production-smoke
   cancel-in-progress: true
