@@ -68,6 +68,55 @@ FOR EACH ROW EXECUTE FUNCTION prevent_variant_sku_change();
 -- Historical rows must be self-contained. `product_id` used to be TEXT and
 -- held a slug (then briefly a SKU in 055); replace it with the real PRODUCT
 -- FK and snapshot the SKU/variant label/specification at purchase time.
+--
+-- Some very old order lines predate variant_id. If their original catalogue
+-- card was later deleted or renamed, 055 cannot attach them to a live variant.
+-- Preserve those sales instead of aborting application startup: create one
+-- hidden, inactive placeholder PRODUCT/SKU per unresolved legacy reference.
+-- The placeholder exists only to keep immutable order identity and FKs valid;
+-- it is draft/inactive and therefore can never appear on the storefront.
+DO $$
+DECLARE
+  legacy RECORD;
+  placeholder_product_id BIGINT;
+  placeholder_variant_id BIGINT;
+  placeholder_code BIGINT;
+  placeholder_sku BIGINT;
+BEGIN
+  FOR legacy IN
+    SELECT product_id AS legacy_ref, MIN(product_name) AS product_name
+    FROM order_items
+    WHERE variant_id IS NULL
+    GROUP BY product_id
+  LOOP
+    placeholder_code := nextval('ficusin_product_code_seq');
+    INSERT INTO products(name, slug, product_code, status)
+    VALUES (
+      COALESCE(NULLIF(BTRIM(legacy.product_name), ''), 'Исторический товар'),
+      placeholder_code::TEXT,
+      placeholder_code,
+      'draft'
+    )
+    RETURNING id INTO placeholder_product_id;
+
+    placeholder_sku := nextval('ficusin_sku_seq');
+    INSERT INTO product_variants(product_id, sku, label, base_price_minor, is_active)
+    VALUES (
+      placeholder_product_id,
+      placeholder_sku::TEXT,
+      'Исторический вариант',
+      0,
+      0
+    )
+    RETURNING id INTO placeholder_variant_id;
+
+    UPDATE order_items
+    SET variant_id = placeholder_variant_id
+    WHERE variant_id IS NULL AND product_id = legacy.legacy_ref;
+  END LOOP;
+END;
+$$;
+
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_ref_id BIGINT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS sku TEXT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_label TEXT NOT NULL DEFAULT '';
@@ -87,8 +136,8 @@ SET product_ref_id = variant.product_id,
 FROM product_variants variant
 WHERE variant.id = item.variant_id;
 
--- Every existing line should have been attached to a variant by 055. Abort
--- rather than silently losing identity if old data violates that invariant.
+-- Every line, including pre-variant historical sales repaired above, now has
+-- an immutable PRODUCT/SKU identity. Abort only if the repair itself failed.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM order_items WHERE variant_id IS NULL OR product_ref_id IS NULL OR sku IS NULL) THEN
