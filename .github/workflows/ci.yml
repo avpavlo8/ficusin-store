@@ -96,8 +96,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
-  # Dockerfile — часть production-кода. Если он не собирается, зелёные Go и
-  # frontend тесты не помогают: Timeweb всё равно не сможет выкатить релиз.
+  # Dockerfile — часть production-кода. Собираем и загружаем image локально,
+  # затем отдельно проверяем инструменты, от которых зависит production:
+  # pdftotext для закупок и wget для Docker HEALTHCHECK.
   image:
     runs-on: ubuntu-latest
     steps:
@@ -107,3 +108,9 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: ficusin-ci:verify
+      - name: Verify runtime tools
+        run: |
+          docker run --rm --entrypoint pdftotext ficusin-ci:verify -v
+          docker run --rm --entrypoint wget ficusin-ci:verify --help >/dev/null
