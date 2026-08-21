@@ -117,7 +117,6 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		rows,err:=tx.Query(ctx,`SELECT product_id,unit_price::DOUBLE PRECISION FROM order_items WHERE order_id=$1`,id);if err!=nil{return Order{},err}
 		for rows.Next(){var slug string;var price float64;if err:=rows.Scan(&slug,&price);err!=nil{rows.Close();return Order{},err};oldPrices[slug]=price};rows.Close();if err:=rows.Err();err!=nil{return Order{},err}
 
-		// Journal the old reservation before replacing its lines.
 		_ = order.RecordMovement(ctx,tx,id,order.MovementRelease)
 		if err:=releaseOrderReservationsForEdit(ctx,tx,id);err!=nil{return Order{},err}
 		if _,err:=tx.Exec(ctx,`UPDATE procurement_requests SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE customer_order_id=$1 AND kind='customer_order' AND status='open'`,id);err!=nil{return Order{},err}
@@ -144,12 +143,12 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			}
 		}
 		if err:=order.RecordMovement(ctx,tx,id,order.MovementReserve);err!=nil{return Order{},err}
-		feePending:=oldFeePending
-		// Changing the box invalidates an automatic carrier quote. Pickup has
-		// no carrier price; otherwise a manager must explicitly confirm a new
-		// delivery amount before the customer may pay.
-		if deliveryMethod!="pickup" && edit.DeliveryFee==nil{feePending=true}
-		if _,err:=tx.Exec(ctx,`UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3,stock_released_at=NULL WHERE id=$1`,id,boolToSmallInt(hasPreorder),boolToSmallInt(feePending));err!=nil{return Order{},err}
+
+		// Изменение состава выполняет только менеджер. Оно не должно само по
+		// себе возвращать уже подтверждённую доставку в pending. Если доставка
+		// была неизвестна, она останется pending до передачи DeliveryFee; если
+		// уже была подтверждена — сохранит это состояние.
+		if _,err:=tx.Exec(ctx,`UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3,stock_released_at=NULL WHERE id=$1`,id,boolToSmallInt(hasPreorder),boolToSmallInt(oldFeePending));err!=nil{return Order{},err}
 	}
 
 	if edit.DeliveryFee!=nil{
