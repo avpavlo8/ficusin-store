@@ -1,4 +1,5 @@
 name: Production smoke
+# Verification trigger for main 1dc1eee after database startup/TLS fix.
 
 on:
   push:
