@@ -105,7 +105,10 @@ replace(
     '<AttributeFields schema={schema.filter((item) => item.scope === "product" && item.audience === "customer")} values={form.attributes || {}}',
 )
 
-variant_block = '''<VariantsEditor productId={product.id} categoryId={form.categoryId} onError={onError} />\n    '''
+# Do not append indentation to the replacement body: the end marker already
+# starts with four spaces. Duplicating it made the next idempotent replacement
+# miss its marker and stopped CI before the actual build/test jobs.
+variant_block = '''<VariantsEditor productId={product.id} categoryId={form.categoryId} onError={onError} />\n'''
 between(
     "frontend/src/AdminCatalogDialogs.tsx",
     '    <h3 className="product-form-heading wide">Продажа</h3>',
