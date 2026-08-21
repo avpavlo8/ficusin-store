@@ -113,12 +113,16 @@ test("@desktop открытая карточка сама показывает �
   }));
 
   await page.goto("/account/orders/0001-9");
+  await expect(page.getByText(/Менеджер проверит состав и доставку/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 
   // Имитируем сохранение заказа менеджером, пока клиент не закрывал вкладку.
+  // Сначала ждём, пока React установит listener focus, чтобы тест проверял
+  // поведение продукта, а не гонку между commit и useEffect.
   confirmed = true;
+  await page.waitForTimeout(100);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
-  await expect(page.getByRole("button", { name: /Оплатить 3.?970/ })).toBeVisible();
-  await expect(page.getByText("Доставка").locator(".." )).toContainText(/1.?000/);
+  await expect(page.getByRole("button", { name: /Оплатить 3.?970/ })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator(".order-totals")).toContainText(/Доставка\s*1.?000/);
 });
