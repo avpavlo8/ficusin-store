@@ -7,12 +7,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def replace_once(path: str, old: str, new: str) -> None:
     target = ROOT / path
     text = target.read_text(encoding="utf-8")
+    # Check the final form first because some replacements intentionally keep
+    # the old line as a prefix (for example adding an import after another).
+    if new in text:
+        print("already", path)
+        return
     if old in text:
         target.write_text(text.replace(old, new, 1), encoding="utf-8")
         print("patched", path)
-        return
-    if new in text:
-        print("already", path)
         return
     raise RuntimeError(f"fragment not found in {path}: {old[:160]!r}")
 
@@ -32,6 +34,19 @@ def replace_between(path: str, start: str, end: str, replacement: str) -> None:
     target.write_text(text[:left] + replacement + text[right:], encoding="utf-8")
     print("replaced block", path)
 
+
+# Repair duplicate imports created by the first non-idempotent version of this
+# helper before applying anything else.
+for relative, line in (
+    ("frontend/src/AdminPim.tsx", 'import { VariantMediaManager } from "./VariantMediaManager";\n'),
+    ("frontend/src/AdminCatalog.tsx", 'import { CollectionsV2 } from "./AdminCollectionsV2";\n'),
+):
+    target = ROOT / relative
+    source = target.read_text(encoding="utf-8")
+    duplicate = line + line
+    if duplicate in source:
+        target.write_text(source.replace(duplicate, line), encoding="utf-8")
+        print("deduplicated", relative)
 
 # SKU media UI: the backend already stores variant_id on product_media. Expose
 # the same upload/primary/delete controls directly in the SKU editor.
