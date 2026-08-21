@@ -3,7 +3,8 @@ import { Page } from "@playwright/test";
 // The preview server only serves the built files, so every API call has to
 // be answered here. The shapes below mirror what the Go handlers return.
 const product = {
-  id: "saby-1",
+  id: "1",
+  sku: "1",
   name: "Аглаонема Мария",
   latin: "Aglaonema",
   category: "Растения",
@@ -33,7 +34,8 @@ const product = {
 // каталог нечем отличить друг от друга в проверках.
 const ficus = {
   ...product,
-  id: "saby-2",
+  id: "2",
+  sku: "2",
   name: "Фикус Бенджамина",
   latin: "Ficus benjamina",
   price: 2490,
@@ -50,14 +52,19 @@ const ficus = {
   ],
 };
 
-// Ноль на складе — это предзаказ, а не исчезнувшая карточка.
+// Ноль на складе — это предзаказ, а не исчезнувшая карточка. Одновременно
+// этот товар покрывает две отдельные визуальные подборки стенда, чтобы тест
+// структуры не зависел от пустых плиток: редкий полив и спальня.
 const monstera = {
   ...ficus,
-  id: "saby-3",
+  id: "3",
+  sku: "3",
   name: "Монстера Делициоза",
   latin: "Monstera deliciosa",
   price: 3200,
   stock: 0,
+  watering: "rare",
+  placement: "bedroom",
 };
 
 export const guest = { signedIn: false } as const;
@@ -128,7 +135,7 @@ export async function mockApi(page: Page, session: Session = guest) {
     description: "Подходит для дома",
     careInstructions: "Поливать после просыхания грунта",
     images: [product.image],
-    variants: [{ id: 1, sku: "X100", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
+    variants: [{ id: 1, sku: "1", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
     recommendations: [],
     importantWarnings: ["Безопасно для животных"],
     passport: { origin: "Тропические леса Азии", lighting: "Яркий рассеянный свет", watering: "После просыхания верхнего слоя", faq: [{ question: "Когда пересаживать?", answer: "Весной, когда корни заполнят горшок." }] },
@@ -165,7 +172,22 @@ export async function mockApi(page: Page, session: Session = guest) {
   });
 
   await context.route("**/api/v1/delivery/cdek?action=status", (route) =>
-    route.fulfill({ json: { available: false } }));
+    route.fulfill({ json: { connected: true } }));
+  await context.route("**/api/v1/delivery/post?action=status", (route) =>
+    route.fulfill({ json: { connected: true } }));
+  await context.route("**/api/v1/delivery/yandex?action=status", (route) =>
+    route.fulfill({ json: { connected: true } }));
+
+  await context.route("**/api/v1/delivery/cdek?action=quote", (route) =>
+    route.fulfill({ json: { amount: 590, currency: "RUB", daysMin: 2, daysMax: 4 } }));
+  await context.route("**/api/v1/delivery/post?action=quote", (route) =>
+    route.fulfill({ json: { amount: 450, currency: "RUB", daysMin: 3, daysMax: 7 } }));
+  await context.route("**/api/v1/delivery/yandex?action=quote", (route) =>
+    route.fulfill({ json: { amount: 390, currency: "RUB", daysMin: 0, daysMax: 1 } }));
+
+  await context.route("**/api/v1/orders", (route) => route.fulfill({ status: 201, json: {
+    order: { id: 101, status: "new", paymentStatus: "payment_provider_pending" },
+  } }));
 }
 
 // Nothing may stick out sideways: a horizontal scrollbar on a phone is the

@@ -16,37 +16,36 @@ type Category struct {
 	Icon      string `json:"icon"`
 }
 
+// Product is one catalogue card (SPU). ID is the Ficusin product code used in
+// /product/{id}; SKU is the default sellable variant shown in catalogue cards.
 type Product struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Latin    string  `json:"latin"`
-	Category string  `json:"category"`
-	Price    float64 `json:"price"`
-	Image    string  `json:"image"`
-	Light    string  `json:"light"`
-	Size     string  `json:"size"`
-	Stock          int     `json:"stock"`
-	CatalogSection string  `json:"catalogSection"`
-	PlantKind      string  `json:"plantKind,omitempty"`
-	LightLevel     string  `json:"lightLevel,omitempty"`
-	Watering       string  `json:"watering,omitempty"`
-	HeightClass    string  `json:"heightClass,omitempty"`
-	CareLevel      string  `json:"careLevel,omitempty"`
-	Placement      string  `json:"placement,omitempty"`
-	PetSafety      string  `json:"petSafety,omitempty"`
-	GrowthHabit    string  `json:"growthHabit,omitempty"`
-	CategoryID     *int64  `json:"categoryId,omitempty"`
-	// Collections are the hand-made sets this product belongs to, by slug.
-	// The storefront filters on them without another request.
-	Collections []string `json:"collections"`
-	Rating      float64  `json:"rating"`
-	ReviewsCount int     `json:"reviewsCount"`
-	// PopularityScore is derived only from paid/completed order quantities.
-	PopularityScore float64 `json:"popularityScore"`
+	ID              string  `json:"id"`
+	SKU             string  `json:"sku"`
+	Name            string  `json:"name"`
+	Latin           string  `json:"latin"`
+	Category        string  `json:"category"`
+	Price           float64 `json:"price"`
+	Image           string  `json:"image"`
+	Light           string  `json:"light"`
+	Size            string  `json:"size"`
+	Stock           int     `json:"stock"`
+	CatalogSection  string  `json:"catalogSection"`
+	PlantKind       string  `json:"plantKind,omitempty"`
+	LightLevel      string  `json:"lightLevel,omitempty"`
+	Watering        string  `json:"watering,omitempty"`
+	HeightClass     string  `json:"heightClass,omitempty"`
+	CareLevel       string  `json:"careLevel,omitempty"`
+	Placement       string  `json:"placement,omitempty"`
+	PetSafety       string  `json:"petSafety,omitempty"`
+	GrowthHabit     string  `json:"growthHabit,omitempty"`
+	CategoryID      *int64  `json:"categoryId,omitempty"`
+	Collections     []string `json:"collections"`
+	Rating          float64  `json:"rating"`
+	ReviewsCount    int      `json:"reviewsCount"`
+	PopularityScore float64  `json:"popularityScore"`
 	FilterAttributes []ProductAttribute `json:"filterAttributes"`
 }
 
-// Collection is one hand-made set as the storefront tab shows it.
 type Collection struct {
 	Slug  string `json:"slug"`
 	Title string `json:"title"`
@@ -64,34 +63,37 @@ type ProductDetail struct {
 	Images           []string  `json:"images"`
 	Variants         []Variant `json:"variants"`
 	Recommendations []Product `json:"recommendations"`
-	CatalogSection string    `json:"catalogSection"`
-	PlantKind      string    `json:"plantKind,omitempty"`
-	LightLevel     string    `json:"lightLevel,omitempty"`
-	Watering       string    `json:"watering,omitempty"`
-	HeightClass    string    `json:"heightClass,omitempty"`
-	CareLevel      string    `json:"careLevel,omitempty"`
-	Placement      string    `json:"placement,omitempty"`
-	PetSafety      string    `json:"petSafety,omitempty"`
-	GrowthHabit    string    `json:"growthHabit,omitempty"`
-	CategoryID     *int64    `json:"categoryId,omitempty"`
-	Passport       PlantPassport `json:"passport"`
+	CatalogSection   string    `json:"catalogSection"`
+	PlantKind        string    `json:"plantKind,omitempty"`
+	LightLevel       string    `json:"lightLevel,omitempty"`
+	Watering         string    `json:"watering,omitempty"`
+	HeightClass      string    `json:"heightClass,omitempty"`
+	CareLevel        string    `json:"careLevel,omitempty"`
+	Placement        string    `json:"placement,omitempty"`
+	PetSafety        string    `json:"petSafety,omitempty"`
+	GrowthHabit      string    `json:"growthHabit,omitempty"`
+	CategoryID       *int64    `json:"categoryId,omitempty"`
+	Passport         PlantPassport `json:"passport"`
 	ImportantWarnings []string `json:"importantWarnings"`
-	Rating         float64 `json:"rating"`
-	ReviewsCount   int `json:"reviewsCount"`
-	Reviews        []Review `json:"reviews"`
-	Attributes     []ProductAttribute `json:"attributes"`
+	Rating           float64 `json:"rating"`
+	ReviewsCount     int `json:"reviewsCount"`
+	Reviews          []Review `json:"reviews"`
+	// Attributes contains customer-visible values shared by the whole card.
+	Attributes       []ProductAttribute `json:"attributes"`
 }
 
-// ProductAttribute is a customer-safe, category-driven characteristic. The
-// catalogue never exposes technical attributes (package size, integration
-// metadata) through this contract.
+// ProductAttribute is always safe for the customer contract. Technical
+// attributes never leave the catalogue API. Variant-scoped attributes live on
+// Variant.Attributes so switching SKU cannot display another size's values.
 type ProductAttribute struct {
-	Code  string `json:"code"`
-	Name  string `json:"name"`
-	Unit  string `json:"unit,omitempty"`
-	Value any    `json:"value"`
-	Badge bool   `json:"badge"`
-	Filterable bool `json:"filterable"`
+	Code                  string `json:"code"`
+	Name                  string `json:"name"`
+	Unit                  string `json:"unit,omitempty"`
+	Value                 any    `json:"value"`
+	Badge                 bool   `json:"badge"`
+	Filterable            bool   `json:"filterable"`
+	SummaryPosition       *int   `json:"summaryPosition,omitempty"`
+	ShowInCharacteristics bool   `json:"showInCharacteristics"`
 }
 
 type PlantPassport struct {
@@ -114,6 +116,8 @@ type Variant struct {
 	HeightCM        *int    `json:"heightCm"`
 	PotDiameterCM   *int    `json:"potDiameterCm"`
 	WholesaleMinQty int     `json:"wholesaleMinQty"`
+	Images          []string `json:"images"`
+	Attributes      []ProductAttribute `json:"attributes"`
 }
 
 type Repository interface {

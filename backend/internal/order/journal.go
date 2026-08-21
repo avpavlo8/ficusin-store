@@ -54,11 +54,8 @@ const recordPreorderRequestsSQL = `
 			'Предзаказ клиента, заказ ' || o.order_number
 		FROM order_items oi
 		JOIN orders o ON o.id = oi.order_id
-		-- order_items.product_id is the legacy public slug (TEXT), while
-		-- products.id is BIGINT. The variant is the real relational key and
-		-- is present on every order created by the current checkout.
 		JOIN product_variants pv ON pv.id = oi.variant_id
-		LEFT JOIN products p ON p.id = pv.product_id
+		LEFT JOIN products p ON p.id = oi.product_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = p.saby_id
 		WHERE oi.order_id = $1 AND oi.is_preorder = 1
 		GROUP BY n.saby_id, oi.product_name, o.id, o.order_number

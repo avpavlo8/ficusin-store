@@ -26,8 +26,8 @@ func (stub *adjustmentRepositoryStub) OrderAdjustment(_ context.Context, id int6
 		Subtotal: 2970,
 		DeliveryFee: 1000,
 		Items: []admin.OrderItem{
-			{ProductID: "azaliya-d9", ProductName: "Азалия D9", UnitPrice: 790, Quantity: 1},
-			{ProductID: "aglaonema-mariya", ProductName: "Аглаонема Мария", UnitPrice: 1490, Quantity: 1},
+			{ProductID: 101, ProductName: "Азалия D9", UnitPrice: 790, Quantity: 1},
+			{ProductID: 102, ProductName: "Аглаонема Мария", UnitPrice: 1490, Quantity: 1},
 		},
 	}, nil
 }

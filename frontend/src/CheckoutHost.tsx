@@ -6,6 +6,7 @@ type Cart = Record<string, number>;
 
 export type CartProduct = {
   id: string;
+  sku: string;
   name: string;
   price: number;
   image: string;
@@ -31,10 +32,9 @@ type CheckoutHostProps = {
   checkoutPage?: boolean;
 };
 
-// The storefront owns products and the visible cart counter. This host owns
-// only checkout concerns: the drawer, customer profile, server-side cart and
-// order flow. Keeping that boundary explicit prevents a second catalogue from
-// quietly returning when checkout changes.
+// Cart keys are Ficusin SKUs, not product-card codes. That is the only way
+// two sizes of one product can coexist in the same order without collapsing
+// into one line.
 export default function CheckoutHost({
   cart: externalCart,
   products,
@@ -53,8 +53,8 @@ export default function CheckoutHost({
   const [user, setUser] = useState<StoreUser | null>(null);
 
   const cartLines = products
-    .filter((product) => cart[product.id])
-    .map((product) => ({ ...product, quantity: cart[product.id] }));
+    .filter((product) => cart[product.sku])
+    .map((product) => ({ ...product, id: product.sku, quantity: cart[product.sku] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen: checkoutPage });
@@ -97,15 +97,15 @@ export default function CheckoutHost({
     return () => document.body.classList.remove("drawer-open");
   }, [cartOpen, cartPage, checkoutOpen, checkoutPage]);
 
-  function setQuantity(id: string, quantity: number) {
+  function setQuantity(sku: string, quantity: number) {
     setCart((current) => {
       const next = { ...current };
       if (quantity <= 0) {
-        delete next[id];
+        delete next[sku];
       } else {
-        const product = products.find((item) => item.id === id);
+        const product = products.find((item) => item.sku === sku);
         const limit = product?.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
-        next[id] = Math.min(limit, quantity);
+        next[sku] = Math.min(limit, quantity);
       }
       return next;
     });

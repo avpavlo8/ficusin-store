@@ -8,6 +8,7 @@ import { attributeLabel, attributeValue } from "./product/types";
 
 type Product = {
   id: string;
+  sku: string;
   name: string;
   latin: string;
   price: number;
@@ -230,11 +231,6 @@ export default function StorefrontPage() {
     }
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
     for (const [code, selected] of Object.entries(attributeFilters)) if (selected) list = list.filter((product) => {
-      if (code === "__diameter") return product.size.match(/D\s*(\d+)/i)?.[1] === selected;
-      if (code === "__light") return product.lightLevel === selected;
-      if (code === "__watering") return product.watering === selected;
-      if (code === "__care") return product.careLevel === selected;
-      if (code === "__pets") return product.petSafety === selected;
       return product.filterAttributes?.some((attribute) => attribute.code === code && (Array.isArray(attribute.value) ? attribute.value.map(String).includes(selected) : String(attribute.value) === selected));
     });
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
@@ -243,27 +239,22 @@ export default function StorefrontPage() {
     return list;
   }, [found, searching, category, inBranch, selectedPresets, inStockOnly, attributeFilters, sort]);
 
+  const facetPopulation = useMemo(() => {
+    if (searching) return found;
+    if (category == null) return found;
+    return found.filter((item) => inBranch(item.categoryId, category));
+  }, [found, searching, category, inBranch]);
+
   const facets = useMemo(() => {
     const result = new Map<string, { name: string; unit?: string; values: Set<string> }>();
-    products.forEach((product) => product.filterAttributes?.filter((attribute) => attribute.filterable).forEach((attribute) => {
+    facetPopulation.forEach((product) => product.filterAttributes?.filter((attribute) => attribute.filterable).forEach((attribute) => {
       const facet = result.get(attribute.code) || { name: attribute.name, unit: attribute.unit, values: new Set<string>() };
-      const values = Array.isArray(attribute.value) ? attribute.value : [attribute.value]; values.forEach((value) => facet.values.add(String(value))); result.set(attribute.code, facet);
+      const values = Array.isArray(attribute.value) ? attribute.value : [attribute.value];
+      values.forEach((value) => { if (value !== null && value !== undefined && String(value) !== "") facet.values.add(String(value)); });
+      result.set(attribute.code, facet);
     }));
-    return [...result.entries()].filter(([, facet]) => facet.values.size > 1);
-  }, [products]);
-
-  // Четыре главных фильтра из утверждённого макета существуют независимо
-  // от того, настроил ли менеджер дублирующие динамические характеристики.
-  const catalogFacets = useMemo(() => {
-    const values = (pick: (product: Product) => string | undefined) => new Set(products.map(pick).filter((value): value is string => Boolean(value)));
-    return [
-      ["__light", { name: "Освещённость", values: values((product) => product.lightLevel) }],
-      ["__watering", { name: "Полив", values: values((product) => product.watering) }],
-      ["__care", { name: "Уход", values: values((product) => product.careLevel) }],
-      ["__diameter", { name: "Размеры", unit: "см", values: values((product) => product.size.match(/D\s*(\d+)/i)?.[1]) }],
-      ["__pets", { name: "Для питомцев", values: values((product) => product.petSafety) }],
-    ] as Array<[string, { name: string; unit?: string; values: Set<string> }]>;
-  }, [products]);
+    return [...result.entries()].filter(([, facet]) => facet.values.size > 0);
+  }, [facetPopulation]);
 
   const togglePreset = (id: string) => setSelectedPresets((current) => {
     const next = new Set(current);
@@ -309,16 +300,16 @@ export default function StorefrontPage() {
   const addToCart = (product: Product) =>
     setCart((current) => ({
       ...current,
-      [product.id]: Math.min(
+      [product.sku]: Math.min(
         product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20,
-        (current[product.id] ?? 0) + 1,
+        (current[product.sku] ?? 0) + 1,
       ),
     }));
   const changeCartQuantity = (product: Product, delta: number) => setCart((current) => {
     const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
-    const nextQuantity = Math.max(0, Math.min(maximum, (current[product.id] || 0) + delta));
-    if (nextQuantity === 0) { const next = { ...current }; delete next[product.id]; return next; }
-    return { ...current, [product.id]: nextQuantity };
+    const nextQuantity = Math.max(0, Math.min(maximum, (current[product.sku] || 0) + delta));
+    if (nextQuantity === 0) { const next = { ...current }; delete next[product.sku]; return next; }
+    return { ...current, [product.sku]: nextQuantity };
   });
 
   const toggleFavorite = (id: string) =>
@@ -415,7 +406,7 @@ export default function StorefrontPage() {
 
           <div className="home-catalog-toolbar">
             <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><span className="filter-sliders" aria-hidden="true">☷</span><span>Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
-            <div className="home-filter-group">{catalogFacets.map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={attributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => ({ value, label:`${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
+            <div className="home-filter-group">{facets.slice(0, 6).map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={attributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a,b) => a.localeCompare(b,"ru",{numeric:true})).map((value) => ({ value, label:`${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
             <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{value:"popular",label:"По популярности"},{value:"cheap",label:"Сначала дешевле"},{value:"expensive",label:"Сначала дороже"}]} />
             <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка">⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список">☰</button></div>
           </div>
@@ -448,7 +439,7 @@ export default function StorefrontPage() {
 
           <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
             {visible.slice(0, visibleLimit).map((product) => {
-              const inCart = cart[product.id] ?? 0;
+              const inCart = cart[product.sku] ?? 0;
               const preorder = (product.stock ?? 0) <= 0;
               return (
                 <article key={product.id} className={preorder ? "storefront-card preorder" : "storefront-card"}>

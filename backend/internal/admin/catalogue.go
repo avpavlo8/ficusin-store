@@ -96,6 +96,16 @@ func (repository *PostgresRepository) CreateProduct(
 	if err := saveProductAttributes(ctx, tx, id, input.Attributes); err != nil {
 		return Product{}, err
 	}
+	var variantID int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM product_variants WHERE product_id=$1 ORDER BY id LIMIT 1`, id).Scan(&variantID); err != nil { return Product{}, err }
+	variantAttributes := map[string]any{}
+	if input.HeightCM != nil { variantAttributes["height_cm"] = *input.HeightCM }
+	if input.PotDiameterCM != nil { variantAttributes["pot_diameter_cm"] = *input.PotDiameterCM }
+	if input.PackageLengthCM != nil { variantAttributes["package_length_cm"] = *input.PackageLengthCM }
+	if input.PackageWidthCM != nil { variantAttributes["package_width_cm"] = *input.PackageWidthCM }
+	if input.PackageHeightCM != nil { variantAttributes["package_height_cm"] = *input.PackageHeightCM }
+	if input.PackageWeightGrams != nil { variantAttributes["package_weight_grams"] = *input.PackageWeightGrams }
+	if err := saveVariantPIMValues(ctx, tx, id, variantID, variantAttributes); err != nil { return Product{}, err }
 	if err := validateRequiredAttributes(ctx, tx, id); err != nil { return Product{}, err }
 	after, err := productAuditData(ctx, tx, id)
 	if err != nil {
@@ -116,77 +126,59 @@ func (repository *PostgresRepository) CreateProduct(
 func saveProductAttributes(ctx context.Context, tx pgx.Tx, productID int64, attributes map[string]any) error {
 	for code, value := range attributes {
 		code = strings.TrimSpace(code)
-		if code == "" {
-			continue
-		}
+		if code == "" { continue }
 		raw, err := json.Marshal(value)
-		if err != nil {
-			return fmt.Errorf("encode product attribute %s: %w", code, err)
-		}
+		if err != nil { return fmt.Errorf("encode product attribute %s: %w", code, err) }
 		if string(raw) == "null" || string(raw) == `""` || string(raw) == "[]" {
-			if _, err := tx.Exec(ctx, `DELETE FROM product_attribute_values v USING attribute_definitions a
-				WHERE v.attribute_id=a.id AND v.product_id=$1 AND a.code=$2`, productID, code); err != nil {
+			if _, err := tx.Exec(ctx, `DELETE FROM product_attribute_values value USING attribute_definitions definition
+				WHERE value.attribute_id=definition.id AND value.product_id=$1 AND definition.code=$2`, productID, code); err != nil {
 				return fmt.Errorf("clear product attribute %s: %w", code, err)
-			}
-			if err := clearLegacyAttribute(ctx, tx, productID, code); err != nil {
-				return err
 			}
 			continue
 		}
 		tag, err := tx.Exec(ctx, `
 			WITH RECURSIVE ancestors AS (
-				SELECT category_id AS id FROM products WHERE id=$1
-				UNION ALL SELECT c.parent_id FROM categories c JOIN ancestors a ON c.id=a.id
-				WHERE c.parent_id IS NOT NULL
+				SELECT category_id AS id, 0 AS depth FROM products WHERE id=$1
+				UNION ALL
+				SELECT category.parent_id, ancestor.depth+1
+				FROM categories category JOIN ancestors ancestor ON category.id=ancestor.id
+				WHERE category.parent_id IS NOT NULL
+			), candidates AS (
+				SELECT definition.id,definition.data_type,definition.value_scope,assignment.is_excluded,ancestor.depth
+				FROM ancestors ancestor
+				JOIN category_attributes assignment ON assignment.category_id=ancestor.id
+				JOIN attribute_definitions definition ON definition.id=assignment.attribute_id
+				WHERE definition.code=$2 AND definition.is_active
+				UNION ALL
+				SELECT definition.id,definition.data_type,definition.value_scope,FALSE,1000000
+				FROM attribute_definitions definition
+				WHERE definition.code=$2 AND definition.is_active AND definition.is_global
+			), effective AS (
+				SELECT DISTINCT ON(id) id,data_type,value_scope,is_excluded
+				FROM candidates ORDER BY id,depth
 			)
 			INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
-			SELECT $1,d.id,$3::jsonb,'local',CURRENT_TIMESTAMP
-			FROM attribute_definitions d
-			WHERE d.code=$2
-			  AND EXISTS (SELECT 1 FROM category_attributes ca JOIN ancestors a ON a.id=ca.category_id
-				WHERE ca.attribute_id=d.id)
-			  AND CASE d.data_type
+			SELECT $1,effective.id,$3::jsonb,'local',CURRENT_TIMESTAMP
+			FROM effective
+			WHERE effective.value_scope='product' AND NOT effective.is_excluded
+			  AND CASE effective.data_type
 				WHEN 'number' THEN jsonb_typeof($3::jsonb)='number'
 				WHEN 'boolean' THEN jsonb_typeof($3::jsonb)='boolean'
-				WHEN 'enum' THEN jsonb_typeof($3::jsonb)='string' AND d.options ? ($3::jsonb #>> '{}')
-				WHEN 'multi_enum' THEN jsonb_typeof($3::jsonb)='array' AND NOT EXISTS (
-					SELECT 1 FROM jsonb_array_elements_text($3::jsonb) item WHERE NOT d.options ? item)
+				WHEN 'enum' THEN jsonb_typeof($3::jsonb)='string' AND EXISTS(
+					SELECT 1 FROM attribute_options option WHERE option.attribute_id=effective.id
+					AND option.code=($3::jsonb#>>'{}') AND option.is_active)
+				WHEN 'multi_enum' THEN jsonb_typeof($3::jsonb)='array' AND NOT EXISTS(
+					SELECT 1 FROM jsonb_array_elements_text($3::jsonb) selected
+					WHERE NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=effective.id
+						AND option.code=selected AND option.is_active))
 				ELSE jsonb_typeof($3::jsonb)='string' END
 			ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,
 				source='local',updated_at=CURRENT_TIMESTAMP
 		`, productID, code, string(raw))
-		if err != nil {
-			return fmt.Errorf("save product attribute %s: %w", code, err)
-		}
+		if err != nil { return fmt.Errorf("save product attribute %s: %w", code, err) }
 		if tag.RowsAffected() != 1 {
-			return fmt.Errorf("%w: атрибут %s не разрешён для категории или имеет неверное значение", ErrInvalidInput, code)
+			return fmt.Errorf("%w: атрибут %s не разрешён для PRODUCT или имеет неверное значение", ErrInvalidInput, code)
 		}
-	}
-	// Legacy columns remain the delivery/filter read path during the gradual
-	// migration. Mirror generic writes back so both models stay consistent.
-	if _, err := tx.Exec(ctx, `
-		UPDATE products p SET
-			light_level=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='light_level'),p.light_level),
-			watering=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='watering'),p.watering),
-			care_level=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='care_level'),p.care_level),
-			pet_safety=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='pet_safety'),p.pet_safety),
-			placement=COALESCE((SELECT value->>0 FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='placement'),p.placement),
-			growth_habit=COALESCE((SELECT value #>> '{}' FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=p.id AND d.code='growth_habit'),p.growth_habit)
-		WHERE p.id=$1
-	`, productID); err != nil {
-		return fmt.Errorf("mirror customer attributes: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE product_variants pv SET
-			height_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='height_cm'),pv.height_cm),
-			pot_diameter_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='pot_diameter_cm'),pv.pot_diameter_cm),
-			package_length_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_length_cm'),pv.package_length_cm),
-			package_width_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_width_cm'),pv.package_width_cm),
-			package_height_cm=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_height_cm'),pv.package_height_cm),
-			package_weight_grams=COALESCE((SELECT (value #>> '{}')::int FROM product_attribute_values v JOIN attribute_definitions d ON d.id=v.attribute_id WHERE v.product_id=$1 AND d.code='package_weight_grams'),pv.package_weight_grams)
-		WHERE pv.id=(SELECT id FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1)
-	`, productID); err != nil {
-		return fmt.Errorf("mirror technical attributes: %w", err)
 	}
 	return nil
 }
@@ -203,7 +195,7 @@ func validateRequiredAttributes(ctx context.Context, tx pgx.Tx, productID int64)
 		), effective AS (
 			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,ca.is_required,a.depth
 			FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
-			JOIN attribute_definitions d ON d.id=ca.attribute_id
+			JOIN attribute_definitions d ON d.id=ca.attribute_id AND d.value_scope='product' AND d.is_active
 			ORDER BY d.id,a.depth
 		)
 		SELECT e.name FROM effective e LEFT JOIN product_attribute_values v
@@ -436,7 +428,7 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 			package_length_cm, package_width_cm, package_height_cm, package_weight_grams,
 			is_active, updated_at
 		)
-		VALUES ($1, $2, 'FIC-' || LPAD(nextval('ficusin_sku_seq')::TEXT, 6, '0'),
+		VALUES ($1, $2, DEFAULT,
 			'Основной вариант', $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
 		RETURNING id
 	`, id, sabyID, item.priceMinor, item.heightCM, item.potDiameterCM, item.packageLengthCM,

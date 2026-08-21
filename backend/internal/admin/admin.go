@@ -142,7 +142,9 @@ type Order struct {
 }
 
 type OrderItem struct {
-	ProductID   string  `json:"productId"`
+	ProductID   int64   `json:"productId"`
+	SKU         string  `json:"sku"`
+	VariantLabel string `json:"variantLabel"`
 	ProductName string  `json:"productName"`
 	UnitPrice   float64 `json:"unitPrice"`
 	Quantity    int     `json:"quantity"`
@@ -322,6 +324,7 @@ type CategoryAttribute struct {
 	Unit         string `json:"unit"`
 	Options      []string `json:"options"`
 	Audience     string `json:"audience"`
+	Scope        string `json:"scope"`
 	Required     bool `json:"required"`
 	Filterable   bool `json:"filterable"`
 	ShowOnPDP    bool `json:"showOnPdp"`

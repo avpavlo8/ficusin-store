@@ -70,7 +70,7 @@ export default function AdminPage() {
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "collections" && <Collections onError={setError} />}
-          {section === "categories" && <Categories canEdit={can("products.edit")} onError={setError} />}
+          {section === "categories" && <Categories canEdit={data.role === "owner"} owner={data.role === "owner"} onError={setError} />}
         </div>
       </section>
     </main>

@@ -10,7 +10,7 @@ import { horizontalOverflow, mockApi, owner, setStoredCounts } from "./helpers";
 const storePages = ["/", "/favorites", "/account"];
 
 test("@phone the header keeps search, the menu and the bottom bar everywhere", async ({ page }) => {
-  await setStoredCounts(page, ["saby-1", "saby-2"], { "saby-1": 3 });
+  await setStoredCounts(page, ["1", "2"], { "1": 3 });
   await mockApi(page, owner);
 
   for (const path of storePages) {
@@ -25,7 +25,7 @@ test("@phone the header keeps search, the menu and the bottom bar everywhere", a
 });
 
 test("@phone the counters are readable, not hidden", async ({ page }) => {
-  await setStoredCounts(page, ["saby-1", "saby-2"], { "saby-1": 3 });
+  await setStoredCounts(page, ["1", "2"], { "1": 3 });
   await mockApi(page);
   await page.goto("/favorites");
 

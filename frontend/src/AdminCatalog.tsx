@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ImportDialog, NewProductDialog, ProductDialog, SyncDialog } from "./AdminCatalogDialogs";
 import { PageHeading, api, money, sabyFieldLabels, statusLabels } from "./adminShared";
-import type { AdminCollection, Category, Product, ReviewModerationItem } from "./adminTypes";
+import { AttributeManager } from "./AdminPim";
+import { CollectionsV2 } from "./AdminCollectionsV2";
+import type { Category, Product, ReviewModerationItem } from "./adminTypes";
 
 // Flattens the category tree into the order it reads in: each parent is
 // followed by its own children, siblings sorted by sortOrder and then by
@@ -77,7 +79,7 @@ export function CategoryPicker({ categories, value, onChange }: {
   </div>;
 }
 
-export function Categories({ canEdit, onError }: { canEdit: boolean; onError: (value: string) => void }) {
+export function Categories({ canEdit, owner, onError }: { canEdit: boolean; owner: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Category[]>([]);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -121,8 +123,8 @@ export function Categories({ canEdit, onError }: { canEdit: boolean; onError: (v
     try { await api(`/api/v1/admin/categories/${item.id}`, { method: "DELETE" }); load(); }
     catch (error) { onError((error as Error).message); }
   };
-  return <><PageHeading eyebrow="Структура каталога" title="Категории" text="Три уровня: раздел, группа и вид растения. Категории с товарами защищены от удаления." />
-    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.filter((item) => depth(item) < 2).map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
+  return <><PageHeading eyebrow="Структура каталога" title="Категории и атрибуты" text="Дерево любой глубины. Категории с товарами или дочерними узлами защищены от удаления." />
+    {canEdit && <div className="admin-toolbar category-create"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Название" /><input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))} placeholder="slug" /><select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Корневая категория</option>{orderedItems.map((item) => <option value={item.id} key={item.id}>{`${"— ".repeat(depth(item))}${item.name}`}</option>)}</select><button className="admin-primary" disabled={!name.trim() || !slug.trim()} onClick={create}>Добавить</button></div>}
     <div className="admin-toolbar category-expand">
       <button className="admin-action" onClick={() => setExpanded(new Set(items.map((item) => item.id)))}>Раскрыть всё</button>
       <button className="admin-action" onClick={() => setExpanded(new Set())}>Свернуть всё</button>
@@ -136,59 +138,12 @@ export function Categories({ canEdit, onError }: { canEdit: boolean; onError: (v
         {item.name}
       </strong></td><td><code>{item.slug}</code></td><td>{item.productsCount}</td><td>{canEdit && <button className="text-button danger" onClick={(event) => { event.stopPropagation(); remove(item); }}>Удалить</button>}</td></tr>;
     })}</tbody></table></div>
+    {owner && <AttributeManager categories={items} onError={onError} />}
   </>;
 }
 
-// Collections are assembled by hand: the manager knows a particular ficus is
-// fussy despite its label, and a rule over attributes never will.
 export function Collections({ onError }: { onError: (value: string) => void }) {
-  const [collections, setCollections] = useState<AdminCollection[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [opened, setOpened] = useState<number | null>(null);
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    api<{ collections: AdminCollection[] }>("/api/v1/admin/collections")
-      .then((data) => setCollections(data.collections))
-      .catch((error) => onError((error as Error).message));
-    api<{ products: Product[] }>("/api/v1/admin/products")
-      .then((data) => setProducts(data.products))
-      .catch((error) => onError((error as Error).message));
-  }, [onError]);
-
-  const toggle = async (collection: AdminCollection, productId: number) => {
-    const next = collection.products.includes(productId)
-      ? collection.products.filter((id) => id !== productId)
-      : [...collection.products, productId];
-    try {
-      const result = await api<{ collections: AdminCollection[] }>(`/api/v1/admin/collections/${collection.id}`, { method: "PATCH", body: JSON.stringify({ products: next }) });
-      setCollections(result.collections);
-    } catch (error) { onError((error as Error).message); }
-  };
-
-  const shown = products.filter((item) => `${item.name} ${item.latinName}`.toLowerCase().includes(query.toLowerCase()));
-
-  return <><PageHeading eyebrow="Витрина" title="Подборки" text="Вкладки над каталогом: что в них попадает, решаете вы" />
-    <div className="admin-collections">
-      {collections.map((collection) => <div key={collection.id} className="admin-collection">
-        <button className="admin-collection-head" onClick={() => setOpened(opened === collection.id ? null : collection.id)}>
-          <span><b>{collection.title}</b><small>{collection.note}</small></span>
-          <span className="admin-collection-count">{collection.products.length} товаров</span>
-        </button>
-        {opened === collection.id && <div className="admin-collection-body">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти товар" />
-          <div className="admin-collection-list">
-            {shown.map((product) => <label key={product.id}>
-              <input type="checkbox" checked={collection.products.includes(product.id)} onChange={() => toggle(collection, product.id)} />
-              <span>{product.name}</span>
-              <small>{product.stock > 0 ? `${product.stock} шт.` : "под заказ"}</small>
-            </label>)}
-          </div>
-        </div>}
-      </div>)}
-      {!collections.length && <p className="admin-hint">Подборки появятся после первого деплоя миграции.</p>}
-    </div>
-  </>;
+  return <CollectionsV2 onError={onError} />;
 }
 
 export function Products({ can, onError }: { can: (permission: string) => boolean; onError: (value: string) => void }) {

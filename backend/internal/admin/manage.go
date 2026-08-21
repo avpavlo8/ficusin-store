@@ -181,7 +181,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		return orders, err
 	}
 	itemRows, err := repository.pool.Query(ctx, `
-		SELECT order_id, product_id, product_name, unit_price::DOUBLE PRECISION, quantity
+		SELECT order_id, product_id, sku, variant_label, product_name, unit_price::DOUBLE PRECISION, quantity
 		FROM order_items WHERE order_id = ANY($1::bigint[]) ORDER BY id
 	`, ids)
 	if err != nil {
@@ -195,7 +195,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 	for itemRows.Next() {
 		var orderID int64
 		var item OrderItem
-		if err := itemRows.Scan(&orderID, &item.ProductID, &item.ProductName,
+		if err := itemRows.Scan(&orderID, &item.ProductID, &item.SKU, &item.VariantLabel, &item.ProductName,
 			&item.UnitPrice, &item.Quantity); err != nil {
 			return nil, fmt.Errorf("scan admin order item: %w", err)
 		}
@@ -538,37 +538,25 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 // ListCategoryAttributes returns the effective category schema. Definitions
 // on the nearest category override the same code inherited from an ancestor.
 func (repository *PostgresRepository) ListCategoryAttributes(ctx context.Context, categoryID int64) ([]CategoryAttribute, error) {
-	rows, err := repository.pool.Query(ctx, `
-		WITH RECURSIVE ancestors AS (
-			SELECT id,parent_id,0 AS depth FROM categories WHERE id=$1
-			UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
-		), effective AS (
-			SELECT DISTINCT ON (definition.code) definition.code,definition.name,definition.data_type,
-				definition.unit,definition.options,definition.audience,link.is_required,link.is_filterable,
-				link.show_on_pdp,link.is_badge,link.sort_order,ancestor.depth
-			FROM ancestors ancestor JOIN category_attributes link ON link.category_id=ancestor.id
-			JOIN attribute_definitions definition ON definition.id=link.attribute_id
-			ORDER BY definition.code,ancestor.depth
-		)
-		SELECT code,name,data_type,unit,options,audience,is_required,is_filterable,show_on_pdp,is_badge,sort_order
-		FROM effective ORDER BY audience,sort_order,code
-	`, categoryID)
-	if err != nil { return nil, fmt.Errorf("query category attributes: %w", err) }
-	defer rows.Close()
-	result := make([]CategoryAttribute,0)
-	for rows.Next() {
-		var item CategoryAttribute
-		var options []byte
-		if err := rows.Scan(&item.Code,&item.Name,&item.DataType,&item.Unit,&options,&item.Audience,
-			&item.Required,&item.Filterable,&item.ShowOnPDP,&item.Badge,&item.SortOrder); err != nil { return nil, err }
-		if err := json.Unmarshal(options,&item.Options); err != nil { return nil, fmt.Errorf("decode attribute options: %w",err) }
-		result=append(result,item)
+	items, err := repository.EffectiveCategoryAttributes(ctx, categoryID)
+	if err != nil { return nil, err }
+	result := make([]CategoryAttribute, 0, len(items))
+	for _, definition := range items {
+		if !definition.Active || definition.Excluded { continue }
+		options := make([]string, 0, len(definition.Options))
+		for _, option := range definition.Options { if option.Active { options = append(options, option.Code) } }
+		result = append(result, CategoryAttribute{
+			Code: definition.Code, Name: definition.Name, DataType: definition.DataType,
+			Unit: definition.Unit, Options: options, Audience: definition.Audience, Scope: definition.Scope,
+			Required: definition.Required, Filterable: definition.Filterable,
+			ShowOnPDP: definition.ShowOnPDP, Badge: definition.Badge, SortOrder: definition.SortOrder,
+		})
 	}
-	return result,rows.Err()
+	return result, nil
 }
 
 func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor Actor, input CategoryCreate) (Category,error) {
-	if !Can(actor.Role,PermissionProductsEdit){return Category{},ErrForbidden}
+	if actor.Role != RoleOwner{return Category{},ErrForbidden}
 	input.Name=strings.TrimSpace(input.Name); input.Slug=strings.TrimSpace(input.Slug)
 	var id int64
 	err:=repository.pool.QueryRow(ctx,`
@@ -579,7 +567,7 @@ func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor 
 }
 
 func (repository *PostgresRepository) UpdateCategory(ctx context.Context, actor Actor,id int64,input CategoryUpdate)(Category,error){
-	if !Can(actor.Role,PermissionProductsEdit){return Category{},ErrForbidden}
+	if actor.Role != RoleOwner{return Category{},ErrForbidden}
 	_,err:=repository.pool.Exec(ctx,`
 		UPDATE categories SET name=COALESCE(NULLIF(TRIM($2),''),name),
 			slug=COALESCE(NULLIF(TRIM($3),''),slug),sort_order=COALESCE($4,sort_order),updated_at=NOW()
@@ -590,7 +578,7 @@ func (repository *PostgresRepository) UpdateCategory(ctx context.Context, actor 
 }
 
 func (repository *PostgresRepository) DeleteCategory(ctx context.Context,actor Actor,id int64)error{
-	if !Can(actor.Role,PermissionProductsEdit){return ErrForbidden}
+	if actor.Role != RoleOwner{return ErrForbidden}
 	var children,products int
 	if err:=repository.pool.QueryRow(ctx,`
 		SELECT (SELECT COUNT(*) FROM categories WHERE parent_id=$1)::int,
