@@ -3,7 +3,6 @@ import { ImportDialog, NewProductDialog, ProductDialog, SyncDialog } from "./Adm
 import { PageHeading, api, money, sabyFieldLabels, statusLabels } from "./adminShared";
 import { AttributeManager } from "./AdminPim";
 import { CollectionsV2 } from "./AdminCollectionsV2";
-import { CollectionsV2 } from "./AdminCollectionsV2";
 import type { Category, Product, ReviewModerationItem } from "./adminTypes";
 
 // Flattens the category tree into the order it reads in: each parent is
