@@ -180,7 +180,7 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
   const [draft, setDraft] = useState<AdminVariant>(empty);
   const load = useCallback(() => api<{ variants: AdminVariant[] }>(`/api/v1/admin/products/${productId}/variants`).then((data) => setVariants(data.variants)).catch((error) => onError(error.message)), [productId, onError]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!categoryId) { setSchema([]); return; } api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setSchema(data.attributes.filter((item) => item.scope === "variant" && item.active && !item.excluded)).catch((error) => onError(error.message)); }, [categoryId, onError]);
+  useEffect(() => { if (!categoryId) { setSchema([]); return; } api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setSchema(data.attributes.filter((item) => item.scope === "variant" && item.active && !item.excluded))).catch((error) => onError(error.message)); }, [categoryId, onError]);
   const select = (variant: AdminVariant | "new") => { setSelectedId(variant === "new" ? "new" : variant.id); setDraft(variant === "new" ? empty : structuredClone(variant)); };
   const save = async () => {
     try {

@@ -41,17 +41,6 @@ function missingRequired(schema: CategoryAttribute[], values: Record<string, unk
   return schema.filter((item) => item.required && (values[item.code] == null || values[item.code] === "" || (Array.isArray(values[item.code]) && (values[item.code] as unknown[]).length === 0))).map((item) => item.name);
 }
 
-function ExternalMappings({ value, onChange }: { value: Product["externalIds"]; onChange: (value: Product["externalIds"]) => void }) {
-  const protectedMappings = value.filter((item) => item.provider === "ficusin" || item.provider === "saby");
-  const editable = value.filter((item) => item.provider !== "ficusin" && item.provider !== "saby");
-  const update = (index: number, patch: Partial<(typeof editable)[number]>) => onChange([...protectedMappings, ...editable.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item)]);
-  return <div className="wide external-mappings">
-    <div className="integration-mapping"><strong>Системные идентификаторы</strong>{protectedMappings.map((mapping) => <small key={`${mapping.provider}:${mapping.type}:${mapping.externalId}`}>{mapping.provider.toUpperCase()} · {mapping.type}: {mapping.externalId}</small>)}</div>
-    {editable.map((mapping, index) => <div className="external-mapping-row" key={`${index}:${mapping.provider}:${mapping.type}`}><input aria-label="Система" value={mapping.provider} onChange={(event) => update(index, { provider: event.target.value.toLowerCase() })} placeholder="wildberries" /><input aria-label="Тип ID" value={mapping.type} onChange={(event) => update(index, { type: event.target.value.toLowerCase() })} placeholder="sku" /><input aria-label="Внешний ID" value={mapping.externalId} onChange={(event) => update(index, { externalId: event.target.value })} placeholder="Значение" /><button type="button" onClick={() => onChange([...protectedMappings, ...editable.filter((_, itemIndex) => itemIndex !== index)])}>Удалить</button></div>)}
-    <button type="button" className="admin-action" onClick={() => onChange([...value, { provider: "wildberries", type: "sku", externalId: "" }])}>Добавить внешний ID</button>
-  </div>;
-}
-
 export function ProductDialog({ product, onClose, onSaved, onError }: { product: Product; onClose: () => void; onSaved: (value: Product) => void; onError: (value: string) => void }) {
   const [form, setForm] = useState(product);
   const [categories, setCategories] = useState<Category[]>([]);
