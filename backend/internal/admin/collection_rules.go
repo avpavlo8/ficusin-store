@@ -25,6 +25,7 @@ type CollectionDefinition struct {
 	Active    bool             `json:"active"`
 	Mode      string           `json:"mode"`
 	Rules     []CollectionRule `json:"rules"`
+	Products  []int64          `json:"products"`
 }
 
 type CollectionDefinitionInput struct {
@@ -72,8 +73,16 @@ func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 
 func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Context) ([]CollectionDefinition, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT id,slug,title,note,sort_order,is_active<>0,mode,rules
-		FROM collections ORDER BY sort_order,id
+		SELECT collection.id,collection.slug,collection.title,collection.note,collection.sort_order,
+			collection.is_active<>0,collection.mode,collection.rules,
+			CASE WHEN collection.mode='dynamic' THEN
+				COALESCE((SELECT ARRAY_AGG(product.id ORDER BY product.id)
+					FROM products product
+					WHERE collection_rules_match_product(product.id,collection.rules)),ARRAY[]::BIGINT[])
+			ELSE COALESCE((SELECT ARRAY_AGG(member.product_id ORDER BY member.sort_order,member.product_id)
+				FROM collection_products member WHERE member.collection_id=collection.id),ARRAY[]::BIGINT[])
+			END
+		FROM collections collection ORDER BY collection.sort_order,collection.id
 	`)
 	if err != nil { return nil, fmt.Errorf("list collection definitions: %w", err) }
 	defer rows.Close()
@@ -81,7 +90,7 @@ func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Cont
 	for rows.Next() {
 		var item CollectionDefinition
 		var raw []byte
-		if err := rows.Scan(&item.ID,&item.Slug,&item.Title,&item.Note,&item.SortOrder,&item.Active,&item.Mode,&raw); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.Slug,&item.Title,&item.Note,&item.SortOrder,&item.Active,&item.Mode,&raw,&item.Products); err != nil { return nil, err }
 		if err := json.Unmarshal(raw, &item.Rules); err != nil { return nil, fmt.Errorf("decode collection rules: %w", err) }
 		items = append(items, item)
 	}
