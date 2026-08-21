@@ -76,6 +76,49 @@ test("@desktop кабинет не предлагает оплату до под
 
   await page.goto("/account/orders/0001-8");
 
-  await expect(page.getByText(/Менеджер подтвердит наличие и доставку/)).toBeVisible();
+  await expect(page.getByText(/Менеджер проверит состав и доставку/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
+});
+
+test("@desktop открытая карточка сама показывает оплату после подтверждения менеджером", async ({ page }) => {
+  await mockApi(page, owner);
+  let confirmed = false;
+  await page.route("**/api/v1/account/orders/0001-9", (route) => route.fulfill({
+    json: {
+      order: {
+        orderNumber: "0001-9",
+        deliveryMethod: "cdek",
+        address: "Москва, пункт СДЭК",
+        comment: "",
+        customerName: "Александр",
+        phone: "+79990000000",
+        email: "test@example.com",
+        status: confirmed ? "confirmed" : "new",
+        paymentStatus: "pending",
+        paymentMethod: "online",
+        deliveryFee: confirmed ? 1000 : 0,
+        deliveryFeePending: !confirmed,
+        repackRequested: false,
+        hasPreorder: false,
+        subtotal: 2970,
+        total: confirmed ? 3970 : 2970,
+        paidAmount: 0,
+        refundedAmount: 0,
+        amountDue: confirmed ? 3970 : 2970,
+        paymentReady: confirmed,
+        createdAt: "2026-08-20T12:00:00Z",
+        items: [{ productName: "Аглаонема", unitPrice: 2970, quantity: 1 }],
+      },
+    },
+  }));
+
+  await page.goto("/account/orders/0001-9");
+  await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
+
+  // Имитируем сохранение заказа менеджером, пока клиент не закрывал вкладку.
+  confirmed = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+
+  await expect(page.getByRole("button", { name: /Оплатить 3.?970/ })).toBeVisible();
+  await expect(page.getByText("Доставка").locator(".." )).toContainText(/1.?000/);
 });
