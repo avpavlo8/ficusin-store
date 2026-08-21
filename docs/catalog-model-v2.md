@@ -8,3 +8,6 @@ The catalogue uses explicit Ficusin-owned identities.
 - Saby/WB/Ozon identifiers are external mappings, never catalogue identity.
 - Product and variant attributes are separate; enum options are normalized.
 - Reviews belong to PRODUCT and remember the purchased variant/SKU.
+- SKU media is managed independently from PRODUCT copy and can be reordered/archived in admin.
+- Dynamic collections are evaluated from canonical PIM attributes; membership is not duplicated into a second manual source of truth.
+- The storefront consumes server collection membership from `/api/v1/collections` and product `collections` values.
