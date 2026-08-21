@@ -96,10 +96,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
-  # Собирается только перед выкладкой: на ветках это проверяло Dockerfile,
-  # который меняется раз в месяц, и стоило минуты на каждом коммите.
+  # Dockerfile — часть production-кода. Если он не собирается, зелёные Go и
+  # frontend тесты не помогают: Timeweb всё равно не сможет выкатить релиз.
   image:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
