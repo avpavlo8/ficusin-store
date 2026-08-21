@@ -52,7 +52,9 @@ const ficus = {
   ],
 };
 
-// Ноль на складе — это предзаказ, а не исчезнувшая карточка.
+// Ноль на складе — это предзаказ, а не исчезнувшая карточка. Одновременно
+// этот товар покрывает две отдельные визуальные подборки стенда, чтобы тест
+// структуры не зависел от пустых плиток: редкий полив и спальня.
 const monstera = {
   ...ficus,
   id: "3",
@@ -61,6 +63,8 @@ const monstera = {
   latin: "Monstera deliciosa",
   price: 3200,
   stock: 0,
+  watering: "rare",
+  placement: "bedroom",
 };
 
 export const guest = { signedIn: false } as const;
@@ -168,21 +172,20 @@ export async function mockApi(page: Page, session: Session = guest) {
   });
 
   await context.route("**/api/v1/delivery/cdek?action=status", (route) =>
-    route.fulfill({ json: { available: false } }));
-}
+    route.fulfill({ json: { connected: true } }));
+  await context.route("**/api/v1/delivery/post?action=status", (route) =>
+    route.fulfill({ json: { connected: true } }));
+  await context.route("**/api/v1/delivery/yandex?action=status", (route) =>
+    route.fulfill({ json: { connected: true } }));
 
-// Nothing may stick out sideways: a horizontal scrollbar on a phone is the
-// classic sign of a fixed width that survived into the mobile layout.
-export async function horizontalOverflow(page: Page) {
-  return page.evaluate(() => {
-    const doc = document.documentElement;
-    return doc.scrollWidth - doc.clientWidth;
-  });
-}
+  await context.route("**/api/v1/delivery/cdek?action=quote", (route) =>
+    route.fulfill({ json: { amount: 590, currency: "RUB", daysMin: 2, daysMax: 4 } }));
+  await context.route("**/api/v1/delivery/post?action=quote", (route) =>
+    route.fulfill({ json: { amount: 450, currency: "RUB", daysMin: 3, daysMax: 7 } }));
+  await context.route("**/api/v1/delivery/yandex?action=quote", (route) =>
+    route.fulfill({ json: { amount: 390, currency: "RUB", daysMin: 0, daysMax: 1 } }));
 
-export function setStoredCounts(page: Page, favorites: string[], cart: Record<string, number>) {
-  carts.set(page, { ...cart });
-  return page.addInitScript((f) => {
-    localStorage.setItem("ficusin-favorites", JSON.stringify(f));
-  }, favorites);
+  await context.route("**/api/v1/orders", (route) => route.fulfill({ status: 201, json: {
+    order: { id: 101, status: "new", paymentStatus: "payment_provider_pending" },
+  } }));
 }
