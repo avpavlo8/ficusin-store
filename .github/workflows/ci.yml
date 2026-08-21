@@ -34,7 +34,7 @@ jobs:
             python3 scripts/catalog_model_rewrite.py
             changed=1
           fi
-          for helper in scripts/catalog_pim_followup.py scripts/catalog_ui_followup.py; do
+          for helper in scripts/catalog_*followup.py; do
             if [ -f "$helper" ]; then
               python3 "$helper"
               changed=1
