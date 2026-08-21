@@ -90,7 +90,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
 test("@desktop добавленный товар сохраняется и сумма заказа пересчитывается", async ({ page }) => {
   const state = await mockOrderEditor(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Заказы" }).click();
+  await page.getByRole("button", { name: "Заказы", exact: true }).click();
   await page.getByText("0001-30").click();
 
   const editor = page.locator(".admin-order-editor");
