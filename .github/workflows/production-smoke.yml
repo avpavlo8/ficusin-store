@@ -8,6 +8,7 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
+# Technical trigger only: verify production after recovery migration 058.
 concurrency:
   group: production-smoke
   cancel-in-progress: true
