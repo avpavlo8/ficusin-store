@@ -80,7 +80,6 @@ function AttributeAssignmentRow({ item, categoryId, onSaved, onError }: {
   item: EffectiveAttribute; categoryId: number; onSaved: () => void; onError: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(item);
-  useEffect(() => setDraft(item), [item]);
   const save = async () => {
     try {
       await api(`/api/v1/admin/categories/${categoryId}/attributes/${item.id}`, { method: "PUT", body: JSON.stringify({
@@ -111,6 +110,7 @@ function AttributeAssignmentRow({ item, categoryId, onSaved, onError }: {
 export function AttributeManager({ categories, onError }: { categories: Category[]; onError: (value: string) => void }) {
   const [definitions, setDefinitions] = useState<AttributeDefinition[]>([]);
   const [categoryId, setCategoryId] = useState<number | null>(categories[0]?.id || null);
+  const selectedCategoryId = categoryId ?? categories[0]?.id ?? null;
   const [effective, setEffective] = useState<EffectiveAttribute[]>([]);
   const [editing, setEditing] = useState<AttributeDefinition | "new" | null>(null);
   const [addAttributeId, setAddAttributeId] = useState("");
@@ -118,18 +118,17 @@ export function AttributeManager({ categories, onError }: { categories: Category
   const [filterDraft, setFilterDraft] = useState({ title: "", code: "", attributeId: "", displayMode: "select", categoryId: "" });
   const loadDefinitions = useCallback(() => api<{ attributes: AttributeDefinition[] }>("/api/v1/admin/attributes").then((data) => setDefinitions(data.attributes)).catch((error) => onError(error.message)), [onError]);
   const loadEffective = useCallback(() => {
-    if (!categoryId) { setEffective([]); return; }
-    api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setEffective(data.attributes)).catch((error) => onError(error.message));
-  }, [categoryId, onError]);
+    if (!selectedCategoryId) return Promise.resolve();
+    return api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${selectedCategoryId}/effective-attributes`).then((data) => setEffective(data.attributes)).catch((error) => onError(error.message));
+  }, [selectedCategoryId, onError]);
   const loadFilters = useCallback(() => api<{ filters: CatalogFilter[] }>("/api/v1/admin/catalog-filters").then((data) => setFilters(data.filters)).catch((error) => onError(error.message)), [onError]);
   useEffect(() => { void loadDefinitions(); void loadFilters(); }, [loadDefinitions, loadFilters]);
   useEffect(() => { void loadEffective(); }, [loadEffective]);
-  useEffect(() => { if (!categoryId && categories[0]) setCategoryId(categories[0].id); }, [categories, categoryId]);
   const available = definitions.filter((definition) => !effective.some((item) => item.id === definition.id));
   const assign = async () => {
-    if (!categoryId || !addAttributeId) return;
+    if (!selectedCategoryId || !addAttributeId) return;
     try {
-      await api(`/api/v1/admin/categories/${categoryId}/attributes/${addAttributeId}`, { method: "PUT", body: JSON.stringify({ attributeId: Number(addAttributeId), showOnPdp: true, showInCharacteristics: true, sortOrder: (effective.length + 1) * 10 }) });
+      await api(`/api/v1/admin/categories/${selectedCategoryId}/attributes/${addAttributeId}`, { method: "PUT", body: JSON.stringify({ attributeId: Number(addAttributeId), showOnPdp: true, showInCharacteristics: true, sortOrder: (effective.length + 1) * 10 }) });
       setAddAttributeId(""); loadEffective();
     } catch (error) { onError((error as Error).message); }
   };
@@ -153,7 +152,7 @@ export function AttributeManager({ categories, onError }: { categories: Category
     {editing && <AttributeDefinitionEditor value={editing === "new" ? undefined : editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); loadDefinitions(); loadEffective(); }} onError={onError} />}
     <div className="pim-columns">
       <div className="pim-definitions"><h3>Определения</h3>{definitions.map((definition) => <div className={!definition.active ? "muted" : ""} key={definition.id}><button onClick={() => setEditing(definition)}><strong>{definition.name}</strong><code>{definition.code}</code><small>{definition.scope === "variant" ? "SKU" : "PRODUCT"} · {definition.audience === "technical" ? "технический" : "клиентский"}</small></button><button className="text-button danger" onClick={() => archive(definition)}>Архив</button></div>)}</div>
-      <div className="pim-schema"><h3>Схема категории</h3><select value={categoryId || ""} onChange={(event) => setCategoryId(Number(event.target.value) || null)}>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select><div className="pim-add"><select value={addAttributeId} onChange={(event) => setAddAttributeId(event.target.value)}><option value="">Добавить атрибут…</option>{available.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><button disabled={!addAttributeId} onClick={assign}>Назначить</button></div>{effective.map((item) => <AttributeAssignmentRow item={item} categoryId={categoryId!} onSaved={loadEffective} onError={onError} key={item.id} />)}</div>
+      <div className="pim-schema"><h3>Схема категории</h3><select value={selectedCategoryId || ""} onChange={(event) => setCategoryId(Number(event.target.value) || null)}>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select><div className="pim-add"><select value={addAttributeId} onChange={(event) => setAddAttributeId(event.target.value)}><option value="">Добавить атрибут…</option>{available.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><button disabled={!addAttributeId} onClick={assign}>Назначить</button></div>{effective.map((item) => <AttributeAssignmentRow item={item} categoryId={selectedCategoryId!} onSaved={loadEffective} onError={onError} key={`${selectedCategoryId}:${item.id}:${item.inherited}:${item.sourceCategoryId ?? "local"}:${item.required}:${item.filterable}:${item.showOnPdp}:${item.keyCharacteristic}:${item.badge}:${item.sortOrder}:${item.summaryPosition ?? ""}:${item.showInCharacteristics}:${item.excluded}`} />)}</div>
     </div>
     <div className="pim-filters"><h3>Фильтры витрины</h3><div className="admin-toolbar"><input value={filterDraft.title} onChange={(event) => setFilterDraft({ ...filterDraft, title: event.target.value })} placeholder="Название фильтра" /><select value={filterDraft.attributeId} onChange={(event) => setFilterDraft({ ...filterDraft, attributeId: event.target.value })}><option value="">Атрибут</option>{definitions.filter((item) => item.active && item.audience === "customer").map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><select value={filterDraft.displayMode} onChange={(event) => setFilterDraft({ ...filterDraft, displayMode: event.target.value })}><option value="select">Список</option><option value="chips">Чипы</option><option value="range">Диапазон</option></select><button disabled={!filterDraft.title || !filterDraft.attributeId} onClick={addFilter}>Добавить</button></div>
       <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Фильтр</th><th>Атрибут</th><th>Вид</th><th>Статус</th><th /></tr></thead><tbody>{filters.map((filter) => <tr key={filter.id}><td>{filter.title}</td><td><code>{filter.attributeCode}</code></td><td>{filter.displayMode}</td><td>{filter.active ? "Включён" : "Выключен"}</td><td><button className="text-button danger" onClick={async () => { try { await api(`/api/v1/admin/catalog-filters/${filter.id}`, { method: "DELETE" }); loadFilters(); } catch (error) { onError((error as Error).message); } }}>Удалить</button></td></tr>)}</tbody></table></div>
@@ -180,7 +179,7 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
   const [draft, setDraft] = useState<AdminVariant>(empty);
   const load = useCallback(() => api<{ variants: AdminVariant[] }>(`/api/v1/admin/products/${productId}/variants`).then((data) => setVariants(data.variants)).catch((error) => onError(error.message)), [productId, onError]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!categoryId) { setSchema([]); return; } api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setSchema(data.attributes.filter((item) => item.scope === "variant" && item.active && !item.excluded))).catch((error) => onError(error.message)); }, [categoryId, onError]);
+  useEffect(() => { if (!categoryId) return; void api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setSchema(data.attributes.filter((item) => item.scope === "variant" && item.active && !item.excluded))).catch((error) => onError(error.message)); }, [categoryId, onError]);
   const select = (variant: AdminVariant | "new") => { setSelectedId(variant === "new" ? "new" : variant.id); setDraft(variant === "new" ? empty : structuredClone(variant)); };
   const save = async () => {
     try {
@@ -189,9 +188,10 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
       setSelectedId(result.variant.id); setDraft(result.variant); load();
     } catch (error) { onError((error as Error).message); }
   };
-  const variantAttributes = schema.filter((item) => item.audience === "customer");
-  const technicalAttributes = schema.filter((item) => item.audience === "technical");
-  const completeness = schema.length ? Math.round(schema.filter((item) => !item.required || draft.attributes[item.code] !== undefined && draft.attributes[item.code] !== null && draft.attributes[item.code] !== "").length / schema.length * 100) : 100;
+  const visibleSchema = categoryId ? schema : [];
+  const variantAttributes = visibleSchema.filter((item) => item.audience === "customer");
+  const technicalAttributes = visibleSchema.filter((item) => item.audience === "technical");
+  const completeness = visibleSchema.length ? Math.round(visibleSchema.filter((item) => !item.required || draft.attributes[item.code] !== undefined && draft.attributes[item.code] !== null && draft.attributes[item.code] !== "").length / visibleSchema.length * 100) : 100;
   return <section className="variant-editor wide">
     <div className="variant-editor-head"><div><h3>Варианты / SKU</h3><p>Каждый размер — отдельная продаваемая единица. Артикул назначается автоматически и не меняется.</p></div><button type="button" className="admin-primary" onClick={() => select("new")}>Добавить SKU</button></div>
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>SKU</th><th>Вариант</th><th>Горшок</th><th>Высота</th><th>Цена</th><th>Остаток</th><th>Статус</th><th /></tr></thead><tbody>{variants.map((variant) => <tr className={selectedId === variant.id ? "selected" : ""} key={variant.id} onClick={() => select(variant)}><td><strong>{variant.sku}</strong></td><td>{variant.label}</td><td>{variant.attributes.pot_diameter_cm ?? "—"}</td><td>{variant.attributes.height_cm ?? "—"}</td><td>{money(variant.price)}</td><td>{variant.stock}</td><td>{variant.archived ? "Архив" : variant.active ? "Активен" : "Выключен"}</td><td><button type="button" className="text-button" onClick={async (event) => { event.stopPropagation(); try { const data = await api<{ variant: AdminVariant }>(`/api/v1/admin/variants/${variant.id}/copy`, { method: "POST" }); setDraft(data.variant); setSelectedId(data.variant.id); load(); } catch (error) { onError((error as Error).message); } }}>Копировать</button></td></tr>)}</tbody></table></div>
