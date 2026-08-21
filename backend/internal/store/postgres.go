@@ -12,28 +12,44 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func configureTLS(poolConfig *pgxpool.Config, cfg config.Database) error {
+	// DATABASE_SSL_VERIFY controls certificate verification, not whether the
+	// connection uses TLS at all. pgx has already translated sslmode from the
+	// DATABASE_URL: a nil TLSConfig means sslmode=disable and must stay nil.
+	if !cfg.VerifyTLS {
+		if poolConfig.ConnConfig.TLSConfig != nil {
+			tlsConfig := poolConfig.ConnConfig.TLSConfig.Clone()
+			tlsConfig.InsecureSkipVerify = true //nolint:gosec -- explicitly requested by DATABASE_SSL_VERIFY=false
+			poolConfig.ConnConfig.TLSConfig = tlsConfig
+		}
+		return nil
+	}
+
+	if cfg.CA == "" || poolConfig.ConnConfig.TLSConfig == nil {
+		return nil
+	}
+
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(cfg.CA)) {
+		return errors.New("DATABASE_SSL_CA does not contain a valid certificate")
+	}
+
+	tlsConfig := poolConfig.ConnConfig.TLSConfig.Clone()
+	if tlsConfig.MinVersion == 0 {
+		tlsConfig.MinVersion = tls.VersionTLS12
+	}
+	tlsConfig.RootCAs = roots
+	poolConfig.ConnConfig.TLSConfig = tlsConfig
+	return nil
+}
+
 func Open(ctx context.Context, cfg config.Database) (*pgxpool.Pool, error) {
 	poolConfig, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse DATABASE_URL: %w", err)
 	}
-
-	if !cfg.VerifyTLS {
-		poolConfig.ConnConfig.TLSConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
-	} else if cfg.CA != "" {
-		roots := x509.NewCertPool()
-		if !roots.AppendCertsFromPEM([]byte(cfg.CA)) {
-			return nil, errors.New("DATABASE_SSL_CA does not contain a valid certificate")
-		}
-
-		tlsConfig := poolConfig.ConnConfig.TLSConfig
-		if tlsConfig == nil {
-			tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-		} else {
-			tlsConfig = tlsConfig.Clone()
-		}
-		tlsConfig.RootCAs = roots
-		poolConfig.ConnConfig.TLSConfig = tlsConfig
+	if err := configureTLS(poolConfig, cfg); err != nil {
+		return nil, err
 	}
 
 	poolConfig.MaxConns = 10
