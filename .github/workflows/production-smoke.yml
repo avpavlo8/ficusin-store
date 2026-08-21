@@ -8,6 +8,7 @@ on:
       - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
+# Diagnostic trigger after PR #172; frontend remains identical to main.
 concurrency:
   group: production-smoke
   cancel-in-progress: true
