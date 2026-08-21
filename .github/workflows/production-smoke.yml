@@ -1,3 +1,4 @@
+# Verification trigger after migration 056 product_code sequence fix.
 name: Production smoke
 
 on:
