@@ -24,6 +24,8 @@ type CollectionDefinition = {
   count: number;
 };
 
+type CollectionSource = "loading" | "server" | "fallback";
+
 // These definitions are only a graceful fallback for a server/database that
 // has not exposed /api/v1/collections yet. As soon as the API returns the
 // collections field (even an empty array), the backend becomes authoritative.
@@ -82,7 +84,7 @@ export function CollectionStrip<T extends Product>({
 }) {
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
-  const [serverAuthoritative, setServerAuthoritative] = useState(false);
+  const [source, setSource] = useState<CollectionSource>("loading");
 
   useEffect(() => {
     let alive = true;
@@ -93,20 +95,21 @@ export function CollectionStrip<T extends Product>({
         if (!Array.isArray(data.collections)) throw new Error("collections contract unavailable");
         const collections = data.collections;
         setServerCollections(collections);
-        setServerAuthoritative(true);
+        setSource("server");
         presets.splice(0, presets.length, ...collections.map(serverPreset));
       })
       .catch(() => {
         if (!alive) return;
         setServerCollections([]);
-        setServerAuthoritative(false);
+        setSource("fallback");
         presets.splice(0, presets.length, ...legacyPresets);
       });
     return () => { alive = false; };
   }, []);
 
   const shown = useMemo(() => {
-    if (serverAuthoritative) {
+    if (source === "loading") return [];
+    if (source === "server") {
       return serverCollections.map((collection) => {
         const preset = serverPreset(collection);
         const firstProductImage = products.find((product) => preset.match(product))?.image;
@@ -128,7 +131,7 @@ export function CollectionStrip<T extends Product>({
         note: "",
       };
     }).filter((item) => item.count > 0);
-  }, [products, serverCollections, serverAuthoritative]);
+  }, [products, serverCollections, source]);
 
   if (shown.length === 0) return null;
 
