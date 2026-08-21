@@ -8,6 +8,11 @@ func registerAdminCatalogToolRoutes(mux *http.ServeMux, adminAPI adminHandlers, 
 	mux.HandleFunc("DELETE /api/v1/admin/products/{id}/media/{mediaId}", deleteProductMediaHandler(adminAPI))
 	mux.HandleFunc("PATCH /api/v1/admin/products/{id}/media/{mediaId}/primary", primaryProductMediaHandler(adminAPI))
 
+	mux.HandleFunc("GET /api/v1/admin/variants/{id}/media", listVariantMediaHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/variants/{id}/media", uploadVariantMediaHandler(adminAPI, storage))
+	mux.HandleFunc("DELETE /api/v1/admin/variants/{id}/media/{mediaId}", deleteVariantMediaHandler(adminAPI))
+	mux.HandleFunc("PATCH /api/v1/admin/variants/{id}/media/{mediaId}/primary", primaryVariantMediaHandler(adminAPI))
+
 	mux.HandleFunc("GET /api/v1/admin/attributes", attributeDefinitionsHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/attributes", attributeDefinitionsHandler(adminAPI))
 	mux.HandleFunc("PATCH /api/v1/admin/attributes/{attributeId}", attributeDefinitionHandler(adminAPI))
