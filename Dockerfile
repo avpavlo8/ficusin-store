@@ -26,9 +26,23 @@ ENV PORT=3000
 ENV STATIC_DIR=/app/web
 ENV MIGRATIONS_DIR=/app/migrations
 EXPOSE 3000
-# Startup applies pending PostgreSQL migrations before the HTTP listener is
-# created. On a live database DDL can legitimately wait for short-lived locks,
-# so give startup enough runway instead of marking a healthy app as failed.
-HEALTHCHECK --interval=5s --timeout=3s --start-period=120s --retries=12 CMD wget -qO- http://127.0.0.1:3000/api/v1/health >/dev/null || exit 1
+# Startup applies pending PostgreSQL migrations before the full router is
+# swapped in. On a live database DDL can legitimately wait for short-lived
+# locks, so give startup enough runway instead of marking a healthy app as
+# failed.
+#
+# The probe must not assume that the container's own loopback is usable.
+# Timeweb recreates this container with its own networking and then blocks the
+# release on this healthcheck; a request to 127.0.0.1 never succeeded there, so
+# every deploy from 21.08 onwards was rolled back after exactly 180 seconds
+# while the application had already bound its port and logged "api ready".
+# CI could not catch it because it boots the image with --network host, where
+# 127.0.0.1 is the host's loopback. Falling back to the container's own address
+# keeps this a real health check instead of a report about the platform's
+# network layout.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=120s --retries=12 CMD \
+  wget -qO- http://127.0.0.1:3000/api/v1/health >/dev/null 2>&1 \
+  || wget -qO- "http://$(hostname -i | cut -d' ' -f1):3000/api/v1/health" >/dev/null 2>&1 \
+  || exit 1
 USER 65532:65532
 ENTRYPOINT ["/app/ficusin-api"]
