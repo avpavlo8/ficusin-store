@@ -187,7 +187,7 @@ jobs:
         run: |
           docker run --rm --entrypoint pdftotext ficusin-ci:verify -v
           docker run --rm --entrypoint wget ficusin-ci:verify --help >/dev/null
-      - name: Boot production image and wait for health
+      - name: Boot production image and wait for a ready health response
         run: |
           set -euo pipefail
           docker run -d \
@@ -206,20 +206,26 @@ jobs:
           }
           trap cleanup EXIT
 
+          # The image carries no Docker HEALTHCHECK on purpose: Timeweb blocks
+          # the release on that gate and it never opened, keeping eight releases
+          # out of production. Readiness is therefore asserted the way Timeweb
+          # and a customer assert it - over HTTP, from outside the container.
+          # A bound port is not enough: while migrations run the endpoint
+          # answers {"status":"starting"}, and only the fully wired router
+          # answers {"status":"ok"}.
           for attempt in $(seq 1 60); do
             state="$(docker inspect -f '{{.State.Status}}' ficusin-runtime)"
-            health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' ficusin-runtime)"
+            health="$(curl -fsS --max-time 5 http://127.0.0.1:3000/api/v1/health || true)"
             echo "attempt=${attempt} state=${state} health=${health}"
-            if [[ "$health" == "healthy" ]]; then
-              curl -fsS http://127.0.0.1:3000/api/v1/health | grep -q '"status":"ok"'
+            if [[ "$health" == *'"status":"ok"'* ]]; then
               exit 0
             fi
             if [[ "$state" == "exited" || "$state" == "dead" ]]; then
-              echo 'Production container exited before becoming healthy.' >&2
+              echo 'Production container exited before serving a ready health response.' >&2
               exit 1
             fi
             sleep 5
           done
 
-          echo 'Production container did not become healthy in time.' >&2
+          echo 'Production container did not serve a ready health response in time.' >&2
           exit 1
