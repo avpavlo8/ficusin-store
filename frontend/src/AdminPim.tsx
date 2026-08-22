@@ -92,17 +92,25 @@ function AttributeAssignmentRow({ item, categoryId, onSaved, onError }: {
       onSaved();
     } catch (error) { onError((error as Error).message); }
   };
+  const reset = async () => {
+    try {
+      await api(`/api/v1/admin/categories/${categoryId}/attributes/${item.id}`, { method: "DELETE" });
+      onSaved();
+    } catch (error) { onError((error as Error).message); }
+  };
+  const storefrontDisabled = item.audience === "technical" || draft.excluded;
   return <div className={`pim-assignment ${item.inherited ? "inherited" : "local"}`}>
     <div><strong>{item.name}</strong><code>{item.code}</code><small>{item.scope === "variant" ? "SKU" : "PRODUCT"} · {item.audience === "technical" ? "технический" : "клиентский"}{item.inherited ? ` · унаследовано от ${item.sourceCategoryName}` : " · локально"}</small></div>
     <div className="pim-flags">
-      <label><input type="checkbox" checked={draft.required} onChange={(event) => setDraft({ ...draft, required: event.target.checked })} />обяз.</label>
-      <label><input type="checkbox" checked={draft.filterable} onChange={(event) => setDraft({ ...draft, filterable: event.target.checked })} />фильтр</label>
-      <label><input type="checkbox" checked={draft.showOnPdp} onChange={(event) => setDraft({ ...draft, showOnPdp: event.target.checked })} />PDP</label>
-      <label><input type="checkbox" checked={draft.keyCharacteristic} onChange={(event) => setDraft({ ...draft, keyCharacteristic: event.target.checked, summaryPosition: event.target.checked ? (draft.summaryPosition || 10) : undefined })} />основная</label>
-      <label><input type="checkbox" checked={draft.badge} onChange={(event) => setDraft({ ...draft, badge: event.target.checked })} />бейдж</label>
-      <label><input type="checkbox" checked={draft.showInCharacteristics} onChange={(event) => setDraft({ ...draft, showInCharacteristics: event.target.checked })} />характеристики</label>
-      <label><input type="checkbox" checked={draft.excluded} onChange={(event) => setDraft({ ...draft, excluded: event.target.checked })} />исключить</label>
+      <label><input type="checkbox" disabled={draft.excluded} checked={draft.required} onChange={(event) => setDraft({ ...draft, required: event.target.checked })} />обяз.</label>
+      <label><input type="checkbox" disabled={storefrontDisabled} checked={draft.filterable} onChange={(event) => setDraft({ ...draft, filterable: event.target.checked })} />фильтр</label>
+      <label><input type="checkbox" disabled={storefrontDisabled} checked={draft.showOnPdp} onChange={(event) => setDraft({ ...draft, showOnPdp: event.target.checked })} />PDP</label>
+      <label><input type="checkbox" disabled={storefrontDisabled} checked={draft.keyCharacteristic} onChange={(event) => setDraft({ ...draft, keyCharacteristic: event.target.checked, summaryPosition: event.target.checked ? (draft.summaryPosition || 10) : undefined })} />основная</label>
+      <label><input type="checkbox" disabled={storefrontDisabled} checked={draft.badge} onChange={(event) => setDraft({ ...draft, badge: event.target.checked })} />бейдж</label>
+      <label><input type="checkbox" disabled={storefrontDisabled} checked={draft.showInCharacteristics} onChange={(event) => setDraft({ ...draft, showInCharacteristics: event.target.checked })} />характеристики</label>
+      <label><input type="checkbox" checked={draft.excluded} onChange={(event) => setDraft({ ...draft, excluded: event.target.checked, required: false, filterable: false, showOnPdp: false, keyCharacteristic: false, badge: false, showInCharacteristics: false })} />исключить</label>
       <input className="tiny-number" type="number" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: Number(event.target.value) })} aria-label="Порядок" />
+      {!item.inherited && item.sourceCategoryId === categoryId && <button className="text-button" onClick={reset}>Вернуть наследование</button>}
       <button className="admin-action" onClick={save}>{item.inherited ? "Переопределить" : "Сохранить"}</button>
     </div>
   </div>;
@@ -129,7 +137,9 @@ export function AttributeManager({ categories, onError }: { categories: Category
   const assign = async () => {
     if (!selectedCategoryId || !addAttributeId) return;
     try {
-      await api(`/api/v1/admin/categories/${selectedCategoryId}/attributes/${addAttributeId}`, { method: "PUT", body: JSON.stringify({ attributeId: Number(addAttributeId), showOnPdp: true, showInCharacteristics: true, sortOrder: (effective.length + 1) * 10 }) });
+      const definition = definitions.find((item) => item.id === Number(addAttributeId));
+      const customer = definition?.audience === "customer";
+      await api(`/api/v1/admin/categories/${selectedCategoryId}/attributes/${addAttributeId}`, { method: "PUT", body: JSON.stringify({ attributeId: Number(addAttributeId), showOnPdp: customer, showInCharacteristics: customer, sortOrder: (effective.length + 1) * 10 }) });
       setAddAttributeId(""); loadEffective();
     } catch (error) { onError((error as Error).message); }
   };
@@ -141,7 +151,7 @@ export function AttributeManager({ categories, onError }: { categories: Category
   const addFilter = async () => {
     try {
       await api("/api/v1/admin/catalog-filters", { method: "POST", body: JSON.stringify({
-        title: filterDraft.title, code: filterDraft.code || filterDraft.title.toLowerCase().replace(/[^a-z0-9а-я]+/gi, "-").replace(/^-|-$/g, ""),
+        title: filterDraft.title, code: filterDraft.code || `filter-${filterDraft.attributeId}`,
         attributeId: Number(filterDraft.attributeId), categoryId: filterDraft.categoryId ? Number(filterDraft.categoryId) : null,
         displayMode: filterDraft.displayMode, sortOrder: (filters.length + 1) * 10, active: true,
       }) });
@@ -155,7 +165,7 @@ export function AttributeManager({ categories, onError }: { categories: Category
       <div className="pim-definitions"><h3>Определения</h3>{definitions.map((definition) => <div className={!definition.active ? "muted" : ""} key={definition.id}><button onClick={() => setEditing(definition)}><strong>{definition.name}</strong><code>{definition.code}</code><small>{definition.scope === "variant" ? "SKU" : "PRODUCT"} · {definition.audience === "technical" ? "технический" : "клиентский"}</small></button><button className="text-button danger" onClick={() => archive(definition)}>Архив</button></div>)}</div>
       <div className="pim-schema"><h3>Схема категории</h3><select value={selectedCategoryId || ""} onChange={(event) => setCategoryId(Number(event.target.value) || null)}>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select><div className="pim-add"><select value={addAttributeId} onChange={(event) => setAddAttributeId(event.target.value)}><option value="">Добавить атрибут…</option>{available.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><button disabled={!addAttributeId} onClick={assign}>Назначить</button></div>{effective.map((item) => <AttributeAssignmentRow item={item} categoryId={selectedCategoryId!} onSaved={loadEffective} onError={onError} key={`${selectedCategoryId}:${item.id}:${item.inherited}:${item.sourceCategoryId ?? "local"}:${item.required}:${item.filterable}:${item.showOnPdp}:${item.keyCharacteristic}:${item.badge}:${item.sortOrder}:${item.summaryPosition ?? ""}:${item.showInCharacteristics}:${item.excluded}`} />)}</div>
     </div>
-    <div className="pim-filters"><h3>Фильтры витрины</h3><div className="admin-toolbar"><input value={filterDraft.title} onChange={(event) => setFilterDraft({ ...filterDraft, title: event.target.value })} placeholder="Название фильтра" /><select value={filterDraft.attributeId} onChange={(event) => setFilterDraft({ ...filterDraft, attributeId: event.target.value })}><option value="">Атрибут</option>{definitions.filter((item) => item.active && item.audience === "customer").map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><select value={filterDraft.displayMode} onChange={(event) => setFilterDraft({ ...filterDraft, displayMode: event.target.value })}><option value="select">Список</option><option value="chips">Чипы</option><option value="range">Диапазон</option></select><button disabled={!filterDraft.title || !filterDraft.attributeId} onClick={addFilter}>Добавить</button></div>
+    <div className="pim-filters"><h3>Фильтры витрины</h3><div className="admin-toolbar pim-filter-toolbar"><input value={filterDraft.title} onChange={(event) => setFilterDraft({ ...filterDraft, title: event.target.value })} placeholder="Название фильтра" /><select value={filterDraft.attributeId} onChange={(event) => { const attribute = definitions.find((item) => String(item.id) === event.target.value); setFilterDraft({ ...filterDraft, attributeId: event.target.value, displayMode: attribute?.dataType === "number" ? "range" : "select" }); }}><option value="">Атрибут</option>{definitions.filter((item) => item.active && item.audience === "customer").map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><select value={filterDraft.categoryId} onChange={(event) => setFilterDraft({ ...filterDraft, categoryId: event.target.value })}><option value="">Все категории</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select><select value={filterDraft.displayMode} onChange={(event) => setFilterDraft({ ...filterDraft, displayMode: event.target.value })}>{definitions.find((item) => String(item.id) === filterDraft.attributeId)?.dataType === "number" ? <option value="range">Диапазон</option> : <><option value="select">Список</option><option value="chips">Чипы</option></>}</select><button disabled={!filterDraft.title || !filterDraft.attributeId} onClick={addFilter}>Добавить</button></div>
       <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Фильтр</th><th>Атрибут</th><th>Вид</th><th>Статус</th><th /></tr></thead><tbody>{filters.map((filter) => <tr key={filter.id}><td>{filter.title}</td><td><code>{filter.attributeCode}</code></td><td>{filter.displayMode}</td><td>{filter.active ? "Включён" : "Выключен"}</td><td><button className="text-button danger" onClick={async () => { try { await api(`/api/v1/admin/catalog-filters/${filter.id}`, { method: "DELETE" }); loadFilters(); } catch (error) { onError((error as Error).message); } }}>Удалить</button></td></tr>)}</tbody></table></div>
     </div>
   </section>;
@@ -163,13 +173,17 @@ export function AttributeManager({ categories, onError }: { categories: Category
 
 function DynamicValue({ attribute, value, onChange }: { attribute: EffectiveAttribute; value: unknown; onChange: (value: unknown) => void }) {
   const title = `${attribute.name}${attribute.unit ? `, ${attribute.unit}` : ""}${attribute.required ? " *" : ""}`;
-  if (attribute.dataType === "boolean") return <label className="admin-checkbox"><input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} />{title}</label>;
+  if (attribute.dataType === "boolean") return <label>{title}<select value={value == null ? "" : value === true ? "true" : "false"} onChange={(event) => onChange(event.target.value === "" ? null : event.target.value === "true")}><option value="">Не указано</option><option value="true">Да</option><option value="false">Нет</option></select></label>;
   if (attribute.dataType === "enum") return <label>{title}<select value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)}><option value="">Не указано</option>{attribute.options.filter((item) => item.active).map((item) => <option value={item.code} key={item.code}>{item.label}</option>)}</select></label>;
   if (attribute.dataType === "multi_enum") {
     const selected = Array.isArray(value) ? value.map(String) : [];
     return <fieldset className="attribute-multi"><legend>{title}</legend>{attribute.options.filter((item) => item.active).map((item) => <label key={item.code}><input type="checkbox" checked={selected.includes(item.code)} onChange={(event) => onChange(event.target.checked ? [...selected, item.code] : selected.filter((code) => code !== item.code))} />{item.label}</label>)}</fieldset>;
   }
   return <label>{title}<input type={attribute.dataType === "number" ? "number" : "text"} value={value == null ? "" : String(value)} onChange={(event) => onChange(event.target.value === "" ? null : attribute.dataType === "number" ? Number(event.target.value) : event.target.value)} /></label>;
+}
+
+function attributeValueMissing(value: unknown) {
+  return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
 export function VariantsEditor({ productId, categoryId, onError }: { productId: number; categoryId?: number; onError: (value: string) => void }) {
@@ -193,10 +207,11 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
   const variantAttributes = visibleSchema.filter((item) => item.audience === "customer");
   const technicalAttributes = visibleSchema.filter((item) => item.audience === "technical");
   const completeness = visibleSchema.length ? Math.round(visibleSchema.filter((item) => !item.required || draft.attributes[item.code] !== undefined && draft.attributes[item.code] !== null && draft.attributes[item.code] !== "").length / visibleSchema.length * 100) : 100;
+  const missingRequired = visibleSchema.filter((item) => item.required && attributeValueMissing(draft.attributes[item.code]));
   return <section className="variant-editor wide">
     <div className="variant-editor-head"><div><h3>Варианты / SKU</h3><p>Каждый размер — отдельная продаваемая единица. Артикул назначается автоматически и не меняется.</p></div><button type="button" className="admin-primary" onClick={() => select("new")}>Добавить SKU</button></div>
     <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>SKU</th><th>Вариант</th><th>Горшок</th><th>Высота</th><th>Цена</th><th>Остаток</th><th>Статус</th><th /></tr></thead><tbody>{variants.map((variant) => <tr className={selectedId === variant.id ? "selected" : ""} key={variant.id} onClick={() => select(variant)}><td><strong>{variant.sku}</strong></td><td>{variant.label}</td><td>{variant.attributes.pot_diameter_cm ?? "—"}</td><td>{variant.attributes.height_cm ?? "—"}</td><td>{money.format(variant.price)}</td><td>{variant.stock}</td><td>{variant.archived ? "Архив" : variant.active ? "Активен" : "Выключен"}</td><td><button type="button" className="text-button" onClick={async (event) => { event.stopPropagation(); try { const data = await api<{ variant: AdminVariant }>(`/api/v1/admin/variants/${variant.id}/copy`, { method: "POST" }); setDraft(data.variant); setSelectedId(data.variant.id); load(); } catch (error) { onError((error as Error).message); } }}>Копировать</button></td></tr>)}</tbody></table></div>
-    {selectedId && <div className="variant-detail"><div className="variant-summary"><strong>SKU {draft.sku}</strong><span>Заполнение схемы: {completeness}%</span></div><div className="admin-form-grid">
+    {selectedId && <div className="variant-detail"><div className="variant-summary"><strong>SKU {draft.sku}</strong><span>Заполнение схемы: {completeness}%</span></div>{draft.active && missingRequired.length > 0 && <p className="admin-inline-error" role="alert">Для активного SKU заполните: {missingRequired.map((item) => item.name).join(", ")}.</p>}<div className="admin-form-grid">
       <label className="wide">Название варианта<input value={draft.label} onChange={(event) => setDraft({ ...draft, label: event.target.value })} placeholder="Ø12 / H35" /></label>
       <label>Цена, ₽<input type="number" min="0" value={draft.price} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} /></label>
       <label>Остаток<input type="number" min="0" value={draft.stock} onChange={(event) => setDraft({ ...draft, stock: Number(event.target.value) })} /></label>
@@ -206,6 +221,6 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
       {technicalAttributes.length > 0 && <><h4 className="wide">Упаковка и логистика</h4>{technicalAttributes.map((attribute) => <DynamicValue key={attribute.id} attribute={attribute} value={draft.attributes[attribute.code]} onChange={(value) => setDraft({ ...draft, attributes: { ...draft.attributes, [attribute.code]: value as never } })} />)}</>}
       <h4 className="wide">Интеграции SKU</h4><div className="wide external-mappings">{draft.externalIds.map((mapping, index) => <div className="external-mapping-row" key={`${index}-${mapping.provider}`}><input value={mapping.provider} placeholder="saby / wildberries / ozon" onChange={(event) => setDraft({ ...draft, externalIds: draft.externalIds.map((item, itemIndex) => itemIndex === index ? { ...item, provider: event.target.value.toLowerCase() } : item) })} /><input value={mapping.type} placeholder="id / nmId / offerId" onChange={(event) => setDraft({ ...draft, externalIds: draft.externalIds.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value } : item) })} /><input value={mapping.externalId} placeholder="Значение" onChange={(event) => setDraft({ ...draft, externalIds: draft.externalIds.map((item, itemIndex) => itemIndex === index ? { ...item, externalId: event.target.value } : item) })} /><button type="button" onClick={() => setDraft({ ...draft, externalIds: draft.externalIds.filter((_, itemIndex) => itemIndex !== index) })}>Удалить</button></div>)}<button type="button" className="admin-action" onClick={() => setDraft({ ...draft, externalIds: [...draft.externalIds, { provider: "saby", type: "id", externalId: "" }] })}>Добавить связь</button></div>
       <h4 className="wide">Фото SKU</h4>{selectedId === "new" ? <p className="wide admin-hint">Сначала сохраните SKU — после этого можно загрузить его фотографии.</p> : <VariantMediaManager variantId={draft.id} sku={draft.sku} onChanged={() => { void load(); }} onError={onError} />}
-    </div><div className="dialog-actions"><button type="button" className="danger" disabled={selectedId === "new"} onClick={async () => { if (selectedId === "new") return; try { await api(`/api/v1/admin/variants/${draft.id}/archive`, { method: "POST" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Архивировать</button><button type="button" className="danger" disabled={selectedId === "new"} onClick={async () => { if (selectedId === "new" || !window.confirm(`Удалить SKU ${draft.sku}? Это возможно только если он никогда не продавался.`)) return; try { await api(`/api/v1/admin/variants/${draft.id}`, { method: "DELETE" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Удалить</button><button type="button" className="primary" onClick={save}>Сохранить SKU</button></div></div>}
+    </div><div className="dialog-actions"><button type="button" className="danger" disabled={selectedId === "new"} onClick={async () => { if (selectedId === "new") return; try { await api(`/api/v1/admin/variants/${draft.id}/archive`, { method: "POST" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Архивировать</button><button type="button" className="danger" disabled={selectedId === "new"} onClick={async () => { if (selectedId === "new" || !window.confirm(`Удалить SKU ${draft.sku}? Это возможно только если он никогда не продавался.`)) return; try { await api(`/api/v1/admin/variants/${draft.id}`, { method: "DELETE" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Удалить</button><button type="button" className="primary" disabled={draft.active && missingRequired.length > 0} onClick={save}>Сохранить SKU</button></div></div>}
   </section>;
 }

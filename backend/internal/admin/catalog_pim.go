@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
+
+var attributeCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,63}$`)
 
 type AttributeOption struct {
 	ID        int64  `json:"id"`
@@ -134,6 +137,9 @@ func validateAttributeDefinition(input AttributeDefinitionInput) error {
 	if input.Code == "" || input.Name == "" {
 		return fmt.Errorf("%w: code и название атрибута обязательны", ErrInvalidInput)
 	}
+	if !attributeCodePattern.MatchString(input.Code) {
+		return fmt.Errorf("%w: code должен начинаться с латинской буквы и содержать только a-z, 0-9, _ или -", ErrInvalidInput)
+	}
 	if input.DataType != "text" && input.DataType != "string" && input.DataType != "number" && input.DataType != "boolean" && input.DataType != "enum" && input.DataType != "multi_enum" {
 		return fmt.Errorf("%w: неизвестный тип атрибута", ErrInvalidInput)
 	}
@@ -142,6 +148,9 @@ func validateAttributeDefinition(input AttributeDefinitionInput) error {
 	}
 	if input.Scope != "product" && input.Scope != "variant" {
 		return fmt.Errorf("%w: неизвестный scope атрибута", ErrInvalidInput)
+	}
+	if (input.DataType == "enum" || input.DataType == "multi_enum") && len(input.Options) == 0 {
+		return fmt.Errorf("%w: для enum нужен хотя бы один вариант", ErrInvalidInput)
 	}
 	return nil
 }
@@ -243,6 +252,14 @@ func (repository *PostgresRepository) EffectiveCategoryAttributes(ctx context.Co
 
 func (repository *PostgresRepository) SetCategoryAttribute(ctx context.Context, actor Actor, categoryID int64, input CategoryAttributeInput) error {
 	if err:=ownerOnly(actor);err!=nil{return err};if categoryID<=0||input.AttributeID<=0{return ErrInvalidInput}
+	if input.Excluded && (input.Required || input.Filterable || input.ShowOnPDP || input.KeyCharacteristic || input.Badge || input.ShowInCharacteristics) {
+		return fmt.Errorf("%w: исключённый атрибут не может одновременно отображаться или быть обязательным", ErrInvalidInput)
+	}
+	if input.Filterable || input.ShowOnPDP || input.KeyCharacteristic || input.Badge || input.ShowInCharacteristics {
+		var audience string
+		if err := repository.pool.QueryRow(ctx, `SELECT audience FROM attribute_definitions WHERE id=$1 AND is_active`, input.AttributeID).Scan(&audience); err != nil { return err }
+		if audience != "customer" { return fmt.Errorf("%w: технический атрибут нельзя выводить на витрину", ErrInvalidInput) }
+	}
 	_,err:=repository.pool.Exec(ctx,`INSERT INTO category_attributes(category_id,attribute_id,is_required,is_filterable,show_on_pdp,is_badge,sort_order,show_in_summary,summary_position,show_in_characteristics,is_excluded) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(category_id,attribute_id) DO UPDATE SET is_required=EXCLUDED.is_required,is_filterable=EXCLUDED.is_filterable,show_on_pdp=EXCLUDED.show_on_pdp,is_badge=EXCLUDED.is_badge,sort_order=EXCLUDED.sort_order,show_in_summary=EXCLUDED.show_in_summary,summary_position=EXCLUDED.summary_position,show_in_characteristics=EXCLUDED.show_in_characteristics,is_excluded=EXCLUDED.is_excluded`,categoryID,input.AttributeID,input.Required,input.Filterable,input.ShowOnPDP,input.Badge,input.SortOrder,input.KeyCharacteristic,input.SummaryPosition,input.ShowInCharacteristics,input.Excluded)
 	return err
 }
@@ -276,15 +293,18 @@ func saveVariantPIMValues(ctx context.Context, tx pgx.Tx, productID,variantID in
 		if string(raw)=="null"||string(raw)==`""`||string(raw)=="[]"{if _,err:=tx.Exec(ctx,`DELETE FROM variant_attribute_values v USING attribute_definitions d WHERE v.attribute_id=d.id AND v.variant_id=$1 AND d.code=$2`,variantID,code);err!=nil{return err};continue}
 		tag,err:=tx.Exec(ctx,`
 			WITH RECURSIVE ancestors AS (
-				SELECT category_id id FROM products WHERE id=$1
-				UNION ALL SELECT c.parent_id FROM categories c JOIN ancestors a ON c.id=a.id WHERE c.parent_id IS NOT NULL
+				SELECT c.id,c.parent_id,0 depth FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=$1
+				UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+			), candidates AS (
+				SELECT d.id,d.data_type,d.value_scope,ca.is_excluded,a.depth
+				FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+				JOIN attribute_definitions d ON d.id=ca.attribute_id
+				WHERE d.code=$3 AND d.is_active
+				UNION ALL
+				SELECT d.id,d.data_type,d.value_scope,FALSE,1000000 FROM attribute_definitions d
+				WHERE d.code=$3 AND d.is_active AND d.is_global
 			), effective AS (
-				SELECT DISTINCT ON(d.id) d.id,d.data_type,d.value_scope,ca.is_excluded,a.id category_id
-				FROM attribute_definitions d
-				LEFT JOIN category_attributes ca ON ca.attribute_id=d.id
-				LEFT JOIN ancestors a ON a.id=ca.category_id
-				WHERE d.code=$3 AND d.is_active AND (d.is_global OR a.id IS NOT NULL)
-				ORDER BY d.id,CASE WHEN a.id=(SELECT category_id FROM products WHERE id=$1) THEN 0 ELSE 1 END
+				SELECT DISTINCT ON(id) id,data_type,value_scope,is_excluded FROM candidates ORDER BY id,depth
 			)
 			INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source,updated_at)
 			SELECT $2,e.id,$4::jsonb,'local',CURRENT_TIMESTAMP FROM effective e
@@ -301,6 +321,30 @@ func saveVariantPIMValues(ctx context.Context, tx pgx.Tx, productID,variantID in
 	return nil
 }
 
+func validateRequiredVariantAttributes(ctx context.Context, tx pgx.Tx, productID, variantID int64) error {
+	var missing string
+	err := tx.QueryRow(ctx, `
+		WITH RECURSIVE ancestors AS (
+			SELECT c.id,c.parent_id,0 depth FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=$1
+			UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+		), candidates AS (
+			SELECT d.id,d.code,ca.is_required,ca.is_excluded,a.depth
+			FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+			JOIN attribute_definitions d ON d.id=ca.attribute_id
+			WHERE d.is_active AND d.value_scope='variant'
+		), effective AS (
+			SELECT DISTINCT ON(id) id,code,is_required,is_excluded FROM candidates ORDER BY id,depth
+		)
+		SELECT e.code FROM effective e
+		LEFT JOIN variant_attribute_values v ON v.variant_id=$2 AND v.attribute_id=e.id
+		WHERE e.is_required AND NOT e.is_excluded AND v.attribute_id IS NULL
+		ORDER BY e.code LIMIT 1
+	`, productID, variantID).Scan(&missing)
+	if errors.Is(err, pgx.ErrNoRows) { return nil }
+	if err != nil { return err }
+	return fmt.Errorf("%w: обязательный атрибут SKU %s не заполнен", ErrInvalidInput, missing)
+}
+
 func replaceVariantExternalIDs(ctx context.Context,tx pgx.Tx,productID,variantID int64,values []ExternalID) error {
 	if _,err:=tx.Exec(ctx,`DELETE FROM product_external_ids WHERE variant_id=$1`,variantID);err!=nil{return err}
 	for _,item:=range values{provider:=strings.ToLower(strings.TrimSpace(item.Provider));kind:=strings.ToLower(strings.TrimSpace(item.Type));external:=strings.TrimSpace(item.ExternalID);if provider==""||kind==""||external==""{continue};if provider=="ficusin"{return fmt.Errorf("%w: собственный SKU нельзя хранить как external id",ErrInvalidInput)};if _,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,id_type,external_id) DO UPDATE SET product_id=EXCLUDED.product_id,variant_id=EXCLUDED.variant_id,updated_at=CURRENT_TIMESTAMP`,productID,variantID,provider,kind,external);err!=nil{return err}}
@@ -313,11 +357,11 @@ func setVariantStock(ctx context.Context,tx pgx.Tx,variantID int64,stock int) er
 
 func (repository *PostgresRepository) CreateProductVariant(ctx context.Context, actor Actor, productID int64, input VariantInput) (AdminVariant,error) {
 	if !Can(actor.Role,PermissionProductsEdit){return AdminVariant{},ErrForbidden};if err:=validateVariantInput(input);err!=nil{return AdminVariant{},err};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}()
-	var id int64;err=tx.QueryRow(ctx,`INSERT INTO product_variants(product_id,label,base_price_minor,wholesale_min_qty,is_active,updated_at) SELECT $1,BTRIM($2),$3,$4,$5,CURRENT_TIMESTAMP WHERE EXISTS(SELECT 1 FROM products WHERE id=$1) RETURNING id`,productID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active)).Scan(&id);if err!=nil{return AdminVariant{},err};if err:=setVariantStock(ctx,tx,id,input.Stock);err!=nil{return AdminVariant{},err};if err:=saveVariantPIMValues(ctx,tx,productID,id,input.Attributes);err!=nil{return AdminVariant{},err};if err:=replaceVariantExternalIDs(ctx,tx,productID,id,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==id{return item,nil}};return AdminVariant{},pgx.ErrNoRows
+	var id int64;err=tx.QueryRow(ctx,`INSERT INTO product_variants(product_id,label,base_price_minor,wholesale_min_qty,is_active,updated_at) SELECT $1,BTRIM($2),$3,$4,$5,CURRENT_TIMESTAMP WHERE EXISTS(SELECT 1 FROM products WHERE id=$1) RETURNING id`,productID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active)).Scan(&id);if err!=nil{return AdminVariant{},err};if err:=setVariantStock(ctx,tx,id,input.Stock);err!=nil{return AdminVariant{},err};if err:=saveVariantPIMValues(ctx,tx,productID,id,input.Attributes);err!=nil{return AdminVariant{},err};if input.Active { if err:=validateRequiredVariantAttributes(ctx,tx,productID,id);err!=nil{return AdminVariant{},err} };if err:=replaceVariantExternalIDs(ctx,tx,productID,id,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==id{return item,nil}};return AdminVariant{},pgx.ErrNoRows
 }
 
 func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, actor Actor, variantID int64, input VariantInput) (AdminVariant,error) {
-	if !Can(actor.Role,PermissionProductsEdit){return AdminVariant{},ErrForbidden};if err:=validateVariantInput(input);err!=nil{return AdminVariant{},err};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}();var productID int64;err=tx.QueryRow(ctx,`UPDATE product_variants SET label=BTRIM($2),base_price_minor=$3,wholesale_min_qty=$4,is_active=$5,archived_at=CASE WHEN $5=1 THEN NULL ELSE archived_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING product_id`,variantID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active)).Scan(&productID);if err!=nil{return AdminVariant{},err};if err:=setVariantStock(ctx,tx,variantID,input.Stock);err!=nil{return AdminVariant{},err};if err:=saveVariantPIMValues(ctx,tx,productID,variantID,input.Attributes);err!=nil{return AdminVariant{},err};if err:=replaceVariantExternalIDs(ctx,tx,productID,variantID,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==variantID{return item,nil}};return AdminVariant{},pgx.ErrNoRows
+	if !Can(actor.Role,PermissionProductsEdit){return AdminVariant{},ErrForbidden};if err:=validateVariantInput(input);err!=nil{return AdminVariant{},err};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}();var productID int64;err=tx.QueryRow(ctx,`UPDATE product_variants SET label=BTRIM($2),base_price_minor=$3,wholesale_min_qty=$4,is_active=$5,archived_at=CASE WHEN $5=1 THEN NULL ELSE archived_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING product_id`,variantID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active)).Scan(&productID);if err!=nil{return AdminVariant{},err};if err:=setVariantStock(ctx,tx,variantID,input.Stock);err!=nil{return AdminVariant{},err};if err:=saveVariantPIMValues(ctx,tx,productID,variantID,input.Attributes);err!=nil{return AdminVariant{},err};if input.Active { if err:=validateRequiredVariantAttributes(ctx,tx,productID,variantID);err!=nil{return AdminVariant{},err} };if err:=replaceVariantExternalIDs(ctx,tx,productID,variantID,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==variantID{return item,nil}};return AdminVariant{},pgx.ErrNoRows
 }
 
 func (repository *PostgresRepository) CopyProductVariant(ctx context.Context, actor Actor, variantID int64) (AdminVariant,error) {
@@ -328,7 +372,8 @@ func (repository *PostgresRepository) ArchiveProductVariant(ctx context.Context,
 func (repository *PostgresRepository) DeleteProductVariant(ctx context.Context, actor Actor, variantID int64) error { if !Can(actor.Role,PermissionProductsEdit){return ErrForbidden};var sold bool;if err:=repository.pool.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)`,variantID).Scan(&sold);err!=nil{return err};if sold{return fmt.Errorf("%w: проданный SKU можно только архивировать",ErrInvalidInput)};tag,err:=repository.pool.Exec(ctx,`DELETE FROM product_variants WHERE id=$1`,variantID);if err!=nil{return err};if tag.RowsAffected()!=1{return pgx.ErrNoRows};return nil }
 
 func (repository *PostgresRepository) ListCatalogFilters(ctx context.Context) ([]CatalogFilter,error) { rows,err:=repository.pool.Query(ctx,`SELECT f.id,f.code,f.title,f.attribute_id,d.code,f.category_id,f.display_mode,f.sort_order,f.is_active FROM catalog_filters f JOIN attribute_definitions d ON d.id=f.attribute_id ORDER BY f.sort_order,f.id`);if err!=nil{return nil,err};defer rows.Close();items:=[]CatalogFilter{};for rows.Next(){var item CatalogFilter;if err:=rows.Scan(&item.ID,&item.Code,&item.Title,&item.AttributeID,&item.AttributeCode,&item.CategoryID,&item.DisplayMode,&item.SortOrder,&item.Active);err!=nil{return nil,err};items=append(items,item)};return items,rows.Err() }
-func validateFilter(input CatalogFilterInput) error { if strings.TrimSpace(input.Code)==""||strings.TrimSpace(input.Title)==""||input.AttributeID<=0{return ErrInvalidInput};if input.DisplayMode!="select"&&input.DisplayMode!="chips"&&input.DisplayMode!="range"{return ErrInvalidInput};return nil }
-func (repository *PostgresRepository) CreateCatalogFilter(ctx context.Context,actor Actor,input CatalogFilterInput)(CatalogFilter,error){if err:=ownerOnly(actor);err!=nil{return CatalogFilter{},err};if err:=validateFilter(input);err!=nil{return CatalogFilter{},err};var id int64;err:=repository.pool.QueryRow(ctx,`INSERT INTO catalog_filters(code,title,attribute_id,category_id,display_mode,sort_order,is_active) VALUES(BTRIM($1),BTRIM($2),$3,$4,$5,$6,$7) RETURNING id`,input.Code,input.Title,input.AttributeID,input.CategoryID,input.DisplayMode,input.SortOrder,input.Active).Scan(&id);if err!=nil{return CatalogFilter{},err};items,err:=repository.ListCatalogFilters(ctx);if err!=nil{return CatalogFilter{},err};for _,item:=range items{if item.ID==id{return item,nil}};return CatalogFilter{},pgx.ErrNoRows}
-func (repository *PostgresRepository) UpdateCatalogFilter(ctx context.Context,actor Actor,id int64,input CatalogFilterInput)(CatalogFilter,error){if err:=ownerOnly(actor);err!=nil{return CatalogFilter{},err};if err:=validateFilter(input);err!=nil{return CatalogFilter{},err};tag,err:=repository.pool.Exec(ctx,`UPDATE catalog_filters SET code=BTRIM($2),title=BTRIM($3),attribute_id=$4,category_id=$5,display_mode=$6,sort_order=$7,is_active=$8,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,input.Code,input.Title,input.AttributeID,input.CategoryID,input.DisplayMode,input.SortOrder,input.Active);if err!=nil{return CatalogFilter{},err};if tag.RowsAffected()!=1{return CatalogFilter{},pgx.ErrNoRows};items,err:=repository.ListCatalogFilters(ctx);if err!=nil{return CatalogFilter{},err};for _,item:=range items{if item.ID==id{return item,nil}};return CatalogFilter{},pgx.ErrNoRows}
+func validateFilter(input CatalogFilterInput) error { if !attributeCodePattern.MatchString(strings.TrimSpace(input.Code))||strings.TrimSpace(input.Title)==""||input.AttributeID<=0{return fmt.Errorf("%w: заполните название и корректный латинский code",ErrInvalidInput)};if input.DisplayMode!="select"&&input.DisplayMode!="chips"&&input.DisplayMode!="range"{return ErrInvalidInput};return nil }
+func validateFilterAttribute(ctx context.Context, pool interface{ QueryRow(context.Context,string,...any) pgx.Row }, input CatalogFilterInput) error { var dataType,audience string;var active bool;if err:=pool.QueryRow(ctx,`SELECT data_type,audience,is_active FROM attribute_definitions WHERE id=$1`,input.AttributeID).Scan(&dataType,&audience,&active);err!=nil{return err};if !active||audience!="customer"{return fmt.Errorf("%w: фильтр доступен только для активного клиентского атрибута",ErrInvalidInput)};if input.DisplayMode=="range"&&dataType!="number"{return fmt.Errorf("%w: диапазон доступен только для числового атрибута",ErrInvalidInput)};if input.DisplayMode!="range"&&dataType=="number"{return fmt.Errorf("%w: числовой атрибут должен использовать диапазон",ErrInvalidInput)};return nil}
+func (repository *PostgresRepository) CreateCatalogFilter(ctx context.Context,actor Actor,input CatalogFilterInput)(CatalogFilter,error){if err:=ownerOnly(actor);err!=nil{return CatalogFilter{},err};if err:=validateFilter(input);err!=nil{return CatalogFilter{},err};if err:=validateFilterAttribute(ctx,repository.pool,input);err!=nil{return CatalogFilter{},err};var id int64;err:=repository.pool.QueryRow(ctx,`INSERT INTO catalog_filters(code,title,attribute_id,category_id,display_mode,sort_order,is_active) VALUES(BTRIM($1),BTRIM($2),$3,$4,$5,$6,$7) RETURNING id`,input.Code,input.Title,input.AttributeID,input.CategoryID,input.DisplayMode,input.SortOrder,input.Active).Scan(&id);if err!=nil{return CatalogFilter{},err};items,err:=repository.ListCatalogFilters(ctx);if err!=nil{return CatalogFilter{},err};for _,item:=range items{if item.ID==id{return item,nil}};return CatalogFilter{},pgx.ErrNoRows}
+func (repository *PostgresRepository) UpdateCatalogFilter(ctx context.Context,actor Actor,id int64,input CatalogFilterInput)(CatalogFilter,error){if err:=ownerOnly(actor);err!=nil{return CatalogFilter{},err};if err:=validateFilter(input);err!=nil{return CatalogFilter{},err};if err:=validateFilterAttribute(ctx,repository.pool,input);err!=nil{return CatalogFilter{},err};tag,err:=repository.pool.Exec(ctx,`UPDATE catalog_filters SET code=BTRIM($2),title=BTRIM($3),attribute_id=$4,category_id=$5,display_mode=$6,sort_order=$7,is_active=$8,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,input.Code,input.Title,input.AttributeID,input.CategoryID,input.DisplayMode,input.SortOrder,input.Active);if err!=nil{return CatalogFilter{},err};if tag.RowsAffected()!=1{return CatalogFilter{},pgx.ErrNoRows};items,err:=repository.ListCatalogFilters(ctx);if err!=nil{return CatalogFilter{},err};for _,item:=range items{if item.ID==id{return item,nil}};return CatalogFilter{},pgx.ErrNoRows}
 func (repository *PostgresRepository) DeleteCatalogFilter(ctx context.Context,actor Actor,id int64)error{if err:=ownerOnly(actor);err!=nil{return err};tag,err:=repository.pool.Exec(ctx,`DELETE FROM catalog_filters WHERE id=$1`,id);if err!=nil{return err};if tag.RowsAffected()!=1{return pgx.ErrNoRows};return nil}

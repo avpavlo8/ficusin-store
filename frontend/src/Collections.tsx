@@ -21,6 +21,7 @@ type CollectionDefinition = {
   slug: string;
   title: string;
   note: string;
+  coverUrl?: string;
   count: number;
 };
 
@@ -115,7 +116,7 @@ export function CollectionStrip<T extends Product>({
         const firstProductImage = products.find((product) => preset.match(product))?.image;
         return {
           preset,
-          image: collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp",
+          image: collection.coverUrl || collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp",
           count: collection.count,
           note: collection.note,
         };
