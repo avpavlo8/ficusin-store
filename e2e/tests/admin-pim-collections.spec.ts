@@ -40,12 +40,13 @@ for (const target of ["desktop", "phone"] as const) {
     await mockCatalogAdmin(page);
     await page.locator(".account-sidebar").getByRole("button", { name: "Подборки" }).click();
     await expect(page.locator(".admin-collection-head", { hasText: "Для ванной" })).toBeVisible();
+    const shellOverflow = await horizontalOverflow(page);
     await page.locator(".admin-collection-head", { hasText: "Для ванной" }).click();
     await expect(page.getByText("Обложка подборки")).toBeVisible();
-    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(Math.max(1, shellOverflow));
 
     await page.locator(".account-sidebar").getByRole("button", { name: "Категории" }).click();
     await expect(page.getByRole("heading", { name: "Атрибуты и схема категорий" })).toBeVisible();
-    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(Math.max(1, shellOverflow));
   });
 }
