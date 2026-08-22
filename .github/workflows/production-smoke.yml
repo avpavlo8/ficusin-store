@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: production-smoke
+  # A PR smoke must never cancel the real main production verification.
+  group: production-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
