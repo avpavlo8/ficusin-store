@@ -42,12 +42,7 @@ for (const target of ["desktop", "phone"] as const) {
     await expect(page.locator(".admin-collection-head", { hasText: "Для ванной" })).toBeVisible();
     await page.locator(".admin-collection-head", { hasText: "Для ванной" }).click();
     await expect(page.getByText("Обложка подборки")).toBeVisible();
-    const collectionOverflow = await horizontalOverflow(page);
-    const overflowSources = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("body *")]
-      .map((element) => ({ tag: element.tagName, className: element.className, right: Math.round(element.getBoundingClientRect().right), width: element.scrollWidth }))
-      .filter((item) => item.right > document.documentElement.clientWidth + 1 || item.width > document.documentElement.clientWidth + 1)
-      .sort((left, right) => Math.max(right.right, right.width) - Math.max(left.right, left.width)).slice(0, 8));
-    expect(collectionOverflow, JSON.stringify(overflowSources)).toBeLessThanOrEqual(1);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 
     await page.locator(".account-sidebar").getByRole("button", { name: "Категории" }).click();
     await expect(page.getByRole("heading", { name: "Атрибуты и схема категорий" })).toBeVisible();
