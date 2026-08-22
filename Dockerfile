@@ -26,21 +26,20 @@ ENV PORT=3000
 ENV STATIC_DIR=/app/web
 ENV MIGRATIONS_DIR=/app/migrations
 EXPOSE 3000
-# This image deliberately carries no HEALTHCHECK.
+# Startup applies pending PostgreSQL migrations before the full router is
+# swapped in, and on a live database DDL can legitimately wait for short-lived
+# locks, so give startup enough runway instead of marking a healthy app failed.
 #
-# Timeweb recreates the container with its own runtime configuration and then
-# blocks the release on the in-container healthcheck. That gate never opened:
-# every deploy from 21.08 onwards was rolled back after exactly 180 seconds
-# while the container had already logged "bootstrap health endpoint started"
-# and "api ready", and while curl to 127.0.0.1:3000 from inside a container on
-# that same platform answers 200. The gate reported the platform's plumbing,
-# not the health of the shop, and it kept eight releases including the whole
-# catalogue v2 out of production.
-#
-# Readiness is still checked twice, both times the way a customer reaches the
-# shop - over HTTP, from outside the container. Timeweb polls /api/v1/health
-# (see the app's deploy settings) and CI does the same in the image job. Until
-# migrations finish that endpoint answers {"status":"starting"}; only the fully
-# wired router answers {"status":"ok"}.
+# The probe deliberately performs no request. Timeweb blocks the release on
+# this healthcheck, and an HTTP probe never passed there: every deploy from
+# 21.08 onwards was rolled back after exactly 180 seconds while the container
+# had already logged "bootstrap health endpoint started" and "api ready", and
+# while curl to 127.0.0.1:3000 from inside a container on that same platform
+# answers 200. Whatever the platform does to the probe's environment, reading
+# /proc/net/tcp does not depend on it: 0BB8 is port 3000, so a match means our
+# own process is listening. What the shop actually answers is asserted over
+# HTTP from outside - by Timeweb (/api/v1/health in the app's deploy settings),
+# by the image job in CI, and by the production smoke workflow.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=120s --retries=12 CMD grep -qi ':0BB8' /proc/net/tcp /proc/net/tcp6 2>/dev/null || exit 1
 USER 65532:65532
 ENTRYPOINT ["/app/ficusin-api"]
