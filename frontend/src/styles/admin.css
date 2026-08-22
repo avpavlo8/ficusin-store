@@ -292,7 +292,7 @@
 .collection-editor-v2 .admin-form-grid, .collection-rule-row, .collection-cover-editor { grid-template-columns: minmax(0, 1fr); }
 .collection-editor-v2 .admin-form-grid > .wide { grid-column: 1 / -1; }
 .collection-editor-v2 input, .collection-editor-v2 select, .collection-editor-v2 textarea { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
-.collection-editor-v2 .admin-upload-button input { width: 1px !important; max-width: 1px; padding: 0; border: 0; }
+.collection-editor-v2 .admin-upload-button input { display: none; }
 .pim-filter-toolbar { flex-wrap: wrap; }
 .pim-filter-toolbar > input, .pim-filter-toolbar > select { min-width: 150px; flex: 1 1 180px; }
 .admin-inline-error { margin: 0 0 14px; padding: 10px 12px; border: 1px solid #dfad99; border-radius: 10px; background: #fff3ed; color: #8b3f25; font-size: 13px; }
