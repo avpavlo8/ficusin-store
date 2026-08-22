@@ -1,0 +1,65 @@
+name: Timeweb API diagnostics
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/timeweb-api-diagnostics.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify token and inspect App Platform
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${TIMEWEB_CLOUD_TOKEN}" ]]; then
+            echo "TIMEWEB_CLOUD_TOKEN is unavailable." >&2
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          status="$(curl -sS -o "${response_file}" -w '%{http_code}' \
+            -H "Authorization: Bearer ${TIMEWEB_CLOUD_TOKEN}" \
+            -H 'Accept: application/json' \
+            https://api.timeweb.cloud/api/v1/apps)"
+
+          echo "apps_http_status=${status}"
+          if [[ "${status}" != "200" ]]; then
+            python3 - "${response_file}" <<'PY'
+import json,sys
+try:
+    data=json.load(open(sys.argv[1]))
+    print({"message": data.get("message"), "error": data.get("error")})
+except Exception:
+    print("Timeweb returned a non-JSON error.")
+PY
+            exit 1
+          fi
+
+          python3 - "${response_file}" <<'PY'
+import json,sys
+data=json.load(open(sys.argv[1]))
+apps=data.get("apps", data if isinstance(data,list) else [])
+print("apps_count=", len(apps))
+for app in apps:
+    repo=app.get("repository") or app.get("repo") or app.get("provider") or {}
+    if not isinstance(repo,dict):
+        repo={"value":str(repo)}
+    safe={
+        "id": app.get("id"),
+        "name": app.get("name"),
+        "status": app.get("status"),
+        "type": app.get("type"),
+        "branch": app.get("branch") or repo.get("branch"),
+        "repository": repo.get("full_name") or repo.get("name") or repo.get("url") or repo.get("value"),
+        "auto_deploy": app.get("auto_deploy"),
+    }
+    print(json.dumps(safe,ensure_ascii=False))
+PY
