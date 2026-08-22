@@ -287,8 +287,9 @@
 /* PIM and collection editors must remain usable inside the narrow admin canvas. */
 .admin-pim, .pim-schema, .pim-filters, .collection-editor-v2 { min-width: 0; }
 .admin-collections { width: 100%; max-width: none; }
+.admin-collections, .admin-collections * { box-sizing: border-box; }
 .admin-collection, .admin-collection-body, .admin-collection-head, .admin-form-grid > *, .collection-cover-editor > * { min-width: 0; }
-.collection-editor-v2 .admin-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.collection-editor-v2 .admin-form-grid, .collection-rule-row, .collection-cover-editor { grid-template-columns: minmax(0, 1fr); }
 .collection-editor-v2 .admin-form-grid > .wide { grid-column: 1 / -1; }
 .collection-editor-v2 input, .collection-editor-v2 select, .collection-editor-v2 textarea { max-width: 100%; box-sizing: border-box; }
 .pim-filter-toolbar { flex-wrap: wrap; }
