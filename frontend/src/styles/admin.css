@@ -286,11 +286,17 @@
 
 /* PIM and collection editors must remain usable inside the narrow admin canvas. */
 .admin-pim, .pim-schema, .pim-filters, .collection-editor-v2 { min-width: 0; }
+.admin-collections { width: 100%; max-width: none; }
+.admin-collection, .admin-collection-body, .admin-collection-head, .admin-form-grid > *, .collection-cover-editor > * { min-width: 0; }
+.collection-editor-v2 .admin-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.collection-editor-v2 .admin-form-grid > .wide { grid-column: 1 / -1; }
+.collection-editor-v2 input, .collection-editor-v2 select, .collection-editor-v2 textarea { max-width: 100%; box-sizing: border-box; }
 .pim-filter-toolbar { flex-wrap: wrap; }
 .pim-filter-toolbar > input, .pim-filter-toolbar > select { min-width: 150px; flex: 1 1 180px; }
 .admin-inline-error { margin: 0 0 14px; padding: 10px 12px; border: 1px solid #dfad99; border-radius: 10px; background: #fff3ed; color: #8b3f25; font-size: 13px; }
 .pim-flags input:disabled + * { opacity: .55; }
 @media (max-width: 760px) {
+  .collection-editor-v2 .admin-form-grid { grid-template-columns: minmax(0, 1fr); }
   .pim-definitions, .pim-schema, .pim-filters, .admin-pim-editor, .variant-detail { padding: 14px; border-radius: 14px; }
   .pim-add, .pim-filter-toolbar, .variant-summary { align-items: stretch; flex-direction: column; }
   .pim-filter-toolbar > input, .pim-filter-toolbar > select { width: 100%; min-width: 0; flex-basis: auto; }
