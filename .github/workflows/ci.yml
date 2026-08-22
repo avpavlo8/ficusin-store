@@ -119,6 +119,21 @@ jobs:
           SQL
             fi
 
+            if [[ "$(basename "$migration")" == "060_backfill_legacy_product_attributes.sql" ]]; then
+              echo 'Seeding untouched legacy PIM values omitted by migration 044.'
+              psql -h 127.0.0.1 -U postgres -d ficusin_ci -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO products(name,slug,status,placement,height_class)
+          VALUES
+            ('CI legacy bathroom compact','ci-legacy-bathroom','published','bathroom','low'),
+            ('CI legacy office tall','ci-legacy-office','published','office','high');
+          DELETE FROM product_attribute_values value
+          USING products product, attribute_definitions definition
+          WHERE value.product_id=product.id AND value.attribute_id=definition.id
+            AND product.slug IN ('ci-legacy-bathroom','ci-legacy-office')
+            AND definition.code IN ('placement','height_class');
+          SQL
+            fi
+
             echo "::group::${migration}"
             psql \
               -h 127.0.0.1 \
@@ -141,6 +156,13 @@ jobs:
             "SELECT COUNT(*) FROM products WHERE short_description='Архивная карточка для сохранения истории заказа'")"
           if [[ "$archive_products" != "0" ]]; then
             echo "Migration must not fabricate catalogue products for history; found ${archive_products}." >&2
+            exit 1
+          fi
+
+          recovered_collections="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM collections c WHERE c.slug IN ('bathroom','office','compact','tall') AND EXISTS (SELECT 1 FROM products p WHERE p.slug IN ('ci-legacy-bathroom','ci-legacy-office') AND collection_rules_match_product(p.id,c.rules))")"
+          if [[ "$recovered_collections" != "4" ]]; then
+            echo "Expected all four legacy collection rules to match recovered PIM values, got ${recovered_collections}." >&2
             exit 1
           fi
 

@@ -28,3 +28,6 @@ Reviewed attribute definitions, category inheritance, PRODUCT/SKU values, filter
 ## Honest critique
 
 The model is now internally consistent for normal editorial work, but it is not a full enterprise PIM. Structural changes to a populated definition are not backed by an automated conversion wizard; owners need a migration. Collection preview is save-based, so it is accurate but not live while typing. Filter editing remains deliberately minimal (create/delete rather than a dense spreadsheet). These are conscious limitations, not hidden correctness gaps, and should be the next investments only if catalogue volume makes them painful.
+# Дополнение: восстановление исторических значений
+
+Migration 060 закрывает обнаруженный на production разрыв совместимости: исходная миграция 044 не перенесла `placement` в `product_attribute_values`, а прежние подборки высоты использовали `height_class`, которого не было в справочнике PIM. Значения восстанавливаются только при отсутствии уже отредактированного PIM-значения; существующая ручная работа не перезаписывается.
