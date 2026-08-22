@@ -364,7 +364,7 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 
 func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Collection,error) {
 	rows,err:=repository.pool.Query(ctx,`
-		SELECT collection.slug,collection.title,collection.note,COUNT(product.id)::INTEGER
+		SELECT collection.slug,collection.title,collection.note,collection.cover_url,COUNT(product.id)::INTEGER
 		FROM collections collection
 		JOIN products product ON product.status='published' AND ((collection.mode='manual' AND EXISTS(SELECT 1 FROM collection_products member WHERE member.collection_id=collection.id AND member.product_id=product.id))
 			OR (collection.mode='dynamic' AND collection_rules_match_product(product.id,collection.rules)))
@@ -372,6 +372,6 @@ func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Co
 		ORDER BY collection.sort_order,collection.id
 	`)
 	if err!=nil{return nil,fmt.Errorf("query collections: %w",err)};defer rows.Close();collections:=make([]Collection,0)
-	for rows.Next(){var item Collection;if err:=rows.Scan(&item.Slug,&item.Title,&item.Note,&item.Count);err!=nil{return nil,fmt.Errorf("scan collection: %w",err)};collections=append(collections,item)}
+	for rows.Next(){var item Collection;if err:=rows.Scan(&item.Slug,&item.Title,&item.Note,&item.CoverURL,&item.Count);err!=nil{return nil,fmt.Errorf("scan collection: %w",err)};collections=append(collections,item)}
 	return collections,rows.Err()
 }

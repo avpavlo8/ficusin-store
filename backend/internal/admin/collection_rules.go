@@ -21,6 +21,7 @@ type CollectionDefinition struct {
 	Slug      string           `json:"slug"`
 	Title     string           `json:"title"`
 	Note      string           `json:"note"`
+	CoverURL  string           `json:"coverUrl"`
 	SortOrder int              `json:"sortOrder"`
 	Active    bool             `json:"active"`
 	Mode      string           `json:"mode"`
@@ -32,6 +33,7 @@ type CollectionDefinitionInput struct {
 	Slug      string           `json:"slug"`
 	Title     string           `json:"title"`
 	Note      string           `json:"note"`
+	CoverURL  string           `json:"coverUrl"`
 	SortOrder int              `json:"sortOrder"`
 	Active    bool             `json:"active"`
 	Mode      string           `json:"mode"`
@@ -44,6 +46,7 @@ func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 	input.Slug = strings.ToLower(strings.TrimSpace(input.Slug))
 	input.Title = strings.TrimSpace(input.Title)
 	input.Note = strings.TrimSpace(input.Note)
+	input.CoverURL = strings.TrimSpace(input.CoverURL)
 	input.Mode = strings.ToLower(strings.TrimSpace(input.Mode))
 	if input.Mode == "" { input.Mode = "manual" }
 	if input.Title == "" || !collectionSlugPattern.MatchString(input.Slug) {
@@ -73,7 +76,7 @@ func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 
 func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Context) ([]CollectionDefinition, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT collection.id,collection.slug,collection.title,collection.note,collection.sort_order,
+		SELECT collection.id,collection.slug,collection.title,collection.note,collection.cover_url,collection.sort_order,
 			collection.is_active<>0,collection.mode,collection.rules,
 			CASE WHEN collection.mode='dynamic' THEN
 				COALESCE((SELECT ARRAY_AGG(product.id ORDER BY product.id)
@@ -90,7 +93,7 @@ func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Cont
 	for rows.Next() {
 		var item CollectionDefinition
 		var raw []byte
-		if err := rows.Scan(&item.ID,&item.Slug,&item.Title,&item.Note,&item.SortOrder,&item.Active,&item.Mode,&raw,&item.Products); err != nil { return nil, err }
+		if err := rows.Scan(&item.ID,&item.Slug,&item.Title,&item.Note,&item.CoverURL,&item.SortOrder,&item.Active,&item.Mode,&raw,&item.Products); err != nil { return nil, err }
 		if err := json.Unmarshal(raw, &item.Rules); err != nil { return nil, fmt.Errorf("decode collection rules: %w", err) }
 		items = append(items, item)
 	}
@@ -103,9 +106,9 @@ func (repository *PostgresRepository) CreateCollectionDefinition(ctx context.Con
 	raw, _ := json.Marshal(input.Rules)
 	var id int64
 	if err := repository.pool.QueryRow(ctx, `
-		INSERT INTO collections(slug,title,note,sort_order,is_active,mode,rules,updated_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,CURRENT_TIMESTAMP) RETURNING id
-	`, input.Slug,input.Title,input.Note,input.SortOrder,boolToSmallInt(input.Active),input.Mode,string(raw)).Scan(&id); err != nil {
+		INSERT INTO collections(slug,title,note,cover_url,sort_order,is_active,mode,rules,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,CURRENT_TIMESTAMP) RETURNING id
+	`, input.Slug,input.Title,input.Note,input.CoverURL,input.SortOrder,boolToSmallInt(input.Active),input.Mode,string(raw)).Scan(&id); err != nil {
 		return CollectionDefinition{}, fmt.Errorf("create collection: %w", err)
 	}
 	items, err := repository.ListCollectionDefinitions(ctx)
@@ -119,9 +122,9 @@ func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Con
 	if err := validateCollectionDefinition(&input); err != nil { return CollectionDefinition{}, err }
 	raw, _ := json.Marshal(input.Rules)
 	tag, err := repository.pool.Exec(ctx, `
-		UPDATE collections SET slug=$2,title=$3,note=$4,sort_order=$5,is_active=$6,mode=$7,rules=$8::jsonb,updated_at=CURRENT_TIMESTAMP
+		UPDATE collections SET slug=$2,title=$3,note=$4,cover_url=$5,sort_order=$6,is_active=$7,mode=$8,rules=$9::jsonb,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
-	`, id,input.Slug,input.Title,input.Note,input.SortOrder,boolToSmallInt(input.Active),input.Mode,string(raw))
+	`, id,input.Slug,input.Title,input.Note,input.CoverURL,input.SortOrder,boolToSmallInt(input.Active),input.Mode,string(raw))
 	if err != nil { return CollectionDefinition{}, fmt.Errorf("update collection: %w", err) }
 	if tag.RowsAffected() != 1 { return CollectionDefinition{}, pgx.ErrNoRows }
 	items, err := repository.ListCollectionDefinitions(ctx)
@@ -136,4 +139,17 @@ func (repository *PostgresRepository) DeleteCollectionDefinition(ctx context.Con
 	if err != nil { return fmt.Errorf("delete collection: %w", err) }
 	if tag.RowsAffected() != 1 { return pgx.ErrNoRows }
 	return nil
+}
+
+func (repository *PostgresRepository) SetCollectionCover(ctx context.Context, actor Actor, id int64, coverURL string) (CollectionDefinition, error) {
+	if !Can(actor.Role, PermissionProductsEdit) { return CollectionDefinition{}, ErrForbidden }
+	coverURL = strings.TrimSpace(coverURL)
+	if coverURL == "" { return CollectionDefinition{}, fmt.Errorf("%w: пустой адрес обложки", ErrInvalidInput) }
+	tag, err := repository.pool.Exec(ctx, `UPDATE collections SET cover_url=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, coverURL)
+	if err != nil { return CollectionDefinition{}, fmt.Errorf("update collection cover: %w", err) }
+	if tag.RowsAffected() != 1 { return CollectionDefinition{}, pgx.ErrNoRows }
+	items, err := repository.ListCollectionDefinitions(ctx)
+	if err != nil { return CollectionDefinition{}, err }
+	for _, item := range items { if item.ID == id { return item, nil } }
+	return CollectionDefinition{}, pgx.ErrNoRows
 }

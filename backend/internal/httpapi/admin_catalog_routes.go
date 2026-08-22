@@ -38,4 +38,5 @@ func registerAdminCatalogToolRoutes(mux *http.ServeMux, adminAPI adminHandlers, 
 	mux.HandleFunc("POST /api/v1/admin/collection-definitions", collectionDefinitionsHandler(adminAPI))
 	mux.HandleFunc("PUT /api/v1/admin/collection-definitions/{id}", collectionDefinitionHandler(adminAPI))
 	mux.HandleFunc("DELETE /api/v1/admin/collection-definitions/{id}", collectionDefinitionHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/collection-definitions/{id}/cover", uploadCollectionCoverHandler(adminAPI, storage))
 }

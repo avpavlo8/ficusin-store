@@ -50,6 +50,7 @@ type Collection struct {
 	Slug  string `json:"slug"`
 	Title string `json:"title"`
 	Note  string `json:"note"`
+	CoverURL string `json:"coverUrl"`
 	Count int    `json:"count"`
 }
 
