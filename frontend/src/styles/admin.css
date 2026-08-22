@@ -246,7 +246,7 @@
 .auth-saved { margin: 0; color: var(--green); font-size: 13px; font-weight: 600; }
 
 /* Administration uses the same materials with its own bonsai workspace scene. */
-.admin-page{--admin-coral:#df4829;--admin-olive:#6f7b48;max-width:100%;overflow-x:clip;background:#f4ecdf}
+.admin-page{--admin-coral:#df4829;--admin-olive:#6f7b48;width:100%;max-width:100%;overflow-x:hidden;background:#f4ecdf}
 .admin-page .account-shell{width:min(1760px,calc(100% - 40px));grid-template-columns:270px minmax(0,1fr);margin-top:22px}
 .admin-page .account-sidebar{background:#203b2d;color:#f8f0e5;border-color:#203b2d}.admin-page .account-sidebar h1{color:#fff}.admin-page .account-sidebar>p{color:#cbd5c9}
 .admin-page .account-sidebar nav button{min-height:47px;padding:12px 14px;display:grid;grid-template-columns:9px 1fr;justify-content:start;align-items:center;gap:12px;color:#edf2e9;border-radius:11px}.admin-page .account-sidebar nav button:hover{background:rgba(255,255,255,.08)}.admin-page .account-sidebar nav button.active{background:#e3e59e!important;color:#294326!important}.admin-page .account-switch{color:#e5e7b5}.admin-nav-dot{width:7px;height:7px;border:1px solid currentColor;border-radius:50%}.admin-page nav button.active .admin-nav-dot{background:currentColor}
