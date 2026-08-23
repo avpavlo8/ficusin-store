@@ -158,13 +158,3 @@ export type AdminCollection = { id: number; slug: string; title: string; note: s
 export type SettingDefinition = { key: string; title: string; note: string; kind: string };
 
 export type ImportEntry = { code: string; status: string; name: string; price: number; stock: number; productId?: number; slug: string };
-
-export type CatalogueAudit = {
-  totalProducts: number; drafts: number; positiveDrafts: number;
-  suggestedGroups: number; cardsInGroups: number; unmatchedDrafts: number;
-};
-
-export type MergeSuggestion = {
-  key: string; title: string; reason: string; confidence: "high";
-  products: Product[];
-};
