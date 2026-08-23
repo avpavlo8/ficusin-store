@@ -349,6 +349,10 @@ type SyncResult struct {
 	Skipped []int64 `json:"skipped"`
 }
 
+type DeleteDraftProductsRequest struct {
+	ProductIDs []int64 `json:"productIds"`
+}
+
 type Repository interface {
 	Dashboard(context.Context) (Dashboard, error)
 	ListCustomers(context.Context) ([]Customer, error)

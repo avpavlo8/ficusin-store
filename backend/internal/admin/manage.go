@@ -360,6 +360,44 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 	return products, rows.Err()
 }
 
+// DeleteDraftProducts removes only never-published, unsold product drafts. The
+// checks and deletion share one transaction so a concurrent status/order
+// change cannot turn a safe cleanup into destructive catalogue loss.
+func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, actor Actor, ids []int64) (int64, error) {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return 0, ErrForbidden
+	}
+	if len(ids) == 0 || len(ids) > 1000 {
+		return 0, fmt.Errorf("%w: выберите от 1 до 1000 черновиков", ErrInvalidInput)
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil { return 0, err }
+	defer func() { _ = tx.Rollback(ctx) }()
+	var safeCount int
+	if err = tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM products p
+		WHERE p.id = ANY($1::bigint[]) AND p.status = 'draft'
+		AND NOT EXISTS (
+			SELECT 1 FROM product_variants pv
+			JOIN order_items oi ON oi.variant_id = pv.id
+			WHERE pv.product_id = p.id
+		)
+	`, ids).Scan(&safeCount); err != nil { return 0, fmt.Errorf("validate draft products: %w", err) }
+	if safeCount != len(ids) {
+		return 0, fmt.Errorf("%w: удалять можно только непроданные черновики", ErrInvalidInput)
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM products WHERE id = ANY($1::bigint[])`, ids)
+	if err != nil { return 0, fmt.Errorf("delete draft products: %w", err) }
+	if tag.RowsAffected() != int64(len(ids)) {
+		return 0, fmt.Errorf("delete draft products: expected %d rows, deleted %d", len(ids), tag.RowsAffected())
+	}
+	if err = insertAudit(ctx, tx, actor, "product.drafts.delete", "product", "bulk", map[string]any{"productIds": ids}, nil); err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(ctx); err != nil { return 0, err }
+	return tag.RowsAffected(), nil
+}
+
 func (repository *PostgresRepository) UpdateProduct(
 	ctx context.Context,
 	actor Actor,
