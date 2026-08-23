@@ -29,10 +29,10 @@ func TestCreateReviewRequiresCompletedPurchase(t *testing.T){
 	if response.Code!=http.StatusForbidden{t.Fatalf("status=%d want %d",response.Code,http.StatusForbidden)}
 }
 
-func TestCreateReviewIsPendingAndCarriesVerifiedCustomer(t *testing.T){
+func TestCreateReviewIsPublishedAndCarriesVerifiedCustomer(t *testing.T){
 	store:=&reviewStoreStub{createID:7}
 	request:=httptest.NewRequest(http.MethodPost,"/api/v1/products/ficus/reviews",strings.NewReader(`{"rating":4,"text":"Хорошо упаковано"}`));request.Header.Set("Content-Type","application/json");request.AddCookie(&http.Cookie{Name:auth.CookieName,Value:"session"})
 	response:=httptest.NewRecorder();dependencies:=testDependencies(catalogStub{},authStub{user:&auth.User{ID:42}});dependencies.Reviews=store
 	NewRouter(discardLogger(),dependencies).ServeHTTP(response,request)
-	if response.Code!=http.StatusCreated{t.Fatalf("status=%d body=%s",response.Code,response.Body.String())};if store.customerID!=42||store.slug!="ficus"||store.input.Rating!=4{t.Fatalf("unexpected call: %#v",store)};if !strings.Contains(response.Body.String(),`"status":"pending"`){t.Fatalf("body=%s",response.Body.String())}
+	if response.Code!=http.StatusCreated{t.Fatalf("status=%d body=%s",response.Code,response.Body.String())};if store.customerID!=42||store.slug!="ficus"||store.input.Rating!=4{t.Fatalf("unexpected call: %#v",store)};if !strings.Contains(response.Body.String(),`"status":"published"`){t.Fatalf("body=%s",response.Body.String())}
 }
