@@ -190,8 +190,11 @@ jobs:
             JOIN attribute_definitions definition ON definition.id=assignment.attribute_id
             WHERE category.slug IN ('soil','fertilizer','pots','accessories')
               AND definition.code IN ('height_cm','pot_diameter_cm','plant_type','toxicity','height_class')")"
-          if [[ "$category_matrix" != "10" || "$leaked_plant_attributes" != "0" ]]; then
-            echo "Category matrix is incomplete or leaking plant fields: matrix=${category_matrix} leaks=${leaked_plant_attributes}." >&2
+          global_plant_dimensions="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
+            SELECT COUNT(*) FROM attribute_definitions
+            WHERE code IN ('height_cm','pot_diameter_cm') AND is_global")"
+          if [[ "$category_matrix" != "10" || "$leaked_plant_attributes" != "0" || "$global_plant_dimensions" != "0" ]]; then
+            echo "Category matrix is incomplete or leaking plant fields: matrix=${category_matrix} assignments=${leaked_plant_attributes} globals=${global_plant_dimensions}." >&2
             exit 1
           fi
 
