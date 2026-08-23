@@ -12,7 +12,7 @@
 .store-footer-chat i { width:36px; height:36px; display:grid; place-items:center; border:1px solid rgba(255,255,255,.42); border-radius:50%; }
 .store-footer-chat i svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .store-footer-chat span,.store-footer-phone { font-size:15px; font-weight:800; }
-.store-footer-chat span { min-width:0; display:flex; justify-content:center; flex-direction:column; gap:5px; }.store-footer-chat small,.store-footer-phone small { display:block; margin:0 0 5px; color:rgba(255,255,255,.72); font-size:10px; font-weight:500; line-height:1.2; }
+.store-footer-chat span { min-width:0; display:flex; justify-content:center; flex-direction:column; gap:5px; }.store-footer-chat small,.store-footer-phone small { display:block; margin:0 0 5px; padding:0; border:0; color:rgba(255,255,255,.72); font-size:10px; font-weight:500; line-height:1.2; }
 .store-footer-chat > b { margin-left:auto; flex:none; font-size:21px; }.store-footer-phone { display:flex; justify-content:center; flex-direction:column; border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:#fff; white-space:nowrap; backdrop-filter:blur(5px); }
 .store-footer-chat:hover,.store-footer-phone:hover { color:#fff; transform:translateY(-3px); box-shadow:0 18px 34px rgba(5,20,9,.28); }
 .store-footer-social-block { display:flex; align-items:center; gap:10px; }.store-footer-social-block > span { color:rgba(255,255,255,.68); white-space:nowrap; }.store-footer-socials { display:flex; gap:6px; }
