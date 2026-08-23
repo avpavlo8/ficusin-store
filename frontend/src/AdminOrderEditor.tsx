@@ -21,7 +21,7 @@ type Adjustment = {
   deliveryFeePending: boolean;
   hasPreorder: boolean;
   status: string;
-  items: Array<{ productId: string; productName: string; unitPrice: number; quantity: number }>;
+  items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
 };
 
 const emptyPayment: PaymentBalance = {
@@ -63,8 +63,8 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   useEffect(() => { void load(); }, [order.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const availableProducts = useMemo(() => {
-    const used = new Set(lines.map((line) => line.productId));
-    return products.filter((product) => !used.has(product.slug));
+    const used = new Set(lines.map((line) => line.sku));
+    return products.filter((product) => !used.has(product.sku));
   }, [products, lines]);
 
   const draftSubtotal = useMemo(
@@ -76,7 +76,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const compositionSaved = useMemo(() => {
     if (!adjustment || adjustment.items.length !== lines.length) return false;
     return adjustment.items.every((line, index) =>
-      line.productId === lines[index]?.productId && line.quantity === lines[index]?.quantity,
+      line.sku === lines[index]?.sku && line.quantity === lines[index]?.quantity,
     );
   }, [adjustment, lines]);
   const deliverySaved = !!adjustment && Math.abs(deliveryFee - adjustment.deliveryFee) < 0.005;
@@ -104,10 +104,12 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   };
 
   const appendProduct = () => {
-    const product = products.find((item) => item.slug === addProduct);
+    const product = products.find((item) => item.sku === addProduct);
     if (!product) return;
     setLines((current) => [...current, {
-      productId: product.slug,
+      productId: product.id,
+      sku: product.sku,
+      variantLabel: product.variantLabel,
       productName: product.name,
       unitPrice: product.price,
       quantity: 1,
@@ -125,7 +127,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       // и указанную менеджером стоимость доставки. Отдельный флаг здесь
       // только создавал ложное состояние «менеджер сохранил, но не подтвердил».
       const body = {
-        items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        items: lines.map((line) => ({ sku: line.sku, quantity: line.quantity })),
         deliveryFee,
       };
       const result = await api<{ order: Order; adjustment: Adjustment; payment: PaymentBalance }>(
@@ -186,7 +188,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   return <div className="admin-order-editor">
     <section className="admin-block">
       <div className="admin-block-heading"><div><strong>Состав заказа</strong><small>Менеджер может изменить заказ до отправки</small></div></div>
-      {lines.map((line, index) => <div className="admin-order-edit-line" key={`${line.productId}-${index}`}>
+      {lines.map((line, index) => <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
         <span><strong>{line.productName}</strong><small>{money.format(line.unitPrice)} / шт.</small></span>
         <input aria-label={`Количество ${line.productName}`} type="number" min="1" max="100" value={line.quantity}
           onChange={(event) => changeQuantity(index, Number(event.target.value))} />
@@ -196,7 +198,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       <div className="admin-order-add-line">
         <select value={addProduct} onChange={(event) => setAddProduct(event.target.value)}>
           <option value="">Добавить товар…</option>
-          {availableProducts.map((product) => <option value={product.slug} key={product.id}>
+          {availableProducts.map((product) => <option value={product.sku} key={product.id}>
             {product.name} · {money.format(product.price)} · остаток {product.stock}
           </option>)}
         </select>

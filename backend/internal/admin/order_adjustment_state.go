@@ -22,8 +22,11 @@ func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id in
 		SELECT id,order_number,subtotal::DOUBLE PRECISION,delivery_fee::DOUBLE PRECISION,
 			delivery_fee_pending=1,has_preorder=1,status FROM orders WHERE id=$1
 	`,id).Scan(&state.ID,&state.OrderNumber,&state.Subtotal,&state.DeliveryFee,&state.DeliveryFeePending,&state.HasPreorder,&state.Status);err!=nil{return state,err}
-	rows,err:=repository.pool.Query(ctx,`SELECT product_id,product_name,unit_price::DOUBLE PRECISION,quantity FROM order_items WHERE order_id=$1 ORDER BY id`,id);if err!=nil{return state,fmt.Errorf("query order adjustment lines: %w",err)};defer rows.Close()
+	// Редактор правит SKU, а не карточку товара, поэтому состояние обязано
+	// нести sku и название варианта: иначе менеджер не видит, какой размер
+	// лежит в заказе, а сохранение уходит без идентичности строки.
+	rows,err:=repository.pool.Query(ctx,`SELECT COALESCE(product_id,0),COALESCE(sku,''),COALESCE(variant_label,''),product_name,unit_price::DOUBLE PRECISION,quantity FROM order_items WHERE order_id=$1 ORDER BY id`,id);if err!=nil{return state,fmt.Errorf("query order adjustment lines: %w",err)};defer rows.Close()
 	state.Items=[]OrderItem{}
-	for rows.Next(){var item OrderItem;if err:=rows.Scan(&item.ProductID,&item.ProductName,&item.UnitPrice,&item.Quantity);err!=nil{return state,err};state.Items=append(state.Items,item)}
+	for rows.Next(){var item OrderItem;if err:=rows.Scan(&item.ProductID,&item.SKU,&item.VariantLabel,&item.ProductName,&item.UnitPrice,&item.Quantity);err!=nil{return state,err};state.Items=append(state.Items,item)}
 	return state,rows.Err()
 }

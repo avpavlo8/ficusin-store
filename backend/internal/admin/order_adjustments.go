@@ -11,8 +11,20 @@ import (
 )
 
 type OrderEditLine struct {
+	// SKU опознаёт строку заказа. Продаётся конкретный размер, поэтому одна
+	// карточка товара ещё не говорит, что именно уходит покупателю.
+	SKU string `json:"sku"`
+	// ProductID — имя поля до «Каталога v2». Оставлено, чтобы вкладка
+	// админки, открытая до релиза, доработала до перезагрузки.
 	ProductID string `json:"productId"`
 	Quantity  int    `json:"quantity"`
+}
+
+func (line OrderEditLine) identity() string {
+	if sku := strings.TrimSpace(line.SKU); sku != "" {
+		return sku
+	}
+	return strings.TrimSpace(line.ProductID)
 }
 
 type OrderEdit struct {
@@ -24,31 +36,35 @@ type OrderEdit struct {
 }
 
 type editableOrderLine struct {
-	slug       string
-	variantID  int64
-	name       string
-	price      float64
-	quantity   int
-	reserved   int
-	preorder   bool
-	sabyID     string
+	sku           string
+	variantID     int64
+	productID     int64
+	name          string
+	variantLabel  string
+	heightCM      *int
+	potDiameterCM *int
+	price         float64
+	quantity      int
+	reserved      int
+	preorder      bool
+	sabyID        string
 }
 
 func normalizeOrderEditLines(lines []OrderEditLine) ([]OrderEditLine, error) {
 	result := make([]OrderEditLine, 0, len(lines))
 	positions := map[string]int{}
 	for _, line := range lines {
-		slug := strings.TrimSpace(line.ProductID)
-		if slug == "" || line.Quantity <= 0 || line.Quantity > 100 {
+		sku := line.identity()
+		if sku == "" || line.Quantity <= 0 || line.Quantity > 100 {
 			return nil, fmt.Errorf("некорректный товар или количество")
 		}
-		if index, ok := positions[slug]; ok {
+		if index, ok := positions[sku]; ok {
 			result[index].Quantity += line.Quantity
 			if result[index].Quantity > 100 { return nil, fmt.Errorf("слишком большое количество товара") }
 			continue
 		}
-		positions[slug] = len(result)
-		result = append(result, OrderEditLine{ProductID: slug, Quantity: line.Quantity})
+		positions[sku] = len(result)
+		result = append(result, OrderEditLine{SKU: sku, Quantity: line.Quantity})
 	}
 	if len(result) == 0 { return nil, fmt.Errorf("заказ не может быть пустым — отмените его") }
 	return result, nil
@@ -114,8 +130,8 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	if edit.Items!=nil{
 		lines,err:=normalizeOrderEditLines(*edit.Items);if err!=nil{return Order{},err}
 		oldPrices:=map[string]float64{}
-		rows,err:=tx.Query(ctx,`SELECT product_id,unit_price::DOUBLE PRECISION FROM order_items WHERE order_id=$1`,id);if err!=nil{return Order{},err}
-		for rows.Next(){var slug string;var price float64;if err:=rows.Scan(&slug,&price);err!=nil{rows.Close();return Order{},err};oldPrices[slug]=price};rows.Close();if err:=rows.Err();err!=nil{return Order{},err}
+		rows,err:=tx.Query(ctx,`SELECT COALESCE(sku,''),unit_price::DOUBLE PRECISION FROM order_items WHERE order_id=$1`,id);if err!=nil{return Order{},err}
+		for rows.Next(){var sku string;var price float64;if err:=rows.Scan(&sku,&price);err!=nil{rows.Close();return Order{},err};if sku!=""{oldPrices[sku]=price}};rows.Close();if err:=rows.Err();err!=nil{return Order{},err}
 
 		_ = order.RecordMovement(ctx,tx,id,order.MovementRelease)
 		if err:=releaseOrderReservationsForEdit(ctx,tx,id);err!=nil{return Order{},err}
@@ -127,17 +143,30 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		hasPreorder:=false
 		for _,requested:=range lines{
 			var line editableOrderLine;var priceMinor int64
+			// Строка ищется по SKU. Прежний запрос искал товар по products.slug —
+			// колонке, которую миграция 056 вывела из оборота, — и всегда брал
+			// первый вариант карточки, то есть мог поставить в заказ не тот размер
+			// и не ту цену, которые выбрал покупатель.
 			if err:=tx.QueryRow(ctx,`
-				SELECT p.slug,pv.id,p.name,pv.base_price_minor,COALESCE(p.saby_id,'')
-				FROM products p JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
-				WHERE p.slug=$1 AND p.status='published' ORDER BY pv.id LIMIT 1
-			`,requested.ProductID).Scan(&line.slug,&line.variantID,&line.name,&priceMinor,&line.sabyID);err!=nil{
-				if errors.Is(err,pgx.ErrNoRows){return Order{},fmt.Errorf("товар %s больше не доступен",requested.ProductID)};return Order{},err
+				SELECT pv.sku,pv.id,p.id,p.name,pv.label,pv.base_price_minor,COALESCE(p.saby_id,''),
+					variant_numeric_attribute(pv.id,'height_cm')::INTEGER,
+					variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER
+				FROM product_variants pv JOIN products p ON p.id=pv.product_id
+				WHERE pv.sku=$1 AND pv.is_active=1 AND pv.archived_at IS NULL AND p.status='published'
+				LIMIT 1
+			`,requested.identity()).Scan(&line.sku,&line.variantID,&line.productID,&line.name,&line.variantLabel,&priceMinor,&line.sabyID,&line.heightCM,&line.potDiameterCM);err!=nil{
+				if errors.Is(err,pgx.ErrNoRows){return Order{},fmt.Errorf("товар %s больше не доступен",requested.identity())};return Order{},err
 			}
 			line.quantity=requested.Quantity
-			if price,ok:=oldPrices[line.slug];ok{line.price=price}else{minor:=priceMinor;if discountBPS>0{if discountBPS>9000{discountBPS=9000};minor=(priceMinor*int64(10000-discountBPS)+5000)/10000};line.price=float64(minor)/100}
+			if price,ok:=oldPrices[line.sku];ok{line.price=price}else{minor:=priceMinor;if discountBPS>0{if discountBPS>9000{discountBPS=9000};minor=(priceMinor*int64(10000-discountBPS)+5000)/10000};line.price=float64(minor)/100}
 			line.reserved,line.preorder,err=reserveVariantForEdit(ctx,tx,line.variantID,line.quantity);if err!=nil{return Order{},err};hasPreorder=hasPreorder||line.preorder
-			if _,err:=tx.Exec(ctx,`INSERT INTO order_items(order_id,product_id,variant_id,product_name,unit_price,quantity,is_preorder,reserved_qty) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,id,line.slug,line.variantID,line.name,line.price,line.quantity,boolToSmallInt(line.preorder),line.reserved);err!=nil{return Order{},err}
+			// Строка обязана нести полный кортеж PRODUCT + variant + SKU:
+			// order_items_catalog_identity_check отвергает всё остальное, а без
+			// снимка размеров историю заказа потом нечем объяснить.
+			if _,err:=tx.Exec(ctx,`
+				INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
+				VALUES($1,$2,$3,$4,$5,$6,jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)),$9,$10,$11,$12)
+			`,id,line.productID,line.variantID,line.sku,line.name,line.variantLabel,line.heightCM,line.potDiameterCM,line.price,line.quantity,boolToSmallInt(line.preorder),line.reserved);err!=nil{return Order{},err}
 			if line.preorder{
 				if _,err:=tx.Exec(ctx,`INSERT INTO procurement_requests(kind,saby_id,requested_name,quantity,customer_order_id,status,notes) VALUES('customer_order',NULLIF($1,''),$2,$3,$4,'open','Предзаказ после изменения заказа')`,line.sabyID,line.name,line.quantity,id);err!=nil{return Order{},err}
 			}

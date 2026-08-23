@@ -19,8 +19,8 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     total: 2480,
     createdAt: "2026-08-20T15:25:19Z",
     items: [
-      { productId: "azaliya-d9", productName: "Азалия D9", unitPrice: 790, quantity: 1 },
-      { productId: "alokaziya-d6", productName: "Алоказия D6", unitPrice: 690, quantity: 1 },
+      { productId: 1, sku: "1001", variantLabel: "D9", productName: "Азалия D9", unitPrice: 790, quantity: 1 },
+      { productId: 2, sku: "1002", variantLabel: "D6", productName: "Алоказия D6", unitPrice: 690, quantity: 1 },
     ],
   };
   const adjustment = {
@@ -54,20 +54,20 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
         payment: { total: order.total, paid: 0, refunded: 0, netPaid: 0, due: order.total, overpaid: 0, ready: false, paymentStatus: "pending" },
       });
       if (path === "/api/v1/admin/products") return json({ products: [
-        { id: 1, slug: "azaliya-d9", name: "Азалия D9", price: 790, stock: 4, status: "published" },
-        { id: 2, slug: "alokaziya-d6", name: "Алоказия D6", price: 690, stock: 3, status: "published" },
-        { id: 3, slug: "aglaonema-mariya-kristina-d12", name: "Аглаонема Мария Кристина D12", price: 1490, stock: 2, status: "published" },
+        { id: 1, slug: "azaliya-d9", sku: "1001", variantLabel: "D9", name: "Азалия D9", price: 790, stock: 4, status: "published" },
+        { id: 2, slug: "alokaziya-d6", sku: "1002", variantLabel: "D6", name: "Алоказия D6", price: 690, stock: 3, status: "published" },
+        { id: 3, slug: "aglaonema-mariya-kristina-d12", sku: "1003", variantLabel: "D12", name: "Аглаонема Мария Кристина D12", price: 1490, stock: 2, status: "published" },
       ] });
       if (path === "/api/v1/admin/orders/30/contents" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body || "{}")) as {
-          items: Array<{ productId: string; quantity: number }>;
+          items: Array<{ sku: string; quantity: number }>;
           deliveryFee: number;
         };
         (window as typeof window & { __savedOrderEdit?: typeof body }).__savedOrderEdit = body;
         adjustment.items = body.items.map((line) => {
-          if (line.productId === "azaliya-d9") return { productId: line.productId, productName: "Азалия D9", unitPrice: 790, quantity: line.quantity };
-          if (line.productId === "alokaziya-d6") return { productId: line.productId, productName: "Алоказия D6", unitPrice: 690, quantity: line.quantity };
-          return { productId: line.productId, productName: "Аглаонема Мария Кристина D12", unitPrice: 1490, quantity: line.quantity };
+          if (line.sku === "1001") return { productId: 1, sku: line.sku, variantLabel: "D9", productName: "Азалия D9", unitPrice: 790, quantity: line.quantity };
+          if (line.sku === "1002") return { productId: 2, sku: line.sku, variantLabel: "D6", productName: "Алоказия D6", unitPrice: 690, quantity: line.quantity };
+          return { productId: 3, sku: line.sku, variantLabel: "D12", productName: "Аглаонема Мария Кристина D12", unitPrice: 1490, quantity: line.quantity };
         });
         adjustment.deliveryFee = body.deliveryFee;
         adjustment.subtotal = 2970;
@@ -99,7 +99,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
 
   return {
     savedEdit: async () => page.evaluate(() => (window as typeof window & {
-      __savedOrderEdit?: { items: Array<{ productId: string; quantity: number }>; deliveryFee: number };
+      __savedOrderEdit?: { items: Array<{ sku: string; quantity: number }>; deliveryFee: number };
     }).__savedOrderEdit),
     paymentLinkCalls: async () => page.evaluate(() => (window as typeof window & { __paymentLinkCalls?: number }).__paymentLinkCalls || 0),
   };
@@ -118,7 +118,7 @@ test("@desktop сохранение менеджером подтверждае�
   await expect(editor.getByRole("checkbox")).toHaveCount(0);
   await expect(editor.getByText(/Сохранить изменения.*подтверждает эту стоимость/i)).toBeVisible();
 
-  await editor.locator("select").first().selectOption("aglaonema-mariya-kristina-d12");
+  await editor.locator("select").first().selectOption("1003");
   await editor.getByRole("button", { name: "Добавить", exact: true }).click();
 
   await expect(editor.getByText("Аглаонема Мария Кристина D12")).toBeVisible();
@@ -136,7 +136,7 @@ test("@desktop сохранение менеджером подтверждае�
 
   const saved = await state.savedEdit();
   expect(saved?.items).toHaveLength(3);
-  expect(saved?.items[2]).toEqual({ productId: "aglaonema-mariya-kristina-d12", quantity: 1 });
+  expect(saved?.items[2]).toEqual({ sku: "1003", quantity: 1 });
   expect(saved?.deliveryFee).toBe(1000);
 
   await payment.getByRole("button", { name: "Создать ссылку на оплату" }).click();
