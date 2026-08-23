@@ -202,6 +202,18 @@ jobs:
             echo 'order_items_catalog_identity_check accepted a new row without PRODUCT/SKU.' >&2
             exit 1
           fi
+      # Применённые миграции ещё не значат, что приложение умеет с ними работать.
+      # Здесь бизнес-логика впервые исполняется на живой базе: витрина и
+      # редактирование состава заказа — два места, которые уехали в прод сломанными.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: backend/go.sum
+      - name: Run catalogue and order logic against the migrated database
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
+        run: go test ./internal/admin/ -run TestCatalogueAndOrderEditingOnLiveDatabase -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest
