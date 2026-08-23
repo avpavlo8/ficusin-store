@@ -381,6 +381,23 @@ func (handlers adminHandlers) createProduct(response http.ResponseWriter, reques
 	writeJSON(response, http.StatusCreated, map[string]any{"product": product})
 }
 
+func (handlers adminHandlers) deleteDraftProducts(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok { return }
+	var body admin.DeleteDraftProductsRequest
+	if decodeJSON(request, &body) != nil || len(body.ProductIDs) == 0 || len(body.ProductIDs) > 1000 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите черновики для удаления"})
+		return
+	}
+	deleter, ok := handlers.repository.(interface {
+		DeleteDraftProducts(context.Context, admin.Actor, []int64) (int64, error)
+	})
+	if !ok { writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Удаление черновиков недоступно"}); return }
+	deleted, err := deleter.DeleteDraftProducts(request.Context(), actor, body.ProductIDs)
+	if err != nil { handlers.failed(response, "delete draft products", err); return }
+	writeJSON(response, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
 // importProducts заводит карточки по списку кодов товаров из СБИС. С
 // dryRun панель показывает, что получится, ничего не создавая: список из
 // сотни кодов стоит сначала увидеть глазами.
