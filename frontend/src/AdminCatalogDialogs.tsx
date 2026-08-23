@@ -150,14 +150,14 @@ export function ImportDialog({ onClose, onImported, onError }: { onClose: () => 
     setBusy(false);
   };
   const found = preview ? preview.filter((entry) => entry.status === "new").length : 0;
-  const labels: Record<string, string> = { new: "Заведём", exists: "Уже есть", missing: "Не найден" };
+  const labels: Record<string, string> = { new: "Черновик", exists: "Уже есть", missing: "Не найден" };
   return <Dialog title="Импорт товаров из СБИС" onClose={onClose}>
     <label className="wide">Коды товаров<textarea rows={6} value={codes} onChange={(event) => { setCodes(event.target.value); setPreview(null); }} placeholder="X1150532&#10;X1150533" /></label>
-    <p className="admin-hint">Вставьте коды из СБИС — через запятую, пробел или с новой строки, как удобно. Подойдёт и артикул, и штрихкод.</p>
+    <p className="admin-hint">Вставьте коды из СБИС — через запятую, пробел или с новой строки. Подойдёт также артикул или штрихкод. Новые позиции создаются черновиками и не попадут на витрину, пока вы не приведёте название и варианты в порядок.</p>
     <div className="admin-field"><span className="admin-field-label">Раздел каталога</span><CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} /></div>
     {preview && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Код</th><th>Товар</th><th>Цена</th><th>Остаток</th><th>Что будет</th></tr></thead><tbody>{preview.map((entry) => <tr key={entry.code}><td>{entry.code}</td><td>{entry.name || "—"}</td><td>{entry.name ? money.format(entry.price) : "—"}</td><td>{entry.name ? entry.stock : "—"}</td><td><span className={"admin-pill " + entry.status}>{labels[entry.status] || entry.status}</span></td></tr>)}</tbody></table></div>}
     {preview && found === 0 && <p className="admin-hint">Заводить нечего: ни одного нового товара в списке нет.</p>}
-    <div className="dialog-actions"><button onClick={onClose}>Отмена</button><button disabled={busy || codes.trim() === ""} onClick={() => send(true)}>Проверить</button><button className="primary" disabled={busy || !preview || found === 0} onClick={() => send(false)}>Завести {found > 0 ? found : ""}</button></div>
+    <div className="dialog-actions"><button onClick={onClose}>Отмена</button><button disabled={busy || codes.trim() === ""} onClick={() => send(true)}>Проверить</button><button className="primary" disabled={busy || !preview || found === 0} onClick={() => send(false)}>Создать черновики {found > 0 ? found : ""}</button></div>
   </Dialog>;
 }
 

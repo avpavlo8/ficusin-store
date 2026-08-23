@@ -28,6 +28,7 @@ type seed struct {
 	images         []string
 	sabyID         string
 	sabyFields     []string
+	status         string
 	heightCM       *int
 	potDiameterCM  *int
 	packageLengthCM *int
@@ -368,6 +369,9 @@ func (repository *PostgresRepository) ImportProducts(
 			// Из СБИС и дальше берём только остаток: название и цену с этой
 			// минуты ведёт магазин.
 			sabyFields: []string{"stock"},
+			// Импорт — это сырьё для будущей PRODUCT/SKU-карточки. Публикация
+			// до нормализации названия, категории и объединения размеров опасна.
+			status: "draft",
 		})
 		if err != nil {
 			return ImportResult{}, err
@@ -402,6 +406,10 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 	if fields == nil {
 		fields = []string{}
 	}
+	status := item.status
+	if status == "" {
+		status = "published"
+	}
 	var sabyID *string
 	if item.sabyID != "" {
 		sabyID = &item.sabyID
@@ -414,10 +422,10 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 			care_instructions, search_text, status, catalog_section, category_id,
 			saby_fields, is_featured, updated_at
 		)
-		VALUES ($1, $2, $3, $4, '', $5, '', $3, 'published', $6, $7, $8, 0, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, '', $5, '', $3, $9, $6, $7, $8, 0, CURRENT_TIMESTAMP)
 		RETURNING id
 	`, sabyID, slug, item.name, item.latinName, item.description, section,
-		item.categoryID, fields).Scan(&id); err != nil {
+		item.categoryID, fields, status).Scan(&id); err != nil {
 		return 0, fmt.Errorf("create product: %w", err)
 	}
 
