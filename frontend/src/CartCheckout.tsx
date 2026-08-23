@@ -143,6 +143,7 @@ type CheckoutPanelProps = {
   checkoutOpen: boolean;
   setCheckoutOpen: (open: boolean) => void;
   orderNumber: string;
+  orderConfirmationPending: boolean;
   submitOrder: FormEventHandler<HTMLFormElement>;
   user: boolean;
   checkoutProfile: CheckoutProfile;
@@ -200,7 +201,7 @@ function deliveryDays(quote: AddressDeliveryQuote) {
 
 export function CheckoutPanel(props: CheckoutPanelProps) {
   const {
-    page = false, checkoutOpen, setCheckoutOpen, orderNumber, submitOrder, user,
+    page = false, checkoutOpen, setCheckoutOpen, orderNumber, orderConfirmationPending, submitOrder, user,
     checkoutProfile, setCheckoutProfile, availableDelivery, delivery, setDelivery,
     cdekQuote, cdekCityQuery, setCdekCityQuery, setCdekCity, setCdekCities,
     setCdekOffices, cdekOfficeCode, setCdekOfficeCode, cdekOfficeQuery,
@@ -226,7 +227,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const selectedPayment = paymentMethods.find((item) => item.id === paymentMethod);
   const addressDelivery = delivery === "courier" || delivery === "post";
   const deliveryBlocked = (delivery === "cdek" && !cdekOfficeCode) || addressDeliveryNeedsQuote || deliveryQuoteLoading;
-  const confirmationPending = Boolean(orderNumber && deliveryFeePending);
+  const confirmationPending = Boolean(orderNumber && orderConfirmationPending);
 
   return (
     <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
