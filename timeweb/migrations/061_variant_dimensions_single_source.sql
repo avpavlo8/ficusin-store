@@ -12,6 +12,12 @@
 -- PIM wins. The columns stay for one release so a rollback keeps working, but
 -- nothing reads them after this migration.
 
+-- 0. The attribute registry never had updated_at, yet the admin code writes it
+-- on every edit and on archiving. Both statements failed with "column
+-- updated_at does not exist", so the registry could not be edited at all.
+ALTER TABLE attribute_definitions
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
 -- 1. Nothing may be lost. Copy every value that exists only in a column.
 INSERT INTO variant_attribute_values(variant_id, attribute_id, value, source, updated_at)
 SELECT variant.id, definition.id, to_jsonb(source.value), 'import', CURRENT_TIMESTAMP
