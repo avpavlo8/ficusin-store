@@ -219,6 +219,13 @@ jobs:
             exit 1
           fi
 
+          enrichment_queue="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs job JOIN products product ON product.id=job.product_id WHERE product.status='draft'")"
+          if [[ "$enrichment_queue" -lt "1" ]]; then
+            echo "Positive-stock drafts were not queued for resumable AI enrichment." >&2
+            exit 1
+          fi
+
           category_matrix="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
             SELECT COUNT(*) FROM (VALUES
               ('plants','height_cm'),('plants','flowering'),('soil','soil_type'),('soil','ph_min'),
