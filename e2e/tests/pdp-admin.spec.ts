@@ -54,6 +54,9 @@ test("@desktop владелец редактирует описание прям
   await page.getByRole("button", { name: "Редактировать карточку" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Редактирование товара" })).toBeVisible();
+  await expect(dialog.getByText("Помощник AI")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "✦ Сгенерировать раздел" })).toBeVisible();
+  await expect(dialog.getByAltText("Текущая обложка")).toBeVisible();
   await dialog.getByRole("textbox", { name: "Описание", exact: true }).fill("Новое описание из PDP");
   await dialog.getByRole("button", { name: "Сохранить" }).click();
 
