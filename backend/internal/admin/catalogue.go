@@ -393,6 +393,31 @@ func (repository *PostgresRepository) ImportProducts(
 	return result, nil
 }
 
+// MergeDraftProducts moves every SKU and its external identity to the target
+// PRODUCT. It refuses published/history-bearing sources: merging those would
+// silently rewrite links, reviews and order history.
+func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, actor Actor, request MergeProductsRequest) error {
+	if !Can(actor.Role, PermissionProductsEdit) { return ErrForbidden }
+	if request.TargetProductID <= 0 || len(request.SourceProductIDs) == 0 { return ErrInvalidInput }
+	tx, err := repository.pool.Begin(ctx); if err != nil { return err }; defer func(){ _=tx.Rollback(ctx) }()
+	var targetStatus string
+	if err:=tx.QueryRow(ctx,`SELECT status FROM products WHERE id=$1 FOR UPDATE`,request.TargetProductID).Scan(&targetStatus);err!=nil{return err}
+	if targetStatus!="draft" { return fmt.Errorf("%w: основная карточка должна быть черновиком",ErrInvalidInput) }
+	seen:=map[int64]bool{}
+	for _,sourceID:=range request.SourceProductIDs {
+		if sourceID<=0 || sourceID==request.TargetProductID || seen[sourceID] { return fmt.Errorf("%w: неверный источник объединения",ErrInvalidInput) }; seen[sourceID]=true
+		var status string; var blocked bool
+		err:=tx.QueryRow(ctx,`SELECT product.status, EXISTS(SELECT 1 FROM order_items item WHERE item.product_id=product.id) OR EXISTS(SELECT 1 FROM product_reviews review WHERE review.product_id=product.id) FROM products product WHERE product.id=$1 FOR UPDATE`,sourceID).Scan(&status,&blocked)
+		if err!=nil{return err}; if status!="draft" || blocked{return fmt.Errorf("%w: объединять можно только черновики без истории",ErrInvalidInput)}
+		if _,err=tx.Exec(ctx,`UPDATE product_variants SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`,request.TargetProductID,sourceID);err!=nil{return fmt.Errorf("move variants: %w",err)}
+		if _,err=tx.Exec(ctx,`UPDATE product_external_ids SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`,request.TargetProductID,sourceID);err!=nil{return fmt.Errorf("move external ids: %w",err)}
+		if _,err=tx.Exec(ctx,`UPDATE product_media SET product_id=$1 WHERE product_id=$2`,request.TargetProductID,sourceID);err!=nil{return fmt.Errorf("move media: %w",err)}
+		if _,err=tx.Exec(ctx,`DELETE FROM products WHERE id=$1`,sourceID);err!=nil{return fmt.Errorf("delete merged draft: %w",err)}
+	}
+	if err:=insertAudit(ctx,tx,actor,"product.merge","product",fmt.Sprint(request.TargetProductID),nil,map[string]any{"sources":request.SourceProductIDs});err!=nil{return err}
+	return tx.Commit(ctx)
+}
+
 func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 	slug, err := freeSlug(ctx, tx, item.name)
 	if err != nil {

@@ -291,6 +291,13 @@ type ImportResult struct {
 	Entries []ImportEntry `json:"entries"`
 }
 
+// MergeProductsRequest turns independently imported Saby rows into variants
+// of one reviewed PRODUCT card. Only draft source cards may be absorbed.
+type MergeProductsRequest struct {
+	TargetProductID int64   `json:"targetProductId"`
+	SourceProductIDs []int64 `json:"sourceProductIds"`
+}
+
 type Category struct {
 	ID            int64  `json:"id"`
 	ParentID      *int64 `json:"parentId"`

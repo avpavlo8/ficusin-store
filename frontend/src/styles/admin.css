@@ -305,3 +305,4 @@
   .admin-collection-head { align-items: center; gap: 10px; }
   .admin-collection-count { white-space: nowrap; }
 }
+.admin-merge-preview{margin:16px 0;padding:16px;display:grid;gap:6px;border:1px solid #e4dfd7;border-radius:14px;background:#faf8f3}.admin-merge-preview span,.admin-merge-preview small{color:#716b63}

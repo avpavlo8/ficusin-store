@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ImportDialog, NewProductDialog, ProductDialog, SyncDialog } from "./AdminCatalogDialogs";
+import { ImportDialog, MergeProductsDialog, NewProductDialog, ProductDialog, SyncDialog } from "./AdminCatalogDialogs";
 import { PageHeading, api, money, sabyFieldLabels, statusLabels } from "./adminShared";
 import { AttributeManager } from "./AdminPim";
 import { CollectionsV2 } from "./AdminCollectionsV2";
@@ -155,6 +155,7 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   const [syncing, setSyncing] = useState<number[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [merging, setMerging] = useState<Product[] | null>(null);
   const [reviews, setReviews] = useState<ReviewModerationItem[]>([]);
   const reload = () => api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError((error as Error).message));
   useEffect(() => { api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError(error.message)); }, [onError]);
@@ -163,7 +164,7 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   const filtered = useMemo(() => items.filter((item) => (statusFilter === "all" || item.status === statusFilter) && `${item.name} ${item.sku} ${item.sabyCode}`.toLowerCase().includes(query.toLowerCase())), [items, query, statusFilter]);
   const replace = (product: Product) => setItems((current) => current.map((item) => item.id === product.id ? product : item));
   return <><PageHeading eyebrow="Каталог" title="Товары" text="Контент сайта, цены, упаковка, публикация и выборочная синхронизация со СБИС" />
-    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, SKU или код СБИС" /><select aria-label="Статус карточки" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">Все статусы</option><option value="draft">Черновики ({items.filter((item) => item.status === "draft").length})</option><option value="published">Опубликованные</option><option value="archived">Архив</option></select><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Подтянуть из СБИС</button>}{can("products.edit") && <button onClick={() => setImporting(true)}>Импорт из СБИС</button>}{can("products.edit") && <button className="admin-primary" onClick={() => setCreating(true)}>Новый товар</button>}</div>
+    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, SKU или код СБИС" /><select aria-label="Статус карточки" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">Все статусы</option><option value="draft">Черновики ({items.filter((item) => item.status === "draft").length})</option><option value="published">Опубликованные</option><option value="archived">Архив</option></select><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length >= 2 && selected.every((id) => items.find((item) => item.id === id)?.status === "draft") && can("products.edit") && <button onClick={() => setMerging(items.filter((item) => selected.includes(item.id)))}>Объединить размеры</button>}{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Подтянуть из СБИС</button>}{can("products.edit") && <button onClick={() => setImporting(true)}>Импорт из СБИС</button>}{can("products.edit") && <button className="admin-primary" onClick={() => setCreating(true)}>Новый товар</button>}</div>
     <div className="admin-table-wrap"><table className="admin-table products"><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && filtered.every((item) => selected.includes(item.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((item) => item.id) : [])} /></th><th>Товар</th><th>Цена / остаток</th><th>Публикация</th><th>СБИС</th><th /></tr></thead><tbody>{filtered.map((product) => <tr
       key={product.id}
       className={can("products.edit") ? "clickable" : ""}
@@ -180,6 +181,7 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
     {editing && <ProductDialog product={editing} onClose={() => setEditing(null)} onSaved={(product) => { replace(product); setEditing(null); }} onError={onError} />}
     {creating && <NewProductDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} onError={onError} />}
     {importing && <ImportDialog onClose={() => setImporting(false)} onImported={() => { setImporting(false); reload(); }} onError={onError} />}
+    {merging && <MergeProductsDialog products={merging} onClose={() => setMerging(null)} onMerged={() => { setMerging(null); setSelected([]); reload(); }} onError={onError} />}
     {syncing && <SyncDialog count={syncing.length} onClose={() => setSyncing(null)} onSync={async (fields) => { try { await api("/api/v1/admin/products/sync", { method: "POST", body: JSON.stringify({ productIds: syncing, fields }) }); const data = await api<{ products: Product[] }>("/api/v1/admin/products"); setItems(data.products); setSelected([]); setSyncing(null); } catch (error) { onError((error as Error).message); } }} />}
   </>;
 }
