@@ -33,6 +33,12 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 	var purchasedSKU string
 	err = tx.QueryRow(ctx, `SELECT p.id,o.id,oi.variant_id,oi.sku FROM products p JOIN order_items oi ON oi.product_id=p.id JOIN orders o ON o.id=oi.order_id WHERE p.product_code::TEXT=$1 AND o.customer_id=$2 AND o.status='completed' ORDER BY o.created_at DESC LIMIT 1`, slug, customerID).Scan(&productID,&orderID,&variantID,&purchasedSKU)
 	if errors.Is(err, pgx.ErrNoRows) { return 0, ErrNotPurchased }; if err != nil { return 0, fmt.Errorf("verify purchase: %w",err) }
+	// Serialize submissions for this customer/product pair and count hidden reviews too:
+	// hiding a review in the admin panel must not create another review allowance.
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))`, productID, customerID); err != nil { return 0, err }
+	var alreadyReviewed bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_reviews WHERE product_id=$1 AND customer_id=$2)`, productID, customerID).Scan(&alreadyReviewed); err != nil { return 0, err }
+	if alreadyReviewed { return 0, ErrAlreadyReviewed }
 	var id int64
 	err = tx.QueryRow(ctx, `INSERT INTO product_reviews(product_id,customer_id,order_id,variant_id,purchased_sku,rating,body,status) VALUES($1,$2,$3,$4,$5,$6,$7,'published') ON CONFLICT DO NOTHING RETURNING id`, productID,customerID,orderID,variantID,purchasedSKU,input.Rating,strings.TrimSpace(input.Text)).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) { return 0, ErrAlreadyReviewed }; if err != nil { return 0, err }

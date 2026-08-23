@@ -13,6 +13,9 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".home-collections")).toHaveCount(0);
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
+  await expect(page.locator(".store-footer-menu")).toHaveCount(0);
+  await expect(page.locator(".store-footer-connect")).toContainText("Давайте найдём");
+  await expect(page.locator(".store-footer-socials a")).toHaveCount(4);
   const collectionRail = page.locator(".storefront-preset-carousel .storefront-presets");
   await expect(collectionRail).toHaveClass(/can-scroll-next/);
   const railGeometry = await collectionRail.evaluate((element) => {
@@ -35,6 +38,8 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(headerMenus.nth(1).getByRole("button", { name: /Аглаонема/ })).toBeVisible();
   await page.locator(".home-hero-copy").click();
   await expect(headerMenus.nth(1)).not.toHaveAttribute("open", "");
+  await headerMenus.nth(2).locator(":scope > summary").click();
+  await expect(headerMenus.nth(2).getByRole("link", { name: "Публичная оферта" })).toBeVisible();
   await page.getByRole("button", { name: "Список" }).click();
   await expect(page.locator(".storefront-grid")).toHaveClass(/list-view/);
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);

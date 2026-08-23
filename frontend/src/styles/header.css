@@ -43,6 +43,10 @@
   letter-spacing: -.015em;
   transition: background .18s ease, color .18s ease;
 }
+.header.store-header .header-dropdown > div > a { min-height:41px; padding:0 12px; display:flex; align-items:center; border-radius:9px; color:var(--store-header-ink); font-size:13px; }
+.header.store-header .header-dropdown > div > a:hover { background:#eee7ba; color:var(--store-header-orange); }
+.mobile-menu { overflow-y:auto; }
+.mobile-menu-heading { margin-top:8px; color:#7b817b; font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
 .header.store-header .desktop-nav > a:hover,
 .header.store-header .header-dropdown > summary:hover,
 .header.store-header .header-dropdown[open] > summary {
