@@ -384,6 +384,34 @@ for (const delivery of [
   });
 }
 
+test("@desktop заказ с ручным расчётом не обещает немедленную отправку", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/delivery/providers", (route) => route.fulfill({ json: { courier: true, post: true } }));
+  await page.route("**/api/v1/delivery/courier", (route) => route.fulfill({ json: { pending: true, message: "Тариф перевозчика недоступен" } }));
+  await page.route("**/api/v1/orders", (route) => route.fulfill({ json: { orderNumber: "MANUAL-1001" } }));
+  await page.goto("/");
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  await card.getByRole("button", { name: /В корзине/ }).click();
+  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+  const checkout = page.locator(".checkout-page-panel");
+  await checkout.getByLabel("Имя").fill("Ручной расчёт");
+  await checkout.getByLabel("Телефон").fill("9151234567");
+  await checkout.getByLabel("Email для чека").fill("manual@example.com");
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.locator('input[name="delivery"][value="courier"]').check();
+  await checkout.getByLabel("Адрес доставки").fill("Рязань, Почтовая, 1");
+  await checkout.getByRole("button", { name: "Рассчитать доставку" }).click();
+  await expect(checkout.getByText("Стоимость уточнит менеджер")).toBeVisible();
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.locator('input[name="consent"]').check();
+  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await expect(checkout.getByRole("heading", { name: "Заказ отправлен менеджеру" })).toBeVisible();
+  await expect(checkout).toContainText("Менеджер свяжется с вами и согласует итоговую сумму");
+  await expect(checkout).toContainText("После подтверждения пришлём ссылку на оплату");
+  await expect(checkout).not.toContainText("Растения уже готовятся к встрече с вами");
+});
+
 test("@desktop оформление подставляет профиль авторизованного покупателя", async ({ page }) => {
   await mockApi(page, owner);
   await page.goto("/");
