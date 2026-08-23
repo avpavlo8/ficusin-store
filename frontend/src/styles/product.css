@@ -171,12 +171,6 @@
 .pdp-cart-button:disabled { opacity:.5; cursor:not-allowed; }
 .pdp-favorite { min-height:48px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--green); font-size:24px; cursor:pointer; }
 .pdp-favorite.active { border-color:#b8694e; color:#b04d36; }
-.pdp-content { padding:72px max(28px,calc((100vw - 1264px)/2)); background:#153a2f; color:#eef4ef; }
-.pdp-content .pdp-section-heading { align-items:start; }
-.pdp-content .pdp-section-heading h2 { color:#eef4ef; }
-.pdp-content > div:last-child { max-width:1264px; margin:auto; display:grid; grid-template-columns:1fr 1fr; gap:8vw; }
-.pdp-content h3 { font:400 24px Georgia,serif; }
-.pdp-content article p { color:#c9d7ce; font-size:15px; line-height:1.75; white-space:pre-line; }
 .pdp-related { padding: 90px 5vw; }
 .pdp-related h2 { margin: 8px 0 35px; color: var(--green); font: 400 44px Georgia,serif; }
 .related-card { display: block; }
@@ -254,8 +248,6 @@
 	.pdp-anchor-nav { top:0; padding:0 18px; gap:24px; }
 	.pdp-anchor-nav a { min-height:48px; }
 	.pdp-section-heading { margin-bottom:28px; align-items:start; flex-direction:column; gap:16px; }
-	.pdp-content { padding: 54px 18px; }
-	.pdp-content > div:last-child { grid-template-columns:1fr; gap:28px; }
 	.pdp-related { padding: 65px 18px; }
 	.plant-passport,.pdp-reviews { padding:60px 18px; }
 	.passport-sections dl > div { grid-template-columns:1fr; gap:6px; padding:12px 0; }
@@ -339,7 +331,6 @@
 .product-page .pdp-tabs-shell { max-width:1600px; margin:0 auto; }
 .product-page .pdp-tab-panel { min-height:300px; padding:18px 32px 42px; }
 .product-page .pdp-tab-panel > .pdp-info-card { width:100%; padding:28px 30px; }
-.product-page .pdp-tab-panel .pdp-content > div:last-child { grid-template-columns:repeat(3,minmax(0,1fr)); gap:32px; }
 .product-page .pdp-tab-panel .pdp-reviews { background:rgba(255,250,243,.7); }.product-page .pdp-tab-panel .review-feed { max-width:none; max-height:none; margin:0; }
 .product-page .pdp-questions details { padding:18px 0; border-bottom:1px solid #dfd1c0; }.product-page .pdp-questions summary { color:#31482c; font-weight:700; cursor:pointer; }.product-page .pdp-questions details p { color:#665c52; line-height:1.6; }
 .product-page .pdp-question-empty { padding:28px 0; }.product-page .pdp-question-empty strong { color:#31482c; font:500 24px Georgia,serif; }.product-page .pdp-question-empty p { color:#6f655b; }.product-page .pdp-question-empty a { color:var(--pdp-orange); font-weight:700; }
@@ -397,7 +388,7 @@
   .product-page .pdp-actions { grid-template-columns:104px 1fr 52px; }.product-page .pdp-cart-button { padding-inline:10px; }
   .product-page > .header { width:100%; height:72px; padding:0 16px; }.product-page > .header .brand { font-size:24px; }
   .product-page .pdp-anchor-nav { padding:0 16px; gap:26px; overflow-x:auto; }.product-page .pdp-anchor-nav button { min-height:50px; }
-  .product-page .pdp-tab-panel { padding:14px 16px 30px; }.product-page .pdp-tab-panel > .pdp-info-card { padding:20px 18px; }.product-page .pdp-tab-panel .pdp-content > div:last-child { grid-template-columns:1fr; gap:18px; }
+  .product-page .pdp-tab-panel { padding:14px 16px 30px; }.product-page .pdp-tab-panel > .pdp-info-card { padding:20px 18px; }
   .product-page .pdp-info-card { padding:20px 18px; }.product-page .pdp-characteristics-panel dl { grid-template-columns:1fr; }.product-page .pdp-characteristics-panel dl > div { grid-template-columns:1fr 1fr; }.product-page .passport-sections,.product-page .review-feed { max-height:none; }
   .product-page .pdp-related { padding:28px 16px 44px; overflow:hidden; }.product-page .pdp-related h2 { font-size:30px; }
   .product-page .pdp-related-track { margin:0 -4px; padding:0 4px; display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; }.product-page .pdp-related-side { width:40px; height:40px; }.product-page .pdp-related-side.prev { left:-8px; }.product-page .pdp-related-side.next { right:-8px; }
