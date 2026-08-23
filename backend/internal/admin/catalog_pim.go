@@ -226,6 +226,19 @@ func (repository *PostgresRepository) UpdateAttributeDefinition(ctx context.Cont
 		if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM collection_definitions WHERE rules @> jsonb_build_array(jsonb_build_object('attribute',$1)))`,oldCode).Scan(&usedByCollection);err!=nil{return AttributeDefinition{},err}
 	}
 	if err=validateAttributeDefinitionChange(oldCode,oldDataType,oldScope,input,hasValues,usedByCollection);err!=nil{return AttributeDefinition{},err}
+	// code, тип и уровень — контракт. Правила динамических подборок ссылаются
+	// на атрибут по code, фильтры и витрина — по типу и уровню, поэтому смена
+	// любого из трёх после того, как значения заполнены, молча опустошает
+	// подборки и делает уже сохранённые значения нечитаемыми.
+	var currentCode, currentType, currentScope string
+	if err:=tx.QueryRow(ctx,`SELECT code,data_type,value_scope FROM attribute_definitions WHERE id=$1`,id).Scan(&currentCode,&currentType,&currentScope);err!=nil{return AttributeDefinition{},err}
+	if currentCode!=strings.ToLower(strings.TrimSpace(input.Code))||currentType!=input.DataType||currentScope!=input.Scope{
+		var used bool
+		if err:=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM product_attribute_values WHERE attribute_id=$1) OR EXISTS(SELECT 1 FROM variant_attribute_values WHERE attribute_id=$1)`,id).Scan(&used);err!=nil{return AttributeDefinition{},err}
+		if used{
+			return AttributeDefinition{},fmt.Errorf("%w: у атрибута уже есть заполненные значения — code, тип и уровень менять нельзя. Заведите новый атрибут",ErrInvalidInput)
+		}
+	}
 	tag,err:=tx.Exec(ctx,`UPDATE attribute_definitions SET code=LOWER(BTRIM($2)),name=BTRIM($3),description=BTRIM($4),data_type=$5,unit=BTRIM($6),audience=$7,value_scope=$8,is_global=$9,is_active=$10,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,input.Code,input.Name,input.Description,input.DataType,input.Unit,input.Audience,input.Scope,input.Global,input.Active)
 	if err!=nil{return AttributeDefinition{},fmt.Errorf("update attribute: %w",err)};if tag.RowsAffected()!=1{return AttributeDefinition{},pgx.ErrNoRows}
 	if input.DataType=="enum"||input.DataType=="multi_enum"{if err:=replaceAttributeOptions(ctx,tx,id,input.Options);err!=nil{return AttributeDefinition{},err}}else{if _,err:=tx.Exec(ctx,`DELETE FROM attribute_options WHERE attribute_id=$1`,id);err!=nil{return AttributeDefinition{},err}}
@@ -235,6 +248,27 @@ func (repository *PostgresRepository) UpdateAttributeDefinition(ctx context.Cont
 
 func (repository *PostgresRepository) ArchiveAttributeDefinition(ctx context.Context, actor Actor, id int64) error {
 	if err:=ownerOnly(actor);err!=nil{return err}
+	// Архивирование выключает атрибут молча: фильтр остаётся в списке, но
+	// перестаёт отдавать значения, а динамическая подборка, которая ссылается
+	// на атрибут по code, начинает возвращать пусто для всех товаров. Пусть
+	// владелец сначала увидит, что именно сломается.
+	var filters int
+	if err:=repository.pool.QueryRow(ctx,`SELECT COUNT(*) FROM catalog_filters WHERE attribute_id=$1 AND is_active`,id).Scan(&filters);err!=nil{return err}
+	collections:=[]string{}
+	rows,err:=repository.pool.Query(ctx,`
+		SELECT collection.title FROM collections collection
+		JOIN attribute_definitions definition ON definition.id=$1
+		WHERE collection.is_active=1 AND collection.mode='dynamic'
+		  AND EXISTS(SELECT 1 FROM jsonb_array_elements(collection.rules) rule WHERE BTRIM(rule->>'attribute')=definition.code)
+		ORDER BY collection.title
+	`,id);if err!=nil{return err}
+	for rows.Next(){var title string;if err:=rows.Scan(&title);err!=nil{rows.Close();return err};collections=append(collections,title)}
+	rows.Close();if err:=rows.Err();err!=nil{return err}
+	if filters>0||len(collections)>0{
+		detail:=fmt.Sprintf("активных фильтров: %d",filters)
+		if len(collections)>0{detail+="; подборки: "+strings.Join(collections,", ")}
+		return fmt.Errorf("%w: атрибут используется на витрине (%s). Сначала отключите их",ErrInvalidInput,detail)
+	}
 	tag,err:=repository.pool.Exec(ctx,`UPDATE attribute_definitions SET is_active=FALSE,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id);if err!=nil{return err};if tag.RowsAffected()!=1{return pgx.ErrNoRows};return nil
 }
 
@@ -383,8 +417,11 @@ func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, 
 	if !Can(actor.Role,PermissionProductsEdit){return AdminVariant{},ErrForbidden};if err:=validateVariantInput(input);err!=nil{return AdminVariant{},err};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}();var productID int64;err=tx.QueryRow(ctx,`UPDATE product_variants SET label=BTRIM($2),base_price_minor=$3,wholesale_min_qty=$4,is_active=$5,archived_at=CASE WHEN $5=1 THEN NULL ELSE archived_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING product_id`,variantID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active)).Scan(&productID);if err!=nil{return AdminVariant{},err};if err:=setVariantStock(ctx,tx,variantID,input.Stock);err!=nil{return AdminVariant{},err};if err:=saveVariantPIMValues(ctx,tx,productID,variantID,input.Attributes);err!=nil{return AdminVariant{},err};if input.Active { if err:=validateRequiredVariantAttributes(ctx,tx,productID,variantID);err!=nil{return AdminVariant{},err} };if err:=replaceVariantExternalIDs(ctx,tx,productID,variantID,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==variantID{return item,nil}};return AdminVariant{},pgx.ErrNoRows
 }
 
+// CopyProductVariant отдаёт копию выключенной: активный SKU обязан иметь
+// заполненные обязательные атрибуты, а копия их не проверяет. Включение
+// проходит через обычный путь редактирования, где проверка есть.
 func (repository *PostgresRepository) CopyProductVariant(ctx context.Context, actor Actor, variantID int64) (AdminVariant,error) {
-	if !Can(actor.Role,PermissionProductsEdit){return AdminVariant{},ErrForbidden};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}();var productID,newID int64;err=tx.QueryRow(ctx,`INSERT INTO product_variants(product_id,label,base_price_minor,price_override_minor,wholesale_min_qty,is_active,updated_at) SELECT product_id,label || ' — копия',base_price_minor,price_override_minor,wholesale_min_qty,1,CURRENT_TIMESTAMP FROM product_variants WHERE id=$1 RETURNING id,product_id`,variantID).Scan(&newID,&productID);if err!=nil{return AdminVariant{},err};if _,err:=tx.Exec(ctx,`INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source,updated_at) SELECT $2,attribute_id,value,'local',CURRENT_TIMESTAMP FROM variant_attribute_values WHERE variant_id=$1`,variantID,newID);err!=nil{return AdminVariant{},err};if _,err:=tx.Exec(ctx,`INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at) SELECT warehouse_id,$2,0,0,CURRENT_TIMESTAMP FROM inventory WHERE variant_id=$1 ON CONFLICT DO NOTHING`,variantID,newID);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==newID{return item,nil}};return AdminVariant{},pgx.ErrNoRows
+	if !Can(actor.Role,PermissionProductsEdit){return AdminVariant{},ErrForbidden};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}();var productID,newID int64;err=tx.QueryRow(ctx,`INSERT INTO product_variants(product_id,label,base_price_minor,price_override_minor,wholesale_min_qty,is_active,updated_at) SELECT product_id,label || ' — копия',base_price_minor,price_override_minor,wholesale_min_qty,0,CURRENT_TIMESTAMP FROM product_variants WHERE id=$1 RETURNING id,product_id`,variantID).Scan(&newID,&productID);if err!=nil{return AdminVariant{},err};if _,err:=tx.Exec(ctx,`INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source,updated_at) SELECT $2,attribute_id,value,'local',CURRENT_TIMESTAMP FROM variant_attribute_values WHERE variant_id=$1`,variantID,newID);err!=nil{return AdminVariant{},err};if _,err:=tx.Exec(ctx,`INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at) SELECT warehouse_id,$2,0,0,CURRENT_TIMESTAMP FROM inventory WHERE variant_id=$1 ON CONFLICT DO NOTHING`,variantID,newID);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==newID{return item,nil}};return AdminVariant{},pgx.ErrNoRows
 }
 
 func (repository *PostgresRepository) ArchiveProductVariant(ctx context.Context, actor Actor, variantID int64) error { if !Can(actor.Role,PermissionProductsEdit){return ErrForbidden};tag,err:=repository.pool.Exec(ctx,`UPDATE product_variants SET is_active=0,archived_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,variantID);if err!=nil{return err};if tag.RowsAffected()!=1{return pgx.ErrNoRows};return nil }
