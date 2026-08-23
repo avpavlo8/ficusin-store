@@ -161,11 +161,15 @@ export function CollectionStrip<T extends Product>({
   }, [products, serverCollections, source]);
 
   if (shown.length === 0) return null;
+  // The first render after an async collection response already knows that
+  // the rail continues. Do not wait for ResizeObserver before showing the
+  // affordance; measured state takes over as soon as the user scrolls.
+  const canScrollNext = scrollEdges.next || (!scrollEdges.previous && shown.length > 3);
 
   return (
     <section className="storefront-preset-carousel" aria-label="Подборки растений">
       <button className="preset-arrow previous" type="button" onClick={() => scroll(-1)} aria-label="Предыдущие подборки" disabled={!scrollEdges.previous}>←</button>
-      <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${scrollEdges.next ? " can-scroll-next" : ""}`} role="list" ref={rail}>
+      <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`} role="list" ref={rail}>
       {shown.map(({ preset, image, count, note }, index) => (
         <button
           key={preset.id}
@@ -184,7 +188,7 @@ export function CollectionStrip<T extends Product>({
         </button>
       ))}
       </div>
-      <button className="preset-arrow next" type="button" onClick={() => scroll(1)} aria-label="Следующие подборки" disabled={!scrollEdges.next}>→</button>
+      <button className="preset-arrow next" type="button" onClick={() => scroll(1)} aria-label="Следующие подборки" disabled={!canScrollNext}>→</button>
     </section>
   );
 }
