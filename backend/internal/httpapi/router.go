@@ -8,6 +8,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogenrichment"
 )
 
 type catalogRepository interface {
@@ -40,8 +41,10 @@ type Dependencies struct {
 	StaticDir    string
 	YandexSuggestKey string
 	CatalogAI catalogAIGenerator
+	CatalogEnrichment catalogEnrichmentStatus
 }
 type catalogAIGenerator interface { Generate(context.Context,catalogai.Input,string)(catalogai.Proposal,error);GenerateCover(context.Context,string)([]byte,string,error);Configured()bool }
+type catalogEnrichmentStatus interface { Status(context.Context)(catalogenrichment.Status,error) }
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
@@ -77,6 +80,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	if dependencies.CatalogEnrichment!=nil { mux.HandleFunc("GET /api/v1/catalog-enrichment/status", func(response http.ResponseWriter,request *http.Request){status,err:=dependencies.CatalogEnrichment.Status(request.Context());if err!=nil{writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Статус подготовки каталога временно недоступен"});return};writeJSON(response,http.StatusOK,status)}) }
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/collections", collectionsHandler(logger, dependencies.Collections))
