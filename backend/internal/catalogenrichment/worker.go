@@ -58,8 +58,8 @@ func (worker *Worker) run(ctx context.Context) {
 	if err:=worker.pool.QueryRow(ctx, `SELECT customer_id,role FROM admin_users WHERE is_active AND customer_id IS NOT NULL ORDER BY role='owner' DESC,id LIMIT 1`).Scan(&worker.actor.CustomerID,&worker.actor.Role);err!=nil{
 		worker.logger.Error("catalog enrichment has no audit actor","error",err);return
 	}
-	for index:=0;index<3;index++ { go worker.textLoop(ctx) }
-	if worker.storage!=nil && worker.storage.Configured(){ for index:=0;index<2;index++{go worker.imageLoop(ctx)} } else {
+	for index:=0;index<6;index++ { go worker.textLoop(ctx) }
+	if worker.storage!=nil && worker.storage.Configured(){ for index:=0;index<6;index++{go worker.imageLoop(ctx)} } else {
 		_,_ = worker.pool.Exec(ctx, `UPDATE catalog_ai_enrichment_jobs SET image_status='skipped',image_error='Хранилище изображений не настроено',updated_at=CURRENT_TIMESTAMP WHERE image_status='pending'`)
 		worker.logger.Warn("catalog enrichment covers skipped: image storage is not configured")
 	}
@@ -68,14 +68,14 @@ func (worker *Worker) run(ctx context.Context) {
 func (worker *Worker) textLoop(ctx context.Context){
 	for ctx.Err()==nil{
 		id,ok:=worker.claim(ctx,"text");if !ok{return}
-		if err:=worker.enrichText(ctx,id);err!=nil{worker.fail(ctx,id,"text",err)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET text_status='done',text_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
+		if err:=worker.enrichText(ctx,id);err!=nil{worker.fail(ctx,id,"text",err);time.Sleep(10*time.Second)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET text_status='done',text_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
 	}
 }
 
 func (worker *Worker) imageLoop(ctx context.Context){
 	for ctx.Err()==nil{
 		id,ok:=worker.claim(ctx,"image");if !ok{time.Sleep(10*time.Second);continue}
-		if err:=worker.enrichImage(ctx,id);err!=nil{worker.fail(ctx,id,"image",err)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET image_status='done',image_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
+		if err:=worker.enrichImage(ctx,id);err!=nil{worker.fail(ctx,id,"image",err);time.Sleep(10*time.Second)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET image_status='done',image_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
 	}
 }
 
