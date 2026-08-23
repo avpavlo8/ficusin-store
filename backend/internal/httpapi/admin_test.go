@@ -51,6 +51,7 @@ func (stub adminAuthStub) UserByToken(context.Context, string) (*auth.User, erro
 type adminRepositoryStub struct {
 	createdProducts []admin.ProductCreate
 	importRequests  []admin.ImportRequest
+	mergeRequests   []admin.MergeProductsRequest
 	updateCustomerCalls int
 	syncCalls           int
 	createCategoryCalls int
@@ -120,6 +121,7 @@ func (stub *adminRepositoryStub) ImportProducts(_ context.Context, _ admin.Actor
 	stub.importRequests = append(stub.importRequests, request)
 	return admin.ImportResult{Created: 1, Entries: []admin.ImportEntry{{Code: "X1150532", Status: "new"}}}, nil
 }
+func (stub *adminRepositoryStub) MergeDraftProducts(_ context.Context,_ admin.Actor,request admin.MergeProductsRequest) error { stub.mergeRequests=append(stub.mergeRequests,request);return nil }
 
 func (stub *adminRepositoryStub) SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error) {
 	stub.syncCalls++
@@ -344,4 +346,17 @@ func TestImportPassesCodesAndSection(t *testing.T) {
 	if len(got.Codes) != 2 || !got.DryRun || got.CategoryID == nil || *got.CategoryID != 4 {
 		t.Fatalf("запрос доехал искажённым: %+v", got)
 	}
+}
+
+func TestMergeProductsPassesReviewedGroup(t *testing.T) {
+	t.Parallel(); repository:=&adminRepositoryStub{}
+	request:=adminRequest(http.MethodPost,"/api/v1/admin/products/merge",`{"targetProductId":10,"sourceProductIds":[11,12]}`)
+	response:=httptest.NewRecorder();NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
+	if response.Code!=http.StatusOK { t.Fatalf("status=%d body=%s",response.Code,response.Body.String()) }
+	if len(repository.mergeRequests)!=1 || repository.mergeRequests[0].TargetProductID!=10 || len(repository.mergeRequests[0].SourceProductIDs)!=2 { t.Fatalf("merge request=%+v",repository.mergeRequests) }
+}
+
+func TestMergeProductsRefusesMissingSources(t *testing.T) {
+	t.Parallel();repository:=&adminRepositoryStub{};request:=adminRequest(http.MethodPost,"/api/v1/admin/products/merge",`{"targetProductId":10,"sourceProductIds":[]}`);response:=httptest.NewRecorder();NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
+	if response.Code!=http.StatusBadRequest || len(repository.mergeRequests)!=0 { t.Fatalf("status=%d calls=%d",response.Code,len(repository.mergeRequests)) }
 }

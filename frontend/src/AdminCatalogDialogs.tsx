@@ -161,6 +161,15 @@ export function ImportDialog({ onClose, onImported, onError }: { onClose: () => 
   </Dialog>;
 }
 
+export function MergeProductsDialog({ products, onClose, onMerged, onError }: { products: Product[]; onClose: () => void; onMerged: () => void; onError: (value: string) => void }) {
+  const [targetId, setTargetId] = useState(products[0]?.id || 0);
+  const [busy, setBusy] = useState(false);
+  const target = products.find((item) => item.id === targetId);
+  const sources = products.filter((item) => item.id !== targetId);
+  const merge = async () => { setBusy(true); try { await api("/api/v1/admin/products/merge", { method: "POST", body: JSON.stringify({ targetProductId: targetId, sourceProductIds: sources.map((item) => item.id) }) }); onMerged(); } catch (error) { onError((error as Error).message); setBusy(false); } };
+  return <Dialog title="Объединить размеры в одну карточку" onClose={onClose}><p>Выберите PRODUCT — его название, категория и описание останутся основными. SKU, остатки, цены, фотографии и связи СБИС остальных черновиков переедут в него.</p><label className="wide">Основная карточка<select value={targetId} onChange={(event) => setTargetId(Number(event.target.value))}>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sabyCode || item.sku}</option>)}</select></label><div className="admin-merge-preview"><strong>Будет одна карточка: {target?.name}</strong><span>Вариантов после объединения: не менее {products.length}</span><small>Поглощаемые черновики: {sources.map((item) => item.name).join(", ")}</small></div><p className="admin-hint">Объединяются только черновики без заказов и отзывов. Все SKU и коды СБИС сохраняются.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={busy || sources.length === 0} onClick={merge}>Объединить {products.length} карточки</button></div></Dialog>;
+}
+
 export function SyncDialog({ count, onClose, onSync }: { count: number; onClose: () => void; onSync: (fields: string[]) => void }) {
   const options = [{ id: "name", label: "Название" }, { id: "photo", label: "Фото" }, { id: "price", label: "Цена" }, { id: "description", label: "Описание" }];
   const [fields, setFields] = useState(["price"]);

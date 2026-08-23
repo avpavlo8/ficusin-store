@@ -402,6 +402,17 @@ func (handlers adminHandlers) importProducts(response http.ResponseWriter, reque
 	writeJSON(response, http.StatusOK, result)
 }
 
+type draftProductMerger interface { MergeDraftProducts(context.Context, admin.Actor, admin.MergeProductsRequest) error }
+
+func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
+	var body admin.MergeProductsRequest
+	if decodeJSON(request,&body)!=nil || body.TargetProductID<=0 || len(body.SourceProductIDs)==0 || len(body.SourceProductIDs)>100 { writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Выберите основную карточку и черновики"});return }
+	merger,ok:=handlers.repository.(draftProductMerger);if !ok{writeJSON(response,http.StatusNotImplemented,errorResponse{Error:"Объединение недоступно"});return}
+	if err:=merger.MergeDraftProducts(request.Context(),actor,body);err!=nil{handlers.failed(response,"merge draft products",err);return}
+	writeJSON(response,http.StatusOK,map[string]any{"ok":true})
+}
+
 func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsSync)
 	if !ok {
