@@ -11,6 +11,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -41,6 +42,7 @@ type adminHandlers struct {
 	// payments is nil when the shop takes no card payments; the refund
 	// button then answers that it is unavailable rather than crashing.
 	payments refundService
+	ai catalogAIGenerator
 }
 
 // refundService is the slice of the payment service the panel needs.
@@ -63,9 +65,10 @@ func newAdminHandlers(
 	authentication authService,
 	repository adminRepository,
 	payments refundService,
+	ai catalogAIGenerator,
 ) adminHandlers {
 	return adminHandlers{
-		logger: logger, auth: authentication, repository: repository, payments: payments,
+		logger: logger, auth: authentication, repository: repository, payments: payments, ai: ai,
 	}
 }
 
@@ -411,6 +414,20 @@ func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, reques
 	merger,ok:=handlers.repository.(draftProductMerger);if !ok{writeJSON(response,http.StatusNotImplemented,errorResponse{Error:"Объединение недоступно"});return}
 	if err:=merger.MergeDraftProducts(request.Context(),actor,body);err!=nil{handlers.failed(response,"merge draft products",err);return}
 	writeJSON(response,http.StatusOK,map[string]any{"ok":true})
+}
+
+type effectiveAttributeProvider interface { EffectiveCategoryAttributes(context.Context,int64)([]admin.EffectiveCategoryAttribute,error) }
+
+func(handlers adminHandlers)generateProductDraft(response http.ResponseWriter,request *http.Request){
+	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
+	if handlers.ai==nil||!handlers.ai.Configured(){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"AI не настроен: добавьте OPENAI_API_KEY"});return}
+	id,err:=strconv.ParseInt(request.PathValue("id"),10,64);if err!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный товар"});return}
+	products,err:=handlers.repository.ListProducts(request.Context());if err!=nil{handlers.failed(response,"list product for ai",err);return}
+	var product *admin.Product;for index:=range products{if products[index].ID==id{product=&products[index];break}}
+	if product==nil{writeJSON(response,http.StatusNotFound,errorResponse{Error:"Товар не найден"});return}
+	input:=catalogai.Input{Name:product.Name,SabyCode:product.SabyCode,Category:product.CatalogSection,CurrentDescription:product.Description,Attributes:[]catalogai.Attribute{}}
+	if product.CategoryID!=nil{if provider,yes:=handlers.repository.(effectiveAttributeProvider);yes{attributes,e:=provider.EffectiveCategoryAttributes(request.Context(),*product.CategoryID);if e==nil{for _,item:=range attributes{if item.Active&&!item.Excluded&&item.Audience=="customer"&&item.Scope=="product"{options:=[]string{};for _,option:=range item.Options{if option.Active{options=append(options,option.Code)}};input.Attributes=append(input.Attributes,catalogai.Attribute{Code:item.Code,Name:item.Name,Type:item.DataType,Unit:item.Unit,Options:options})}}}}}
+	proposal,err:=handlers.ai.Generate(request.Context(),input);if err!=nil{handlers.failed(response,"generate product ai draft",err);return};writeJSON(response,http.StatusOK,map[string]any{"proposal":proposal})
 }
 
 func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
