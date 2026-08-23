@@ -75,6 +75,6 @@ export function ConfirmDialog({ title, text, confirmLabel, busy, danger, onCance
     </div></>;
 }
 
-export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><section className="admin-dialog" role="dialog" aria-modal="true"><header><h2>{title}</h2><button onClick={onClose}>×</button></header>{children}</section></>;
+export function Dialog({ title, onClose, children, className = "" }: { title: string; onClose: () => void; children: React.ReactNode; className?: string }) {
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><section className={`admin-dialog ${className}`.trim()} role="dialog" aria-modal="true"><header><h2>{title}</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>{children}</section></>;
 }
