@@ -13,6 +13,19 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".home-collections")).toHaveCount(0);
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
+  const collectionRail = page.locator(".storefront-preset-carousel .storefront-presets");
+  await expect(collectionRail).toHaveClass(/can-scroll-next/);
+  const railGeometry = await collectionRail.evaluate((element) => {
+    const cards = Array.from(element.querySelectorAll<HTMLElement>(".preset"));
+    const railBox = element.getBoundingClientRect();
+    const fourthBox = cards[3].getBoundingClientRect();
+    return {
+      overflows: element.scrollWidth > element.clientWidth,
+      fourthStartsInside: fourthBox.left < railBox.right,
+      fourthContinuesOutside: fourthBox.right > railBox.right,
+    };
+  });
+  expect(railGeometry).toEqual({ overflows: true, fourthStartsInside: true, fourthContinuesOutside: true });
   await expect(page.locator(".home-catalog-toolbar")).toBeVisible();
   const headerMenus = page.locator(".header-dropdown");
   await headerMenus.first().locator(":scope > summary").click();
