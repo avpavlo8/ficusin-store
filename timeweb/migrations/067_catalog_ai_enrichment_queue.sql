@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS catalog_ai_enrichment_jobs (
 INSERT INTO catalog_ai_enrichment_jobs(product_id)
 SELECT DISTINCT product.id
 FROM products product
-JOIN product_variants variant ON variant.product_id=product.id AND variant.is_active
+JOIN product_variants variant ON variant.product_id=product.id AND variant.is_active<>0
 JOIN inventory ON inventory.variant_id=variant.id AND inventory.available_qty>0
 WHERE product.status='draft'
   AND EXISTS (
