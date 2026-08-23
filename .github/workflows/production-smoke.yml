@@ -19,7 +19,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -66,4 +66,25 @@ jobs:
           done
 
           echo 'Timeweb did not expose a healthy exact production release with a non-empty catalog in time.' >&2
+          exit 1
+
+      - name: Wait for imported draft enrichment to finish
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 660); do
+            raw="$(curl -fsS --max-time 15 "https://ficusin.ru/api/v1/catalog-enrichment/status?attempt=${attempt}" || true)"
+            state="$(printf '%s' "$raw" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"{d.get(\"pending\",-1)}:{d.get(\"processing\",-1)}:{d.get(\"done\",-1)}:{d.get(\"failed\",-1)}")' 2>/dev/null || true)"
+            echo "attempt=${attempt} queue=${state}"
+            IFS=: read -r pending processing done failed <<<"$state"
+            if [[ "$pending" == "0" && "$processing" == "0" && "$failed" == "0" && "$done" =~ ^[1-9][0-9]*$ ]]; then
+              echo "All imported drafts have generated content and covers: ${done}."
+              exit 0
+            fi
+            if [[ "$failed" =~ ^[1-9][0-9]*$ ]]; then
+              echo "Catalog enrichment has ${failed} exhausted jobs." >&2
+              exit 1
+            fi
+            sleep 30
+          done
+          echo 'Catalog enrichment did not finish within the diagnostic window.' >&2
           exit 1
