@@ -206,6 +206,19 @@ jobs:
             exit 1
           fi
 
+          normalized_plants="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
+            SELECT COUNT(DISTINCT product.id)||':'||MIN(product.name)||':'||COUNT(DISTINCT variant.id)||':'||
+                   string_agg(DISTINCT variant.label,',' ORDER BY variant.label)||':'||
+                   string_agg(DISTINCT variant.pot_diameter_cm::text,',' ORDER BY variant.pot_diameter_cm::text)
+            FROM products product JOIN product_variants variant ON variant.product_id=product.id
+            JOIN product_external_ids external ON external.variant_id=variant.id
+              AND external.provider='saby' AND external.id_type='code'
+              AND external.external_id IN ('X9849427','X8512629')")"
+          if [[ "$normalized_plants" != "1:Алоказия:2:D23,D6:23,6" ]]; then
+            echo "Imported plant normalization failed: ${normalized_plants}." >&2
+            exit 1
+          fi
+
           category_matrix="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
             SELECT COUNT(*) FROM (VALUES
               ('plants','height_cm'),('plants','flowering'),('soil','soil_type'),('soil','ph_min'),
