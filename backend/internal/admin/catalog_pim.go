@@ -155,6 +155,16 @@ func validateAttributeDefinition(input AttributeDefinitionInput) error {
 	return nil
 }
 
+func validateAttributeDefinitionChange(oldCode, oldDataType, oldScope string, input AttributeDefinitionInput, hasValues, usedByCollection bool) error {
+	if hasValues && (oldDataType != input.DataType || oldScope != input.Scope) {
+		return fmt.Errorf("%w: тип или scope заполненного атрибута нельзя менять; создайте новый атрибут и перенесите значения", ErrInvalidInput)
+	}
+	if oldCode != strings.ToLower(strings.TrimSpace(input.Code)) && usedByCollection {
+		return fmt.Errorf("%w: code используется в правиле подборки; сначала переведите правило на новый атрибут", ErrInvalidInput)
+	}
+	return nil
+}
+
 func (repository *PostgresRepository) ListAttributeDefinitions(ctx context.Context) ([]AttributeDefinition, error) {
 	rows, err := repository.pool.Query(ctx, `
 		SELECT id,code,name,description,data_type,unit,audience,value_scope,is_global,is_active
@@ -163,19 +173,19 @@ func (repository *PostgresRepository) ListAttributeDefinitions(ctx context.Conte
 	if err != nil { return nil, fmt.Errorf("list attribute definitions: %w", err) }
 	defer rows.Close()
 	items := make([]AttributeDefinition,0)
-	byID := map[int64]*AttributeDefinition{}
 	for rows.Next() {
 		var item AttributeDefinition
 		if err := rows.Scan(&item.ID,&item.Code,&item.Name,&item.Description,&item.DataType,&item.Unit,&item.Audience,&item.Scope,&item.Global,&item.Active); err != nil { return nil, err }
 		item.Options=[]AttributeOption{}
 		items=append(items,item)
-		byID[item.ID]=&items[len(items)-1]
 	}
 	if err:=rows.Err();err!=nil{return nil,err}
+	byID := make(map[int64]int, len(items))
+	for index := range items { byID[items[index].ID] = index }
 	optionRows,err:=repository.pool.Query(ctx,`SELECT id,attribute_id,code,label,sort_order,is_active FROM attribute_options ORDER BY attribute_id,sort_order,id`)
 	if err!=nil{return nil,fmt.Errorf("list attribute options: %w",err)}
 	defer optionRows.Close()
-	for optionRows.Next(){var option AttributeOption;var attributeID int64;if err:=optionRows.Scan(&option.ID,&attributeID,&option.Code,&option.Label,&option.SortOrder,&option.Active);err!=nil{return nil,err};if item:=byID[attributeID];item!=nil{item.Options=append(item.Options,option)}}
+	for optionRows.Next(){var option AttributeOption;var attributeID int64;if err:=optionRows.Scan(&option.ID,&attributeID,&option.Code,&option.Label,&option.SortOrder,&option.Active);err!=nil{return nil,err};if index,ok:=byID[attributeID];ok{items[index].Options=append(items[index].Options,option)}}
 	return items,optionRows.Err()
 }
 
@@ -207,6 +217,15 @@ func (repository *PostgresRepository) CreateAttributeDefinition(ctx context.Cont
 func (repository *PostgresRepository) UpdateAttributeDefinition(ctx context.Context, actor Actor, id int64, input AttributeDefinitionInput) (AttributeDefinition,error) {
 	if err:=ownerOnly(actor);err!=nil{return AttributeDefinition{},err};if err:=validateAttributeDefinition(input);err!=nil{return AttributeDefinition{},err}
 	tx,err:=repository.pool.Begin(ctx);if err!=nil{return AttributeDefinition{},err};defer func(){_ = tx.Rollback(ctx)}()
+	var oldCode,oldDataType,oldScope string
+	if err=tx.QueryRow(ctx,`SELECT code,data_type,value_scope FROM attribute_definitions WHERE id=$1 FOR UPDATE`,id).Scan(&oldCode,&oldDataType,&oldScope);err!=nil{return AttributeDefinition{},err}
+	var hasValues bool
+	if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM product_attribute_values WHERE attribute_id=$1 UNION ALL SELECT 1 FROM variant_attribute_values WHERE attribute_id=$1)`,id).Scan(&hasValues);err!=nil{return AttributeDefinition{},err}
+	usedByCollection:=false
+	if oldCode!=strings.ToLower(strings.TrimSpace(input.Code)) {
+		if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM collection_definitions WHERE rules @> jsonb_build_array(jsonb_build_object('attribute',$1)))`,oldCode).Scan(&usedByCollection);err!=nil{return AttributeDefinition{},err}
+	}
+	if err=validateAttributeDefinitionChange(oldCode,oldDataType,oldScope,input,hasValues,usedByCollection);err!=nil{return AttributeDefinition{},err}
 	tag,err:=tx.Exec(ctx,`UPDATE attribute_definitions SET code=LOWER(BTRIM($2)),name=BTRIM($3),description=BTRIM($4),data_type=$5,unit=BTRIM($6),audience=$7,value_scope=$8,is_global=$9,is_active=$10,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,input.Code,input.Name,input.Description,input.DataType,input.Unit,input.Audience,input.Scope,input.Global,input.Active)
 	if err!=nil{return AttributeDefinition{},fmt.Errorf("update attribute: %w",err)};if tag.RowsAffected()!=1{return AttributeDefinition{},pgx.ErrNoRows}
 	if input.DataType=="enum"||input.DataType=="multi_enum"{if err:=replaceAttributeOptions(ctx,tx,id,input.Options);err!=nil{return AttributeDefinition{},err}}else{if _,err:=tx.Exec(ctx,`DELETE FROM attribute_options WHERE attribute_id=$1`,id);err!=nil{return AttributeDefinition{},err}}
