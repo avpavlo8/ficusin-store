@@ -81,7 +81,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
     {id:"main",label:"Основное"},{id:"attributes",label:"Характеристики"},{id:"care",label:"Уход и FAQ"},
     {id:"variants",label:"Варианты"},{id:"sync",label:"Публикация"},
   ];
-  return <Dialog title={form.name || "Редактирование товара"} onClose={onClose} className="product-editor-dialog">
+  return <Dialog title="Редактирование товара" onClose={onClose} className="product-editor-dialog">
     <div className="product-editor-shell">
       <aside className="product-editor-aside">
         <div className="product-editor-cover">{form.image ? <img src={form.image} alt="" /> : <span>Нет обложки</span>}</div>
@@ -100,7 +100,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
           <label className="wide">Название<input value={form.name} onChange={(event)=>setForm({...form,name:event.target.value})}/><small>Размер горшка лучше хранить в варианте, а не в названии.</small></label>
           <label>Латинское название<input value={form.latinName} onChange={(event)=>setForm({...form,latinName:event.target.value})}/></label>
           <label className="wide">Короткое описание<textarea rows={3} value={form.shortDescription} onChange={(event)=>setForm({...form,shortDescription:event.target.value})}/><small>1–2 предложения для верхней части карточки.</small></label>
-          <label className="wide">Полное описание<textarea rows={9} value={form.description} onChange={(event)=>setForm({...form,description:event.target.value})}/></label>
+          <label className="wide">Описание<textarea rows={9} value={form.description} onChange={(event)=>setForm({...form,description:event.target.value})}/></label>
           <label className="wide">URL главной фотографии<input value={form.image} onChange={(event)=>setForm({...form,image:event.target.value})}/></label>
         </div></section>}
         {section==="attributes"&&<section className="editor-section"><header><div><p>Каталог</p><h3>Категория и характеристики</h3></div><span>Используются в фильтрах и карточке товара</span></header><div className="admin-form-grid product-form">
