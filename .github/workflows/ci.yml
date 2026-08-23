@@ -149,28 +149,6 @@ jobs:
           SQL
             fi
 
-            if [[ "$(basename "$migration")" == "066_normalize_imported_plants.sql" ]]; then
-              echo 'Seeding two imported sizes of the same safe-to-merge plant.'
-              psql -h 127.0.0.1 -U postgres -d ficusin_ci -v ON_ERROR_STOP=1 <<'SQL'
-          INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance)
-          VALUES ('ci-alocasia-23','X9849427','Алоказия D23',439000,2),
-                 ('ci-alocasia-6','X8512629','Алоказия D6',69000,23);
-          INSERT INTO products(saby_id,slug,name,status,catalog_section,category_id)
-          SELECT source.saby_id,source.slug,source.name,'draft','plants',category.id
-          FROM (VALUES ('ci-alocasia-23','ci-alocasia-23','Алоказия D23'),
-                       ('ci-alocasia-6','ci-alocasia-6','Алоказия D6')) source(saby_id,slug,name)
-          CROSS JOIN categories category WHERE category.slug='plants';
-          INSERT INTO product_variants(product_id,saby_id,label,base_price_minor)
-          SELECT product.id,product.saby_id,'Основной вариант',100
-          FROM products product WHERE product.saby_id IN ('ci-alocasia-23','ci-alocasia-6');
-          INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id)
-          SELECT product.id,variant.id,'saby','code',nomenclature.code
-          FROM products product JOIN product_variants variant ON variant.product_id=product.id
-          JOIN saby_nomenclature nomenclature ON nomenclature.saby_id=product.saby_id
-          WHERE product.saby_id IN ('ci-alocasia-23','ci-alocasia-6');
-          SQL
-            fi
-
             echo "::group::${migration}"
             psql \
               -h 127.0.0.1 \
@@ -233,8 +211,9 @@ jobs:
                    string_agg(DISTINCT variant.label,',' ORDER BY variant.label)||':'||
                    string_agg(DISTINCT variant.pot_diameter_cm::text,',' ORDER BY variant.pot_diameter_cm::text)
             FROM products product JOIN product_variants variant ON variant.product_id=product.id
-            WHERE product.saby_id IN ('ci-alocasia-23','ci-alocasia-6')
-               OR variant.saby_id IN ('ci-alocasia-23','ci-alocasia-6')")"
+            JOIN product_external_ids external ON external.variant_id=variant.id
+              AND external.provider='saby' AND external.id_type='code'
+              AND external.external_id IN ('X9849427','X8512629')")"
           if [[ "$normalized_plants" != "1:Алоказия:2:D23,D6:23,6" ]]; then
             echo "Imported plant normalization failed: ${normalized_plants}." >&2
             exit 1
