@@ -434,19 +434,6 @@ func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, reques
 	writeJSON(response,http.StatusOK,map[string]any{"ok":true})
 }
 
-func (handlers adminHandlers) productMergeSuggestions(response http.ResponseWriter, request *http.Request) {
-	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
-	if !ok {
-		return
-	}
-	products, err := handlers.repository.ListProducts(request.Context())
-	if err != nil {
-		handlers.failed(response, "audit draft products", err)
-		return
-	}
-	writeJSON(response, http.StatusOK, admin.BuildMergeSuggestions(products))
-}
-
 type effectiveAttributeProvider interface { EffectiveCategoryAttributes(context.Context,int64)([]admin.EffectiveCategoryAttribute,error) }
 
 func(handlers adminHandlers)generateProductDraft(response http.ResponseWriter,request *http.Request){
