@@ -226,16 +226,17 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const selectedPayment = paymentMethods.find((item) => item.id === paymentMethod);
   const addressDelivery = delivery === "courier" || delivery === "post";
   const deliveryBlocked = (delivery === "cdek" && !cdekOfficeCode) || addressDeliveryNeedsQuote || deliveryQuoteLoading;
+  const confirmationPending = Boolean(orderNumber && deliveryFeePending);
 
   return (
     <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
-      <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
+      <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{confirmationPending ? "Заказ ждёт подтверждения" : orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
       {orderNumber ? (
         <div className="success">
           <div className="success-copy">
             <span className="success-heart" aria-hidden="true">♡</span>
-            <h2>Заказ принят</h2>
-            <p className="success-lead">Спасибо! Растения уже готовятся к встрече с вами.</p>
+            <h2>{confirmationPending ? "Заказ отправлен менеджеру" : "Заказ принят"}</h2>
+            <p className="success-lead">{confirmationPending ? "Спасибо! Менеджер рассчитает доставку, уточнит детали и свяжется с вами для подтверждения заказа." : "Спасибо! Растения уже готовятся к встрече с вами."}</p>
             <div className="success-columns">
               <div className="success-order-info">
                 <div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div>
@@ -244,11 +245,15 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                 <a className="primary-button" href={`/account/orders/${encodeURIComponent(orderNumber)}`}>Следить за заказом <span aria-hidden="true">→</span></a>
                 <a className="success-catalog-link" href="/#catalog">Вернуться в каталог <span aria-hidden="true">↗</span></a>
               </div>
-              <div className="success-next"><h3>Что будет дальше</h3><ol>
+              <div className="success-next"><h3>Что будет дальше</h3>{confirmationPending ? <ol>
+                <li><b>1</b><span>Рассчитаем стоимость и условия доставки</span></li>
+                <li><b>2</b><span>Менеджер свяжется с вами и согласует итоговую сумму</span></li>
+                <li><b>3</b><span>{paymentMethod === "online" ? "После подтверждения пришлём ссылку на оплату" : "После подтверждения начнём собирать заказ"}</span></li>
+              </ol> : <ol>
                 <li><b>1</b><span>Соберём и проверим растения</span></li>
                 <li><b>2</b><span>Аккуратно упакуем</span></li>
                 <li><b>3</b><span>{delivery === "pickup" ? "Сообщим, когда заказ будет готов" : "Передадим заказ в доставку"}</span></li>
-              </ol></div>
+              </ol>}</div>
             </div>
           </div>
         </div>
