@@ -67,3 +67,12 @@ jobs:
 
           echo 'Timeweb did not expose a healthy exact production release with a non-empty catalog in time.' >&2
           exit 1
+
+      - name: Report current imported draft enrichment
+        run: |
+          curl -fsS --max-time 15 https://ficusin.ru/api/v1/catalog-enrichment/status | tee /tmp/catalog-enrichment.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/catalog-enrichment.json'))
+          assert all(isinstance(data.get(key),int) for key in ('pending','processing','done','failed')), data
+          PY
