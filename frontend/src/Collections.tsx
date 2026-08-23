@@ -86,6 +86,32 @@ export function CollectionStrip<T extends Product>({
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
   const [source, setSource] = useState<CollectionSource>("loading");
+  const [scrollEdges, setScrollEdges] = useState({ previous: false, next: false });
+
+  useEffect(() => {
+    const element = rail.current;
+    if (!element) return;
+    const update = () => setScrollEdges({
+      previous: element.scrollLeft > 2,
+      next: element.scrollLeft + element.clientWidth < element.scrollWidth - 2,
+    });
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [source, serverCollections.length]);
+
+  const scroll = (direction: -1 | 1) => {
+    const element = rail.current;
+    const card = element?.querySelector<HTMLElement>(".preset");
+    if (!element || !card) return;
+    const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
+    element.scrollBy({ left: direction * (card.offsetWidth + gap), behavior: "smooth" });
+  };
 
   useEffect(() => {
     let alive = true;
@@ -138,8 +164,8 @@ export function CollectionStrip<T extends Product>({
 
   return (
     <section className="storefront-preset-carousel" aria-label="Подборки растений">
-      <button className="preset-arrow previous" type="button" onClick={() => rail.current?.scrollBy({ left: -420, behavior: "smooth" })} aria-label="Предыдущие подборки">←</button>
-      <div className="storefront-presets" role="list" ref={rail}>
+      <button className="preset-arrow previous" type="button" onClick={() => scroll(-1)} aria-label="Предыдущие подборки" disabled={!scrollEdges.previous}>←</button>
+      <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${scrollEdges.next ? " can-scroll-next" : ""}`} role="list" ref={rail}>
       {shown.map(({ preset, image, count, note }, index) => (
         <button
           key={preset.id}
@@ -158,7 +184,7 @@ export function CollectionStrip<T extends Product>({
         </button>
       ))}
       </div>
-      <button className="preset-arrow next" type="button" onClick={() => rail.current?.scrollBy({ left: 420, behavior: "smooth" })} aria-label="Следующие подборки">→</button>
+      <button className="preset-arrow next" type="button" onClick={() => scroll(1)} aria-label="Следующие подборки" disabled={!scrollEdges.next}>→</button>
     </section>
   );
 }
