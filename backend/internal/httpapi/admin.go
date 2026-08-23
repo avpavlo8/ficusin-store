@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
@@ -419,6 +420,10 @@ func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, reques
 type effectiveAttributeProvider interface { EffectiveCategoryAttributes(context.Context,int64)([]admin.EffectiveCategoryAttribute,error) }
 
 func(handlers adminHandlers)generateProductDraft(response http.ResponseWriter,request *http.Request){
+	// Research with web search legitimately takes longer than normal shop API
+	// calls. Extend only this response; checkout and every other endpoint keep
+	// the server-wide 30 second protection.
+	_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2*time.Minute))
 	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
 	if handlers.ai==nil||!handlers.ai.Configured(){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"AI не настроен: добавьте OPENAI_API_KEY"});return}
 	id,err:=strconv.ParseInt(request.PathValue("id"),10,64);if err!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный товар"});return}
