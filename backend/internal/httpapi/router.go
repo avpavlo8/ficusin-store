@@ -171,6 +171,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refund", adminAPI.refundOrderAmount)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
 	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
+	mux.HandleFunc("DELETE /api/v1/admin/products", adminAPI.deleteDraftProducts)
 	mux.HandleFunc("POST /api/v1/admin/products", adminAPI.createProduct)
 	mux.HandleFunc("POST /api/v1/admin/products/import", adminAPI.importProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/merge", adminAPI.mergeProducts)
