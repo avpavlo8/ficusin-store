@@ -21,7 +21,17 @@ type generator interface {
 	Configured() bool
 }
 
-type Status struct { Pending int `json:"pending"`; Processing int `json:"processing"`; Done int `json:"done"`; Failed int `json:"failed"` }
+type Status struct {
+	Total       int `json:"total"`
+	Pending     int `json:"pending"`
+	Processing  int `json:"processing"`
+	Done        int `json:"done"`
+	Failed      int `json:"failed"`
+	TextFailed  int `json:"textFailed"`
+	ImageFailed int `json:"imageFailed"`
+	RateLimited int `json:"rateLimited"`
+	QuotaFailed int `json:"quotaFailed"`
+}
 
 type Worker struct {
 	pool *pgxpool.Pool
@@ -44,11 +54,16 @@ func (worker *Worker) Start(ctx context.Context) {
 func (worker *Worker) Status(ctx context.Context) (Status,error) {
 	var status Status
 	err:=worker.pool.QueryRow(ctx, `SELECT
+		COUNT(*)::int,
 		COUNT(*) FILTER(WHERE text_status='pending' OR image_status='pending')::int,
 		COUNT(*) FILTER(WHERE text_status='processing' OR image_status='processing')::int,
 		COUNT(*) FILTER(WHERE text_status='done' AND image_status IN ('done','skipped'))::int,
-		COUNT(*) FILTER(WHERE text_status='failed' OR image_status='failed')::int
-		FROM catalog_ai_enrichment_jobs`).Scan(&status.Pending,&status.Processing,&status.Done,&status.Failed)
+		COUNT(*) FILTER(WHERE text_status='failed' OR image_status='failed')::int,
+		COUNT(*) FILTER(WHERE text_status='failed')::int,
+		COUNT(*) FILTER(WHERE image_status='failed')::int,
+		COUNT(*) FILTER(WHERE LOWER(text_error||' '||image_error) LIKE '%429%' OR LOWER(text_error||' '||image_error) LIKE '%rate limit%')::int,
+		COUNT(*) FILTER(WHERE LOWER(text_error||' '||image_error) LIKE '%insufficient_quota%' OR LOWER(text_error||' '||image_error) LIKE '%billing_hard_limit%')::int
+		FROM catalog_ai_enrichment_jobs`).Scan(&status.Total,&status.Pending,&status.Processing,&status.Done,&status.Failed,&status.TextFailed,&status.ImageFailed,&status.RateLimited,&status.QuotaFailed)
 	return status,err
 }
 
@@ -58,8 +73,8 @@ func (worker *Worker) run(ctx context.Context) {
 	if err:=worker.pool.QueryRow(ctx, `SELECT customer_id,role FROM admin_users WHERE is_active AND customer_id IS NOT NULL ORDER BY role='owner' DESC,id LIMIT 1`).Scan(&worker.actor.CustomerID,&worker.actor.Role);err!=nil{
 		worker.logger.Error("catalog enrichment has no audit actor","error",err);return
 	}
-	for index:=0;index<6;index++ { go worker.textLoop(ctx) }
-	if worker.storage!=nil && worker.storage.Configured(){ for index:=0;index<6;index++{go worker.imageLoop(ctx)} } else {
+	for index:=0;index<3;index++ { go worker.textLoop(ctx) }
+	if worker.storage!=nil && worker.storage.Configured(){ for index:=0;index<2;index++{go worker.imageLoop(ctx)} } else {
 		_,_ = worker.pool.Exec(ctx, `UPDATE catalog_ai_enrichment_jobs SET image_status='skipped',image_error='Хранилище изображений не настроено',updated_at=CURRENT_TIMESTAMP WHERE image_status='pending'`)
 		worker.logger.Warn("catalog enrichment covers skipped: image storage is not configured")
 	}
@@ -68,28 +83,31 @@ func (worker *Worker) run(ctx context.Context) {
 func (worker *Worker) textLoop(ctx context.Context){
 	for ctx.Err()==nil{
 		id,ok:=worker.claim(ctx,"text");if !ok{return}
-		if err:=worker.enrichText(ctx,id);err!=nil{worker.fail(ctx,id,"text",err);time.Sleep(10*time.Second)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET text_status='done',text_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
+		if err:=worker.enrichText(ctx,id);err!=nil{worker.fail(ctx,id,"text",err);time.Sleep(30*time.Second)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET text_status='done',text_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
 	}
 }
 
 func (worker *Worker) imageLoop(ctx context.Context){
 	for ctx.Err()==nil{
 		id,ok:=worker.claim(ctx,"image");if !ok{time.Sleep(10*time.Second);continue}
-		if err:=worker.enrichImage(ctx,id);err!=nil{worker.fail(ctx,id,"image",err);time.Sleep(10*time.Second)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET image_status='done',image_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
+		if err:=worker.enrichImage(ctx,id);err!=nil{worker.fail(ctx,id,"image",err);time.Sleep(30*time.Second)} else { _,_=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET image_status='done',image_error='',updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,id) }
 	}
 }
 
 func(worker *Worker) claim(ctx context.Context,kind string)(int64,bool){
 	status:=kind+"_status";attempts:=kind+"_attempts"
 	ready:="";if kind=="image"{ready=" AND text_status='done'"}
-	query:=fmt.Sprintf(`WITH next AS (SELECT product_id FROM catalog_ai_enrichment_jobs WHERE %s='pending' AND %s<3%s ORDER BY product_id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE catalog_ai_enrichment_jobs job SET %s='processing',%s=%s+1,updated_at=CURRENT_TIMESTAMP FROM next WHERE job.product_id=next.product_id RETURNING job.product_id`,status,attempts,ready,status,attempts,attempts)
+	query:=fmt.Sprintf(`WITH next AS (SELECT product_id FROM catalog_ai_enrichment_jobs WHERE %s='pending' AND %s<5%s ORDER BY product_id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE catalog_ai_enrichment_jobs job SET %s='processing',%s=%s+1,updated_at=CURRENT_TIMESTAMP FROM next WHERE job.product_id=next.product_id RETURNING job.product_id`,status,attempts,ready,status,attempts,attempts)
 	var id int64;if err:=worker.pool.QueryRow(ctx,query).Scan(&id);err!=nil{return 0,false};return id,true
 }
 
 func(worker *Worker) fail(ctx context.Context,id int64,kind string,failure error){
 	message:=failure.Error();if len(message)>1200{message=message[:1200]}
-	query:=fmt.Sprintf(`UPDATE catalog_ai_enrichment_jobs SET %s_status=CASE WHEN %s_attempts>=3 THEN 'failed' ELSE 'pending' END,%s_error=$2,updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,kind,kind,kind)
-	_,_=worker.pool.Exec(ctx,query,id,message);worker.logger.Error("catalog enrichment failed","product_id",id,"kind",kind,"error",failure)
+	normalized:=strings.ToLower(message)
+	quota:=strings.Contains(normalized,"insufficient_quota")||strings.Contains(normalized,"billing_hard_limit")
+	transient:=!quota&&(strings.Contains(normalized,"http 429")||strings.Contains(normalized,"rate limit")||strings.Contains(normalized,"http 500")||strings.Contains(normalized,"http 502")||strings.Contains(normalized,"http 503")||strings.Contains(normalized,"http 504")||strings.Contains(normalized,"timeout")||strings.Contains(normalized,"connection reset"))
+	query:=fmt.Sprintf(`UPDATE catalog_ai_enrichment_jobs SET %s_status=CASE WHEN $3 THEN 'pending' WHEN %s_attempts>=5 THEN 'failed' ELSE 'pending' END,%s_attempts=CASE WHEN $3 THEN GREATEST(%s_attempts-1,0) ELSE %s_attempts END,%s_error=$2,updated_at=CURRENT_TIMESTAMP WHERE product_id=$1`,kind,kind,kind,kind,kind,kind)
+	_,_=worker.pool.Exec(ctx,query,id,message,transient);worker.logger.Error("catalog enrichment failed","product_id",id,"kind",kind,"transient",transient,"error",failure)
 }
 
 func(worker *Worker) enrichText(ctx context.Context,id int64)error{
@@ -112,9 +130,9 @@ func(worker *Worker) enrichText(ctx context.Context,id int64)error{
 }
 
 func(worker *Worker) enrichImage(ctx context.Context,id int64)error{
-	var prompt,name string
-	if err:=worker.pool.QueryRow(ctx,`SELECT job.cover_prompt,product.name FROM catalog_ai_enrichment_jobs job JOIN products product ON product.id=job.product_id WHERE job.product_id=$1 AND job.text_status='done'`,id).Scan(&prompt,&name);err!=nil{return err}
-	if strings.TrimSpace(prompt)==""{prompt="Каталожная фотография товара «"+name+"»: один товар целиком, по центру, тёплый светло-бежевый фон, мягкая естественная тень, без текста, логотипов, ценников и посторонних предметов."}
+	var prompt,name string;var attempts int
+	if err:=worker.pool.QueryRow(ctx,`SELECT job.cover_prompt,product.name,job.image_attempts FROM catalog_ai_enrichment_jobs job JOIN products product ON product.id=job.product_id WHERE job.product_id=$1 AND job.text_status='done'`,id).Scan(&prompt,&name,&attempts);err!=nil{return err}
+	if strings.TrimSpace(prompt)==""||attempts>=2{prompt="Чистая каталожная фотография одного товара категории магазина растений, соответствующего названию «"+name+"». Товар целиком по центру на однотонном тёплом светло-бежевом фоне, мягкая естественная тень. Без текста, людей, логотипов, ценников и дополнительных предметов."}
 	image,contentType,err:=worker.ai.GenerateCover(ctx,prompt);if err!=nil{return err};key:=fmt.Sprintf("products/%d/ai-cover-%d.webp",id,time.Now().UnixNano());if err=worker.storage.Put(ctx,key,image,contentType);err!=nil{return err};url:=worker.storage.PublicURL(key)
 	item,err:=worker.repository.AddUploadedProductMedia(ctx,worker.actor,id,"ai://catalog-enrichment/"+fmt.Sprint(time.Now().UnixNano()),url,url);if err!=nil{return err};return worker.repository.SetPrimaryProductMedia(ctx,worker.actor,id,item.ID)
 }

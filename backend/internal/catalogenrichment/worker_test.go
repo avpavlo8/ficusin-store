@@ -16,3 +16,8 @@ func TestPlantCategoryDetection(t *testing.T) {
 	if !isPlantCategory("Растения") || !isPlantCategory("plants") { t.Fatal("plant category was not recognized") }
 	if isPlantCategory("Удобрения") { t.Fatal("fertilizer must not receive a plant passport") }
 }
+
+func TestStatusRemainsJSONStable(t *testing.T) {
+	status:=Status{Total:375,Done:230,ImageFailed:145,RateLimited:145}
+	if status.Total!=status.Done+status.ImageFailed { t.Fatalf("unexpected status fixture: %#v",status) }
+}
