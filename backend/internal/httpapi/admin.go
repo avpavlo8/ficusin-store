@@ -432,7 +432,7 @@ func(handlers adminHandlers)generateProductDraft(response http.ResponseWriter,re
 	if product==nil{writeJSON(response,http.StatusNotFound,errorResponse{Error:"Товар не найден"});return}
 	input:=catalogai.Input{Name:product.Name,SabyCode:product.SabyCode,Category:product.CatalogSection,CurrentDescription:product.Description,Attributes:[]catalogai.Attribute{}}
 	if product.CategoryID!=nil{if provider,yes:=handlers.repository.(effectiveAttributeProvider);yes{attributes,e:=provider.EffectiveCategoryAttributes(request.Context(),*product.CategoryID);if e==nil{for _,item:=range attributes{if item.Active&&!item.Excluded&&item.Audience=="customer"&&item.Scope=="product"{options:=[]string{};for _,option:=range item.Options{if option.Active{options=append(options,option.Code)}};input.Attributes=append(input.Attributes,catalogai.Attribute{Code:item.Code,Name:item.Name,Type:item.DataType,Unit:item.Unit,Options:options})}}}}}
-	proposal,err:=handlers.ai.Generate(request.Context(),input);if err!=nil{handlers.failed(response,"generate product ai draft",err);return};writeJSON(response,http.StatusOK,map[string]any{"proposal":proposal})
+	proposal,err:=handlers.ai.Generate(request.Context(),input);if err!=nil{handlers.failedAI(response,"generate product ai draft",err);return};writeJSON(response,http.StatusOK,map[string]any{"proposal":proposal})
 }
 
 func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
@@ -541,6 +541,15 @@ func (handlers adminHandlers) failed(response http.ResponseWriter, operation str
 	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: "Не удалось выполнить операцию"})
+}
+
+func (handlers adminHandlers) failedAI(response http.ResponseWriter, operation string, err error) {
+	handlers.logger.Error(operation+" failed", "error", err)
+	message := err.Error()
+	if len(message) > 600 {
+		message = message[:600] + "…"
+	}
+	writeJSON(response, http.StatusBadGateway, errorResponse{Error: "AI: " + message})
 }
 
 func pathID(response http.ResponseWriter, request *http.Request) (int64, bool) {
