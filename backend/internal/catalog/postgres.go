@@ -90,7 +90,8 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	variantRows, err := repository.pool.Query(ctx, `
 		SELECT pv.id, pv.sku, pv.label, pv.base_price_minor,
 			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=pv.id),0)::INTEGER,
-			pv.height_cm, pv.pot_diameter_cm, pv.wholesale_min_qty,
+			variant_numeric_attribute(pv.id, 'height_cm')::INTEGER,
+			variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.wholesale_min_qty,
 			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,media.object_key) ORDER BY media.is_primary DESC,media.sort_order,media.id)
 				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
 				WHERE media.variant_id=pv.id),'[]'::jsonb),
@@ -348,11 +349,18 @@ type PackageSize struct { LengthCM int; WidthCM int; HeightCM int; WeightGrams i
 
 // PackageSizes is SKU-based. Delivery must price the exact sellable variant,
 // never the first size that happens to share a product card.
+//
+// Sizes come from PIM, not from the legacy product_variants columns: since
+// migration 061 variant_attribute_values is the single source, so a parcel
+// edited by an operator changes the delivery price immediately.
 func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []string) (map[string]PackageSize,error) {
 	sizes:=make(map[string]PackageSize,len(skus));if len(skus)==0{return sizes,nil}
 	rows,err:=repository.pool.Query(ctx,`
-		SELECT variant.sku,COALESCE(variant.package_length_cm,0),COALESCE(variant.package_width_cm,0),
-			COALESCE(variant.package_height_cm,0),COALESCE(variant.package_weight_grams,0)
+		SELECT variant.sku,
+			COALESCE(variant_numeric_attribute(variant.id,'package_length_cm'),0)::INTEGER,
+			COALESCE(variant_numeric_attribute(variant.id,'package_width_cm'),0)::INTEGER,
+			COALESCE(variant_numeric_attribute(variant.id,'package_height_cm'),0)::INTEGER,
+			COALESCE(variant_numeric_attribute(variant.id,'package_weight_grams'),0)::INTEGER
 		FROM product_variants variant
 		JOIN products product ON product.id=variant.product_id AND product.status='published'
 		WHERE variant.sku=ANY($1) AND variant.is_active=1

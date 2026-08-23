@@ -221,9 +221,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		var item purchasableItem
 		var priceMinor int64
 		err := transaction.QueryRow(ctx, `
-			SELECT pv.sku, p.id, p.name, pv.id, pv.label, pv.height_cm, pv.pot_diameter_cm, pv.base_price_minor,
-				COALESCE(pv.package_length_cm, 0), COALESCE(pv.package_width_cm, 0),
-				COALESCE(pv.package_height_cm, 0), COALESCE(pv.package_weight_grams, 0)
+			SELECT pv.sku, p.id, p.name, pv.id, pv.label, variant_numeric_attribute(pv.id, 'height_cm')::INTEGER, variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.base_price_minor,
+				COALESCE(variant_numeric_attribute(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_width_cm'), 0)::INTEGER,
+				COALESCE(variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
 			FROM products p
 			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND pv.archived_at IS NULL
 			WHERE pv.sku = $1 AND p.status = 'published'

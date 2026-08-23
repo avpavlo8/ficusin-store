@@ -430,6 +430,30 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, fmt.Errorf("update product variant: %w", err)
 	}
+
+	// Габариты живут в PIM. Миграция 061 сделала variant_attribute_values
+	// единственным источником, и доставка читает уже оттуда, поэтому та же
+	// правка обязана дойти до атрибутов — иначе старая форма перестала бы
+	// влиять на что-либо вообще. Колонки выше обновляются только ради
+	// отката этого релиза.
+	var legacyVariantID int64
+	if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT id FROM product_variants WHERE product_id = $1 ORDER BY is_active DESC, id LIMIT 1), 0)`, id).Scan(&legacyVariantID); err != nil {
+		return Product{}, fmt.Errorf("resolve product variant: %w", err)
+	}
+	if legacyVariantID > 0 {
+		dimensions := map[string]any{}
+		if update.HeightCM != nil { dimensions["height_cm"] = *update.HeightCM }
+		if update.PotDiameterCM != nil { dimensions["pot_diameter_cm"] = *update.PotDiameterCM }
+		if update.PackageLengthCM != nil { dimensions["package_length_cm"] = *update.PackageLengthCM }
+		if update.PackageWidthCM != nil { dimensions["package_width_cm"] = *update.PackageWidthCM }
+		if update.PackageHeightCM != nil { dimensions["package_height_cm"] = *update.PackageHeightCM }
+		if update.PackageWeightGrams != nil { dimensions["package_weight_grams"] = *update.PackageWeightGrams }
+		if len(dimensions) > 0 {
+			if err := saveVariantPIMValues(ctx, tx, id, legacyVariantID, dimensions); err != nil {
+				return Product{}, err
+			}
+		}
+	}
 	// Остаток правим руками только у товаров, которым СБИС его не приносит:
 	// иначе ближайший обмен молча вернёт прежнее число, и правка исчезнет.
 	if update.Stock != nil {
