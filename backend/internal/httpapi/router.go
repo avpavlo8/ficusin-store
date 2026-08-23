@@ -41,7 +41,7 @@ type Dependencies struct {
 	YandexSuggestKey string
 	CatalogAI catalogAIGenerator
 }
-type catalogAIGenerator interface { Generate(context.Context,catalogai.Input)(catalogai.Proposal,error);GenerateCover(context.Context,string)([]byte,string,error);Configured()bool }
+type catalogAIGenerator interface { Generate(context.Context,catalogai.Input,string)(catalogai.Proposal,error);GenerateCover(context.Context,string)([]byte,string,error);Configured()bool }
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
