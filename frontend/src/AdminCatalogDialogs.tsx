@@ -45,6 +45,9 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
   const [form, setForm] = useState(product);
   const [categories, setCategories] = useState<Category[]>([]);
   const [schema, setSchema] = useState<CategoryAttribute[]>([]);
+  const [aiProposal, setAIProposal] = useState<{name:string;latinName:string;shortDescription:string;description:string;careInstructions:string;attributes:Record<string,unknown>;faq:Array<{question:string;answer:string}>;warnings:string[];coverPrompt:string;sources:string[]}|null>(null);
+  const [aiBusy,setAIBusy]=useState(false);
+  const [aiCoverBusy,setAICoverBusy]=useState(false);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
   useEffect(() => { let active = true; if (form.categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${form.categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes || []); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [form.categoryId, onError]);
   const save = async () => {
@@ -61,8 +64,13 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
       }) }); onSaved(result.product);
     } catch (error) { onError((error as Error).message); }
   };
+  const generateAI=async()=>{setAIBusy(true);try{const result=await api<{proposal:NonNullable<typeof aiProposal>}>(`/api/v1/admin/products/${product.id}/ai-draft`,{method:"POST"});setAIProposal(result.proposal);}catch(error){onError((error as Error).message);}finally{setAIBusy(false);}};
+  const applyAI=()=>{if(!aiProposal)return;setForm(current=>({...current,name:aiProposal.name||current.name,latinName:aiProposal.latinName||current.latinName,shortDescription:aiProposal.shortDescription,description:aiProposal.description,careInstructions:aiProposal.careInstructions,attributes:{...current.attributes,...aiProposal.attributes} as Product["attributes"],passport:{...current.passport,faq:aiProposal.faq},importantWarnings:aiProposal.warnings.slice(0,4)}));setAIProposal(null);};
+  const generateCover=async()=>{if(!aiProposal)return;setAICoverBusy(true);try{const result=await api<{url:string}>(`/api/v1/admin/products/${product.id}/ai-cover`,{method:"POST",body:JSON.stringify({prompt:aiProposal.coverPrompt})});setForm(current=>({...current,image:result.url}));}catch(error){onError((error as Error).message);}finally{setAICoverBusy(false);}};
   return <Dialog title="Редактирование товара" onClose={onClose}><div className="admin-form-grid product-form">
     <h3 className="product-form-heading wide">Карточка товара</h3>
+    <div className="wide ai-card-tools"><div><strong>AI-редактор карточки</strong><small>Предложит текст, характеристики, FAQ, источники и промпт обложки. Ничего не сохранится без вашего подтверждения.</small></div><button type="button" disabled={aiBusy} onClick={generateAI}>{aiBusy?"Исследуем…":"Подготовить с AI"}</button></div>
+    {aiProposal&&<section className="wide ai-card-proposal"><h4>Предложение AI</h4><p><strong>{aiProposal.name}</strong>{aiProposal.latinName&&<small>{aiProposal.latinName}</small>}</p><p>{aiProposal.shortDescription}</p><details><summary>Описание и уход</summary><p>{aiProposal.description}</p><p>{aiProposal.careInstructions}</p></details><details><summary>Характеристики и источники</summary><pre>{JSON.stringify(aiProposal.attributes,null,2)}</pre>{aiProposal.sources.map(source=><a key={source} href={source} target="_blank" rel="noreferrer">{source}</a>)}</details><details><summary>Каталожная обложка</summary><p>{aiProposal.coverPrompt}</p><button type="button" disabled={aiCoverBusy} onClick={generateCover}>{aiCoverBusy?"Генерируем…":"Сгенерировать и поставить главной"}</button></details><div className="dialog-actions"><button type="button" onClick={()=>setAIProposal(null)}>Отклонить</button><button type="button" className="primary" onClick={applyAI}>Применить в форму</button></div></section>}
     <label className="wide">Название<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
     <label>Латинское название<input value={form.latinName} onChange={(event) => setForm({ ...form, latinName: event.target.value })} /></label>
     <label className="wide">Короткое описание<textarea rows={2} value={form.shortDescription} onChange={(event) => setForm({ ...form, shortDescription: event.target.value })} /></label>

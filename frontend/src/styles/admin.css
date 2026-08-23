@@ -306,3 +306,4 @@
   .admin-collection-count { white-space: nowrap; }
 }
 .admin-merge-preview{margin:16px 0;padding:16px;display:grid;gap:6px;border:1px solid #e4dfd7;border-radius:14px;background:#faf8f3}.admin-merge-preview span,.admin-merge-preview small{color:#716b63}
+.ai-card-tools{padding:15px 17px;display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid #dfe3b4;border-radius:14px;background:#f7f8df}.ai-card-tools div{display:grid;gap:4px}.ai-card-tools small{color:#6d7057}.ai-card-proposal{padding:18px;border:1px solid #d9d4ca;border-radius:16px;background:#fff}.ai-card-proposal h4{margin-top:0}.ai-card-proposal p{white-space:pre-wrap}.ai-card-proposal p small{display:block;color:#777}.ai-card-proposal details{padding:10px 0;border-top:1px solid #eee}.ai-card-proposal pre{max-height:220px;overflow:auto;padding:10px;background:#f6f4ef}.ai-card-proposal a{display:block;overflow:hidden;text-overflow:ellipsis;font-size:12px}
