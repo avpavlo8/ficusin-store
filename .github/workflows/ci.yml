@@ -28,6 +28,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      - name: Verify rich-care images in production bundle
+        run: test -s dist/images/care/light.webp && test -s dist/images/care/watering.webp && test -s dist/images/care/humidity.webp && test -s dist/images/care/repotting.webp
 
   layout:
     runs-on: ubuntu-latest
