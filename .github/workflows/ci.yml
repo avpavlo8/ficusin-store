@@ -166,6 +166,15 @@ jobs:
             exit 1
           fi
 
+          review_default="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT column_default FROM information_schema.columns WHERE table_name='product_reviews' AND column_name='status'")"
+          review_unique_index="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM pg_indexes WHERE indexname='product_reviews_customer_product_active_uidx' AND indexdef LIKE '%product_id, customer_id%' AND indexdef LIKE '%published%'")"
+          if [[ "$review_default" != "'published'::text" || "$review_unique_index" != "1" ]]; then
+            echo "Review auto-publication or one-review database guard is missing: default=${review_default} index=${review_unique_index}." >&2
+            exit 1
+          fi
+
           # A normal new row has no legacy_product_ref and therefore must carry
           # the full catalogue identity. This insert must be rejected by CHECK.
           if psql -h 127.0.0.1 -U postgres -d ficusin_ci -v ON_ERROR_STOP=1 -c \

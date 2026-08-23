@@ -52,6 +52,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+  const [orderConfirmationPending, setOrderConfirmationPending] = useState(false);
   const [cdekCityQuery, setCdekCityQuery] = useState("");
   const [cdekCities, setCdekCities] = useState<CdekCity[]>([]);
   const [cdekCity, setCdekCity] = useState<CdekCity | null>(null);
@@ -334,6 +335,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       paymentMethod,
     };
 
+    const needsManagerConfirmation = deliveryFeePending;
     try {
       const response = await fetch("/api/v1/orders", {
         method: "POST",
@@ -344,6 +346,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       if (!response.ok || !data.orderNumber) {
         throw new Error(data.error || "Не удалось оформить заказ");
       }
+      setOrderConfirmationPending(needsManagerConfirmation);
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -372,6 +375,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
   function beginCheckout() {
     setCheckoutOpen(true);
     setOrderNumber("");
+    setOrderConfirmationPending(false);
   }
 
   return {
@@ -384,6 +388,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       checkoutOpen,
       setCheckoutOpen,
       orderNumber,
+      orderConfirmationPending,
       submitOrder,
       checkoutProfile,
       setCheckoutProfile,

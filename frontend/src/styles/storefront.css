@@ -249,7 +249,10 @@
 .home-team img { width:112px; height:42px; object-fit:cover; object-position:center; border-radius:24px; }
 
 .storefront-preset-carousel { max-width:1320px; margin:12px auto 34px; padding:0 46px; position:relative; }
-.storefront-preset-carousel .storefront-presets { margin:0; padding:0; display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 24px)/3); gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; }
+.storefront-preset-carousel .storefront-presets { margin:0; padding:0; display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 24px)/3.16); gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; transition:mask-image .2s ease,-webkit-mask-image .2s ease; }
+.storefront-preset-carousel .storefront-presets.can-scroll-next { -webkit-mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%); mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%); }
+.storefront-preset-carousel .storefront-presets.can-scroll-previous { -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 100%); mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 100%); }
+.storefront-preset-carousel .storefront-presets.can-scroll-previous.can-scroll-next { -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%); mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%); }
 .storefront-preset-carousel .storefront-presets::-webkit-scrollbar { display:none; }
 .storefront-preset-carousel .preset { min-height:184px; padding:20px; position:relative; display:flex; align-items:flex-start; flex-direction:column; gap:0; overflow:hidden; border:0; border-radius:14px; background-position:center; background-size:cover; color:white; text-align:left; scroll-snap-align:start; box-shadow:none; isolation:isolate; }
 .storefront-preset-carousel .preset::before { content:none; }
@@ -261,6 +264,8 @@
 .preset:hover .preset-go,.preset:focus-visible .preset-go { background:var(--home-orange); border-color:var(--home-orange); transform:translateX(3px); }
 .preset-arrow { width:40px; height:40px; position:absolute; z-index:3; top:72px; display:grid; place-items:center; border:1px solid #ddcdbb; border-radius:50%; background:#f7efe4; color:var(--home-ink); font-size:18px; cursor:pointer; }
 .preset-arrow:hover { border-color:var(--home-orange); background:var(--home-orange); color:white; }
+.preset-arrow:disabled { opacity:.28; cursor:default; }
+.preset-arrow:disabled:hover { border-color:#ddcdbb; background:#f7efe4; color:var(--home-ink); }
 .preset-arrow.previous { left:0; }.preset-arrow.next { right:0; }
 
 .storefront-side > .storefront-filters { display:none; }
@@ -354,9 +359,9 @@
 .header-dropdown summary span { color:var(--home-orange); font-size:12px; transition:transform .2s ease; }
 .header-dropdown[open] summary span { transform:rotate(180deg); }
 .header-dropdown > div { min-width:235px; max-height:430px; padding:9px; position:absolute; z-index:80; top:44px; left:-14px; display:grid; gap:2px; overflow-y:auto; border:1px solid #dfd0be; border-radius:14px; background:#fbf5ec; box-shadow:0 20px 45px rgba(53,34,20,.16); }
-.header-dropdown button { min-height:41px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:20px; border:0; border-radius:9px; background:transparent; color:var(--home-ink); text-align:left; font:inherit; font-size:13px; cursor:pointer; }
+.header-dropdown button,.header-dropdown > div > a { min-height:41px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:20px; border:0; border-radius:9px; background:transparent; color:var(--home-ink); text-align:left; font:inherit; font-size:13px; cursor:pointer; }
 .header-dropdown button span { color:var(--home-orange); }
-.header-dropdown button:hover { background:#eee7ba; }
+.header-dropdown button:hover,.header-dropdown > div > a:hover { background:#eee7ba; }
 .storefront > .header .desktop-nav { align-items:center; }
 .storefront > .header .desktop-nav > a,.header-dropdown summary { min-height:42px; padding:0 8px; display:flex; align-items:center; border-radius:8px; transition:background .18s ease,color .18s ease; }
 .storefront > .header .desktop-nav > a:hover,.header-dropdown summary:hover,.header-dropdown[open] summary { background:rgba(41,29,19,.06); color:var(--home-orange); }
