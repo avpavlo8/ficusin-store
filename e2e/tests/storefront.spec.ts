@@ -204,7 +204,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await page.getByLabel("Ваш отзыв").fill("Растение приехало здоровым и хорошо упакованным.");
   await page.getByRole("button", { name: "Отправить отзыв" }).click();
   await expect(page.locator(".review-modal")).toHaveCount(0);
-  await expect(page.getByRole("status")).toHaveText("Спасибо за отзыв.");
+  await expect(page.locator(".review-submit-success")).toHaveText("Спасибо за отзыв.");
   await expect(page.getByText(/отправлен на модерацию/i)).toHaveCount(0);
 });
 
