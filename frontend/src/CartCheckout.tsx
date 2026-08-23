@@ -249,7 +249,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
               <div className="success-next"><h3>Что будет дальше</h3>{confirmationPending ? <ol>
                 <li><b>1</b><span>Рассчитаем стоимость и условия доставки</span></li>
                 <li><b>2</b><span>Менеджер свяжется с вами и согласует итоговую сумму</span></li>
-                <li><b>3</b><span>{paymentMethod === "online" ? "После подтверждения пришлём ссылку на оплату" : "После подтверждения начнём собирать заказ"}</span></li>
+                <li><b>3</b><span>{paymentMethod === "on_delivery" ? "После подтверждения начнём собирать заказ" : "После подтверждения пришлём ссылку на оплату"}</span></li>
               </ol> : <ol>
                 <li><b>1</b><span>Соберём и проверим растения</span></li>
                 <li><b>2</b><span>Аккуратно упакуем</span></li>
@@ -316,7 +316,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           </fieldset>
 
           <div data-checkout-step="3" hidden={step!==3}>
-            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" checked={paymentMethod === option.id} onChange={() => setPaymentMethod(option.id)} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div>{paymentMethod === "online" && deliveryFeePending && <p className="cdek-status">Оплата после подтверждения стоимости доставки менеджером.</p>}</fieldset>}
+            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => setPaymentMethod(option.id)} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div>{paymentMethod === "online" && deliveryFeePending && <p className="cdek-status">Оплата после подтверждения стоимости доставки менеджером.</p>}</fieldset>}
             {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
