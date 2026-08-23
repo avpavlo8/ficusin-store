@@ -181,7 +181,11 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		return orders, err
 	}
 	itemRows, err := repository.pool.Query(ctx, `
-		SELECT order_id, product_id, sku, variant_label, product_name, unit_price::DOUBLE PRECISION, quantity
+		-- Историческая строка заказа, чей товар удалили из каталога годы назад,
+		-- живёт через legacy_product_ref и не имеет ни product_id, ни sku.
+		-- Без COALESCE такой заказ ронял весь список заказов в админке.
+		SELECT order_id, COALESCE(product_id, 0), COALESCE(sku, ''), COALESCE(variant_label, ''),
+			product_name, unit_price::DOUBLE PRECISION, quantity
 		FROM order_items WHERE order_id = ANY($1::bigint[]) ORDER BY id
 	`, ids)
 	if err != nil {
