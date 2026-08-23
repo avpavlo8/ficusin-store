@@ -54,11 +54,12 @@ func (worker *Worker) Status(ctx context.Context) (Status,error) {
 
 func (worker *Worker) run(ctx context.Context) {
 	if worker.ai==nil || !worker.ai.Configured() { worker.logger.Warn("catalog enrichment disabled: OpenAI is not configured"); return }
+	if _,err:=worker.pool.Exec(ctx,`UPDATE catalog_ai_enrichment_jobs SET text_status=CASE WHEN text_status='processing' THEN 'pending' ELSE text_status END,image_status=CASE WHEN image_status='processing' THEN 'pending' ELSE image_status END,updated_at=CURRENT_TIMESTAMP WHERE text_status='processing' OR image_status='processing'`);err!=nil{worker.logger.Error("catalog enrichment recovery failed","error",err);return}
 	if err:=worker.pool.QueryRow(ctx, `SELECT customer_id,role FROM admin_users WHERE is_active AND customer_id IS NOT NULL ORDER BY role='owner' DESC,id LIMIT 1`).Scan(&worker.actor.CustomerID,&worker.actor.Role);err!=nil{
 		worker.logger.Error("catalog enrichment has no audit actor","error",err);return
 	}
 	for index:=0;index<3;index++ { go worker.textLoop(ctx) }
-	if worker.storage!=nil && worker.storage.Configured(){ go worker.imageLoop(ctx) } else {
+	if worker.storage!=nil && worker.storage.Configured(){ for index:=0;index<2;index++{go worker.imageLoop(ctx)} } else {
 		_,_ = worker.pool.Exec(ctx, `UPDATE catalog_ai_enrichment_jobs SET image_status='skipped',image_error='Хранилище изображений не настроено',updated_at=CURRENT_TIMESTAMP WHERE image_status='pending'`)
 		worker.logger.Warn("catalog enrichment covers skipped: image storage is not configured")
 	}
