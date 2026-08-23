@@ -16,6 +16,8 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".store-footer-menu")).toHaveCount(0);
   await expect(page.locator(".store-footer-connect")).toContainText("Давайте найдём");
   await expect(page.locator(".store-footer-socials a")).toHaveCount(4);
+  await expect(page.locator(".store-footer-legal .store-footer-social-block")).toContainText("Мы в соцсетях");
+  await expect(page.locator(".store-footer-connect .store-footer-social-block")).toHaveCount(0);
   const collectionRail = page.locator(".storefront-preset-carousel .storefront-presets");
   await expect(collectionRail).toHaveClass(/can-scroll-next/);
   const railGeometry = await collectionRail.evaluate((element) => {
