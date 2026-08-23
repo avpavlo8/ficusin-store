@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
@@ -419,6 +420,10 @@ func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, reques
 type effectiveAttributeProvider interface { EffectiveCategoryAttributes(context.Context,int64)([]admin.EffectiveCategoryAttribute,error) }
 
 func(handlers adminHandlers)generateProductDraft(response http.ResponseWriter,request *http.Request){
+	// Research with web search legitimately takes longer than normal shop API
+	// calls. Extend only this response; checkout and every other endpoint keep
+	// the server-wide 30 second protection.
+	_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2*time.Minute))
 	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
 	if handlers.ai==nil||!handlers.ai.Configured(){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"AI не настроен: добавьте OPENAI_API_KEY"});return}
 	id,err:=strconv.ParseInt(request.PathValue("id"),10,64);if err!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный товар"});return}
@@ -513,95 +518,3 @@ func (handlers adminHandlers) authorize(
 	}
 	// The role comes from admin_users and nothing else. It used to be
 	// granted by matching the account's email against a list, but nobody
-	// verifies an email address here, and the account owner can change it
-	// from the profile page — so that match proved nothing.
-	role := user.AdminRole
-	if !admin.Can(role, permission) {
-		writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав"})
-		return nil, admin.Actor{}, false
-	}
-	return user, admin.Actor{CustomerID: user.ID, Role: role}, true
-}
-
-func (handlers adminHandlers) failed(response http.ResponseWriter, operation string, err error) {
-	status := http.StatusServiceUnavailable
-	if errors.Is(err, pgx.ErrNoRows) {
-		status = http.StatusNotFound
-	}
-	if errors.Is(err, admin.ErrInvalidInput) {
-		status = http.StatusBadRequest
-	}
-	if errors.Is(err, admin.ErrForbidden) {
-		status = http.StatusForbidden
-	}
-	handlers.logger.Error(operation+" failed", "error", err)
-	writeJSON(response, status, errorResponse{Error: "Не удалось выполнить операцию"})
-}
-
-func pathID(response http.ResponseWriter, request *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный идентификатор"})
-		return 0, false
-	}
-	return id, true
-}
-
-func permissionsFor(role string) []string {
-	all := []string{
-		admin.PermissionDashboard, admin.PermissionCustomersRead, admin.PermissionCustomersEdit,
-		admin.PermissionRolesEdit, admin.PermissionDiscountsEdit, admin.PermissionOrdersRead,
-		admin.PermissionOrdersEdit, admin.PermissionProductsRead, admin.PermissionProductsEdit,
-		admin.PermissionProductsSync, admin.PermissionProcurementRead,
-		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
-	}
-	result := make([]string, 0, len(all))
-	for _, permission := range all {
-		if admin.Can(role, permission) {
-			result = append(result, permission)
-		}
-	}
-	return result
-}
-
-func (handlers adminHandlers) collections(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead); !ok {
-		return
-	}
-	collections, err := handlers.repository.ListAdminCollections(request.Context())
-	if err != nil {
-		handlers.failed(response, "list collections", err)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]any{"collections": collections})
-}
-
-func (handlers adminHandlers) updateCollection(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
-	if !ok {
-		return
-	}
-	id, ok := pathID(response, request)
-	if !ok {
-		return
-	}
-	var body struct {
-		Products []int64 `json:"products"`
-	}
-	if decodeJSON(request, &body) != nil {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный список товаров"})
-		return
-	}
-	if err := handlers.repository.SetCollectionProducts(
-		request.Context(), actor, id, body.Products,
-	); err != nil {
-		handlers.failed(response, "set collection products", err)
-		return
-	}
-	collections, err := handlers.repository.ListAdminCollections(request.Context())
-	if err != nil {
-		handlers.failed(response, "list collections", err)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]any{"collections": collections})
-}
