@@ -200,6 +200,12 @@ test("@desktop PDP сохраняет коммерческую иерархию 
     { name: "unboxing.mp4", mimeType: "video/mp4", buffer: Buffer.from("preview") },
   ]);
   await expect(page.locator(".review-media-preview figure")).toHaveCount(2);
+  await page.route("**/api/v1/products/1/reviews", (route) => route.fulfill({ status: 201, json: { id: 17, status: "pending" } }));
+  await page.getByLabel("Ваш отзыв").fill("Растение приехало здоровым и хорошо упакованным.");
+  await page.getByRole("button", { name: "Отправить отзыв" }).click();
+  await expect(page.locator(".review-modal")).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText("Спасибо за отзыв.");
+  await expect(page.getByText(/отправлен на модерацию/i)).toHaveCount(0);
 });
 
 test("@desktop вопросы открываются отдельной вкладкой", async ({ page }) => {
