@@ -136,6 +136,19 @@ jobs:
           SQL
             fi
 
+            if [[ "$(basename "$migration")" == "065_import_all_positive_stock.sql" ]]; then
+              echo 'Seeding one new and one already imported positive-stock Saby item.'
+              psql -h 127.0.0.1 -U postgres -d ficusin_ci -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance,images)
+          VALUES
+            ('ci-positive-new','X1997112','CI positive new',12300,99,ARRAY['https://example.invalid/new.webp']),
+            ('ci-positive-existing','X1977633','CI positive existing',45600,99,ARRAY[]::TEXT[]);
+          INSERT INTO products(saby_id,slug,name,status,catalog_section,category_id)
+          SELECT 'ci-positive-existing','ci-positive-existing','CI positive existing','draft','pots',id
+          FROM categories WHERE slug='pots';
+          SQL
+            fi
+
             echo "::group::${migration}"
             psql \
               -h 127.0.0.1 \
@@ -174,6 +187,22 @@ jobs:
             "SELECT COUNT(*) FROM pg_indexes WHERE indexname='product_reviews_customer_product_active_uidx' AND indexdef LIKE '%product_id, customer_id%' AND indexdef LIKE '%published%'")"
           if [[ "$review_default" != "'published'::text" || "$review_unique_index" != "1" ]]; then
             echo "Review auto-publication or one-review database guard is missing: default=${review_default} index=${review_unique_index}." >&2
+            exit 1
+          fi
+
+          positive_import="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
+            SELECT COUNT(*) || ':' || MIN(product.status) || ':' || MIN(category.slug) || ':' ||
+                   MIN(inventory.available_qty) || ':' || COUNT(DISTINCT media.id)
+            FROM products product
+            JOIN categories category ON category.id=product.category_id
+            JOIN product_variants variant ON variant.product_id=product.id
+            JOIN inventory ON inventory.variant_id=variant.id
+            LEFT JOIN product_media media ON media.product_id=product.id
+            WHERE product.saby_id='ci-positive-new'")"
+          existing_import="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM products WHERE saby_id='ci-positive-existing'")"
+          if [[ "$positive_import" != "1:draft:pots:3:1" || "$existing_import" != "1" ]]; then
+            echo "Positive-stock import failed or duplicated an existing product: new=${positive_import} existing=${existing_import}." >&2
             exit 1
           fi
 
