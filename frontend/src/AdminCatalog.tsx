@@ -149,6 +149,7 @@ export function Collections({ onError }: { onError: (value: string) => void }) {
 export function Products({ can, onError }: { can: (permission: string) => boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Product[]>([]);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published" | "archived">("all");
   const [selected, setSelected] = useState<number[]>([]);
   const [editing, setEditing] = useState<Product | null>(null);
   const [syncing, setSyncing] = useState<number[] | null>(null);
@@ -159,10 +160,10 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   useEffect(() => { api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError(error.message)); }, [onError]);
   useEffect(() => { if (can("products.read")) api<{ reviews?: ReviewModerationItem[] }>("/api/v1/admin/reviews").then((data) => setReviews(data.reviews || [])).catch((error) => onError(error.message)); }, [can, onError]);
   const moderate = async (id: number, status: "published" | "rejected") => { try { await api(`/api/v1/admin/reviews/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }); setReviews((current) => current.map((item) => item.id === id ? { ...item, status } : item)); } catch (error) { onError((error as Error).message); } };
-  const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  const filtered = useMemo(() => items.filter((item) => (statusFilter === "all" || item.status === statusFilter) && `${item.name} ${item.sku} ${item.sabyCode}`.toLowerCase().includes(query.toLowerCase())), [items, query, statusFilter]);
   const replace = (product: Product) => setItems((current) => current.map((item) => item.id === product.id ? product : item));
   return <><PageHeading eyebrow="Каталог" title="Товары" text="Контент сайта, цены, упаковка, публикация и выборочная синхронизация со СБИС" />
-    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название или артикул" /><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Подтянуть из СБИС</button>}{can("products.edit") && <button onClick={() => setImporting(true)}>Импорт из СБИС</button>}{can("products.edit") && <button className="admin-primary" onClick={() => setCreating(true)}>Новый товар</button>}</div>
+    <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, SKU или код СБИС" /><select aria-label="Статус карточки" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">Все статусы</option><option value="draft">Черновики ({items.filter((item) => item.status === "draft").length})</option><option value="published">Опубликованные</option><option value="archived">Архив</option></select><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length > 0 && can("products.sync") && <button className="admin-primary" onClick={() => setSyncing(selected)}>Подтянуть из СБИС</button>}{can("products.edit") && <button onClick={() => setImporting(true)}>Импорт из СБИС</button>}{can("products.edit") && <button className="admin-primary" onClick={() => setCreating(true)}>Новый товар</button>}</div>
     <div className="admin-table-wrap"><table className="admin-table products"><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && filtered.every((item) => selected.includes(item.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((item) => item.id) : [])} /></th><th>Товар</th><th>Цена / остаток</th><th>Публикация</th><th>СБИС</th><th /></tr></thead><tbody>{filtered.map((product) => <tr
       key={product.id}
       className={can("products.edit") ? "clickable" : ""}
