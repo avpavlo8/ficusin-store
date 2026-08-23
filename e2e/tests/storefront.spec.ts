@@ -18,6 +18,8 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".store-footer-socials a")).toHaveCount(4);
   await expect(page.locator(".store-footer-legal .store-footer-social-block")).toContainText("Мы в соцсетях");
   await expect(page.locator(".store-footer-connect .store-footer-social-block")).toHaveCount(0);
+  const footerButtonLabels = await page.locator(".store-footer-contact-actions small").evaluateAll((labels) => labels.map((label) => ({ borderTop: getComputedStyle(label).borderTopWidth, paddingTop: getComputedStyle(label).paddingTop })));
+  expect(footerButtonLabels).toEqual([{ borderTop: "0px", paddingTop: "0px" }, { borderTop: "0px", paddingTop: "0px" }]);
   const collectionRail = page.locator(".storefront-preset-carousel .storefront-presets");
   await expect(collectionRail).toHaveClass(/can-scroll-next/);
   const railGeometry = await collectionRail.evaluate((element) => {
