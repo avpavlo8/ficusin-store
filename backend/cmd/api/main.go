@@ -18,6 +18,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogenrichment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
@@ -203,6 +204,8 @@ func main() {
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	catalogAI := catalogai.New(cfg.OpenAI.APIKey,cfg.OpenAI.TextModel)
+	catalogEnrichment := catalogenrichment.New(pool,adminRepository,catalogAI,photoStorage,logger)
+	catalogEnrichment.Start(context.Background())
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
 		Catalog:           catalogRepository,
@@ -228,6 +231,7 @@ func main() {
 		StaticDir:         cfg.HTTP.StaticDir,
 		YandexSuggestKey: cfg.YandexSuggestKey,
 		CatalogAI: catalogAI,
+		CatalogEnrichment: catalogEnrichment,
 	}))
 
 	go shopSettings.Run(ctx)
