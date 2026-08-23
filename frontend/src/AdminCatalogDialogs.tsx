@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CategoryPicker } from "./AdminCatalog";
 import { Dialog, api, money, sabyFieldLabels } from "./adminShared";
 import { VariantsEditor } from "./AdminPim";
-import type { Category, CategoryAttribute, ImportEntry, Product } from "./adminTypes";
+import type { CatalogueAudit, Category, CategoryAttribute, ImportEntry, MergeSuggestion, Product } from "./adminTypes";
 
 const attributeOptionLabels: Record<string, string> = {
   sunny: "Яркий свет", diffused: "Рассеянный свет", low_light: "Полутень",
@@ -240,6 +240,39 @@ export function MergeProductsDialog({ products, onClose, onMerged, onError }: { 
   const sources = products.filter((item) => item.id !== targetId);
   const merge = async () => { setBusy(true); try { await api("/api/v1/admin/products/merge", { method: "POST", body: JSON.stringify({ targetProductId: targetId, sourceProductIds: sources.map((item) => item.id) }) }); onMerged(); } catch (error) { onError((error as Error).message); setBusy(false); } };
   return <Dialog title="Объединить размеры в одну карточку" onClose={onClose}><p>Выберите PRODUCT — его название, категория и описание останутся основными. SKU, остатки, цены, фотографии и связи СБИС остальных черновиков переедут в него.</p><label className="wide">Основная карточка<select value={targetId} onChange={(event) => setTargetId(Number(event.target.value))}>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sabyCode || item.sku}</option>)}</select></label><div className="admin-merge-preview"><strong>Будет одна карточка: {target?.name}</strong><span>Вариантов после объединения: не менее {products.length}</span><small>Поглощаемые черновики: {sources.map((item) => item.name).join(", ")}</small></div><p className="admin-hint">Объединяются только черновики без заказов и отзывов. Все SKU и коды СБИС сохраняются.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={busy || sources.length === 0} onClick={merge}>Объединить {products.length} карточки</button></div></Dialog>;
+}
+
+export function MergeSuggestionsDialog({ onClose, onChoose, onError }: {
+  onClose: () => void; onChoose: (products: Product[]) => void; onError: (value: string) => void;
+}) {
+  const [audit, setAudit] = useState<CatalogueAudit | null>(null);
+  const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    api<{ audit: CatalogueAudit; suggestions: MergeSuggestion[] }>("/api/v1/admin/products/merge-suggestions")
+      .then((result) => { setAudit(result.audit); setSuggestions(result.suggestions); })
+      .catch((error) => onError((error as Error).message))
+      .finally(() => setLoading(false));
+  }, [onError]);
+  return <Dialog title="Аудит черновиков и варианты объединения" onClose={onClose}>
+    {loading && <p className="admin-hint">Проверяем названия, категории и статусы…</p>}
+    {audit && <div className="catalogue-audit-summary">
+      <div><strong>{audit.drafts}</strong><span>черновиков</span></div>
+      <div><strong>{audit.positiveDrafts}</strong><span>с остатком</span></div>
+      <div><strong>{audit.suggestedGroups}</strong><span>точных групп</span></div>
+      <div><strong>{audit.cardsInGroups}</strong><span>карточек в группах</span></div>
+    </div>}
+    <p className="admin-hint">Показаны только растения одной категории, у которых название полностью совпадает после удаления D12/D17. Похожие сорта намеренно не объединяются.</p>
+    {!loading && suggestions.length === 0 && <div className="admin-empty-state"><strong>Безопасных совпадений не найдено</strong><span>Остальные карточки нужно разбирать вручную — алгоритм не будет угадывать сорт.</span></div>}
+    <div className="merge-suggestion-list">{suggestions.map((suggestion) => <article key={`${suggestion.key}-${suggestion.products[0]?.categoryId}`} className="merge-suggestion-card">
+      <div className="merge-suggestion-heading"><div><span className="admin-pill published">Высокая точность</span><h3>{suggestion.title}</h3><small>{suggestion.reason}</small></div><button className="primary" onClick={() => onChoose(suggestion.products)}>Проверить и объединить</button></div>
+      <div className="merge-suggestion-products">{suggestion.products.map((product, index) => <div key={product.id}>
+        <img src={product.image || "/assets/hero-monstera.png"} alt="" />
+        <span><strong>{product.name}</strong><small>{product.sabyCode || product.sku} · остаток {product.stock}</small>{index === 0 && <em>Предлагаем оставить основной</em>}</span>
+      </div>)}</div>
+    </article>)}</div>
+    <div className="dialog-actions"><button onClick={onClose}>Закрыть</button></div>
+  </Dialog>;
 }
 
 export function SyncDialog({ count, onClose, onSync }: { count: number; onClose: () => void; onSync: (fields: string[]) => void }) {
