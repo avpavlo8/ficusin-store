@@ -52,6 +52,7 @@ type adminRepositoryStub struct {
 	createdProducts []admin.ProductCreate
 	importRequests  []admin.ImportRequest
 	mergeRequests   []admin.MergeProductsRequest
+	deletedDraftIDs []int64
 	updateCustomerCalls int
 	syncCalls           int
 	createCategoryCalls int
@@ -120,6 +121,10 @@ func (stub *adminRepositoryStub) CreateProduct(_ context.Context, _ admin.Actor,
 func (stub *adminRepositoryStub) ImportProducts(_ context.Context, _ admin.Actor, request admin.ImportRequest) (admin.ImportResult, error) {
 	stub.importRequests = append(stub.importRequests, request)
 	return admin.ImportResult{Created: 1, Entries: []admin.ImportEntry{{Code: "X1150532", Status: "new"}}}, nil
+}
+func (stub *adminRepositoryStub) DeleteDraftProducts(_ context.Context, _ admin.Actor, ids []int64) (int64, error) {
+	stub.deletedDraftIDs = append(stub.deletedDraftIDs, ids...)
+	return int64(len(ids)), nil
 }
 func (stub *adminRepositoryStub) MergeDraftProducts(_ context.Context,_ admin.Actor,request admin.MergeProductsRequest) error { stub.mergeRequests=append(stub.mergeRequests,request);return nil }
 
@@ -308,6 +313,28 @@ func TestCreateProductPasses(t *testing.T) {
 	if len(repository.createdProducts) != 1 || repository.createdProducts[0].Name != "Фикус Бенджамина" {
 		t.Fatalf("до хранилища дошло не то: %+v", repository.createdProducts)
 	}
+}
+
+func TestDeleteDraftProductsPassesExplicitIDs(t *testing.T) {
+	t.Parallel()
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodDelete, "/api/v1/admin/products", `{"productIds":[11,12]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusOK { t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String()) }
+	if len(repository.deletedDraftIDs) != 2 || repository.deletedDraftIDs[0] != 11 || repository.deletedDraftIDs[1] != 12 {
+		t.Fatalf("deleted ids = %v", repository.deletedDraftIDs)
+	}
+}
+
+func TestDeleteDraftProductsRejectsEmptySelection(t *testing.T) {
+	t.Parallel()
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodDelete, "/api/v1/admin/products", `{"productIds":[]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest { t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest) }
+	if len(repository.deletedDraftIDs) != 0 { t.Fatalf("unexpected deletion: %v", repository.deletedDraftIDs) }
 }
 
 // Пустой список кодов — это опечатка, а не команда «завести всё подряд».
