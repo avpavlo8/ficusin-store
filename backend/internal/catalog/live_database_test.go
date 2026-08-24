@@ -39,7 +39,7 @@ func TestRecommendationsQueryOnLiveDatabase(t *testing.T) {
 			t.Fatalf("seed product %d: %v", index, err)
 		}
 		if _, err := pool.Exec(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'Основной',100000,1)`,
-			seededProductID, fmt.Sprintf("PLAN-%d-%d", unique, index)); err != nil {
+			seededProductID, fmt.Sprintf("8%09d%02d", unique%1000000000, index)); err != nil {
 			t.Fatalf("seed variant %d: %v", index, err)
 		}
 	}
