@@ -124,7 +124,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 			t.Fatalf("завести черновик: %v", err)
 		}
 		if _, err := pool.Exec(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'Основной',10000,1)`,
-			draftID, fmt.Sprintf("NO-PHOTO-%d", unique)); err != nil {
+			draftID, fmt.Sprint(700000000+unique)); err != nil {
 			t.Fatalf("завести вариант: %v", err)
 		}
 		result, err := NewPostgresRepository(pool).PublishDraftProducts(ctx, Actor{CustomerID: staffID, Role: RoleOwner}, []int64{draftID})
