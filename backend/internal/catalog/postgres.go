@@ -268,7 +268,7 @@ const catalogListQuery = `
 		) chosen ON TRUE
 	)
 	SELECT
-		product.product_code::TEXT, default_variant.sku, product.name, product.latin_name, root_category.name,
+		product.product_code::TEXT, default_variant.sku, product.name, product.latin_name, COALESCE(root_category.name,'Без категории'),
 		default_variant.base_price_minor,
 		COALESCE((
 			SELECT COALESCE(mirror.card_url,media.object_key)
@@ -315,7 +315,7 @@ const catalogListQuery = `
 		), '[]'::jsonb)
 	FROM products product
 	JOIN default_variants default_variant ON default_variant.product_id=product.id
-	JOIN LATERAL (
+	LEFT JOIN LATERAL (
 		WITH RECURSIVE ancestors AS (
 			SELECT id,parent_id,name FROM categories WHERE id=product.category_id
 			UNION ALL
