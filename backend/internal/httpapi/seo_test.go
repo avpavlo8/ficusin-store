@@ -16,16 +16,29 @@ import (
 )
 
 type sitemapCatalogStub struct {
-	products []catalog.Product
-	err      error
+	products   []catalog.Product
+	categories []catalog.Category
+	err        error
 }
 
 func (stub sitemapCatalogStub) ListAvailable(context.Context) ([]catalog.Product, error) {
 	return stub.products, stub.err
 }
+func (stub sitemapCatalogStub) ListCategories(context.Context) ([]catalog.Category, error) {
+	return stub.categories, stub.err
+}
+
+type sitemapCollectionsStub struct {
+	items []catalog.Collection
+	err   error
+}
+
+func (stub sitemapCollectionsStub) ListCollections(context.Context) ([]catalog.Collection, error) {
+	return stub.items, stub.err
+}
 
 func TestKnownAppRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/cart", "/checkout", "/contacts", "/account/reviews", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15"} {
+	for _, path := range []string{"/", "/cart", "/checkout", "/contacts", "/account/reviews", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15", "/catalog/ficus", "/collections/easy"} {
 		if !knownAppRoute(path) {
 			t.Errorf("%s — настоящий адрес магазина, а считается выдуманным", path)
 		}
@@ -60,7 +73,7 @@ func TestSPAFallbackServesDirectCartURL(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/cart", nil)
 	response := httptest.NewRecorder()
-	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil).ServeHTTP(response, request)
+	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET /cart status = %d, want 200", response.Code)
@@ -70,14 +83,14 @@ func TestSPAFallbackServesDirectCartURL(t *testing.T) {
 	}
 }
 
-func sitemapBody(t *testing.T, repository sitemapCatalog) string {
+func sitemapBody(t *testing.T, repository sitemapCatalog, collections sitemapCollections) string {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	request := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
 	request.Host = "ficusin.ru"
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
-	sitemapHandler(logger, repository).ServeHTTP(response, request)
+	sitemapHandler(logger, repository, collections).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("ожидали 200, получили %d", response.Code)
 	}
@@ -85,8 +98,9 @@ func sitemapBody(t *testing.T, repository sitemapCatalog) string {
 }
 
 func TestSitemapListsProducts(t *testing.T) {
-	body := sitemapBody(t, sitemapCatalogStub{products: []catalog.Product{{ID: "monstera-d12"}}})
-	for _, want := range []string{"https://ficusin.ru/", "https://ficusin.ru/product/monstera-d12", "urlset"} {
+	categoryID := int64(7)
+	body := sitemapBody(t, sitemapCatalogStub{products: []catalog.Product{{ID: "monstera-d12", CategoryID: &categoryID}}, categories: []catalog.Category{{ID: 7, Name: "Фикусы", Slug: "ficus"}}}, sitemapCollectionsStub{items: []catalog.Collection{{Slug: "easy", Title: "Неприхотливые", Count: 3}}})
+	for _, want := range []string{"https://ficusin.ru/", "https://ficusin.ru/product/monstera-d12", "https://ficusin.ru/catalog/ficus", "https://ficusin.ru/collections/easy", "urlset"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("в карте сайта нет %q", want)
 		}
@@ -96,9 +110,26 @@ func TestSitemapListsProducts(t *testing.T) {
 // Молчащая база не должна оставлять поисковик без карты: статические страницы
 // магазина существуют независимо от каталога.
 func TestSitemapSurvivesCatalogFailure(t *testing.T) {
-	body := sitemapBody(t, sitemapCatalogStub{err: errors.New("база недоступна")})
+	body := sitemapBody(t, sitemapCatalogStub{err: errors.New("база недоступна")}, nil)
 	if !strings.Contains(body, "https://ficusin.ru/offer") {
 		t.Error("статические страницы пропали вместе с каталогом")
+	}
+}
+
+func TestLandingMetaUsesRealCategoryAndRejectsUnknownSlug(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	shell := []byte(`<html><head><title>shop</title><meta name="description" content="shop"></head></html>`)
+	page, found := withLandingMeta(context.Background(), logger, sitemapCatalogStub{categories: []catalog.Category{{ID: 1, Name: "Фикусы", Slug: "ficus"}}}, nil, "https://ficusin.ru", "/catalog/ficus", shell)
+	if !found {
+		t.Fatal("категория не найдена")
+	}
+	for _, want := range []string{"Фикусы — купить", `rel="canonical" href="https://ficusin.ru/catalog/ficus"`, `"@type":"CollectionPage"`, `"@type":"BreadcrumbList"`} {
+		if !strings.Contains(string(page), want) {
+			t.Errorf("нет %q", want)
+		}
+	}
+	if _, found = withLandingMeta(context.Background(), logger, sitemapCatalogStub{}, nil, "https://ficusin.ru", "/catalog/nope", shell); found {
+		t.Fatal("несуществующая категория индексируется")
 	}
 }
 
@@ -193,5 +224,18 @@ func TestAnalyticsCounterIsInjectedOnlyWhenConfigured(t *testing.T) {
 	}
 	if !strings.Contains(page, "</head>") {
 		t.Error("счётчик испортил разметку: пропал </head>")
+	}
+}
+
+func TestSearchVerificationRejectsMarkup(t *testing.T) {
+	shell := []byte("<html><head></head></html>")
+	page := string(withSearchVerification(shell, "yandex_token-123", "google_token_456"))
+	for _, want := range []string{`name="yandex-verification" content="yandex_token-123"`, `name="google-site-verification" content="google_token_456"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("нет %q", want)
+		}
+	}
+	if got := string(withSearchVerification(shell, `bad\"><script>`, "x")); got != string(shell) {
+		t.Fatalf("опасный код попал в страницу: %s", got)
 	}
 }

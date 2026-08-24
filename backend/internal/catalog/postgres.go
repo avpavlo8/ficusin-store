@@ -79,7 +79,12 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			ORDER BY media.is_primary DESC, media.sort_order, media.id
 		`, productID)
 		if mediaErr == nil {
-			for rows.Next() { var image string; if rows.Scan(&image) == nil { detail.Images = append(detail.Images, image) } }
+			for rows.Next() {
+				var image string
+				if rows.Scan(&image) == nil {
+					detail.Images = append(detail.Images, image)
+				}
+			}
 			rows.Close()
 		}
 	}
@@ -137,7 +142,10 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			return ProductDetail{}, err
 		}
 		variant.Price = float64(priceMinor) / 100
-		if err := json.Unmarshal(images, &variant.Images); err != nil { variantRows.Close(); return ProductDetail{}, fmt.Errorf("decode variant images: %w", err) }
+		if err := json.Unmarshal(images, &variant.Images); err != nil {
+			variantRows.Close()
+			return ProductDetail{}, fmt.Errorf("decode variant images: %w", err)
+		}
 		if err := json.Unmarshal(attributes, &variant.Attributes); err != nil {
 			variantRows.Close()
 			return ProductDetail{}, fmt.Errorf("decode variant attributes: %w", err)
@@ -170,17 +178,23 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		  AND (e.show_in_summary OR e.show_in_characteristics OR e.is_badge OR e.is_filterable)
 		ORDER BY e.sort_order,e.code
 	`, productID, detail.CategoryID)
-	if err != nil { return ProductDetail{}, fmt.Errorf("query product attributes: %w", err) }
+	if err != nil {
+		return ProductDetail{}, fmt.Errorf("query product attributes: %w", err)
+	}
 	detail.Attributes = []ProductAttribute{}
 	for attributeRows.Next() {
 		var item ProductAttribute
-		if err := attributeRows.Scan(&item.Code,&item.Name,&item.Unit,&item.Value,&item.Badge,
-			&item.Filterable,&item.SummaryPosition,&item.ShowInCharacteristics); err != nil {
-			attributeRows.Close(); return ProductDetail{}, err
+		if err := attributeRows.Scan(&item.Code, &item.Name, &item.Unit, &item.Value, &item.Badge,
+			&item.Filterable, &item.SummaryPosition, &item.ShowInCharacteristics); err != nil {
+			attributeRows.Close()
+			return ProductDetail{}, err
 		}
-		detail.Attributes=append(detail.Attributes,item)
+		detail.Attributes = append(detail.Attributes, item)
 	}
-	if err := attributeRows.Err(); err != nil { attributeRows.Close(); return ProductDetail{}, fmt.Errorf("read product attributes: %w",err) }
+	if err := attributeRows.Err(); err != nil {
+		attributeRows.Close()
+		return ProductDetail{}, fmt.Errorf("read product attributes: %w", err)
+	}
 	attributeRows.Close()
 
 	reviewRows, err := repository.pool.Query(ctx, `
@@ -188,38 +202,65 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			to_char(r.created_at, 'YYYY-MM-DD'), true
 		FROM product_reviews r JOIN customers c ON c.id = r.customer_id
 		WHERE r.product_id = $1 AND r.status = 'published' ORDER BY r.created_at DESC LIMIT 30`, productID)
-	if err != nil { return ProductDetail{}, fmt.Errorf("query reviews: %w", err) }
+	if err != nil {
+		return ProductDetail{}, fmt.Errorf("query reviews: %w", err)
+	}
 	detail.Reviews = []Review{}
 	for reviewRows.Next() {
 		var review Review
-		if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase); err != nil { reviewRows.Close(); return ProductDetail{}, err }
+		if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase); err != nil {
+			reviewRows.Close()
+			return ProductDetail{}, err
+		}
 		rows, _ := repository.pool.Query(ctx, `SELECT '/api/v1/review-photos/' || id, content_type FROM product_review_photos WHERE review_id=$1 ORDER BY sort_order,id`, review.ID)
-		for rows != nil && rows.Next() { var media ReviewMedia; _ = rows.Scan(&media.URL, &media.ContentType); review.Media = append(review.Media, media); if strings.HasPrefix(media.ContentType, "image/") { review.Photos = append(review.Photos, media.URL) } }
-		if rows != nil { rows.Close() }
+		for rows != nil && rows.Next() {
+			var media ReviewMedia
+			_ = rows.Scan(&media.URL, &media.ContentType)
+			review.Media = append(review.Media, media)
+			if strings.HasPrefix(media.ContentType, "image/") {
+				review.Photos = append(review.Photos, media.URL)
+			}
+		}
+		if rows != nil {
+			rows.Close()
+		}
 		detail.Reviews = append(detail.Reviews, review)
 	}
 	reviewRows.Close()
 
 	available, err := repository.ListAvailable(ctx)
-	if err != nil { return ProductDetail{}, err }
-	type scoredProduct struct { product Product; score int }
+	if err != nil {
+		return ProductDetail{}, err
+	}
+	type scoredProduct struct {
+		product Product
+		score   int
+	}
 	candidates := make([]scoredProduct, 0, len(available))
 	for _, item := range available {
-		if item.ID != code { candidates = append(candidates, scoredProduct{product: item, score: recommendationScore(detail, item)}) }
+		if item.ID != code {
+			candidates = append(candidates, scoredProduct{product: item, score: recommendationScore(detail, item)})
+		}
 	}
 	sort.SliceStable(candidates, func(left, right int) bool { return candidates[left].score > candidates[right].score })
 	detail.Recommendations = []Product{}
 	for _, candidate := range candidates {
 		detail.Recommendations = append(detail.Recommendations, candidate.product)
-		if len(detail.Recommendations) == 8 { break }
+		if len(detail.Recommendations) == 8 {
+			break
+		}
 	}
 	return detail, nil
 }
 
 func recommendationScore(current ProductDetail, candidate Product) int {
 	score := 0
-	if current.CatalogSection == candidate.CatalogSection { score += 6 }
-	if current.CategoryID != nil && candidate.CategoryID != nil && *current.CategoryID == *candidate.CategoryID { score += 8 }
+	if current.CatalogSection == candidate.CatalogSection {
+		score += 6
+	}
+	if current.CategoryID != nil && candidate.CategoryID != nil && *current.CategoryID == *candidate.CategoryID {
+		score += 8
+	}
 	pairs := [][2]string{
 		{current.PlantKind, candidate.PlantKind}, {current.LightLevel, candidate.LightLevel},
 		{current.Watering, candidate.Watering}, {current.HeightClass, candidate.HeightClass},
@@ -227,19 +268,35 @@ func recommendationScore(current ProductDetail, candidate Product) int {
 		{current.PetSafety, candidate.PetSafety}, {current.GrowthHabit, candidate.GrowthHabit},
 	}
 	for index, pair := range pairs {
-		if pair[0] != "" && pair[0] == pair[1] { if index == 0 { score += 4 } else { score += 2 } }
+		if pair[0] != "" && pair[0] == pair[1] {
+			if index == 0 {
+				score += 4
+			} else {
+				score += 2
+			}
+		}
 	}
 	return score
 }
 
-func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository { return &PostgresRepository{pool: pool} }
+func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
+	return &PostgresRepository{pool: pool}
+}
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
 	rows, err := repository.pool.Query(ctx, `SELECT id,parent_id,name,slug,sort_order,icon FROM categories WHERE active=1 ORDER BY sort_order,name`)
-	if err != nil { return nil, fmt.Errorf("query categories: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query categories: %w", err)
+	}
 	defer rows.Close()
-	result := make([]Category,0)
-	for rows.Next() { var item Category; if err:=rows.Scan(&item.ID,&item.ParentID,&item.Name,&item.Slug,&item.SortOrder,&item.Icon);err!=nil{return nil,fmt.Errorf("scan category: %w",err)};result=append(result,item) }
+	result := make([]Category, 0)
+	for rows.Next() {
+		var item Category
+		if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Slug, &item.SortOrder, &item.Icon); err != nil {
+			return nil, fmt.Errorf("scan category: %w", err)
+		}
+		result = append(result, item)
+	}
 	return result, rows.Err()
 }
 
@@ -332,29 +389,87 @@ const catalogListQuery = `
 
 func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Product, error) {
 	rows, err := repository.pool.Query(ctx, catalogListQuery)
-	if err != nil { return nil, fmt.Errorf("query catalog: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query catalog: %w", err)
+	}
 	defer rows.Close()
-	products := make([]Product,0)
+	products := make([]Product, 0)
 	for rows.Next() {
 		var product Product
 		var priceMinor int64
 		var filterAttributes []byte
-		if err := rows.Scan(&product.ID,&product.SKU,&product.Name,&product.Latin,&product.Category,&priceMinor,
-			&product.Image,&product.Size,&product.Stock,&product.CatalogSection,&product.PlantKind,&product.LightLevel,
-			&product.Watering,&product.HeightClass,&product.CareLevel,&product.Placement,&product.PetSafety,&product.GrowthHabit,
-			&product.CategoryID,&product.PopularityScore,&product.Collections,&product.Rating,&product.ReviewsCount,&filterAttributes); err != nil {
-			return nil,fmt.Errorf("scan catalog product: %w",err)
+		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.Latin, &product.Category, &priceMinor,
+			&product.Image, &product.Size, &product.Stock, &product.CatalogSection, &product.PlantKind, &product.LightLevel,
+			&product.Watering, &product.HeightClass, &product.CareLevel, &product.Placement, &product.PetSafety, &product.GrowthHabit,
+			&product.CategoryID, &product.PopularityScore, &product.Collections, &product.Rating, &product.ReviewsCount, &filterAttributes); err != nil {
+			return nil, fmt.Errorf("scan catalog product: %w", err)
 		}
-		product.Price=float64(priceMinor)/100
-		product.Light="Уточните у консультанта"
-		if err:=json.Unmarshal(filterAttributes,&product.FilterAttributes);err!=nil{return nil,fmt.Errorf("decode filter attributes: %w",err)}
-		products=append(products,product)
+		product.Price = float64(priceMinor) / 100
+		product.Light = "Уточните у консультанта"
+		if err := json.Unmarshal(filterAttributes, &product.FilterAttributes); err != nil {
+			return nil, fmt.Errorf("decode filter attributes: %w", err)
+		}
+		products = append(products, product)
 	}
-	if err:=rows.Err();err!=nil{return nil,fmt.Errorf("read catalog rows: %w",err)}
-	return products,nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read catalog rows: %w", err)
+	}
+	return products, nil
 }
 
-type PackageSize struct { LengthCM int; WidthCM int; HeightCM int; WeightGrams int }
+func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]FeedOffer, error) {
+	rows, err := repository.pool.Query(ctx, `
+		WITH RECURSIVE category_paths AS (
+			SELECT id,parent_id,name,name::TEXT AS path FROM categories WHERE parent_id IS NULL
+			UNION ALL
+			SELECT child.id,child.parent_id,child.name,(parent.path || ' > ' || child.name)::TEXT
+			FROM categories child JOIN category_paths parent ON parent.id=child.parent_id
+		)
+		SELECT product.product_code::TEXT,variant.sku,product.name,variant.label,
+			COALESCE(NULLIF(product.short_description,''),NULLIF(product.description,''),''),
+			variant.base_price_minor,
+			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item WHERE item.variant_id=variant.id),0)::INTEGER,
+			COALESCE((
+				SELECT COALESCE(mirror.large_url,mirror.card_url,media.object_key)
+				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
+				WHERE media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
+				ORDER BY (media.variant_id=variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
+			),''),
+			COALESCE(product.category_id,0),COALESCE(category.path,'Каталог'),
+			COUNT(*) OVER (PARTITION BY product.id)::INTEGER
+		FROM products product
+		JOIN product_variants variant ON variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
+		LEFT JOIN category_paths category ON category.id=product.category_id
+		WHERE product.status='published'
+		ORDER BY product.product_code,variant.id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query feed offers: %w", err)
+	}
+	defer rows.Close()
+	offers := make([]FeedOffer, 0)
+	for rows.Next() {
+		var offer FeedOffer
+		var priceMinor int64
+		if err := rows.Scan(&offer.ProductCode, &offer.SKU, &offer.Name, &offer.Label, &offer.Description,
+			&priceMinor, &offer.Stock, &offer.Image, &offer.CategoryID, &offer.Category, &offer.VariantCount); err != nil {
+			return nil, fmt.Errorf("scan feed offer: %w", err)
+		}
+		offer.Price = float64(priceMinor) / 100
+		offers = append(offers, offer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read feed offers: %w", err)
+	}
+	return offers, nil
+}
+
+type PackageSize struct {
+	LengthCM    int
+	WidthCM     int
+	HeightCM    int
+	WeightGrams int
+}
 
 // PackageSizes is SKU-based. Delivery must price the exact sellable variant,
 // never the first size that happens to share a product card.
@@ -362,9 +477,12 @@ type PackageSize struct { LengthCM int; WidthCM int; HeightCM int; WeightGrams i
 // Sizes come from PIM, not from the legacy product_variants columns: since
 // migration 061 variant_attribute_values is the single source, so a parcel
 // edited by an operator changes the delivery price immediately.
-func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []string) (map[string]PackageSize,error) {
-	sizes:=make(map[string]PackageSize,len(skus));if len(skus)==0{return sizes,nil}
-	rows,err:=repository.pool.Query(ctx,`
+func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []string) (map[string]PackageSize, error) {
+	sizes := make(map[string]PackageSize, len(skus))
+	if len(skus) == 0 {
+		return sizes, nil
+	}
+	rows, err := repository.pool.Query(ctx, `
 		SELECT variant.sku,
 			COALESCE(variant_numeric_attribute(variant.id,'package_length_cm'),0)::INTEGER,
 			COALESCE(variant_numeric_attribute(variant.id,'package_width_cm'),0)::INTEGER,
@@ -373,14 +491,24 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 		FROM product_variants variant
 		JOIN products product ON product.id=variant.product_id AND product.status='published'
 		WHERE variant.sku=ANY($1) AND variant.is_active=1
-	`,skus)
-	if err!=nil{return nil,fmt.Errorf("load package sizes: %w",err)};defer rows.Close()
-	for rows.Next(){var sku string;var size PackageSize;if err:=rows.Scan(&sku,&size.LengthCM,&size.WidthCM,&size.HeightCM,&size.WeightGrams);err!=nil{return nil,fmt.Errorf("scan package size: %w",err)};sizes[sku]=size}
-	return sizes,rows.Err()
+	`, skus)
+	if err != nil {
+		return nil, fmt.Errorf("load package sizes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sku string
+		var size PackageSize
+		if err := rows.Scan(&sku, &size.LengthCM, &size.WidthCM, &size.HeightCM, &size.WeightGrams); err != nil {
+			return nil, fmt.Errorf("scan package size: %w", err)
+		}
+		sizes[sku] = size
+	}
+	return sizes, rows.Err()
 }
 
-func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Collection,error) {
-	rows,err:=repository.pool.Query(ctx,`
+func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Collection, error) {
+	rows, err := repository.pool.Query(ctx, `
 		SELECT collection.slug,collection.title,collection.note,collection.cover_url,COUNT(product.id)::INTEGER
 		FROM collections collection
 		JOIN products product ON product.status='published' AND ((collection.mode='manual' AND EXISTS(SELECT 1 FROM collection_products member WHERE member.collection_id=collection.id AND member.product_id=product.id))
@@ -388,7 +516,17 @@ func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Co
 		WHERE collection.is_active=1 GROUP BY collection.id HAVING COUNT(product.id)>0
 		ORDER BY collection.sort_order,collection.id
 	`)
-	if err!=nil{return nil,fmt.Errorf("query collections: %w",err)};defer rows.Close();collections:=make([]Collection,0)
-	for rows.Next(){var item Collection;if err:=rows.Scan(&item.Slug,&item.Title,&item.Note,&item.CoverURL,&item.Count);err!=nil{return nil,fmt.Errorf("scan collection: %w",err)};collections=append(collections,item)}
-	return collections,rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("query collections: %w", err)
+	}
+	defer rows.Close()
+	collections := make([]Collection, 0)
+	for rows.Next() {
+		var item Collection
+		if err := rows.Scan(&item.Slug, &item.Title, &item.Note, &item.CoverURL, &item.Count); err != nil {
+			return nil, fmt.Errorf("scan collection: %w", err)
+		}
+		collections = append(collections, item)
+	}
+	return collections, rows.Err()
 }

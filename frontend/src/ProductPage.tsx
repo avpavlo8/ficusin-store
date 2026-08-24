@@ -13,7 +13,7 @@ const plantOnlyAttributeCodes = new Set(["plant_type","height_cm","pot_diameter_
 const PdpAdminTools = lazy(() => import("./PdpAdminTools").then((module) => ({ default: module.PdpAdminTools })));
 
 export default function ProductPage({ slug }: { slug: string }) {
-  const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; sortOrder:number }>>([]);
+  const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; slug:string; sortOrder:number }>>([]);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedID, setSelectedID] = useState<number | null>(null);
   const [activeImage, setActiveImage] = useState(0);
@@ -36,9 +36,11 @@ export default function ProductPage({ slug }: { slug: string }) {
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
       .then((item) => {
         const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: (item.reviews || []).map((review) => ({ ...review, photos: review.photos || [], media: review.media || [] })), rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
-        setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(normalized.catalogSection === "plants" ? "care" : "characteristics");
+        const requestedSKU=new URLSearchParams(window.location.search).get("sku");
+        setProduct(normalized); setSelectedID(normalized.variants.find((variant)=>variant.sku===requestedSKU)?.id ?? normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(normalized.catalogSection === "plants" ? "care" : "characteristics");
         document.title = `${normalized.name} — Фикусин`;
-		track("view_item", { productCode: normalized.id, sku: normalized.variants[0]?.sku, value: normalized.variants[0]?.price, properties: { name: normalized.name, category: normalized.catalogSection } });
+		const viewed=normalized.variants.find((variant)=>variant.sku===requestedSKU) ?? normalized.variants[0];
+		track("view_item", { productCode: normalized.id, sku: viewed?.sku, value: viewed?.price, properties: { name: normalized.name, category: normalized.catalogSection } });
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug, revision]);
@@ -49,10 +51,10 @@ export default function ProductPage({ slug }: { slug: string }) {
     const children = new Map<number|null,typeof categories>();
     categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
     const order = (items:typeof categories) => [...items].sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ru"));
-    const catalog:HeaderMenuItem[] = order(children.get(null)||[]).map((item)=>({id:item.id,label:item.name}));
+    const catalog:HeaderMenuItem[] = order(children.get(null)||[]).map((item)=>({id:item.id,label:item.name,slug:item.slug}));
     const plantRoot = categories.find((item)=>item.parentId==null&&/растен/i.test(item.name));
     const leaves = (parentId:number):typeof categories => order(children.get(parentId)||[]).flatMap((item)=>children.get(item.id)?.length?leaves(item.id):[item]);
-    return {catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name})):[]};
+    return {catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name,slug:item.slug})):[]};
   },[categories]);
 
   const variant = useMemo(() => product?.variants.find((item) => item.id === selectedID) || product?.variants[0], [product, selectedID]);
@@ -109,12 +111,12 @@ export default function ProductPage({ slug }: { slug: string }) {
   };
 
   return <main className="product-page">
-    <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={() => { window.location.href="/#catalog"; }} />
+    <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
     {(adminUser?.adminRole === "owner" || adminUser?.adminRole === "manager") && <Suspense fallback={null}><PdpAdminTools slug={slug} adminRole={adminUser.adminRole} onChanged={() => setRevision((value) => value + 1)} /></Suspense>}
     <section className="pdp-main">
       <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
-      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); setActiveImage(0); }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
+      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(1); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
     <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{tabs.map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
       <section className="pdp-tab-panel" aria-live="polite">

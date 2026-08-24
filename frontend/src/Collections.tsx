@@ -81,7 +81,7 @@ export function CollectionStrip<T extends Product>({
 }: {
   products: T[];
   active: ReadonlySet<string>;
-  onPick: (id: string) => void;
+  onPick?: (id: string) => void;
 }) {
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
@@ -171,13 +171,17 @@ export function CollectionStrip<T extends Product>({
       <button className="preset-arrow previous" type="button" onClick={() => scroll(-1)} aria-label="Предыдущие подборки" disabled={!scrollEdges.previous}>←</button>
       <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`} role="list" ref={rail}>
       {shown.map(({ preset, image, count, note }, index) => (
-        <button
+        <a
           key={preset.id}
-          type="button"
           role="listitem"
+          href={`/collections/${encodeURIComponent(preset.id)}`}
           className={active.has(preset.id) ? "preset active" : "preset"}
-          aria-pressed={active.has(preset.id)}
-          onClick={() => onPick(preset.id)}
+          aria-current={active.has(preset.id) ? "page" : undefined}
+          onClick={(event) => {
+            if (!onPick) return;
+            event.preventDefault();
+            onPick(preset.id);
+          }}
           title={note || `${preset.title} — ${count}`}
           style={{ backgroundImage: `url('${image}')` }}
         >
@@ -185,7 +189,7 @@ export function CollectionStrip<T extends Product>({
           <span className="preset-title">{preset.title}</span>
           <span className="preset-count">{count} растений</span>
           <span className="preset-go" aria-hidden="true">→</span>
-        </button>
+        </a>
       ))}
       </div>
       <button className="preset-arrow next" type="button" onClick={() => scroll(1)} aria-label="Следующие подборки" disabled={!canScrollNext}>→</button>
