@@ -37,7 +37,13 @@ func (store *PostgresStore) Pending(ctx context.Context, limit int) ([]string, e
 					AND mirror.checked_at < CURRENT_TIMESTAMP - INTERVAL '6 hours'
 				)
 			)
-		ORDER BY source.object_key
+		-- Собственные тяжёлые обложки уже лежат рядом с приложением и не
+		-- нагружают поставщика. Обрабатываем их раньше внешней очереди, чтобы
+		-- новая карточка не ждала следующего пяти-минутного прохода.
+		ORDER BY CASE
+			WHEN source.object_key LIKE 'https://s3.twcstorage.ru/%' THEN 0
+			ELSE 1
+		END, source.object_key
 		LIMIT $1
 	`, limit)
 	if err != nil {
