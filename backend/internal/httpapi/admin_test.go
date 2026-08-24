@@ -53,6 +53,7 @@ type adminRepositoryStub struct {
 	importRequests  []admin.ImportRequest
 	mergeRequests   []admin.MergeProductsRequest
 	deletedDraftIDs []int64
+	publishedDraftIDs []int64
 	updateCustomerCalls int
 	syncCalls           int
 	createCategoryCalls int
@@ -125,6 +126,10 @@ func (stub *adminRepositoryStub) ImportProducts(_ context.Context, _ admin.Actor
 func (stub *adminRepositoryStub) DeleteDraftProducts(_ context.Context, _ admin.Actor, ids []int64) (int64, error) {
 	stub.deletedDraftIDs = append(stub.deletedDraftIDs, ids...)
 	return int64(len(ids)), nil
+}
+func (stub *adminRepositoryStub) PublishDraftProducts(_ context.Context, _ admin.Actor, ids []int64) (admin.BulkPublishResult, error) {
+	stub.publishedDraftIDs = append(stub.publishedDraftIDs, ids...)
+	return admin.BulkPublishResult{Published: append([]int64{}, ids...), Blocked: []admin.BulkPublishBlocked{}}, nil
 }
 func (stub *adminRepositoryStub) MergeDraftProducts(_ context.Context,_ admin.Actor,request admin.MergeProductsRequest) error { stub.mergeRequests=append(stub.mergeRequests,request);return nil }
 
@@ -335,6 +340,27 @@ func TestDeleteDraftProductsRejectsEmptySelection(t *testing.T) {
 	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest { t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest) }
 	if len(repository.deletedDraftIDs) != 0 { t.Fatalf("unexpected deletion: %v", repository.deletedDraftIDs) }
+}
+
+func TestPublishDraftProductsPassesExplicitIDs(t *testing.T) {
+	t.Parallel()
+	repository:=&adminRepositoryStub{}
+	request:=adminRequest(http.MethodPost,"/api/v1/admin/products/publish",`{"productIds":[21,22]}`)
+	response:=httptest.NewRecorder()
+	NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
+	if response.Code!=http.StatusOK{t.Fatalf("status = %d, want %d; body = %s",response.Code,http.StatusOK,response.Body.String())}
+	if len(repository.publishedDraftIDs)!=2||repository.publishedDraftIDs[0]!=21||repository.publishedDraftIDs[1]!=22{t.Fatalf("published ids = %v",repository.publishedDraftIDs)}
+	if !strings.Contains(response.Body.String(),`"published":[21,22]`){t.Fatalf("body = %s",response.Body.String())}
+}
+
+func TestPublishDraftProductsRejectsEmptySelection(t *testing.T) {
+	t.Parallel()
+	repository:=&adminRepositoryStub{}
+	request:=adminRequest(http.MethodPost,"/api/v1/admin/products/publish",`{"productIds":[]}`)
+	response:=httptest.NewRecorder()
+	NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
+	if response.Code!=http.StatusBadRequest{t.Fatalf("status = %d, want %d",response.Code,http.StatusBadRequest)}
+	if len(repository.publishedDraftIDs)!=0{t.Fatalf("unexpected publication: %v",repository.publishedDraftIDs)}
 }
 
 // Пустой список кодов — это опечатка, а не команда «завести всё подряд».

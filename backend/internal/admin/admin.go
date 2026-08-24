@@ -353,6 +353,21 @@ type DeleteDraftProductsRequest struct {
 	ProductIDs []int64 `json:"productIds"`
 }
 
+type BulkPublishProductsRequest struct {
+	ProductIDs []int64 `json:"productIds"`
+}
+
+type BulkPublishBlocked struct {
+	ProductID int64  `json:"productId"`
+	Name      string `json:"name"`
+	Reason    string `json:"reason"`
+}
+
+type BulkPublishResult struct {
+	Published []int64              `json:"published"`
+	Blocked   []BulkPublishBlocked `json:"blocked"`
+}
+
 type Repository interface {
 	Dashboard(context.Context) (Dashboard, error)
 	ListCustomers(context.Context) ([]Customer, error)
