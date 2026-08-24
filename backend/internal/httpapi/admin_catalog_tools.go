@@ -17,10 +17,47 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func generateAICoverHandler(handlers adminHandlers,storage productPhotoStorage)http.HandlerFunc{return func(response http.ResponseWriter,request *http.Request){
-	_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2*time.Minute))
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return};if handlers.ai==nil||!handlers.ai.Configured()||storage==nil||!storage.Configured(){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"AI или хранилище изображений не настроены"});return};productID,err:=strconv.ParseInt(request.PathValue("id"),10,64);if err!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный товар"});return};var body struct{Prompt string `json:"prompt"`};if decodeJSON(request,&body)!=nil||strings.TrimSpace(body.Prompt)==""{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Пустой промпт"});return};image,contentType,err:=handlers.ai.GenerateCover(request.Context(),body.Prompt);if err!=nil{handlers.failedAI(response,"generate ai cover",err);return};key:=fmt.Sprintf("products/%d/ai-cover-%d.webp",productID,time.Now().UnixNano());if err:=storage.Put(request.Context(),key,image,contentType);err!=nil{handlers.failed(response,"store ai cover",err);return};provider,ok:=handlers.repository.(productMediaRepository);if !ok{writeJSON(response,http.StatusNotImplemented,errorResponse{Error:"Медиа недоступны"});return};url:=storage.PublicURL(key);item,err:=provider.AddUploadedProductMedia(request.Context(),actor,productID,"ai://catalog-cover/"+fmt.Sprint(time.Now().UnixNano()),url,url);if err!=nil{handlers.failed(response,"save ai cover",err);return};_ = provider.SetPrimaryProductMedia(request.Context(),actor,productID,item.ID);writeJSON(response,http.StatusCreated,map[string]any{"media":item,"url":url})
-}}
+func generateAICoverHandler(handlers adminHandlers, storage productPhotoStorage) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2 * time.Minute))
+		_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+		if !ok { return }
+		if handlers.ai == nil || !handlers.ai.Configured() || storage == nil || !storage.Configured() {
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "AI или хранилище изображений не настроены"})
+			return
+		}
+		productID, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
+		if err != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар"}); return }
+		var body struct{ Prompt string `json:"prompt"` }
+		if decodeJSON(request, &body) != nil || strings.TrimSpace(body.Prompt) == "" {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Пустой промпт"})
+			return
+		}
+		raw, _, err := handlers.ai.GenerateCover(request.Context(), body.Prompt)
+		if err != nil { handlers.failedAI(response, "generate ai cover", err); return }
+		card, large, err := prepareProductCopies(raw)
+		if err != nil { handlers.failedAI(response, "prepare ai cover", err); return }
+		token := fmt.Sprint(time.Now().UnixNano())
+		prefix := fmt.Sprintf("products/%d/ai-cover-%s", productID, token)
+		cardKey, largeKey := prefix+"-card.jpg", prefix+"-large.jpg"
+		if err := storage.Put(request.Context(), cardKey, card, "image/jpeg"); err != nil { handlers.failed(response, "store ai card cover", err); return }
+		if err := storage.Put(request.Context(), largeKey, large, "image/jpeg"); err != nil { handlers.failed(response, "store ai large cover", err); return }
+		provider, ok := handlers.repository.(productMediaRepository)
+		if !ok { writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Медиа недоступны"}); return }
+		item, err := provider.AddUploadedProductMedia(request.Context(), actor, productID, "ai://catalog-cover/"+token, storage.PublicURL(cardKey), storage.PublicURL(largeKey))
+		if err != nil { handlers.failed(response, "save ai cover", err); return }
+		_ = provider.SetPrimaryProductMedia(request.Context(), actor, productID, item.ID)
+		writeJSON(response, http.StatusCreated, map[string]any{"media": item, "url": storage.PublicURL(largeKey)})
+	}
+}
+
+func prepareProductCopies(raw []byte) (card, large []byte, err error) {
+	large, err = photos.Prepare(raw, photos.SizeLarge.MaxSide)
+	if err != nil { return nil, nil, err }
+	card, err = photos.Prepare(raw, photos.SizeCard.MaxSide)
+	if err != nil { return nil, nil, err }
+	return card, large, nil
+}
 
 // productPhotoStorage is deliberately the tiny slice the HTTP layer needs.
 // S3 credentials remain server-side; the browser only sends an image file.
@@ -105,14 +142,9 @@ func uploadProductMediaHandler(adminAPI adminHandlers, storage productPhotoStora
 			return
 		}
 
-		large, err := photos.Prepare(raw, photos.SizeLarge.MaxSide)
+		card, large, err := prepareProductCopies(raw)
 		if err != nil {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось прочитать фотографию"})
-			return
-		}
-		card, err := photos.Prepare(raw, photos.SizeCard.MaxSide)
-		if err != nil {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось подготовить фотографию"})
 			return
 		}
 		tokenBytes := make([]byte, 16)
