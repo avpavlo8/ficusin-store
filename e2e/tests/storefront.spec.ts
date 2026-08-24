@@ -226,10 +226,15 @@ test("@desktop вопросы открываются отдельной вкла
 
 test("@desktop ссылка на отзывы открывает содержимое вкладки", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/1");
+  await page.route("**/api/v1/products/null-review", (route) => route.fulfill({ json: { product: {
+    id: "null-review", name: "Аглаонема Мария", latin: "Aglaonema", shortDescription: "", description: "", careInstructions: "",
+    images: ["/assets/product-pothos.png"], catalogSection: "plants", rating: 5, reviewsCount: 1, recommendations: [], passport: {}, importantWarnings: [], attributes: [], variants: [],
+    reviews: [{ id: 1, rating: 5, text: "Отличное растение!", author: "Александр", date: "2026-08-23", verifiedPurchase: true, photos: null, media: null }],
+  } } }));
+  await page.goto("/product/null-review");
   await page.locator(".purchase-review-meta").click();
   await expect(page.locator("#reviews")).toBeVisible();
-  await expect(page.locator("#reviews")).toContainText("Отзывы покупателей");
+  await expect(page.locator("#reviews")).toContainText("Отличное растение!");
 });
 
 test("@desktop у кашпо нет растительного ухода и характеристик", async ({ page }) => {
