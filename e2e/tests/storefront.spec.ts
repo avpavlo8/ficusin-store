@@ -36,10 +36,10 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".home-catalog-toolbar")).toBeVisible();
   const headerMenus = page.locator(".header-dropdown");
   await headerMenus.first().locator(":scope > summary").click();
-  await expect(headerMenus.first().getByRole("button", { name: /Растения/ })).toBeVisible();
+  await expect(headerMenus.first().getByRole("link", { name: /Растения/ })).toHaveAttribute("href", /\/catalog\//);
   await headerMenus.nth(1).locator(":scope > summary").click();
   await expect(headerMenus.first()).not.toHaveAttribute("open", "");
-  await expect(headerMenus.nth(1).getByRole("button", { name: /Аглаонема/ })).toBeVisible();
+  await expect(headerMenus.nth(1).getByRole("link", { name: /Аглаонема/ })).toHaveAttribute("href", /\/catalog\//);
   await page.locator(".home-hero-copy").click();
   await expect(headerMenus.nth(1)).not.toHaveAttribute("open", "");
   await headerMenus.nth(2).locator(":scope > summary").click();
