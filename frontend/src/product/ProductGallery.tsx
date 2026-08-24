@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 export function ProductGallery({ images, name, active, onSelect }: { images: string[]; name: string; active: number; onSelect: (index: number) => void }) {
-  const available = images.length ? images : ["/assets/hero-monstera.png"];
+  const available = images.length ? images : ["/assets/hero-monstera.webp"];
   const [open, setOpen] = useState(false);
   const touchStart = useRef<number | null>(null);
   const move = (direction: number) => onSelect((active + direction + available.length) % available.length);

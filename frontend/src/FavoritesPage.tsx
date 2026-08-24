@@ -10,7 +10,7 @@ export default function FavoritesPage() {
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); } catch { return new Set(); } });
   const [cart, setCart] = useSharedCart();
-  useEffect(() => { fetch("/api/v1/catalog", { cache: "no-store" }).then((response) => response.json()).then((data: { products?: Product[] }) => setProducts(data.products || [])); }, []);
+  useEffect(() => { fetch("/api/v1/catalog").then((response) => response.json()).then((data: { products?: Product[] }) => setProducts(data.products || [])); }, []);
   const items = useMemo(() => products.filter((product) => favorites.has(product.id) && `${product.name} ${product.latin}`.toLowerCase().includes(query.toLowerCase())), [products, favorites, query]);
   const remove = (id: string) => { const next = new Set(favorites); next.delete(id); setFavorites(next); localStorage.setItem("ficusin-favorites", JSON.stringify([...next])); window.dispatchEvent(new Event(STORAGE_EVENT)); };
   const add = (product: Product) => setCart((current) => ({ ...current, [product.id]: Math.min(product.stock, (current[product.id] || 0) + 1) }));

@@ -232,6 +232,27 @@ func main() {
 		CatalogAI:        catalogAI,
 		Analytics:        analyticsStore,
 	}))
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			statistics := pool.Stat()
+			logger.Info("postgres pool",
+				"max_connections", statistics.MaxConns(),
+				"total_connections", statistics.TotalConns(),
+				"acquired_connections", statistics.AcquiredConns(),
+				"idle_connections", statistics.IdleConns(),
+				"empty_acquires", statistics.EmptyAcquireCount(),
+				"empty_acquire_wait_ms", float64(statistics.EmptyAcquireWaitTime().Microseconds())/1000,
+				"cancelled_acquires", statistics.CanceledAcquireCount(),
+			)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	go shopSettings.Run(ctx)
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)

@@ -281,7 +281,7 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/admin/ -run TestCatalogueAndOrderEditingOnLiveDatabase -v
+        run: go test ./internal/admin/ ./internal/catalog/ -run 'LiveDatabase' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest

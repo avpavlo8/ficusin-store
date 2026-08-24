@@ -24,7 +24,7 @@ export function CatalogSearch({ value, onChange, inlineResults = false, classNam
   const query = value ?? ownValue;
 
   useEffect(() => {
-    fetch("/api/v1/catalog", { cache: "no-store" })
+    fetch("/api/v1/catalog")
       .then((response) => response.ok ? response.json() : { products: [] })
       .then((data: { products?: SearchProduct[] }) => setProducts(data.products || []))
       .catch(() => setProducts([]))

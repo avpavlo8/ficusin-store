@@ -587,7 +587,7 @@ function FavoritesSection() {
   const [cart, setCart] = useSharedCart();
 
   useEffect(() => {
-    fetch("/api/v1/catalog", { cache: "no-store" })
+    fetch("/api/v1/catalog")
       .then((response) => response.json())
       .then((data: { products?: FavoriteProduct[] }) => setProducts(data.products || []))
       .catch(() => undefined);

@@ -83,6 +83,10 @@ func (storage *Storage) Put(ctx context.Context, key string, body []byte, conten
 	if contentType != "" {
 		request.Header.Set("Content-Type", contentType)
 	}
+	// Product image keys are content-addressed or contain a random upload
+	// token, so a URL is immutable. Without this metadata Timeweb S3 forces a
+	// network revalidation for every visit even though the bytes never change.
+	request.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
 	request.Header.Set("X-Amz-Content-Sha256", payloadHash)
 	request.Header.Set("X-Amz-Date", amzDate)
 

@@ -115,7 +115,7 @@ export function CollectionStrip<T extends Product>({
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/v1/collections", { cache: "no-store" })
+    fetch("/api/v1/collections")
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("collections unavailable")))
       .then((data: { collections?: CollectionDefinition[] }) => {
         if (!alive) return;

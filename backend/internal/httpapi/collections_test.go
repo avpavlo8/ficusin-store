@@ -26,7 +26,7 @@ func collectionsBody(t *testing.T, repository collectionRepository) []catalog.Co
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	response := httptest.NewRecorder()
-	collectionsHandler(logger, repository).ServeHTTP(
+	collectionsHandler(logger, repository, newPublicJSONCache()).ServeHTTP(
 		response, httptest.NewRequest(http.MethodGet, "/api/v1/collections", nil),
 	)
 	if response.Code != http.StatusOK {

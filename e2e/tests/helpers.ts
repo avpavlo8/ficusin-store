@@ -9,7 +9,7 @@ const product = {
   latin: "Aglaonema",
   category: "Растения",
   price: 1490,
-  image: "/assets/hero-monstera.png",
+  image: "/assets/hero-monstera.webp",
   light: "Рассеянный свет",
   size: "D12",
   stock: 5,
