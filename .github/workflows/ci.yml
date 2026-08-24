@@ -255,6 +255,13 @@ jobs:
             echo "Category matrix is incomplete or leaking plant fields: matrix=${category_matrix} assignments=${leaked_plant_attributes} globals=${global_plant_dimensions}." >&2
             exit 1
           fi
+          root_labels="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
+            SELECT string_agg(slug||'='||name,',' ORDER BY sort_order)
+            FROM categories WHERE slug IN ('plants','soil','fertilizer','pots','accessories')")"
+          if [[ "$root_labels" != "plants=Растения,soil=Грунты,fertilizer=Удобрения,pots=Кашпо,accessories=Аксессуары" ]]; then
+            echo "Root category labels are incorrect: ${root_labels}." >&2
+            exit 1
+          fi
 
           # A normal new row has no legacy_product_ref and therefore must carry
           # the full catalogue identity. This insert must be rejected by CHECK.
