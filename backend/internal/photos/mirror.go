@@ -134,11 +134,9 @@ func (mirror *Mirror) One(ctx context.Context, source string) error {
 
 // copies кладёт снимок в хранилище и возвращает ссылки на него.
 //
-// Уменьшить получается не всякий: СБИС отдаёт webp, а его стандартная
-// библиотека не читает — нужна сторонняя, которую в этот проект не добавить.
-// Такие снимки копируем как есть. Это не поражение: webp у СБИС весит около
-// ста килобайт, то есть главное — снимок становится нашим и не исчезнет
-// вместе с чужим сервером — мы получаем и без уменьшения.
+// Для JPEG, PNG, GIF и WebP создаём два реальных размера. Если поставщик
+// однажды пришлёт другой формат изображения, сохраняем оригинал: фотография
+// не должна исчезнуть из каталога только из-за неизвестного кодека.
 func (mirror *Mirror) copies(
 	ctx context.Context,
 	source string,
@@ -214,7 +212,7 @@ func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, stri
 func validateSourceURL(source *url.URL) error {
 	if source.Scheme != "https" { return errors.New("ссылка не по https") }
 	host := strings.ToLower(strings.TrimSuffix(source.Hostname(), "."))
-	if host != "sbis.ru" && !strings.HasSuffix(host, ".sbis.ru") {
+	if host != "sbis.ru" && !strings.HasSuffix(host, ".sbis.ru") && host != "s3.twcstorage.ru" {
 		return errors.New("домен источника фотографий не разрешён")
 	}
 	if source.User != nil || source.Port() != "" { return errors.New("небезопасный адрес фотографии") }

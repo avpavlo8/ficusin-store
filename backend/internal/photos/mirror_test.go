@@ -10,11 +10,35 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestValidateSourceURLAllowsOnlySupplierAndOwnStorage(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		"https://disk.sbis.ru/photo.webp",
+		"https://s3.twcstorage.ru/ficusin-photos/products/5/cover.webp",
+	} {
+		parsed, err := url.Parse(raw)
+		if err != nil || validateSourceURL(parsed) != nil {
+			t.Fatalf("safe media URL rejected: %s", raw)
+		}
+	}
+	for _, raw := range []string{
+		"http://s3.twcstorage.ru/file.webp",
+		"https://s3.twcstorage.ru.evil.example/file.webp",
+		"https://127.0.0.1/file.webp",
+	} {
+		parsed, _ := url.Parse(raw)
+		if validateSourceURL(parsed) == nil {
+			t.Fatalf("unsafe media URL accepted: %s", raw)
+		}
+	}
+}
 
 type memoryStore struct {
 	mutex   sync.Mutex
