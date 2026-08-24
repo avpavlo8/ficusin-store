@@ -22,7 +22,7 @@ SET pot_diameter_cm=COALESCE(variant.pot_diameter_cm,
       replace(NULLIF((regexp_match(product.name,'(?:^|[^[:alpha:]])[DdДд][[:space:]]*([0-9]+(?:[.,][0-9]+)?)'))[1],''),',','.')::numeric),
     height_cm=COALESCE(variant.height_cm,
       replace(NULLIF((regexp_match(product.name,'(?:^|[^0-9])([0-9]+(?:[.,][0-9]+)?)[[:space:]]*см(?:[^[:alpha:]]|$)'))[1],''),',','.')::numeric),
-    label=CASE
+    label=COALESCE(CASE
       WHEN product.catalog_section='plants' AND product.name ~* '[DdДд][[:space:]]*[0-9]'
         THEN concat_ws(' · ',
           CASE WHEN product.name ~* '[0-9]+(?:[.,][0-9]+)?[[:space:]]*см' THEN
@@ -31,7 +31,7 @@ SET pot_diameter_cm=COALESCE(variant.pot_diameter_cm,
       WHEN product.catalog_section<>'plants' AND product.name ~* '[0-9]+(?:[.,][0-9]+)?[[:space:]]*(мл|л|кг|г)(?:[^[:alpha:]]|$)'
         THEN replace((regexp_match(product.name,'([0-9]+(?:[.,][0-9]+)?)[[:space:]]*(мл|л|кг|г)(?:[^[:alpha:]]|$)'))[1],'.',',')||' '||
              (regexp_match(product.name,'[0-9]+(?:[.,][0-9]+)?[[:space:]]*(мл|л|кг|г)(?:[^[:alpha:]]|$)'))[2]
-      ELSE variant.label END,
+      ELSE variant.label END,variant.label),
     updated_at=CURRENT_TIMESTAMP
 FROM products product
 WHERE product.id=variant.product_id;
