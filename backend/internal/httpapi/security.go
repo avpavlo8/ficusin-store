@@ -6,9 +6,9 @@ import (
 )
 
 // contentSecurityPolicy describes where the page is allowed to load things
-// from. Everything the store needs is served from our own origin: scripts
-// and styles are built by Vite, address suggestions and delivery quotes go
-// through our own API rather than straight to Yandex or CDEK.
+// from. Application code is served from our own origin. The optional Yandex
+// Metrika adapter is the only browser-side third party; address suggestions
+// and delivery quotes still go through our API rather than external hosts.
 //
 //   - img-src also allows https: because product photos come from the
 //     catalogue's own storage, and data: because the avatar editor previews
@@ -18,11 +18,11 @@ import (
 //   - frame-ancestors none stops the site being framed, which is what makes
 //     clickjacking possible.
 const contentSecurityPolicy = "default-src 'self'; " +
-	"script-src 'self'; " +
+	"script-src 'self' https://mc.yandex.ru; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data: https:; " +
 	"font-src 'self' data:; " +
-	"connect-src 'self'; " +
+	"connect-src 'self' https://mc.yandex.ru https://mc.yandex.com; " +
 	"manifest-src 'self'; " +
 	"worker-src 'self'; " +
 	"form-action 'self'; " +

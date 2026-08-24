@@ -27,6 +27,7 @@ const (
 	PermissionProcurementRead  = "procurement.read"
 	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
+	PermissionAnalyticsRead    = "analytics.read"
 )
 
 var ErrForbidden = errors.New("admin action is forbidden")
@@ -45,6 +46,7 @@ func Can(role, permission string) bool {
 	switch role {
 	case RoleManager:
 		return permission == PermissionDashboard ||
+			permission == PermissionAnalyticsRead ||
 			permission == PermissionCustomersRead ||
 			permission == PermissionOrdersRead || permission == PermissionOrdersEdit ||
 			permission == PermissionProductsRead || permission == PermissionProductsEdit ||
@@ -117,82 +119,82 @@ type CustomerUpdate struct {
 }
 
 type Order struct {
-	ID             int64       `json:"id"`
-	OrderNumber    string      `json:"orderNumber"`
-	CustomerID     *int64      `json:"customerId"`
-	CustomerName   string      `json:"customerName"`
-	Phone          string      `json:"phone"`
-	Email          string      `json:"email"`
-	Address        string      `json:"address"`
-	Comment        string      `json:"comment"`
-	DeliveryMethod string      `json:"deliveryMethod"`
+	ID             int64  `json:"id"`
+	OrderNumber    string `json:"orderNumber"`
+	CustomerID     *int64 `json:"customerId"`
+	CustomerName   string `json:"customerName"`
+	Phone          string `json:"phone"`
+	Email          string `json:"email"`
+	Address        string `json:"address"`
+	Comment        string `json:"comment"`
+	DeliveryMethod string `json:"deliveryMethod"`
 	// DeliveryFeePending marks an order whose delivery price the manager
 	// still has to work out — no box dimensions, CDEK unavailable, or the
 	// customer asked whether the plants fit into one box.
-	DeliveryFeePending bool `json:"deliveryFeePending"`
-	RepackRequested    bool `json:"repackRequested"`
-	PaymentMethod  string      `json:"paymentMethod"`
-	TrackNumber    string      `json:"trackNumber"`
-	HasPreorder    bool        `json:"hasPreorder"`
-	PaymentStatus  string      `json:"paymentStatus"`
-	Status         string      `json:"status"`
-	Total          float64     `json:"total"`
-	CreatedAt      time.Time   `json:"createdAt"`
-	Items          []OrderItem `json:"items"`
+	DeliveryFeePending bool        `json:"deliveryFeePending"`
+	RepackRequested    bool        `json:"repackRequested"`
+	PaymentMethod      string      `json:"paymentMethod"`
+	TrackNumber        string      `json:"trackNumber"`
+	HasPreorder        bool        `json:"hasPreorder"`
+	PaymentStatus      string      `json:"paymentStatus"`
+	Status             string      `json:"status"`
+	Total              float64     `json:"total"`
+	CreatedAt          time.Time   `json:"createdAt"`
+	Items              []OrderItem `json:"items"`
 }
 
 type OrderItem struct {
-	ProductID   int64   `json:"productId"`
-	SKU         string  `json:"sku"`
-	VariantLabel string `json:"variantLabel"`
-	ProductName string  `json:"productName"`
-	UnitPrice   float64 `json:"unitPrice"`
-	Quantity    int     `json:"quantity"`
+	ProductID    int64   `json:"productId"`
+	SKU          string  `json:"sku"`
+	VariantLabel string  `json:"variantLabel"`
+	ProductName  string  `json:"productName"`
+	UnitPrice    float64 `json:"unitPrice"`
+	Quantity     int     `json:"quantity"`
 }
 
 type Product struct {
-	ID                 int64      `json:"id"`
-	SabyID             string     `json:"sabyId"`
-	Slug               string     `json:"slug"`
-	Name               string     `json:"name"`
-	LatinName          string     `json:"latinName"`
-	ShortDescription   string     `json:"shortDescription"`
-	Description        string     `json:"description"`
-	CareInstructions   string     `json:"careInstructions"`
-	Status             string     `json:"status"`
-	Featured           bool       `json:"featured"`
-	CatalogSection     string     `json:"catalogSection"`
-	PlantKind          string     `json:"plantKind"`
-	LightLevel         string     `json:"lightLevel"`
-	Watering           string     `json:"watering"`
-	HeightClass        string     `json:"heightClass"`
-	CareLevel          string     `json:"careLevel"`
-	Placement          string     `json:"placement"`
-	PetSafety          string     `json:"petSafety"`
-	GrowthHabit        string     `json:"growthHabit"`
-	Image              string     `json:"image"`
-	Price              float64    `json:"price"`
-	Stock              int        `json:"stock"`
-	SKU                string     `json:"sku"`
-	VariantLabel       string     `json:"variantLabel"`
-	HeightCM           *int       `json:"heightCm"`
-	PotDiameterCM      *int       `json:"potDiameterCm"`
-	PackageLengthCM    *int       `json:"packageLengthCm"`
-	PackageWidthCM     *int       `json:"packageWidthCm"`
-	PackageHeightCM    *int       `json:"packageHeightCm"`
-	PackageWeightGrams *int       `json:"packageWeightGrams"`
-	WholesaleMinQty    int        `json:"wholesaleMinQty"`
-	OverrideFields     []string   `json:"overrideFields"`
+	ID                 int64    `json:"id"`
+	SabyID             string   `json:"sabyId"`
+	Slug               string   `json:"slug"`
+	Name               string   `json:"name"`
+	LatinName          string   `json:"latinName"`
+	ShortDescription   string   `json:"shortDescription"`
+	Description        string   `json:"description"`
+	CareInstructions   string   `json:"careInstructions"`
+	Status             string   `json:"status"`
+	Featured           bool     `json:"featured"`
+	CatalogSection     string   `json:"catalogSection"`
+	PlantKind          string   `json:"plantKind"`
+	LightLevel         string   `json:"lightLevel"`
+	Watering           string   `json:"watering"`
+	HeightClass        string   `json:"heightClass"`
+	CareLevel          string   `json:"careLevel"`
+	Placement          string   `json:"placement"`
+	PetSafety          string   `json:"petSafety"`
+	GrowthHabit        string   `json:"growthHabit"`
+	Image              string   `json:"image"`
+	Price              float64  `json:"price"`
+	Stock              int      `json:"stock"`
+	SKU                string   `json:"sku"`
+	VariantLabel       string   `json:"variantLabel"`
+	HeightCM           *int     `json:"heightCm"`
+	PotDiameterCM      *int     `json:"potDiameterCm"`
+	PackageLengthCM    *int     `json:"packageLengthCm"`
+	PackageWidthCM     *int     `json:"packageWidthCm"`
+	PackageHeightCM    *int     `json:"packageHeightCm"`
+	PackageWeightGrams *int     `json:"packageWeightGrams"`
+	WholesaleMinQty    int      `json:"wholesaleMinQty"`
+	OverrideFields     []string `json:"overrideFields"`
 	// SabyFields — что этому товару разрешено брать из СБИС. Пусто значит
 	// «ничего»: карточка целиком наша.
-	SabyFields         []string   `json:"sabyFields"`
-	SabyCode           string     `json:"sabyCode"`
-	SabyUpdatedAt      *time.Time `json:"sabyUpdatedAt"`
-	CategoryID         *int64               `json:"categoryId"`
-	Passport           catalog.PlantPassport `json:"passport"`
-	ImportantWarnings  []string             `json:"importantWarnings"`
-	ExternalIDs        []ExternalID          `json:"externalIds"`
-	Attributes         map[string]any        `json:"attributes"`
+	SabyFields        []string              `json:"sabyFields"`
+	SabyCode          string                `json:"sabyCode"`
+	SabyUpdatedAt     *time.Time            `json:"sabyUpdatedAt"`
+	CategoryID        *int64                `json:"categoryId"`
+	Passport          catalog.PlantPassport `json:"passport"`
+	ImportantWarnings []string              `json:"importantWarnings"`
+	ExternalIDs       []ExternalID          `json:"externalIds"`
+	Attributes        map[string]any        `json:"attributes"`
 }
 
 type ExternalID struct {
@@ -202,69 +204,69 @@ type ExternalID struct {
 }
 
 type MediaHealth struct {
-	References int `json:"references"`
-	External int `json:"external"`
-	Mirrored int `json:"mirrored"`
-	Pending int `json:"pending"`
-	Exhausted int `json:"exhausted"`
+	References           int `json:"references"`
+	External             int `json:"external"`
+	Mirrored             int `json:"mirrored"`
+	Pending              int `json:"pending"`
+	Exhausted            int `json:"exhausted"`
 	ProductsWithoutMedia int `json:"productsWithoutMedia"`
-	OrphanMappings int `json:"orphanMappings"`
+	OrphanMappings       int `json:"orphanMappings"`
 }
 
 type ProductUpdate struct {
-	Name               *string `json:"name"`
-	LatinName          *string `json:"latinName"`
-	ShortDescription   *string `json:"shortDescription"`
-	Description        *string `json:"description"`
-	CareInstructions   *string `json:"careInstructions"`
-	Status             *string `json:"status"`
-	Featured           *bool   `json:"featured"`
-	CatalogSection     *string `json:"catalogSection"`
-	PlantKind          *string `json:"plantKind"`
-	LightLevel         *string `json:"lightLevel"`
-	Watering           *string `json:"watering"`
-	HeightClass        *string `json:"heightClass"`
-	CareLevel          *string `json:"careLevel"`
-	Placement          *string `json:"placement"`
-	PetSafety          *string `json:"petSafety"`
-	GrowthHabit        *string `json:"growthHabit"`
-	Image              *string `json:"image"`
-	PriceMinor         *int64  `json:"priceMinor"`
-	VariantLabel       *string `json:"variantLabel"`
-	HeightCM           *int    `json:"heightCm"`
-	PotDiameterCM      *int    `json:"potDiameterCm"`
-	PackageLengthCM    *int    `json:"packageLengthCm"`
-	PackageWidthCM     *int    `json:"packageWidthCm"`
-	PackageHeightCM    *int    `json:"packageHeightCm"`
-	PackageWeightGrams *int    `json:"packageWeightGrams"`
-	WholesaleMinQty    *int    `json:"wholesaleMinQty"`
-	Stock              *int    `json:"stock"`
-	SabyFields         *[]string `json:"sabyFields"`
-	CategoryID         *int64                `json:"categoryId"`
+	Name               *string                `json:"name"`
+	LatinName          *string                `json:"latinName"`
+	ShortDescription   *string                `json:"shortDescription"`
+	Description        *string                `json:"description"`
+	CareInstructions   *string                `json:"careInstructions"`
+	Status             *string                `json:"status"`
+	Featured           *bool                  `json:"featured"`
+	CatalogSection     *string                `json:"catalogSection"`
+	PlantKind          *string                `json:"plantKind"`
+	LightLevel         *string                `json:"lightLevel"`
+	Watering           *string                `json:"watering"`
+	HeightClass        *string                `json:"heightClass"`
+	CareLevel          *string                `json:"careLevel"`
+	Placement          *string                `json:"placement"`
+	PetSafety          *string                `json:"petSafety"`
+	GrowthHabit        *string                `json:"growthHabit"`
+	Image              *string                `json:"image"`
+	PriceMinor         *int64                 `json:"priceMinor"`
+	VariantLabel       *string                `json:"variantLabel"`
+	HeightCM           *int                   `json:"heightCm"`
+	PotDiameterCM      *int                   `json:"potDiameterCm"`
+	PackageLengthCM    *int                   `json:"packageLengthCm"`
+	PackageWidthCM     *int                   `json:"packageWidthCm"`
+	PackageHeightCM    *int                   `json:"packageHeightCm"`
+	PackageWeightGrams *int                   `json:"packageWeightGrams"`
+	WholesaleMinQty    *int                   `json:"wholesaleMinQty"`
+	Stock              *int                   `json:"stock"`
+	SabyFields         *[]string              `json:"sabyFields"`
+	CategoryID         *int64                 `json:"categoryId"`
 	Passport           *catalog.PlantPassport `json:"passport"`
-	ImportantWarnings  *[]string             `json:"importantWarnings"`
+	ImportantWarnings  *[]string              `json:"importantWarnings"`
 	Attributes         map[string]any         `json:"attributes"`
 	ExternalIDs        *[]ExternalID          `json:"externalIds"`
 }
 
 // ProductCreate — карточка, заведённая в магазине с нуля.
 type ProductCreate struct {
-	Name             string `json:"name"`
-	LatinName        string `json:"latinName"`
-	ShortDescription string `json:"shortDescription"`
-	Description      string `json:"description"`
-	CatalogSection   string `json:"catalogSection"`
-	CategoryID       *int64 `json:"categoryId"`
-	PriceMinor       int64  `json:"priceMinor"`
-	Stock            int    `json:"stock"`
-	Image            string `json:"image"`
-	HeightCM         *int `json:"heightCm"`
-	PotDiameterCM    *int `json:"potDiameterCm"`
-	PackageLengthCM  *int `json:"packageLengthCm"`
-	PackageWidthCM   *int `json:"packageWidthCm"`
-	PackageHeightCM  *int `json:"packageHeightCm"`
-	PackageWeightGrams *int `json:"packageWeightGrams"`
-	Attributes       map[string]any `json:"attributes"`
+	Name               string         `json:"name"`
+	LatinName          string         `json:"latinName"`
+	ShortDescription   string         `json:"shortDescription"`
+	Description        string         `json:"description"`
+	CatalogSection     string         `json:"catalogSection"`
+	CategoryID         *int64         `json:"categoryId"`
+	PriceMinor         int64          `json:"priceMinor"`
+	Stock              int            `json:"stock"`
+	Image              string         `json:"image"`
+	HeightCM           *int           `json:"heightCm"`
+	PotDiameterCM      *int           `json:"potDiameterCm"`
+	PackageLengthCM    *int           `json:"packageLengthCm"`
+	PackageWidthCM     *int           `json:"packageWidthCm"`
+	PackageHeightCM    *int           `json:"packageHeightCm"`
+	PackageWeightGrams *int           `json:"packageWeightGrams"`
+	Attributes         map[string]any `json:"attributes"`
 }
 
 // ImportRequest — массовый импорт из справочника СБИС по кодам товаров.
@@ -294,7 +296,7 @@ type ImportResult struct {
 // MergeProductsRequest turns independently imported Saby rows into variants
 // of one reviewed PRODUCT card. Only draft source cards may be absorbed.
 type MergeProductsRequest struct {
-	TargetProductID int64   `json:"targetProductId"`
+	TargetProductID  int64   `json:"targetProductId"`
 	SourceProductIDs []int64 `json:"sourceProductIds"`
 }
 
@@ -325,18 +327,18 @@ type CategoryUpdate struct {
 // CategoryAttribute is the product-editor contract for one category. Audience
 // keeps delivery/integration fields out of the customer-facing PDP contract.
 type CategoryAttribute struct {
-	Code         string `json:"code"`
-	Name         string `json:"name"`
-	DataType     string `json:"dataType"`
-	Unit         string `json:"unit"`
-	Options      []string `json:"options"`
-	Audience     string `json:"audience"`
-	Scope        string `json:"scope"`
-	Required     bool `json:"required"`
-	Filterable   bool `json:"filterable"`
-	ShowOnPDP    bool `json:"showOnPdp"`
-	Badge        bool `json:"badge"`
-	SortOrder    int `json:"sortOrder"`
+	Code       string   `json:"code"`
+	Name       string   `json:"name"`
+	DataType   string   `json:"dataType"`
+	Unit       string   `json:"unit"`
+	Options    []string `json:"options"`
+	Audience   string   `json:"audience"`
+	Scope      string   `json:"scope"`
+	Required   bool     `json:"required"`
+	Filterable bool     `json:"filterable"`
+	ShowOnPDP  bool     `json:"showOnPdp"`
+	Badge      bool     `json:"badge"`
+	SortOrder  int      `json:"sortOrder"`
 }
 
 type SyncRequest struct {

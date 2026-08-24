@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { CartDrawer, CheckoutPanel } from "./CartCheckout";
 import { useCheckout } from "./useCheckout";
+import { track } from "./lib/analytics";
 
 type Cart = Record<string, number>;
 
@@ -61,6 +62,10 @@ export default function CheckoutHost({
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
 
   useEffect(() => {
+    if ((cartPage || checkoutPage) && cartLines.length) track("view_cart", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
+  }, [cartPage, checkoutPage, cartLines.length, cartCount, subtotal]);
+
+  useEffect(() => {
     if (!new URLSearchParams(window.location.search).has("paid")) return;
     window.history.replaceState({}, "", window.location.pathname);
   }, []);
@@ -101,6 +106,8 @@ export default function CheckoutHost({
     setCart((current) => {
       const next = { ...current };
       if (quantity <= 0) {
+		const removed = products.find((item) => item.sku === sku);
+		track("remove_from_cart", { productCode: removed?.id, sku, value: removed?.price, quantity: current[sku] || 1, properties: { location: "cart" } });
         delete next[sku];
       } else {
         const product = products.find((item) => item.sku === sku);
@@ -112,6 +119,7 @@ export default function CheckoutHost({
   }
 
   function beginCheckout() {
+	track("begin_checkout", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
     window.location.assign("/checkout");
   }
 

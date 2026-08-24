@@ -4,6 +4,7 @@ import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { CollectionStrip, presets } from "./Collections";
 import { searchProducts } from "./lib/search";
 import { useSharedCart } from "./lib/cart";
+import { track } from "./lib/analytics";
 import { attributeLabel, attributeValue } from "./product/types";
 
 type Product = {
@@ -239,6 +240,23 @@ export default function StorefrontPage() {
     return list;
   }, [found, searching, category, inBranch, selectedPresets, inStockOnly, attributeFilters, sort]);
 
+  useEffect(() => {
+    if (loading) return;
+    track("view_item_list", { properties: { list: categoryName || "catalog", items: visible.length } });
+  }, [loading, categoryName, visible.length]);
+
+  useEffect(() => {
+    if (!query.trim()) return;
+    const timer = window.setTimeout(() => track("search", { properties: { query: query.trim().slice(0, 120), results: visible.length } }), 700);
+    return () => window.clearTimeout(timer);
+  }, [query, visible.length]);
+
+  useEffect(() => {
+	if (!category && !inStockOnly && !selectedPresets.size && !Object.values(attributeFilters).some(Boolean)) return;
+	const timer=window.setTimeout(()=>track("filter",{properties:{category,inStockOnly,presets:[...selectedPresets],attributes:attributeFilters,results:visible.length}}),500);
+	return ()=>window.clearTimeout(timer);
+  },[category,inStockOnly,selectedPresets,attributeFilters,visible.length]);
+
   const facetPopulation = useMemo(() => {
     if (searching) return found;
     if (category == null) return found;
@@ -297,7 +315,8 @@ export default function StorefrontPage() {
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
-  const addToCart = (product: Product) =>
+  const addToCart = (product: Product) => {
+    track("add_to_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: categoryName || "catalog" } });
     setCart((current) => ({
       ...current,
       [product.sku]: Math.min(
@@ -305,12 +324,16 @@ export default function StorefrontPage() {
         (current[product.sku] ?? 0) + 1,
       ),
     }));
-  const changeCartQuantity = (product: Product, delta: number) => setCart((current) => {
+  };
+  const changeCartQuantity = (product: Product, delta: number) => {
+	track(delta > 0 ? "add_to_cart" : "remove_from_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: categoryName || "catalog" } });
+	setCart((current) => {
     const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
     const nextQuantity = Math.max(0, Math.min(maximum, (current[product.sku] || 0) + delta));
     if (nextQuantity === 0) { const next = { ...current }; delete next[product.sku]; return next; }
     return { ...current, [product.sku]: nextQuantity };
   });
+  };
 
   const toggleFavorite = (id: string) =>
     setFavorites((current) => {
@@ -450,10 +473,10 @@ export default function StorefrontPage() {
                   >
                     ♥
                   </button>
-                  <a className="storefront-image" href={`/product/${product.id}`}>
+                  <a className="storefront-image" href={`/product/${product.id}`} onClick={()=>track("select_item",{productCode:product.id,sku:product.sku,value:product.price,properties:{list:categoryName||"catalog"}})}>
                     <img src={product.image} alt={product.name} loading="lazy" />
                   </a>
-                  <a className="storefront-name" href={`/product/${product.id}`}>{product.name}</a>
+                  <a className="storefront-name" href={`/product/${product.id}`} onClick={()=>track("select_item",{productCode:product.id,sku:product.sku,value:product.price,properties:{list:categoryName||"catalog"}})}>{product.name}</a>
                   {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0,2).map((attribute) => <span key={attribute.code}>{attribute.name}: {attributeValue(attribute.value, attribute.unit)}</span>)}</div>}
                   {product.latin && <p className="storefront-latin">{product.latin}</p>}
                   {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}

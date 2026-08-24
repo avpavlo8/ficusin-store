@@ -25,7 +25,7 @@ func (stub sitemapCatalogStub) ListAvailable(context.Context) ([]catalog.Product
 }
 
 func TestKnownAppRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/cart", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15"} {
+	for _, path := range []string{"/", "/cart", "/checkout", "/contacts", "/account/reviews", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15"} {
 		if !knownAppRoute(path) {
 			t.Errorf("%s — настоящий адрес магазина, а считается выдуманным", path)
 		}
@@ -37,6 +37,19 @@ func TestKnownAppRoutes(t *testing.T) {
 	}
 }
 
+func TestRouteMetaIndexesStorefrontAndHidesCheckout(t *testing.T) {
+	shell := []byte(`<html><head><title>shop</title><meta name="description" content="shop"></head></html>`)
+	home := string(withRouteMeta("https://ficusin.ru", "/", shell))
+	for _, want := range []string{`rel="canonical" href="https://ficusin.ru/"`, `"@type":"Store"`, `"@type":"WebSite"`} {
+		if !strings.Contains(home, want) {
+			t.Errorf("home meta does not contain %q", want)
+		}
+	}
+	checkout := string(withRouteMeta("https://ficusin.ru", "/checkout", shell))
+	if !strings.Contains(checkout, `name="robots" content="noindex,nofollow"`) {
+		t.Fatalf("checkout is indexable: %s", checkout)
+	}
+}
 
 func TestSPAFallbackServesDirectCartURL(t *testing.T) {
 	staticDir := t.TempDir()
@@ -108,7 +121,7 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 			Latin:    "Monstera deliciosa",
 			Images:   []string{"https://example.test/monstera.jpg"},
 			Variants: []catalog.Variant{{Price: 1290, Stock: 3}},
-			Rating: 4.8, ReviewsCount: 12,
+			Rating:   4.8, ReviewsCount: 12,
 			Passport: catalog.PlantPassport{FAQ: []catalog.FAQItem{{Question: "Когда пересаживать?", Answer: "Весной."}}},
 		}},
 		"https://ficusin.ru", "monstera", shell,

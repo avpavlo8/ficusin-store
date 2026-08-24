@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
 import { normalizeRussianPhone } from "./lib/phone";
+import { getAttribution, track } from "./lib/analytics";
 
 type Cart = Record<string, number>;
 export type CheckoutProfile = {
@@ -333,6 +334,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
       paymentMethod,
+	  attribution: getAttribution(),
     };
 
     const needsManagerConfirmation = deliveryFeePending;
@@ -346,6 +348,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       if (!response.ok || !data.orderNumber) {
         throw new Error(data.error || "Не удалось оформить заказ");
       }
+	  track("add_shipping_info", { value: total, quantity: cartCount, properties: { delivery } });
+	  track("add_payment_info", { value: total, quantity: cartCount, properties: { paymentMethod } });
       setOrderConfirmationPending(needsManagerConfirmation);
       setOrderNumber(data.orderNumber);
       setCart({});
@@ -358,6 +362,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
           });
           const result = (await payment.json()) as { confirmationUrl?: string };
           if (result.confirmationUrl) {
+			track("payment_redirect", { value: total, quantity: cartCount, properties: { orderNumber: data.orderNumber } });
             window.location.assign(result.confirmationUrl);
             return;
           }
@@ -366,6 +371,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
         }
       }
     } catch (error) {
+	  track("checkout_error", { value: total, quantity: cartCount, properties: { message: error instanceof Error ? error.message.slice(0, 200) : "unknown", delivery, paymentMethod } });
       setNotice(error instanceof Error ? error.message : "Не удалось оформить заказ");
     } finally {
       setSubmitting(false);

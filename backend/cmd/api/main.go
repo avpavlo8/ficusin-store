@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
+	commerceanalytics "github.com/avpavlo8/ficusin-store/backend/internal/analytics"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
@@ -202,32 +203,34 @@ func main() {
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
-	catalogAI := catalogai.New(cfg.OpenAI.APIKey,cfg.OpenAI.TextModel)
+	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
+	analyticsStore := commerceanalytics.NewStore(pool)
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
-		Catalog:           catalogRepository,
-		Auth:              authService,
-		Orders:            orderRepository,
-		OrderCreator:      orderService,
-		CDEK:              cdekClient,
-		RussianPost:       russianPostClient,
-		YandexDelivery:    yandexDeliveryClient,
-		Admin:             adminRepository,
-		Saby:              sabyService,
-		Push:              pushService,
-		Cart:              cart.NewStore(pool),
-		Packages:          catalogRepository,
-		Collections:       catalogRepository,
-		Payments:          paymentService,
-		Settings:          shopSettings,
-		Procurement:       procurementService,
-		Reviews:           reviews.NewStore(pool, photoStorage),
-		Refunds:           paymentService,
-		ProductPhotos:     photoStorage,
-		CookieSecure:      cfg.Auth.CookieSecure,
-		StaticDir:         cfg.HTTP.StaticDir,
+		Catalog:          catalogRepository,
+		Auth:             authService,
+		Orders:           orderRepository,
+		OrderCreator:     orderService,
+		CDEK:             cdekClient,
+		RussianPost:      russianPostClient,
+		YandexDelivery:   yandexDeliveryClient,
+		Admin:            adminRepository,
+		Saby:             sabyService,
+		Push:             pushService,
+		Cart:             cart.NewStore(pool),
+		Packages:         catalogRepository,
+		Collections:      catalogRepository,
+		Payments:         paymentService,
+		Settings:         shopSettings,
+		Procurement:      procurementService,
+		Reviews:          reviews.NewStore(pool, photoStorage),
+		Refunds:          paymentService,
+		ProductPhotos:    photoStorage,
+		CookieSecure:     cfg.Auth.CookieSecure,
+		StaticDir:        cfg.HTTP.StaticDir,
 		YandexSuggestKey: cfg.YandexSuggestKey,
-		CatalogAI: catalogAI,
+		CatalogAI:        catalogAI,
+		Analytics:        analyticsStore,
 	}))
 
 	go shopSettings.Run(ctx)

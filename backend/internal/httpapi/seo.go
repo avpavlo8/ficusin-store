@@ -28,13 +28,16 @@ var appRoutes = map[string]bool{
 	"/account":              true,
 	"/account/profile":      true,
 	"/account/favorites":    true,
+	"/account/reviews":      true,
 	"/admin":                true,
 	"/cart":                 true,
+	"/checkout":             true,
 	"/favorites":            true,
 	"/offer":                true,
 	"/privacy":              true,
 	"/requisites":           true,
 	"/delivery-and-returns": true,
+	"/contacts":             true,
 }
 
 func knownAppRoute(path string) bool {
@@ -105,7 +108,6 @@ func siteBase(request *http.Request) string {
 	return scheme + "://" + request.Host
 }
 
-
 // ——— Заголовки карточки товара ———
 //
 // Страница собирается в браузере, поэтому в HTML у всех адресов лежал один
@@ -122,6 +124,51 @@ var (
 	titlePattern       = regexp.MustCompile(`(?s)<title>.*?</title>`)
 	descriptionPattern = regexp.MustCompile(`<meta name="description" content="[^"]*"`)
 )
+
+type routeMeta struct {
+	Title, Description string
+	Index              bool
+}
+
+var publicRouteMeta = map[string]routeMeta{
+	"/":                     {"Фикусин — комнатные растения в Рязани с доставкой по России", "Комнатные растения, кашпо и всё для ухода. Магазин «Фикусин» в Рязани, доставка по России и самовывоз на Новосёлов, 40А.", true},
+	"/delivery-and-returns": {"Доставка и оплата комнатных растений — Фикусин", "Самовывоз и курьерская доставка по Рязани, СДЭК и Почта России. Условия оплаты, упаковки и получения живых растений.", true},
+	"/contacts":             {"Контакты магазина растений Фикусин в Рязани", "Магазин комнатных растений «Фикусин»: Рязань, улица Новосёлов, 40А. Телефон, Telegram и часы работы.", true},
+	"/requisites":           {"Реквизиты магазина Фикусин", "Реквизиты интернет-магазина комнатных растений «Фикусин».", true},
+	"/offer":                {"Публичная оферта — Фикусин", "Условия продажи товаров интернет-магазином «Фикусин».", true},
+	"/privacy":              {"Политика конфиденциальности — Фикусин", "Политика обработки и защиты персональных данных интернет-магазина «Фикусин».", true},
+}
+
+func withRouteMeta(base, path string, shell []byte) []byte {
+	if strings.HasPrefix(path, "/product/") {
+		return shell
+	}
+	meta, public := publicRouteMeta[path]
+	if !public {
+		meta = routeMeta{Title: "Фикусин", Description: "Интернет-магазин комнатных растений «Фикусин».", Index: false}
+	}
+	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
+	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`"`))
+	head := strings.Builder{}
+	if meta.Index {
+		head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+path) + `">` + "\n")
+	} else {
+		head.WriteString(`<meta name="robots" content="noindex,nofollow">` + "\n")
+	}
+	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(meta.Title) + `">` + "\n")
+	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(meta.Description) + `">` + "\n")
+	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+path) + `">` + "\n")
+	if path == "/" {
+		structured := map[string]any{"@context": "https://schema.org", "@graph": []any{
+			map[string]any{"@type": "Store", "@id": base + "/#organization", "name": "Фикусин", "url": base, "telephone": "+79156151100", "image": base + "/assets/redesign/home-hero-4k.webp", "address": map[string]any{"@type": "PostalAddress", "streetAddress": "ул. Новосёлов, 40А", "addressLocality": "Рязань", "addressCountry": "RU"}, "openingHoursSpecification": []any{map[string]any{"@type": "OpeningHoursSpecification", "dayOfWeek": []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}, "opens": "08:00", "closes": "20:00"}}, "sameAs": []string{"https://t.me/ficusin62"}},
+			map[string]any{"@type": "WebSite", "@id": base + "/#website", "name": "Фикусин", "url": base, "publisher": map[string]any{"@id": base + "/#organization"}, "inLanguage": "ru-RU"},
+		}}
+		if encoded, err := json.Marshal(structured); err == nil {
+			head.WriteString(`<script type="application/ld+json">` + string(encoded) + `</script>` + "\n")
+		}
+	}
+	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
+}
 
 func productSlug(path string) string {
 	if !strings.HasPrefix(path, "/product/") {
@@ -220,6 +267,7 @@ func withProductMeta(
 		"name":        detail.Name,
 		"description": description,
 		"offers":      offer,
+		"brand":       map[string]any{"@type": "Brand", "name": "Фикусин"},
 	}
 	if detail.Latin != "" {
 		structured["alternateName"] = detail.Latin
@@ -233,9 +281,13 @@ func withProductMeta(
 	if len(detail.Passport.FAQ) > 0 {
 		questions := make([]map[string]any, 0, len(detail.Passport.FAQ))
 		for _, item := range detail.Passport.FAQ {
-			if strings.TrimSpace(item.Question) != "" && strings.TrimSpace(item.Answer) != "" { questions = append(questions, map[string]any{"@type":"Question", "name":item.Question, "acceptedAnswer":map[string]any{"@type":"Answer", "text":item.Answer}}) }
+			if strings.TrimSpace(item.Question) != "" && strings.TrimSpace(item.Answer) != "" {
+				questions = append(questions, map[string]any{"@type": "Question", "name": item.Question, "acceptedAnswer": map[string]any{"@type": "Answer", "text": item.Answer}})
+			}
 		}
-		if len(questions) > 0 { structured["subjectOf"] = map[string]any{"@type":"FAQPage", "mainEntity":questions} }
+		if len(questions) > 0 {
+			structured["subjectOf"] = map[string]any{"@type": "FAQPage", "mainEntity": questions}
+		}
 	}
 	// json.Marshal экранирует «<», поэтому чужое описание не сможет закрыть
 	// тег script и подсунуть свой код.

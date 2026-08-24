@@ -85,6 +85,7 @@ func spaFallback(
 		if !knownAppRoute(request.URL.Path) {
 			status = http.StatusNotFound
 		}
+		body = withRouteMeta(siteBase(request), request.URL.Path, body)
 		body = withProductMeta(
 			request.Context(), logger, products,
 			siteBase(request), productSlug(request.URL.Path), body,

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	commerceanalytics "github.com/avpavlo8/ficusin-store/backend/internal/analytics"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 )
@@ -41,7 +42,8 @@ type createOrderBody struct {
 	Consent bool `json:"consent"`
 	// PaymentMethod is the option the customer picked. The server decides
 	// whether they were entitled to it.
-	PaymentMethod string `json:"paymentMethod"`
+	PaymentMethod string                        `json:"paymentMethod"`
+	Attribution   commerceanalytics.Attribution `json:"attribution"`
 }
 
 func createOrderHandler(
@@ -49,6 +51,7 @@ func createOrderHandler(
 	authentication authService,
 	creator orderCreator,
 	payments paymentService,
+	analytics analyticsStore,
 ) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		var body createOrderBody
@@ -138,8 +141,8 @@ func createOrderHandler(
 			WholesaleApproved:  wholesaleApproved,
 			OnlinePaymentReady: available(payments),
 			Consent:            true,
-			ClientIP:   clientIP(request),
-			UserAgent:  request.UserAgent(),
+			ClientIP:           clientIP(request),
+			UserAgent:          request.UserAgent(),
 		})
 		var validationError *order.ValidationError
 		if errors.As(err, &validationError) {
@@ -152,6 +155,11 @@ func createOrderHandler(
 				Error: "Не удалось сохранить заказ",
 			})
 			return
+		}
+		if analytics != nil {
+			if err := analytics.RecordOrder(request.Context(), created.OrderNumber, created.Total, body.Attribution); err != nil {
+				logger.Error("record order analytics failed", "order_number", created.OrderNumber, "error", err)
+			}
 		}
 		writeJSON(response, http.StatusCreated, created)
 	})

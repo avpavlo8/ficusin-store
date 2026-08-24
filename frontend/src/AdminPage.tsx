@@ -6,6 +6,7 @@ import { Customers, Dashboard, Orders } from "./AdminSales";
 import { Settings } from "./AdminSettings";
 import { api, roleLabel, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
+import { Analytics } from "./AdminAnalytics";
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
@@ -50,6 +51,7 @@ export default function AdminPage() {
           <p>{roleLabel(data.role)}</p>
           <nav>
             <Nav active={section === "dashboard"} onClick={() => go("dashboard")}>Обзор</Nav>
+            {can("analytics.read") && <Nav active={section === "analytics"} onClick={() => go("analytics")}>Аналитика</Nav>}
             {can("products.read") && <Nav active={section === "products"} onClick={() => go("products")}>Товары</Nav>}
             {can("products.read") && <Nav active={section === "categories"} onClick={() => go("categories")}>Категории</Nav>}
             {can("products.read") && <Nav active={section === "collections"} onClick={() => go("collections")}>Подборки</Nav>}
@@ -64,6 +66,7 @@ export default function AdminPage() {
         <div className="account-content">
           {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
+          {section === "analytics" && <Analytics onError={setError} />}
           {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}
           {section === "orders" && <Orders focusOrder={focusOrder} onError={setError} />}
           {section === "procurement" && <Procurement onError={setError} />}

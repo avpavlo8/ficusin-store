@@ -43,7 +43,7 @@ type adminHandlers struct {
 	// payments is nil when the shop takes no card payments; the refund
 	// button then answers that it is unavailable rather than crashing.
 	payments refundService
-	ai catalogAIGenerator
+	ai       catalogAIGenerator
 }
 
 // refundService is the slice of the payment service the panel needs.
@@ -279,22 +279,46 @@ func (handlers adminHandlers) products(response http.ResponseWriter, request *ht
 
 func (handlers adminHandlers) categoryAttributes(response http.ResponseWriter, request *http.Request) {
 	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	id, ok := pathID(response, request)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	provider, ok := handlers.repository.(interface {
 		ListCategoryAttributes(context.Context, int64) ([]admin.CategoryAttribute, error)
 	})
-	if !ok { handlers.failed(response, "category attributes unavailable", errors.New("category attributes unavailable")); return }
+	if !ok {
+		handlers.failed(response, "category attributes unavailable", errors.New("category attributes unavailable"))
+		return
+	}
 	items, err := provider.ListCategoryAttributes(request.Context(), id)
-	if err != nil { handlers.failed(response, "list category attributes", err); return }
+	if err != nil {
+		handlers.failed(response, "list category attributes", err)
+		return
+	}
 	writeJSON(response, http.StatusOK, map[string]any{"attributes": items})
 }
 
-func (handlers adminHandlers) catalogMediaHealth(response http.ResponseWriter,request *http.Request){
-	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsRead);if !ok{return}
-	provider,ok:=handlers.repository.(interface{CatalogMediaHealth(context.Context)(admin.MediaHealth,error)});if !ok{handlers.failed(response,"catalog media health unavailable",errors.New("catalog media health unavailable"));return}
-	result,err:=provider.CatalogMediaHealth(request.Context());if err!=nil{handlers.failed(response,"catalog media health",err);return};writeJSON(response,http.StatusOK,map[string]any{"media":result})
+func (handlers adminHandlers) catalogMediaHealth(response http.ResponseWriter, request *http.Request) {
+	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
+	if !ok {
+		return
+	}
+	provider, ok := handlers.repository.(interface {
+		CatalogMediaHealth(context.Context) (admin.MediaHealth, error)
+	})
+	if !ok {
+		handlers.failed(response, "catalog media health unavailable", errors.New("catalog media health unavailable"))
+		return
+	}
+	result, err := provider.CatalogMediaHealth(request.Context())
+	if err != nil {
+		handlers.failed(response, "catalog media health", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"media": result})
 }
 
 func (handlers adminHandlers) updateProduct(response http.ResponseWriter, request *http.Request) {
@@ -383,7 +407,9 @@ func (handlers adminHandlers) createProduct(response http.ResponseWriter, reques
 
 func (handlers adminHandlers) deleteDraftProducts(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var body admin.DeleteDraftProductsRequest
 	if decodeJSON(request, &body) != nil || len(body.ProductIDs) == 0 || len(body.ProductIDs) > 1000 {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите черновики для удаления"})
@@ -392,20 +418,41 @@ func (handlers adminHandlers) deleteDraftProducts(response http.ResponseWriter, 
 	deleter, ok := handlers.repository.(interface {
 		DeleteDraftProducts(context.Context, admin.Actor, []int64) (int64, error)
 	})
-	if !ok { writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Удаление черновиков недоступно"}); return }
+	if !ok {
+		writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Удаление черновиков недоступно"})
+		return
+	}
 	deleted, err := deleter.DeleteDraftProducts(request.Context(), actor, body.ProductIDs)
-	if err != nil { handlers.failed(response, "delete draft products", err); return }
+	if err != nil {
+		handlers.failed(response, "delete draft products", err)
+		return
+	}
 	writeJSON(response, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
 func (handlers adminHandlers) publishDraftProducts(response http.ResponseWriter, request *http.Request) {
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
 	var body admin.BulkPublishProductsRequest
-	if decodeJSON(request,&body)!=nil||len(body.ProductIDs)==0||len(body.ProductIDs)>1000{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Выберите черновики для публикации"});return}
-	publisher,ok:=handlers.repository.(interface{PublishDraftProducts(context.Context,admin.Actor,[]int64)(admin.BulkPublishResult,error)})
-	if !ok{writeJSON(response,http.StatusNotImplemented,errorResponse{Error:"Массовая публикация недоступна"});return}
-	result,err:=publisher.PublishDraftProducts(request.Context(),actor,body.ProductIDs);if err!=nil{handlers.failed(response,"publish draft products",err);return}
-	writeJSON(response,http.StatusOK,result)
+	if decodeJSON(request, &body) != nil || len(body.ProductIDs) == 0 || len(body.ProductIDs) > 1000 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите черновики для публикации"})
+		return
+	}
+	publisher, ok := handlers.repository.(interface {
+		PublishDraftProducts(context.Context, admin.Actor, []int64) (admin.BulkPublishResult, error)
+	})
+	if !ok {
+		writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Массовая публикация недоступна"})
+		return
+	}
+	result, err := publisher.PublishDraftProducts(request.Context(), actor, body.ProductIDs)
+	if err != nil {
+		handlers.failed(response, "publish draft products", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
 }
 
 // importProducts заводит карточки по списку кодов товаров из СБИС. С
@@ -433,34 +480,102 @@ func (handlers adminHandlers) importProducts(response http.ResponseWriter, reque
 	writeJSON(response, http.StatusOK, result)
 }
 
-type draftProductMerger interface { MergeDraftProducts(context.Context, admin.Actor, admin.MergeProductsRequest) error }
-
-func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
-	var body admin.MergeProductsRequest
-	if decodeJSON(request,&body)!=nil || body.TargetProductID<=0 || len(body.SourceProductIDs)==0 || len(body.SourceProductIDs)>100 { writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Выберите основную карточку и черновики"});return }
-	merger,ok:=handlers.repository.(draftProductMerger);if !ok{writeJSON(response,http.StatusNotImplemented,errorResponse{Error:"Объединение недоступно"});return}
-	if err:=merger.MergeDraftProducts(request.Context(),actor,body);err!=nil{handlers.failed(response,"merge draft products",err);return}
-	writeJSON(response,http.StatusOK,map[string]any{"ok":true})
+type draftProductMerger interface {
+	MergeDraftProducts(context.Context, admin.Actor, admin.MergeProductsRequest) error
 }
 
-type effectiveAttributeProvider interface { EffectiveCategoryAttributes(context.Context,int64)([]admin.EffectiveCategoryAttribute,error) }
+func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	var body admin.MergeProductsRequest
+	if decodeJSON(request, &body) != nil || body.TargetProductID <= 0 || len(body.SourceProductIDs) == 0 || len(body.SourceProductIDs) > 100 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите основную карточку и черновики"})
+		return
+	}
+	merger, ok := handlers.repository.(draftProductMerger)
+	if !ok {
+		writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Объединение недоступно"})
+		return
+	}
+	if err := merger.MergeDraftProducts(request.Context(), actor, body); err != nil {
+		handlers.failed(response, "merge draft products", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
+}
 
-func(handlers adminHandlers)generateProductDraft(response http.ResponseWriter,request *http.Request){
+type effectiveAttributeProvider interface {
+	EffectiveCategoryAttributes(context.Context, int64) ([]admin.EffectiveCategoryAttribute, error)
+}
+
+func (handlers adminHandlers) generateProductDraft(response http.ResponseWriter, request *http.Request) {
 	// Research with web search legitimately takes longer than normal shop API
 	// calls. Extend only this response; checkout and every other endpoint keep
 	// the server-wide 30 second protection.
-	_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2*time.Minute))
-	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
-	var body struct{Mode string `json:"mode"`};if decodeJSON(request,&body)!=nil||(body.Mode!="description"&&body.Mode!="attributes"&&body.Mode!="care"){writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Выберите, что заполнить с AI"});return}
-	if handlers.ai==nil||!handlers.ai.Configured(){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"AI не настроен: добавьте OPENAI_API_KEY"});return}
-	id,err:=strconv.ParseInt(request.PathValue("id"),10,64);if err!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный товар"});return}
-	products,err:=handlers.repository.ListProducts(request.Context());if err!=nil{handlers.failed(response,"list product for ai",err);return}
-	var product *admin.Product;for index:=range products{if products[index].ID==id{product=&products[index];break}}
-	if product==nil{writeJSON(response,http.StatusNotFound,errorResponse{Error:"Товар не найден"});return}
-	input:=catalogai.Input{Name:product.Name,SabyCode:product.SabyCode,Category:product.CatalogSection,CurrentDescription:product.Description,Attributes:[]catalogai.Attribute{}}
-	if product.CategoryID!=nil{if provider,yes:=handlers.repository.(effectiveAttributeProvider);yes{attributes,e:=provider.EffectiveCategoryAttributes(request.Context(),*product.CategoryID);if e==nil{for _,item:=range attributes{if item.Active&&!item.Excluded&&item.Audience=="customer"&&item.Scope=="product"{options:=[]string{};for _,option:=range item.Options{if option.Active{options=append(options,option.Code)}};input.Attributes=append(input.Attributes,catalogai.Attribute{Code:item.Code,Name:item.Name,Type:item.DataType,Unit:item.Unit,Options:options})}}}}}
-	proposal,err:=handlers.ai.Generate(request.Context(),input,body.Mode);if err!=nil{handlers.failedAI(response,"generate product ai draft",err);return};writeJSON(response,http.StatusOK,map[string]any{"proposal":proposal})
+	_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2 * time.Minute))
+	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if decodeJSON(request, &body) != nil || (body.Mode != "description" && body.Mode != "attributes" && body.Mode != "care") {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите, что заполнить с AI"})
+		return
+	}
+	if handlers.ai == nil || !handlers.ai.Configured() {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "AI не настроен: добавьте OPENAI_API_KEY"})
+		return
+	}
+	id, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар"})
+		return
+	}
+	products, err := handlers.repository.ListProducts(request.Context())
+	if err != nil {
+		handlers.failed(response, "list product for ai", err)
+		return
+	}
+	var product *admin.Product
+	for index := range products {
+		if products[index].ID == id {
+			product = &products[index]
+			break
+		}
+	}
+	if product == nil {
+		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Товар не найден"})
+		return
+	}
+	input := catalogai.Input{Name: product.Name, SabyCode: product.SabyCode, Category: product.CatalogSection, CurrentDescription: product.Description, Attributes: []catalogai.Attribute{}}
+	if product.CategoryID != nil {
+		if provider, yes := handlers.repository.(effectiveAttributeProvider); yes {
+			attributes, e := provider.EffectiveCategoryAttributes(request.Context(), *product.CategoryID)
+			if e == nil {
+				for _, item := range attributes {
+					if item.Active && !item.Excluded && item.Audience == "customer" && item.Scope == "product" {
+						options := []string{}
+						for _, option := range item.Options {
+							if option.Active {
+								options = append(options, option.Code)
+							}
+						}
+						input.Attributes = append(input.Attributes, catalogai.Attribute{Code: item.Code, Name: item.Name, Type: item.DataType, Unit: item.Unit, Options: options})
+					}
+				}
+			}
+		}
+	}
+	proposal, err := handlers.ai.Generate(request.Context(), input, body.Mode)
+	if err != nil {
+		handlers.failedAI(response, "generate product ai draft", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"proposal": proposal})
 }
 
 func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
@@ -493,35 +608,76 @@ func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request
 }
 
 func (handlers adminHandlers) categories(response http.ResponseWriter, request *http.Request) {
-	_,_,ok:=handlers.authorize(response,request,admin.PermissionProductsRead); if !ok{return}
-	items,err:=handlers.repository.ListCategories(request.Context()); if err!=nil{handlers.failed(response,"list categories",err);return}
-	writeJSON(response,http.StatusOK,map[string]any{"categories":items})
-}
-
-func (handlers adminHandlers) createCategory(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit); if !ok{return}
-	var input admin.CategoryCreate
-	if decodeJSON(request,&input)!=nil||strings.TrimSpace(input.Name)==""||strings.TrimSpace(input.Slug)==""{
-		writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Укажите название и slug"});return
+	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
+	if !ok {
+		return
 	}
-	item,err:=handlers.repository.CreateCategory(request.Context(),actor,input); if err!=nil{handlers.failed(response,"create category",err);return}
-	writeJSON(response,http.StatusCreated,map[string]any{"category":item})
+	items, err := handlers.repository.ListCategories(request.Context())
+	if err != nil {
+		handlers.failed(response, "list categories", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"categories": items})
 }
 
-func (handlers adminHandlers) updateCategory(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit); if !ok{return}
-	id,ok:=pathID(response,request);if !ok{return};var input admin.CategoryUpdate
-	if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректные данные"});return}
-	item,err:=handlers.repository.UpdateCategory(request.Context(),actor,id,input);if err!=nil{handlers.failed(response,"update category",err);return}
-	writeJSON(response,http.StatusOK,map[string]any{"category":item})
+func (handlers adminHandlers) createCategory(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	var input admin.CategoryCreate
+	if decodeJSON(request, &input) != nil || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.Slug) == "" {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите название и slug"})
+		return
+	}
+	item, err := handlers.repository.CreateCategory(request.Context(), actor, input)
+	if err != nil {
+		handlers.failed(response, "create category", err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"category": item})
 }
 
-func (handlers adminHandlers) deleteCategory(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
-	id,ok:=pathID(response,request);if !ok{return}
-	err:=handlers.repository.DeleteCategory(request.Context(),actor,id)
-	if errors.Is(err,admin.ErrCategoryNotEmpty){writeJSON(response,http.StatusConflict,errorResponse{Error:"Сначала перенесите товары и удалите вложенные категории"});return}
-	if err!=nil{handlers.failed(response,"delete category",err);return}
+func (handlers adminHandlers) updateCategory(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	var input admin.CategoryUpdate
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	item, err := handlers.repository.UpdateCategory(request.Context(), actor, id, input)
+	if err != nil {
+		handlers.failed(response, "update category", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"category": item})
+}
+
+func (handlers adminHandlers) deleteCategory(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	err := handlers.repository.DeleteCategory(request.Context(), actor, id)
+	if errors.Is(err, admin.ErrCategoryNotEmpty) {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: "Сначала перенесите товары и удалите вложенные категории"})
+		return
+	}
+	if err != nil {
+		handlers.failed(response, "delete category", err)
+		return
+	}
 	writeJSON(response, http.StatusOK, map[string]any{"deleted": true})
 }
 
@@ -596,6 +752,7 @@ func permissionsFor(role string) []string {
 		admin.PermissionOrdersEdit, admin.PermissionProductsRead, admin.PermissionProductsEdit,
 		admin.PermissionProductsSync, admin.PermissionProcurementRead,
 		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
+		admin.PermissionAnalyticsRead,
 	}
 	result := make([]string, 0, len(all))
 	for _, permission := range all {

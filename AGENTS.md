@@ -281,6 +281,7 @@ CI (`.github/workflows/ci.yml`) запускается на pull request и на
 - **Закупки и продажи маркетплейсов** — `docs/procurement.md`.
 - **Паспорт растения и отзывы** — `docs/plant-passports-and-reviews.md`.
 - **Формула «сначала популярные»** — `docs/popularity.md`.
+- **SEO, атрибуция и воронка продаж** — `docs/commerce-analytics.md`.
 - **Доставка: что подключено и что планируется** —
   `docs/delivery-integrations-plan.md`.
 - **Почта: настройка SMTP** — `docs/mail-setup.md`.
