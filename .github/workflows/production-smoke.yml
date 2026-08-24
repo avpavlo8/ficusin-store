@@ -34,17 +34,20 @@ jobs:
 
           expected_js="$(grep -oE 'src="/assets/[^"]+\.js"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
           expected_css="$(grep -oE 'href="/assets/[^"]+\.css"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
+          expected_backend="$(cd backend && find . -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)"
 
           if [[ -z "$expected_js" || -z "$expected_css" ]]; then
             echo 'Could not determine expected frontend assets.' >&2
             exit 1
           fi
 
+          echo "expected_backend=${expected_backend}"
           echo "expected_js=${expected_js}"
           echo "expected_css=${expected_css}"
 
           for attempt in $(seq 1 36); do
             health="$(curl -fsS --max-time 10 "https://ficusin.ru/api/v1/health?deploy=${GITHUB_SHA}" || true)"
+            actual_backend="$(printf '%s' "$health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)"
             html="$(curl -fsS --max-time 15 "https://ficusin.ru/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
@@ -52,9 +55,10 @@ jobs:
               | python3 -c 'import json,sys; data=json.load(sys.stdin); products=data.get("products"); print(len(products) if isinstance(products, list) else 0)' \
               2>/dev/null || printf '0')"
 
-            echo "attempt=${attempt} health=${health} js=${actual_js} css=${actual_css} catalog_products=${catalog_count}"
+            echo "attempt=${attempt} health=${health} backend=${actual_backend} js=${actual_js} css=${actual_css} catalog_products=${catalog_count}"
 
             if [[ "$health" == *'"status":"ok"'* \
+              && "$actual_backend" == "$expected_backend" \
               && "$actual_js" == "$expected_js" \
               && "$actual_css" == "$expected_css" \
               && "$catalog_count" =~ ^[0-9]+$ \
