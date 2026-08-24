@@ -224,6 +224,21 @@ test("@desktop вопросы открываются отдельной вкла
   await expect(page.locator("#questions details")).toContainText("Когда пересаживать?");
 });
 
+test("@desktop инструкция по уходу ведёт от адаптации к персональным рекомендациям", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/1");
+
+  const guide = page.locator("#care-guide");
+  await expect(guide).toContainText("Первые дни дома");
+  await expect(guide).toContainText("Осмотрите");
+  await expect(guide.getByRole("tab", { name: /Свет/ })).toHaveAttribute("aria-selected", "true");
+  await guide.getByRole("tab", { name: /Полив/ }).click();
+  await expect(guide.getByRole("tabpanel")).toContainText("Полив");
+  await expect(guide.getByRole("tabpanel")).toContainText("Умеренный");
+  await expect(guide).toContainText("Спрашивают чаще всего");
+  await expect(guide.getByText("Когда пересаживать?")).toBeVisible();
+});
+
 test("@desktop пустые вопросы и отзывы остаются полезными", async ({ page }) => {
   await mockApi(page);
   await page.route("**/api/v1/products/empty", (route) => route.fulfill({ json: { product: {
