@@ -234,7 +234,7 @@ test("@desktop инструкция по уходу ведёт от адапта
   await expect(guide.getByRole("tab", { name: /Свет/ })).toHaveAttribute("aria-selected", "true");
   await guide.getByRole("tab", { name: /Полив/ }).click();
   await expect(guide.getByRole("tabpanel")).toContainText("Полив");
-  await expect(guide.getByRole("tabpanel")).toContainText("Умеренный");
+  await expect(guide.getByRole("tabpanel")).toContainText("После просыхания верхнего слоя");
   await expect(guide).toContainText("Спрашивают чаще всего");
   await expect(guide.getByText("Когда пересаживать?")).toBeVisible();
 });
