@@ -39,8 +39,9 @@ ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,source='
 
 DO $validate$
 BEGIN
- IF (SELECT count(*) FROM verified_pot_variants source JOIN product_variants variant ON variant.sku=source.sku)
-    NOT IN (0,(SELECT count(*) FROM verified_pot_variants)) THEN
+ IF EXISTS(SELECT 1 FROM products WHERE product_code=619 AND name ILIKE '%деко твин%')
+    AND (SELECT count(*) FROM verified_pot_variants source JOIN product_variants variant ON variant.sku=source.sku)
+      <> (SELECT count(*) FROM verified_pot_variants) THEN
    RAISE EXCEPTION 'not every verified Saby pot SKU was resolved';
  END IF;
 END;
