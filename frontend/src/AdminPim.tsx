@@ -190,18 +190,24 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
   const [variants, setVariants] = useState<AdminVariant[]>([]);
   const [schema, setSchema] = useState<EffectiveAttribute[]>([]);
   const [selectedId, setSelectedId] = useState<number | "new" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState("");
   const empty = useMemo<AdminVariant>(() => ({ id: 0, productId, sku: "авто", label: "Новый вариант", price: 0, stock: 0, wholesaleMinQty: 1, active: true, archived: false, attributes: {}, externalIds: [], images: [] }), [productId]);
   const [draft, setDraft] = useState<AdminVariant>(empty);
   const load = useCallback(() => api<{ variants: AdminVariant[] }>(`/api/v1/admin/products/${productId}/variants`).then((data) => setVariants(data.variants || [])).catch((error) => onError(error.message)), [productId, onError]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (!categoryId) return; void api<{ attributes: EffectiveAttribute[] }>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then((data) => setSchema(data.attributes.filter((item) => item.scope === "variant" && item.active && !item.excluded))).catch((error) => onError(error.message)); }, [categoryId, onError]);
-  const select = (variant: AdminVariant | "new") => { setSelectedId(variant === "new" ? "new" : variant.id); setDraft(variant === "new" ? empty : structuredClone(variant)); };
+  const select = (variant: AdminVariant | "new") => { setSelectedId(variant === "new" ? "new" : variant.id); setDraft(variant === "new" ? empty : structuredClone(variant)); setSaveNotice(""); };
   const save = async () => {
+    if (saving) return;
+    setSaving(true); setSaveNotice("");
     try {
       const body = JSON.stringify({ label: draft.label, priceMinor: Math.round(draft.price * 100), stock: draft.stock, wholesaleMinQty: draft.wholesaleMinQty, active: draft.active, attributes: draft.attributes, externalIds: draft.externalIds });
       const result = await api<{ variant: AdminVariant }>(selectedId === "new" ? `/api/v1/admin/products/${productId}/variants` : `/api/v1/admin/variants/${draft.id}`, { method: selectedId === "new" ? "POST" : "PATCH", body });
-      setSelectedId(result.variant.id); setDraft(result.variant); load();
+      setSelectedId(result.variant.id); setDraft(result.variant); await load(); setSaveNotice(`SKU ${result.variant.sku} сохранён`);
+      window.setTimeout(() => setSaveNotice(""), 3000);
     } catch (error) { onError((error as Error).message); }
+    finally { setSaving(false); }
   };
   const visibleSchema = categoryId ? schema : [];
   const variantAttributes = visibleSchema.filter((item) => item.audience === "customer");
@@ -221,6 +227,6 @@ export function VariantsEditor({ productId, categoryId, onError }: { productId: 
       {technicalAttributes.length > 0 && <><h4 className="wide">Упаковка и логистика</h4>{technicalAttributes.map((attribute) => <DynamicValue key={attribute.id} attribute={attribute} value={draft.attributes[attribute.code]} onChange={(value) => setDraft({ ...draft, attributes: { ...draft.attributes, [attribute.code]: value as never } })} />)}</>}
       <h4 className="wide">Интеграции SKU</h4><div className="wide external-mappings">{draft.externalIds.map((mapping, index) => <div className="external-mapping-row" key={`${index}-${mapping.provider}`}><input value={mapping.provider} placeholder="saby / wildberries / ozon" onChange={(event) => setDraft({ ...draft, externalIds: draft.externalIds.map((item, itemIndex) => itemIndex === index ? { ...item, provider: event.target.value.toLowerCase() } : item) })} /><input value={mapping.type} placeholder="id / nmId / offerId" onChange={(event) => setDraft({ ...draft, externalIds: draft.externalIds.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value } : item) })} /><input value={mapping.externalId} placeholder="Значение" onChange={(event) => setDraft({ ...draft, externalIds: draft.externalIds.map((item, itemIndex) => itemIndex === index ? { ...item, externalId: event.target.value } : item) })} /><button type="button" onClick={() => setDraft({ ...draft, externalIds: draft.externalIds.filter((_, itemIndex) => itemIndex !== index) })}>Удалить</button></div>)}<button type="button" className="admin-action" onClick={() => setDraft({ ...draft, externalIds: [...draft.externalIds, { provider: "saby", type: "id", externalId: "" }] })}>Добавить связь</button></div>
       <h4 className="wide">Фото SKU</h4>{selectedId === "new" ? <p className="wide admin-hint">Сначала сохраните SKU — после этого можно загрузить его фотографии.</p> : <VariantMediaManager variantId={draft.id} sku={draft.sku} onChanged={() => { void load(); }} onError={onError} />}
-    </div><div className="dialog-actions"><button type="button" className="danger" disabled={selectedId === "new"} onClick={async () => { if (selectedId === "new") return; try { await api(`/api/v1/admin/variants/${draft.id}/archive`, { method: "POST" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Архивировать</button><button type="button" className="danger" disabled={selectedId === "new"} onClick={async () => { if (selectedId === "new" || !window.confirm(`Удалить SKU ${draft.sku}? Это возможно только если он никогда не продавался.`)) return; try { await api(`/api/v1/admin/variants/${draft.id}`, { method: "DELETE" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Удалить</button><button type="button" className="primary" disabled={draft.active && missingRequired.length > 0} onClick={save}>Сохранить SKU</button></div></div>}
+    </div><div className={`variant-save-status ${saveNotice ? "success" : ""}`} role="status" aria-live="polite">{saveNotice || "После изменений нажмите «Сохранить SKU»"}</div><div className="dialog-actions"><button type="button" className="danger" disabled={selectedId === "new" || saving} onClick={async () => { if (selectedId === "new") return; try { await api(`/api/v1/admin/variants/${draft.id}/archive`, { method: "POST" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Архивировать</button><button type="button" className="danger" disabled={selectedId === "new" || saving} onClick={async () => { if (selectedId === "new" || !window.confirm(`Удалить SKU ${draft.sku}? Это возможно только если он никогда не продавался.`)) return; try { await api(`/api/v1/admin/variants/${draft.id}`, { method: "DELETE" }); setSelectedId(null); load(); } catch (error) { onError((error as Error).message); } }}>Удалить</button><button type="button" className="primary" disabled={saving || draft.active && missingRequired.length > 0} onClick={save}>{saving ? "Сохраняем…" : saveNotice ? "Сохранено ✓" : "Сохранить SKU"}</button></div></div>}
   </section>;
 }
