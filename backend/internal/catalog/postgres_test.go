@@ -20,3 +20,14 @@ func TestCatalogPopularityQueryUsesConfirmedSales(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogQueryUsesActualRootCategory(t *testing.T) {
+	if strings.Contains(catalogListQuery, "product.latin_name, 'Растения'") {
+		t.Fatal("catalog category must not be hard-coded")
+	}
+	for _, want := range []string{"root_category.name", "WITH RECURSIVE ancestors", "parent_id IS NULL"} {
+		if !strings.Contains(catalogListQuery, want) {
+			t.Errorf("catalog query does not contain %q", want)
+		}
+	}
+}
