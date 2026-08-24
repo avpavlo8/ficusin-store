@@ -234,7 +234,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			sitemapHandler(logger, dependencies.Catalog), dependencies.Catalog,
 		)
 	}
-	return requestLogger(logger, securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)))
+	return requestLogger(logger, gzipResponses(securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler))))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
