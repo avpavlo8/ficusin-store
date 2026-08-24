@@ -97,7 +97,13 @@ export default function ProductPage({ slug }: { slug: string }) {
   };
 
   if (error) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><h1>{error}</h1><a href="/#catalog">Вернуться в каталог</a></section></main>;
-  if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} /><section className="pdp-error"><p>Загружаем карточку товара…</p></section></main>;
+  if (!product) return <main className="product-page"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} />
+    <nav className="breadcrumbs pdp-loading-breadcrumb" aria-label="Хлебные крошки"><span /></nav>
+    <section className="pdp-main pdp-loading-main" aria-label="Загружаем карточку товара" aria-busy="true">
+      <div className="pdp-loading-gallery" />
+      <div className="pdp-loading-summary"><span /><span /><span /><span /><span /></div>
+    </section>
+  </main>;
 
   const customerAttributes = [...product.attributes, ...(variant?.attributes || [])].filter((item) => item.showInCharacteristics !== false && (product.catalogSection === "plants" || !plantOnlyAttributeCodes.has(item.code)));
   const gallery = variant?.images?.length ? variant.images : product.images;
