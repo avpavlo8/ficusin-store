@@ -43,11 +43,10 @@ func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, 
 	defer func() { _ = tx.Rollback(ctx) }()
 	for _, id := range unique {
 		var name, status string
-		var hasCategory, hasVariant, hasMedia bool
+		var hasCategory, hasVariant bool
 		err = tx.QueryRow(ctx, `SELECT p.name,p.status,p.category_id IS NOT NULL,
-			EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL AND v.base_price_minor>0),
-			EXISTS(SELECT 1 FROM product_media m WHERE m.product_id=p.id)
-			FROM products p WHERE p.id=$1 FOR UPDATE`, id).Scan(&name, &status, &hasCategory, &hasVariant, &hasMedia)
+			EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL AND v.base_price_minor>0)
+			FROM products p WHERE p.id=$1 FOR UPDATE`, id).Scan(&name, &status, &hasCategory, &hasVariant)
 		if errors.Is(err, pgx.ErrNoRows) {
 			result.Blocked = append(result.Blocked, BulkPublishBlocked{ProductID: id, Reason: "Товар не найден"})
 			continue
@@ -65,8 +64,6 @@ func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, 
 			reason = "Не выбрана категория"
 		case !hasVariant:
 			reason = "Нет активного варианта с ценой"
-		case !hasMedia:
-			reason = "Не добавлена фотография"
 		}
 		if reason == "" {
 			if validationErr := validateRequiredAttributes(ctx, tx, id); validationErr != nil {
