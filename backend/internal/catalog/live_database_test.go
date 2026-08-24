@@ -3,9 +3,11 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,6 +23,26 @@ func TestRecommendationsQueryOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var categoryID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES($1,$2) RETURNING id`,
+		"Интеграционные растения", fmt.Sprintf("catalog-plan-%d", unique)).Scan(&categoryID); err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+	for index := 0; index < 12; index++ {
+		var seededProductID int64
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO products(category_id,name,slug,status,catalog_section,plant_kind,light_level,watering,height_class,care_level,placement,pet_safety,growth_habit)
+			VALUES($1,$2,$3,'published','plants','foliage','bright','medium','medium','easy','home','safe','upright') RETURNING id`,
+			categoryID, fmt.Sprintf("Плановый товар %d", index), fmt.Sprintf("catalog-plan-%d-%d", unique, index),
+		).Scan(&seededProductID); err != nil {
+			t.Fatalf("seed product %d: %v", index, err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'Основной',100000,1)`,
+			seededProductID, fmt.Sprintf("PLAN-%d-%d", unique, index)); err != nil {
+			t.Fatalf("seed variant %d: %v", index, err)
+		}
+	}
 
 	var productID int64
 	var detail ProductDetail
