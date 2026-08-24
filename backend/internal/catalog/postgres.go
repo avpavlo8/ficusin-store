@@ -268,7 +268,7 @@ const catalogListQuery = `
 		) chosen ON TRUE
 	)
 	SELECT
-		product.product_code::TEXT, default_variant.sku, product.name, product.latin_name, 'Растения',
+		product.product_code::TEXT, default_variant.sku, product.name, product.latin_name, COALESCE(root_category.name,'Без категории'),
 		default_variant.base_price_minor,
 		COALESCE((
 			SELECT COALESCE(mirror.card_url,media.object_key)
@@ -315,6 +315,15 @@ const catalogListQuery = `
 		), '[]'::jsonb)
 	FROM products product
 	JOIN default_variants default_variant ON default_variant.product_id=product.id
+	LEFT JOIN LATERAL (
+		WITH RECURSIVE ancestors AS (
+			SELECT id,parent_id,name FROM categories WHERE id=product.category_id
+			UNION ALL
+			SELECT category.id,category.parent_id,category.name
+			FROM categories category JOIN ancestors ancestor ON ancestor.parent_id=category.id
+		)
+		SELECT name FROM ancestors WHERE parent_id IS NULL LIMIT 1
+	) root_category ON TRUE
 	LEFT JOIN popularity ON popularity.product_id=product.id
 	WHERE product.status='published'
 	ORDER BY default_variant.stock>0 DESC,product.is_featured DESC,product.name ASC
