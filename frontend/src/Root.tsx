@@ -36,6 +36,12 @@ export default function Root() {
   if (path === "/") {
     return withFooter(<StorefrontPage />);
   }
+  if (path.startsWith("/catalog/")) {
+    return withFooter(<StorefrontPage landing={{ type:"category", slug:decodeURIComponent(path.slice("/catalog/".length)) }} />);
+  }
+  if (path.startsWith("/collections/")) {
+    return withFooter(<StorefrontPage landing={{ type:"collection", slug:decodeURIComponent(path.slice("/collections/".length)) }} />);
+  }
   switch (path) {
     case "/login":
       return ready(<LoginPage />);

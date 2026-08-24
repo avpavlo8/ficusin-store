@@ -10,7 +10,7 @@ export type StoreUser = {
   avatarUpdatedAt?: string;
 };
 
-export type HeaderMenuItem = { id: number; label: string; children?: HeaderMenuItem[] };
+export type HeaderMenuItem = { id: number; label: string; slug?: string; children?: HeaderMenuItem[] };
 
 function closeOtherHeaderMenus(current: HTMLDetailsElement) {
   if (!current.open) return;
@@ -21,7 +21,7 @@ function closeOtherHeaderMenus(current: HTMLDetailsElement) {
 
 function HeaderMenuBranch({ item, onPick }: { item: HeaderMenuItem; onPick?: (id: number) => void }) {
   if (item.children?.length) return <details className="header-submenu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>{item.label}<span>›</span></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
-  return <button type="button" onClick={(event) => { onPick?.(item.id); document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); event.currentTarget.blur(); }}>{item.label}<span>→</span></button>;
+  return <a href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={(event) => { if (onPick) { event.preventDefault(); onPick(item.id); } document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); }}>{item.label}<span>→</span></a>;
 }
 
 function AccountBadge({ user }: { user: StoreUser }) {
@@ -271,22 +271,22 @@ export function StoreHeader({
   }, []);
   useEffect(() => {
     if (!homeNavigation || catalogMenuItems.length || plantMenuItems.length) return;
-    fetch("/api/v1/categories", { cache: "no-store" }).then((response) => response.json()).then((body: {categories?:Array<{id:number;parentId:number|null;name:string;sortOrder:number}>}) => {
+    fetch("/api/v1/categories", { cache: "no-store" }).then((response) => response.json()).then((body: {categories?:Array<{id:number;parentId:number|null;name:string;slug:string;sortOrder:number}>}) => {
       const categories = body.categories || [];
       const children = new Map<number|null,typeof categories>();
       categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
       const order = (items:typeof categories) => [...items].sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ru"));
-      const branch = (item:typeof categories[number]):HeaderMenuItem => ({id:item.id,label:item.name,children:order(children.get(item.id)||[]).map(branch)});
+      const branch = (item:typeof categories[number]):HeaderMenuItem => ({id:item.id,label:item.name,slug:item.slug,children:order(children.get(item.id)||[]).map(branch)});
       const catalog = order(children.get(null)||[]).map(branch);
       const plantRoot = categories.find((item)=>item.parentId==null&&/растен/i.test(item.name));
       const leaves = (parentId:number):typeof categories => order(children.get(parentId)||[]).flatMap((item)=>children.get(item.id)?.length?leaves(item.id):[item]);
-      setFallbackMenus({catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name})):[]});
+      setFallbackMenus({catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name,slug:item.slug})):[]});
     }).catch(() => setFallbackMenus({catalog:[],plants:[]}));
   },[homeNavigation,catalogMenuItems.length,plantMenuItems.length]);
 
   const resolvedCatalogMenuItems = catalogMenuItems.length ? catalogMenuItems : fallbackMenus.catalog;
   const resolvedPlantMenuItems = plantMenuItems.length ? plantMenuItems : fallbackMenus.plants;
-  const categoryPick = onHomeCategoryPick ?? ((id: number) => window.location.assign(`/?category=${id}#catalog`));
+  const categoryPick = onHomeCategoryPick;
 
   const cartLabel = `Корзина, товаров: ${cart}`;
   return <><div className="announcement" hidden />

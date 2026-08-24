@@ -21,17 +21,19 @@ import (
 // Keys. Adding one here and to defaults is all it takes for it to appear in
 // the panel.
 const (
-	CDEKOrdersEnabled = "cdek.orders_enabled"
-	CDEKSenderName    = "cdek.sender_name"
-	CDEKSenderPhone   = "cdek.sender_phone"
-	CDEKSenderAddress = "cdek.sender_address"
-	PaymentsEnabled   = "payments.enabled"
-	TelegramEnabled   = "telegram.enabled"
-	AutoCancelHours   = "orders.auto_cancel_hours"
-	SabyStockEnabled  = "saby.stock_enabled"
-	CourierFee        = "delivery.courier_fee"
-	PostFee           = "delivery.post_fee"
-	MetrikaID         = "analytics.metrika_id"
+	CDEKOrdersEnabled  = "cdek.orders_enabled"
+	CDEKSenderName     = "cdek.sender_name"
+	CDEKSenderPhone    = "cdek.sender_phone"
+	CDEKSenderAddress  = "cdek.sender_address"
+	PaymentsEnabled    = "payments.enabled"
+	TelegramEnabled    = "telegram.enabled"
+	AutoCancelHours    = "orders.auto_cancel_hours"
+	SabyStockEnabled   = "saby.stock_enabled"
+	CourierFee         = "delivery.courier_fee"
+	PostFee            = "delivery.post_fee"
+	MetrikaID          = "analytics.metrika_id"
+	YandexVerification = "seo.yandex_verification"
+	GoogleVerification = "seo.google_verification"
 )
 
 // Definition is what the panel needs to draw one setting.
@@ -110,6 +112,18 @@ var Definitions = []Definition{
 		Note:  "Только цифры из адреса счётчика. Пусто — счётчик не подключается и на страницы ничего не добавляется.",
 		Kind:  "text",
 	},
+	{
+		Key:   YandexVerification,
+		Title: "Код подтверждения Яндекс Вебмастера",
+		Note:  "Только значение content из метатега yandex-verification. Пусто — подтверждение не выводится.",
+		Kind:  "text",
+	},
+	{
+		Key:   GoogleVerification,
+		Title: "Код подтверждения Google Search Console",
+		Note:  "Только значение content из метатега google-site-verification. Пусто — подтверждение не выводится.",
+		Kind:  "text",
+	},
 }
 
 // defaults are what a setting means before anyone has touched it. Both
@@ -128,7 +142,9 @@ var defaults = map[string]string{
 	CDEKSenderAddress: "",
 	// Пусто по умолчанию: пока владелец не завёл счётчик, магазин не должен
 	// грузить чужой скрипт на каждой странице.
-	MetrikaID:         "",
+	MetrikaID:          "",
+	YandexVerification: "",
+	GoogleVerification: "",
 }
 
 // Service keeps the settings in memory so that reading one costs nothing.

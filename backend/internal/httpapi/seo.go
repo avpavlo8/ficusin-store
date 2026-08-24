@@ -45,11 +45,30 @@ func knownAppRoute(path string) bool {
 		return true
 	}
 	// Карточка товара и отдельный заказ — адреса с переменной частью.
-	return strings.HasPrefix(path, "/product/") || strings.HasPrefix(path, "/account/orders/")
+	return strings.HasPrefix(path, "/product/") || strings.HasPrefix(path, "/account/orders/") || landingSlug(path, "/catalog/") != "" || landingSlug(path, "/collections/") != ""
+}
+
+func landingSlug(path, prefix string) string {
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	slug := strings.TrimPrefix(path, prefix)
+	if slug == "" || strings.Contains(slug, "/") {
+		return ""
+	}
+	if decoded, err := url.PathUnescape(slug); err == nil {
+		return decoded
+	}
+	return ""
 }
 
 type sitemapCatalog interface {
 	ListAvailable(context.Context) ([]catalog.Product, error)
+	ListCategories(context.Context) ([]catalog.Category, error)
+}
+
+type sitemapCollections interface {
+	ListCollections(context.Context) ([]catalog.Collection, error)
 }
 
 type sitemapURL struct {
@@ -69,11 +88,11 @@ type sitemapSet struct {
 //
 // Пустой каталог — не повод отдавать ошибку: статические страницы магазина
 // существуют независимо от того, ответила ли база.
-func sitemapHandler(logger *slog.Logger, repository sitemapCatalog) http.Handler {
+func sitemapHandler(logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		base := siteBase(request)
 		set := sitemapSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
-		for _, path := range []string{"/", "/delivery-and-returns", "/offer", "/privacy", "/requisites"} {
+		for _, path := range []string{"/", "/delivery-and-returns", "/contacts", "/offer", "/privacy", "/requisites"} {
 			set.URLs = append(set.URLs, sitemapURL{
 				Location: base + path, Changefreq: "weekly", Priority: "0.8",
 			})
@@ -87,6 +106,38 @@ func sitemapHandler(logger *slog.Logger, repository sitemapCatalog) http.Handler
 				set.URLs = append(set.URLs, sitemapURL{
 					Location: base + "/product/" + product.ID, Changefreq: "daily", Priority: "0.6",
 				})
+			}
+			categories, categoryErr := repository.ListCategories(request.Context())
+			if categoryErr != nil {
+				logger.Error("sitemap categories failed", "error", categoryErr)
+			} else {
+				parents := make(map[int64]*int64, len(categories))
+				visible := make(map[int64]bool)
+				for _, category := range categories {
+					parents[category.ID] = category.ParentID
+				}
+				for _, product := range products {
+					current := product.CategoryID
+					for current != nil {
+						visible[*current] = true
+						current = parents[*current]
+					}
+				}
+				for _, category := range categories {
+					if visible[category.ID] {
+						set.URLs = append(set.URLs, sitemapURL{Location: base + "/catalog/" + url.PathEscape(category.Slug), Changefreq: "daily", Priority: "0.7"})
+					}
+				}
+			}
+		}
+		if collections != nil {
+			items, err := collections.ListCollections(request.Context())
+			if err != nil {
+				logger.Error("sitemap collections failed", "error", err)
+			} else {
+				for _, item := range items {
+					set.URLs = append(set.URLs, sitemapURL{Location: base + "/collections/" + url.PathEscape(item.Slug), Changefreq: "daily", Priority: "0.7"})
+				}
 			}
 		}
 		response.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -140,13 +191,17 @@ var publicRouteMeta = map[string]routeMeta{
 }
 
 func withRouteMeta(base, path string, shell []byte) []byte {
-	if strings.HasPrefix(path, "/product/") {
+	if strings.HasPrefix(path, "/product/") || landingSlug(path, "/catalog/") != "" || landingSlug(path, "/collections/") != "" {
 		return shell
 	}
 	meta, public := publicRouteMeta[path]
 	if !public {
 		meta = routeMeta{Title: "Фикусин", Description: "Интернет-магазин комнатных растений «Фикусин».", Index: false}
 	}
+	return applyRouteMeta(base, path, shell, meta, nil)
+}
+
+func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any) []byte {
 	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
 	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`"`))
 	head := strings.Builder{}
@@ -158,16 +213,65 @@ func withRouteMeta(base, path string, shell []byte) []byte {
 	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(meta.Title) + `">` + "\n")
 	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(meta.Description) + `">` + "\n")
 	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+path) + `">` + "\n")
-	if path == "/" {
-		structured := map[string]any{"@context": "https://schema.org", "@graph": []any{
+	if path == "/" && structured == nil {
+		structured = map[string]any{"@context": "https://schema.org", "@graph": []any{
 			map[string]any{"@type": "Store", "@id": base + "/#organization", "name": "Фикусин", "url": base, "telephone": "+79156151100", "image": base + "/assets/redesign/home-hero-4k.webp", "address": map[string]any{"@type": "PostalAddress", "streetAddress": "ул. Новосёлов, 40А", "addressLocality": "Рязань", "addressCountry": "RU"}, "openingHoursSpecification": []any{map[string]any{"@type": "OpeningHoursSpecification", "dayOfWeek": []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}, "opens": "08:00", "closes": "20:00"}}, "sameAs": []string{"https://t.me/ficusin62"}},
 			map[string]any{"@type": "WebSite", "@id": base + "/#website", "name": "Фикусин", "url": base, "publisher": map[string]any{"@id": base + "/#organization"}, "inLanguage": "ru-RU"},
 		}}
+	}
+	if structured != nil {
 		if encoded, err := json.Marshal(structured); err == nil {
 			head.WriteString(`<script type="application/ld+json">` + string(encoded) + `</script>` + "\n")
 		}
 	}
 	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
+}
+
+func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections, base, path string, shell []byte) ([]byte, bool) {
+	var title, description string
+	if slug := landingSlug(path, "/catalog/"); slug != "" && repository != nil {
+		items, err := repository.ListCategories(ctx)
+		if err != nil {
+			logger.Error("category landing meta failed", "error", err)
+			return shell, false
+		}
+		for _, item := range items {
+			if item.Slug == slug {
+				title = item.Name
+				description = "Купить " + item.Name + " в магазине «Фикусин»: актуальные цены и наличие, самовывоз в Рязани и доставка по России."
+				break
+			}
+		}
+	} else if slug := landingSlug(path, "/collections/"); slug != "" && collections != nil {
+		items, err := collections.ListCollections(ctx)
+		if err != nil {
+			logger.Error("collection landing meta failed", "error", err)
+			return shell, false
+		}
+		for _, item := range items {
+			if item.Slug == slug {
+				title = item.Title
+				description = strings.TrimSpace(item.Note)
+				if description == "" {
+					description = "Подборка «" + item.Title + "» от магазина растений «Фикусин». Доставка по Рязани и России."
+				}
+				break
+			}
+		}
+	}
+	if title == "" {
+		return shell, false
+	}
+	meta := routeMeta{Title: title + " — купить в Рязани с доставкой | Фикусин", Description: description, Index: true}
+	structured := map[string]any{"@context": "https://schema.org", "@graph": []any{
+		map[string]any{"@type": "CollectionPage", "@id": base + path + "#page", "name": title, "description": description, "url": base + path, "inLanguage": "ru-RU"},
+		map[string]any{"@type": "BreadcrumbList", "itemListElement": []any{
+			map[string]any{"@type": "ListItem", "position": 1, "name": "Главная", "item": base + "/"},
+			map[string]any{"@type": "ListItem", "position": 2, "name": "Каталог", "item": base + "/#catalog"},
+			map[string]any{"@type": "ListItem", "position": 3, "name": title, "item": base + path},
+		}},
+	}}
+	return applyRouteMeta(base, path, shell, meta, structured), true
 }
 
 func productSlug(path string) string {
@@ -188,6 +292,7 @@ func productSlug(path string) string {
 // это цифры и ничего кроме, поэтому любое другое значение считается ошибкой
 // настройки и не должно доехать до браузера в виде кода.
 var metrikaCounterPattern = regexp.MustCompile(`^[0-9]{5,12}$`)
+var searchVerificationPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{8,160}$`)
 
 // withAnalytics вставляет счётчик Яндекс.Метрики в оболочку страницы.
 //
@@ -203,6 +308,22 @@ func withAnalytics(shell []byte, counter string) []byte {
 	snippet := `<script>(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for(var j=0;j<e.scripts.length;j++){if(e.scripts[j].src===r){return}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");window.dataLayer=window.dataLayer||[];ym(` + counter + `,"init",{ssr:true,webvisor:true,clickmap:true,trackLinks:true,accurateTrackBounce:true,ecommerce:"dataLayer"});</script>` + "\n" +
 		`<noscript><div><img src="https://mc.yandex.ru/watch/` + counter + `" style="position:absolute;left:-9999px" alt=""></div></noscript>` + "\n"
 	return bytes.Replace(shell, []byte("</head>"), []byte(snippet+"</head>"), 1)
+}
+
+func withSearchVerification(shell []byte, yandex, google string) []byte {
+	head := strings.Builder{}
+	yandex = strings.TrimSpace(yandex)
+	google = strings.TrimSpace(google)
+	if searchVerificationPattern.MatchString(yandex) {
+		head.WriteString(`<meta name="yandex-verification" content="` + html.EscapeString(yandex) + `">` + "\n")
+	}
+	if searchVerificationPattern.MatchString(google) {
+		head.WriteString(`<meta name="google-site-verification" content="` + html.EscapeString(google) + `">` + "\n")
+	}
+	if head.Len() == 0 {
+		return shell
+	}
+	return bytes.Replace(shell, []byte("</head>"), []byte(head.String()+"</head>"), 1)
 }
 
 func withProductMeta(
@@ -231,43 +352,45 @@ func withProductMeta(
 	title := detail.Name + " — купить с доставкой по России | Фикусин"
 	description := strings.TrimSpace(detail.ShortDescription)
 	if description == "" {
-		description = detail.Name + ": комнатное растение с доставкой по всей России. Бережная упаковка, живые растения из питомников."
+		switch detail.CatalogSection {
+		case "plants":
+			description = detail.Name + ": живое комнатное растение с бережной упаковкой и доставкой по России."
+		case "pots":
+			description = detail.Name + ": кашпо для дома и офиса. Самовывоз в Рязани и доставка по России."
+		case "soil", "fertilizer":
+			description = detail.Name + ": товар для ухода за растениями. Самовывоз в Рязани и доставка по России."
+		default:
+			description = detail.Name + ": купить в магазине «Фикусин» с доставкой по Рязани и России."
+		}
 	}
 	image := ""
 	if len(detail.Images) > 0 {
 		image = detail.Images[0]
 	}
 
-	price, available := 0.0, false
+	offers := make([]map[string]any, 0, len(detail.Variants))
 	for _, variant := range detail.Variants {
-		if price == 0 || variant.Price < price {
-			price = variant.Price
-		}
+		availability := "https://schema.org/PreOrder"
 		if variant.Stock > 0 {
-			available = true
+			availability = "https://schema.org/InStock"
 		}
-	}
-	availability := "https://schema.org/PreOrder"
-	if available {
-		availability = "https://schema.org/InStock"
-	}
-
-	offer := map[string]any{
-		"@type":         "Offer",
-		"priceCurrency": "RUB",
-		"availability":  availability,
-		"url":           base + "/product/" + slug,
-	}
-	if price > 0 {
-		offer["price"] = strconv.FormatFloat(price, 'f', 2, 64)
+		offer := map[string]any{"@type": "Offer", "priceCurrency": "RUB", "availability": availability, "url": base + "/product/" + slug + "?sku=" + url.QueryEscape(variant.SKU), "sku": variant.SKU, "itemCondition": "https://schema.org/NewCondition"}
+		if variant.Price > 0 {
+			offer["price"] = strconv.FormatFloat(variant.Price, 'f', 2, 64)
+		}
+		if len(variant.Images) > 0 {
+			offer["image"] = variant.Images[0]
+		}
+		offers = append(offers, offer)
 	}
 	structured := map[string]any{
 		"@context":    "https://schema.org",
 		"@type":       "Product",
 		"name":        detail.Name,
 		"description": description,
-		"offers":      offer,
+		"offers":      offers,
 		"brand":       map[string]any{"@type": "Brand", "name": "Фикусин"},
+		"productID":   detail.ID,
 	}
 	if detail.Latin != "" {
 		structured["alternateName"] = detail.Latin

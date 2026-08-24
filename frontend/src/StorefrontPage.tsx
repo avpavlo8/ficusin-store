@@ -27,13 +27,15 @@ type Product = {
   categoryId?: number;
   rating: number; reviewsCount: number;
   popularityScore?: number;
+  collections?: string[];
   filterAttributes?: Array<{ code: string; name: string; unit?: string; value: string | number | boolean | string[]; filterable: boolean; badge: boolean }>;
 };
 
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string };
 // Не Node: так называется узел DOM, и подмена ломает проверку клика мимо
 // подсказок поиска.
-type CategoryNode = { id: number; name: string; icon: string; count: number; children: CategoryNode[] };
+type CategoryNode = { id: number; name: string; slug: string; icon: string; count: number; children: CategoryNode[] };
+type Landing = { type:"category"|"collection"; slug:string };
 const money = (value: number) =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -65,7 +67,7 @@ function CategoryIcon({ name }: { name: string }) {
 
 // Витрина — это главная: товары с первого пикселя, поиск в липкой шапке,
 // слева живое дерево каталога, над сеткой — подборки.
-export default function StorefrontPage() {
+export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState("");
@@ -82,8 +84,8 @@ export default function StorefrontPage() {
   });
   // На широком экране подбор раскрыт сразу, на телефоне — по нажатию.
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [opened, setOpened] = useState<Set<number>>(new Set());
-  const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
+  const [selectedPresets, setSelectedPresets] = useState<Set<string>>(() => new Set(landing?.type==="collection"?[landing.slug]:[]));
+  const [collectionMeta,setCollectionMeta]=useState<{title:string;note:string}|null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("popular");
@@ -129,9 +131,17 @@ export default function StorefrontPage() {
   useEffect(() => {
     fetch("/api/v1/categories", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data: { categories?: Category[] }) => setCategories(data.categories ?? []))
+      .then((data: { categories?: Category[] }) => {
+        const items=data.categories ?? []; setCategories(items);
+        if(landing?.type==="category") setCategory(items.find((item)=>item.slug===landing.slug)?.id ?? null);
+      })
       .catch(() => setCategories([]));
-  }, []);
+  }, [landing?.type,landing?.slug]);
+
+  useEffect(()=>{
+    if(landing?.type!=="collection") return;
+    fetch("/api/v1/collections",{cache:"no-store"}).then((response)=>response.json()).then((body:{collections?:Array<{slug:string;title:string;note:string}>})=>setCollectionMeta(body.collections?.find((item)=>item.slug===landing.slug) ?? null)).catch(()=>setCollectionMeta(null));
+  },[landing?.type,landing?.slug]);
 
   const searching = query.trim().length > 0;
 
@@ -150,6 +160,8 @@ export default function StorefrontPage() {
     () => categories.find((item) => item.id === category)?.name ?? "",
     [categories, category],
   );
+  const landingTitle=landing?.type==="collection"?collectionMeta?.title ?? "Подборка растений":categoryName || "Каталог";
+  const landingDescription=landing?.type==="collection"?(collectionMeta?.note || `Растения из подборки «${landingTitle}» с доставкой по Рязани и России.`):`${landingTitle}: актуальные цены, наличие и доставка по России.`;
 
   const tree = useMemo(() => {
     const kids = new Map<number | null, Category[]>();
@@ -174,6 +186,7 @@ export default function StorefrontPage() {
       return {
         id: item.id,
         name: item.name,
+        slug: item.slug,
         icon: item.icon || "leaf",
         count: (direct.get(item.id) ?? 0) + nodes.reduce((sum, node) => sum + node.count, 0),
         children: nodes,
@@ -189,14 +202,14 @@ export default function StorefrontPage() {
     // «Каталог» показывает именно все корневые разделы. В «Растениях» сразу
     // показываем конечные виды, не заставляя покупателя открывать служебный
     // уровень «Комнатные растения».
-    const roots: HeaderMenuItem[] = order(children.get(null) || []).map((item) => ({ id:item.id, label:item.name }));
+    const roots: HeaderMenuItem[] = order(children.get(null) || []).map((item) => ({ id:item.id, label:item.name, slug:item.slug }));
     const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
     if (!plantRoot) return { catalog: roots, plants: [] };
     const collectPlantKinds = (parentId: number): Category[] => order(children.get(parentId) || []).flatMap((item): Category[] => {
       const nested = children.get(item.id) || [];
       return nested.length ? collectPlantKinds(item.id) : [item];
     });
-    const plants: HeaderMenuItem[] = collectPlantKinds(plantRoot.id).map((item) => ({ id:item.id, label:item.name }));
+    const plants: HeaderMenuItem[] = collectPlantKinds(plantRoot.id).map((item) => ({ id:item.id, label:item.name, slug:item.slug }));
     return { catalog: roots, plants };
   }, [categories]);
 
@@ -227,8 +240,7 @@ export default function StorefrontPage() {
       list = list.filter((item) => inBranch(item.categoryId, category));
     }
     if (selectedPresets.size > 0) {
-      const rules = presets.filter((item) => selectedPresets.has(item.id));
-      list = list.filter((product) => rules.every((rule) => rule.match(product)));
+      list = list.filter((product) => [...selectedPresets].every((id) => presets.find((item)=>item.id===id)?.match(product) ?? product.collections?.includes(id) === true));
     }
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
     for (const [code, selected] of Object.entries(attributeFilters)) if (selected) list = list.filter((product) => {
@@ -242,8 +254,8 @@ export default function StorefrontPage() {
 
   useEffect(() => {
     if (loading) return;
-    track("view_item_list", { properties: { list: categoryName || "catalog", items: visible.length } });
-  }, [loading, categoryName, visible.length]);
+    track("view_item_list", { properties: { list: landing ? landingTitle : categoryName || "catalog", items: visible.length } });
+  }, [loading, categoryName, landing, landingTitle, visible.length]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -274,49 +286,26 @@ export default function StorefrontPage() {
     return [...result.entries()].filter(([, facet]) => facet.values.size > 0);
   }, [facetPopulation]);
 
-  const togglePreset = (id: string) => setSelectedPresets((current) => {
-    const next = new Set(current);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    return next;
-  });
-
-  const toggle = (id: number) =>
-    setOpened((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   const branch = (node: CategoryNode, depth: number) => (
     <div key={node.id}>
-      <button
+      <a
+        href={`/catalog/${encodeURIComponent(node.slug)}`}
         className={category === node.id ? "active" : ""}
         style={{ paddingLeft: 10 + depth * 14 }}
-        aria-expanded={node.children.length > 0 ? opened.has(node.id) : undefined}
-        onClick={() => {
-          setQuery("");
-          setCategory(node.id);
-          if (node.children.length > 0) toggle(node.id);
-        }}
       >
         <span>
-          {node.children.length > 0 && (
-            <i className={opened.has(node.id) ? "twist open" : "twist"} aria-hidden="true">›</i>
-          )}
           <CategoryIcon name={node.icon} />{node.name}
         </span>
         <small>{node.count}</small>
-      </button>
-      {opened.has(node.id) && node.children.map((child) => branch(child, depth + 1))}
+      </a>
+      {node.children.map((child) => branch(child, depth + 1))}
     </div>
   );
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   const addToCart = (product: Product) => {
-    track("add_to_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: categoryName || "catalog" } });
+    track("add_to_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: landing ? landingTitle : categoryName || "catalog" } });
     setCart((current) => ({
       ...current,
       [product.sku]: Math.min(
@@ -326,7 +315,7 @@ export default function StorefrontPage() {
     }));
   };
   const changeCartQuantity = (product: Product, delta: number) => {
-	track(delta > 0 ? "add_to_cart" : "remove_from_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: categoryName || "catalog" } });
+	track(delta > 0 ? "add_to_cart" : "remove_from_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: landing ? landingTitle : categoryName || "catalog" } });
 	setCart((current) => {
     const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
     const nextQuantity = Math.max(0, Math.min(maximum, (current[product.sku] || 0) + delta));
@@ -357,10 +346,9 @@ export default function StorefrontPage() {
         homeNavigation
         catalogMenuItems={headerMenus.catalog}
         plantMenuItems={headerMenus.plants}
-        onHomeCategoryPick={(id) => { setQuery(""); setCategory(id); requestAnimationFrame(() => document.getElementById("catalog")?.scrollIntoView({ behavior:"smooth" })); }}
       />
 
-      <section className="home-hero" aria-labelledby="home-title">
+      {landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
           <h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1>
           <p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p>
@@ -376,23 +364,20 @@ export default function StorefrontPage() {
           <span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span>
           <span className="home-note packing"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span>
         </div>
-      </section>
+      </section>}
 
-      <CollectionStrip products={products} active={selectedPresets} onPick={togglePreset} />
+      <CollectionStrip products={products} active={selectedPresets} />
 
       <section className="storefront-shell" id="catalog">
         <aside className="storefront-side">
           <nav className="storefront-tree">
-            <button
+            <a
+              href="/#catalog"
               className={category == null ? "active" : ""}
-              onClick={() => {
-                setQuery("");
-                setCategory(null);
-              }}
             >
               <span>Весь каталог</span>
               <small>{products.length}</small>
-            </button>
+            </a>
             {tree.map((root) => branch(root, 0))}
           </nav>
 
@@ -419,7 +404,7 @@ export default function StorefrontPage() {
             <div>
               {/* Единственный h1 страницы. Без него поисковик и скринридер
                   видели первым заголовком название случайного товара. */}
-              <h2>{searching ? "Результаты поиска" : categoryName || "Каталог"}</h2>
+              <h2>{searching ? "Результаты поиска" : landing ? landingTitle : categoryName || "Каталог"}</h2>
               <p>
                 {searching ? `Нашли ${visible.length}` : `${visible.length} товаров`}
                 {searching && <span> по запросу «{query.trim()}»</span>}
@@ -473,10 +458,10 @@ export default function StorefrontPage() {
                   >
                     ♥
                   </button>
-                  <a className="storefront-image" href={`/product/${product.id}`} onClick={()=>track("select_item",{productCode:product.id,sku:product.sku,value:product.price,properties:{list:categoryName||"catalog"}})}>
+                  <a className="storefront-image" href={`/product/${product.id}`} onClick={()=>track("select_item",{productCode:product.id,sku:product.sku,value:product.price,properties:{list:landing?landingTitle:categoryName||"catalog"}})}>
                     <img src={product.image} alt={product.name} loading="lazy" />
                   </a>
-                  <a className="storefront-name" href={`/product/${product.id}`} onClick={()=>track("select_item",{productCode:product.id,sku:product.sku,value:product.price,properties:{list:categoryName||"catalog"}})}>{product.name}</a>
+                  <a className="storefront-name" href={`/product/${product.id}`} onClick={()=>track("select_item",{productCode:product.id,sku:product.sku,value:product.price,properties:{list:landing?landingTitle:categoryName||"catalog"}})}>{product.name}</a>
                   {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0,2).map((attribute) => <span key={attribute.code}>{attribute.name}: {attributeValue(attribute.value, attribute.unit)}</span>)}</div>}
                   {product.latin && <p className="storefront-latin">{product.latin}</p>}
                   {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}

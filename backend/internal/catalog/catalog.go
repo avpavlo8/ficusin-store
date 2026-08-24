@@ -19,68 +19,85 @@ type Category struct {
 // Product is one catalogue card (SPU). ID is the Ficusin product code used in
 // /product/{id}; SKU is the default sellable variant shown in catalogue cards.
 type Product struct {
-	ID              string  `json:"id"`
-	SKU             string  `json:"sku"`
-	Name            string  `json:"name"`
-	Latin           string  `json:"latin"`
-	Category        string  `json:"category"`
-	Price           float64 `json:"price"`
-	Image           string  `json:"image"`
-	Light           string  `json:"light"`
-	Size            string  `json:"size"`
-	Stock           int     `json:"stock"`
-	CatalogSection  string  `json:"catalogSection"`
-	PlantKind       string  `json:"plantKind,omitempty"`
-	LightLevel      string  `json:"lightLevel,omitempty"`
-	Watering        string  `json:"watering,omitempty"`
-	HeightClass     string  `json:"heightClass,omitempty"`
-	CareLevel       string  `json:"careLevel,omitempty"`
-	Placement       string  `json:"placement,omitempty"`
-	PetSafety       string  `json:"petSafety,omitempty"`
-	GrowthHabit     string  `json:"growthHabit,omitempty"`
-	CategoryID      *int64  `json:"categoryId,omitempty"`
-	Collections     []string `json:"collections"`
-	Rating          float64  `json:"rating"`
-	ReviewsCount    int      `json:"reviewsCount"`
-	PopularityScore float64  `json:"popularityScore"`
+	ID               string             `json:"id"`
+	SKU              string             `json:"sku"`
+	Name             string             `json:"name"`
+	Latin            string             `json:"latin"`
+	Category         string             `json:"category"`
+	Price            float64            `json:"price"`
+	Image            string             `json:"image"`
+	Light            string             `json:"light"`
+	Size             string             `json:"size"`
+	Stock            int                `json:"stock"`
+	CatalogSection   string             `json:"catalogSection"`
+	PlantKind        string             `json:"plantKind,omitempty"`
+	LightLevel       string             `json:"lightLevel,omitempty"`
+	Watering         string             `json:"watering,omitempty"`
+	HeightClass      string             `json:"heightClass,omitempty"`
+	CareLevel        string             `json:"careLevel,omitempty"`
+	Placement        string             `json:"placement,omitempty"`
+	PetSafety        string             `json:"petSafety,omitempty"`
+	GrowthHabit      string             `json:"growthHabit,omitempty"`
+	CategoryID       *int64             `json:"categoryId,omitempty"`
+	Collections      []string           `json:"collections"`
+	Rating           float64            `json:"rating"`
+	ReviewsCount     int                `json:"reviewsCount"`
+	PopularityScore  float64            `json:"popularityScore"`
 	FilterAttributes []ProductAttribute `json:"filterAttributes"`
 }
 
 type Collection struct {
-	Slug  string `json:"slug"`
-	Title string `json:"title"`
-	Note  string `json:"note"`
+	Slug     string `json:"slug"`
+	Title    string `json:"title"`
+	Note     string `json:"note"`
 	CoverURL string `json:"coverUrl"`
-	Count int    `json:"count"`
+	Count    int    `json:"count"`
+}
+
+// FeedOffer is one sellable SKU exported to search engines. Unlike a catalogue
+// card it never collapses sizes: price, stock and the landing URL must describe
+// the exact variant a search result advertises.
+type FeedOffer struct {
+	ProductCode  string
+	SKU          string
+	Name         string
+	Label        string
+	Description  string
+	Price        float64
+	Stock        int
+	Image        string
+	CategoryID   int64
+	Category     string
+	VariantCount int
 }
 
 type ProductDetail struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	Latin            string    `json:"latin"`
-	ShortDescription string    `json:"shortDescription"`
-	Description      string    `json:"description"`
-	CareInstructions string    `json:"careInstructions"`
-	Images           []string  `json:"images"`
-	Variants         []Variant `json:"variants"`
-	Recommendations []Product `json:"recommendations"`
-	CatalogSection   string    `json:"catalogSection"`
-	PlantKind        string    `json:"plantKind,omitempty"`
-	LightLevel       string    `json:"lightLevel,omitempty"`
-	Watering         string    `json:"watering,omitempty"`
-	HeightClass      string    `json:"heightClass,omitempty"`
-	CareLevel        string    `json:"careLevel,omitempty"`
-	Placement        string    `json:"placement,omitempty"`
-	PetSafety        string    `json:"petSafety,omitempty"`
-	GrowthHabit      string    `json:"growthHabit,omitempty"`
-	CategoryID       *int64    `json:"categoryId,omitempty"`
-	Passport         PlantPassport `json:"passport"`
-	ImportantWarnings []string `json:"importantWarnings"`
-	Rating           float64 `json:"rating"`
-	ReviewsCount     int `json:"reviewsCount"`
-	Reviews          []Review `json:"reviews"`
+	ID                string        `json:"id"`
+	Name              string        `json:"name"`
+	Latin             string        `json:"latin"`
+	ShortDescription  string        `json:"shortDescription"`
+	Description       string        `json:"description"`
+	CareInstructions  string        `json:"careInstructions"`
+	Images            []string      `json:"images"`
+	Variants          []Variant     `json:"variants"`
+	Recommendations   []Product     `json:"recommendations"`
+	CatalogSection    string        `json:"catalogSection"`
+	PlantKind         string        `json:"plantKind,omitempty"`
+	LightLevel        string        `json:"lightLevel,omitempty"`
+	Watering          string        `json:"watering,omitempty"`
+	HeightClass       string        `json:"heightClass,omitempty"`
+	CareLevel         string        `json:"careLevel,omitempty"`
+	Placement         string        `json:"placement,omitempty"`
+	PetSafety         string        `json:"petSafety,omitempty"`
+	GrowthHabit       string        `json:"growthHabit,omitempty"`
+	CategoryID        *int64        `json:"categoryId,omitempty"`
+	Passport          PlantPassport `json:"passport"`
+	ImportantWarnings []string      `json:"importantWarnings"`
+	Rating            float64       `json:"rating"`
+	ReviewsCount      int           `json:"reviewsCount"`
+	Reviews           []Review      `json:"reviews"`
 	// Attributes contains customer-visible values shared by the whole card.
-	Attributes       []ProductAttribute `json:"attributes"`
+	Attributes []ProductAttribute `json:"attributes"`
 }
 
 // ProductAttribute is always safe for the customer contract. Technical
@@ -98,26 +115,51 @@ type ProductAttribute struct {
 }
 
 type PlantPassport struct {
-	Origin string `json:"origin"`; Lighting string `json:"lighting"`; Watering string `json:"watering"`
-	Humidity string `json:"humidity"`; Temperature string `json:"temperature"`; Soil string `json:"soil"`
-	Fertilizer string `json:"fertilizer"`; Repotting string `json:"repotting"`; CareDifficulty string `json:"careDifficulty"`
-	GrowthRate string `json:"growthRate"`; MatureSize string `json:"matureSize"`; Toxicity string `json:"toxicity"`
-	Problems string `json:"problems"`; Pests string `json:"pests"`; FAQ []FAQItem `json:"faq"`
+	Origin         string    `json:"origin"`
+	Lighting       string    `json:"lighting"`
+	Watering       string    `json:"watering"`
+	Humidity       string    `json:"humidity"`
+	Temperature    string    `json:"temperature"`
+	Soil           string    `json:"soil"`
+	Fertilizer     string    `json:"fertilizer"`
+	Repotting      string    `json:"repotting"`
+	CareDifficulty string    `json:"careDifficulty"`
+	GrowthRate     string    `json:"growthRate"`
+	MatureSize     string    `json:"matureSize"`
+	Toxicity       string    `json:"toxicity"`
+	Problems       string    `json:"problems"`
+	Pests          string    `json:"pests"`
+	FAQ            []FAQItem `json:"faq"`
 }
-type FAQItem struct { Question string `json:"question"`; Answer string `json:"answer"` }
-type ReviewMedia struct { URL string `json:"url"`; ContentType string `json:"contentType"` }
-type Review struct { ID int64 `json:"id"`; Rating int `json:"rating"`; Text string `json:"text"`; Author string `json:"author"`; Date string `json:"date"`; VerifiedPurchase bool `json:"verifiedPurchase"`; Photos []string `json:"photos"`; Media []ReviewMedia `json:"media"` }
+type FAQItem struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+}
+type ReviewMedia struct {
+	URL         string `json:"url"`
+	ContentType string `json:"contentType"`
+}
+type Review struct {
+	ID               int64         `json:"id"`
+	Rating           int           `json:"rating"`
+	Text             string        `json:"text"`
+	Author           string        `json:"author"`
+	Date             string        `json:"date"`
+	VerifiedPurchase bool          `json:"verifiedPurchase"`
+	Photos           []string      `json:"photos"`
+	Media            []ReviewMedia `json:"media"`
+}
 
 type Variant struct {
-	ID              int64   `json:"id"`
-	SKU             string  `json:"sku"`
-	Label           string  `json:"label"`
-	Price           float64 `json:"price"`
-	Stock           int     `json:"stock"`
-	HeightCM        *int    `json:"heightCm"`
-	PotDiameterCM   *int    `json:"potDiameterCm"`
-	WholesaleMinQty int     `json:"wholesaleMinQty"`
-	Images          []string `json:"images"`
+	ID              int64              `json:"id"`
+	SKU             string             `json:"sku"`
+	Label           string             `json:"label"`
+	Price           float64            `json:"price"`
+	Stock           int                `json:"stock"`
+	HeightCM        *int               `json:"heightCm"`
+	PotDiameterCM   *int               `json:"potDiameterCm"`
+	WholesaleMinQty int                `json:"wholesaleMinQty"`
+	Images          []string           `json:"images"`
 	Attributes      []ProductAttribute `json:"attributes"`
 }
 

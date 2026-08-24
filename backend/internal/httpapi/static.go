@@ -42,7 +42,10 @@ func spaFallback(
 	api http.Handler,
 	staticDir string,
 	sitemap http.Handler,
+	feeds http.Handler,
 	products productMetaCatalog,
+	landings sitemapCatalog,
+	collections sitemapCollections,
 	analytics analyticsSettings,
 ) http.Handler {
 	files := http.FileServer(http.Dir(staticDir))
@@ -57,6 +60,10 @@ func spaFallback(
 		// меняется каждый день.
 		if request.URL.Path == "/sitemap.xml" && sitemap != nil {
 			sitemap.ServeHTTP(response, request)
+			return
+		}
+		if (request.URL.Path == "/feeds/google-products.xml" || request.URL.Path == "/feeds/yandex.yml") && feeds != nil {
+			feeds.ServeHTTP(response, request)
 			return
 		}
 
@@ -85,7 +92,16 @@ func spaFallback(
 		if !knownAppRoute(request.URL.Path) {
 			status = http.StatusNotFound
 		}
-		body = withRouteMeta(siteBase(request), request.URL.Path, body)
+		if landingSlug(request.URL.Path, "/catalog/") != "" || landingSlug(request.URL.Path, "/collections/") != "" {
+			var found bool
+			body, found = withLandingMeta(request.Context(), logger, landings, collections, siteBase(request), request.URL.Path, body)
+			if !found {
+				status = http.StatusNotFound
+				body = withRouteMeta(siteBase(request), "/__not_found__", body)
+			}
+		} else {
+			body = withRouteMeta(siteBase(request), request.URL.Path, body)
+		}
 		body = withProductMeta(
 			request.Context(), logger, products,
 			siteBase(request), productSlug(request.URL.Path), body,
@@ -94,6 +110,7 @@ func spaFallback(
 		// панели без выкладки, а образ не носит в себе чужой аккаунт.
 		if analytics != nil {
 			body = withAnalytics(body, analytics.Value(settings.MetrikaID))
+			body = withSearchVerification(body, analytics.Value(settings.YandexVerification), analytics.Value(settings.GoogleVerification))
 		}
 
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
