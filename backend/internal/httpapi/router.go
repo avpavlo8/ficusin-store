@@ -229,9 +229,14 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 
 	var handler http.Handler = mux
 	if dependencies.StaticDir != "" {
+		// Настройки магазина умеют больше, чем требует этот интерфейс, поэтому
+		// чтение номера счётчика берётся приведением: без настроек магазин
+		// работает как раньше, просто без аналитики.
+		analytics, _ := dependencies.Settings.(analyticsSettings)
 		handler = spaFallback(
 			logger, mux, dependencies.StaticDir,
 			sitemapHandler(logger, dependencies.Catalog), dependencies.Catalog,
+			analytics,
 		)
 	}
 	return requestLogger(logger, gzipResponses(securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler))))

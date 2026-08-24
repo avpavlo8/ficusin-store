@@ -47,7 +47,7 @@ func TestSPAFallbackServesDirectCartURL(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/cart", nil)
 	response := httptest.NewRecorder()
-	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil).ServeHTTP(response, request)
+	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET /cart status = %d, want 200", response.Code)
@@ -152,5 +152,33 @@ func TestProductSlugFromPath(t *testing.T) {
 		if got := productSlug(path); got != "" {
 			t.Errorf("%s не карточка товара, а вернулось %q", path, got)
 		}
+	}
+}
+
+// Счётчик — единственный чужой скрипт на страницах магазина, поэтому его
+// вставка проверяется отдельно: пустая настройка не должна ничего добавлять,
+// а мусор в поле не должен превращаться в исполняемый код.
+func TestAnalyticsCounterIsInjectedOnlyWhenConfigured(t *testing.T) {
+	shell := []byte("<html><head><title>Фикусин</title></head><body></body></html>")
+
+	for _, bad := range []string{"", "   ", "not-a-number", "123", `12345";alert(1);ym(`} {
+		if got := string(withAnalytics(shell, bad)); got != string(shell) {
+			t.Errorf("настройка %q не должна менять страницу, получили: %s", bad, got)
+		}
+	}
+
+	page := string(withAnalytics(shell, " 98765432 "))
+	for _, want := range []string{
+		"mc.yandex.ru/metrika/tag.js",
+		`ym(98765432,"init"`,
+		"mc.yandex.ru/watch/98765432",
+		"<noscript>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("на странице нет %q", want)
+		}
+	}
+	if !strings.Contains(page, "</head>") {
+		t.Error("счётчик испортил разметку: пропал </head>")
 	}
 }

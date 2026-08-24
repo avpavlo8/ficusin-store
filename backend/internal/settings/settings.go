@@ -31,6 +31,7 @@ const (
 	SabyStockEnabled  = "saby.stock_enabled"
 	CourierFee        = "delivery.courier_fee"
 	PostFee           = "delivery.post_fee"
+	MetrikaID         = "analytics.metrika_id"
 )
 
 // Definition is what the panel needs to draw one setting.
@@ -103,6 +104,12 @@ var Definitions = []Definition{
 		Note:  "Откуда забирают посылки.",
 		Kind:  "text",
 	},
+	{
+		Key:   MetrikaID,
+		Title: "Номер счётчика Яндекс.Метрики",
+		Note:  "Только цифры из адреса счётчика. Пусто — счётчик не подключается и на страницы ничего не добавляется.",
+		Kind:  "text",
+	},
 }
 
 // defaults are what a setting means before anyone has touched it. Both
@@ -119,6 +126,9 @@ var defaults = map[string]string{
 	CDEKSenderName:    "",
 	CDEKSenderPhone:   "",
 	CDEKSenderAddress: "",
+	// Пусто по умолчанию: пока владелец не завёл счётчик, магазин не должен
+	// грузить чужой скрипт на каждой странице.
+	MetrikaID:         "",
 }
 
 // Service keeps the settings in memory so that reading one costs nothing.

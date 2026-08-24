@@ -7,7 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 )
+
+// analyticsSettings читает номер счётчика из настроек магазина. Отдельный
+// узкий интерфейс, чтобы статика не получала право менять настройки.
+type analyticsSettings interface {
+	Value(key string) string
+}
 
 // setStaticCaching tells the browser how long it may keep a file.
 //
@@ -35,6 +43,7 @@ func spaFallback(
 	staticDir string,
 	sitemap http.Handler,
 	products productMetaCatalog,
+	analytics analyticsSettings,
 ) http.Handler {
 	files := http.FileServer(http.Dir(staticDir))
 
@@ -80,6 +89,11 @@ func spaFallback(
 			request.Context(), logger, products,
 			siteBase(request), productSlug(request.URL.Path), body,
 		)
+		// Счётчик ставится здесь, а не в сборке фронта: номер меняется в
+		// панели без выкладки, а образ не носит в себе чужой аккаунт.
+		if analytics != nil {
+			body = withAnalytics(body, analytics.Value(settings.MetrikaID))
+		}
 
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		response.Header().Set("Cache-Control", "no-cache")
