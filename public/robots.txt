@@ -5,5 +5,8 @@ Disallow: /admin
 Disallow: /account
 Disallow: /login
 Disallow: /register
+Disallow: /cart
+Disallow: /checkout
+Disallow: /favorites
 
 Sitemap: https://ficusin.ru/sitemap.xml

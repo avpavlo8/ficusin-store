@@ -7,6 +7,7 @@ import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
+import { track } from "./lib/analytics";
 
 const plantOnlyAttributeCodes = new Set(["plant_type","height_cm","pot_diameter_cm","light_level","watering","humidity","care_level","toxicity","pet_safety","placement","growth_habit","height_class","flowering"]);
 const PdpAdminTools = lazy(() => import("./PdpAdminTools").then((module) => ({ default: module.PdpAdminTools })));
@@ -37,6 +38,7 @@ export default function ProductPage({ slug }: { slug: string }) {
         const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: (item.reviews || []).map((review) => ({ ...review, photos: review.photos || [], media: review.media || [] })), rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
         setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(normalized.catalogSection === "plants" ? "care" : "characteristics");
         document.title = `${normalized.name} — Фикусин`;
+		track("view_item", { productCode: normalized.id, sku: normalized.variants[0]?.sku, value: normalized.variants[0]?.price, properties: { name: normalized.name, category: normalized.catalogSection } });
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"));
   }, [slug, revision]);
@@ -77,10 +79,12 @@ export default function ProductPage({ slug }: { slug: string }) {
   const toggleCart = () => {
     if (!variant) return;
     if (cart[variant.sku]) {
+	  track("remove_from_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity: cart[variant.sku] });
       setCart((current) => { const next = { ...current }; delete next[variant.sku]; return next; });
       setNotice("Товар удалён из корзины"); window.setTimeout(() => setNotice(""), 1800);
       return;
     }
+	track("add_to_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity });
     setCart((current) => ({ ...current, [variant.sku]: variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity }));
     setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
@@ -120,7 +124,7 @@ export default function ProductPage({ slug }: { slug: string }) {
         {isPlant&&activeTab==='questions'&&<section className="pdp-questions pdp-info-card" id="questions"><header className="pdp-section-heading"><h2>Вопросы о растении</h2></header>{(product.passport.faq||[]).length?product.passport.faq!.map((item,index)=><details key={`${item.question}-${index}`}><summary>{item.question}</summary><p>{item.answer}</p></details>):<div className="pdp-question-empty"><strong>Остались вопросы?</strong><p>Напишите нам — подскажем по уходу, размеру и доставке.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос →</a></div>}</section>}
       </section>
     </div>
-    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div></header><div className="pdp-related-carousel"><button type="button" className="pdp-related-side prev" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие растения">←</button><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div><button type="button" className="pdp-related-side next" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие растения">→</button></div></section>}
+    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div></header><div className="pdp-related-carousel"><button type="button" className="pdp-related-side prev" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие растения">←</button><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} onClick={()=>track("select_item",{productCode:item.id,value:item.price,properties:{list:"recommendations"}})} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div><button type="button" className="pdp-related-side next" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие растения">→</button></div></section>}
     {notice && <div className="toast">{notice}</div>}
   </main>;
 }

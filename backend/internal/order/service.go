@@ -91,8 +91,9 @@ type CDEKInput struct {
 }
 
 type Created struct {
-	OrderNumber   string `json:"orderNumber"`
-	PaymentStatus string `json:"paymentStatus"`
+	OrderNumber   string  `json:"orderNumber"`
+	PaymentStatus string  `json:"paymentStatus"`
+	Total         float64 `json:"-"`
 }
 
 type ValidationError struct {
@@ -116,16 +117,16 @@ func boolToInt(value bool) int {
 }
 
 type purchasableItem struct {
-	ID        string // immutable SKU snapshot
-	ProductID int64
-	VariantID int64
-	VariantLabel string
-	HeightCM *int
+	ID            string // immutable SKU snapshot
+	ProductID     int64
+	VariantID     int64
+	VariantLabel  string
+	HeightCM      *int
 	PotDiameterCM *int
-	Name      string
-	Price     float64
-	Quantity  int
-	Parcel    integration.Parcel
+	Name          string
+	Price         float64
+	Quantity      int
+	Parcel        integration.Parcel
 	// Preorder means the shelf could not cover this line. The order still
 	// goes through; the manager names the date.
 	Preorder bool
@@ -490,7 +491,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		)
 	}
 
-	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod)}, nil
+	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), Total: total}, nil
 }
 
 // deliveryFee is retained for old settings tests and existing installations.

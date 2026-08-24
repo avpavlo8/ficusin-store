@@ -1,6 +1,7 @@
 import type { Dispatch, FormEventHandler, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput } from "./lib/phone";
+import { track } from "./lib/analytics";
 
 export type CartLine = {
   id: string;
@@ -219,6 +220,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     const current = formRef.current?.querySelector<HTMLElement>(`[data-checkout-step="${step}"]`);
     const fields = Array.from(current?.querySelectorAll<HTMLInputElement>("input,textarea,select") || []);
     if (fields.some((field) => !field.reportValidity())) return;
+	track("checkout_step", { value: total, quantity: cartCount, properties: { from: step, to: next } });
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -279,7 +281,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                 const dynamic = item.id === "courier" || item.id === "post";
                 const selectedDynamicQuote = dynamic && delivery === item.id ? deliveryQuote : null;
                 return <label className={delivery === item.id ? "selected" : ""} key={item.id}>
-                  <input type="radio" name="delivery" value={item.id} checked={delivery === item.id} onChange={() => setDelivery(item.id)} />
+                  <input type="radio" name="delivery" value={item.id} checked={delivery === item.id} onChange={() => { setDelivery(item.id); track("add_shipping_info",{value:total,quantity:cartCount,properties:{delivery:item.id}}); }} />
                   <i className="option-icon"><CheckoutOptionIcon name={deliveryIcon(item.id)} /></i><span><b>{item.title}</b><small>{item.detail}</small></span>
                   <strong>{item.id === "cdek" ? (delivery === "cdek" && cdekQuote ? money(cdekQuote.price) : "Рассчитать") : dynamic ? (selectedDynamicQuote ? money(selectedDynamicQuote.price) : "Рассчитать") : "0 ₽"}</strong>
                 </label>;
@@ -316,7 +318,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           </fieldset>
 
           <div data-checkout-step="3" hidden={step!==3}>
-            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => setPaymentMethod(option.id)} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div>{paymentMethod === "online" && deliveryFeePending && <p className="cdek-status">Оплата после подтверждения стоимости доставки менеджером.</p>}</fieldset>}
+            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => { setPaymentMethod(option.id); track("add_payment_info",{value:total,quantity:cartCount,properties:{paymentMethod:option.id}}); }} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div>{paymentMethod === "online" && deliveryFeePending && <p className="cdek-status">Оплата после подтверждения стоимости доставки менеджером.</p>}</fieldset>}
             {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>

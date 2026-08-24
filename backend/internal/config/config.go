@@ -29,7 +29,10 @@ type Config struct {
 	Saby             Saby
 	OpenAI           OpenAI
 }
-type OpenAI struct { APIKey string; TextModel string }
+type OpenAI struct {
+	APIKey    string
+	TextModel string
+}
 
 // Marketplaces holds seller API credentials. Empty credentials keep the
 // corresponding channel disabled; secrets never live in the database.
@@ -233,7 +236,7 @@ func Load() (Config, error) {
 			PointID:     int64FromEnv("SABY_POINT_ID", 278),
 			PriceListID: int64FromEnv("SABY_PRICE_LIST_ID", 6),
 		},
-		OpenAI: OpenAI{APIKey:strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),TextModel:defaultString(os.Getenv("OPENAI_TEXT_MODEL"),"gpt-5-mini")},
+		OpenAI: OpenAI{APIKey: strings.TrimSpace(os.Getenv("OPENAI_API_KEY")), TextModel: defaultString(os.Getenv("OPENAI_TEXT_MODEL"), "gpt-5-mini")},
 		Push: Push{
 			PublicKey:  strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY")),
 			PrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),

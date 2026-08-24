@@ -21,31 +21,36 @@ type catalogRepository interface {
 }
 
 type Dependencies struct {
-	Catalog      catalogRepository
-	Auth         authService
-	Orders       orderRepository
-	OrderCreator orderCreator
-	CDEK         cdekService
-	RussianPost  deliveryPricer
-	YandexDelivery deliveryPricer
-	Admin        adminRepository
-	Saby         sabySyncService
-	Push pushService
-	Cart cartStore
-	Packages packageRepository
-	Collections collectionRepository
-	Payments paymentService
-	Settings settingsService
-	Procurement procurementService
-	Reviews reviewStore
-	Refunds      refundService
-	ProductPhotos productPhotoStorage
-	CookieSecure bool
-	StaticDir    string
+	Catalog          catalogRepository
+	Auth             authService
+	Orders           orderRepository
+	OrderCreator     orderCreator
+	CDEK             cdekService
+	RussianPost      deliveryPricer
+	YandexDelivery   deliveryPricer
+	Admin            adminRepository
+	Saby             sabySyncService
+	Push             pushService
+	Cart             cartStore
+	Packages         packageRepository
+	Collections      collectionRepository
+	Payments         paymentService
+	Settings         settingsService
+	Procurement      procurementService
+	Reviews          reviewStore
+	Refunds          refundService
+	ProductPhotos    productPhotoStorage
+	CookieSecure     bool
+	StaticDir        string
 	YandexSuggestKey string
-	CatalogAI catalogAIGenerator
+	CatalogAI        catalogAIGenerator
+	Analytics        analyticsStore
 }
-type catalogAIGenerator interface { Generate(context.Context,catalogai.Input,string)(catalogai.Proposal,error);GenerateCover(context.Context,string)([]byte,string,error);Configured()bool }
+type catalogAIGenerator interface {
+	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
+	GenerateCover(context.Context, string) ([]byte, string, error)
+	Configured() bool
+}
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
@@ -60,9 +65,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		packages: dependencies.Packages,
 	}
 	deliveryAPI := deliveryQuoteHandlers{
-		logger: logger,
-		post: dependencies.RussianPost,
-		courier: dependencies.YandexDelivery,
+		logger:   logger,
+		post:     dependencies.RussianPost,
+		courier:  dependencies.YandexDelivery,
 		packages: dependencies.Packages,
 	}
 	adminAPI := newAdminHandlers(
@@ -78,9 +83,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
 	deliveryLimiter := newRateLimiter(60, time.Minute)
+	analyticsLimiter := newRateLimiter(240, time.Minute)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
 	})
+	mux.HandleFunc("POST /api/v1/analytics/events", analyticsLimiter.guard("Слишком много событий", analyticsEventsHandler(logger, dependencies.Auth, dependencies.Analytics)))
+	mux.HandleFunc("GET /api/v1/analytics/config", analyticsConfigHandler(dependencies.Settings))
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/collections", collectionsHandler(logger, dependencies.Collections))
@@ -158,6 +166,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			dependencies.Auth,
 			dependencies.OrderCreator,
 			dependencies.Payments,
+			dependencies.Analytics,
 		).ServeHTTP,
 	))
 	settingsAPI := settingsHandlers{
@@ -166,6 +175,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
+	mux.HandleFunc("GET /api/v1/admin/analytics", analyticsSummaryHandler(logger, adminAPI, dependencies.Analytics))
 	mux.HandleFunc("GET /api/v1/admin/customers", adminAPI.customers)
 	mux.HandleFunc("PATCH /api/v1/admin/customers/{id}", adminAPI.updateCustomer)
 	mux.HandleFunc("GET /api/v1/admin/orders", adminAPI.orders)
