@@ -14,7 +14,7 @@ export type PlantPassportData = {
   soil?: string; fertilizer?: string; repotting?: string; careDifficulty?: string; growthRate?: string;
   matureSize?: string; toxicity?: string; problems?: string; pests?: string; faq?: FAQItem[];
 };
-export type ProductReview = { id: number; rating: number; text: string; author: string; date: string; verifiedPurchase: boolean; photos: string[]; media?: Array<{ url: string; contentType: string }> };
+export type ProductReview = { id: number; rating: number; text: string; author: string; date: string; verifiedPurchase: boolean; photos: string[] | null; media?: Array<{ url: string; contentType: string }> | null };
 export type ProductDetail = {
   id: string; name: string; latin: string; shortDescription: string; description: string;
   careInstructions: string; images: string[]; variants: ProductVariant[]; recommendations: CatalogProduct[];
