@@ -84,6 +84,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
   // На широком экране подбор раскрыт сразу, на телефоне — по нажатию.
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [opened, setOpened] = useState<Set<number>>(new Set());
   const [selectedPresets, setSelectedPresets] = useState<Set<string>>(() => new Set(landing?.type==="collection"?[landing.slug]:[]));
   const [collectionMeta,setCollectionMeta]=useState<{title:string;note:string}|null>(null);
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -286,19 +287,44 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     return [...result.entries()].filter(([, facet]) => facet.values.size > 0);
   }, [facetPopulation]);
 
+  const togglePreset = (id: string) => setSelectedPresets((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
+  const toggleCategory = (id: number) => setOpened((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
   const branch = (node: CategoryNode, depth: number) => (
     <div key={node.id}>
       <a
         href={`/catalog/${encodeURIComponent(node.slug)}`}
         className={category === node.id ? "active" : ""}
         style={{ paddingLeft: 10 + depth * 14 }}
+        aria-expanded={node.children.length > 0 ? opened.has(node.id) : undefined}
+        onClick={(event) => {
+          if (landing) return;
+          event.preventDefault();
+          setQuery("");
+          setCategory(node.id);
+          if (node.children.length > 0) toggleCategory(node.id);
+        }}
       >
         <span>
+          {node.children.length > 0 && (
+            <i className={opened.has(node.id) ? "twist open" : "twist"} aria-hidden="true">›</i>
+          )}
           <CategoryIcon name={node.icon} />{node.name}
         </span>
         <small>{node.count}</small>
       </a>
-      {node.children.map((child) => branch(child, depth + 1))}
+      {opened.has(node.id) && node.children.map((child) => branch(child, depth + 1))}
     </div>
   );
 
@@ -346,6 +372,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         homeNavigation
         catalogMenuItems={headerMenus.catalog}
         plantMenuItems={headerMenus.plants}
+        onHomeCategoryPick={landing ? undefined : (id) => { setQuery(""); setCategory(id); requestAnimationFrame(() => document.getElementById("catalog")?.scrollIntoView({ behavior:"smooth" })); }}
       />
 
       {landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
@@ -366,7 +393,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         </div>
       </section>}
 
-      <CollectionStrip products={products} active={selectedPresets} />
+      <CollectionStrip products={products} active={selectedPresets} onPick={landing ? undefined : togglePreset} />
 
       <section className="storefront-shell" id="catalog">
         <aside className="storefront-side">
@@ -374,6 +401,12 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
             <a
               href="/#catalog"
               className={category == null ? "active" : ""}
+              onClick={(event) => {
+                if (landing) return;
+                event.preventDefault();
+                setQuery("");
+                setCategory(null);
+              }}
             >
               <span>Весь каталог</span>
               <small>{products.length}</small>
