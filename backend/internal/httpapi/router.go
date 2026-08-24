@@ -10,6 +10,10 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
 )
 
+// BuildVersion is injected by the production Docker build. It lets the smoke
+// test prove that Timeweb activated this backend even after backend-only work.
+var BuildVersion = "development"
+
 type catalogRepository interface {
 	ListAvailable(context.Context) ([]catalog.Product, error)
 	ListCategories(context.Context) ([]catalog.Category, error)
@@ -75,7 +79,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	suggestLimiter := newRateLimiter(60, time.Minute)
 	deliveryLimiter := newRateLimiter(60, time.Minute)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
-		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
 	})
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
 	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
