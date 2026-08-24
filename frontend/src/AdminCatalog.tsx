@@ -151,6 +151,8 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published" | "archived">("all");
   const [stockFilter, setStockFilter] = useState<"all" | "positive" | "nonpositive">("all");
+  const [rootCategoryFilter, setRootCategoryFilter] = useState<"all" | "none" | number>("all");
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingPublish, setConfirmingPublish] = useState(false);
@@ -164,9 +166,20 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   const [reviews, setReviews] = useState<ReviewModerationItem[]>([]);
   const reload = () => api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError((error as Error).message));
   useEffect(() => { api<{ products: Product[] }>("/api/v1/admin/products").then((data) => setItems(data.products)).catch((error) => onError(error.message)); }, [onError]);
+  useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
   useEffect(() => { if (can("products.read")) api<{ reviews?: ReviewModerationItem[] }>("/api/v1/admin/reviews").then((data) => setReviews(data.reviews || [])).catch((error) => onError(error.message)); }, [can, onError]);
   const moderate = async (id: number, status: "published" | "rejected") => { try { await api(`/api/v1/admin/reviews/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }); setReviews((current) => current.map((item) => item.id === id ? { ...item, status } : item)); } catch (error) { onError((error as Error).message); } };
-  const filtered = useMemo(() => items.filter((item) => (statusFilter === "all" || item.status === statusFilter) && (stockFilter === "all" || (stockFilter === "positive" ? item.stock > 0 : item.stock <= 0)) && `${item.name} ${item.sku} ${item.sabyCode}`.toLowerCase().includes(query.toLowerCase())), [items, query, statusFilter, stockFilter]);
+  const rootCategory = useCallback((categoryId?: number) => {
+    if (!categoryId) return undefined;
+    let category = categories.find((item) => item.id === categoryId);
+    const visited = new Set<number>();
+    while (category?.parentId && !visited.has(category.id)) {
+      visited.add(category.id);
+      category = categories.find((item) => item.id === category?.parentId);
+    }
+    return category?.id;
+  }, [categories]);
+  const filtered = useMemo(() => items.filter((item) => (statusFilter === "all" || item.status === statusFilter) && (stockFilter === "all" || (stockFilter === "positive" ? item.stock > 0 : item.stock <= 0)) && (rootCategoryFilter === "all" || (rootCategoryFilter === "none" ? !item.categoryId : rootCategory(item.categoryId) === rootCategoryFilter)) && `${item.name} ${item.sku} ${item.sabyCode}`.toLowerCase().includes(query.toLowerCase())), [items, query, statusFilter, stockFilter, rootCategoryFilter, rootCategory]);
   const selectedAreDrafts = selected.length > 0 && selected.every((id) => items.find((item) => item.id === id)?.status === "draft");
   const deleteDrafts = async () => {
     if (!selectedAreDrafts || !confirmingDelete) return;
@@ -177,15 +190,28 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
   };
   const publishDrafts = async () => {
     if (!selectedAreDrafts || !confirmingPublish || publishing) return;
+    const productIds = [...selected];
+    const published: number[] = [];
+    const blocked: { productId: number; name: string; reason: string }[] = [];
     setPublishing(true); setPublishResult(null);
     try {
-      const result = await api<{ published: number[]; blocked: { productId: number; name: string; reason: string }[] }>("/api/v1/admin/products/publish", { method: "POST", body: JSON.stringify({ productIds: selected }) });
-      setPublishResult(result); setSelected(result.blocked.map((item) => item.productId)); setConfirmingPublish(false); reload();
-    } catch (error) { onError((error as Error).message); }
+      for (let offset = 0; offset < productIds.length; offset += 25) {
+        const batch = productIds.slice(offset, offset + 25);
+        const result = await api<{ published: number[]; blocked: { productId: number; name: string; reason: string }[] }>("/api/v1/admin/products/publish", { method: "POST", body: JSON.stringify({ productIds: batch }) });
+        published.push(...result.published); blocked.push(...result.blocked);
+      }
+      setPublishResult({ published, blocked }); setSelected(blocked.map((item) => item.productId)); setConfirmingPublish(false); reload();
+    } catch (error) {
+      setPublishResult({ published, blocked });
+      setSelected(productIds.filter((id) => !published.includes(id)));
+      setConfirmingPublish(false); reload();
+      onError(`Публикация прервана после ${published.length} карточек: ${(error as Error).message}. Оставшиеся черновики выделены.`);
+    }
     finally { setPublishing(false); }
   };
   const replace = (product: Product) => setItems((current) => current.map((item) => item.id === product.id ? product : item));
   return <><PageHeading eyebrow="Каталог" title="Товары" text="Контент сайта, цены, упаковка, публикация и выборочная синхронизация со СБИС" />
+    <div className="admin-category-tabs" role="group" aria-label="Раздел каталога"><button className={rootCategoryFilter === "all" ? "active" : ""} onClick={() => { setRootCategoryFilter("all"); setSelected([]); }}>Все</button>{categories.filter((item) => item.parentId === null).sort((left, right) => left.sortOrder - right.sortOrder).map((category) => <button className={rootCategoryFilter === category.id ? "active" : ""} onClick={() => { setRootCategoryFilter(category.id); setSelected([]); }} key={category.id}>{category.icon} {category.name}</button>)}<button className={rootCategoryFilter === "none" ? "active" : ""} onClick={() => { setRootCategoryFilter("none"); setSelected([]); }}>Без категории</button></div>
     <div className="admin-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, SKU или код СБИС" /><select aria-label="Статус карточки" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as typeof statusFilter); setSelected([]); setConfirmingDelete(false); setConfirmingPublish(false); setPublishResult(null); }}><option value="all">Все статусы</option><option value="draft">Черновики ({items.filter((item) => item.status === "draft").length})</option><option value="published">Опубликованные</option><option value="archived">Архив</option></select><select aria-label="Остаток" value={stockFilter} onChange={(event) => { setStockFilter(event.target.value as typeof stockFilter); setSelected([]); setConfirmingDelete(false); setConfirmingPublish(false); setPublishResult(null); }}><option value="all">Любой остаток</option><option value="positive">Есть в наличии</option><option value="nonpositive">Нет в наличии</option></select><span>{selected.length ? `Выбрано: ${selected.length}` : `${filtered.length} товаров`}</span>{selected.length >= 2 && selectedAreDrafts && can("products.edit") && <button onClick={() => setMerging(items.filter((item) => selected.includes(item.id)))}>Объединить размеры</button>}{selectedAreDrafts && can("products.edit") && (confirmingPublish ? <button className="admin-primary" disabled={publishing} onClick={() => void publishDrafts()}>{publishing ? "Публикуем…" : `Подтвердить публикацию (${selected.length})`}</button> : <button className="admin-primary" onClick={() => { setConfirmingPublish(true); setConfirmingDelete(false); }}>Опубликовать</button>)}{selectedAreDrafts && can("products.edit") && (confirmingDelete ? <button className="admin-danger" onClick={() => void deleteDrafts()}>Подтвердить удаление ({selected.length})</button> : <button className="admin-danger" onClick={() => { setConfirmingDelete(true); setConfirmingPublish(false); }}>Удалить черновики</button>)}{selected.length > 0 && can("products.sync") && <button onClick={() => setSyncing(selected)}>Подтянуть из СБИС</button>}{can("products.edit") && <button onClick={() => setImporting(true)}>Импорт из СБИС</button>}{can("products.edit") && <button className="admin-primary" onClick={() => setCreating(true)}>Новый товар</button>}</div>
     {publishResult && <div className={`admin-bulk-result ${publishResult.blocked.length ? "warning" : "success"}`}><strong>Опубликовано: {publishResult.published.length}</strong>{publishResult.blocked.length > 0 && <><span>Не опубликовано: {publishResult.blocked.length}. Эти карточки остались выделенными.</span><ul>{publishResult.blocked.slice(0, 20).map((item) => <li key={item.productId}><b>{item.name || `Товар #${item.productId}`}</b> — {item.reason}</li>)}</ul>{publishResult.blocked.length > 20 && <small>И ещё {publishResult.blocked.length - 20}. Исправьте показанные причины и повторите публикацию.</small>}</>}</div>}
     <div className="admin-table-wrap"><table className="admin-table products"><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && filtered.every((item) => selected.includes(item.id))} onChange={(event) => setSelected(event.target.checked ? filtered.map((item) => item.id) : [])} /></th><th>Товар</th><th>Цена / остаток</th><th>Публикация</th><th>СБИС</th><th /></tr></thead><tbody>{filtered.map((product) => <tr

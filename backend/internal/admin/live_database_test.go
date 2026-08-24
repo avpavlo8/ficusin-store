@@ -113,6 +113,29 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 	})
 
+	t.Run("черновик без фотографии можно опубликовать", func(t *testing.T) {
+		var categoryID, draftID int64
+		if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES($1,$2) RETURNING id`,
+			"Категория без обязательного фото", fmt.Sprintf("no-photo-%d", unique)).Scan(&categoryID); err != nil {
+			t.Fatalf("завести категорию: %v", err)
+		}
+		if err := pool.QueryRow(ctx, `INSERT INTO products(category_id,name,slug,status) VALUES($1,$2,$3,'draft') RETURNING id`,
+			categoryID, "Товар без фотографии", fmt.Sprintf("no-photo-product-%d", unique)).Scan(&draftID); err != nil {
+			t.Fatalf("завести черновик: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'Основной',10000,1)`,
+			draftID, fmt.Sprintf("NO-PHOTO-%d", unique)); err != nil {
+			t.Fatalf("завести вариант: %v", err)
+		}
+		result, err := NewPostgresRepository(pool).PublishDraftProducts(ctx, Actor{CustomerID: staffID, Role: RoleOwner}, []int64{draftID})
+		if err != nil {
+			t.Fatalf("опубликовать без фотографии: %v", err)
+		}
+		if len(result.Published) != 1 || result.Published[0] != draftID || len(result.Blocked) != 0 {
+			t.Fatalf("неожиданный результат публикации: %+v", result)
+		}
+	})
+
 	t.Run("редактирование заказа пишет полный кортеж", func(t *testing.T) {
 		items := []OrderEditLine{{SKU: largeSKU, Quantity: 2}}
 		if _, err := NewPostgresRepository(pool).EditOrder(
