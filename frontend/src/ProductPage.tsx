@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader, STORAGE_EVENT, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
-import { PdpAdminTools } from "./PdpAdminTools";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PlantCareGuide } from "./product/PlantCareGuide";
@@ -10,6 +9,7 @@ import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 
 const plantOnlyAttributeCodes = new Set(["plant_type","height_cm","pot_diameter_cm","light_level","watering","humidity","care_level","toxicity","pet_safety","placement","growth_habit","height_class","flowering"]);
+const PdpAdminTools = lazy(() => import("./PdpAdminTools").then((module) => ({ default: module.PdpAdminTools })));
 
 export default function ProductPage({ slug }: { slug: string }) {
   const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; sortOrder:number }>>([]);
@@ -34,7 +34,7 @@ export default function ProductPage({ slug }: { slug: string }) {
     fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
       .then(async (response) => { const body = await response.json() as { product?: ProductDetail; error?: string }; if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден"); return body.product; })
       .then((item) => {
-        const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: item.reviews || [], rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
+        const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: (item.reviews || []).map((review) => ({ ...review, photos: review.photos || [], media: review.media || [] })), rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
         setProduct(normalized); setSelectedID(normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(normalized.catalogSection === "plants" ? "care" : "characteristics");
         document.title = `${normalized.name} — Фикусин`;
       })
@@ -107,7 +107,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   return <main className="product-page">
     <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={() => { window.location.href="/#catalog"; }} />
     <nav className="breadcrumbs" aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a><span>/</span><b>{product.name}</b></nav>
-    <PdpAdminTools slug={slug} adminRole={adminUser?.adminRole} onChanged={() => setRevision((value) => value + 1)} />
+    {(adminUser?.adminRole === "owner" || adminUser?.adminRole === "manager") && <Suspense fallback={null}><PdpAdminTools slug={slug} adminRole={adminUser.adminRole} onChanged={() => setRevision((value) => value + 1)} /></Suspense>}
     <section className="pdp-main">
       <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
       <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { setSelectedID(id); setQuantity(1); setActiveImage(0); }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
