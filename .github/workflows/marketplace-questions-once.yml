@@ -1,0 +1,25 @@
+name: One-time marketplace questions export
+on:
+  pull_request:
+    paths:
+      - scripts/export_marketplace_questions_once.py
+      - .github/workflows/marketplace-questions-once.yml
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export questions without credentials
+        env:
+          WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
+          OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
+          OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+        run: python3 scripts/export_marketplace_questions_once.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: marketplace-questions
+          path: marketplace-questions.json
+          retention-days: 1
