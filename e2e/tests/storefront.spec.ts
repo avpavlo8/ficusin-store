@@ -224,6 +224,32 @@ test("@desktop вопросы открываются отдельной вкла
   await expect(page.locator("#questions details")).toContainText("Когда пересаживать?");
 });
 
+test("@desktop ссылка на отзывы открывает содержимое вкладки", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/1");
+  await page.locator(".purchase-review-meta").click();
+  await expect(page.locator("#reviews")).toBeVisible();
+  await expect(page.locator("#reviews")).toContainText("Отзывы покупателей");
+});
+
+test("@desktop у кашпо нет растительного ухода и характеристик", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/products/pot", (route) => route.fulfill({ json: { product: {
+    id: "pot", name: "Кашпо Арте", latin: "", shortDescription: "Керамическое кашпо", description: "", careInstructions: "ошибочный старый текст",
+    images: ["/assets/product-pothos.png"], catalogSection: "pots", rating: 0, reviewsCount: 0, reviews: [], recommendations: [],
+    passport: { lighting: "Рассеянный свет", faq: [{ question: "Как поливать?", answer: "Никак" }] }, importantWarnings: [],
+    attributes: [{ code: "pot_material", name: "Материал", value: "Керамика", badge: true }, { code: "watering", name: "Полив", value: "moderate", badge: true }],
+    variants: [{ id: 1, sku: "POT-1", label: "2,5 л", price: 990, stock: 3, wholesaleMinQty: 1, images: [], attributes: [] }],
+  } } }));
+  await page.goto("/product/pot");
+  await expect(page.locator(".pdp-anchor-nav").getByRole("button")).toHaveCount(2);
+  await expect(page.locator(".pdp-anchor-nav")).not.toContainText("О растении");
+  await expect(page.locator(".pdp-anchor-nav")).not.toContainText("Вопросы");
+  await expect(page.locator(".pdp-key-characteristics")).toContainText("Материал");
+  await expect(page.locator(".pdp-key-characteristics")).not.toContainText("Полив");
+  await expect(page.locator("#care-guide")).toHaveCount(0);
+});
+
 test("@desktop инструкция по уходу ведёт от адаптации к персональным рекомендациям", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
