@@ -77,9 +77,11 @@ function serverPreset(collection: CollectionDefinition): Preset {
 export function CollectionStrip<T extends Product>({
   products,
   active,
+  onPick,
 }: {
   products: T[];
   active: ReadonlySet<string>;
+  onPick?: (id: string) => void;
 }) {
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
@@ -175,6 +177,11 @@ export function CollectionStrip<T extends Product>({
           href={`/collections/${encodeURIComponent(preset.id)}`}
           className={active.has(preset.id) ? "preset active" : "preset"}
           aria-current={active.has(preset.id) ? "page" : undefined}
+          onClick={(event) => {
+            if (!onPick) return;
+            event.preventDefault();
+            onPick(preset.id);
+          }}
           title={note || `${preset.title} — ${count}`}
           style={{ backgroundImage: `url('${image}')` }}
         >
