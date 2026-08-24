@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -104,8 +105,12 @@ func TestHealth(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
-	if body := strings.TrimSpace(response.Body.String()); body != `{"status":"ok"}` {
-		t.Fatalf("body = %s", body)
+	var health map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &health); err != nil {
+		t.Fatalf("decode health: %v", err)
+	}
+	if health["status"] != "ok" || health["version"] == "" {
+		t.Fatalf("unexpected health: %#v", health)
 	}
 }
 
