@@ -398,6 +398,16 @@ func (handlers adminHandlers) deleteDraftProducts(response http.ResponseWriter, 
 	writeJSON(response, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
+func (handlers adminHandlers) publishDraftProducts(response http.ResponseWriter, request *http.Request) {
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionProductsEdit);if !ok{return}
+	var body admin.BulkPublishProductsRequest
+	if decodeJSON(request,&body)!=nil||len(body.ProductIDs)==0||len(body.ProductIDs)>1000{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Выберите черновики для публикации"});return}
+	publisher,ok:=handlers.repository.(interface{PublishDraftProducts(context.Context,admin.Actor,[]int64)(admin.BulkPublishResult,error)})
+	if !ok{writeJSON(response,http.StatusNotImplemented,errorResponse{Error:"Массовая публикация недоступна"});return}
+	result,err:=publisher.PublishDraftProducts(request.Context(),actor,body.ProductIDs);if err!=nil{handlers.failed(response,"publish draft products",err);return}
+	writeJSON(response,http.StatusOK,result)
+}
+
 // importProducts заводит карточки по списку кодов товаров из СБИС. С
 // dryRun панель показывает, что получится, ничего не создавая: список из
 // сотни кодов стоит сначала увидеть глазами.

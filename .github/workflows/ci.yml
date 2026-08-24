@@ -226,6 +226,13 @@ jobs:
             exit 1
           fi
 
+          automatic_covers="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs WHERE image_status IN ('pending','processing','failed')")"
+          if [[ "$automatic_covers" != "0" ]]; then
+            echo "Automatic paid cover generation was not fully disabled: ${automatic_covers} jobs remain." >&2
+            exit 1
+          fi
+
           category_matrix="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
             SELECT COUNT(*) FROM (VALUES
               ('plants','height_cm'),('plants','flowering'),('soil','soil_type'),('soil','ph_min'),

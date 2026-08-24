@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,88 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// PublishDraftProducts publishes every valid selected draft and returns a
+// precise reason for each card left unpublished. One invalid card must not
+// block hundreds of otherwise ready products.
+func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, actor Actor, ids []int64) (BulkPublishResult, error) {
+	result := BulkPublishResult{Published: []int64{}, Blocked: []BulkPublishBlocked{}}
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return result, ErrForbidden
+	}
+	if len(ids) == 0 || len(ids) > 1000 {
+		return result, fmt.Errorf("%w: выберите от 1 до 1000 черновиков", ErrInvalidInput)
+	}
+	unique := make([]int64, 0, len(ids))
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return result, fmt.Errorf("%w: не выбраны товары", ErrInvalidInput)
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	for _, id := range unique {
+		var name, status string
+		var hasCategory, hasVariant, hasMedia bool
+		err = tx.QueryRow(ctx, `SELECT p.name,p.status,p.category_id IS NOT NULL,
+			EXISTS(SELECT 1 FROM product_variants v WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL AND v.base_price_minor>0),
+			EXISTS(SELECT 1 FROM product_media m WHERE m.product_id=p.id)
+			FROM products p WHERE p.id=$1 FOR UPDATE`, id).Scan(&name, &status, &hasCategory, &hasVariant, &hasMedia)
+		if errors.Is(err, pgx.ErrNoRows) {
+			result.Blocked = append(result.Blocked, BulkPublishBlocked{ProductID: id, Reason: "Товар не найден"})
+			continue
+		}
+		if err != nil {
+			return result, fmt.Errorf("load product %d: %w", id, err)
+		}
+		reason := ""
+		switch {
+		case status != "draft":
+			reason = "Карточка уже не является черновиком"
+		case strings.TrimSpace(name) == "":
+			reason = "Не указано название"
+		case !hasCategory:
+			reason = "Не выбрана категория"
+		case !hasVariant:
+			reason = "Нет активного варианта с ценой"
+		case !hasMedia:
+			reason = "Не добавлена фотография"
+		}
+		if reason == "" {
+			if validationErr := validateRequiredAttributes(ctx, tx, id); validationErr != nil {
+				if errors.Is(validationErr, ErrInvalidInput) {
+					reason = strings.TrimPrefix(validationErr.Error(), ErrInvalidInput.Error()+": ")
+				} else {
+					return result, validationErr
+				}
+			}
+		}
+		if reason != "" {
+			result.Blocked = append(result.Blocked, BulkPublishBlocked{ProductID: id, Name: name, Reason: reason})
+			continue
+		}
+		if _, err = tx.Exec(ctx, `UPDATE products SET status='published',override_fields=ARRAY(SELECT DISTINCT unnest(override_fields||ARRAY['status']::text[])),updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id); err != nil {
+			return result, fmt.Errorf("publish product %d: %w", id, err)
+		}
+		result.Published = append(result.Published, id)
+	}
+	if err = insertAudit(ctx, tx, actor, "product.drafts.publish", "product", "bulk", map[string]any{"productIds": unique}, map[string]any{"published": result.Published, "blocked": result.Blocked}); err != nil {
+		return result, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return result, err
+	}
+	return result, nil
+}
 
 func (repository *PostgresRepository) ListCustomers(ctx context.Context) ([]Customer, error) {
 	rows, err := repository.pool.Query(ctx, `
