@@ -17,7 +17,10 @@ WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ficusin-api ./cmd/api
+RUN BUILD_VERSION="$(find . -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)" && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath \
+      -ldflags="-s -w -X github.com/avpavlo8/ficusin-store/backend/internal/httpapi.BuildVersion=${BUILD_VERSION}" \
+      -o /out/ficusin-api ./cmd/api
 
 # No package-manager/network operations are allowed in the runtime stage.
 # Pin every base image by digest so a mutable upstream tag cannot change a
