@@ -49,6 +49,9 @@ func TestPutSignsAndSendsBody(t *testing.T) {
 	if got.Header.Get("Content-Type") != "image/jpeg" {
 		t.Errorf("тип файла потерялся: %s", got.Header.Get("Content-Type"))
 	}
+	if got.Header.Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Errorf("неверный кэш изображения: %s", got.Header.Get("Cache-Control"))
+	}
 }
 
 // Ошибку хранилища нужно донести целиком: «отказало» без причины сделает

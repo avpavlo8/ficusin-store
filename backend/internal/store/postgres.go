@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
+	"github.com/avpavlo8/ficusin-store/backend/internal/perf"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -51,6 +52,7 @@ func Open(ctx context.Context, cfg config.Database) (*pgxpool.Pool, error) {
 	if err := configureTLS(poolConfig, cfg); err != nil {
 		return nil, err
 	}
+	poolConfig.ConnConfig.Tracer = perf.QueryTracer{}
 
 	poolConfig.MaxConns = 10
 	poolConfig.MinConns = 1

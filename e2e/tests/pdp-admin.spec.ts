@@ -17,7 +17,7 @@ const adminProduct = {
   careInstructions: "Поливать умеренно",
   status: "published",
   featured: false,
-  image: "/assets/hero-monstera.png",
+  image: "/assets/hero-monstera.webp",
   price: 1490,
   stock: 5,
   sku: "1",
@@ -75,7 +75,7 @@ test("@desktop владелец управляет галереей товара
       await route.fulfill({ status: 201, json: { media: { id: 8, url: "/uploaded.jpg", primary: false, sortOrder: 1 } } });
       return;
     }
-    await route.fulfill({ json: { media: [{ id: 7, url: "/assets/hero-monstera.png", primary: true, sortOrder: 0 }] } });
+    await route.fulfill({ json: { media: [{ id: 7, url: "/assets/hero-monstera.webp", primary: true, sortOrder: 0 }] } });
   });
   await page.route("**/api/v1/admin/products/1/media/7", async (route) => {
     deleted++;

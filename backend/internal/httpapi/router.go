@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
+	"github.com/avpavlo8/ficusin-store/backend/internal/perf"
 )
 
 // BuildVersion is injected by the production Docker build. It lets the smoke
@@ -54,6 +57,14 @@ type catalogAIGenerator interface {
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
+	publicCache := newPublicJSONCache()
+	publicCatalog := dependencies.Catalog
+	invalidateDetails := func() {}
+	if dependencies.Catalog != nil {
+		cached := newCachedCatalogRepository(dependencies.Catalog)
+		publicCatalog = cached
+		invalidateDetails = cached.invalidate
+	}
 	authAPI := authHandlers{
 		logger:       logger,
 		service:      dependencies.Auth,
@@ -89,10 +100,10 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	})
 	mux.HandleFunc("POST /api/v1/analytics/events", analyticsLimiter.guard("Слишком много событий", analyticsEventsHandler(logger, dependencies.Auth, dependencies.Analytics)))
 	mux.HandleFunc("GET /api/v1/analytics/config", analyticsConfigHandler(dependencies.Settings))
-	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, dependencies.Catalog))
-	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, dependencies.Catalog))
-	mux.Handle("GET /api/v1/collections", collectionsHandler(logger, dependencies.Collections))
-	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, dependencies.Catalog))
+	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, publicCatalog, publicCache))
+	mux.Handle("GET /api/v1/categories", categoriesHandler(logger, publicCatalog, publicCache))
+	mux.Handle("GET /api/v1/collections", collectionsHandler(logger, dependencies.Collections, publicCache))
+	mux.Handle("GET /api/v1/products/{slug}", productDetailHandler(logger, publicCatalog))
 	mux.HandleFunc("POST /api/v1/products/{slug}/reviews", createReviewHandler(logger, dependencies.Auth, dependencies.Reviews))
 	mux.HandleFunc("GET /api/v1/review-photos/{id}", reviewPhotoHandler(dependencies.Reviews))
 	if dependencies.Reviews != nil {
@@ -246,20 +257,89 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		feedRepository, _ := dependencies.Catalog.(feedCatalog)
 		handler = spaFallback(
 			logger, mux, dependencies.StaticDir,
-			sitemapHandler(logger, dependencies.Catalog, dependencies.Collections), productFeedHandler(logger, feedRepository), dependencies.Catalog,
-			dependencies.Catalog, dependencies.Collections,
+			sitemapHandler(logger, publicCatalog, dependencies.Collections), productFeedHandler(logger, feedRepository), publicCatalog,
+			publicCatalog, dependencies.Collections,
 			analytics,
 		)
 	}
-	return requestLogger(logger, gzipResponses(securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler))))
+	return requestLogger(logger, invalidatePublicCacheAfterMutation(publicCache, invalidateDetails,
+		gzipResponses(securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)))))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		startedAt := time.Now()
-		next.ServeHTTP(response, request)
-		logger.Info("http request", "method", request.Method, "path", request.URL.Path, "duration_ms", time.Since(startedAt).Milliseconds())
+		requestID := newRequestID()
+		response.Header().Set("X-Request-ID", requestID)
+		ctx, metrics := perf.WithRequest(request.Context())
+		request = request.WithContext(ctx)
+		writer := &requestMetricsWriter{ResponseWriter: response}
+		next.ServeHTTP(writer, request)
+		duration := time.Since(startedAt)
+		queries, sqlDuration := metrics.Snapshot()
+		status := writer.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		route := request.Pattern
+		if route == "" {
+			route = request.URL.Path
+		}
+		ttfb := duration
+		if !writer.firstByte.IsZero() {
+			ttfb = writer.firstByte.Sub(startedAt)
+		}
+		logger.Info("http request",
+			"request_id", requestID,
+			"method", request.Method,
+			"route", route,
+			"status", status,
+			"duration_ms", float64(duration.Microseconds())/1000,
+			"ttfb_ms", float64(ttfb.Microseconds())/1000,
+			"sql_ms", float64(sqlDuration.Microseconds())/1000,
+			"sql_queries", queries,
+			"response_write_ms", float64(writer.writeDuration.Microseconds())/1000,
+			"response_bytes", writer.bytes,
+		)
 	})
+}
+
+type requestMetricsWriter struct {
+	http.ResponseWriter
+	status        int
+	bytes         int64
+	firstByte     time.Time
+	writeDuration time.Duration
+}
+
+func (writer *requestMetricsWriter) WriteHeader(status int) {
+	if writer.status != 0 {
+		return
+	}
+	writer.status = status
+	writer.firstByte = time.Now()
+	started := time.Now()
+	writer.ResponseWriter.WriteHeader(status)
+	writer.writeDuration += time.Since(started)
+}
+
+func (writer *requestMetricsWriter) Write(body []byte) (int, error) {
+	if writer.status == 0 {
+		writer.WriteHeader(http.StatusOK)
+	}
+	started := time.Now()
+	written, err := writer.ResponseWriter.Write(body)
+	writer.writeDuration += time.Since(started)
+	writer.bytes += int64(written)
+	return written, err
+}
+
+func newRequestID() string {
+	var value [12]byte
+	if _, err := rand.Read(value[:]); err == nil {
+		return hex.EncodeToString(value[:])
+	}
+	return hex.EncodeToString([]byte(time.Now().UTC().Format("150405.000000")))
 }
 
 func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {

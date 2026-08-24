@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -89,7 +88,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		}
 	}
 	if len(detail.Images) == 0 {
-		detail.Images = append(detail.Images, "/assets/hero-monstera.png")
+		detail.Images = append(detail.Images, "/assets/hero-monstera.webp")
 	}
 
 	variantRows, err := repository.pool.Query(ctx, `
@@ -199,60 +198,111 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 
 	reviewRows, err := repository.pool.Query(ctx, `
 		SELECT r.id, r.rating, r.body, COALESCE(NULLIF(c.full_name, ''), 'Покупатель'),
-			to_char(r.created_at, 'YYYY-MM-DD'), true
-		FROM product_reviews r JOIN customers c ON c.id = r.customer_id
-		WHERE r.product_id = $1 AND r.status = 'published' ORDER BY r.created_at DESC LIMIT 30`, productID)
+			to_char(r.created_at, 'YYYY-MM-DD'), true,
+			COALESCE(jsonb_agg(jsonb_build_object(
+				'url','/api/v1/review-photos/' || photo.id,
+				'contentType',photo.content_type
+			) ORDER BY photo.sort_order,photo.id) FILTER (WHERE photo.id IS NOT NULL),'[]'::jsonb)
+		FROM product_reviews r
+		JOIN customers c ON c.id = r.customer_id
+		LEFT JOIN product_review_photos photo ON photo.review_id=r.id
+		WHERE r.product_id = $1 AND r.status = 'published'
+		GROUP BY r.id,c.id ORDER BY r.created_at DESC LIMIT 30`, productID)
 	if err != nil {
 		return ProductDetail{}, fmt.Errorf("query reviews: %w", err)
 	}
 	detail.Reviews = []Review{}
 	for reviewRows.Next() {
 		var review Review
-		if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase); err != nil {
+		var media []byte
+		if err := reviewRows.Scan(&review.ID, &review.Rating, &review.Text, &review.Author, &review.Date, &review.VerifiedPurchase, &media); err != nil {
 			reviewRows.Close()
 			return ProductDetail{}, err
 		}
-		rows, _ := repository.pool.Query(ctx, `SELECT '/api/v1/review-photos/' || id, content_type FROM product_review_photos WHERE review_id=$1 ORDER BY sort_order,id`, review.ID)
-		for rows != nil && rows.Next() {
-			var media ReviewMedia
-			_ = rows.Scan(&media.URL, &media.ContentType)
-			review.Media = append(review.Media, media)
-			if strings.HasPrefix(media.ContentType, "image/") {
-				review.Photos = append(review.Photos, media.URL)
-			}
+		if err := json.Unmarshal(media, &review.Media); err != nil {
+			reviewRows.Close()
+			return ProductDetail{}, fmt.Errorf("decode review media: %w", err)
 		}
-		if rows != nil {
-			rows.Close()
+		for _, item := range review.Media {
+			if strings.HasPrefix(item.ContentType, "image/") {
+				review.Photos = append(review.Photos, item.URL)
+			}
 		}
 		detail.Reviews = append(detail.Reviews, review)
 	}
 	reviewRows.Close()
 
-	available, err := repository.ListAvailable(ctx)
-	if err != nil {
-		return ProductDetail{}, err
-	}
-	type scoredProduct struct {
-		product Product
-		score   int
-	}
-	candidates := make([]scoredProduct, 0, len(available))
-	for _, item := range available {
-		if item.ID != code {
-			candidates = append(candidates, scoredProduct{product: item, score: recommendationScore(detail, item)})
-		}
-	}
-	sort.SliceStable(candidates, func(left, right int) bool { return candidates[left].score > candidates[right].score })
-	detail.Recommendations = []Product{}
-	for _, candidate := range candidates {
-		detail.Recommendations = append(detail.Recommendations, candidate.product)
-		if len(detail.Recommendations) == 8 {
-			break
-		}
-	}
+	detail.Recommendations, err = repository.listRecommendations(ctx, productID, detail)
+	if err != nil { return ProductDetail{}, err }
 	return detail, nil
 }
 
+const recommendationsQuery = `
+	SELECT product.product_code::TEXT, chosen.sku, product.name, product.latin_name,
+		COALESCE(category.name,'Без категории'), chosen.base_price_minor,
+		COALESCE((
+			SELECT COALESCE(mirror.card_url,media.object_key)
+			FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
+			WHERE media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=chosen.id)
+			ORDER BY (media.variant_id=chosen.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
+		),'/assets/hero-monstera.webp'),
+		chosen.label, chosen.stock, product.catalog_section,
+		COALESCE(product.plant_kind,''),COALESCE(product.light_level,''),COALESCE(product.watering,''),
+		COALESCE(product.height_class,''),COALESCE(product.care_level,''),COALESCE(product.placement,''),
+		COALESCE(product.pet_safety,''),COALESCE(product.growth_habit,''),product.category_id
+	FROM products product
+	JOIN LATERAL (
+		SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
+			COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
+				FROM inventory WHERE inventory.variant_id=variant.id),0)::INTEGER AS stock
+		FROM product_variants variant
+		WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
+		ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
+			FROM inventory WHERE inventory.variant_id=variant.id),0)>0) DESC,variant.id LIMIT 1
+	) chosen ON TRUE
+	LEFT JOIN categories category ON category.id=product.category_id
+	WHERE product.status='published' AND product.id<>$1
+	ORDER BY (
+		CASE WHEN product.category_id=$2 THEN 8 ELSE 0 END +
+		CASE WHEN product.catalog_section=$3 THEN 6 ELSE 0 END +
+		CASE WHEN $4<>'' AND product.plant_kind=$4 THEN 4 ELSE 0 END +
+		CASE WHEN $5<>'' AND product.light_level=$5 THEN 2 ELSE 0 END +
+		CASE WHEN $6<>'' AND product.watering=$6 THEN 2 ELSE 0 END +
+		CASE WHEN $7<>'' AND product.height_class=$7 THEN 2 ELSE 0 END +
+		CASE WHEN $8<>'' AND product.care_level=$8 THEN 2 ELSE 0 END +
+		CASE WHEN $9<>'' AND product.placement=$9 THEN 2 ELSE 0 END +
+		CASE WHEN $10<>'' AND product.pet_safety=$10 THEN 2 ELSE 0 END +
+		CASE WHEN $11<>'' AND product.growth_habit=$11 THEN 2 ELSE 0 END
+	) DESC, chosen.stock>0 DESC, product.is_featured DESC, product.name
+	LIMIT 8
+`
+
+func (repository *PostgresRepository) listRecommendations(ctx context.Context, productID int64, detail ProductDetail) ([]Product, error) {
+	rows, err := repository.pool.Query(ctx, recommendationsQuery, productID, detail.CategoryID,
+		detail.CatalogSection, detail.PlantKind, detail.LightLevel, detail.Watering,
+		detail.HeightClass, detail.CareLevel, detail.Placement, detail.PetSafety, detail.GrowthHabit)
+	if err != nil { return nil, fmt.Errorf("query product recommendations: %w", err) }
+	defer rows.Close()
+	result := make([]Product, 0, 8)
+	for rows.Next() {
+		var product Product
+		var priceMinor int64
+		if err := rows.Scan(&product.ID,&product.SKU,&product.Name,&product.Latin,&product.Category,&priceMinor,
+			&product.Image,&product.Size,&product.Stock,&product.CatalogSection,&product.PlantKind,&product.LightLevel,
+			&product.Watering,&product.HeightClass,&product.CareLevel,&product.Placement,&product.PetSafety,&product.GrowthHabit,
+			&product.CategoryID); err != nil { return nil, fmt.Errorf("scan product recommendation: %w", err) }
+		product.Price = float64(priceMinor)/100
+		product.Light = "Уточните у консультанта"
+		product.Collections = []string{}
+		product.FilterAttributes = []ProductAttribute{}
+		result = append(result, product)
+	}
+	if err := rows.Err(); err != nil { return nil, fmt.Errorf("read product recommendations: %w", err) }
+	return result, nil
+}
+
+// recommendationScore mirrors the SQL weights and keeps their ordering easy
+// to regression-test without a database.
 func recommendationScore(current ProductDetail, candidate Product) int {
 	score := 0
 	if current.CatalogSection == candidate.CatalogSection {
@@ -332,7 +382,7 @@ const catalogListQuery = `
 			FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
 			WHERE media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=default_variant.id)
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
-		),'/assets/hero-monstera.png'),
+		),'/assets/hero-monstera.webp'),
 		default_variant.label, default_variant.stock,
 		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(product.light_level,''),
 		COALESCE(product.watering,''),COALESCE(product.height_class,''),COALESCE(product.care_level,''),

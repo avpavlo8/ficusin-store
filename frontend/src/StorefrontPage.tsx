@@ -119,7 +119,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/v1/catalog", { cache: "no-store" })
+    fetch("/api/v1/catalog")
       .then((response) => response.json())
       .then((data: { products?: Product[] }) => {
         setProducts(data.products ?? []);
@@ -130,7 +130,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/v1/categories", { cache: "no-store" })
+    fetch("/api/v1/categories")
       .then((response) => response.json())
       .then((data: { categories?: Category[] }) => {
         const items=data.categories ?? []; setCategories(items);

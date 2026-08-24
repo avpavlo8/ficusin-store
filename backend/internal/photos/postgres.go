@@ -36,6 +36,12 @@ func (store *PostgresStore) Pending(ctx context.Context, limit int) ([]string, e
 					AND mirror.attempts < 5
 					AND mirror.checked_at < CURRENT_TIMESTAMP - INTERVAL '6 hours'
 				)
+				OR (
+					mirror.mirrored_at IS NULL
+					AND mirror.card_url IS NOT NULL
+					AND mirror.attempts < 5
+					AND mirror.checked_at < CURRENT_TIMESTAMP - INTERVAL '6 hours'
+				)
 			)
 		-- Собственные тяжёлые обложки уже лежат рядом с приложением и не
 		-- нагружают поставщика. Обрабатываем их раньше внешней очереди, чтобы

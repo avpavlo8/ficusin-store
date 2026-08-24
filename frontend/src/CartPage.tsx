@@ -8,7 +8,7 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
   const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; sortOrder:number }>>([]);
   const [cart, setCart] = useSharedCart();
   useEffect(() => {
-    fetch("/api/v1/catalog", { cache: "no-store" }).then((response) => response.json())
+    fetch("/api/v1/catalog").then((response) => response.json())
       .then((data: { products?: CartProduct[] }) => setProducts(data.products || [])).catch(() => setProducts([]));
   }, []);
   useEffect(() => { fetch("/api/v1/categories").then((response) => response.json()).then((body: { categories?: typeof categories }) => setCategories(body.categories || [])).catch(() => setCategories([])); }, []);

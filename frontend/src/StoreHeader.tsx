@@ -271,7 +271,7 @@ export function StoreHeader({
   }, []);
   useEffect(() => {
     if (!homeNavigation || catalogMenuItems.length || plantMenuItems.length) return;
-    fetch("/api/v1/categories", { cache: "no-store" }).then((response) => response.json()).then((body: {categories?:Array<{id:number;parentId:number|null;name:string;slug:string;sortOrder:number}>}) => {
+    fetch("/api/v1/categories").then((response) => response.json()).then((body: {categories?:Array<{id:number;parentId:number|null;name:string;slug:string;sortOrder:number}>}) => {
       const categories = body.categories || [];
       const children = new Map<number|null,typeof categories>();
       categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
