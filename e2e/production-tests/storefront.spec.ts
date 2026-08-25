@@ -7,6 +7,14 @@ type BrowserMetrics = {
   overflow: number;
 };
 
+// Гостевой 401 на /api/v1/auth/me — ожидаемый ответ, а не поломка. Текст
+// сообщения у браузеров разный: Chromium на профиле Pixel 5 пишет
+// «status of 401 ()» без причины, потому что по HTTP/2 её не существует.
+// Поэтому смотрим на код, а не на формулировку. Маскировки нет: любой
+// другой 401 по-прежнему попадает в failures через обработчик response.
+const guestUnauthorized = (text: string) =>
+  text.includes("401 (Unauthorized)") || /Failed to load resource[\s\S]*\b401\b/.test(text);
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const state = window as typeof window & { __ficusinCLS?: number };
@@ -66,9 +74,8 @@ test("production product 5 loads its optimized photo and review", async ({ page 
   });
   page.on("console", (message) => {
     const text = message.text();
-    const expectedGuest = text.includes("401 (Unauthorized)");
     const instrumentationCSP = text.startsWith("Refused to execute a script because its hash, its nonce, or 'unsafe-inline'");
-    if (message.type() === "error" && !expectedGuest && !instrumentationCSP) consoleErrors.push(text);
+    if (message.type() === "error" && !guestUnauthorized(text) && !instrumentationCSP) consoleErrors.push(text);
   });
 
   const started = Date.now();
