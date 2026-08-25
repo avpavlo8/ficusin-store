@@ -111,3 +111,36 @@ func TestCatalogQueryPlanOnLiveDatabase(t *testing.T) {
 	}
 	t.Logf("catalog EXPLAIN: %s", rawPlan)
 }
+
+func TestLegacySabyProductCodeResolvesOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	externalID := fmt.Sprintf("legacy-%d", unique)
+	var productID, productCode int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO products(name,slug,status,catalog_section)
+		VALUES($1,$2,'published','plants') RETURNING id,product_code
+	`, "Legacy redirect fixture", fmt.Sprintf("legacy-redirect-%d", unique)).Scan(&productID, &productCode); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	if _, err := pool.Exec(ctx, `INSERT INTO product_external_ids(product_id,provider,id_type,external_id) VALUES($1,'saby','id',$2)`, productID, externalID); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := NewPostgresRepository(pool).resolveLegacyCode(ctx, "saby-"+externalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != fmt.Sprint(productCode) {
+		t.Fatalf("resolved=%q want=%d", resolved, productCode)
+	}
+}
