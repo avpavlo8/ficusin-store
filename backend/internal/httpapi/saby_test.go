@@ -119,9 +119,17 @@ func TestSabyCatalogSyncAcceptsCatalog(t *testing.T) {
 }
 
 func TestSabySyncErrorCodeDoesNotExposeDatabaseError(t *testing.T) {
-	err := errors.New("update Saby stock: duplicate key contains customer data")
-	if got := sabySyncErrorCode(err); got != "stock-update" {
-		t.Fatalf("sabySyncErrorCode() = %q", got)
+	tests := map[string]string{
+		"update Saby stock: duplicate key contains customer data": "stock-update",
+		"map Saby characteristics: invalid input syntax":          "characteristics-map",
+		"map Saby IDs: unique constraint contains an identifier":  "ids-map",
+		"query Saby photo targets: private object key":             "photos-query",
+		"finish Saby sync: internal database detail":               "sync-run-finish",
+	}
+	for message, want := range tests {
+		if got := sabySyncErrorCode(errors.New(message)); got != want {
+			t.Errorf("sabySyncErrorCode(%q) = %q, want %q", message, got, want)
+		}
 	}
 	if got := sabySyncErrorCode(errors.New("unexpected secret")); got != "store-error" {
 		t.Fatalf("fallback sabySyncErrorCode() = %q", got)
