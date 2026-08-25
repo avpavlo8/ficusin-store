@@ -62,6 +62,21 @@ func spaFallback(
 			sitemap.ServeHTTP(response, request)
 			return
 		}
+
+		// Загрузчик счётчика отдаётся со своего адреса. Политика безопасности
+		// запрещает встроенные скрипты, а ослаблять её ради аналитики нельзя:
+		// unsafe-inline открыл бы дорогу любому внедрённому скрипту. Номер
+		// читается на каждый запрос, поэтому смена в панели действует сразу.
+		if request.URL.Path == "/analytics.js" {
+			script := ""
+			if analytics != nil {
+				script = analyticsScript(analytics.Value(settings.MetrikaID))
+			}
+			response.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			response.Header().Set("Cache-Control", "no-cache")
+			_, _ = response.Write([]byte(script))
+			return
+		}
 		if (request.URL.Path == "/feeds/google-products.xml" || request.URL.Path == "/feeds/yandex.yml") && feeds != nil {
 			feeds.ServeHTTP(response, request)
 			return

@@ -300,12 +300,34 @@ var searchVerificationPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{8,160}$`)
 // панели без выкладки, и Docker-образ не носит в себе чужой аккаунт. Пустое
 // или неверное значение означает отсутствие счётчика — лучше остаться без
 // цифр, чем повесить сломанный скрипт на каждую страницу магазина.
+// analyticsScript — тело загрузчика счётчика, которое отдаётся с нашего же
+// адреса по /analytics.js.
+//
+// Политика безопасности намеренно запрещает встроенные скрипты: script-src
+// разрешает только свой origin и mc.yandex.ru. Официальный сниппет Метрики —
+// встроенный, и браузер его отклонял. Добавить ради счётчика unsafe-inline
+// значило бы открыть дорогу любому внедрённому скрипту, поэтому загрузчик
+// приезжает со своего адреса, а он уже подключает tag.js с разрешённого.
+func analyticsScript(counter string) string {
+	counter = strings.TrimSpace(counter)
+	if !metrikaCounterPattern.MatchString(counter) {
+		return ""
+	}
+	return `(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for(var j=0;j<e.scripts.length;j++){if(e.scripts[j].src===r){return}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");window.dataLayer=window.dataLayer||[];ym(` + counter + `,"init",{ssr:true,webvisor:true,clickmap:true,trackLinks:true,accurateTrackBounce:true,ecommerce:"dataLayer"});`
+}
+
+// withAnalytics подключает счётчик к оболочке страницы.
+//
+// Номер живёт в настройках магазина, а не в сборке: владелец меняет его в
+// панели без выкладки, и Docker-образ не носит в себе чужой аккаунт. Пустое
+// или неверное значение означает отсутствие счётчика — лучше остаться без
+// цифр, чем повесить сломанный скрипт на каждую страницу магазина.
 func withAnalytics(shell []byte, counter string) []byte {
 	counter = strings.TrimSpace(counter)
 	if !metrikaCounterPattern.MatchString(counter) {
 		return shell
 	}
-	snippet := `<script>(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for(var j=0;j<e.scripts.length;j++){if(e.scripts[j].src===r){return}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");window.dataLayer=window.dataLayer||[];ym(` + counter + `,"init",{ssr:true,webvisor:true,clickmap:true,trackLinks:true,accurateTrackBounce:true,ecommerce:"dataLayer"});</script>` + "\n" +
+	snippet := `<script src="/analytics.js" async></script>` + "\n" +
 		`<noscript><div><img src="https://mc.yandex.ru/watch/` + counter + `" style="position:absolute;left:-9999px" alt=""></div></noscript>` + "\n"
 	return bytes.Replace(shell, []byte("</head>"), []byte(snippet+"</head>"), 1)
 }
