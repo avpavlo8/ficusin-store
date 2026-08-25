@@ -122,7 +122,7 @@ func feedDescription(offer catalog.FeedOffer) string {
 	return description
 }
 
-func productFeedHandler(logger *slog.Logger, repository feedCatalog) http.Handler {
+func productFeedHandler(logger *slog.Logger, repository feedCatalog, configuredBase string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if repository == nil {
 			http.NotFound(response, request)
@@ -147,7 +147,7 @@ func productFeedHandler(logger *slog.Logger, repository feedCatalog) http.Handle
 				return
 			}
 		}
-		base := siteBase(request)
+		base := canonicalBase(configuredBase)
 		response.Header().Set("Content-Type", "application/xml; charset=utf-8")
 		response.Header().Set("Cache-Control", "public, max-age=900")
 		response.WriteHeader(http.StatusOK)
