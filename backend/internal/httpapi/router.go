@@ -48,6 +48,7 @@ type Dependencies struct {
 	YandexSuggestKey string
 	CatalogAI        catalogAIGenerator
 	Analytics        analyticsStore
+	SiteURL          string
 }
 type catalogAIGenerator interface {
 	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
@@ -257,11 +258,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		feedRepository, _ := dependencies.Catalog.(feedCatalog)
 		handler = spaFallback(
 			logger, mux, dependencies.StaticDir,
-			sitemapHandler(logger, publicCatalog, dependencies.Collections), productFeedHandler(logger, feedRepository), publicCatalog,
+			sitemapHandler(logger, publicCatalog, dependencies.Collections, dependencies.SiteURL), productFeedHandler(logger, feedRepository, dependencies.SiteURL), publicCatalog,
 			publicCatalog, dependencies.Collections,
-			analytics,
+			analytics, dependencies.SiteURL,
 		)
 	}
+	handler = canonicalHostRedirect(dependencies.SiteURL, handler)
 	return requestLogger(logger, invalidatePublicCacheAfterMutation(publicCache, invalidateDetails,
 		gzipResponses(securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)))))
 }
