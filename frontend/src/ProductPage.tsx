@@ -38,7 +38,6 @@ export default function ProductPage({ slug }: { slug: string }) {
         const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: (item.reviews || []).map((review) => ({ ...review, photos: review.photos || [], media: review.media || [] })), rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
         const requestedSKU=new URLSearchParams(window.location.search).get("sku");
         setProduct(normalized); setSelectedID(normalized.variants.find((variant)=>variant.sku===requestedSKU)?.id ?? normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(normalized.catalogSection === "plants" ? "care" : "characteristics");
-        document.title = `${normalized.name} — Фикусин`;
 		const viewed=normalized.variants.find((variant)=>variant.sku===requestedSKU) ?? normalized.variants[0];
 		track("view_item", { productCode: normalized.id, sku: viewed?.sku, value: viewed?.price, properties: { name: normalized.name, category: normalized.catalogSection } });
       })
@@ -81,12 +80,12 @@ export default function ProductPage({ slug }: { slug: string }) {
   const toggleCart = () => {
     if (!variant) return;
     if (cart[variant.sku]) {
-	  track("remove_from_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity: cart[variant.sku] });
+	  track("remove_from_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity: cart[variant.sku], properties: { name: product?.name, category: product?.catalogSection } });
       setCart((current) => { const next = { ...current }; delete next[variant.sku]; return next; });
       setNotice("Товар удалён из корзины"); window.setTimeout(() => setNotice(""), 1800);
       return;
     }
-	track("add_to_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity });
+	track("add_to_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity, properties: { name: product?.name, category: product?.catalogSection } });
     setCart((current) => ({ ...current, [variant.sku]: variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity }));
     setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
   };
