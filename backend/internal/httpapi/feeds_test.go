@@ -32,7 +32,7 @@ func feedBody(t *testing.T, path string) string {
 	request.Host = "ficusin.ru"
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
-	productFeedHandler(logger, repository).ServeHTTP(response, request)
+	productFeedHandler(logger, repository, "https://ficusin.ru").ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
