@@ -331,7 +331,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   const addToCart = (product: Product) => {
-    track("add_to_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: landing ? landingTitle : categoryName || "catalog" } });
+    track("add_to_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { name: product.name, category: product.catalogSection, list: landing ? landingTitle : categoryName || "catalog" } });
     setCart((current) => ({
       ...current,
       [product.sku]: Math.min(
@@ -341,7 +341,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     }));
   };
   const changeCartQuantity = (product: Product, delta: number) => {
-	track(delta > 0 ? "add_to_cart" : "remove_from_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { list: landing ? landingTitle : categoryName || "catalog" } });
+	track(delta > 0 ? "add_to_cart" : "remove_from_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { name: product.name, category: product.catalogSection, list: landing ? landingTitle : categoryName || "catalog" } });
 	setCart((current) => {
     const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
     const nextQuantity = Math.max(0, Math.min(maximum, (current[product.sku] || 0) + delta));

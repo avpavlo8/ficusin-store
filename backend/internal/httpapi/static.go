@@ -47,6 +47,7 @@ func spaFallback(
 	landings sitemapCatalog,
 	collections sitemapCollections,
 	analytics analyticsSettings,
+	configuredBase string,
 ) http.Handler {
 	files := http.FileServer(http.Dir(staticDir))
 
@@ -104,26 +105,35 @@ func spaFallback(
 		// отдаётся та же оболочка — но с честным кодом. Иначе поисковик
 		// принимает опечатку в ссылке за настоящую страницу магазина.
 		status := http.StatusOK
+		base := canonicalBase(configuredBase)
 		if !knownAppRoute(request.URL.Path) {
 			status = http.StatusNotFound
 		}
 		if landingSlug(request.URL.Path, "/catalog/") != "" || landingSlug(request.URL.Path, "/collections/") != "" {
 			var found bool
-			body, found = withLandingMeta(request.Context(), logger, landings, collections, siteBase(request), request.URL.Path, body)
+			body, found = withLandingMeta(request.Context(), logger, landings, collections, base, request.URL.Path, body)
 			if !found {
 				status = http.StatusNotFound
-				body = withRouteMeta(siteBase(request), "/__not_found__", body)
+				body = withRouteMeta(base, "/__not_found__", body)
 			}
 		} else {
-			body = withRouteMeta(siteBase(request), request.URL.Path, body)
+			body = withRouteMeta(base, request.URL.Path, body)
 		}
-		body = withProductMeta(
-			request.Context(), logger, products,
-			siteBase(request), productSlug(request.URL.Path), body,
-		)
+		if slug := productSlug(request.URL.Path); slug != "" {
+			var found bool
+			var productErr error
+			body, found, productErr = withProductMeta(request.Context(), logger, products, base, slug, body)
+			if productErr != nil {
+				status = http.StatusServiceUnavailable
+				body = withRouteMeta(base, "/__not_found__", body)
+			} else if !found {
+				status = http.StatusNotFound
+				body = withRouteMeta(base, "/__not_found__", body)
+			}
+		}
 		// Счётчик ставится здесь, а не в сборке фронта: номер меняется в
 		// панели без выкладки, а образ не носит в себе чужой аккаунт.
-		if analytics != nil {
+		if analytics != nil && !strings.HasPrefix(request.URL.Path, "/admin") {
 			body = withAnalytics(body, analytics.Value(settings.MetrikaID))
 			body = withSearchVerification(body, analytics.Value(settings.YandexVerification), analytics.Value(settings.GoogleVerification))
 		}

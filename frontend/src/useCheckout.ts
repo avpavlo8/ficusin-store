@@ -2,7 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
 import { normalizeRussianPhone } from "./lib/phone";
-import { getAttribution, track } from "./lib/analytics";
+import { getAttribution, track, trackYandexPurchase } from "./lib/analytics";
 
 type Cart = Record<string, number>;
 export type CheckoutProfile = {
@@ -350,6 +350,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       }
 	  track("add_shipping_info", { value: total, quantity: cartCount, properties: { delivery } });
 	  track("add_payment_info", { value: total, quantity: cartCount, properties: { paymentMethod } });
+      trackYandexPurchase(data.orderNumber, total, cartLines.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })));
       setOrderConfirmationPending(needsManagerConfirmation);
       setOrderNumber(data.orderNumber);
       setCart({});

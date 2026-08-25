@@ -24,13 +24,13 @@ export function Analytics({ onError }: { onError: (message: string) => void }) {
   if (!data) return <><PageHeading eyebrow="Аналитика" title="Воронка продаж" text="Загружаем данные…" /></>;
   const conversion = percent(data.orders, data.sessions);
   return <>
-    <PageHeading eyebrow="E-commerce аналитика" title="Воронка продаж" text="Собственные данные сайта: от источника до созданного заказа" />
+    <PageHeading eyebrow="E-commerce аналитика" title="Воронка продаж" text="Собственные данные сайта: от источника до оплаченного или выполненного заказа" />
     <div className="analytics-period" role="group" aria-label="Период">{[7,30,90].map((value)=><button type="button" className={days===value?"active":""} onClick={()=>setDays(value)} key={value}>{value} дней</button>)}</div>
     <div className="admin-stats analytics-kpis">
       <article><span>Посетители</span><strong>{data.visitors}</strong><small>{data.sessions} сессий</small></article>
-      <article><span>Заказы</span><strong>{data.orders}</strong><small>Конверсия {conversion}</small></article>
-      <article><span>Выручка</span><strong>{money.format(data.revenue)}</strong><small>по созданным заказам</small></article>
-      <article><span>Брошенные корзины</span><strong>{data.abandonedCarts}</strong><small>{data.checkoutErrors} ошибок оформления</small></article>
+      <article><span>Оплаченные заказы</span><strong>{data.orders}</strong><small>Конверсия {conversion}</small></article>
+      <article><span>Выручка</span><strong>{money.format(data.revenue)}</strong><small>оплачено или выполнено</small></article>
+      <article><span>Брошенные корзины</span><strong>{data.abandonedCarts}</strong><small>нет активности 24 часа · {data.checkoutErrors} ошибок</small></article>
     </div>
     <section className="admin-block analytics-block"><div className="admin-block-heading"><div><p className="eyebrow">Динамика</p><h2>Сессии и заказы</h2></div></div><div className="analytics-bars">{data.daily.map((item)=><div key={item.date} title={`${item.date}: ${item.sessions} сессий, ${item.orders} заказов`}><i style={{height:`${Math.max(4,item.sessions/maxDaily*100)}%`}}/><b style={{height:`${Math.max(0,item.orders/maxDaily*100)}%`}}/><small>{new Date(`${item.date}T00:00:00`).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"})}</small></div>)}</div></section>
     <section className="admin-block analytics-block"><div className="admin-block-heading"><div><p className="eyebrow">Конверсия</p><h2>Воронка</h2></div></div><div className="analytics-funnel">{data.funnel.map((item,index)=><article key={item.name}><div><strong>{item.name}</strong><span>{item.sessions}</span></div><div><i style={{width:percent(item.sessions,data.funnel[0]?.sessions||0)}}/></div><small>{index?`${percent(item.sessions,data.funnel[index-1].sessions)} от предыдущего шага`:"100% сессий"}</small></article>)}</div></section>

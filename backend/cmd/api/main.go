@@ -231,6 +231,7 @@ func main() {
 		YandexSuggestKey: cfg.YandexSuggestKey,
 		CatalogAI:        catalogAI,
 		Analytics:        analyticsStore,
+		SiteURL:          cfg.SiteURL,
 	}))
 	go func() {
 		ticker := time.NewTicker(time.Minute)

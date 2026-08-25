@@ -41,6 +41,12 @@ const queue: QueuedEvent[] = [];
 let flushTimer = 0;
 let yandexCounter = 0;
 
+type DataLayerWindow = Window & { dataLayer?: Array<Record<string, unknown>> };
+
+function isInternalPath() {
+  return location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+}
+
 function id() {
   return crypto.randomUUID();
 }
@@ -113,6 +119,26 @@ function yandexGoal(name: CommerceEventName, input: EventInput) {
   if (yandexCounter && ym) ym(yandexCounter, "reachGoal", name, input);
 }
 
+function yandexEcommerce(name: CommerceEventName, input: EventInput) {
+  const action = name === "view_item" ? "detail"
+    : name === "add_to_cart" ? "add"
+      : name === "remove_from_cart" ? "remove"
+        : name === "select_item" ? "click" : "";
+  if (!action || (!input.productCode && !input.sku)) return;
+  const properties = input.properties || {};
+  const product: Record<string, unknown> = {
+    id: input.sku || input.productCode,
+    name: typeof properties.name === "string" ? properties.name : (input.productCode || input.sku),
+    quantity: input.quantity || 1,
+  };
+  if (typeof input.value === "number" && Number.isFinite(input.value)) product.price = input.value;
+  if (typeof properties.category === "string") product.category = properties.category;
+  if (typeof properties.list === "string") product.list = properties.list;
+  const layerWindow = window as DataLayerWindow;
+  layerWindow.dataLayer = layerWindow.dataLayer || [];
+  layerWindow.dataLayer.push({ ecommerce: { currencyCode: "RUB", [action]: { products: [product] } } });
+}
+
 function flush(useBeacon = false) {
   if (!queue.length) return;
   const events = queue.splice(0, 25);
@@ -125,16 +151,36 @@ function flush(useBeacon = false) {
 }
 
 export function track(name: CommerceEventName, input: EventInput = {}) {
+  if (isInternalPath()) return;
   const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
   if (privacy.globalPrivacyControl || navigator.doNotTrack === "1") return;
   const attribution = getAttribution();
   queue.push({ eventId: id(), name, occurredAt: new Date().toISOString(), pagePath: location.pathname + location.search, pageTitle: document.title, ...attribution, ...input });
   yandexGoal(name, input);
+  yandexEcommerce(name, input);
   if (queue.length >= 10) flush();
   else { window.clearTimeout(flushTimer); flushTimer = window.setTimeout(() => flush(), 900); }
 }
 
+export function trackYandexPurchase(orderNumber: string, total: number, items: Array<{ id: string; name: string; price: number; quantity: number }>) {
+  if (isInternalPath() || !orderNumber || !items.length) return;
+  const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
+  if (privacy.globalPrivacyControl || navigator.doNotTrack === "1") return;
+  const layerWindow = window as DataLayerWindow;
+  layerWindow.dataLayer = layerWindow.dataLayer || [];
+  layerWindow.dataLayer.push({
+    ecommerce: {
+      currencyCode: "RUB",
+      purchase: {
+        actionField: { id: orderNumber, revenue: total },
+        products: items.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })),
+      },
+    },
+  });
+}
+
 export function initAnalytics() {
+  if (isInternalPath()) return;
   captureTouch();
   void fetch("/api/v1/analytics/config", { cache: "no-store" }).then((response)=>response.json()).then((config:{yandexMetrikaId?:number})=>{
 		yandexCounter = Number(config.yandexMetrikaId) || 0;

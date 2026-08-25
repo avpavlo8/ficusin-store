@@ -88,9 +88,9 @@ type sitemapSet struct {
 //
 // Пустой каталог — не повод отдавать ошибку: статические страницы магазина
 // существуют независимо от того, ответила ли база.
-func sitemapHandler(logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections) http.Handler {
+func sitemapHandler(logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections, configuredBase string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		base := siteBase(request)
+		base := canonicalBase(configuredBase)
 		set := sitemapSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
 		for _, path := range []string{"/", "/delivery-and-returns", "/contacts", "/offer", "/privacy", "/requisites"} {
 			set.URLs = append(set.URLs, sitemapURL{
@@ -149,14 +149,32 @@ func sitemapHandler(logger *slog.Logger, repository sitemapCatalog, collections 
 
 // За обратным прокси Timeweb схема приходит заголовком, иначе ссылки в карте
 // сайта уедут на http и поисковик посчитает их отдельными страницами.
-func siteBase(request *http.Request) string {
-	scheme := "https"
-	if forwarded := request.Header.Get("X-Forwarded-Proto"); forwarded != "" {
-		scheme = forwarded
-	} else if request.TLS == nil {
-		scheme = "http"
+func canonicalBase(configured string) string {
+	configured = strings.TrimSpace(configured)
+	parsed, err := url.Parse(configured)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "https://ficusin.ru"
 	}
-	return scheme + "://" + request.Host
+	return strings.TrimRight(parsed.Scheme+"://"+parsed.Host, "/")
+}
+
+// canonicalHostRedirect unifies the public www/non-www copies without
+// breaking Timeweb's technical hostname and health checks.
+func canonicalHostRedirect(configured string, next http.Handler) http.Handler {
+	base := canonicalBase(configured)
+	parsed, _ := url.Parse(base)
+	canonicalHost := strings.ToLower(parsed.Host)
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		host := strings.ToLower(request.Host)
+		forwardedProto := strings.ToLower(strings.TrimSpace(strings.Split(request.Header.Get("X-Forwarded-Proto"), ",")[0]))
+		isHTTP := forwardedProto == "http" || (forwardedProto == "" && request.TLS == nil)
+		if host == "www."+canonicalHost || (host == canonicalHost && isHTTP && parsed.Scheme == "https") {
+			target := base + request.URL.RequestURI()
+			http.Redirect(response, request, target, http.StatusPermanentRedirect)
+			return
+		}
+		next.ServeHTTP(response, request)
+	})
 }
 
 // ——— Заголовки карточки товара ———
@@ -173,7 +191,7 @@ type productMetaCatalog interface {
 
 var (
 	titlePattern       = regexp.MustCompile(`(?s)<title>.*?</title>`)
-	descriptionPattern = regexp.MustCompile(`<meta name="description" content="[^"]*"`)
+	descriptionPattern = regexp.MustCompile(`(?is)<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*/?>`)
 )
 
 type routeMeta struct {
@@ -203,7 +221,7 @@ func withRouteMeta(base, path string, shell []byte) []byte {
 
 func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any) []byte {
 	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
-	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`"`))
+	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`">`))
 	head := strings.Builder{}
 	if meta.Index {
 		head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+path) + `">` + "\n")
@@ -354,21 +372,20 @@ func withProductMeta(
 	repository productMetaCatalog,
 	base, slug string,
 	shell []byte,
-) []byte {
+) ([]byte, bool, error) {
 	if repository == nil || slug == "" {
-		return shell
+		return shell, false, nil
 	}
 	detail, err := repository.DetailBySlug(ctx, slug)
 	if err != nil {
-		// Ненайденный товар — обычное дело: ссылка могла устареть. Страница
-		// всё равно откроется, просто с общим заголовком магазина.
-		if !errors.Is(err, catalog.ErrNotFound) {
-			logger.Error("product meta failed", "slug", slug, "error", err)
+		if errors.Is(err, catalog.ErrNotFound) {
+			return shell, false, nil
 		}
-		return shell
+		logger.Error("product meta failed", "slug", slug, "error", err)
+		return shell, false, err
 	}
 	if detail.Name == "" {
-		return shell
+		return shell, false, nil
 	}
 
 	title := detail.Name + " — купить с доставкой по России | Фикусин"
@@ -387,7 +404,7 @@ func withProductMeta(
 	}
 	image := ""
 	if len(detail.Images) > 0 {
-		image = detail.Images[0]
+		image = absoluteFeedURL(base, detail.Images[0])
 	}
 
 	offers := make([]map[string]any, 0, len(detail.Variants))
@@ -401,7 +418,7 @@ func withProductMeta(
 			offer["price"] = strconv.FormatFloat(variant.Price, 'f', 2, 64)
 		}
 		if len(variant.Images) > 0 {
-			offer["image"] = variant.Images[0]
+			offer["image"] = absoluteFeedURL(base, variant.Images[0])
 		}
 		offers = append(offers, offer)
 	}
@@ -411,7 +428,6 @@ func withProductMeta(
 		"name":        detail.Name,
 		"description": description,
 		"offers":      offers,
-		"brand":       map[string]any{"@type": "Brand", "name": "Фикусин"},
 		"productID":   detail.ID,
 	}
 	if detail.Latin != "" {
@@ -447,6 +463,7 @@ func withProductMeta(
 	head.WriteString(`<meta property="og:type" content="product">` + "\n")
 	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(title) + "\">\n")
 	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(description) + "\">\n")
+	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+"/product/"+slug) + "\">\n")
 	if image != "" {
 		head.WriteString(`<meta property="og:image" content="` + html.EscapeString(image) + "\">\n")
 	}
@@ -456,7 +473,7 @@ func withProductMeta(
 
 	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
 	page = descriptionPattern.ReplaceAll(
-		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+"\""),
+		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+`">`),
 	)
-	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
+	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1), true, nil
 }
