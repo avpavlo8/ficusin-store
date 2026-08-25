@@ -145,7 +145,7 @@ func (stub productMetaStub) DetailBySlug(context.Context, string) (catalog.Produ
 func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	shell := []byte(`<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body></body></html>`)
-	pageBytes, found, err := withProductMeta(
+	pageBytes, canonicalSlug, err := withProductMeta(
 		context.Background(), logger,
 		productMetaStub{detail: catalog.ProductDetail{
 			Name:     "Монстера Делициоза",
@@ -160,7 +160,7 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !found {
+	if canonicalSlug == "" {
 		t.Fatal("товар не найден")
 	}
 	page := string(pageBytes)
@@ -186,7 +186,7 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 func TestProductMetaLeavesShellWhenMissing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	shell := []byte("<html><head><title>Фикусин</title></head></html>")
-	page, found, err := withProductMeta(
+	page, canonicalSlug, err := withProductMeta(
 		context.Background(), logger,
 		productMetaStub{err: catalog.ErrNotFound},
 		"https://ficusin.ru", "нет-такого", shell,
@@ -194,11 +194,25 @@ func TestProductMetaLeavesShellWhenMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if found {
+	if canonicalSlug != "" {
 		t.Fatal("несуществующий товар найден")
 	}
 	if string(page) != string(shell) {
 		t.Fatalf("оболочку изменили: %s", page)
+	}
+}
+
+func TestSPAFallbackRedirectsResolvedLegacyProduct(t *testing.T) {
+	staticDir := t.TempDir()
+	shell := `<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body></body></html>`
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte(shell), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "https://ficusin.ru/product/saby-1107?sku=25", nil)
+	response := httptest.NewRecorder()
+	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, productMetaStub{detail: catalog.ProductDetail{ID: "5", Name: "Аглаонема"}}, nil, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)
+	if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != "https://ficusin.ru/product/5?sku=25" {
+		t.Fatalf("status=%d location=%q", response.Code, response.Header().Get("Location"))
 	}
 }
 
