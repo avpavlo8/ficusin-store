@@ -233,15 +233,19 @@ func (store *Store) Summary(ctx context.Context, days int) (Summary, error) {
 	}
 	result := Summary{Period: days, Funnel: []FunnelStep{}, Sources: []SourceRow{}, Products: []ProductRow{}, Searches: []SearchRow{}, Daily: []DailyRow{}}
 	since := time.Now().AddDate(0, 0, -days)
-	err := store.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT visitor_id)::int,COUNT(DISTINCT session_id)::int,COUNT(*) FILTER(WHERE event_name='view_item')::int,COUNT(*) FILTER(WHERE event_name='add_to_cart')::int,COUNT(DISTINCT session_id) FILTER(WHERE event_name='begin_checkout')::int,COUNT(*) FILTER(WHERE event_name='order_created' AND trusted=1)::int,COALESCE(SUM(value) FILTER(WHERE event_name='order_created' AND trusted=1),0)::double precision FROM analytics_events WHERE occurred_at >= $1`, since).Scan(&result.Visitors, &result.Sessions, &result.ProductViews, &result.CartAdds, &result.Checkouts, &result.Orders, &result.Revenue)
+	err := store.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT visitor_id)::int,COUNT(DISTINCT session_id)::int,COUNT(*) FILTER(WHERE event_name='view_item')::int,COUNT(*) FILTER(WHERE event_name='add_to_cart')::int,COUNT(DISTINCT session_id) FILTER(WHERE event_name='begin_checkout')::int FROM analytics_events WHERE occurred_at >= $1`, since).Scan(&result.Visitors, &result.Sessions, &result.ProductViews, &result.CartAdds, &result.Checkouts)
 	if err != nil {
 		return result, fmt.Errorf("analytics totals: %w", err)
 	}
-	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FILTER(WHERE has_cart AND NOT has_order)::int,COALESCE(SUM(errors),0)::int FROM (SELECT session_id,BOOL_OR(event_name='add_to_cart') has_cart,BOOL_OR(event_name='order_created' AND trusted=1) has_order,COUNT(*) FILTER(WHERE event_name='checkout_error') errors FROM analytics_events WHERE occurred_at >= $1 GROUP BY session_id) sessions`, since).Scan(&result.AbandonedCarts, &result.CheckoutErrors)
+	err = store.pool.QueryRow(ctx, `SELECT COUNT(*)::int,COALESCE(SUM(total),0)::double precision FROM orders WHERE created_at >= $1 AND status <> 'cancelled' AND (payment_status='paid' OR status='completed')`, since).Scan(&result.Orders, &result.Revenue)
+	if err != nil {
+		return result, fmt.Errorf("analytics paid orders: %w", err)
+	}
+	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FILTER(WHERE has_cart AND NOT has_order AND last_activity < CURRENT_TIMESTAMP-INTERVAL '24 hours')::int,COALESCE(SUM(errors),0)::int FROM (SELECT session_id,BOOL_OR(event_name='add_to_cart') has_cart,BOOL_OR(event_name='order_created' AND trusted=1) has_order,MAX(occurred_at) last_activity,COUNT(*) FILTER(WHERE event_name='checkout_error') errors FROM analytics_events WHERE occurred_at >= $1 GROUP BY session_id) sessions`, since).Scan(&result.AbandonedCarts, &result.CheckoutErrors)
 	if err != nil {
 		return result, fmt.Errorf("analytics losses: %w", err)
 	}
-	rows, err := store.pool.Query(ctx, `SELECT step,COUNT(DISTINCT session_id)::int FROM analytics_events CROSS JOIN LATERAL (VALUES(CASE event_name WHEN 'page_view' THEN 'Посетили сайт' WHEN 'view_item' THEN 'Открыли товар' WHEN 'add_to_cart' THEN 'Добавили в корзину' WHEN 'begin_checkout' THEN 'Начали оформление' WHEN 'order_created' THEN 'Создали заказ' END)) s(step) WHERE occurred_at >= $1 AND step IS NOT NULL GROUP BY step ORDER BY MIN(CASE step WHEN 'Посетили сайт' THEN 1 WHEN 'Открыли товар' THEN 2 WHEN 'Добавили в корзину' THEN 3 WHEN 'Начали оформление' THEN 4 ELSE 5 END)`, since)
+	rows, err := store.pool.Query(ctx, `SELECT step,sessions FROM (SELECT step,COUNT(DISTINCT session_id)::int sessions,MIN(position) position FROM analytics_events CROSS JOIN LATERAL (VALUES(CASE event_name WHEN 'page_view' THEN 'Посетили сайт' WHEN 'view_item' THEN 'Открыли товар' WHEN 'add_to_cart' THEN 'Добавили в корзину' WHEN 'begin_checkout' THEN 'Начали оформление' END,CASE event_name WHEN 'page_view' THEN 1 WHEN 'view_item' THEN 2 WHEN 'add_to_cart' THEN 3 WHEN 'begin_checkout' THEN 4 END)) s(step,position) WHERE occurred_at >= $1 AND step IS NOT NULL GROUP BY step UNION ALL SELECT 'Оплатили заказ',COUNT(DISTINCT analytics_session_id)::int,5 FROM orders WHERE created_at >= $1 AND status <> 'cancelled' AND (payment_status='paid' OR status='completed')) funnel ORDER BY position`, since)
 	if err != nil {
 		return result, err
 	}
@@ -256,7 +260,7 @@ func (store *Store) Summary(ctx context.Context, days int) (Summary, error) {
 	if err := rows.Err(); err != nil {
 		return result, err
 	}
-	rows, err = store.pool.Query(ctx, `SELECT COALESCE(NULLIF(source,''),'Прямые заходы'),COUNT(DISTINCT session_id)::int,COUNT(*) FILTER(WHERE event_name='order_created' AND trusted=1)::int,COALESCE(SUM(value) FILTER(WHERE event_name='order_created' AND trusted=1),0)::double precision FROM analytics_events WHERE occurred_at >= $1 GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, since)
+	rows, err = store.pool.Query(ctx, `WITH traffic AS (SELECT COALESCE(NULLIF(source,''),'Прямые заходы') source,COUNT(DISTINCT session_id)::int sessions FROM analytics_events WHERE occurred_at >= $1 GROUP BY 1), sales AS (SELECT COALESCE(NULLIF(attribution->>'source',''),'Прямые заходы') source,COUNT(*)::int orders,COALESCE(SUM(total),0)::double precision revenue FROM orders WHERE created_at >= $1 AND status <> 'cancelled' AND (payment_status='paid' OR status='completed') GROUP BY 1) SELECT COALESCE(t.source,s.source),COALESCE(t.sessions,0),COALESCE(s.orders,0),COALESCE(s.revenue,0) FROM traffic t FULL JOIN sales s USING(source) ORDER BY COALESCE(t.sessions,0) DESC LIMIT 12`, since)
 	if err != nil {
 		return result, err
 	}
@@ -268,7 +272,7 @@ func (store *Store) Summary(ctx context.Context, days int) (Summary, error) {
 		}
 		result.Sources = append(result.Sources, item)
 	}
-	rows, err = store.pool.Query(ctx, `SELECT product_code,COUNT(*) FILTER(WHERE event_name='view_item')::int,COUNT(*) FILTER(WHERE event_name='add_to_cart')::int,COUNT(*) FILTER(WHERE event_name='order_item_purchased')::int,COALESCE(SUM(value) FILTER(WHERE event_name='order_item_purchased'),0)::double precision FROM analytics_events WHERE occurred_at >= $1 AND product_code<>'' GROUP BY product_code ORDER BY 2 DESC LIMIT 20`, since)
+	rows, err = store.pool.Query(ctx, `WITH engagement AS (SELECT product_code,COUNT(*) FILTER(WHERE event_name='view_item')::int views,COUNT(*) FILTER(WHERE event_name='add_to_cart')::int cart_adds FROM analytics_events WHERE occurred_at >= $1 AND product_code<>'' GROUP BY product_code), sales AS (SELECT p.product_code::text product_code,SUM(oi.quantity)::int orders,COALESCE(SUM(oi.unit_price*oi.quantity),0)::double precision revenue FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN products p ON p.id=oi.product_id WHERE o.created_at >= $1 AND o.status <> 'cancelled' AND (o.payment_status='paid' OR o.status='completed') GROUP BY p.product_code) SELECT COALESCE(e.product_code,s.product_code),COALESCE(e.views,0),COALESCE(e.cart_adds,0),COALESCE(s.orders,0),COALESCE(s.revenue,0) FROM engagement e FULL JOIN sales s USING(product_code) ORDER BY COALESCE(e.views,0) DESC,COALESCE(s.orders,0) DESC LIMIT 20`, since)
 	if err != nil {
 		return result, err
 	}
@@ -292,7 +296,7 @@ func (store *Store) Summary(ctx context.Context, days int) (Summary, error) {
 		}
 		result.Searches = append(result.Searches, item)
 	}
-	rows, err = store.pool.Query(ctx, `SELECT TO_CHAR(DATE_TRUNC('day',occurred_at),'YYYY-MM-DD'),COUNT(DISTINCT session_id)::int,COUNT(*) FILTER(WHERE event_name='order_created' AND trusted=1)::int,COALESCE(SUM(value) FILTER(WHERE event_name='order_created' AND trusted=1),0)::double precision FROM analytics_events WHERE occurred_at >= $1 GROUP BY DATE_TRUNC('day',occurred_at) ORDER BY DATE_TRUNC('day',occurred_at)`, since)
+	rows, err = store.pool.Query(ctx, `WITH traffic AS (SELECT DATE_TRUNC('day',occurred_at) day,COUNT(DISTINCT session_id)::int sessions FROM analytics_events WHERE occurred_at >= $1 GROUP BY 1), sales AS (SELECT DATE_TRUNC('day',created_at) day,COUNT(*)::int orders,COALESCE(SUM(total),0)::double precision revenue FROM orders WHERE created_at >= $1 AND status <> 'cancelled' AND (payment_status='paid' OR status='completed') GROUP BY 1) SELECT TO_CHAR(COALESCE(t.day,s.day),'YYYY-MM-DD'),COALESCE(t.sessions,0),COALESCE(s.orders,0),COALESCE(s.revenue,0) FROM traffic t FULL JOIN sales s USING(day) ORDER BY COALESCE(t.day,s.day)`, since)
 	if err != nil {
 		return result, err
 	}
