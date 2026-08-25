@@ -19,9 +19,14 @@ type PostgresRepository struct {
 // interface during this release. The argument is now the numeric Ficusin
 // product code; old name/Saby slugs are removed by migration 055.
 func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code string) (ProductDetail, error) {
+	resolvedCode, err := repository.resolveLegacyCode(ctx, code)
+	if err != nil {
+		return ProductDetail{}, err
+	}
+	code = resolvedCode
 	var detail ProductDetail
 	var productID int64
-	err := repository.pool.QueryRow(ctx, `
+	err = repository.pool.QueryRow(ctx, `
 		SELECT id, product_code::TEXT, name, latin_name, short_description, description, care_instructions,
 			catalog_section, COALESCE(plant_kind, ''), COALESCE(light_level, ''),
 			COALESCE(watering, ''), COALESCE(height_class, ''), COALESCE(care_level, ''),
@@ -235,6 +240,41 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	detail.Recommendations, err = repository.listRecommendations(ctx, productID, detail)
 	if err != nil { return ProductDetail{}, err }
 	return detail, nil
+}
+
+// resolveLegacyCode preserves indexed links from the catalogue before the
+// immutable numeric Ficusin codes were introduced. An alias is accepted only
+// when the surviving Saby identifier points to exactly one published product;
+// ambiguity deliberately remains a 404 instead of redirecting to a wrong item.
+func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, code string) (string, error) {
+	const prefix = "saby-"
+	if !strings.HasPrefix(strings.ToLower(code), prefix) {
+		return code, nil
+	}
+	externalID := strings.TrimSpace(code[len(prefix):])
+	if externalID == "" {
+		return code, nil
+	}
+	var resolved string
+	err := repository.pool.QueryRow(ctx, `
+		SELECT MIN(product_code)
+		FROM (
+			SELECT DISTINCT product.product_code::TEXT AS product_code
+			FROM product_external_ids external
+			JOIN products product ON product.id=external.product_id
+			WHERE external.provider='saby'
+				AND LOWER(BTRIM(external.external_id))=LOWER($1)
+				AND product.status='published'
+		) candidates
+		HAVING COUNT(*)=1
+	`, externalID).Scan(&resolved)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return code, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve legacy product code: %w", err)
+	}
+	return resolved, nil
 }
 
 const recommendationsQuery = `
