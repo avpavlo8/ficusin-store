@@ -372,21 +372,26 @@ func withProductMeta(
 	repository productMetaCatalog,
 	base, slug string,
 	shell []byte,
-) ([]byte, bool, error) {
+) ([]byte, string, error) {
 	if repository == nil || slug == "" {
-		return shell, false, nil
+		return shell, "", nil
 	}
 	detail, err := repository.DetailBySlug(ctx, slug)
 	if err != nil {
 		if errors.Is(err, catalog.ErrNotFound) {
-			return shell, false, nil
+			return shell, "", nil
 		}
 		logger.Error("product meta failed", "slug", slug, "error", err)
-		return shell, false, err
+		return shell, "", err
 	}
 	if detail.Name == "" {
-		return shell, false, nil
+		return shell, "", nil
 	}
+	canonicalSlug := strings.TrimSpace(detail.ID)
+	if canonicalSlug == "" {
+		canonicalSlug = slug
+	}
+	canonicalPath := "/product/" + url.PathEscape(canonicalSlug)
 
 	title := detail.Name + " — купить с доставкой по России | Фикусин"
 	description := strings.TrimSpace(detail.ShortDescription)
@@ -413,7 +418,7 @@ func withProductMeta(
 		if variant.Stock > 0 {
 			availability = "https://schema.org/InStock"
 		}
-		offer := map[string]any{"@type": "Offer", "priceCurrency": "RUB", "availability": availability, "url": base + "/product/" + slug + "?sku=" + url.QueryEscape(variant.SKU), "sku": variant.SKU, "itemCondition": "https://schema.org/NewCondition"}
+		offer := map[string]any{"@type": "Offer", "priceCurrency": "RUB", "availability": availability, "url": base + canonicalPath + "?sku=" + url.QueryEscape(variant.SKU), "sku": variant.SKU, "itemCondition": "https://schema.org/NewCondition"}
 		if variant.Price > 0 {
 			offer["price"] = strconv.FormatFloat(variant.Price, 'f', 2, 64)
 		}
@@ -459,11 +464,11 @@ func withProductMeta(
 	}
 
 	head := strings.Builder{}
-	head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+"/product/"+slug) + "\">\n")
+	head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+canonicalPath) + "\">\n")
 	head.WriteString(`<meta property="og:type" content="product">` + "\n")
 	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(title) + "\">\n")
 	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(description) + "\">\n")
-	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+"/product/"+slug) + "\">\n")
+	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+canonicalPath) + "\">\n")
 	if image != "" {
 		head.WriteString(`<meta property="og:image" content="` + html.EscapeString(image) + "\">\n")
 	}
@@ -475,5 +480,5 @@ func withProductMeta(
 	page = descriptionPattern.ReplaceAll(
 		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+`">`),
 	)
-	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1), true, nil
+	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1), canonicalSlug, nil
 }
