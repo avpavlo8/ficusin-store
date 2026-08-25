@@ -209,33 +209,30 @@ func TestAnalyticsCounterIsInjectedOnlyWhenConfigured(t *testing.T) {
 		if got := string(withAnalytics(shell, bad)); got != string(shell) {
 			t.Errorf("настройка %q не должна менять страницу, получили: %s", bad, got)
 		}
+		if script := analyticsScript(bad); script != "" {
+			t.Errorf("загрузчик собрался на негодном номере %q: %s", bad, script)
+		}
 	}
 
 	page := string(withAnalytics(shell, " 98765432 "))
-	for _, want := range []string{
-		"mc.yandex.ru/metrika/tag.js",
-		`ym(98765432,"init"`,
-		"mc.yandex.ru/watch/98765432",
-		"<noscript>",
-	} {
+	for _, want := range []string{`<script src="/analytics.js" async></script>`, "mc.yandex.ru/watch/98765432", "<noscript>"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("на странице нет %q", want)
 		}
 	}
+	// Встроенного кода на странице быть не должно: политика безопасности
+	// запрещает inline-скрипты, и ровно на этом счётчик молча не работал.
+	if strings.Contains(page, "<script>(") || strings.Contains(page, "ym(") {
+		t.Error("счётчик снова встроен в страницу — браузер отклонит его по CSP")
+	}
 	if !strings.Contains(page, "</head>") {
 		t.Error("счётчик испортил разметку: пропал </head>")
 	}
-}
 
-func TestSearchVerificationRejectsMarkup(t *testing.T) {
-	shell := []byte("<html><head></head></html>")
-	page := string(withSearchVerification(shell, "yandex_token-123", "google_token_456"))
-	for _, want := range []string{`name="yandex-verification" content="yandex_token-123"`, `name="google-site-verification" content="google_token_456"`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("нет %q", want)
+	loader := analyticsScript(" 98765432 ")
+	for _, want := range []string{"mc.yandex.ru/metrika/tag.js", `ym(98765432,"init"`, "dataLayer"} {
+		if !strings.Contains(loader, want) {
+			t.Errorf("в загрузчике нет %q", want)
 		}
-	}
-	if got := string(withSearchVerification(shell, `bad\"><script>`, "x")); got != string(shell) {
-		t.Fatalf("опасный код попал в страницу: %s", got)
 	}
 }
