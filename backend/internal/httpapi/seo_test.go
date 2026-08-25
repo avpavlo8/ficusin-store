@@ -73,7 +73,7 @@ func TestSPAFallbackServesDirectCartURL(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/cart", nil)
 	response := httptest.NewRecorder()
-	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil).ServeHTTP(response, request)
+	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET /cart status = %d, want 200", response.Code)
@@ -90,7 +90,7 @@ func sitemapBody(t *testing.T, repository sitemapCatalog, collections sitemapCol
 	request.Host = "ficusin.ru"
 	request.Header.Set("X-Forwarded-Proto", "https")
 	response := httptest.NewRecorder()
-	sitemapHandler(logger, repository, collections).ServeHTTP(response, request)
+	sitemapHandler(logger, repository, collections, "https://ficusin.ru").ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("ожидали 200, получили %d", response.Code)
 	}
@@ -145,7 +145,7 @@ func (stub productMetaStub) DetailBySlug(context.Context, string) (catalog.Produ
 func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	shell := []byte(`<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body></body></html>`)
-	page := string(withProductMeta(
+	pageBytes, found, err := withProductMeta(
 		context.Background(), logger,
 		productMetaStub{detail: catalog.ProductDetail{
 			Name:     "Монстера Делициоза",
@@ -156,13 +156,21 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 			Passport: catalog.PlantPassport{FAQ: []catalog.FAQItem{{Question: "Когда пересаживать?", Answer: "Весной."}}},
 		}},
 		"https://ficusin.ru", "monstera", shell,
-	))
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("товар не найден")
+	}
+	page := string(pageBytes)
 	for _, want := range []string{
 		"<title>Монстера Делициоза",
 		`"@type":"Product"`,
 		`"price":"1290.00"`,
 		"schema.org/InStock",
 		`rel="canonical" href="https://ficusin.ru/product/monstera"`,
+		`property="og:url" content="https://ficusin.ru/product/monstera"`,
 		`"@type":"AggregateRating"`,
 		`"reviewCount":12`,
 		`"@type":"FAQPage"`,
@@ -173,18 +181,71 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 	}
 }
 
-// Ненайденный товар — обычное дело: ссылка могла устареть. Страница должна
-// открыться с общим заголовком магазина, а не сломаться.
+// Устаревшая ссылка должна дать обработчику возможность вернуть настоящий
+// HTTP 404, а не индексируемый soft 404.
 func TestProductMetaLeavesShellWhenMissing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	shell := []byte("<html><head><title>Фикусин</title></head></html>")
-	page := withProductMeta(
+	page, found, err := withProductMeta(
 		context.Background(), logger,
 		productMetaStub{err: catalog.ErrNotFound},
 		"https://ficusin.ru", "нет-такого", shell,
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Fatal("несуществующий товар найден")
+	}
 	if string(page) != string(shell) {
 		t.Fatalf("оболочку изменили: %s", page)
+	}
+}
+
+func TestSPAFallbackReturns404AndNoIndexForMissingProduct(t *testing.T) {
+	staticDir := t.TempDir()
+	shell := `<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body><div id="root"></div></body></html>`
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte(shell), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "https://ficusin.ru/product/missing", nil)
+	response := httptest.NewRecorder()
+	spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, productMetaStub{err: catalog.ErrNotFound}, nil, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), `name="robots" content="noindex,nofollow"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestRouteMetaReplacesMultilineProductionDescription(t *testing.T) {
+	shell := []byte(`<html><head><title>shop</title><meta
+  name="description"
+  content="общая страница"
+/></head></html>`)
+	page := string(withRouteMeta("https://ficusin.ru", "/contacts", shell))
+	if strings.Contains(page, "общая страница") || !strings.Contains(page, "Магазин комнатных растений") {
+		t.Fatalf("description не заменён: %s", page)
+	}
+}
+
+func TestRouteMetaReplacesDescriptionInRealFrontendShell(t *testing.T) {
+	shell, err := os.ReadFile("../../../frontend/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(withRouteMeta("https://ficusin.ru", "/contacts", shell))
+	if strings.Contains(page, "Комнатные растения с доставкой по Рязани и России") || !strings.Contains(page, "Магазин комнатных растений") {
+		t.Fatalf("production description не заменён: %s", page)
+	}
+}
+
+func TestCanonicalHostRedirect(t *testing.T) {
+	next := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { response.WriteHeader(http.StatusNoContent) })
+	handler := canonicalHostRedirect("https://ficusin.ru", next)
+	request := httptest.NewRequest(http.MethodGet, "https://www.ficusin.ru/catalog?x=1", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusPermanentRedirect || response.Header().Get("Location") != "https://ficusin.ru/catalog?x=1" {
+		t.Fatalf("redirect status=%d location=%q", response.Code, response.Header().Get("Location"))
 	}
 }
 
