@@ -256,7 +256,7 @@ func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, cod
 		SELECT product.product_code::TEXT
 		FROM product_url_aliases alias
 		JOIN products product ON product.id=alias.product_id
-		WHERE alias.alias=LOWER(BTRIM($1)) AND product.status='published'
+		WHERE alias.alias=LOWER(BTRIM($1))
 	`, code).Scan(&resolved)
 	if err == nil {
 		return resolved, nil
