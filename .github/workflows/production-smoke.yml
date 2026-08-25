@@ -34,7 +34,12 @@ jobs:
 
           expected_js="$(grep -oE 'src="/assets/[^"]+\.js"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
           expected_css="$(grep -oE 'href="/assets/[^"]+\.css"' frontend/dist/index.html | head -1 | cut -d'"' -f2)"
-          expected_backend="$(cd backend && find . -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)"
+          expected_backend="$(
+            {
+              find backend -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1
+              sha256sum frontend/dist/index.html | cut -d' ' -f1
+            } | sha256sum | cut -c1-16
+          )"
 
           if [[ -z "$expected_js" || -z "$expected_css" ]]; then
             echo 'Could not determine expected frontend assets.' >&2
@@ -71,3 +76,19 @@ jobs:
 
           echo 'Timeweb did not expose a healthy exact production release with a non-empty catalog in time.' >&2
           exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+        working-directory: e2e
+      - run: npx playwright install --with-deps chromium webkit
+        working-directory: e2e
+      - name: Verify real production in desktop and mobile browsers
+        run: npx playwright test --config playwright.production.config.ts
+        working-directory: e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: production-playwright-report
+          path: e2e/playwright-report
+          retention-days: 7
