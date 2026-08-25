@@ -153,6 +153,38 @@ type poolRow struct {
 	Attributes  map[string]any `json:"attributes"`
 }
 
+// Kept as one statement so the live PostgreSQL test can execute the exact
+// production mapping query after every migration has been applied.
+const syncCharacteristicsSQL = `
+	INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
+	SELECT p.id,d.id,entry.value,'saby',CURRENT_TIMESTAMP
+	FROM products p JOIN saby_nomenclature n ON n.saby_id=p.saby_id
+	CROSS JOIN LATERAL jsonb_each(n.characteristics) entry
+	JOIN attribute_definitions d ON d.code=entry.key
+	WHERE entry.value NOT IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb)
+	  AND EXISTS (WITH RECURSIVE ancestors AS (
+		SELECT p.category_id id UNION ALL SELECT c.parent_id FROM categories c JOIN ancestors a ON c.id=a.id WHERE c.parent_id IS NOT NULL
+	  ) SELECT 1 FROM category_attributes ca JOIN ancestors a ON a.id=ca.category_id WHERE ca.attribute_id=d.id)
+	  AND CASE d.data_type
+		WHEN 'number' THEN jsonb_typeof(entry.value)='number'
+		WHEN 'boolean' THEN jsonb_typeof(entry.value)='boolean'
+		WHEN 'enum' THEN jsonb_typeof(entry.value)='string' AND EXISTS (
+			SELECT 1 FROM attribute_options option
+			WHERE option.attribute_id=d.id AND option.is_active
+			  AND option.code=(entry.value #>> '{}')
+		)
+		WHEN 'multi_enum' THEN jsonb_typeof(entry.value)='array' AND NOT EXISTS (
+			SELECT 1 FROM jsonb_array_elements_text(entry.value) value
+			WHERE NOT EXISTS (
+				SELECT 1 FROM attribute_options option
+				WHERE option.attribute_id=d.id AND option.is_active AND option.code=value
+			)
+		)
+		ELSE jsonb_typeof(entry.value)='string' END
+	ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,source='saby',updated_at=CURRENT_TIMESTAMP
+	WHERE product_attribute_values.source='saby'
+`
+
 // sync складывает выгрузку в справочник и обновляет у товаров ровно то, что
 // им разрешено брать из СБИС.
 //
@@ -240,25 +272,9 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	`, catalogue); err != nil {
 		return fmt.Errorf("upsert Saby nomenclature: %w", err)
 	}
-	if _,err:=tx.Exec(ctx,`
-		INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
-		SELECT p.id,d.id,entry.value,'saby',CURRENT_TIMESTAMP
-		FROM products p JOIN saby_nomenclature n ON n.saby_id=p.saby_id
-		CROSS JOIN LATERAL jsonb_each(n.characteristics) entry
-		JOIN attribute_definitions d ON d.code=entry.key
-		WHERE entry.value NOT IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb)
-		  AND EXISTS (WITH RECURSIVE ancestors AS (
-			SELECT p.category_id id UNION ALL SELECT c.parent_id FROM categories c JOIN ancestors a ON c.id=a.id WHERE c.parent_id IS NOT NULL
-		  ) SELECT 1 FROM category_attributes ca JOIN ancestors a ON a.id=ca.category_id WHERE ca.attribute_id=d.id)
-		  AND CASE d.data_type
-			WHEN 'number' THEN jsonb_typeof(entry.value)='number'
-			WHEN 'boolean' THEN jsonb_typeof(entry.value)='boolean'
-			WHEN 'enum' THEN jsonb_typeof(entry.value)='string' AND d.options ? (entry.value #>> '{}')
-			WHEN 'multi_enum' THEN jsonb_typeof(entry.value)='array' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(entry.value) option WHERE NOT d.options ? option)
-			ELSE jsonb_typeof(entry.value)='string' END
-		ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,source='saby',updated_at=CURRENT_TIMESTAMP
-		WHERE product_attribute_values.source='saby'
-	`);err!=nil{return fmt.Errorf("map Saby characteristics: %w",err)}
+	if _, err := tx.Exec(ctx, syncCharacteristicsSQL); err != nil {
+		return fmt.Errorf("map Saby characteristics: %w", err)
+	}
 
 	// Refresh integration mappings independently from product identity. Empty
 	// supplier values never delete a mapping that was already confirmed.
