@@ -157,8 +157,7 @@ function MobileMenu({
     <a href="/#catalog" onClick={onClose}>Каталог</a>
     <a href="/favorites">Избранное ({favorites})</a>
     <a href="/delivery-and-returns">Доставка и возврат</a>
-    <span className="mobile-menu-heading">О нас</span>
-    <a href="/#about" onClick={onClose}>О компании</a>
+    <span className="mobile-menu-heading">О магазине</span>
     <a href="/contacts">Контакты</a>
     <a href="/offer">Публичная оферта</a>
     <a href="/privacy">Политика конфиденциальности</a>
@@ -167,7 +166,7 @@ function MobileMenu({
 }
 
 function AboutMenu() {
-  return <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>О нас <span>⌄</span></summary><div><a href="/#about">О компании</a><a href="/contacts">Контакты</a><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></div></details>;
+  return <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>О магазине <span>⌄</span></summary><div><a href="/contacts">Контакты</a><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></div></details>;
 }
 
 // The bar pinned to the bottom of a phone screen. Everything a shopper
@@ -301,7 +300,7 @@ export function StoreHeader({
       <nav className="desktop-nav">{homeNavigation ? <>
         <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
         <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{resolvedPlantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
-        <a href="/#care">Уход</a><a href="/delivery-and-returns">Доставка и оплата</a><a href="/#blog">Блог</a><AboutMenu/>
+        <a href="/delivery-and-returns">Доставка и оплата</a><AboutMenu/>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a><AboutMenu/></>}</nav>
       <div className="header-actions">
         {showSearch && <>
