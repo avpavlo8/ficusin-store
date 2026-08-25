@@ -331,7 +331,13 @@ func analyticsScript(counter string) string {
 	if !metrikaCounterPattern.MatchString(counter) {
 		return ""
 	}
-	return `(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();for(var j=0;j<e.scripts.length;j++){if(e.scripts[j].src===r){return}}k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");window.dataLayer=window.dataLayer||[];ym(` + counter + `,"init",{ssr:true,webvisor:true,clickmap:true,trackLinks:true,accurateTrackBounce:true,ecommerce:"dataLayer"});`
+	// Официальный сниппет Метрики рассчитан на заглушку ym, объявленную прямо
+	// в HTML: tag.js потом её подхватывает. Здесь загрузчик вынесен в отдельный
+	// файл, потому что политика безопасности запрещает встроенные скрипты, и в
+	// таком виде подхвата не происходит — библиотека грузится, счётчик не
+	// создаётся, вызовы копятся в очереди, отчёты пустые. Поэтому счётчик
+	// создаётся явно, а накопленная очередь прогоняется через него.
+	return `(function(){var w=window,d=document,id=` + counter + `,tag="https://mc.yandex.ru/metrika/tag.js";var options={webvisor:true,clickmap:true,trackLinks:true,accurateTrackBounce:true,ecommerce:"dataLayer"};w.dataLayer=w.dataLayer||[];var queued=[];if(typeof w.ym!=="function"){w.ym=function(){queued.push(arguments)};w.ym.a=queued;w.ym.l=1*new Date()}else if(w.ym.a){queued=w.ym.a}for(var j=0;j<d.scripts.length;j++){if(d.scripts[j].src===tag){return}}var s=d.createElement("script");s.async=1;s.src=tag;s.onload=function(){if(typeof w.ym==="function"&&!w.ym.a){w.ym(id,"init",options);return}if(!w.Ya||!w.Ya.Metrika2){return}var params={id:id};for(var k in options){params[k]=options[k]}var counter=new w.Ya.Metrika2(params);w.ym=function(cid,method){var rest=[].slice.call(arguments,2);if(typeof counter[method]==="function"){counter[method].apply(counter,rest)}};counter.hit(location.pathname+location.search);for(var q=0;q<queued.length;q++){if(queued[q][1]!=="init"){w.ym.apply(null,queued[q])}}queued.length=0};d.head.appendChild(s)})();`
 }
 
 // withAnalytics подключает счётчик к оболочке страницы.

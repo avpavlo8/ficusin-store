@@ -305,7 +305,9 @@ func TestAnalyticsCounterIsInjectedOnlyWhenConfigured(t *testing.T) {
 	}
 
 	loader := analyticsScript(" 98765432 ")
-	for _, want := range []string{"mc.yandex.ru/metrika/tag.js", `ym(98765432,"init"`, "dataLayer"} {
+	// Счётчик обязан создаваться явно: подхвата заглушки из внешнего файла не
+	// происходит, tag.js её не забирает, и именно поэтому отчёты были пустыми.
+	for _, want := range []string{"mc.yandex.ru/metrika/tag.js", "id=98765432", "Ya.Metrika2", "counter.hit(", "dataLayer"} {
 		if !strings.Contains(loader, want) {
 			t.Errorf("в загрузчике нет %q", want)
 		}
