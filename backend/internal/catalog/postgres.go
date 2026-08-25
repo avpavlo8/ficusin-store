@@ -251,12 +251,24 @@ func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, cod
 	if !strings.HasPrefix(strings.ToLower(code), prefix) {
 		return code, nil
 	}
+	var resolved string
+	err := repository.pool.QueryRow(ctx, `
+		SELECT product.product_code::TEXT
+		FROM product_url_aliases alias
+		JOIN products product ON product.id=alias.product_id
+		WHERE alias.alias=LOWER(BTRIM($1)) AND product.status='published'
+	`, code).Scan(&resolved)
+	if err == nil {
+		return resolved, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("resolve product URL alias: %w", err)
+	}
 	externalID := strings.TrimSpace(code[len(prefix):])
 	if externalID == "" {
 		return code, nil
 	}
-	var resolved string
-	err := repository.pool.QueryRow(ctx, `
+	err = repository.pool.QueryRow(ctx, `
 		SELECT MIN(product_code)
 		FROM (
 			SELECT DISTINCT product.product_code::TEXT AS product_code
