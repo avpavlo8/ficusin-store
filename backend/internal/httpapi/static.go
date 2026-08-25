@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,15 +121,22 @@ func spaFallback(
 			body = withRouteMeta(base, request.URL.Path, body)
 		}
 		if slug := productSlug(request.URL.Path); slug != "" {
-			var found bool
+			var canonicalSlug string
 			var productErr error
-			body, found, productErr = withProductMeta(request.Context(), logger, products, base, slug, body)
+			body, canonicalSlug, productErr = withProductMeta(request.Context(), logger, products, base, slug, body)
 			if productErr != nil {
 				status = http.StatusServiceUnavailable
 				body = withRouteMeta(base, "/__not_found__", body)
-			} else if !found {
+			} else if canonicalSlug == "" {
 				status = http.StatusNotFound
 				body = withRouteMeta(base, "/__not_found__", body)
+			} else if canonicalSlug != slug {
+				target := base + "/product/" + url.PathEscape(canonicalSlug)
+				if request.URL.RawQuery != "" {
+					target += "?" + request.URL.RawQuery
+				}
+				http.Redirect(response, request, target, http.StatusMovedPermanently)
+				return
 			}
 		}
 		// Счётчик ставится здесь, а не в сборке фронта: номер меняется в
