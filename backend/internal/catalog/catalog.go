@@ -110,6 +110,12 @@ type ProductAttribute struct {
 	Value                 any    `json:"value"`
 	Badge                 bool   `json:"badge"`
 	Filterable            bool   `json:"filterable"`
+	// DataType and DisplayMode are catalogue presentation metadata from the
+	// existing PIM model. They are additive fields: product/PDP consumers that
+	// do not use filters can ignore them, while StorefrontPage no longer needs
+	// a second hard-coded filter schema.
+	DataType              string `json:"dataType,omitempty"`
+	DisplayMode           string `json:"displayMode,omitempty"`
 	SummaryPosition       *int   `json:"summaryPosition,omitempty"`
 	ShowInCharacteristics bool   `json:"showInCharacteristics"`
 }
