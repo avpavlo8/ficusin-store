@@ -22,7 +22,7 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data: https:; " +
 	"font-src 'self' data:; " +
-	"connect-src 'self' https://mc.yandex.ru https://mc.yandex.com; " +
+	"connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru wss://mc.yandex.com; " +
 	"manifest-src 'self'; " +
 	"worker-src 'self'; " +
 	"form-action 'self'; " +
