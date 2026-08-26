@@ -4,12 +4,13 @@ import { mockApi, owner } from "./helpers";
 // Витрина — это главная страница магазина, и почти всё, что покупатель делает
 // до корзины, происходит здесь. Раньше её не проверял никто.
 
-test("@desktop главная сохраняет утверждённую визуальную структуру", async ({ page }) => {
+test("@desktop главная использует компактную товарную структуру", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
   await expect(page.locator(".home-hero-visual img")).toHaveAttribute("src", /home-hero-4k\.webp/);
-  await expect(page.locator(".home-team img")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Видео о Фикусин" })).toHaveCount(0);
+  await expect(page.locator(".home-stamp")).toHaveCount(1);
   await expect(page.locator(".home-collections")).toHaveCount(0);
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
@@ -44,8 +45,7 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(headerMenus.nth(1)).not.toHaveAttribute("open", "");
   await headerMenus.nth(2).locator(":scope > summary").click();
   await expect(headerMenus.nth(2).getByRole("link", { name: "Публичная оферта" })).toBeVisible();
-  await page.getByRole("button", { name: "Список" }).click();
-  await expect(page.locator(".storefront-grid")).toHaveClass(/list-view/);
+  await expect(page.locator(".catalog-view-toggle")).toHaveCount(0);
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
 });
 
@@ -159,8 +159,7 @@ test("@desktop товар без остатка идёт как предзака
   await expect(card.locator(".storefront-preorder")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "В корзину" })).toBeVisible();
 
-  await page.getByRole("button", { name: /Фильтры/ }).click();
-  await page.locator(".home-filter-panel").getByLabel("Только в наличии").check();
+  await page.getByLabel("Только в наличии").first().check();
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
 });
 
@@ -291,13 +290,11 @@ test("@desktop сортировка по цене", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
-  const sort = page.locator(".catalog-dropdown.home-sort");
-  await sort.locator("summary").click();
-  await sort.getByRole("option", { name: "Сначала дешевле" }).click();
+  const sort = page.getByLabel("Сортировка");
+  await sort.selectOption("cheap");
   await expect(page.locator(".storefront-name").first()).toHaveText("Кашпо Классик");
 
-  await sort.locator("summary").click();
-  await sort.getByRole("option", { name: "Сначала дороже" }).click();
+  await sort.selectOption("expensive");
   await expect(page.locator(".storefront-name").first()).toHaveText("Монстера Делициоза");
 });
 

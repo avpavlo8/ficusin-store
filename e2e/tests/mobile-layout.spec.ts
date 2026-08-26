@@ -104,7 +104,7 @@ test("@phone the cart opens as a separate page and keeps its contents", async ({
 
 test("@phone подбор по характеристикам свёрнут, товар виден сразу", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/");
+  await page.goto("/catalog/plants");
 
   // Пять выпадающих списков занимали первый экран целиком, и до растений
   // покупатель добирался прокруткой.
@@ -119,7 +119,18 @@ test("@phone подбор по характеристикам свёрнут, т
 
   // Свёрнутый — не значит недоступный.
   await filters.click();
-  await expect(page.locator(".home-filter-panel").getByLabel("Только в наличии")).toBeVisible();
+  await expect(page.locator(".home-filter-panel .storefront-attribute-filters")).toBeVisible();
+});
+
+test("@phone hero не прячет витрину за рекламными экранами", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    const firstProduct = await page.locator(".storefront-card").first().boundingBox();
+    expect(firstProduct?.y, `первый товар слишком низко при ${width}px`).toBeLessThan(1500);
+    expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
+  }
 });
 
 test("@phone no page scrolls sideways", async ({ page }) => {
@@ -175,6 +186,19 @@ test("@desktop the public notice and header fit the design-system checkpoints", 
     expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
     const header = await page.locator(".store-header").boundingBox();
     expect(header?.width, `ширина шапки ${width}px`).toBe(width);
+  }
+});
+
+test("@desktop каталог компактен на контрольных ширинах", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [768, 1024, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    const hero = await page.locator(".home-hero").boundingBox();
+    const catalog = await page.locator("#catalog").boundingBox();
+    expect(hero?.height, `hero слишком высокий при ${width}px`).toBeLessThanOrEqual(470);
+    expect(catalog?.y, `каталог ниже второго экрана при ${width}px`).toBeLessThan(1800);
+    expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
   }
 });
 

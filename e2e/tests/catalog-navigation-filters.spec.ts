@@ -31,8 +31,8 @@ test("@desktop сброс дополнительных фильтров сохр
   await mockApi(page);
   await page.goto("/collections/tall");
   await page.getByRole("button", { name: /Фильтры/ }).click();
-  await page.locator(".home-filter-panel").getByLabel("Только в наличии").check();
-  await page.locator(".home-filter-panel").getByRole("button", { name: "Сбросить фильтры" }).click();
+  await page.getByLabel("Только в наличии").first().check();
+  await page.getByRole("button", { name: "Сбросить все" }).click();
   await expect(page).toHaveURL(/\/collections\/tall$/);
   await expect(page.locator(".preset.active")).toContainText("Вырастает высоким");
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
