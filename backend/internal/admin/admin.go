@@ -195,6 +195,8 @@ type Product struct {
 	ImportantWarnings []string              `json:"importantWarnings"`
 	ExternalIDs       []ExternalID          `json:"externalIds"`
 	Attributes        map[string]any        `json:"attributes"`
+	VariantStage1Missing bool               `json:"variantStage1Missing"`
+	UnknownEnumValues    bool               `json:"unknownEnumValues"`
 }
 
 type ExternalID struct {
@@ -243,6 +245,7 @@ type ProductUpdate struct {
 	Stock              *int                   `json:"stock"`
 	SabyFields         *[]string              `json:"sabyFields"`
 	CategoryID         *int64                 `json:"categoryId"`
+	ClearCategory      bool                   `json:"clearCategory"`
 	Passport           *catalog.PlantPassport `json:"passport"`
 	ImportantWarnings  *[]string              `json:"importantWarnings"`
 	Attributes         map[string]any         `json:"attributes"`
@@ -332,11 +335,13 @@ type CategoryAttribute struct {
 	DataType   string   `json:"dataType"`
 	Unit       string   `json:"unit"`
 	Options    []string `json:"options"`
+	OptionLabels map[string]string `json:"optionLabels"`
 	Audience   string   `json:"audience"`
 	Scope      string   `json:"scope"`
 	Required   bool     `json:"required"`
 	Filterable bool     `json:"filterable"`
 	ShowOnPDP  bool     `json:"showOnPdp"`
+	KeyCharacteristic bool `json:"keyCharacteristic"`
 	Badge      bool     `json:"badge"`
 	SortOrder  int      `json:"sortOrder"`
 }

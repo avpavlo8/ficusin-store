@@ -1,21 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPicker } from "./AdminCatalog";
 import { Dialog, api, money, sabyFieldLabels } from "./adminShared";
+import { aiCandidates, applyAICandidates, displayValue, isPlantProduct, valueMissing, type AICandidate } from "./adminCatalogLogic";
 import { VariantsEditor } from "./AdminPim";
+import { ProductMediaManager } from "./ProductMediaManager";
 import type { Category, CategoryAttribute, ImportEntry, Product } from "./adminTypes";
 
-const attributeOptionLabels: Record<string, string> = {
-  sunny: "Яркий свет", diffused: "Рассеянный свет", low_light: "Полутень",
-  frequent: "Частый", moderate: "Умеренный", rare: "Редкий",
-  low: "Низкая", medium: "Средняя", high: "Высокая",
-  easy: "Лёгкий", demanding: "Требовательный", non_toxic: "Нетоксично",
-  toxic: "Токсично", unknown: "Не проверено", safe: "Безопасно", caution: "С осторожностью",
-  bathroom: "Ванная", bedroom: "Спальня", office: "Офис", nursery: "Детская",
-  living_room: "Гостиная", kitchen: "Кухня", upright: "Вертикальная",
-  bushy: "Кустовая", trailing: "Ампельная", climbing: "Вьющаяся", rosette: "Розетка",
-};
-
-function AttributeFields({ schema, values, onChange, onGenerate, busy }: {
+export function AttributeFields({ schema, values, onChange, onGenerate, busy }: {
   schema: CategoryAttribute[]; values: Record<string, unknown>;
   onChange: (code: string, value: string | number | boolean | string[] | null) => void;
   onGenerate?: (code: string) => void; busy?: string | null;
@@ -25,10 +16,11 @@ function AttributeFields({ schema, values, onChange, onGenerate, busy }: {
     const title = `${attribute.name}${attribute.unit ? `, ${attribute.unit}` : ""}${attribute.required ? " *" : ""}`;
     const ai = onGenerate && <button className="ai-field-button" type="button" disabled={Boolean(busy)} onClick={() => onGenerate(attribute.code)} title={`Сгенерировать: ${attribute.name}`}>{busy === attribute.code ? "…" : "✦"}</button>;
     if (attribute.dataType === "boolean") return <label className={`attribute-toggle ${value === true ? "selected" : ""}`} key={attribute.code}><input type="checkbox" checked={value === true} onChange={(event) => onChange(attribute.code, event.target.checked)} /><span>{title}</span>{ai}</label>;
-    if (attribute.dataType === "enum") return <label className="attribute-control" key={attribute.code}><span>{title}{ai}</span><select required={attribute.required} value={String(value ?? "")} onChange={(event) => onChange(attribute.code, event.target.value || null)}><option value="">Не указано</option>{attribute.options.map((option) => <option key={option} value={option}>{attributeOptionLabels[option] || option}</option>)}</select></label>;
+    if (attribute.dataType === "enum") { const current = String(value ?? ""); const unknown = current && !attribute.options.includes(current); return <label className="attribute-control" key={attribute.code}><span>{title}{ai}</span><select required={attribute.required} value={current} onChange={(event) => onChange(attribute.code, event.target.value || null)}><option value="">Не указано</option>{unknown && <option value={current}>{`Неизвестное значение: ${current}`}</option>}{attribute.options.map((option) => <option key={option} value={option}>{attribute.optionLabels?.[option] || option}</option>)}</select>{unknown && <small className="admin-inline-error">Старое значение сохранено. Выберите вариант из матрицы, чтобы заменить его.</small>}</label>; }
     if (attribute.dataType === "multi_enum") {
       const selected = Array.isArray(value) ? value.map(String) : [];
-      return <fieldset className="attribute-multi" key={attribute.code}><legend>{title}{ai}</legend><div className="attribute-choice-list">{attribute.options.map((option) => <label className={selected.includes(option) ? "selected" : ""} key={option}><input type="checkbox" checked={selected.includes(option)} onChange={(event) => onChange(attribute.code, event.target.checked ? [...selected, option] : selected.filter((item) => item !== option))} />{attributeOptionLabels[option] || option}</label>)}</div></fieldset>;
+      const unknown = selected.filter((option) => !attribute.options.includes(option));
+      return <fieldset className="attribute-multi" key={attribute.code}><legend>{title}{ai}</legend><div className="attribute-choice-list">{attribute.options.map((option) => <label className={selected.includes(option) ? "selected" : ""} key={option}><input type="checkbox" checked={selected.includes(option)} onChange={(event) => onChange(attribute.code, event.target.checked ? [...selected, option] : selected.filter((item) => item !== option))} />{attribute.optionLabels?.[option] || option}</label>)}</div>{unknown.length > 0 && <small className="admin-inline-error">Неизвестные старые значения сохранены: {unknown.join(", ")}</small>}</fieldset>;
     }
     return <label className="attribute-control" key={attribute.code}><span>{title}{ai}</span><input type={attribute.dataType === "number" ? "number" : "text"} min={attribute.dataType === "number" ? 0 : undefined} required={attribute.required} value={value == null ? "" : String(value)} onChange={(event) => onChange(attribute.code, event.target.value === "" ? null : attribute.dataType === "number" ? Number(event.target.value) : event.target.value)} /></label>;
   };
@@ -58,11 +50,21 @@ function validAttributes(schema: CategoryAttribute[], values: Record<string, unk
   return normalized;
 }
 
+function changedAttributes(schema: CategoryAttribute[], values: Record<string, unknown>, original: Record<string, unknown>) {
+  const result: Record<string, unknown> = {};
+  for (const item of schema) {
+    if (JSON.stringify(values[item.code]) === JSON.stringify(original[item.code])) continue;
+    if (valueMissing(values[item.code])) result[item.code] = null;
+    else Object.assign(result, validAttributes([item], values));
+  }
+  return result;
+}
+
 function missingRequired(schema: CategoryAttribute[], values: Record<string, unknown>) {
   return schema.filter((item) => item.required && (values[item.code] == null || values[item.code] === "" || (Array.isArray(values[item.code]) && (values[item.code] as unknown[]).length === 0))).map((item) => item.name);
 }
 
-type ProductEditorSection = "main" | "attributes" | "care" | "variants" | "sync";
+type ProductEditorSection = "main" | "attributes" | "care" | "variants" | "photos" | "sync";
 type ProductAIMode = "description" | "attributes" | "care";
 type AIDraft = { name?:string; latinName?:string; shortDescription?:string; description?:string; careInstructions?:string; attributes?:Record<string,unknown>; passport?:Product["passport"]; warnings?:string[] };
 const passportFields = [
@@ -72,7 +74,7 @@ const passportFields = [
   ["toxicity","Токсичность"],["problems","Типичные проблемы и решения"],["pests","Вредители"],
 ] as const;
 
-export function ProductDialog({ product, onClose, onSaved, onError }: { product: Product; onClose: () => void; onSaved: (value: Product) => void; onError: (value: string) => void }) {
+export function ProductDialog({ product, onClose, onSaved, onError, hasNext = false }: { product: Product; onClose: () => void; onSaved: (value: Product, openNext: boolean) => void; onError: (value: string) => void; hasNext?: boolean }) {
   const [form, setForm] = useState(product);
   const [section, setSection] = useState<ProductEditorSection>("main");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -82,40 +84,44 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
   const [aiCoverBusy,setAICoverBusy]=useState(false);
   const [saving,setSaving]=useState(false);
   const [saveError,setSaveError]=useState("");
+  const [saveNotice,setSaveNotice]=useState("");
+  const [aiPreview,setAIPreview]=useState<{ candidates: AICandidate[]; selected: Set<string> }|null>(null);
+  const aiRequest=useRef(false);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
   useEffect(() => { let active = true; if (form.categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${form.categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes || []); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [form.categoryId, onError]);
-  const save = async () => {
+  const plant = isPlantProduct(form, categories);
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(product), [form, product]);
+  useEffect(() => { const protect = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", protect); return () => window.removeEventListener("beforeunload", protect); }, [dirty]);
+  const close = () => { if (!dirty || window.confirm("Закрыть карточку и потерять несохранённые изменения?")) onClose(); };
+  const save = async (openNext = false) => {
     const missing = missingRequired(schema, form.attributes || {});
     if (form.status === "published" && missing.length) { const message=`Заполните обязательные характеристики: ${missing.join(", ")}`;setSaveError(message);setSection("attributes");return; }
-    setSaving(true);setSaveError("");
+    setSaving(true);setSaveError("");setSaveNotice("");
     try {
-      const result = await api<{ product: Product }>(`/api/v1/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify({
-        name: form.name, latinName: form.latinName, shortDescription: form.shortDescription,
-        description: form.description, careInstructions: form.careInstructions, status: form.status,
-        featured: form.featured, image: form.image, catalogSection: form.catalogSection, categoryId: form.categoryId,
-        passport: form.passport, importantWarnings: form.importantWarnings,
-        sabyFields: form.sabyFields,
-        attributes: validAttributes(schema.filter((item) => item.scope === "product"), form.attributes || {}),
-      }) }); onSaved(result.product);
+      const body: Record<string, unknown> = {};
+      const copyIfChanged = (key: keyof Product) => { if (JSON.stringify(form[key]) !== JSON.stringify(product[key])) body[key] = form[key]; };
+      (["name","shortDescription","description","status","featured","image","catalogSection","categoryId","sabyFields"] as Array<keyof Product>).forEach(copyIfChanged);
+      if (product.categoryId && !form.categoryId) { delete body.categoryId; body.clearCategory = true; }
+      if (plant) (["latinName","careInstructions","passport","importantWarnings"] as Array<keyof Product>).forEach(copyIfChanged);
+      const attributes = changedAttributes(schema.filter((item) => item.scope === "product"), form.attributes || {}, product.attributes || {});
+      if (Object.keys(attributes).length) body.attributes = attributes;
+      const result = await api<{ product: Product }>(`/api/v1/admin/products/${product.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      setForm(result.product); setSaveNotice("Сохранено"); onSaved(result.product, openNext);
     } catch (error) { const message=(error as Error).message;setSaveError(message);onError(message);setSaving(false); }
+    finally { setSaving(false); }
   };
-  const generateAI=async(mode:ProductAIMode,field?:string)=>{setAIBusy(field?null:mode);setAIFieldBusy(field||null);try{const result=await api<{proposal:AIDraft}>(`/api/v1/admin/products/${product.id}/ai-draft`,{method:"POST",body:JSON.stringify({mode})});const draft=result.proposal;setForm(current=>{
-    if(mode==="description") return {...current,...(!field||field==="name")&&draft.name?{name:draft.name}:{},...(!field||field==="latinName")&&draft.latinName?{latinName:draft.latinName}:{},...(!field||field==="shortDescription")&&draft.shortDescription?{shortDescription:draft.shortDescription}:{},...(!field||field==="description")&&draft.description?{description:draft.description}:{}};
-    if(mode==="attributes"){const generated=validAttributes(schema.filter(item=>item.scope==="product"),draft.attributes||{});return {...current,attributes:{...current.attributes,...(field&&generated[field]!==undefined?{[field]:generated[field]}:field?{}:generated)} as Product["attributes"]};}
-    if(field==="careInstructions") return {...current,careInstructions:draft.careInstructions||current.careInstructions};
-    if(field==="warnings") return {...current,importantWarnings:draft.warnings?draft.warnings.slice(0,4):current.importantWarnings};
-    if(field==="faq") return {...current,passport:{...current.passport,faq:draft.passport?.faq||current.passport?.faq}};
-    if(field) return {...current,passport:{...current.passport,[field]:draft.passport?.[field as keyof NonNullable<Product["passport"]>]||current.passport?.[field as keyof NonNullable<Product["passport"]>]}};
-    return {...current,careInstructions:draft.careInstructions||current.careInstructions,passport:draft.passport?{...current.passport,...draft.passport}:current.passport,importantWarnings:draft.warnings?draft.warnings.slice(0,4):current.importantWarnings};
-  });}catch(error){onError((error as Error).message);}finally{setAIBusy(null);setAIFieldBusy(null);}};
+  const showProposal = useCallback((proposal: Record<string, unknown>, field?: string) => { const normalized={...proposal,attributes:validAttributes(schema.filter((item)=>item.scope==="product"),proposal.attributes&&typeof proposal.attributes==="object"?proposal.attributes as Record<string,unknown>: {})}; const candidates = aiCandidates(form, normalized, schema, field); setAIPreview({ candidates, selected: new Set(candidates.filter((item) => !item.conflict).map((item) => item.path)) }); }, [form, schema]);
+  const generateAI=async(mode:ProductAIMode,field?:string)=>{if(aiRequest.current||aiBusy||aiFieldBusy||aiCoverBusy)return;aiRequest.current=true;setAIBusy(field?null:mode);setAIFieldBusy(field||null);try{const result=await api<{proposal:AIDraft}>(`/api/v1/admin/products/${product.id}/ai-draft`,{method:"POST",body:JSON.stringify({mode})});showProposal(result.proposal as Record<string, unknown>,field);}catch(error){onError((error as Error).message);}finally{aiRequest.current=false;setAIBusy(null);setAIFieldBusy(null);}};
   const aiField=(mode:ProductAIMode,field:string,label="Сгенерировать поле")=><button className="ai-field-button" type="button" disabled={Boolean(aiBusy)||Boolean(aiFieldBusy)||aiCoverBusy} onClick={()=>generateAI(mode,field)} title={label}>{aiFieldBusy===field?"…":"✦"}</button>;
   const sectionAI=(mode:ProductAIMode,label:string)=><button className="ai-section-button" type="button" disabled={Boolean(aiBusy)||Boolean(aiFieldBusy)||aiCoverBusy} onClick={()=>generateAI(mode)}>{aiBusy===mode?"✦ Генерируем…":`✦ ${label}`}</button>;
-  const generateCover=async()=>{const identity=[form.name,form.latinName].filter(Boolean).join(" / ");const prompt=`Photorealistic premium e-commerce product photo of one botanically accurate ${identity}. The complete plant and pot are fully visible and centered, with generous margins. Simple matte warm ivory or light beige ceramic pot, no logo. Seamless warm creamy beige studio background (#F4EBDD), soft diffused daylight from upper left, subtle natural floor shadow. Clean quiet Ficusin catalogue style, realistic leaf texture and true cultivar colors. No room interior, no furniture, no props, no text, no label, no badge, no hands, no people, no extra plants, no decorative stones. Square 1:1 composition.`;setAICoverBusy(true);try{const result=await api<{url:string}>(`/api/v1/admin/products/${product.id}/ai-cover`,{method:"POST",body:JSON.stringify({prompt})});setForm(current=>({...current,image:result.url}));}catch(error){onError((error as Error).message);}finally{setAICoverBusy(false);}};
+  const generateCover=async()=>{if(!plant||aiCoverBusy)return;const identity=[form.name,form.latinName].filter(Boolean).join(" / ");const prompt=`Photorealistic premium e-commerce product photo of one botanically accurate ${identity}. The complete plant and pot are fully visible and centered, with generous margins. Simple matte warm ivory or light beige ceramic pot, no logo. Seamless warm creamy beige studio background (#F4EBDD), soft diffused daylight from upper left, subtle natural floor shadow. Clean quiet Ficusin catalogue style, realistic leaf texture and true cultivar colors. No room interior, no furniture, no props, no text, no label, no badge, no hands, no people, no extra plants, no decorative stones. Square 1:1 composition.`;setAICoverBusy(true);try{const result=await api<{url:string}>(`/api/v1/admin/products/${product.id}/ai-cover`,{method:"POST",body:JSON.stringify({prompt})});showProposal({image:result.url});}catch(error){onError((error as Error).message);}finally{setAICoverBusy(false);}};
   const sections: Array<{id:ProductEditorSection;label:string}> = [
-    {id:"main",label:"Основное"},{id:"attributes",label:"Характеристики"},{id:"care",label:"Уход и FAQ"},
-    {id:"variants",label:"Варианты"},{id:"sync",label:"Публикация"},
+    {id:"main",label:"Основное"},{id:"attributes",label:"Характеристики"},...(plant?[{id:"care" as ProductEditorSection,label:"Уход и FAQ"}]:[]),
+    {id:"variants",label:"Варианты"},{id:"photos",label:"Фотографии"},{id:"sync",label:"SEO / публикация"},
   ];
-  return <Dialog title="Редактирование товара" onClose={onClose} className="product-editor-dialog">
+  const changeCategory = async (categoryId?: number) => { if (categoryId === form.categoryId) return; let nextSchema: CategoryAttribute[] = []; if (categoryId) { try { nextSchema = (await api<{attributes:CategoryAttribute[]}>(`/api/v1/admin/categories/${categoryId}/attributes`)).attributes || []; } catch (error) { onError((error as Error).message); return; } } const visible = new Set(nextSchema.map((item)=>item.code)); const hidden = schema.filter((item)=>!visible.has(item.code)&&!valueMissing(form.attributes?.[item.code])).map((item)=>item.name); if (hidden.length && !window.confirm(`После смены категории перестанут отображаться: ${hidden.join(", ")}. Значения не удалятся. Продолжить?`)) return; const rootSlug = (()=>{let c=categories.find((item)=>item.id===categoryId);while(c?.parentId)c=categories.find((item)=>item.id===c?.parentId);return c?.slug;})(); setSchema(nextSchema); setForm({...form,categoryId,catalogSection:rootSlug||form.catalogSection}); if(rootSlug!=="plants"&&section==="care")setSection("attributes"); };
+  const applyPreview = () => { if (!aiPreview) return; const conflicts = aiPreview.candidates.filter((item)=>item.conflict&&aiPreview.selected.has(item.path)); if (conflicts.length && !window.confirm(`Заменить вручную заполненные поля: ${conflicts.map((item)=>item.label).join(", ")}?`)) return; setForm(applyAICandidates(form,aiPreview.candidates,aiPreview.selected)); setAIPreview(null); };
+  return <Dialog title="Редактирование товара" onClose={close} className="product-editor-dialog">
     <div className="product-editor-shell">
       <aside className="product-editor-aside">
         <div className="product-editor-cover">{form.image ? <img src={form.image} alt="" /> : <span>Нет обложки</span>}</div>
@@ -125,13 +131,13 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
       <main className="product-editor-content">
         {section==="main"&&<section className="editor-section"><header><div><p>Карточка</p><h3>Название и описание</h3></div>{sectionAI("description","Сгенерировать раздел")}</header><div className="admin-form-grid product-form">
           <label className="wide"><span>Название {aiField("description","name")}</span><input value={form.name} onChange={(event)=>setForm({...form,name:event.target.value})}/><small>Размер горшка лучше хранить в варианте, а не в названии.</small></label>
-          <label><span>Латинское название {aiField("description","latinName")}</span><input value={form.latinName} onChange={(event)=>setForm({...form,latinName:event.target.value})}/></label>
+          {plant&&<label><span>Латинское название {aiField("description","latinName")}</span><input value={form.latinName} onChange={(event)=>setForm({...form,latinName:event.target.value})}/></label>}
           <label className="wide"><span>Короткое описание {aiField("description","shortDescription")}</span><textarea rows={3} value={form.shortDescription} onChange={(event)=>setForm({...form,shortDescription:event.target.value})}/><small>1–2 предложения для верхней части карточки.</small></label>
           <label className="wide"><span>Описание {aiField("description","description")}</span><textarea aria-label="Описание" rows={9} value={form.description} onChange={(event)=>setForm({...form,description:event.target.value})}/></label>
-          <div className="wide editor-cover-field"><div className="editor-cover-preview">{form.image?<img src={form.image} alt="Текущая обложка"/>:<span>Обложки пока нет</span>}</div><label>URL главной фотографии<input value={form.image} onChange={(event)=>setForm({...form,image:event.target.value})}/><small>Изображение показывается целиком. Для каталога лучше квадратная композиция на светлом фоне.</small><button type="button" className="ai-section-button cover-generate" disabled={Boolean(aiBusy)||Boolean(aiFieldBusy)||aiCoverBusy} onClick={generateCover}>{aiCoverBusy?"✦ Создаём обложку…":"✦ Сгенерировать обложку"}</button></label></div>
+          <div className="wide editor-cover-field"><div className="editor-cover-preview">{form.image?<img src={form.image} alt="Основное фото"/>:<span>Основного фото нет</span>}</div><div><strong>{form.image?"Основное фото выбрано":"Статус: без фото"}</strong><small>Загрузить или выбрать обычное фото можно во вкладке «Фотографии».</small>{plant&&<button type="button" className="ai-section-button cover-generate" disabled={Boolean(aiBusy)||Boolean(aiFieldBusy)||aiCoverBusy} onClick={generateCover}>{aiCoverBusy?"✦ Создаём preview…":"✦ Предложить AI-обложку"}</button>}</div></div>
         </div></section>}
         {section==="attributes"&&<section className="editor-section"><header><div><p>Каталог</p><h3>Категория и характеристики</h3></div>{sectionAI("attributes","Сгенерировать раздел")}</header><div className="admin-form-grid product-form">
-          <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId)=>{setSchema([]);setForm({...form,categoryId});}}/></div>
+          <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={form.categoryId} onChange={(categoryId)=>void changeCategory(categoryId)}/></div>
           <AttributeFields schema={schema.filter((item)=>item.scope==="product"&&item.audience==="customer")} values={form.attributes||{}} onChange={(code,value)=>setForm((current)=>({...current,attributes:{...current.attributes,[code]:value as never}}))} onGenerate={(code)=>generateAI("attributes",code)} busy={aiFieldBusy}/>
           {schema.filter((item)=>item.scope==="product"&&item.audience==="customer").length===0&&<p className="wide editor-empty">Выберите категорию — здесь появятся только подходящие ей характеристики.</p>}
         </div></section>}
@@ -142,6 +148,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
           <label className="wide"><span>Важные предупреждения {aiField("care","warnings")}</span><small>До четырёх, каждое с новой строки</small><textarea rows={4} value={(form.importantWarnings||[]).join("\n")} onChange={(event)=>setForm({...form,importantWarnings:event.target.value.split("\n").map((item)=>item.trim()).filter(Boolean).slice(0,4)})}/></label>
         </div></section>}
         {section==="variants"&&<section className="editor-section"><header><div><p>Продажа</p><h3>Размеры и SKU</h3></div><span>Цена, остаток и габариты каждого варианта</span></header><VariantsEditor productId={product.id} categoryId={form.categoryId} onError={onError}/></section>}
+        {section==="photos"&&<section className="editor-section"><header><div><p>Медиа</p><h3>Фотографии товара</h3></div><span>Общая галерея PRODUCT; фото SKU остаются внутри варианта</span></header><ProductMediaManager productId={product.id} onError={onError}/></section>}
         {section==="sync"&&<section className="editor-section"><header><div><p>Управление</p><h3>Публикация и синхронизация</h3></div><span>Что показываем и что разрешаем менять СБИС</span></header><div className="admin-form-grid product-form">
           <label>Статус<select value={form.status} onChange={(event)=>setForm({...form,status:event.target.value})}><option value="draft">Черновик</option><option value="published">Опубликован</option><option value="archived">Архив</option></select></label>
           <label className="admin-checkbox editor-featured"><input type="checkbox" checked={form.featured} onChange={(event)=>setForm({...form,featured:event.target.checked})}/>Поднимать в начало каталога</label>
@@ -149,7 +156,8 @@ export function ProductDialog({ product, onClose, onSaved, onError }: { product:
         </div></section>}
       </main>
     </div>
-    <footer className="product-editor-footer"><span className={saveError?"editor-save-error":""}>{saveError||"Изменения не попадут на сайт, пока вы не нажмёте «Сохранить»."}</span><div className="dialog-actions"><button disabled={saving} onClick={onClose}>Закрыть без сохранения</button><button className="primary" disabled={saving} onClick={save}>{saving?"Сохраняем…":"Сохранить"}</button></div></footer>
+    <footer className="product-editor-footer"><span className={saveError?"editor-save-error":""}>{saveError||saveNotice||"Изменения не попадут на сайт, пока вы не нажмёте «Сохранить»."}</span><div className="dialog-actions"><button disabled={saving} onClick={close}>Закрыть</button><button disabled={saving||!dirty} onClick={()=>void save(false)}>{saving?"Сохраняем…":"Сохранить"}</button><button className="primary" disabled={saving||!dirty||!hasNext} onClick={()=>void save(true)}>Сохранить и открыть следующий незаполненный</button></div></footer>
+    {aiPreview&&<><button className="admin-dialog-backdrop confirm-backdrop" aria-label="Отменить предложения AI" onClick={()=>setAIPreview(null)}/><section className="admin-dialog ai-diff-dialog" role="dialog" aria-modal="true"><header><h2>Предложения AI</h2><button onClick={()=>setAIPreview(null)} aria-label="Закрыть">×</button></header><p>По умолчанию выбраны только пустые поля. Непустые поля требуют отдельного выбора и подтверждения.</p><div className="ai-diff-list">{aiPreview.candidates.map((item)=><label key={item.path} className={item.conflict?"conflict":""}><input type="checkbox" checked={aiPreview.selected.has(item.path)} onChange={(event)=>setAIPreview((current)=>{if(!current)return current;const selected=new Set(current.selected);if(event.target.checked)selected.add(item.path);else selected.delete(item.path);return {...current,selected};})}/><span><strong>{item.label}</strong><small>Сейчас: {displayValue(item.current)}</small><small>AI: {displayValue(item.proposed)}</small>{item.conflict&&<em>Замена заполненного поля</em>}</span></label>)}</div><div className="dialog-actions"><button onClick={()=>setAIPreview(null)}>Отмена</button><button className="primary" disabled={aiPreview.selected.size===0} onClick={applyPreview}>Применить выбранное в форму</button></div></section></>}
   </Dialog>;
 }
 
@@ -164,13 +172,14 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
   const [saving, setSaving] = useState(false);
   useEffect(() => { api<{ categories: Category[] }>("/api/v1/admin/categories").then((data) => setCategories(data.categories)).catch((error) => onError(error.message)); }, [onError]);
   useEffect(() => { let active = true; if (categoryId) api<{ attributes: CategoryAttribute[] }>(`/api/v1/admin/categories/${categoryId}/attributes`).then((data) => { if (active) setSchema(data.attributes || []); }).catch((error) => onError(error.message)); return () => { active = false; }; }, [categoryId, onError]);
+  const plant = isPlantProduct({ categoryId, catalogSection: form.catalogSection }, categories);
   const save = async () => {
     const missing = missingRequired(schema, attributes);
     if (missing.length) { onError(`Заполните обязательные характеристики: ${missing.join(", ")}`); return; }
     setSaving(true);
     try {
       await api("/api/v1/admin/products", { method: "POST", body: JSON.stringify({
-        name: form.name, latinName: form.latinName, shortDescription: form.shortDescription,
+        name: form.name, latinName: plant ? form.latinName : "", shortDescription: form.shortDescription,
         description: form.description, image: form.image, catalogSection: form.catalogSection,
         categoryId, priceMinor: Math.round(form.price * 100), stock: form.stock,
         heightCm: form.heightCm === "" ? null : Number(form.heightCm), potDiameterCm: form.potDiameterCm === "" ? null : Number(form.potDiameterCm),
@@ -184,12 +193,11 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
   return <Dialog title="Новый товар" onClose={onClose}><div className="admin-form-grid product-form">
     <h3 className="product-form-heading wide">Карточка товара</h3>
     <label className="wide">Название<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Фикус Бенджамина" /></label>
-    <label>Латинское название<input value={form.latinName} onChange={(event) => setForm({ ...form, latinName: event.target.value })} /></label>
-    <label>Раздел<select value={form.catalogSection} onChange={(event) => setForm({ ...form, catalogSection: event.target.value })}><option value="plants">Растения</option><option value="pots">Кашпо и горшки</option><option value="soil">Грунт</option><option value="fertilizer">Удобрения</option><option value="accessories">Аксессуары</option></select></label>
+    {plant&&<label>Латинское название<input value={form.latinName} onChange={(event) => setForm({ ...form, latinName: event.target.value })} /></label>}
     <label className="wide">Короткое описание<textarea rows={2} value={form.shortDescription} onChange={(event) => setForm({ ...form, shortDescription: event.target.value })} /></label>
     <label className="wide">Описание<textarea rows={5} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
     <label className="wide">URL фотографии<input value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></label>
-    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={categoryId} onChange={(next) => { setSchema([]); setCategoryId(next); }} /></div>
+    <div className="wide admin-field"><span className="admin-field-label">Категория</span><CategoryPicker categories={categories} value={categoryId} onChange={(next) => { setSchema([]); setCategoryId(next);let category=categories.find((item)=>item.id===next);while(category?.parentId)category=categories.find((item)=>item.id===category?.parentId);if(category)setForm((current)=>({...current,catalogSection:category!.slug})); }} /></div>
     <h3 className="product-form-heading wide">Клиентские характеристики</h3>
     <AttributeFields schema={schema.filter((item) => item.audience === "customer")} values={attributes} onChange={(code, value) => setAttributes((current) => ({ ...current, [code]: value }))} />
     <h3 className="product-form-heading wide">Продажа</h3>

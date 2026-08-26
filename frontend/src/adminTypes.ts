@@ -6,8 +6,8 @@ export type Category = { id: number; parentId: number | null; name: string; slug
 
 export type CategoryAttribute = {
   code: string; name: string; dataType: "text" | "number" | "boolean" | "enum" | "multi_enum";
-  unit: string; options: string[]; audience: "customer" | "technical"; scope: "product" | "variant";
-  required: boolean; filterable: boolean; showOnPdp: boolean; badge: boolean; sortOrder: number;
+  unit: string; options: string[]; optionLabels: Record<string, string>; audience: "customer" | "technical"; scope: "product" | "variant";
+  required: boolean; filterable: boolean; showOnPdp: boolean; keyCharacteristic: boolean; badge: boolean; sortOrder: number;
 };
 
 export type AdminData = {
@@ -53,6 +53,8 @@ export type Product = {
   passport: PlantPassport; importantWarnings: string[];
   externalIds: Array<{ provider: string; type: string; externalId: string }>;
   attributes: Record<string, string | number | boolean | string[]>;
+  variantStage1Missing?: boolean;
+  unknownEnumValues?: boolean;
 };
 
 export type PlantPassport = { origin: string; lighting: string; watering: string; humidity: string; temperature: string; soil: string; fertilizer: string; repotting: string; careDifficulty: string; growthRate: string; matureSize: string; toxicity: string; problems: string; pests: string; faq: Array<{ question: string; answer: string }> };

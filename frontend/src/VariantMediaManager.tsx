@@ -30,7 +30,8 @@ export function VariantMediaManager({ variantId, sku, onChanged, onError }: {
   };
 
   const remove = async (item: VariantMedia) => {
-    if (!window.confirm(`Удалить фотографию SKU ${sku}?`)) return;
+    const message=item.primary?`Удалить основное фото SKU ${sku}? Следующее фото станет основным; если его нет, SKU останется без собственного фото.`:`Удалить фотографию SKU ${sku}?`;
+    if (!window.confirm(message)) return;
     setBusy(true);
     try {
       await api(`/api/v1/admin/variants/${variantId}/media/${item.id}`, { method: "DELETE" });
@@ -65,7 +66,7 @@ export function VariantMediaManager({ variantId, sku, onChanged, onError }: {
           <button type="button" className="danger" disabled={busy} onClick={() => void remove(item)}>Удалить</button>
         </div>
       </article>)}
-      {!items.length && <p className="admin-hint">Собственных фото у SKU пока нет.</p>}
+      {!items.length && <p className="admin-inline-error">Статус SKU: без собственного фото. Будет использована общая галерея товара.</p>}
     </div>
   </div>;
 }
