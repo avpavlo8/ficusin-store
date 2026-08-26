@@ -452,23 +452,34 @@ const catalogListQuery = `
 				UNION ALL SELECT category.id,category.parent_id,ancestor.depth+1 FROM categories category JOIN ancestors ancestor ON ancestor.parent_id=category.id
 			), effective AS (
 				SELECT DISTINCT ON (definition.id) definition.id,definition.code,definition.name,definition.unit,
-					definition.value_scope,assignment.sort_order,assignment.is_filterable,assignment.is_badge,
+					definition.value_scope,definition.data_type,assignment.sort_order,assignment.is_filterable,assignment.is_badge,
 					assignment.is_excluded,ancestor.depth
 				FROM ancestors ancestor JOIN category_attributes assignment ON assignment.category_id=ancestor.id
 				JOIN attribute_definitions definition ON definition.id=assignment.attribute_id AND definition.audience='customer' AND definition.is_active
 				ORDER BY definition.id,ancestor.depth
 			), values AS (
-				SELECT effective.code,COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
+				SELECT effective.code,
+					COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,
+					effective.unit,effective.data_type,
+					COALESCE((SELECT filter.display_mode FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),'select') AS display_mode,
+					effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN product_attribute_values value ON value.attribute_id=effective.id AND value.product_id=product.id
 				WHERE effective.value_scope='product' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 				UNION ALL
-				SELECT effective.code,COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
+				SELECT effective.code,
+					COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,
+					effective.unit,effective.data_type,
+					COALESCE((SELECT filter.display_mode FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),'select') AS display_mode,
+					effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN variant_attribute_values value ON value.attribute_id=effective.id
 				JOIN product_variants variant ON variant.id=value.variant_id AND variant.product_id=product.id AND variant.is_active=1
 				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 			)
-			SELECT jsonb_agg(jsonb_build_object('code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
-				'badge',value.is_badge,'filterable',value.is_filterable,'showInCharacteristics',true)
+			SELECT jsonb_agg(jsonb_build_object(
+				'code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
+				'badge',value.is_badge,'filterable',value.is_filterable,
+				'dataType',value.data_type,'displayMode',value.display_mode,
+				'showInCharacteristics',true)
 				ORDER BY value.sort_order,value.code)
 			FROM values value
 		), '[]'::jsonb)
@@ -530,7 +541,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 		SELECT product.product_code::TEXT,variant.sku,product.name,variant.label,
 			COALESCE(NULLIF(product.short_description,''),NULLIF(product.description,''),''),
 			variant.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item WHERE item.variant_id=variant.id),0)::INTEGER,
+			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory i WHERE i.variant_id=variant.id),0)::INTEGER,
 			COALESCE((
 				SELECT COALESCE(mirror.large_url,mirror.card_url,media.object_key)
 				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
