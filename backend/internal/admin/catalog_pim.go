@@ -190,14 +190,15 @@ func (repository *PostgresRepository) ListAttributeDefinitions(ctx context.Conte
 }
 
 func replaceAttributeOptions(ctx context.Context, tx pgx.Tx, attributeID int64, options []AttributeOption) error {
-	if _,err:=tx.Exec(ctx,`DELETE FROM attribute_options WHERE attribute_id=$1`,attributeID);err!=nil{return err}
 	seen:=map[string]bool{}
 	for index,option:=range options{
 		code:=strings.TrimSpace(option.Code);label:=strings.TrimSpace(option.Label)
 		if code==""||label==""||seen[code]{return fmt.Errorf("%w: варианты enum должны иметь уникальные code и название",ErrInvalidInput)}
 		seen[code]=true;sortOrder:=option.SortOrder;if sortOrder==0{sortOrder=(index+1)*10}
-		if _,err:=tx.Exec(ctx,`INSERT INTO attribute_options(attribute_id,code,label,sort_order,is_active) VALUES($1,$2,$3,$4,$5)`,attributeID,code,label,sortOrder,option.Active);err!=nil{return err}
+		if _,err:=tx.Exec(ctx,`INSERT INTO attribute_options(attribute_id,code,label,sort_order,is_active) VALUES($1,$2,$3,$4,$5) ON CONFLICT(attribute_id,code) DO UPDATE SET label=EXCLUDED.label,sort_order=EXCLUDED.sort_order,is_active=EXCLUDED.is_active`,attributeID,code,label,sortOrder,option.Active);err!=nil{return err}
 	}
+	codes:=make([]string,0,len(seen));for code:=range seen{codes=append(codes,code)}
+	if _,err:=tx.Exec(ctx,`UPDATE attribute_options SET is_active=FALSE WHERE attribute_id=$1 AND NOT (code=ANY($2::text[]))`,attributeID,codes);err!=nil{return err}
 	return nil
 }
 
@@ -241,7 +242,7 @@ func (repository *PostgresRepository) UpdateAttributeDefinition(ctx context.Cont
 	}
 	tag,err:=tx.Exec(ctx,`UPDATE attribute_definitions SET code=LOWER(BTRIM($2)),name=BTRIM($3),description=BTRIM($4),data_type=$5,unit=BTRIM($6),audience=$7,value_scope=$8,is_global=$9,is_active=$10,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,input.Code,input.Name,input.Description,input.DataType,input.Unit,input.Audience,input.Scope,input.Global,input.Active)
 	if err!=nil{return AttributeDefinition{},fmt.Errorf("update attribute: %w",err)};if tag.RowsAffected()!=1{return AttributeDefinition{},pgx.ErrNoRows}
-	if input.DataType=="enum"||input.DataType=="multi_enum"{if err:=replaceAttributeOptions(ctx,tx,id,input.Options);err!=nil{return AttributeDefinition{},err}}else{if _,err:=tx.Exec(ctx,`DELETE FROM attribute_options WHERE attribute_id=$1`,id);err!=nil{return AttributeDefinition{},err}}
+	if input.DataType=="enum"||input.DataType=="multi_enum"{if err:=replaceAttributeOptions(ctx,tx,id,input.Options);err!=nil{return AttributeDefinition{},err}}else{if _,err:=tx.Exec(ctx,`UPDATE attribute_options SET is_active=FALSE WHERE attribute_id=$1`,id);err!=nil{return AttributeDefinition{},err}}
 	if err:=insertAudit(ctx,tx,actor,"catalog.attribute.update","attribute",fmt.Sprint(id),nil,map[string]any{"code":input.Code});err!=nil{return AttributeDefinition{},err};if err:=tx.Commit(ctx);err!=nil{return AttributeDefinition{},err}
 	items,err:=repository.ListAttributeDefinitions(ctx);if err!=nil{return AttributeDefinition{},err};for _,item:=range items{if item.ID==id{return item,nil}};return AttributeDefinition{},pgx.ErrNoRows
 }

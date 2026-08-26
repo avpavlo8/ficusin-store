@@ -1,6 +1,7 @@
 export type CatalogProduct = { id: string; sku: string; name: string; latin: string; price: number; image: string; size: string; stock: number };
 export type ProductAttribute = {
   code: string; name: string; unit?: string; value: string | number | boolean | string[];
+  displayValue?: string | number | string[]; options?: string[]; optionLabels?: Record<string, string>;
   badge: boolean; filterable?: boolean; summaryPosition?: number; showInCharacteristics?: boolean;
 };
 export type ProductVariant = {

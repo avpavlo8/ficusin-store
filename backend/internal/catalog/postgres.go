@@ -118,6 +118,8 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 				)
 				SELECT jsonb_agg(jsonb_build_object(
 					'code',e.code,'name',e.name,'unit',e.unit,'value',v.value,
+					'options',COALESCE((SELECT jsonb_agg(o.code ORDER BY o.sort_order,o.id) FROM attribute_options o WHERE o.attribute_id=e.id AND o.is_active),'[]'::jsonb),
+					'optionLabels',COALESCE((SELECT jsonb_object_agg(o.code,o.label) FROM attribute_options o WHERE o.attribute_id=e.id AND o.is_active),'{}'::jsonb),
 					'badge',e.is_badge,'filterable',e.is_filterable,
 					'summaryPosition',e.summary_position,
 					'showInCharacteristics',e.show_in_characteristics
@@ -154,6 +156,9 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			variantRows.Close()
 			return ProductDetail{}, fmt.Errorf("decode variant attributes: %w", err)
 		}
+		for index := range variant.Attributes {
+			localizeAttributeValue(&variant.Attributes[index])
+		}
 		detail.Variants = append(detail.Variants, variant)
 	}
 	if err := variantRows.Err(); err != nil {
@@ -167,14 +172,17 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			SELECT id,parent_id,0 depth FROM categories WHERE id=$2
 			UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
 		), effective AS (
-			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,d.unit,d.audience,d.value_scope,
+			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,d.unit,d.data_type,d.audience,d.value_scope,
 				ca.is_badge,ca.is_filterable,ca.show_in_summary,ca.summary_position,
 				ca.show_in_characteristics,ca.is_excluded,ca.sort_order,a.depth
 			FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
 			JOIN attribute_definitions d ON d.id=ca.attribute_id AND d.is_active
 			ORDER BY d.id,a.depth
 		)
-		SELECT e.code,e.name,e.unit,v.value,e.is_badge,e.is_filterable,
+		SELECT e.code,e.name,e.unit,v.value,e.data_type,
+			COALESCE((SELECT ARRAY_AGG(o.code ORDER BY o.sort_order,o.id) FROM attribute_options o WHERE o.attribute_id=e.id AND o.is_active),ARRAY[]::TEXT[]),
+			COALESCE((SELECT jsonb_object_agg(o.code,o.label) FROM attribute_options o WHERE o.attribute_id=e.id AND o.is_active),'{}'::jsonb),
+			e.is_badge,e.is_filterable,
 			e.summary_position,e.show_in_characteristics
 		FROM effective e
 		JOIN product_attribute_values v ON v.attribute_id=e.id AND v.product_id=$1
@@ -188,11 +196,17 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	detail.Attributes = []ProductAttribute{}
 	for attributeRows.Next() {
 		var item ProductAttribute
-		if err := attributeRows.Scan(&item.Code, &item.Name, &item.Unit, &item.Value, &item.Badge,
+		var optionLabels []byte
+		if err := attributeRows.Scan(&item.Code, &item.Name, &item.Unit, &item.Value, &item.DataType, &item.Options, &optionLabels, &item.Badge,
 			&item.Filterable, &item.SummaryPosition, &item.ShowInCharacteristics); err != nil {
 			attributeRows.Close()
 			return ProductDetail{}, err
 		}
+		if err := json.Unmarshal(optionLabels, &item.OptionLabels); err != nil {
+			attributeRows.Close()
+			return ProductDetail{}, fmt.Errorf("decode product attribute labels: %w", err)
+		}
+		localizeAttributeValue(&item)
 		detail.Attributes = append(detail.Attributes, item)
 	}
 	if err := attributeRows.Err(); err != nil {
@@ -238,7 +252,9 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	reviewRows.Close()
 
 	detail.Recommendations, err = repository.listRecommendations(ctx, productID, detail)
-	if err != nil { return ProductDetail{}, err }
+	if err != nil {
+		return ProductDetail{}, err
+	}
 	return detail, nil
 }
 
@@ -333,23 +349,29 @@ func (repository *PostgresRepository) listRecommendations(ctx context.Context, p
 	rows, err := repository.pool.Query(ctx, recommendationsQuery, productID, detail.CategoryID,
 		detail.CatalogSection, detail.PlantKind, detail.LightLevel, detail.Watering,
 		detail.HeightClass, detail.CareLevel, detail.Placement, detail.PetSafety, detail.GrowthHabit)
-	if err != nil { return nil, fmt.Errorf("query product recommendations: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query product recommendations: %w", err)
+	}
 	defer rows.Close()
 	result := make([]Product, 0, 8)
 	for rows.Next() {
 		var product Product
 		var priceMinor int64
-		if err := rows.Scan(&product.ID,&product.SKU,&product.Name,&product.Latin,&product.Category,&priceMinor,
-			&product.Image,&product.Size,&product.Stock,&product.CatalogSection,&product.PlantKind,&product.LightLevel,
-			&product.Watering,&product.HeightClass,&product.CareLevel,&product.Placement,&product.PetSafety,&product.GrowthHabit,
-			&product.CategoryID); err != nil { return nil, fmt.Errorf("scan product recommendation: %w", err) }
-		product.Price = float64(priceMinor)/100
+		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.Latin, &product.Category, &priceMinor,
+			&product.Image, &product.Size, &product.Stock, &product.CatalogSection, &product.PlantKind, &product.LightLevel,
+			&product.Watering, &product.HeightClass, &product.CareLevel, &product.Placement, &product.PetSafety, &product.GrowthHabit,
+			&product.CategoryID); err != nil {
+			return nil, fmt.Errorf("scan product recommendation: %w", err)
+		}
+		product.Price = float64(priceMinor) / 100
 		product.Light = "Уточните у консультанта"
 		product.Collections = []string{}
 		product.FilterAttributes = []ProductAttribute{}
 		result = append(result, product)
 	}
-	if err := rows.Err(); err != nil { return nil, fmt.Errorf("read product recommendations: %w", err) }
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read product recommendations: %w", err)
+	}
 	return result, nil
 }
 
@@ -468,6 +490,8 @@ const catalogListQuery = `
 				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 			)
 			SELECT jsonb_agg(jsonb_build_object('code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
+				'options',COALESCE((SELECT jsonb_agg(option.code ORDER BY option.sort_order,option.id) FROM attribute_definitions definition JOIN attribute_options option ON option.attribute_id=definition.id AND option.is_active WHERE definition.code=value.code),'[]'::jsonb),
+				'optionLabels',COALESCE((SELECT jsonb_object_agg(option.code,option.label) FROM attribute_definitions definition JOIN attribute_options option ON option.attribute_id=definition.id AND option.is_active WHERE definition.code=value.code),'{}'::jsonb),
 				'badge',value.is_badge,'filterable',value.is_filterable,'showInCharacteristics',true)
 				ORDER BY value.sort_order,value.code)
 			FROM values value
@@ -510,6 +534,9 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 		product.Light = "Уточните у консультанта"
 		if err := json.Unmarshal(filterAttributes, &product.FilterAttributes); err != nil {
 			return nil, fmt.Errorf("decode filter attributes: %w", err)
+		}
+		for index := range product.FilterAttributes {
+			localizeAttributeValue(&product.FilterAttributes[index])
 		}
 		products = append(products, product)
 	}

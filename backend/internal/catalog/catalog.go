@@ -104,14 +104,60 @@ type ProductDetail struct {
 // attributes never leave the catalogue API. Variant-scoped attributes live on
 // Variant.Attributes so switching SKU cannot display another size's values.
 type ProductAttribute struct {
-	Code                  string `json:"code"`
-	Name                  string `json:"name"`
-	Unit                  string `json:"unit,omitempty"`
-	Value                 any    `json:"value"`
-	Badge                 bool   `json:"badge"`
-	Filterable            bool   `json:"filterable"`
-	SummaryPosition       *int   `json:"summaryPosition,omitempty"`
-	ShowInCharacteristics bool   `json:"showInCharacteristics"`
+	Code                  string            `json:"code"`
+	Name                  string            `json:"name"`
+	Unit                  string            `json:"unit,omitempty"`
+	Value                 any               `json:"value"`
+	DisplayValue          any               `json:"displayValue"`
+	Options               []string          `json:"options"`
+	OptionLabels          map[string]string `json:"optionLabels"`
+	DataType              string            `json:"-"`
+	Badge                 bool              `json:"badge"`
+	Filterable            bool              `json:"filterable"`
+	SummaryPosition       *int              `json:"summaryPosition,omitempty"`
+	ShowInCharacteristics bool              `json:"showInCharacteristics"`
+}
+
+// localizeAttributeValue keeps stable machine values intact and derives the
+// customer-facing representation exclusively from attribute_options. Unknown
+// codes deliberately fall back to themselves so legacy data cannot break the
+// public response while the missing dictionary entry is repaired.
+func localizeAttributeValue(attribute *ProductAttribute) {
+	if attribute.Options == nil {
+		attribute.Options = []string{}
+	}
+	if attribute.OptionLabels == nil {
+		attribute.OptionLabels = map[string]string{}
+	}
+	localize := func(value any) any {
+		switch typed := value.(type) {
+		case bool:
+			if typed {
+				return "Есть"
+			}
+			return "Нет"
+		case string:
+			if label, ok := attribute.OptionLabels[typed]; ok && label != "" {
+				return label
+			}
+			return typed
+		default:
+			return value
+		}
+	}
+	if values, ok := attribute.Value.([]any); ok {
+		labels := make([]string, 0, len(values))
+		for _, value := range values {
+			label, ok := localize(value).(string)
+			if !ok {
+				continue
+			}
+			labels = append(labels, label)
+		}
+		attribute.DisplayValue = labels
+		return
+	}
+	attribute.DisplayValue = localize(attribute.Value)
 }
 
 type PlantPassport struct {

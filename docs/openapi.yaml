@@ -35,6 +35,21 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Product"
+  /products/{code}:
+    get:
+      operationId: productDetail
+      parameters:
+        - in: path
+          name: code
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Product with stable attribute values and localized display values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
   /auth/register:
     post:
       operationId: register
@@ -246,6 +261,54 @@ components:
           type: string
         stock:
           type: integer
+        filterAttributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductAttribute"
+    ProductDetail:
+      type: object
+      required: [id, name, images, variants, attributes]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        images:
+          type: array
+          items: {type: string}
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              attributes:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductAttribute"
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductAttribute"
+    ProductAttribute:
+      type: object
+      required: [code, name, value, displayValue, badge, filterable, showInCharacteristics]
+      description: >-
+        value is the stable technical value. displayValue comes from
+        attribute_options; unknown codes fall back to the unchanged value.
+      properties:
+        code: {type: string}
+        name: {type: string}
+        unit: {type: string}
+        value: {}
+        displayValue: {}
+        options:
+          type: array
+          items: {type: string}
+        optionLabels:
+          type: object
+          additionalProperties: {type: string}
+        badge: {type: boolean}
+        filterable: {type: boolean}
+        summaryPosition: {type: integer}
+        showInCharacteristics: {type: boolean}
     Registration:
       type: object
       required: [fullName, phone, email, password, accountType, consent]

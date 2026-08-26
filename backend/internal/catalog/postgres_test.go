@@ -31,3 +31,16 @@ func TestCatalogQueryUsesActualRootCategory(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogFiltersAreRestrictedToAttributeCategory(t *testing.T) {
+	for _, want := range []string{
+		"filter.category_id IS NULL OR EXISTS",
+		"ancestor.id=filter.category_id",
+		"definition.id=assignment.attribute_id",
+		"NOT effective.is_excluded",
+	} {
+		if !strings.Contains(catalogListQuery, want) {
+			t.Errorf("catalog query lost category-scoped attribute guard %q", want)
+		}
+	}
+}
