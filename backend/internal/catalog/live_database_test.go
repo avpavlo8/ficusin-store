@@ -144,3 +144,27 @@ func TestLegacySabyProductCodeResolvesOnLiveDatabase(t *testing.T) {
 		t.Fatalf("resolved=%q want=%d", resolved, productCode)
 	}
 }
+
+func TestDocumentedLegacyURLAliasResolvesOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var expected string
+	if err := pool.QueryRow(ctx, `SELECT product.product_code::TEXT FROM product_url_aliases alias JOIN products product ON product.id=alias.product_id WHERE alias.alias='saby-3234'`).Scan(&expected); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := NewPostgresRepository(pool).resolveLegacyCode(ctx, "saby-3234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != expected {
+		t.Fatalf("resolved=%q want=%q", resolved, expected)
+	}
+}
