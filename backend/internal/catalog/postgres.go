@@ -480,11 +480,19 @@ const catalogListQuery = `
 				JOIN attribute_definitions definition ON definition.id=assignment.attribute_id AND definition.audience='customer' AND definition.is_active
 				ORDER BY definition.id,ancestor.depth
 			), values AS (
-				SELECT effective.code,COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
+				SELECT effective.code,
+					COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,
+					effective.unit,
+					COALESCE((SELECT filter.display_mode FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),'select') AS display_mode,
+					effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN product_attribute_values value ON value.attribute_id=effective.id AND value.product_id=product.id
 				WHERE effective.value_scope='product' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 				UNION ALL
-				SELECT effective.code,COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,effective.unit,effective.sort_order,effective.is_filterable,effective.is_badge,value.value
+				SELECT effective.code,
+					COALESCE((SELECT filter.title FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),effective.name) AS name,
+					effective.unit,
+					COALESCE((SELECT filter.display_mode FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)) ORDER BY filter.category_id NULLS LAST,filter.sort_order,filter.id LIMIT 1),'select') AS display_mode,
+					effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN variant_attribute_values value ON value.attribute_id=effective.id
 				JOIN product_variants variant ON variant.id=value.variant_id AND variant.product_id=product.id AND variant.is_active=1
 				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
@@ -492,6 +500,7 @@ const catalogListQuery = `
 			SELECT jsonb_agg(jsonb_build_object('code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
 				'options',COALESCE((SELECT jsonb_agg(option.code ORDER BY option.sort_order,option.id) FROM attribute_definitions definition JOIN attribute_options option ON option.attribute_id=definition.id AND option.is_active WHERE definition.code=value.code),'[]'::jsonb),
 				'optionLabels',COALESCE((SELECT jsonb_object_agg(option.code,option.label) FROM attribute_definitions definition JOIN attribute_options option ON option.attribute_id=definition.id AND option.is_active WHERE definition.code=value.code),'{}'::jsonb),
+				'displayMode',value.display_mode,
 				'badge',value.is_badge,'filterable',value.is_filterable,'showInCharacteristics',true)
 				ORDER BY value.sort_order,value.code)
 			FROM values value
