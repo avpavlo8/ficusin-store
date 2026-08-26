@@ -541,7 +541,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 		SELECT product.product_code::TEXT,variant.sku,product.name,variant.label,
 			COALESCE(NULLIF(product.short_description,''),NULLIF(product.description,''),''),
 			variant.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory i WHERE i.variant_id=variant.id),0)::INTEGER,
+			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item WHERE item.variant_id=variant.id),0)::INTEGER,
 			COALESCE((
 				SELECT COALESCE(mirror.large_url,mirror.card_url,media.object_key)
 				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
