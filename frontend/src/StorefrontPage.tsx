@@ -185,7 +185,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   useEffect(() => {
     if (landing?.type !== "collection") return;
-    setCollectionState("loading");
     fetch("/api/v1/collections", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("collections unavailable")))
       .then((body: { collections?: CollectionMeta[] }) => {
@@ -213,35 +212,17 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       ? collectionState === "loading"
       : false;
 
-  useEffect(() => {
-    if (!activeCategory) return;
-    const parents = new Map(categories.map((item) => [item.id, item.parentId]));
+  const activeCategoryPath = useMemo(() => {
     const path = new Set<number>();
+    if (!activeCategory) return path;
+    const parents = new Map(categories.map((item) => [item.id, item.parentId]));
     let current: number | null = activeCategory.id;
     while (current != null) {
       path.add(current);
       current = parents.get(current) ?? null;
     }
-    setOpened(path);
+    return path;
   }, [activeCategory, categories]);
-
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const managed: string[] = [];
-    url.searchParams.forEach((_value, key) => {
-      if (key === "q" || key === "stock" || key === "sort" || key.startsWith("filter.") || key.startsWith("min.") || key.startsWith("max.")) managed.push(key);
-    });
-    managed.forEach((key) => url.searchParams.delete(key));
-    if (query.trim()) url.searchParams.set("q", query.trim());
-    if (inStockOnly) url.searchParams.set("stock", "1");
-    if (sort !== "popular") url.searchParams.set("sort", sort);
-    Object.entries(attributeFilters).forEach(([code, value]) => { if (value) url.searchParams.set(`filter.${code}`, value); });
-    Object.entries(rangeFilters).forEach(([code, value]) => {
-      if (value.min) url.searchParams.set(`min.${code}`, value.min);
-      if (value.max) url.searchParams.set(`max.${code}`, value.max);
-    });
-    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [query, inStockOnly, sort, attributeFilters, rangeFilters]);
 
   const tree = useMemo(() => {
     const kids = new Map<number | null, Category[]>();
@@ -339,26 +320,47 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, [facetPopulation]);
 
   const facetCodes = useMemo(() => new Set(facets.map(([code]) => code)), [facets]);
+  const compatibleAttributeFilters = useMemo(() => {
+    if (routePending || loading) return attributeFilters;
+    return Object.fromEntries(Object.entries(attributeFilters).filter(([code]) => facetCodes.has(code)));
+  }, [attributeFilters, facetCodes, routePending, loading]);
+  const compatibleRangeFilters = useMemo(() => {
+    if (routePending || loading) return rangeFilters;
+    return Object.fromEntries(Object.entries(rangeFilters).filter(([code]) => facetCodes.has(code)));
+  }, [rangeFilters, facetCodes, routePending, loading]);
+
   useEffect(() => {
-    if (routePending || loading) return;
-    setAttributeFilters((current) => Object.fromEntries(Object.entries(current).filter(([code]) => facetCodes.has(code))));
-    setRangeFilters((current) => Object.fromEntries(Object.entries(current).filter(([code]) => facetCodes.has(code))));
-  }, [facetCodes, routePending, loading]);
+    const url = new URL(window.location.href);
+    const managed: string[] = [];
+    url.searchParams.forEach((_value, key) => {
+      if (key === "q" || key === "stock" || key === "sort" || key.startsWith("filter.") || key.startsWith("min.") || key.startsWith("max.")) managed.push(key);
+    });
+    managed.forEach((key) => url.searchParams.delete(key));
+    if (query.trim()) url.searchParams.set("q", query.trim());
+    if (inStockOnly) url.searchParams.set("stock", "1");
+    if (sort !== "popular") url.searchParams.set("sort", sort);
+    Object.entries(compatibleAttributeFilters).forEach(([code, value]) => { if (value) url.searchParams.set(`filter.${code}`, value); });
+    Object.entries(compatibleRangeFilters).forEach(([code, value]) => {
+      if (value.min) url.searchParams.set(`min.${code}`, value.min);
+      if (value.max) url.searchParams.set(`max.${code}`, value.max);
+    });
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [query, inStockOnly, sort, compatibleAttributeFilters, compatibleRangeFilters]);
 
   const activeFilterCount = useMemo(() => {
-    const attributes = Object.values(attributeFilters).filter(Boolean).length;
-    const ranges = Object.values(rangeFilters).filter((value) => value.min || value.max).length;
+    const attributes = Object.values(compatibleAttributeFilters).filter(Boolean).length;
+    const ranges = Object.values(compatibleRangeFilters).filter((value) => value.min || value.max).length;
     return attributes + ranges + (inStockOnly ? 1 : 0);
-  }, [attributeFilters, rangeFilters, inStockOnly]);
+  }, [compatibleAttributeFilters, compatibleRangeFilters, inStockOnly]);
 
   const visible = useMemo(() => {
     let list = found;
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
-    for (const [code, selected] of Object.entries(attributeFilters)) {
+    for (const [code, selected] of Object.entries(compatibleAttributeFilters)) {
       if (!selected) continue;
       list = list.filter((product) => product.filterAttributes?.some((attribute) => attribute.code === code && attributeValues(attribute).some((value) => String(value) === selected)));
     }
-    for (const [code, range] of Object.entries(rangeFilters)) {
+    for (const [code, range] of Object.entries(compatibleRangeFilters)) {
       if (!range.min && !range.max) continue;
       const minimum = range.min === "" ? -Infinity : Number(range.min);
       const maximum = range.max === "" ? Infinity : Number(range.max);
@@ -371,7 +373,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
     if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0));
     return list;
-  }, [found, inStockOnly, attributeFilters, rangeFilters, sort]);
+  }, [found, inStockOnly, compatibleAttributeFilters, compatibleRangeFilters, sort]);
 
   const landingTitle = landing?.type === "collection" ? collectionMeta?.title || "Подборка растений" : categoryName || "Каталог";
   const landingDescription = landing?.type === "collection"
@@ -390,10 +392,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, [query, visible.length]);
 
   useEffect(() => {
-    if (!category && !landing && !inStockOnly && !Object.values(attributeFilters).some(Boolean) && !Object.values(rangeFilters).some((value) => value.min || value.max)) return;
-    const timer = window.setTimeout(() => track("filter", { properties: { category, collection: landing?.type === "collection" ? landing.slug : undefined, inStockOnly, attributes: attributeFilters, ranges: rangeFilters, results: visible.length } }), 500);
+    if (!category && !landing && !inStockOnly && !Object.values(compatibleAttributeFilters).some(Boolean) && !Object.values(compatibleRangeFilters).some((value) => value.min || value.max)) return;
+    const timer = window.setTimeout(() => track("filter", { properties: { category, collection: landing?.type === "collection" ? landing.slug : undefined, inStockOnly, attributes: compatibleAttributeFilters, ranges: compatibleRangeFilters, results: visible.length } }), 500);
     return () => window.clearTimeout(timer);
-  }, [category, landing, inStockOnly, attributeFilters, rangeFilters, visible.length]);
+  }, [category, landing, inStockOnly, compatibleAttributeFilters, compatibleRangeFilters, visible.length]);
 
   const clearAdditionalFilters = () => {
     setInStockOnly(false);
@@ -408,30 +410,31 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     return next;
   });
 
-  const branch = (node: CategoryNode, depth: number) => (
-    <div key={node.id}>
+  const branch = (node: CategoryNode, depth: number) => {
+    const expanded = opened.has(node.id) || activeCategoryPath.has(node.id);
+    return <div key={node.id}>
       <a href={`/catalog/${encodeURIComponent(node.slug)}`} className={category === node.id ? "active" : ""} style={{ paddingLeft: 10 + depth * 14 }} aria-current={category === node.id ? "page" : undefined}>
-        <span>{node.children.length > 0 && <i className={opened.has(node.id) ? "twist open" : "twist"} aria-hidden="true" onClick={(event) => { event.preventDefault(); toggleCategory(node.id); }}>›</i>}<CategoryIcon name={node.icon} />{node.name}</span>
+        <span>{node.children.length > 0 && <i className={expanded ? "twist open" : "twist"} aria-hidden="true" onClick={(event) => { event.preventDefault(); toggleCategory(node.id); }}>›</i>}<CategoryIcon name={node.icon} />{node.name}</span>
         <small>{node.count}</small>
       </a>
-      {opened.has(node.id) && node.children.map((child) => branch(child, depth + 1))}
-    </div>
-  );
+      {expanded && node.children.map((child) => branch(child, depth + 1))}
+    </div>;
+  };
 
   const renderFacet = ([code, facet]: [string, Facet]) => {
     if (facet.displayMode === "range") {
       const values = facet.numericValues.filter(Number.isFinite);
       const minimum = values.length ? Math.min(...values) : undefined;
       const maximum = values.length ? Math.max(...values) : undefined;
-      const selected = rangeFilters[code] || { min: "", max: "" };
+      const selected = compatibleRangeFilters[code] || { min: "", max: "" };
       return <fieldset key={code} className="catalog-range-filter"><legend>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}</legend><label>От<input aria-label={`${facet.name}: от`} type="number" min={minimum} max={maximum} value={selected.min} onChange={(event) => setRangeFilters((current) => ({ ...current, [code]: { min: event.target.value, max: current[code]?.max || "" } }))} /></label><label>До<input aria-label={`${facet.name}: до`} type="number" min={minimum} max={maximum} value={selected.max} onChange={(event) => setRangeFilters((current) => ({ ...current, [code]: { min: current[code]?.min || "", max: event.target.value } }))} /></label></fieldset>;
     }
     const values = [...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true }));
     const isBoolean = facet.dataType === "boolean" || values.every((value) => value === "true" || value === "false");
     if (facet.displayMode === "chips" || isBoolean) {
-      return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={attributeFilters[code] === value ? "active" : ""} aria-pressed={attributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</button>)}</div></fieldset>;
+      return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={compatibleAttributeFilters[code] === value ? "active" : ""} aria-pressed={compatibleAttributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</button>)}</div></fieldset>;
     }
-    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={attributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{attributeLabel(value)}</option>)}</select></label>;
+    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{attributeLabel(value)}</option>)}</select></label>;
   };
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
@@ -487,7 +490,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
           <div className="home-catalog-toolbar">
             <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><span className="filter-sliders" aria-hidden="true">☷</span><span>Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
-            <div className="home-filter-group">{facets.slice(0, 6).filter(([, facet]) => facet.displayMode === "select" && facet.dataType !== "boolean").map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={attributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true })).map((value) => ({ value, label: `${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
+            <div className="home-filter-group">{facets.slice(0, 6).filter(([, facet]) => facet.displayMode === "select" && facet.dataType !== "boolean").map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={compatibleAttributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true })).map((value) => ({ value, label: `${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
             <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{ value: "popular", label: "По популярности" }, { value: "cheap", label: "Сначала дешевле" }, { value: "expensive", label: "Сначала дороже" }]} />
             <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка">⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список">☰</button></div>
           </div>
