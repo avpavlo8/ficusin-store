@@ -27,9 +27,9 @@ type CollectionDefinition = {
 
 type CollectionSource = "loading" | "server" | "fallback";
 
-// These definitions are only a graceful fallback for a server/database that
-// has not exposed /api/v1/collections yet. As soon as the API returns the
-// collections field (even an empty array), the backend becomes authoritative.
+// Legacy rules are used only when the collections API is unavailable. They
+// keep old installations usable, but they are not interactive filter state:
+// every collection card always navigates to its canonical URL.
 const legacyPresets: Preset[] = [
   { id: "bathroom", title: "Для ванной", match: (p) => p.placement === "bathroom" },
   { id: "dark", title: "Для тёмной комнаты", match: (p) => p.lightLevel === "low_light" },
@@ -43,12 +43,6 @@ const legacyPresets: Preset[] = [
   { id: "nursery", title: "В детскую", match: (p) => p.placement === "nursery" },
   { id: "pets", title: "Безопасно для питомцев", match: (p) => p.petSafety === "safe" },
 ];
-
-// StorefrontPage imports this reference for filtering. Keep the same array
-// object and mutate its contents when backend definitions load so a click on
-// any newly-created collection is understood by the parent without a second
-// source of truth.
-export const presets: Preset[] = [...legacyPresets];
 
 const collectionImages: Record<string, string> = {
   dark: "/assets/redesign/collection-dark-4k.webp",
@@ -76,12 +70,10 @@ function serverPreset(collection: CollectionDefinition): Preset {
 
 export function CollectionStrip<T extends Product>({
   products,
-  active,
-  onPick,
+  activeSlug,
 }: {
   products: T[];
-  active: ReadonlySet<string>;
-  onPick?: (id: string) => void;
+  activeSlug?: string;
 }) {
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
@@ -120,16 +112,13 @@ export function CollectionStrip<T extends Product>({
       .then((data: { collections?: CollectionDefinition[] }) => {
         if (!alive) return;
         if (!Array.isArray(data.collections)) throw new Error("collections contract unavailable");
-        const collections = data.collections;
-        setServerCollections(collections);
+        setServerCollections(data.collections);
         setSource("server");
-        presets.splice(0, presets.length, ...collections.map(serverPreset));
       })
       .catch(() => {
         if (!alive) return;
         setServerCollections([]);
         setSource("fallback");
-        presets.splice(0, presets.length, ...legacyPresets);
       });
     return () => { alive = false; };
   }, []);
@@ -143,7 +132,7 @@ export function CollectionStrip<T extends Product>({
         return {
           preset,
           image: collection.coverUrl || collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp",
-          count: collection.count,
+          count: products.filter(preset.match).length,
           note: collection.note,
         };
       }).filter((item) => item.count > 0);
@@ -161,9 +150,6 @@ export function CollectionStrip<T extends Product>({
   }, [products, serverCollections, source]);
 
   if (shown.length === 0) return null;
-  // The first render after an async collection response already knows that
-  // the rail continues. Do not wait for ResizeObserver before showing the
-  // affordance; measured state takes over as soon as the user scrolls.
   const canScrollNext = scrollEdges.next || (!scrollEdges.previous && shown.length > 3);
 
   return (
@@ -175,13 +161,8 @@ export function CollectionStrip<T extends Product>({
           key={preset.id}
           role="listitem"
           href={`/collections/${encodeURIComponent(preset.id)}`}
-          className={active.has(preset.id) ? "preset active" : "preset"}
-          aria-current={active.has(preset.id) ? "page" : undefined}
-          onClick={(event) => {
-            if (!onPick) return;
-            event.preventDefault();
-            onPick(preset.id);
-          }}
+          className={activeSlug === preset.id ? "preset active" : "preset"}
+          aria-current={activeSlug === preset.id ? "page" : undefined}
           title={note || `${preset.title} — ${count}`}
           style={{ backgroundImage: `url('${image}')` }}
         >
