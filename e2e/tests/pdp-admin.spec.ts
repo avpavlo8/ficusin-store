@@ -58,7 +58,7 @@ test("@desktop владелец редактирует описание прям
   await expect(dialog.getByRole("button", { name: "✦ Сгенерировать раздел" })).toBeVisible();
   await expect(dialog.getByAltText("Текущая обложка")).toBeVisible();
   await dialog.getByRole("textbox", { name: "Описание", exact: true }).fill("Новое описание из PDP");
-  await dialog.getByRole("button", { name: "Сохранить" }).click();
+  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
 
   expect(update?.description).toBe("Новое описание из PDP");
   await expect(dialog).toHaveCount(0);
