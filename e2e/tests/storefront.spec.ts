@@ -108,9 +108,6 @@ test("@desktop дерево раскрывается сразу до видов"
 test("@desktop пустые разделы остаются в дереве", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
-  // Товаров в кашпо пока нет, но раздел у магазина есть, и покупатель
-  // должен видеть, что он существует.
   await expect(page.locator(".storefront-tree").getByText("Кашпо и горшки")).toBeVisible();
 });
 
@@ -131,10 +128,7 @@ test("@desktop подборка фильтрует сетку, пустая не
   await mockApi(page);
   await page.goto("/");
 
-  // «На солнечное окно» не подходит ни одному товару стенда: плитка, ведущая
-  // в «ничего не нашли», хуже, чем её отсутствие.
   await expect(page.getByRole("listitem", { name: /солнечное/ })).toHaveCount(0);
-
   await page.locator(".preset", { hasText: "Для ванной" }).click();
 
   const grid = page.locator(".storefront-grid");
@@ -142,17 +136,17 @@ test("@desktop подборка фильтрует сетку, пустая не
   await expect(grid.getByText("Фикус Бенджамина")).toHaveCount(0);
 });
 
-test("@desktop быстрые фильтры поддерживают множественный выбор", async ({ page }) => {
+test("@desktop подборки переключаются только через канонические страницы", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
   await page.locator(".preset", { hasText: "Для ванной" }).click();
-  await page.locator(".preset", { hasText: "Для офиса" }).click();
-  await expect(page.locator(".preset.active")).toHaveCount(2);
-  await expect(page.locator(".storefront-card")).toHaveCount(0);
-
-  await page.locator(".preset", { hasText: "Для ванной" }).click();
+  await expect(page).toHaveURL(/\/collections\/bathroom$/);
   await expect(page.locator(".preset.active")).toHaveCount(1);
+  await page.locator(".preset", { hasText: "Для офиса" }).click();
+  await expect(page).toHaveURL(/\/collections\/office$/);
+  await expect(page.locator(".preset.active")).toHaveCount(1);
+  await expect(page.locator(".preset.active")).toContainText("Для офиса");
 });
 
 test("@desktop товар без остатка идёт как предзаказ", async ({ page }) => {
@@ -165,8 +159,6 @@ test("@desktop товар без остатка идёт как предзака
   await expect(card.locator(".storefront-preorder")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "В корзину" })).toBeVisible();
 
-  // Магазин, прячущий то, что кончилось, теряет продажу дважды: покупатель не
-  // видит растения и никто не узнаёт, что его хотели.
   await page.getByRole("button", { name: /Фильтры/ }).click();
   await page.locator(".home-filter-panel").getByLabel("Только в наличии").check();
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
@@ -302,7 +294,7 @@ test("@desktop сортировка по цене", async ({ page }) => {
   const sort = page.locator(".catalog-dropdown.home-sort");
   await sort.locator("summary").click();
   await sort.getByRole("option", { name: "Сначала дешевле" }).click();
-  await expect(page.locator(".storefront-name").first()).toHaveText("Аглаонема Мария");
+  await expect(page.locator(".storefront-name").first()).toHaveText("Кашпо Классик");
 
   await sort.locator("summary").click();
   await sort.getByRole("option", { name: "Сначала дороже" }).click();
@@ -311,9 +303,6 @@ test("@desktop сортировка по цене", async ({ page }) => {
 
 test("@desktop ссылка с запросом сразу показывает выдачу", async ({ page }) => {
   await mockApi(page);
-  // Поиск из шапки на других страницах ведёт сюда. Однажды витрина уступала
-  // место старой странице при любом параметре в адресе, и такие ссылки
-  // открывались по-старому.
   await page.goto("/?q=бенджамина");
 
   await expect(page.locator(".header-search input")).toHaveValue("бенджамина");
@@ -402,10 +391,8 @@ for (const delivery of [
   test(`@desktop ${delivery.label}: адрес и оплата после подтверждения сохраняются`, async ({ page }) => {
     await mockApi(page);
     let order: Record<string, unknown> | undefined;
-    await page.route("**/api/v1/delivery/providers", (route) =>
-      route.fulfill({ json: { courier: true, post: true } }));
-    await page.route(`**/api/v1/delivery/${delivery.id}`, (route) =>
-      route.fulfill({ json: { quote: { price: delivery.price, service: delivery.service } } }));
+    await page.route("**/api/v1/delivery/providers", (route) => route.fulfill({ json: { courier: true, post: true } }));
+    await page.route(`**/api/v1/delivery/${delivery.id}`, (route) => route.fulfill({ json: { quote: { price: delivery.price, service: delivery.service } } }));
     await page.route("**/api/v1/orders", async (route) => {
       order = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({ json: { orderNumber: "TEST-CHECKOUT-1" } });
@@ -430,12 +417,7 @@ for (const delivery of [
     await checkout.locator('input[name="consent"]').check();
     await checkout.getByRole("button", { name: /Продолжить/ }).click();
 
-    expect(order).toMatchObject({
-      customer: { address: delivery.address },
-      delivery: delivery.id,
-      paymentMethod: "manager_confirmation",
-      consent: true,
-    });
+    expect(order).toMatchObject({ customer: { address: delivery.address }, delivery: delivery.id, paymentMethod: "manager_confirmation", consent: true });
   });
 }
 
