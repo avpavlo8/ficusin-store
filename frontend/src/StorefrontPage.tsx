@@ -14,11 +14,9 @@ type FilterAttribute = {
   code: string;
   name: string;
   unit?: string;
-  value: string | number | boolean | string[] | number[];
+  value: string | number | boolean | string[];
   filterable: boolean;
   badge: boolean;
-  // Newer catalogue responses expose these directly from catalog_filters and
-  // attribute_definitions. Fallback inference keeps older deployments usable.
   displayMode?: FilterDisplayMode;
   dataType?: FilterDataType;
 };
@@ -209,6 +207,11 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const searching = query.trim().length > 0;
   const categoryNotFound = landing?.type === "category" && categoriesLoaded && !activeCategory;
   const collectionNotFound = landing?.type === "collection" && collectionState === "loaded" && !collectionMeta;
+  const routePending = landing?.type === "category"
+    ? !categoriesLoaded
+    : landing?.type === "collection"
+      ? collectionState === "loading"
+      : false;
 
   useEffect(() => {
     if (!activeCategory) return;
@@ -224,7 +227,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const managed = [...url.searchParams.keys()].filter((key) => key === "q" || key === "stock" || key === "sort" || key.startsWith("filter.") || key.startsWith("min.") || key.startsWith("max."));
+    const managed: string[] = [];
+    url.searchParams.forEach((_value, key) => {
+      if (key === "q" || key === "stock" || key === "sort" || key.startsWith("filter.") || key.startsWith("min.") || key.startsWith("max.")) managed.push(key);
+    });
     managed.forEach((key) => url.searchParams.delete(key));
     if (query.trim()) url.searchParams.set("q", query.trim());
     if (inStockOnly) url.searchParams.set("stock", "1");
@@ -293,21 +299,22 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   const contextProducts = useMemo(() => {
     if (landing?.type === "collection") return products.filter((product) => product.collections?.includes(landing.slug));
+    if (landing?.type === "category" && !activeCategory) return [];
     if (category != null) return products.filter((product) => inBranch(product.categoryId, category));
     return products;
-  }, [products, landing, category, inBranch]);
+  }, [products, landing, activeCategory, category, inBranch]);
 
-  // Existing documented behaviour is preserved: a search started from a
-  // category or collection searches the whole catalogue. The UI below makes
-  // that scope explicit instead of silently changing context.
+  // This is the existing documented search rule: search is global even when
+  // started from a category or collection. We keep it and explain the scope in
+  // the UI rather than silently inventing a different product rule.
   const found = useMemo(() => searching ? searchProducts(products, query) : contextProducts, [products, contextProducts, query, searching]);
 
   const facetPopulation = useMemo(() => {
-    if (searching) return [];
+    if (searching) return searchProducts(products, query);
     if (landing?.type === "collection") return contextProducts;
     if (category != null) return contextProducts;
     return [];
-  }, [searching, landing, category, contextProducts]);
+  }, [searching, products, query, landing, category, contextProducts]);
 
   const facets = useMemo(() => {
     const result = new Map<string, Facet>();
@@ -333,9 +340,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   const facetCodes = useMemo(() => new Set(facets.map(([code]) => code)), [facets]);
   useEffect(() => {
+    if (routePending || loading) return;
     setAttributeFilters((current) => Object.fromEntries(Object.entries(current).filter(([code]) => facetCodes.has(code))));
     setRangeFilters((current) => Object.fromEntries(Object.entries(current).filter(([code]) => facetCodes.has(code))));
-  }, [facetCodes]);
+  }, [facetCodes, routePending, loading]);
 
   const activeFilterCount = useMemo(() => {
     const attributes = Object.values(attributeFilters).filter(Boolean).length;
@@ -371,9 +379,9 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     : `${landingTitle}: актуальные цены, наличие и доставка по России.`;
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || routePending) return;
     track("view_item_list", { properties: { list: landing ? landingTitle : categoryName || "catalog", items: visible.length } });
-  }, [loading, categoryName, landing, landingTitle, visible.length]);
+  }, [loading, routePending, categoryName, landing, landingTitle, visible.length]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -448,6 +456,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   if (categoryNotFound || collectionNotFound) return <NotFoundPage />;
+  if (routePending) return <main className="storefront"><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={setQuery} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
 
   return (
     <main className="storefront">
