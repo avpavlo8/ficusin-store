@@ -99,9 +99,9 @@ test("@desktop прямой URL и Back Forward восстанавливают �
 test("@desktop неизвестные category и collection slug показывают 404", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/not-a-category");
-  await expect(page.getByText(/страница не найдена/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
   await page.goto("/collections/not-a-collection");
-  await expect(page.getByText(/страница не найдена/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
 });
 
 test("@desktop пустая выдача сохраняет контекст и предлагает сброс", async ({ page }) => {
@@ -119,7 +119,9 @@ test("@desktop range chips select и boolean имеют разные контр�
   const filters = page.locator(".storefront-attribute-filters");
   await expect(filters.getByLabel("Высота: от")).toHaveAttribute("type", "number");
   await expect(filters.getByLabel("Высота: до")).toHaveAttribute("type", "number");
-  await expect(filters.locator("select").filter({ has: page.locator("option", { hasText: "Полутень" }) })).toHaveCount(1);
+  const select = filters.getByRole("combobox");
+  await expect(select).toHaveCount(1);
+  await expect(select.getByRole("option", { name: "Полутень" })).toBeVisible();
   await expect(filters.locator(".catalog-chip-filter", { hasText: "Сложность ухода" }).getByRole("button")).toHaveCount(2);
   const flowering = filters.locator(".catalog-chip-filter", { hasText: "Цветёт" });
   await expect(flowering.getByRole("button", { name: "Да" })).toBeVisible();
