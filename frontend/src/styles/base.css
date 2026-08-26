@@ -5,33 +5,10 @@
    этого не изменился, а на 100 КБ в одном файле больше никто не
    натыкается. Подключение и порядок — в ../styles.css. */
 
-:root {
-  /* Тёплый светлый фон, белые карточки, тонкие рамки и один глубокий
-     зелёный на все акценты. Оранжевого в палитре больше нет: он спорил с
-     зеленью растений на фотографиях и тянул внимание на себя. */
-  --cream: #f1ece2;
-  --paper: #fbf9f5;
-  --green: #2c4636;
-  --green-dark: #1f3327;
-  /* Терракота осталась переменной, чтобы не переписывать сотню правил, но
-     теперь это тот же зелёный: акцент в магазине один. */
-  --terracotta: #2c4636;
-  --sage: #9daa8b;
-  --ink: #22271f;
-  --line: #e7e2d7;
-  --muted: #7d857b;
-  /* Красный живёт ровно в одном месте — в закрашенном сердце избранного. */
-  --heart: #d8434b;
-  /* Высота шапки. От неё считают отступ липкие блоки: пока значение было
-     вписано в каждый из них руками, поиск на телефоне прилипал на четыре
-     пикселя ниже шапки и в щель просвечивал каталог. */
-  --header-h: 76px;
-}
-
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--paper); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
-button, input, textarea { font: inherit; }
+body { margin: 0; background: var(--color-surface); color: var(--color-text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: var(--font-size-sm); line-height: var(--line-height-body); -webkit-font-smoothing: antialiased; }
+button { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 a { color: inherit; text-decoration: none; }
@@ -39,33 +16,23 @@ img { display: block; max-width: 100%; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 
-.announcement { min-height: 34px; padding: 9px 5vw; display: flex; justify-content: space-between; gap: 16px; background: var(--green); color: #eef2ea; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
-.announcement[hidden] { display: none !important; }
-/* Шапка выше строки поиска по слою. Пока приоритет был одинаковым,
-   выпадающее меню под именем пряталось за поиском: строка идёт в разметке
-   позже и рисовалась поверх. */
-.header { height: 76px; padding: 0 5vw; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: rgba(251,249,245,.94); position: sticky; top: 0; z-index: 40; border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
-.brand { display: inline-flex; align-items: center; gap: 11px; color: var(--green); font-size: clamp(20px, 1.7vw, 26px); font-weight: 600; letter-spacing: .01em; width: max-content; }
-.brand-mark { width: 30px; height: 38px; display: grid; place-items: center; border: 1px solid var(--green); border-radius: 80% 20% 80% 20%; transform: rotate(-18deg); font: 600 21px/1 Georgia, serif; }
-/* Подпись под названием — из макета: она объясняет, чем торгует магазин,
-   раньше это приходилось угадывать по картинкам. */
-.brand-text { display: grid; gap: 1px; }
-.brand-text small { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 9px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
-.desktop-nav { display: flex; gap: 40px; }
-.desktop-nav a { position: relative; padding: 28px 0 25px; font-size: 15px; }
-.desktop-nav a::after { content: ""; position: absolute; left: 0; right: 100%; bottom: 23px; height: 2px; background: var(--terracotta); transition: right .25s ease; }
-.desktop-nav a:hover::after { right: 0; }
-.header-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
-.account-button { height: 42px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border-radius: 99px; color: var(--green); font-size: 13px; font-weight: 700; }
-.account-button > span:first-child { font-size: 22px; }
-.account-button:hover { background: rgba(23,63,50,.07); }
-.cart-button { height: 42px; padding: 0 8px 0 16px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--green); border-radius: 99px; background: transparent; cursor: pointer; }
-.cart-button b { min-width: 24px; height: 24px; display: grid; place-items: center; background: var(--green); color: white; border-radius: 50%; font-size: 12px; }
-.menu-button { display: none; }
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+  border-radius: max(4px, var(--radius-sm));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
 
 .eyebrow { margin-bottom: 18px; color: var(--terracotta); font-size: 12px; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; }
-.primary-button, .secondary-button { min-height: 48px; padding: 13px 24px; display: inline-flex; align-items: center; justify-content: center; gap: 14px; border: 0; border-radius: 10px; background: var(--green); color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: background .2s ease; }
-.primary-button:hover, .secondary-button:hover { background: var(--green-dark); }
 .text-link { padding-bottom: 5px; border-bottom: 1px solid var(--ink); }
 
 .filters { display: flex; flex-wrap: wrap; gap: 9px; }
@@ -94,7 +61,6 @@ h1, h2, .brand { font-family: Georgia, "Times New Roman", serif; }
 .product-bottom button.in-cart:hover { background: #123c2f; }
 .empty-state { grid-column: 1/-1; padding: 80px; text-align: center; background: var(--cream); border-radius: 20px; }
 
-.secondary-button { background: var(--terracotta); }
 
 /* Подвал светлый, как и вся страница: тёмная плита внизу обрубала её и
    спорила с фотографиями растений. */
@@ -137,8 +103,6 @@ footer small { grid-column: 1/-1; margin-top: 38px; padding-top: 20px; border-to
 fieldset { margin: 0 0 32px; padding: 0; border: 0; }
 legend { margin-bottom: 15px; color: var(--green); font: 400 24px Georgia, serif; }
 label { display: grid; gap: 7px; margin-bottom: 15px; font-size: 13px; font-weight: 700; }
-input, textarea, select { width: 100%; padding: 14px 15px; border: 1px solid var(--line); border-radius: 10px; background: white; outline: none; }
-input:focus, textarea:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(23,63,50,.08); }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .delivery-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 15px; }
 .delivery-options label { min-height: 90px; margin: 0; padding: 14px; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 12px; background: white; cursor: pointer; }

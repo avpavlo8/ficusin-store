@@ -20,8 +20,8 @@ function closeOtherHeaderMenus(current: HTMLDetailsElement) {
 }
 
 function HeaderMenuBranch({ item, onPick }: { item: HeaderMenuItem; onPick?: (id: number) => void }) {
-  if (item.children?.length) return <details className="header-submenu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>{item.label}<span>›</span></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
-  return <a href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={(event) => { if (onPick) { event.preventDefault(); onPick(item.id); } document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); }}>{item.label}<span>→</span></a>;
+  if (item.children?.length) return <details className="header-submenu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>{item.label}<Icon path={icons.chevronRight} /></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
+  return <a href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={(event) => { if (onPick) { event.preventDefault(); onPick(item.id); } document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); }}>{item.label}<Icon path={icons.arrowRight} /></a>;
 }
 
 function AccountBadge({ user }: { user: StoreUser }) {
@@ -105,6 +105,12 @@ const icons = {
   bag: "M5.6 8h12.8l1.1 12.2H4.5L5.6 8Zm3.4 0V6.6a3 3 0 0 1 6 0V8",
   person: "M12 11.8a3.9 3.9 0 1 0 0-7.8 3.9 3.9 0 0 0 0 7.8ZM4.2 20a7.8 7.8 0 0 1 15.6 0",
   search: "M11 4.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6ZM15.9 15.9 20 20",
+  menu: "M4 7h16M4 12h16M4 17h16",
+  close: "m6 6 12 12M18 6 6 18",
+  chevronDown: "m8 10 4 4 4-4",
+  chevronRight: "m10 8 4 4-4 4",
+  arrowRight: "M5 12h14m-5-5 5 5-5 5",
+  leaf: "M19.5 4.5C12 4.7 6.2 7.8 5.1 14.4c-.5 3.2 1.6 5.2 4.7 4.7 6.6-1.1 9.7-6.9 9.7-14.6ZM6.8 17.2c2.3-3.2 5.2-5.8 8.8-7.8",
 };
 
 function Icon({ path }: { path: string }) {
@@ -131,7 +137,7 @@ function MobileSearch({
 }) {
   return <div className="mobile-search">
     <CatalogSearch value={query} onChange={onQueryChange} className="mobile-catalog-search" autoFocus />
-    <button type="button" onClick={onClose} aria-label="Закрыть поиск">×</button>
+    <button type="button" onClick={onClose} aria-label="Закрыть поиск"><Icon path={icons.close} /></button>
   </div>;
 }
 
@@ -145,7 +151,7 @@ function MobileMenu({
   onClose: () => void;
 }) {
   return <aside className="mobile-menu open">
-    <button onClick={onClose} aria-label="Закрыть меню">×</button>
+    <button onClick={onClose} aria-label="Закрыть меню"><Icon path={icons.close} /></button>
     {user ? <>
       <a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
       {(user.adminRole === "manager" || user.adminRole === "owner") &&
@@ -166,7 +172,7 @@ function MobileMenu({
 }
 
 function AboutMenu() {
-  return <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>О магазине <span>⌄</span></summary><div><a href="/contacts">Контакты</a><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></div></details>;
+  return <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>О магазине <Icon path={icons.chevronDown} /></summary><div><a href="/contacts">Контакты</a><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></div></details>;
 }
 
 // The bar pinned to the bottom of a phone screen. Everything a shopper
@@ -288,18 +294,17 @@ export function StoreHeader({
   const categoryPick = onHomeCategoryPick;
 
   const cartLabel = `Корзина, товаров: ${cart}`;
-  return <><div className="announcement" hidden />
-    <header className="header store-header" ref={headerRef}>
+  return <><header className="header store-header" ref={headerRef}>
       <button
         className="menu-button"
         onClick={() => setMenuOpen(true)}
         aria-label="Открыть меню"
         aria-expanded={menuOpen}
-      >☰</button>
-      <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
+      ><Icon path={icons.menu} /></button>
+      <a className="brand" href="/"><span className="brand-mark"><Icon path={icons.leaf} /></span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav">{homeNavigation ? <>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{resolvedPlantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <Icon path={icons.chevronDown} /></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <Icon path={icons.chevronDown} /></summary><div>{resolvedPlantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
         <a href="/delivery-and-returns">Доставка и оплата</a><AboutMenu/>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a><AboutMenu/></>}</nav>
       <div className="header-actions">

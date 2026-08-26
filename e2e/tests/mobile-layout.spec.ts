@@ -165,3 +165,31 @@ test("@desktop keeps the full header and hides the phone chrome", async ({ page 
   await expect(page.locator(".menu-button")).toBeHidden();
   await expect(page.locator(".search-toggle")).toBeHidden();
 });
+
+test("@desktop the public notice and header fit the design-system checkpoints", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [768, 1024, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await expect(page.locator(".development-notice")).toContainText("Сайт в режиме доработки");
+    expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
+    const header = await page.locator(".store-header").boundingBox();
+    expect(header?.width, `ширина шапки ${width}px`).toBe(width);
+  }
+});
+
+test("@phone the notice and header fit 360 and 390 pixels", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    await expect(page.locator(".development-notice")).toBeVisible();
+    expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
+  }
+});
+
+test("@desktop the development notice never appears in admin", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.goto("/admin");
+  await expect(page.locator(".development-notice")).toHaveCount(0);
+});

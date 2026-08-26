@@ -23,8 +23,6 @@
 .category-picker-row { display: flex; align-items: center; gap: 4px; }
 .category-picker-row > button:last-child { flex: 1; }
 
-.account-button-photo { width: 26px; height: 26px; flex: none; overflow: hidden; display: grid; place-items: center; border-radius: 50%; object-fit: cover; }
-.account-button-photo.placeholder { background: var(--green); color: #fff; font-size: 12px; font-weight: 700; }
 
 /* --- Личный кабинет: общий каркас для всех разделов --- */
 .account-avatar { overflow: hidden; display: grid; place-items: center; }

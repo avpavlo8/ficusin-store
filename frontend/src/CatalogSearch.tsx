@@ -3,6 +3,14 @@ import { searchProducts, suggestions, type Searchable } from "./lib/search";
 
 type SearchProduct = Searchable & { image?: string; price?: number };
 
+function SearchIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 4.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6ZM15.9 15.9 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function CloseIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" /></svg>;
+}
+
 export function CatalogSearch({ value, onChange, inlineResults = false, className = "header-search", placeholder = "Поиск по каталогу", autoFocus = false }: {
   value?: string;
   onChange?: (value: string) => void;
@@ -90,12 +98,12 @@ export function CatalogSearch({ value, onChange, inlineResults = false, classNam
         choose(0);
       } else allResults();
     }}>
-      <span aria-hidden="true">⌕</span>
+      <span aria-hidden="true"><SearchIcon /></span>
       <input autoFocus={autoFocus} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); activeRef.current = -1; setActive(-1); }}
         onFocus={() => setOpen(true)} onKeyDown={keyDown} placeholder={placeholder} autoComplete="off"
         role="combobox" aria-expanded={open && Boolean(query.trim())} aria-controls={listID}
         aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined} />
-      {query && <button type="button" className="catalog-search-clear" onClick={() => { setQuery(""); setOpen(false); }} aria-label="Очистить поиск">×</button>}
+      {query && <button type="button" className="catalog-search-clear" onClick={() => { setQuery(""); setOpen(false); }} aria-label="Очистить поиск"><CloseIcon /></button>}
     </form>
     {open && query.trim() && <div className="catalog-search-options" id={listID} role="listbox">
       {matches.map((item, index) => <button id={`${listID}-${index}`} role="option" aria-selected={active === index}

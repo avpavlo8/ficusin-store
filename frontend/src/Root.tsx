@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 import StorefrontPage from "./StorefrontPage";
 import ProductPage from "./ProductPage";
 import { StoreFooter } from "./StoreFooter";
+import { DevelopmentNotice } from "./DevelopmentNotice";
 
 const AdminPage = lazy(() => import("./AdminPage"));
 const FavoritesPage = lazy(() => import("./FavoritesPage"));
@@ -23,8 +24,8 @@ function RouteLoading() {
 
 export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
-  const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter /></Suspense>;
+  const ready = (page: ReactNode) => <><DevelopmentNotice /><Suspense fallback={<RouteLoading />}>{page}</Suspense></>;
+  const withFooter = (page: ReactNode) => <><DevelopmentNotice /><Suspense fallback={<RouteLoading />}>{page}<StoreFooter /></Suspense></>;
   if (path.startsWith("/product/")) {
     return withFooter(<ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />);
   }
@@ -56,7 +57,7 @@ export default function Root() {
     case "/account/reviews":
       return withFooter(<AccountPage section="reviews" />);
     case "/admin":
-      return ready(<AdminPage />);
+      return <Suspense fallback={<RouteLoading />}><AdminPage /></Suspense>;
     case "/favorites":
       return withFooter(<FavoritesPage />);
     case "/cart":

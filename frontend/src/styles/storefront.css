@@ -128,15 +128,7 @@
 
 /* Утверждённая главная 2026: визуально самостоятельна, но продолжает
    использовать живой каталог, поиск, фильтры, избранное и корзину. */
-.storefront { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; max-width:100%; overflow-x:hidden; background:#f7efe4; color:var(--home-ink); }
-.storefront > .announcement { display:none; }
-.storefront > .header { max-width:1500px; height:76px; margin:0 auto; padding:0 34px; grid-template-columns:auto 1fr auto; gap:28px; border:0; background:transparent; box-shadow:none; }
-.storefront > .header .brand-mark,.storefront > .header .brand-text small { display:none; }
-.storefront > .header .brand { color:var(--home-ink); font:700 30px/1 Georgia,serif; letter-spacing:-.04em; }
-.storefront > .header .desktop-nav { justify-self:start; gap:32px; }
-.storefront > .header .desktop-nav a { color:var(--home-ink); font-size:13px; }
-.storefront > .header .header-search { width:290px; background:rgba(255,255,255,.38); border-color:#d8c9b8; box-shadow:none; }
-.storefront > .header .account-button,.storefront > .header .favorites-button,.storefront > .header .cart-button { color:var(--home-ink); }
+.storefront { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; max-width:100%; overflow-x:clip; background:#f7efe4; color:var(--home-ink); }
 
 .home-hero { max-width:1435px; min-height:570px; margin:0 auto; padding:35px 45px 12px; display:grid; grid-template-columns:42% 58%; align-items:center; }
 .home-hero-copy { position:relative; z-index:2; padding-left:18px; }
@@ -176,15 +168,12 @@
 .storefront-more { min-width:280px; min-height:42px; margin:18px auto 8px; padding:0 26px; display:flex; align-items:center; justify-content:center; gap:18px; border:0; border-radius:9px; background:#eee5d9; color:var(--home-ink); cursor:pointer; }
 
 @media (max-width:1100px) {
-  .storefront > .header { padding:0 22px; }
   .home-hero { grid-template-columns:48% 52%; padding-inline:24px; }
   .home-hero h1 { font-size:58px; }
   .storefront-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 
 @media (max-width:850px) {
-  .storefront > .header { height:68px; padding:0 16px; }
-  .storefront > .header .brand { font-size:24px; }
   .home-hero { min-height:0; padding:24px 16px 14px; grid-template-columns:1fr; }
   .home-hero-copy { padding:0 4px 24px; }
   .home-hero h1 { font-size:clamp(46px,13vw,66px); }
@@ -217,24 +206,6 @@
 
 /* Вторая сверка с опубликованной веткой: изображения больше не содержат
    интерфейсного текста, поэтому остаются резкими, доступными и живыми. */
-.storefront > .header .header-actions { gap:10px; }
-.storefront > .header .account-button.icon-only,
-.storefront > .header .favorites-button,
-.storefront > .header .cart-button { width:42px; min-width:42px; height:42px; padding:0; position:relative; display:grid; place-items:center; border:0; border-radius:50%; background:transparent; box-shadow:none; }
-.storefront > .header .account-button.icon-only:hover,
-.storefront > .header .favorites-button:hover,
-.storefront > .header .cart-button:hover { background:rgba(41,29,19,.055); }
-.storefront > .header .account-button.icon-only svg,
-.storefront > .header .favorites-button svg,
-.storefront > .header .cart-button svg { width:25px; height:25px; display:block; }
-.storefront > .header .favorites-button > span,
-.storefront > .header .cart-button > span { display:grid; place-items:center; font-size:0; }
-.storefront > .header .favorites-button b,
-.storefront > .header .cart-button b { min-width:18px; height:18px; padding:0 5px; position:absolute; top:0; right:-2px; display:grid; place-items:center; border-radius:99px; background:var(--home-orange); color:white; font-size:10px; line-height:1; }
-.storefront > .header .favorites-button:has(b) { color:var(--home-orange); }
-.storefront > .header .header-search { height:42px; padding-left:18px; padding-right:8px; }
-.storefront > .header .header-search form::after { content:"⌕"; width:31px; height:31px; display:grid; place-items:center; flex:none; border-radius:50%; color:var(--home-ink); font-size:21px; }
-.storefront > .header .header-search form > span { display:none; }
 
 .home-hero-visual { position:relative; background:#f5ecdf; }
 .home-hero-visual img { object-position:center; }
@@ -279,11 +250,10 @@
 .home-catalog-toolbar > label { padding:0 8px 0 13px; display:flex; align-items:center; gap:5px; font-size:12px; }
 .home-catalog-toolbar > label select { width:auto; min-width:28px; height:38px; padding:0 18px 0 4px; border:0; background:transparent; color:var(--home-ink); font:inherit; }
 .home-sort { width:auto; margin-left:auto; padding:0 30px 0 13px; font:inherit; font-size:12px; }
-.storefront-side { top:calc(var(--header-h) + 14px); }
+.storefront-side { top:calc(var(--development-notice-h) + var(--header-h) + 14px); }
 
 
 @media (max-width:850px) {
-  .storefront > .header .account-button.icon-only,.storefront > .header .favorites-button,.storefront > .header .cart-button { display:none; }
   .home-stamp { width:80px; height:80px; top:12px; right:12px; font-size:7px; }
   .home-note { padding:11px 13px; }.home-note > b { font-size:10px; }.home-note.delivery { left:2%; bottom:17%; }.home-note.packing { right:2%; bottom:3%; }
   .storefront-preset-carousel { margin:8px auto 24px; padding:0 16px; }
@@ -298,16 +268,6 @@
 /* Третья визуальная сверка: широкая композиция, единая карусель и точные
    состояния каталога. Эти правила намеренно завершают каскад. */
 @media (min-width:851px) {
-  .storefront > .header { width:calc(100% - 36px); max-width:1780px; height:92px; padding:0 22px; gap:38px; }
-  .storefront > .header .brand { font:700 35px/1 Georgia,serif; }
-  .storefront > .header .desktop-nav { gap:34px; }
-  .storefront > .header .desktop-nav a { font-size:15px; letter-spacing:-.015em; }
-  .storefront > .header .header-search { width:clamp(320px,23vw,430px); height:48px; }
-  .storefront > .header .header-search input { font-size:14px; }
-  .storefront > .header .account-button.icon-only,
-  .storefront > .header .favorites-button,
-  .storefront > .header .cart-button { width:46px; min-width:46px; height:46px; }
-
   .home-hero { width:calc(100% - 36px); max-width:1780px; min-height:620px; padding:32px 34px 18px; grid-template-columns:40% 60%; }
   .home-hero h1 { font-size:clamp(64px,5.5vw,96px); }
   .home-hero-copy > p { font-size:17px; }
@@ -341,9 +301,6 @@
 
 
 @media (max-width:1200px) and (min-width:851px) {
-  .storefront > .header .desktop-nav { gap:20px; }
-  .storefront > .header .desktop-nav a { font-size:13px; }
-  .storefront > .header .header-search { width:300px; }
   .home-catalog-toolbar { flex-wrap:wrap; }
   .home-sort { margin-left:0; }
 }
@@ -354,24 +311,6 @@
   .storefront-buy button { width:44px; height:44px; }
 }
 
-/* Навигация главной раскрывается на месте, не уводя пользователя к якорю. */
-.header-dropdown { position:relative; }
-.header-dropdown summary { padding:10px 0; display:flex; align-items:center; gap:6px; list-style:none; color:var(--home-ink); cursor:pointer; font-size:15px; }
-.header-dropdown summary::-webkit-details-marker { display:none; }
-.header-dropdown summary span { color:var(--home-orange); font-size:12px; transition:transform .2s ease; }
-.header-dropdown[open] summary span { transform:rotate(180deg); }
-.header-dropdown > div { min-width:235px; max-height:430px; padding:9px; position:absolute; z-index:80; top:44px; left:-14px; display:grid; gap:2px; overflow-y:auto; border:1px solid #dfd0be; border-radius:14px; background:#fbf5ec; box-shadow:0 20px 45px rgba(53,34,20,.16); }
-.header-dropdown button,.header-dropdown > div a { min-height:41px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:20px; border:0; border-radius:9px; background:transparent; color:var(--home-ink); text-align:left; text-decoration:none; font:inherit; font-size:13px; cursor:pointer; }
-.header-dropdown :is(button,a) span { color:var(--home-orange); }
-.header-dropdown button:hover,.header-dropdown > div a:hover { background:#eee7ba; }
-.storefront > .header .desktop-nav { align-items:center; }
-.storefront > .header .desktop-nav > a,.header-dropdown summary { min-height:42px; padding:0 8px; display:flex; align-items:center; border-radius:8px; transition:background .18s ease,color .18s ease; }
-.storefront > .header .desktop-nav > a:hover,.header-dropdown summary:hover,.header-dropdown[open] summary { background:rgba(41,29,19,.06); color:var(--home-orange); }
-.header-submenu { position:relative; }
-.header-submenu > summary { min-height:41px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:18px; border-radius:9px; color:var(--home-ink); font-size:13px; cursor:pointer; }
-.header-submenu > summary span { transform:none!important; color:var(--home-orange); font-size:18px; }.header-submenu[open] > summary span { transform:rotate(90deg)!important; }
-.header-submenu > div { padding:2px 0 4px 10px; display:grid; gap:2px; border-left:1px solid #dfd0be; }
-.header-submenu > summary:hover,.header-submenu[open] > summary { background:#eee7ba; color:var(--home-ink); }
 
 /* Печать и два отрывных вкладыша поверх hero. */
 .home-stamp { width:132px; height:132px; padding:0; top:22px; right:14px; border:0; outline:0; border-radius:50%; background:rgba(247,239,228,.76); box-shadow:none; transform:rotate(7deg); }

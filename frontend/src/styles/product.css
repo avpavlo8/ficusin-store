@@ -201,8 +201,6 @@
 
 @media (max-width: 700px) {
   :root { --header-h: 72px; }
-  .announcement { justify-content: center; font-size: 10px; }
-  .announcement span:last-child { display: none; }
   .header { height: 72px; padding: 0 18px; }
   .brand { font-size: 21px; }
   .brand-mark { width: 29px; height: 36px; }
@@ -268,17 +266,7 @@
 
 /* PDP по утверждённому макету главной: тёплый фон, крупная галерея,
    единая карточка покупки и отдельная полноширинная лента рекомендаций. */
-.product-page { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; --pdp-orange:#df4728; --pdp-paper:#fbf4ea; max-width:100%; overflow-x:hidden; background:#f8f0e5; color:#2c241b; }
-.product-page > .announcement { display:none; }
-.product-page > .header { width:calc(100% - 36px); max-width:1780px; height:92px; margin:0 auto; padding:0 22px; grid-template-columns:auto 1fr auto; gap:38px; border:0; background:transparent; box-shadow:none; }
-.product-page > .header .brand-mark,.product-page > .header .brand-text small { display:none; }
-.product-page > .header .brand { color:var(--home-ink); font:700 35px/1 Georgia,serif; letter-spacing:-.04em; }
-.product-page > .header .desktop-nav { justify-self:start; align-items:center; gap:34px; }.product-page > .header .desktop-nav > a { min-height:42px; padding:0 8px; display:flex; align-items:center; border-radius:8px; color:var(--home-ink); font-size:15px; }
-.product-page > .header .header-search { width:clamp(320px,23vw,430px); height:48px; background:rgba(255,255,255,.38); border-color:#d8c9b8; box-shadow:none; }
-.product-page > .header .header-search form::after { content:"⌕"; width:31px; height:31px; display:grid; place-items:center; flex:none; color:var(--home-ink); font-size:21px; }.product-page > .header .header-search form > span { display:none; }
-.product-page > .header .header-actions { gap:10px; }.product-page > .header .account-button.icon-only,.product-page > .header .favorites-button,.product-page > .header .cart-button { width:46px; min-width:46px; height:46px; padding:0; position:relative; display:grid; place-items:center; border:0; border-radius:50%; background:transparent; color:var(--home-ink); box-shadow:none; }
-.product-page > .header .account-button.icon-only svg,.product-page > .header .favorites-button svg,.product-page > .header .cart-button svg { width:25px; height:25px; }.product-page > .header .favorites-button > span,.product-page > .header .cart-button > span { display:grid; place-items:center; font-size:0; }
-.product-page > .header .favorites-button b,.product-page > .header .cart-button b { min-width:18px; height:18px; padding:0 5px; position:absolute; top:0; right:-2px; display:grid; place-items:center; border-radius:99px; background:var(--home-orange); color:white; font-size:10px; }
+.product-page { --home-ink:#291d13; --home-green:#273f24; --home-orange:#e74827; --pdp-orange:#df4728; --pdp-paper:#fbf4ea; max-width:100%; overflow-x:clip; background:#f8f0e5; color:#2c241b; }
 .product-page .breadcrumbs { width:min(1600px,calc(100% - 64px)); margin:0 auto; padding:18px 0 10px; color:#897d70; }
 .product-page .pdp-main { max-width:1600px; padding:10px 32px 44px; grid-template-columns:minmax(0,.82fr) minmax(620px,1.18fr); gap:42px; align-items:stretch; }
 .product-page .pdp-loading-breadcrumb span { width:230px; height:14px; display:block; border-radius:7px; background:#eadfce; }
@@ -402,7 +390,6 @@
   .product-page .pdp-summary { padding:22px 18px; border-radius:16px; }.product-page .pdp-summary h1 { font-size:34px; }
   .product-page .pdp-purchase-layout { grid-template-columns:1fr; }.product-page .pdp-side-column { margin-top:0; }.product-page .pdp-parameters { margin-top:0; padding-top:18px; }.product-page .pdp-key-characteristics { padding:22px 18px; }.product-page .pdp-key-characteristics > div { grid-template-columns:30px minmax(100px,.8fr) 1.2fr; }
   .product-page .pdp-actions { grid-template-columns:104px 1fr 52px; }.product-page .pdp-cart-button { padding-inline:10px; }
-  .product-page > .header { width:100%; height:72px; padding:0 16px; }.product-page > .header .brand { font-size:24px; }
   .product-page .pdp-anchor-nav { padding:0 16px; gap:26px; overflow-x:auto; }.product-page .pdp-anchor-nav button { min-height:50px; }
   .product-page .pdp-tab-panel { padding:14px 16px 30px; }.product-page .pdp-tab-panel > .pdp-info-card { padding:20px 18px; }
   .product-page .pdp-info-card { padding:20px 18px; }.product-page .pdp-characteristics-panel dl { grid-template-columns:1fr; }.product-page .pdp-characteristics-panel dl > div { grid-template-columns:1fr 1fr; }.product-page .passport-sections,.product-page .review-feed { max-height:none; }
