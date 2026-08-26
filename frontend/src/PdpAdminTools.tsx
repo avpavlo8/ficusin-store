@@ -1,75 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { ProductDialog } from "./AdminCatalogDialogs";
 import { Dialog, api } from "./adminShared";
+import { ProductMediaManager } from "./ProductMediaManager";
 import type { Product } from "./adminTypes";
-
-export type ProductMedia = { id: number; url: string; primary: boolean; sortOrder: number };
 
 function ProductMediaDialog({ product, onClose, onChanged }: {
   product: Product; onClose: () => void; onChanged: () => void;
 }) {
-  const [items, setItems] = useState<ProductMedia[]>([]);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  const load = useCallback(() => api<{ media: ProductMedia[] }>(`/api/v1/admin/products/${product.id}/media`)
-    .then((data) => setItems(data.media || []))
-    .catch((reason) => setError((reason as Error).message)), [product.id]);
-  useEffect(() => { void load(); }, [load]);
-
-  const upload = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setBusy(true); setError("");
-    try {
-      for (const file of Array.from(files)) {
-        const form = new FormData();
-        form.append("file", file);
-        await api(`/api/v1/admin/products/${product.id}/media`, { method: "POST", body: form });
-      }
-      await load(); onChanged();
-    } catch (reason) { setError((reason as Error).message); }
-    finally { setBusy(false); }
-  };
-
-  const remove = async (item: ProductMedia) => {
-    if (!window.confirm("Удалить эту фотографию из карточки товара?")) return;
-    setBusy(true); setError("");
-    try {
-      await api(`/api/v1/admin/products/${product.id}/media/${item.id}`, { method: "DELETE" });
-      await load(); onChanged();
-    } catch (reason) { setError((reason as Error).message); }
-    finally { setBusy(false); }
-  };
-
-  const makePrimary = async (item: ProductMedia) => {
-    if (item.primary) return;
-    setBusy(true); setError("");
-    try {
-      await api(`/api/v1/admin/products/${product.id}/media/${item.id}/primary`, { method: "PATCH", body: "{}" });
-      await load(); onChanged();
-    } catch (reason) { setError((reason as Error).message); }
-    finally { setBusy(false); }
-  };
-
   return <Dialog title={`Фотографии · ${product.name}`} onClose={onClose}>
-    <div className="pdp-admin-media">
-      <label className="pdp-admin-upload">
-        <input type="file" accept="image/jpeg,image/png,image/gif" multiple disabled={busy} onChange={(event) => { void upload(event.target.files); event.currentTarget.value = ""; }} />
-        <span>{busy ? "Загружаем…" : "+ Добавить фотографии"}</span>
-      </label>
-      <p className="admin-hint">JPEG, PNG или GIF до 12 МБ. Файл сохраняется в нашем S3, а не в СБИС.</p>
-      {error && <p className="admin-error">{error}</p>}
-      <div className="pdp-admin-media-grid">
-        {items.map((item) => <article key={item.id} className={item.primary ? "primary" : ""}>
-          <img src={item.url} alt="" />
-          <div>
-            {item.primary ? <strong>Главная</strong> : <button type="button" disabled={busy} onClick={() => void makePrimary(item)}>Сделать главной</button>}
-            <button type="button" className="danger" disabled={busy} onClick={() => void remove(item)}>Удалить</button>
-          </div>
-        </article>)}
-        {!items.length && <p className="admin-hint">У товара пока нет собственных фотографий.</p>}
-      </div>
-    </div>
+    {error && <p className="admin-error">{error}</p>}
+    <ProductMediaManager productId={product.id} onError={setError} onChanged={onChanged} />
   </Dialog>;
 }
 

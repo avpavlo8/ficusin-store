@@ -34,11 +34,18 @@ func TestGenerateUsesFastStructuredRequest(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(envelope))), Header: make(http.Header)}, nil
 	})}
 
-	proposal, err := client.Generate(context.Background(), Input{Name: "Аглаонема Мария D11"}, "care")
+	proposal, err := client.Generate(context.Background(), Input{Name: "Аглаонема Мария D11", IsPlant: true}, "care")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if proposal.Passport.FAQ[0].Question == "" {
 		t.Fatalf("proposal was not decoded: %#v", proposal)
+	}
+}
+
+func TestGenerateRejectsPlantCareForNonPlant(t *testing.T) {
+	client := New("secret", "gpt-5-mini")
+	if _, err := client.Generate(context.Background(), Input{Name: "Кашпо Oslo", Category: "pots"}, "care"); err == nil {
+		t.Fatal("non-plant care generation must be rejected before an AI request")
 	}
 }

@@ -547,11 +547,17 @@ func (handlers adminHandlers) generateProductDraft(response http.ResponseWriter,
 			break
 		}
 	}
-	if product == nil {
+		if product == nil {
 		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Товар не найден"})
 		return
-	}
-	input := catalogai.Input{Name: product.Name, SabyCode: product.SabyCode, Category: product.CatalogSection, CurrentDescription: product.Description, Attributes: []catalogai.Attribute{}}
+		}
+		isPlant, err := adminProductIsPlant(request.Context(), handlers.repository, *product)
+		if err != nil { handlers.failed(response, "resolve product category for ai", err); return }
+		if body.Mode == "care" && !isPlant {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Уход и паспорт доступны только для растений"})
+			return
+		}
+		input := catalogai.Input{Name: product.Name, SabyCode: product.SabyCode, Category: product.CatalogSection, IsPlant: isPlant, CurrentDescription: product.Description, Attributes: []catalogai.Attribute{}}
 	if product.CategoryID != nil {
 		if provider, yes := handlers.repository.(effectiveAttributeProvider); yes {
 			attributes, e := provider.EffectiveCategoryAttributes(request.Context(), *product.CategoryID)

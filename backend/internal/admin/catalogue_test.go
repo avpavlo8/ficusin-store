@@ -1,6 +1,10 @@
 package admin
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 // Адрес страницы человек читает и пересказывает по телефону, поэтому
 // кириллица переводится в латиницу, а не выбрасывается.
@@ -39,5 +43,15 @@ func TestNormalizeCodes(t *testing.T) {
 func TestNormalizeCodesEmpty(t *testing.T) {
 	if got := normalizeCodes([]string{"", "  ,  ;"}); len(got) != 0 {
 		t.Fatalf("из пустоты получились коды: %v", got)
+	}
+}
+
+func TestCategoryAttributeContractKeepsStableValueAndRussianLabel(t *testing.T) {
+	attribute := CategoryAttribute{Code: "light_level", DataType: "enum", Options: []string{"diffused"}, OptionLabels: map[string]string{"diffused": "Рассеянный свет"}}
+	raw, err := json.Marshal(attribute)
+	if err != nil { t.Fatal(err) }
+	encoded := string(raw)
+	if !strings.Contains(encoded, `"options":["diffused"]`) || !strings.Contains(encoded, `"optionLabels":{"diffused":"Рассеянный свет"}`) {
+		t.Fatalf("attribute contract lost value or label: %s", encoded)
 	}
 }

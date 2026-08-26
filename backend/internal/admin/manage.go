@@ -399,7 +399,35 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 				'provider', e.provider, 'type', e.id_type, 'externalId', e.external_id)
 				ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.product_id=p.id), '[]'::jsonb),
 			COALESCE((SELECT jsonb_object_agg(a.code,v.value) FROM product_attribute_values v
-				JOIN attribute_definitions a ON a.id=v.attribute_id WHERE v.product_id=p.id), '{}'::jsonb)
+				JOIN attribute_definitions a ON a.id=v.attribute_id WHERE v.product_id=p.id), '{}'::jsonb),
+			EXISTS(
+				WITH RECURSIVE ancestors AS (
+					SELECT c.id,c.parent_id,0 depth FROM categories c WHERE c.id=p.category_id
+					UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+				), effective AS (
+					SELECT DISTINCT ON(d.id) d.id,ca.show_in_summary,ca.is_excluded
+					FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+					JOIN attribute_definitions d ON d.id=ca.attribute_id AND d.value_scope='variant' AND d.is_active
+					ORDER BY d.id,a.depth
+				)
+				SELECT 1 FROM product_variants variant CROSS JOIN effective e
+				LEFT JOIN variant_attribute_values value ON value.variant_id=variant.id AND value.attribute_id=e.id
+				WHERE variant.product_id=p.id AND variant.is_active=1 AND variant.archived_at IS NULL
+					AND e.show_in_summary AND NOT e.is_excluded
+					AND (value.value IS NULL OR value.value='null'::jsonb OR value.value='""'::jsonb OR value.value='[]'::jsonb)
+			), EXISTS(
+				SELECT 1 FROM product_attribute_values value JOIN attribute_definitions definition ON definition.id=value.attribute_id
+				WHERE value.product_id=p.id AND definition.data_type IN ('enum','multi_enum') AND (
+					(definition.data_type='enum' AND NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=(value.value#>>'{}') AND option.is_active)) OR
+					(definition.data_type='multi_enum' AND (jsonb_typeof(value.value)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value ELSE '[]'::jsonb END) selected WHERE NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=selected AND option.is_active))))
+				)
+				UNION ALL
+				SELECT 1 FROM variant_attribute_values value JOIN product_variants variant ON variant.id=value.variant_id JOIN attribute_definitions definition ON definition.id=value.attribute_id
+				WHERE variant.product_id=p.id AND definition.data_type IN ('enum','multi_enum') AND (
+					(definition.data_type='enum' AND NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=(value.value#>>'{}') AND option.is_active)) OR
+					(definition.data_type='multi_enum' AND (jsonb_typeof(value.value)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value ELSE '[]'::jsonb END) selected WHERE NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=selected AND option.is_active))))
+				)
+			)
 		FROM products p
 		LEFT JOIN LATERAL (
 			SELECT * FROM product_variants WHERE product_id = p.id
@@ -426,7 +454,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
 			&item.SabyUpdatedAt, &item.CategoryID, &item.Passport, &item.ImportantWarnings,
-			&externalIDs, &attributes); err != nil {
+				&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		if err := json.Unmarshal(externalIDs, &item.ExternalIDs); err != nil {
@@ -522,13 +550,13 @@ func (repository *PostgresRepository) UpdateProduct(
 			placement = CASE WHEN $8::text IS NULL THEN placement ELSE NULLIF($8, '') END,
 			pet_safety = CASE WHEN $9::text IS NULL THEN pet_safety ELSE NULLIF($9, '') END,
 			growth_habit = CASE WHEN $10::text IS NULL THEN growth_habit ELSE NULLIF($10, '') END,
-			category_id = COALESCE($11, category_id),
+			category_id = CASE WHEN $13 THEN NULL ELSE COALESCE($11, category_id) END,
 			saby_fields = COALESCE($12, saby_fields),
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, id, update.CatalogSection, update.PlantKind, update.LightLevel, update.Watering,
 		update.HeightClass, update.CareLevel, update.Placement, update.PetSafety,
-		update.GrowthHabit, update.CategoryID, update.SabyFields)
+		update.GrowthHabit, update.CategoryID, update.SabyFields, update.ClearCategory)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
@@ -595,23 +623,24 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err := saveProductAttributes(ctx, tx, id, update.Attributes); err != nil {
 		return Product{}, err
 	}
-	if update.Status != nil && *update.Status == "published" || update.CategoryID != nil || update.Attributes != nil {
+	if update.Status != nil && *update.Status == "published" || update.CategoryID != nil || update.ClearCategory || update.Attributes != nil {
 		var status string
 		if err := tx.QueryRow(ctx,"SELECT status FROM products WHERE id=$1",id).Scan(&status); err != nil { return Product{},err }
-		if status == "published" { if err := validateRequiredAttributes(ctx,tx,id); err != nil { return Product{},err } }
+		if status == "published" { var hasCategory bool;if err:=tx.QueryRow(ctx,"SELECT category_id IS NOT NULL FROM products WHERE id=$1",id).Scan(&hasCategory);err!=nil{return Product{},err};if !hasCategory{return Product{},fmt.Errorf("%w: выберите корректную категорию",ErrInvalidInput)};if err := validateRequiredAttributes(ctx,tx,id); err != nil { return Product{},err } }
 	}
 	if update.ExternalIDs != nil { if err := replaceEditableExternalIDs(ctx,tx,id,*update.ExternalIDs); err != nil { return Product{},err } }
 	if update.Image != nil {
-		if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id = $1`, id); err != nil {
-			return Product{}, err
-		}
 		if strings.TrimSpace(*update.Image) != "" {
+			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=0 WHERE product_id=$1`, id); err != nil { return Product{}, err }
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO product_media(product_id, object_key, alt_text, is_primary)
-				SELECT id, $2, name, 1 FROM products WHERE id = $1
+				INSERT INTO product_media(product_id, object_key, alt_text, sort_order, is_primary)
+				SELECT id, $2, name, COALESCE((SELECT MAX(sort_order)+1 FROM product_media WHERE product_id=$1),0), 1 FROM products WHERE id = $1
 			`, id, strings.TrimSpace(*update.Image)); err != nil {
 				return Product{}, err
 			}
+		} else {
+			if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id=$1 AND is_primary<>0`, id); err != nil { return Product{}, err }
+			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=1 WHERE id=(SELECT id FROM product_media WHERE product_id=$1 ORDER BY sort_order,id LIMIT 1)`, id); err != nil { return Product{}, err }
 		}
 	}
 	after, err := productAuditData(ctx, tx, id)
@@ -690,12 +719,13 @@ func (repository *PostgresRepository) ListCategoryAttributes(ctx context.Context
 	for _, definition := range items {
 		if !definition.Active || definition.Excluded { continue }
 		options := make([]string, 0, len(definition.Options))
-		for _, option := range definition.Options { if option.Active { options = append(options, option.Code) } }
+		optionLabels := make(map[string]string, len(definition.Options))
+		for _, option := range definition.Options { if option.Active { options = append(options, option.Code); optionLabels[option.Code] = option.Label } }
 		result = append(result, CategoryAttribute{
 			Code: definition.Code, Name: definition.Name, DataType: definition.DataType,
-			Unit: definition.Unit, Options: options, Audience: definition.Audience, Scope: definition.Scope,
+			Unit: definition.Unit, Options: options, OptionLabels: optionLabels, Audience: definition.Audience, Scope: definition.Scope,
 			Required: definition.Required, Filterable: definition.Filterable,
-			ShowOnPDP: definition.ShowOnPDP, Badge: definition.Badge, SortOrder: definition.SortOrder,
+			ShowOnPDP: definition.ShowOnPDP, KeyCharacteristic: definition.KeyCharacteristic, Badge: definition.Badge, SortOrder: definition.SortOrder,
 		})
 	}
 	return result, nil

@@ -14,6 +14,7 @@ type catalogToolRepositoryStub struct {
 	products []admin.Product
 	updates  []admin.ProductUpdate
 	media    []admin.ProductMedia
+	categories []admin.Category
 }
 
 func newCatalogToolRepositoryStub() *catalogToolRepositoryStub {
@@ -23,6 +24,8 @@ func newCatalogToolRepositoryStub() *catalogToolRepositoryStub {
 func (stub *catalogToolRepositoryStub) ListProducts(context.Context) ([]admin.Product, error) {
 	return stub.products, nil
 }
+
+func (stub *catalogToolRepositoryStub) ListCategories(context.Context) ([]admin.Category, error) { return stub.categories, nil }
 
 func (stub *catalogToolRepositoryStub) UpdateProduct(_ context.Context, _ admin.Actor, _ int64, update admin.ProductUpdate) (admin.Product, error) {
 	stub.updates = append(stub.updates, update)
@@ -107,4 +110,19 @@ func TestProductMediaListRequiresAdminReadPermission(t *testing.T) {
 	if body := response.Body.String(); body == "" || body == "{}" {
 		t.Fatalf("media response is empty: %s", body)
 	}
+}
+
+func TestPlantToolsUseCategoryRootInsteadOfLegacySection(t *testing.T) {
+	repository := newCatalogToolRepositoryStub()
+	rootID := int64(1)
+	leafID := int64(2)
+	repository.categories = []admin.Category{{ID: rootID, Slug: "plants"}, {ID: leafID, ParentID: &rootID, Slug: "ficus"}}
+	plant, err := adminProductIsPlant(context.Background(), repository, admin.Product{CategoryID: &leafID, CatalogSection: "pots"})
+	if err != nil { t.Fatal(err) }
+	if !plant { t.Fatal("plant category must win over stale catalog_section") }
+	potID := int64(3)
+	repository.categories = append(repository.categories, admin.Category{ID: potID, Slug: "pots"})
+	plant, err = adminProductIsPlant(context.Background(), repository, admin.Product{CategoryID: &potID, CatalogSection: "plants"})
+	if err != nil { t.Fatal(err) }
+	if plant { t.Fatal("non-plant category must not receive plant AI") }
 }
