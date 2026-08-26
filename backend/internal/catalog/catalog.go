@@ -112,6 +112,7 @@ type ProductAttribute struct {
 	Options               []string          `json:"options"`
 	OptionLabels          map[string]string `json:"optionLabels"`
 	DataType              string            `json:"-"`
+	DisplayMode           string            `json:"displayMode,omitempty"`
 	Badge                 bool              `json:"badge"`
 	Filterable            bool              `json:"filterable"`
 	SummaryPosition       *int              `json:"summaryPosition,omitempty"`
