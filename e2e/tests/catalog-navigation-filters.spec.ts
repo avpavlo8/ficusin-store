@@ -119,9 +119,9 @@ test("@desktop range chips select и boolean имеют разные контр�
   const filters = page.locator(".storefront-attribute-filters");
   await expect(filters.getByLabel("Высота: от")).toHaveAttribute("type", "number");
   await expect(filters.getByLabel("Высота: до")).toHaveAttribute("type", "number");
-  const select = filters.getByRole("combobox");
+  const select = filters.locator("select");
   await expect(select).toHaveCount(1);
-  await expect(select.getByRole("option", { name: "Полутень" })).toBeVisible();
+  await expect(select.locator("option", { hasText: "Полутень" })).toHaveCount(1);
   await expect(filters.locator(".catalog-chip-filter", { hasText: "Сложность ухода" }).getByRole("button")).toHaveCount(2);
   const flowering = filters.locator(".catalog-chip-filter", { hasText: "Цветёт" });
   await expect(flowering.getByRole("button", { name: "Да" })).toBeVisible();
