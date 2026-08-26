@@ -46,7 +46,7 @@ export function ProductMediaManager({ productId, onChanged, onError }: {
     <label className="pdp-admin-upload"><input type="file" accept="image/jpeg,image/png,image/gif" multiple disabled={busy} onChange={(event) => { void upload(event.target.files); event.currentTarget.value = ""; }} /><span>{busy ? "Обрабатываем…" : "+ Загрузить обычные фотографии"}</span></label>
     <p className="admin-hint">Основное фото отмечено явно. Порядок стабилен; фото SKU редактируются отдельно внутри варианта.</p>
     <div className="pdp-admin-media-grid">
-      {items.map((item) => <article key={item.id} className={item.primary ? "primary" : ""}><img src={item.url} alt=""/><div>{item.primary ? <strong>Главная · Основное фото</strong> : <button type="button" disabled={busy} onClick={() => void makePrimary(item)}>Сделать основным</button>}<button type="button" className="danger" disabled={busy} onClick={() => void remove(item)}>Удалить</button></div></article>)}
+      {items.map((item) => <article key={item.id} className={item.primary ? "primary" : ""}><img src={item.url} alt={item.primary ? "Текущая обложка" : "Фотография товара"}/><div>{item.primary ? <strong>Главная · Основное фото</strong> : <button type="button" disabled={busy} onClick={() => void makePrimary(item)}>Сделать основным</button>}<button type="button" className="danger" disabled={busy} onClick={() => void remove(item)}>Удалить</button></div></article>)}
       {!items.length && <p className="admin-inline-error">Без фото — перед публикацией загрузите и выберите основное изображение.</p>}
     </div>
   </div>;
