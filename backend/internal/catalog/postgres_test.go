@@ -31,3 +31,19 @@ func TestCatalogQueryUsesActualRootCategory(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogFilterMetadataComesFromPIMConfiguration(t *testing.T) {
+	for _, want := range []string{
+		"definition.data_type",
+		"filter.display_mode",
+		"'dataType',value.data_type",
+		"'displayMode',value.display_mode",
+	} {
+		if !strings.Contains(catalogListQuery, want) {
+			t.Errorf("catalog query does not expose PIM filter metadata %q", want)
+		}
+	}
+	if strings.Contains(catalogListQuery, "CASE effective.code") {
+		t.Fatal("storefront display modes must not be hard-coded by attribute code")
+	}
+}
