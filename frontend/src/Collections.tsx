@@ -44,10 +44,9 @@ const legacyPresets: Preset[] = [
   { id: "pets", title: "Безопасно для питомцев", match: (p) => p.petSafety === "safe" },
 ];
 
-// StorefrontPage imports this reference for filtering. Keep the same array
-// object and mutate its contents when backend definitions load so a click on
-// any newly-created collection is understood by the parent without a second
-// source of truth.
+// StorefrontPage uses this reference only as the legacy matching fallback for
+// a collection URL. Collection navigation itself is deliberately link-based:
+// a collection is page context, not a multi-select filter.
 export const presets: Preset[] = [...legacyPresets];
 
 const collectionImages: Record<string, string> = {
@@ -76,12 +75,10 @@ function serverPreset(collection: CollectionDefinition): Preset {
 
 export function CollectionStrip<T extends Product>({
   products,
-  active,
-  onPick,
+  activeSlug,
 }: {
   products: T[];
-  active: ReadonlySet<string>;
-  onPick?: (id: string) => void;
+  activeSlug?: string;
 }) {
   const rail = useRef<HTMLDivElement>(null);
   const [serverCollections, setServerCollections] = useState<CollectionDefinition[]>([]);
@@ -161,9 +158,6 @@ export function CollectionStrip<T extends Product>({
   }, [products, serverCollections, source]);
 
   if (shown.length === 0) return null;
-  // The first render after an async collection response already knows that
-  // the rail continues. Do not wait for ResizeObserver before showing the
-  // affordance; measured state takes over as soon as the user scrolls.
   const canScrollNext = scrollEdges.next || (!scrollEdges.previous && shown.length > 3);
 
   return (
@@ -175,13 +169,8 @@ export function CollectionStrip<T extends Product>({
           key={preset.id}
           role="listitem"
           href={`/collections/${encodeURIComponent(preset.id)}`}
-          className={active.has(preset.id) ? "preset active" : "preset"}
-          aria-current={active.has(preset.id) ? "page" : undefined}
-          onClick={(event) => {
-            if (!onPick) return;
-            event.preventDefault();
-            onPick(preset.id);
-          }}
+          className={activeSlug === preset.id ? "preset active" : "preset"}
+          aria-current={activeSlug === preset.id ? "page" : undefined}
           title={note || `${preset.title} — ${count}`}
           style={{ backgroundImage: `url('${image}')` }}
         >
