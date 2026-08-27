@@ -9,6 +9,7 @@ export type CartLine = {
   price: number;
   image: string;
   stock?: number;
+  variantLabel?: string;
   quantity: number;
 };
 
@@ -76,15 +77,15 @@ export function CartDrawer({
       <img src={item.image} alt="" />
       <div className="cart-line-copy">
         <h3>{item.name}</h3>
-        <small>Живое растение</small>
-        <span className="cart-stock">В наличии</span>
+        <small>Вариант: {item.variantLabel || item.id}</small>
+        <span className={`cart-stock ${item.stock === 0 ? "out" : ""}`}>{item.stock === 0 ? "Под заказ" : "В наличии"}</span>
         <div className="cart-line-mobile-price">{money(item.price)}</div>
       </div>
       <strong className="cart-unit-price">{money(item.price)}</strong>
       <div className="quantity">
-        <button onClick={() => onQuantityChange(item.id, item.quantity - 1)} aria-label="Уменьшить">−</button>
-        <span>{item.quantity}</span>
-        <button onClick={() => onQuantityChange(item.id, item.quantity + 1)} aria-label="Увеличить">+</button>
+        <button type="button" onClick={() => onQuantityChange(item.id, item.quantity - 1)} aria-label={`Уменьшить количество ${item.name}`}>−</button>
+        <span aria-live="polite">{item.quantity}</span>
+        <button type="button" disabled={item.stock !== undefined && item.stock > 0 && item.quantity >= item.stock} onClick={() => onQuantityChange(item.id, item.quantity + 1)} aria-label={`Увеличить количество ${item.name}`}>+</button>
       </div>
       <strong className="cart-line-total">{money(item.price * item.quantity)}</strong>
       <button className="remove" onClick={() => onQuantityChange(item.id, 0)} aria-label={`Удалить ${item.name}`}><LineIcon name="trash" /></button>
@@ -118,7 +119,6 @@ export function CartDrawer({
             {!page && <div className="cart-bonus" hidden />}
             {!page && <button className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
             {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" aria-label="Перейти к оформлению" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
-            {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
           </aside>
         )}
       </div>
@@ -215,11 +215,15 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     addressDeliveryNeedsQuote, calculateAddressDelivery,
   } = props;
   const [step, setStep] = useState<1|2|3>(1);
+  const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
   const formRef = useRef<HTMLFormElement>(null);
   const advance = (next: 2|3) => {
     const current = formRef.current?.querySelector<HTMLElement>(`[data-checkout-step="${step}"]`);
     const fields = Array.from(current?.querySelectorAll<HTMLInputElement>("input,textarea,select") || []);
-    if (fields.some((field) => !field.reportValidity())) return;
+	const errors = Object.fromEntries(fields.filter((field) => !field.checkValidity()).map((field) => [field.name, field.validationMessage]));
+	setContactErrors(errors);
+	const invalid = fields.find((field) => !field.checkValidity());
+	if (invalid) { invalid.focus(); return; }
 	track("checkout_step", { value: total, quantity: cartCount, properties: { from: step, to: next } });
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -267,8 +271,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <legend>Контактные данные</legend>
             {user && <p className="profile-prefill">Данные заполнены из личного кабинета</p>}
             <div className="checkout-contact-fields">
-              <label className="checkout-contact-name">Имя<input name="name" required placeholder="Александр" autoComplete="name" value={checkoutProfile.name} onChange={(event) => setCheckoutProfile((current) => ({ ...current, name: event.target.value }))} /></label>
-              <div className="checkout-contact-row"><label>Телефон<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={18} placeholder="+7 900 000-00-00" value={checkoutProfile.phone} onChange={(event) => { event.currentTarget.setCustomValidity(""); const value = formatRussianPhoneInput(event.currentTarget.value); setCheckoutProfile((current) => ({ ...current, phone: value })); }} /></label><label>Email для чека<input name="email" required type="email" autoComplete="email" placeholder="mail@example.ru" value={checkoutProfile.email} onChange={(event) => setCheckoutProfile((current) => ({ ...current, email: event.target.value }))} /></label></div>
+              <label className="checkout-contact-name">Имя<input name="name" required aria-invalid={!!contactErrors.name} aria-describedby={contactErrors.name ? "name-error" : undefined} placeholder="Александр" autoComplete="name" value={checkoutProfile.name} onChange={(event) => { setContactErrors((current) => ({ ...current, name: "" })); setCheckoutProfile((current) => ({ ...current, name: event.target.value })); }} />{contactErrors.name && <small className="field-error" id="name-error">{contactErrors.name}</small>}</label>
+              <div className="checkout-contact-row"><label>Телефон<input name="phone" required inputMode="tel" autoComplete="tel" maxLength={18} aria-invalid={!!contactErrors.phone} aria-describedby={contactErrors.phone ? "phone-error" : undefined} placeholder="+7 900 000-00-00" value={checkoutProfile.phone} onChange={(event) => { event.currentTarget.setCustomValidity(""); setContactErrors((current) => ({ ...current, phone: "" })); const value = formatRussianPhoneInput(event.currentTarget.value); setCheckoutProfile((current) => ({ ...current, phone: value })); }} />{contactErrors.phone && <small className="field-error" id="phone-error">{contactErrors.phone}</small>}</label><label>Email для чека<input name="email" required type="email" autoComplete="email" aria-invalid={!!contactErrors.email} aria-describedby={contactErrors.email ? "email-error" : undefined} placeholder="mail@example.ru" value={checkoutProfile.email} onChange={(event) => { setContactErrors((current) => ({ ...current, email: "" })); setCheckoutProfile((current) => ({ ...current, email: event.target.value })); }} />{contactErrors.email && <small className="field-error" id="email-error">{contactErrors.email}</small>}</label></div>
             </div>
             <label className="checkout-care-optin"><input type="checkbox" defaultChecked /><span>Хочу получать полезные советы по уходу за растениями</span></label>
             <div className="checkout-navigation"><a href="/cart">← Назад</a><button type="button" className="primary-button" onClick={() => advance(2)}>Продолжить <span>→</span></button></div>
@@ -323,7 +327,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
           </div>
-        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div><img src="/assets/redesign/checkout-summary-art.png" alt="" /></aside></div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd className={deliveryFeePending ? "delivery-pending" : ""}>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div></aside></div>
       )}
     </aside>
   );
