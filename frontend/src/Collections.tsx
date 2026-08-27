@@ -25,24 +25,7 @@ type CollectionDefinition = {
   count: number;
 };
 
-type CollectionSource = "loading" | "server" | "fallback";
-
-// Legacy rules are used only when the collections API is unavailable. They
-// keep old installations usable, but they are not interactive filter state:
-// every collection card always navigates to its canonical URL.
-const legacyPresets: Preset[] = [
-  { id: "bathroom", title: "Для ванной", match: (p) => p.placement === "bathroom" },
-  { id: "dark", title: "Для тёмной комнаты", match: (p) => p.lightLevel === "low_light" },
-  { id: "office", title: "Для офиса", match: (p) => p.placement === "office" },
-  { id: "tall", title: "Вырастает высоким", match: (p) => p.heightClass === "high" },
-  { id: "compact", title: "Компактные", match: (p) => p.heightClass === "low" },
-  { id: "easy", title: "Неприхотливые", match: (p) => p.careLevel === "easy" },
-  { id: "rare", title: "Редкий полив", match: (p) => p.watering === "rare" },
-  { id: "sunny", title: "На солнечное окно", match: (p) => p.lightLevel === "sunny" },
-  { id: "bedroom", title: "Для спальни", match: (p) => p.placement === "bedroom" },
-  { id: "nursery", title: "В детскую", match: (p) => p.placement === "nursery" },
-  { id: "pets", title: "Безопасно для питомцев", match: (p) => p.petSafety === "safe" },
-];
+type CollectionSource = "loading" | "server" | "error";
 
 const collectionImages: Record<string, string> = {
   dark: "/assets/redesign/collection-dark-4k.webp",
@@ -57,8 +40,6 @@ const collectionImages: Record<string, string> = {
   rare: "/assets/redesign/filters/rare-water-wall-v2.webp",
   bedroom: "/assets/redesign/filters/bedroom-wall-v2.webp",
 };
-
-const legacyVisualOrder = ["dark", "easy", "pets", "bathroom", "office", "tall", "compact", "rare", "bedroom"];
 
 function serverPreset(collection: CollectionDefinition): Preset {
   return {
@@ -118,33 +99,21 @@ export function CollectionStrip<T extends Product>({
       .catch(() => {
         if (!alive) return;
         setServerCollections([]);
-        setSource("fallback");
+        setSource("error");
       });
     return () => { alive = false; };
   }, []);
 
   const shown = useMemo(() => {
-    if (source === "loading") return [];
-    if (source === "server") {
-      return serverCollections.map((collection) => {
-        const preset = serverPreset(collection);
-        const firstProductImage = products.find((product) => preset.match(product))?.image;
-        return {
-          preset,
-          image: collection.coverUrl || collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp",
-          count: products.filter(preset.match).length,
-          note: collection.note,
-        };
-      }).filter((item) => item.count > 0);
-    }
-
-    return legacyVisualOrder.map((id) => {
-      const preset = legacyPresets.find((item) => item.id === id)!;
+    if (source !== "server") return [];
+    return serverCollections.map((collection) => {
+      const preset = serverPreset(collection);
+      const firstProductImage = products.find((product) => preset.match(product))?.image;
       return {
         preset,
-        image: collectionImages[id] || "/assets/redesign/collection-easy-4k.webp",
-        count: products.filter(preset.match).length,
-        note: "",
+        image: collection.coverUrl || collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp",
+        count: collection.count,
+        note: collection.note,
       };
     }).filter((item) => item.count > 0);
   }, [products, serverCollections, source]);
