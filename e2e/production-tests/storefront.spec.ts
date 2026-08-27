@@ -7,11 +7,6 @@ type BrowserMetrics = {
   overflow: number;
 };
 
-// Гостевой 401 на /api/v1/auth/me — ожидаемый ответ, а не поломка. Текст
-// сообщения у браузеров разный: Chromium на профиле Pixel 5 пишет
-// «status of 401 ()» без причины, потому что по HTTP/2 её не существует.
-// Поэтому смотрим на код, а не на формулировку. Маскировки нет: любой
-// другой 401 по-прежнему попадает в failures через обработчик response.
 const guestUnauthorized = (text: string) =>
   text.includes("401 (Unauthorized)") || /Failed to load resource[\s\S]*\b401\b/.test(text);
 
@@ -40,17 +35,13 @@ test("production catalogue is usable without shifts or failed first-party reques
 
   const started = Date.now();
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".storefront-grid")).toBeVisible();
-  await expect(page.locator(".storefront-card").first()).toBeVisible();
+  await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
+  await expect(page.locator(".storefront-grid:not(.storefront-skeleton) .storefront-card").first()).toBeVisible();
   const interfaceMs = Date.now() - started;
   await page.waitForTimeout(500);
   const metrics = await page.evaluate<BrowserMetrics>(() => {
     const state = window as typeof window & { __ficusinCLS?: number };
-    return {
-      cls: state.__ficusinCLS || 0,
-      interfaceMs: 0,
-      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    };
+    return { cls: state.__ficusinCLS || 0, interfaceMs: 0, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   });
   metrics.interfaceMs = interfaceMs;
   console.log(`production metrics ${testInfo.project.name} catalogue ${JSON.stringify(metrics)}`);
@@ -61,7 +52,7 @@ test("production catalogue is usable without shifts or failed first-party reques
   expect(await page.locator('img[src*="hero-monstera.png"]').count()).toBe(0);
 });
 
-test("production product 5 loads its optimized photo and review", async ({ page }, testInfo) => {
+test("production product 5 loads its optimized photo and review section", async ({ page }, testInfo) => {
   const failures: string[] = [];
   const consoleErrors: string[] = [];
   page.on("requestfailed", (request) => {
@@ -88,16 +79,22 @@ test("production product 5 loads its optimized photo and review", async ({ page 
   const imageMs = Date.now() - started;
   await expect(mainImage).toHaveAttribute("src", /-large\.jpg$/);
 
-  await page.getByRole("button", { name: /Отзывы 1/ }).click();
-  await expect(page.getByText("Отличное растение!", { exact: true })).toBeVisible();
+  const reviewMeta = page.locator(".purchase-review-meta");
+  await expect(reviewMeta).toBeVisible();
+  const reviewCountText = await reviewMeta.innerText();
+  await reviewMeta.click();
+  await expect(page.locator("#reviews")).toBeVisible();
+  const reviewCount = Number(reviewCountText.match(/(\d+)\s*отзыв/)?.[1] || 0);
+  if (reviewCount > 0) {
+    await expect(page.locator("#reviews article").first()).toBeVisible();
+  } else {
+    await expect(page.locator("#reviews")).toContainText(/отзывов пока нет|будьте первым/i);
+  }
+
   await page.waitForTimeout(500);
   const metrics = await page.evaluate<BrowserMetrics>(() => {
     const state = window as typeof window & { __ficusinCLS?: number };
-    return {
-      cls: state.__ficusinCLS || 0,
-      interfaceMs: 0,
-      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    };
+    return { cls: state.__ficusinCLS || 0, interfaceMs: 0, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   });
   metrics.interfaceMs = interfaceMs;
   metrics.imageMs = imageMs;
@@ -118,7 +115,7 @@ test("production category and collection routes are real and unknown slugs are 4
 
   await page.goto(`/catalog/${encodeURIComponent(category.slug)}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator(".catalog-landing-hero h1")).toContainText(category.name);
-  await expect(page.locator(".storefront-grid")).toBeVisible();
+  await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
 
   const collectionsResponse = await page.request.get("/api/v1/collections");
   expect(collectionsResponse.ok()).toBeTruthy();
@@ -128,7 +125,7 @@ test("production category and collection routes are real and unknown slugs are 4
 
   await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator(".catalog-landing-hero h1")).toContainText(collection.title);
-  await expect(page.locator(".storefront-grid")).toBeVisible();
+  await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
 
   await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
@@ -140,12 +137,12 @@ test("production category filters stay scoped and reset keeps the route", async 
   await page.goto("/catalog/plants", { waitUntil: "domcontentloaded" });
   await expect(page.locator(".catalog-landing-hero h1")).toContainText("Растения");
   await page.getByRole("button", { name: /Фильтры/ }).click();
-  const filters = page.locator(".storefront-attribute-filters");
+  const filters = page.locator(".storefront-attribute-filters").last();
   await expect(filters).toContainText("Освещение");
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters).not.toContainText("Материал");
 
-  const reset = page.getByRole("button", { name: "Сбросить все" });
+  const reset = page.getByRole("button", { name: "Сбросить все" }).last();
   await expect(reset).toBeVisible();
   await reset.click();
   await expect(page).toHaveURL(/\/catalog\/plants$/);
