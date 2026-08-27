@@ -15,6 +15,9 @@ type FilterAttribute = {
   name: string;
   unit?: string;
   value: string | number | boolean | string[];
+  displayValue?: string | number | string[];
+  options?: string[];
+  optionLabels?: Record<string, string>;
   filterable: boolean;
   badge: boolean;
   displayMode?: FilterDisplayMode;
@@ -55,6 +58,7 @@ type Facet = {
   name: string;
   unit?: string;
   values: Set<string>;
+  labels: Map<string, string>;
   displayMode: FilterDisplayMode;
   dataType?: FilterDataType;
   numericValues: number[];
@@ -110,6 +114,22 @@ function inferredDisplayMode(attribute: FilterAttribute): FilterDisplayMode {
   if (attribute.dataType === "number" || attributeValues(attribute).some((value) => typeof value === "number")) return "range";
   if (attribute.dataType === "boolean" || attributeValues(attribute).some((value) => typeof value === "boolean")) return "chips";
   return "select";
+}
+
+function attributeDisplayLabels(attribute: FilterAttribute): Map<string, string> {
+  const labels = new Map<string, string>();
+  Object.entries(attribute.optionLabels || {}).forEach(([value, label]) => {
+    if (label) labels.set(value, label);
+  });
+  if (attribute.displayValue !== undefined && attribute.displayValue !== null) {
+    const values = attributeValues(attribute).map(String);
+    const displayed = (Array.isArray(attribute.displayValue) ? attribute.displayValue : [attribute.displayValue]).map(String);
+    if (values.length === displayed.length) values.forEach((value, index) => {
+      if (displayed[index]) labels.set(value, displayed[index]);
+    });
+    else if (values.length === 1 && displayed.length) labels.set(values[0], displayed.join(", "));
+  }
+  return labels;
 }
 
 export default function StorefrontPage({ landing }: { landing?: Landing }) {
@@ -288,6 +308,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         name: attribute.name,
         unit: attribute.unit,
         values: new Set<string>(),
+        labels: new Map<string, string>(),
         displayMode: mode,
         dataType: attribute.dataType,
         numericValues: [],
@@ -297,6 +318,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         facet.values.add(String(value));
         if (typeof value === "number" || (mode === "range" && Number.isFinite(Number(value)))) facet.numericValues.push(Number(value));
       });
+      attributeDisplayLabels(attribute).forEach((label, value) => facet.labels.set(value, label));
       result.set(attribute.code, facet);
     }));
     return [...result.entries()].filter(([, facet]) => facet.values.size > 0);
@@ -342,7 +364,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     Object.entries(compatibleAttributeFilters).forEach(([code, value]) => {
       if (!value) return;
       const facet = facets.find(([facetCode]) => facetCode === code)?.[1];
-      chips.push({ key: `attribute-${code}`, label: `${facet?.name || code}: ${attributeLabel(value)}`, remove: () => setAttributeFilters((current) => ({ ...current, [code]: "" })) });
+      chips.push({ key: `attribute-${code}`, label: `${facet?.name || code}: ${facet?.labels.get(value) || attributeLabel(value)}`, remove: () => setAttributeFilters((current) => ({ ...current, [code]: "" })) });
     });
     Object.entries(compatibleRangeFilters).forEach(([code, range]) => {
       if (!range.min && !range.max) return;
@@ -432,7 +454,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     const values = [...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true }));
     const isBoolean = facet.dataType === "boolean" || values.every((value) => value === "true" || value === "false");
     if (facet.displayMode === "chips") {
-      return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={compatibleAttributeFilters[code] === value ? "active" : ""} aria-pressed={compatibleAttributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</button>)}</div></fieldset>;
+      return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={compatibleAttributeFilters[code] === value ? "active" : ""} aria-pressed={compatibleAttributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Есть" : "Нет") : facet.labels.get(value) || attributeLabel(value)}</button>)}</div></fieldset>;
     }
     return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</option>)}</select></label>;
   };
