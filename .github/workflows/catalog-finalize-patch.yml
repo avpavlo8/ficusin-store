@@ -2,7 +2,8 @@ name: finalize public catalog patch
 
 on:
   push:
-    branches: [fix/public-catalog-final-audit]
+    branches:
+      - fix/public-catalog-final-audit
     paths-ignore:
       - .github/workflows/catalog-finalize-patch.yml
 
@@ -11,21 +12,19 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, 'chore: finalize public catalog patch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
-          fetch-depth: 1
       - name: Patch StorefrontPage contract usage
-        shell: python
         run: |
+          python3 <<'PY'
           from pathlib import Path
           p = Path("frontend/src/StorefrontPage.tsx")
           s = p.read_text()
           if "function attributeDisplayLabels" in s:
-              raise SystemExit("StorefrontPage already patched")
+              raise SystemExit("already patched")
           replacements = [
               ('''  value: string | number | boolean | string[];\n  filterable: boolean;''', '''  value: string | number | boolean | string[];\n  displayValue?: string | number | string[];\n  options?: string[];\n  optionLabels?: Record<string, string>;\n  filterable: boolean;'''),
               ('''type Facet = {\n  name: string;\n  unit?: string;\n  values: Set<string>;\n  displayMode: FilterDisplayMode;''', '''type Facet = {\n  name: string;\n  unit?: string;\n  values: Set<string>;\n  labels: Map<string, string>;\n  displayMode: FilterDisplayMode;'''),
@@ -37,9 +36,10 @@ jobs:
           ]
           for old, new in replacements:
               if old not in s:
-                  raise SystemExit(f"missing expected source fragment: {old[:80]}")
+                  raise SystemExit("expected StorefrontPage fragment not found")
               s = s.replace(old, new, 1)
           p.write_text(s)
+          PY
       - name: Commit patched source and remove runner
         run: |
           rm .github/workflows/catalog-finalize-patch.yml
