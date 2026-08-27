@@ -20,6 +20,10 @@
     padding-bottom: var(--mobile-tab-bar-height);
   }
 
+  main.storefront {
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
   .development-notice {
     min-height: var(--development-notice-h);
     box-sizing: border-box;
@@ -89,7 +93,7 @@
   .home-hero-visual {
     min-height: 0;
     aspect-ratio: 16 / 10;
-    max-height: 300px;
+    max-height: 220px;
   }
 
   .home-stamp {
@@ -372,8 +376,16 @@
 }
 
 @media (min-width: 600px) and (max-width: 850px) {
+  .home-hero-copy {
+    padding: 8px 4px;
+  }
+
+  .home-hero h1 {
+    font-size: clamp(36px, 5.5vw, 42px);
+  }
+
   .home-hero-visual {
-    max-height: 200px;
+    max-height: 180px;
   }
 
   .storefront-grid {
