@@ -1,0 +1,9 @@
+@media (max-width: 560px) {
+  main.account-page:not(.admin-page) {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: clip;
+  }
+}

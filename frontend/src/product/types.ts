@@ -36,10 +36,18 @@ export const attributeLabels: Record<string, string> = {
   bushy: "Кустовая", trailing: "Ампельная", climbing: "Вьющаяся", rosette: "Розетка",
   palm: "Пальма", cactus: "Кактус", bonsai: "Бонсай", succulent: "Суккулент",
   fern: "Папоротник", orchid: "Орхидея", flowering: "Цветущее", decorative_leaf: "Декоративно-лиственное",
+  cachepot: "Кашпо", planting_pot: "Горшок", planter: "Вазон", hanging: "Подвесное", self_watering: "С автополивом",
+  ceramic: "Керамика", plastic: "Пластик", terracotta: "Терракота", concrete: "Бетон", metal: "Металл", glass: "Стекло", wood: "Дерево", fiberstone: "Файберстоун", textile: "Текстиль",
+  round: "Круглая", square: "Квадратная", rectangular: "Прямоугольная", oval: "Овальная", other: "Другая",
+  indoor: "Для дома", outdoor: "Для улицы", both: "Для дома и улицы",
+  liquid: "Жидкость", granules: "Гранулы", powder: "Порошок", sticks: "Палочки", tablets: "Таблетки", spray: "Спрей",
+  mineral: "Минеральное", organic: "Органическое", organomineral: "Органоминеральное", microbial: "Микробиологическое",
+  root: "Корневая подкормка", foliar: "По листу", soil_mixing: "Внесение в грунт",
+  support: "Опоры и подвязки", tool: "Инструменты", watering: "Полив", care: "Уход", protection: "Защита", decor: "Декор", propagation: "Размножение",
 };
 
 export const attributeLabel = (value: string | number | boolean) => {
-  if (typeof value === "boolean") return value ? "Да" : "Нет";
+  if (typeof value === "boolean") return value ? "Есть" : "Нет";
   const key = String(value);
   return attributeLabels[key] || key.replaceAll("_", " ");
 };
