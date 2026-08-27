@@ -173,10 +173,10 @@ test("@desktop на карточке товара выбирается коли�
 
   await expect(page.getByRole("button", { name: "В корзине — убрать" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
-  await expect(page.getByText("Питомцы")).toBeVisible();
-  await page.getByRole("button", { name: "Вопросы" }).click();
+  await expect(page.getByText("Для питомцев")).toBeVisible();
+  await page.getByRole("tab", { name: "Вопросы" }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
-  await page.getByRole("button", { name: /Отзывы/ }).click();
+  await page.getByRole("tab", { name: /Отзывы/ }).click();
   await expect(page.locator("#reviews")).toContainText("Подтверждённая покупка");
 });
 
@@ -211,7 +211,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
 test("@desktop вопросы открываются отдельной вкладкой", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
-  await page.getByRole("button", { name: "Вопросы" }).click();
+  await page.getByRole("tab", { name: "Вопросы" }).click();
   await expect(page.locator("#questions details")).toContainText("Когда пересаживать?");
 });
 
@@ -274,7 +274,7 @@ test("@desktop растение без ухода, характеристик и
   await expect(page.getByRole("tab", { name: "Вопросы" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Характеристики" }).click();
   await expect(page.locator(".pdp-empty-section")).toContainText("скоро появятся");
-  await page.getByRole("button", { name: "Отзывы" }).click();
+  await page.getByRole("tab", { name: "Отзывы" }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
   await expect(page.locator(".purchase-review-meta")).toContainText("Пока без отзывов");
 });

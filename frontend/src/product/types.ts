@@ -68,6 +68,7 @@ export type KeyCharacteristic = { code: string; label: string; value: string };
 const firstAttribute = (attributes: ProductAttribute[], ...tokens: string[]) => attributes.find((item) =>
   tokens.some((token) => `${item.code} ${item.name}`.toLocaleLowerCase("ru").includes(token)),
 );
+const plantOnlyAttributeCodes = new Set(["plant_type", "height_cm", "pot_diameter_cm", "light_level", "watering", "humidity", "care_level", "toxicity", "pet_safety", "placement", "growth_habit", "height_class", "flowering"]);
 
 /** One source for the first-screen facts. Codes returned here are excluded from the full table. */
 export function keyCharacteristics(product: ProductDetail, variant?: ProductVariant): KeyCharacteristic[] {
@@ -86,7 +87,7 @@ export function keyCharacteristics(product: ProductDetail, variant?: ProductVari
     add("origin", "Происхождение", product.passport.origin);
     add(pets?.code || "pet_safety", "Для питомцев", pets ? productAttributeValue(pets) : product.petSafety ? attributeLabel(product.petSafety) : undefined);
   } else {
-    attributes.slice(0, 5).forEach((item) => add(item.code, item.name, productAttributeValue(item)));
+    attributes.filter((item) => !plantOnlyAttributeCodes.has(item.code)).slice(0, 5).forEach((item) => add(item.code, item.name, productAttributeValue(item)));
   }
   return result.slice(0, 5);
 }
