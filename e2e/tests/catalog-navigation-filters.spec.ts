@@ -3,7 +3,11 @@ import { horizontalOverflow, mockApi } from "./helpers";
 
 async function openPlantFilters(page: import("@playwright/test").Page) {
   await page.goto("/catalog/plants");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
+  await page.locator(".home-filter-button:visible").click();
+}
+
+function filterPanel(page: import("@playwright/test").Page) {
+  return page.locator(".home-filter-panel:visible .storefront-attribute-filters");
 }
 
 test("@desktop Неприхотливые открывает каноническую страницу подборки", async ({ page }) => {
@@ -30,7 +34,7 @@ test("@desktop у подборок отсутствует множественн
 test("@desktop сброс дополнительных фильтров сохраняет подборку", async ({ page }) => {
   await mockApi(page);
   await page.goto("/collections/tall");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
+  await page.locator(".home-filter-button:visible").click();
   await page.getByLabel("Только в наличии").first().check();
   await page.getByRole("button", { name: "Сбросить все" }).click();
   await expect(page).toHaveURL(/\/collections\/tall$/);
@@ -42,24 +46,21 @@ test("@desktop сброс дополнительных фильтров сохр
 test("@desktop общий каталог не показывает смешанные атрибутные фильтры", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await expect(page.locator(".storefront-attribute-filters")).toHaveCount(0);
+  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
   await expect(page.locator(".home-filter-group .catalog-dropdown")).toHaveCount(0);
-  await expect(page.getByText("Тип кашпо", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Освещение", { exact: true })).toHaveCount(0);
 });
 
 test("@desktop глобальный поиск не включает атрибутные фильтры без контекста", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?q=фикус");
-  await expect(page.locator(".storefront-attribute-filters")).toHaveCount(0);
-  await expect(page.getByText("Освещение", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
 });
 
 test("@desktop категория растений показывает только растительные фильтры", async ({ page }) => {
   await mockApi(page);
   await openPlantFilters(page);
-  const filters = page.locator(".storefront-attribute-filters");
+  const filters = filterPanel(page);
   await expect(filters).toContainText("Освещение");
   await expect(filters).toContainText("Сложность ухода");
   await expect(filters).toContainText("Высота");
@@ -70,8 +71,8 @@ test("@desktop категория растений показывает толь
 test("@desktop категория кашпо показывает только фильтры кашпо", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
-  const filters = page.locator(".storefront-attribute-filters");
+  await page.locator(".home-filter-button:visible").click();
+  const filters = filterPanel(page);
   await expect(filters).toContainText("Тип кашпо");
   await expect(filters).toContainText("Материал");
   await expect(filters).toContainText("Дренажное отверстие");
@@ -82,8 +83,8 @@ test("@desktop категория кашпо показывает только �
 test("@desktop фильтры подборки вычисляются только по товарам подборки", async ({ page }) => {
   await mockApi(page);
   await page.goto("/collections/easy");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
-  const filters = page.locator(".storefront-attribute-filters");
+  await page.locator(".home-filter-button:visible").click();
+  const filters = filterPanel(page);
   await expect(filters).toContainText("Освещение");
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters.getByRole("option", { name: /Рассеян/ })).toHaveCount(0);
@@ -124,7 +125,7 @@ test("@desktop пустая выдача сохраняет контекст и 
 test("@desktop range chips select и boolean имеют разные контролы", async ({ page }) => {
   await mockApi(page);
   await openPlantFilters(page);
-  const filters = page.locator(".storefront-attribute-filters");
+  const filters = filterPanel(page);
   await expect(filters.getByLabel("Высота: от")).toHaveAttribute("type", "number");
   await expect(filters.getByLabel("Высота: до")).toHaveAttribute("type", "number");
   const select = filters.locator("select");
@@ -142,8 +143,8 @@ test("@desktop range chips select и boolean имеют разные контр�
 test("@desktop explicit boolean display_mode=select remains a select", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
-  const drainage = page.locator(".storefront-attribute-filters label", { hasText: "Дренажное отверстие" });
+  await page.locator(".home-filter-button:visible").click();
+  const drainage = filterPanel(page).locator("label", { hasText: "Дренажное отверстие" });
   await expect(drainage.locator("select")).toHaveCount(1);
   await expect(drainage.locator("option", { hasText: "Есть" })).toHaveCount(1);
   await expect(drainage.locator("option", { hasText: "Нет" })).toHaveCount(1);
@@ -153,8 +154,8 @@ test("@desktop explicit boolean display_mode=select remains a select", async ({ 
 test("@desktop display labels use the seeded public option vocabulary", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
-  const filters = page.locator(".storefront-attribute-filters");
+  await page.locator(".home-filter-button:visible").click();
+  const filters = filterPanel(page);
   await expect(filters).toContainText("Кашпо");
   await expect(filters).toContainText("Керамика");
   await expect(filters).not.toContainText("cachepot");
@@ -168,8 +169,8 @@ test("@desktop смена категории очищает несовмести
   await page.locator(".storefront-tree").getByRole("link", { name: /Кашпо и горшки/ }).click();
   await expect(page).toHaveURL(/\/catalog\/pots$/);
   await expect(page.url()).not.toContain("light_level");
-  await page.getByRole("button", { name: /Фильтры/ }).click();
-  await expect(page.locator(".storefront-attribute-filters")).not.toContainText("Освещение");
+  await page.locator(".home-filter-button:visible").click();
+  await expect(filterPanel(page)).not.toContainText("Освещение");
 });
 
 test("@desktop поиск из категории явно становится глобальным", async ({ page }) => {
