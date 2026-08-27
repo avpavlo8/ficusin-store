@@ -107,9 +107,9 @@ test("@desktop прямой URL и Back Forward восстанавливают �
 test("@desktop неизвестные category и collection slug показывают 404", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/not-a-category");
-  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
   await page.goto("/collections/not-a-collection");
-  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
 });
 
 test("@desktop пустая выдача сохраняет контекст и предлагает сброс", async ({ page }) => {
