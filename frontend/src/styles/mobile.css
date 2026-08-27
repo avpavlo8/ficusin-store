@@ -366,11 +366,16 @@
   .checkout-page-panel input,
   .checkout-page-panel textarea,
   .checkout-page-panel select {
+    font-size: 16px;
     scroll-margin-bottom: calc(var(--mobile-tab-bar-height) + 24px);
   }
 }
 
 @media (min-width: 600px) and (max-width: 850px) {
+  .home-hero-visual {
+    max-height: 200px;
+  }
+
   .storefront-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
