@@ -15,10 +15,10 @@ test("@desktop главная использует компактную това
   await expect(page.locator(".storefront-preset-carousel .preset")).toHaveCount(9);
   await expect(page.getByRole("button", { name: "Следующие подборки" })).toBeVisible();
   await expect(page.locator(".store-footer-menu")).toHaveCount(0);
-  await expect(page.locator(".store-footer-connect")).toContainText("Давайте найдём");
+  await expect(page.locator(".store-footer-main")).toContainText("Магазин растений в Рязани");
+  await expect(page.locator(".store-footer-contact-actions")).toContainText("Написать в чат");
   await expect(page.locator(".store-footer-socials a")).toHaveCount(4);
   await expect(page.locator(".store-footer-legal .store-footer-social-block")).toContainText("Мы в соцсетях");
-  await expect(page.locator(".store-footer-connect .store-footer-social-block")).toHaveCount(0);
   const footerButtonLabels = await page.locator(".store-footer-contact-actions small").evaluateAll((labels) => labels.map((label) => ({ borderTop: getComputedStyle(label).borderTopWidth, paddingTop: getComputedStyle(label).paddingTop })));
   expect(footerButtonLabels).toEqual([{ borderTop: "0px", paddingTop: "0px" }, { borderTop: "0px", paddingTop: "0px" }]);
   const collectionRail = page.locator(".storefront-preset-carousel .storefront-presets");
@@ -158,8 +158,7 @@ test("@desktop товар без остатка идёт как предзака
   await expect(card.locator(".storefront-price em")).toHaveText("Под заказ");
   await expect(card.locator(".storefront-preorder")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "В корзину" })).toBeVisible();
-
-  await page.getByLabel("Только в наличии").first().check();
+  await page.locator(".home-catalog-toolbar .storefront-check input").check();
   await expect(page.locator(".storefront-card", { hasText: "Монстера Делициоза" })).toHaveCount(0);
 });
 
