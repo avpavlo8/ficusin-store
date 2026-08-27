@@ -85,8 +85,8 @@ const pot = {
   reviewsCount: 0,
   collections: [],
   filterAttributes: [
-    { code: "pot_type", name: "Тип кашпо", value: "cachepot", badge: true, filterable: true, displayMode: "select", dataType: "enum" },
-    { code: "material", name: "Материал", value: "ceramic", badge: false, filterable: true, displayMode: "chips", dataType: "enum" },
+    { code: "pot_type", name: "Тип кашпо", value: "cachepot_custom", optionLabels: { cachepot_custom: "Кашпо" }, badge: true, filterable: true, displayMode: "select", dataType: "enum" },
+    { code: "material", name: "Материал", value: "ceramic_custom", optionLabels: { ceramic_custom: "Керамика" }, badge: false, filterable: true, displayMode: "chips", dataType: "enum" },
     { code: "product_diameter_cm", name: "Диаметр", unit: "см", value: 16, badge: false, filterable: true, displayMode: "range", dataType: "number" },
     { code: "drainage_hole", name: "Дренажное отверстие", value: true, badge: false, filterable: true, displayMode: "select", dataType: "boolean" },
   ],
