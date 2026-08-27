@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { horizontalOverflow, mockApi } from "./helpers";
+import { horizontalOverflow, mockApi, owner } from "./helpers";
 
 const widths = [320, 360, 375, 390, 412, 430, 768];
 
@@ -118,7 +118,7 @@ test("@phone checkout focus has room for iOS keyboard and bottom navigation", as
 });
 
 test("@phone footer and account stay above the fixed navigation", async ({ page }) => {
-  await mockApi(page);
+  await mockApi(page, owner);
   await setPhoneViewport(page, 390);
 
   await page.goto("/account");
