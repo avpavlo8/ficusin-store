@@ -108,3 +108,45 @@ test("production product 5 loads its optimized photo and review", async ({ page 
   expect(metrics.overflow).toBe(0);
   expect(metrics.cls).toBeLessThan(0.25);
 });
+
+test("production category and collection routes are real and unknown slugs are 404", async ({ page }) => {
+  const categoriesResponse = await page.request.get("/api/v1/categories");
+  expect(categoriesResponse.ok()).toBeTruthy();
+  const categories = (await categoriesResponse.json()).categories as Array<{ slug: string; name: string }>;
+  const category = categories.find((item) => item.slug === "plants") || categories[0];
+  expect(category?.slug).toBeTruthy();
+
+  await page.goto(`/catalog/${encodeURIComponent(category.slug)}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".catalog-landing-hero h1")).toContainText(category.name);
+  await expect(page.locator(".storefront-grid")).toBeVisible();
+
+  const collectionsResponse = await page.request.get("/api/v1/collections");
+  expect(collectionsResponse.ok()).toBeTruthy();
+  const collections = (await collectionsResponse.json()).collections as Array<{ slug: string; title: string; count: number }>;
+  const collection = collections.find((item) => item.count > 0) || collections[0];
+  expect(collection?.slug).toBeTruthy();
+
+  await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".catalog-landing-hero h1")).toContainText(collection.title);
+  await expect(page.locator(".storefront-grid")).toBeVisible();
+
+  await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
+  await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
+});
+
+test("production category filters stay scoped and reset keeps the route", async ({ page }) => {
+  await page.goto("/catalog/plants", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".catalog-landing-hero h1")).toContainText("Растения");
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  const filters = page.locator(".storefront-attribute-filters");
+  await expect(filters).toContainText("Освещение");
+  await expect(filters).not.toContainText("Тип кашпо");
+  await expect(filters).not.toContainText("Материал");
+
+  const reset = page.getByRole("button", { name: "Сбросить все" });
+  await expect(reset).toBeVisible();
+  await reset.click();
+  await expect(page).toHaveURL(/\/catalog\/plants$/);
+});
