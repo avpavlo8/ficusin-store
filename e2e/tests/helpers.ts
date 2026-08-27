@@ -1,7 +1,7 @@
 import { Page } from "@playwright/test";
 
-// The preview server only serves the built files, so every API call has to
-// be answered here. The shapes below mirror what the Go handlers return.
+// The preview server only serves the built files, so every API call has to be
+// answered here. The shapes below mirror what the Go handlers return.
 const product = {
   id: "1",
   sku: "1",
@@ -88,7 +88,7 @@ const pot = {
     { code: "pot_type", name: "Тип кашпо", value: "cachepot", badge: true, filterable: true, displayMode: "select", dataType: "enum" },
     { code: "material", name: "Материал", value: "ceramic", badge: false, filterable: true, displayMode: "chips", dataType: "enum" },
     { code: "product_diameter_cm", name: "Диаметр", unit: "см", value: 16, badge: false, filterable: true, displayMode: "range", dataType: "number" },
-    { code: "drainage_hole", name: "Дренажное отверстие", value: true, badge: false, filterable: true, displayMode: "chips", dataType: "boolean" },
+    { code: "drainage_hole", name: "Дренажное отверстие", value: true, badge: false, filterable: true, displayMode: "select", dataType: "boolean" },
   ],
 };
 
