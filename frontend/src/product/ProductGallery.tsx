@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
+const legacyPlaceholder = "/assets/hero-monstera.webp";
+
 export function ProductGallery({ images, name, active, onSelect }: { images: string[]; name: string; active: number; onSelect: (index: number) => void }) {
-  const available = images.filter(Boolean);
+  // Old backend versions substituted the homepage monstera when a product had
+  // no media. Treat that sentinel as missing media so a customer never sees a
+  // different plant as the product photo while deployments overlap.
+  const available = images.filter((image) => Boolean(image) && image !== legacyPlaceholder);
   const [open, setOpen] = useState(false);
   const touchStart = useRef<number | null>(null);
   const move = (direction: number) => { if (available.length > 1) onSelect((active + direction + available.length) % available.length); };
