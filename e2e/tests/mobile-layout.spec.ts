@@ -141,6 +141,18 @@ test("@phone no page scrolls sideways", async ({ page }) => {
   }
 });
 
+test("@phone PDP сохраняет покупку и галерею на 360 и 390 пикселях", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/product/1");
+    await expect(page.locator(".pdp-image img")).toBeVisible();
+    await expect(page.locator(".pdp-commerce-box")).toBeVisible();
+    await expect(page.locator(".pdp-cart-button")).toBeVisible();
+    expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
+  }
+});
+
 test("@phone the things a thumb taps are big enough", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");

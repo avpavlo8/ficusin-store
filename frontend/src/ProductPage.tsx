@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { StoreHeader, STORAGE_EVENT, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PlantCareGuide } from "./product/PlantCareGuide";
 import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
-import { attributeValue, money } from "./product/types";
+import { keyCharacteristics, money, productAttributeValue } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 import { track } from "./lib/analytics";
 
@@ -21,7 +21,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [revision, setRevision] = useState(0);
-  const [activeTab, setActiveTab] = useState<"care"|"characteristics"|"reviews"|"questions">("care");
+  const [activeTab, setActiveTab] = useState<"about"|"care"|"characteristics"|"reviews"|"questions">("about");
   const relatedTrack = useRef<HTMLDivElement>(null);
   const adminUser = useStoreUser();
   const [favorites, setFavorites] = useState<Set<string>>(() => {
@@ -37,7 +37,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       .then((item) => {
         const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })), reviews: (item.reviews || []).map((review) => ({ ...review, photos: review.photos || [], media: review.media || [] })), rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
         const requestedSKU=new URLSearchParams(window.location.search).get("sku");
-        setProduct(normalized); setSelectedID(normalized.variants.find((variant)=>variant.sku===requestedSKU)?.id ?? normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(normalized.catalogSection === "plants" ? "care" : "characteristics");
+        setProduct(normalized); setSelectedID(normalized.variants.find((variant)=>variant.sku===requestedSKU)?.id ?? normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab("about");
 		const viewed=normalized.variants.find((variant)=>variant.sku===requestedSKU) ?? normalized.variants[0];
 		track("view_item", { productCode: normalized.id, sku: viewed?.sku, value: viewed?.price, properties: { name: normalized.name, category: normalized.catalogSection } });
       })
@@ -104,15 +104,35 @@ export default function ProductPage({ slug }: { slug: string }) {
     </section>
   </main>;
 
-  const customerAttributes = [...product.attributes, ...(variant?.attributes || [])].filter((item) => item.showInCharacteristics !== false && (product.catalogSection === "plants" || !plantOnlyAttributeCodes.has(item.code)));
+  const keyCodes = new Set(keyCharacteristics(product, variant).map((item) => item.code));
+  const customerAttributes = [...product.attributes, ...(variant?.attributes || [])].filter((item, index, all) =>
+    item.showInCharacteristics !== false && !keyCodes.has(item.code) &&
+    (product.catalogSection === "plants" || !plantOnlyAttributeCodes.has(item.code)) &&
+    all.findIndex((candidate) => candidate.code === item.code) === index
+  );
   const gallery = variant?.images?.length ? variant.images : product.images;
   const isPlant = product.catalogSection === "plants";
-  const tabs = isPlant
-    ? ([['care','О растении'],['characteristics','Характеристики'],['reviews','Отзывы'],['questions','Вопросы']] as const)
-    : ([['characteristics','Характеристики'],['reviews','Отзывы']] as const);
+  const hasCare = isPlant && Boolean((product.careInstructions || "").trim() || Object.entries(product.passport).some(([key, value]) => key !== "faq" && typeof value === "string" && value.trim()));
+  const hasQuestions = isPlant && Boolean(product.passport.faq?.some((item) => item.question.trim() && item.answer.trim()));
+  const tabs = [
+    ['about', isPlant ? 'О растении' : 'О товаре'],
+    ['characteristics','Характеристики'],
+    ...(hasCare ? [['care','Уход'] as const] : []),
+    ['reviews','Отзывы'],
+    ...(hasQuestions ? [['questions','Вопросы'] as const] : []),
+  ] as const;
   const openReviews = () => {
     setActiveTab("reviews");
     window.requestAnimationFrame(() => document.querySelector("#reviews")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  const moveTab = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const current = tabs.findIndex(([id]) => id === activeTab);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    const id = tabs[next][0];
+    setActiveTab(id);
+    window.requestAnimationFrame(() => document.getElementById(`pdp-tab-${id}`)?.focus());
   };
 
   return <main className="product-page">
@@ -121,17 +141,18 @@ export default function ProductPage({ slug }: { slug: string }) {
     {(adminUser?.adminRole === "owner" || adminUser?.adminRole === "manager") && <Suspense fallback={null}><PdpAdminTools slug={slug} adminRole={adminUser.adminRole} onChanged={() => setRevision((value) => value + 1)} /></Suspense>}
     <section className="pdp-main">
       <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
-      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(1); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
+      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(selected && cart[selected.sku] ? cart[selected.sku] : Math.max(1, Math.min(quantity, selected?.stock && selected.stock > 0 ? selected.stock : 20))); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
-    <div className="pdp-tabs-shell"><nav className="pdp-anchor-nav" aria-label="Разделы товара">{tabs.map(([id,label])=><button type="button" className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
-      <section className="pdp-tab-panel" aria-live="polite">
-        {isPlant&&activeTab==='care'&&<PlantCareGuide product={product}/>}
-        {activeTab==='characteristics'&&<section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики</h2><p>Параметры выбранного варианта и общая информация о товаре</p></header><dl>{customerAttributes.length>0?customerAttributes.map((item)=><div key={`${item.code}-${variant?.sku || 'product'}`}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>):<><div><dt>Освещение</dt><dd>{attributeValue(product.lightLevel||product.passport.lighting||'Не указано')}</dd></div><div><dt>Полив</dt><dd>{attributeValue(product.watering||product.passport.watering||'Не указано')}</dd></div><div><dt>Уровень ухода</dt><dd>{attributeValue(product.careLevel||product.passport.careDifficulty||'Не указано')}</dd></div><div><dt>Безопасность для питомцев</dt><dd>{attributeValue(product.petSafety||product.passport.toxicity||'Не указано')}</dd></div></>}</dl></section>}
+    <div className="pdp-tabs-shell"><div className="pdp-anchor-nav" role="tablist" aria-label="Разделы товара" onKeyDown={moveTab}>{tabs.map(([id,label])=><button type="button" role="tab" id={`pdp-tab-${id}`} aria-controls={`pdp-panel-${id}`} className={activeTab===id?'active':''} onClick={()=>setActiveTab(id)} aria-selected={activeTab===id} tabIndex={activeTab===id?0:-1} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</div>
+      <section className="pdp-tab-panel" role="tabpanel" id={`pdp-panel-${activeTab}`} aria-labelledby={`pdp-tab-${activeTab}`} tabIndex={0}>
+        {activeTab==='about'&&<section className="pdp-about pdp-info-card"><header className="pdp-section-heading"><h2>{isPlant ? 'О растении' : 'О товаре'}</h2></header><p>{product.description || product.shortDescription || 'Описание готовится.'}</p></section>}
+        {hasCare&&activeTab==='care'&&<PlantCareGuide product={product}/>}
+        {activeTab==='characteristics'&&<section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики</h2><p>Параметры выбранного варианта и общая информация о товаре</p></header>{customerAttributes.length>0?<dl>{customerAttributes.map((item)=><div key={`${item.code}-${variant?.sku || 'product'}`}><dt>{item.name}</dt><dd>{productAttributeValue(item)}</dd></div>)}</dl>:<p className="pdp-empty-section">Подробные характеристики скоро появятся.</p>}</section>}
         {activeTab==='reviews'&&<ProductReviews reviews={product.reviews}/>}
         {isPlant&&activeTab==='questions'&&<section className="pdp-questions pdp-info-card" id="questions"><header className="pdp-section-heading"><h2>Вопросы о растении</h2></header>{(product.passport.faq||[]).length?product.passport.faq!.map((item,index)=><details key={`${item.question}-${index}`}><summary>{item.question}</summary><p>{item.answer}</p></details>):<div className="pdp-question-empty"><strong>Остались вопросы?</strong><p>Напишите нам — подскажем по уходу, размеру и доставке.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос →</a></div>}</section>}
       </section>
     </div>
-    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>Похожие растения</h2></div></header><div className="pdp-related-carousel"><button type="button" className="pdp-related-side prev" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие растения">←</button><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} onClick={()=>track("select_item",{productCode:item.id,value:item.price,properties:{list:"recommendations"}})} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div><button type="button" className="pdp-related-side next" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие растения">→</button></div></section>}
+    {product.recommendations.length > 0 && <section className="pdp-related"><header><div><p className="eyebrow">Вам может понравиться</p><h2>{isPlant ? "Похожие растения" : "Похожие товары"}</h2></div></header><div className="pdp-related-carousel"><button type="button" className="pdp-related-side prev" onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Предыдущие похожие товары">←</button><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} onClick={()=>track("select_item",{productCode:item.id,value:item.price,properties:{list:"recommendations"}})} key={item.id}><div className="product-image"><img src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{isPlant ? item.latin : ""}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong><span className="related-arrow" aria-hidden="true">→</span></div></a>)}</div><button type="button" className="pdp-related-side next" onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:'smooth'})} aria-label="Следующие похожие товары">→</button></div></section>}
     {notice && <div className="toast">{notice}</div>}
   </main>;
 }
