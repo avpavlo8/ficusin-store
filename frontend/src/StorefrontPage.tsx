@@ -456,7 +456,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     if (facet.displayMode === "chips") {
       return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={compatibleAttributeFilters[code] === value ? "active" : ""} aria-pressed={compatibleAttributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Есть" : "Нет") : facet.labels.get(value) || attributeLabel(value)}</button>)}</div></fieldset>;
     }
-    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</option>)}</select></label>;
+    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{isBoolean ? (value === "true" ? "Есть" : "Нет") : facet.labels.get(value) || attributeLabel(value)}</option>)}</select></label>;
   };
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
