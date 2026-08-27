@@ -128,9 +128,9 @@ test("production category and collection routes are real and unknown slugs are 4
   await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
 
   await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
   await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
 });
 
 test("production category filters stay scoped and reset keeps the route", async ({ page }) => {
