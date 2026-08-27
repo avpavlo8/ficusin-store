@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+// Production smoke follows the public catalog's canonical display vocabulary.
+
 type BrowserMetrics = {
   cls: number;
   imageMs?: number;
