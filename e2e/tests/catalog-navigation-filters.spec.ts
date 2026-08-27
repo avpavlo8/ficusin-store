@@ -139,13 +139,15 @@ test("@desktop range chips select и boolean имеют разные контр�
   await expect(flowering).not.toContainText("false");
 });
 
-test("@desktop explicit boolean display_mode=select остаётся select", async ({ page }) => {
+test("@desktop explicit boolean display_mode=select remains a select", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
   await page.getByRole("button", { name: /Фильтры/ }).click();
-  const filters = page.locator(".storefront-attribute-filters");
-  const drainage = filters.locator("label", { hasText: "Дренажное отверстие" });
-  await expect(drainage.locator("select")).toHaveCount(0);
+  const drainage = page.locator(".storefront-attribute-filters label", { hasText: "Дренажное отверстие" });
+  await expect(drainage.locator("select")).toHaveCount(1);
+  await expect(drainage.locator("option", { hasText: "Да" })).toHaveCount(1);
+  await expect(drainage.locator("option", { hasText: "Нет" })).toHaveCount(1);
+  await expect(drainage.locator("button")).toHaveCount(0);
 });
 
 test("@desktop смена категории очищает несовместимые значения", async ({ page }) => {
