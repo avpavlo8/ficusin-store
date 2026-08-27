@@ -133,7 +133,7 @@ test("@desktop range chips select и boolean имеют разные контр�
   const careChips = filters.locator(".catalog-chip-filter", { hasText: "Сложность ухода" }).locator("button");
   await expect(careChips).toHaveCount(2);
   const flowering = filters.locator(".catalog-chip-filter", { hasText: "Цветёт" });
-  await expect(flowering.locator("button", { hasText: "Да" })).toHaveCount(1);
+  await expect(flowering.locator("button", { hasText: "Есть" })).toHaveCount(1);
   await expect(flowering.locator("button", { hasText: "Нет" })).toHaveCount(1);
   await expect(flowering).not.toContainText("true");
   await expect(flowering).not.toContainText("false");
@@ -145,9 +145,20 @@ test("@desktop explicit boolean display_mode=select remains a select", async ({ 
   await page.getByRole("button", { name: /Фильтры/ }).click();
   const drainage = page.locator(".storefront-attribute-filters label", { hasText: "Дренажное отверстие" });
   await expect(drainage.locator("select")).toHaveCount(1);
-  await expect(drainage.locator("option", { hasText: "Да" })).toHaveCount(1);
+  await expect(drainage.locator("option", { hasText: "Есть" })).toHaveCount(1);
   await expect(drainage.locator("option", { hasText: "Нет" })).toHaveCount(1);
   await expect(drainage.locator("button")).toHaveCount(0);
+});
+
+test("@desktop display labels use the seeded public option vocabulary", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/catalog/pots");
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  const filters = page.locator(".storefront-attribute-filters");
+  await expect(filters).toContainText("Кашпо");
+  await expect(filters).toContainText("Керамика");
+  await expect(filters).not.toContainText("cachepot");
+  await expect(filters).not.toContainText("ceramic");
 });
 
 test("@desktop смена категории очищает несовместимые значения", async ({ page }) => {
@@ -168,9 +179,11 @@ test("@desktop поиск из категории явно становится 
   await expect(page.locator(".catalog-search-scope")).toContainText("по всему каталогу");
 });
 
-test("@phone существующая вёрстка каталога не получает горизонтальный скролл", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await mockApi(page);
-  await page.goto("/catalog/plants");
-  await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(1);
-});
+for (const width of [320, 360, 375, 390, 412, 430, 768]) {
+  test(`@phone catalog has no horizontal overflow at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width <= 430 ? 844 : 900 });
+    await mockApi(page);
+    await page.goto("/catalog/plants");
+    await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(1);
+  });
+}
