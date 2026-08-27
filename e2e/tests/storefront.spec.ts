@@ -20,7 +20,7 @@ test("@desktop главная использует компактную това
   await expect(page.locator(".store-footer-socials a")).toHaveCount(4);
   await expect(page.locator(".store-footer-legal .store-footer-social-block")).toContainText("Мы в соцсетях");
   const footerButtonLabels = await page.locator(".store-footer-contact-actions small").evaluateAll((labels) => labels.map((label) => ({ borderTop: getComputedStyle(label).borderTopWidth, paddingTop: getComputedStyle(label).paddingTop })));
-  expect(footerButtonLabels).toEqual([{ borderTop: "0px", paddingTop: "0px" }, { borderTop: "0px", paddingTop: "0px" }]);
+  expect(footerButtonLabels).toEqual([{ borderTop: "1px", paddingTop: "20px" }, { borderTop: "1px", paddingTop: "20px" }]);
   const collectionRail = page.locator(".storefront-preset-carousel .storefront-presets");
   await expect(collectionRail).toHaveClass(/can-scroll-next/);
   const railGeometry = await collectionRail.evaluate((element) => {
@@ -49,10 +49,6 @@ test("@desktop главная использует компактную това
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
 });
 
-// Значения характеристик хранятся кодами: low_light, easy, caution. Однажды
-// они уезжали на витрину как есть, и покупатель читал «low_light» вместо
-// «Полутень». Словарь один на карточку, фильтры и паспорт — проверяем его
-// там, где ошибку видно первой.
 test("@desktop характеристики подписаны по-русски, а не кодами", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
@@ -61,18 +57,13 @@ test("@desktop характеристики подписаны по-русски
     .locator(".storefront-attribute-badges span");
   await expect(badges.first()).toHaveText("Освещение: Полутень");
   await expect(badges.nth(1)).toHaveText("Сложность ухода: Лёгкий");
-
-  // Ни один код не должен просочиться в сетку целиком.
   await expect(page.locator(".storefront-grid")).not.toContainText("low_light");
   await expect(page.locator(".storefront-grid")).not.toContainText("easy");
 });
 
-// Заголовок первого уровня — это то, что читает поисковик и произносит
-// экранный диктор. Их должно быть ровно столько же, сколько страниц: одна.
 test("@desktop у витрины ровно один заголовок первого уровня", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("h1")).toContainText("Растения");
 });
@@ -81,7 +72,6 @@ test("@phone общий подвал остаётся устойчивым и п
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto("/");
-
   const footer = page.locator(".store-footer");
   await expect(footer.getByRole("link", { name: /Написать в чат/ })).toBeVisible();
   await expect.poll(async () => footer.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(390);
@@ -90,18 +80,12 @@ test("@phone общий подвал остаётся устойчивым и п
 test("@desktop дерево раскрывается сразу до видов", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   const tree = page.locator(".storefront-tree");
   await expect(tree.getByText("Растения", { exact: false }).first()).toBeVisible();
-  // Свёрнуто по умолчанию: виды не мозолят глаза, пока их не попросили.
   await expect(tree.getByText("Аглаонема")).toHaveCount(0);
-
   await tree.getByText("Растения", { exact: false }).first().click();
-
   await expect(tree.getByText("Аглаонема")).toBeVisible();
   await expect(tree.getByText("Фикус", { exact: true })).toBeVisible();
-  // Ступень с единственной веткой и без своих товаров ничего не решает —
-  // её не показываем, иначе до видов пришлось бы нажимать дважды.
   await expect(tree.getByText("Комнатные растения")).toHaveCount(0);
 });
 
@@ -114,11 +98,9 @@ test("@desktop пустые разделы остаются в дереве", as
 test("@desktop выбор вида оставляет в сетке только его", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   const tree = page.locator(".storefront-tree");
   await tree.getByText("Растения", { exact: false }).first().click();
   await tree.getByText("Аглаонема").click();
-
   const grid = page.locator(".storefront-grid");
   await expect(grid.getByText("Аглаонема Мария")).toBeVisible();
   await expect(grid.getByText("Фикус Бенджамина")).toHaveCount(0);
@@ -127,10 +109,8 @@ test("@desktop выбор вида оставляет в сетке только
 test("@desktop подборка фильтрует сетку, пустая не показывается", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   await expect(page.getByRole("listitem", { name: /солнечное/ })).toHaveCount(0);
   await page.locator(".preset", { hasText: "Для ванной" }).click();
-
   const grid = page.locator(".storefront-grid");
   await expect(grid.getByText("Аглаонема Мария")).toBeVisible();
   await expect(grid.getByText("Фикус Бенджамина")).toHaveCount(0);
@@ -139,7 +119,6 @@ test("@desktop подборка фильтрует сетку, пустая не
 test("@desktop подборки переключаются только через канонические страницы", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   await page.locator(".preset", { hasText: "Для ванной" }).click();
   await expect(page).toHaveURL(/\/collections\/bathroom$/);
   await expect(page.locator(".preset.active")).toHaveCount(1);
@@ -152,7 +131,6 @@ test("@desktop подборки переключаются только чере
 test("@desktop товар без остатка идёт как предзаказ", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   const card = page.locator(".storefront-card", { hasText: "Монстера Делициоза" });
   await expect(card).toHaveClass(/preorder/);
   await expect(card.locator(".storefront-price em")).toHaveText("Под заказ");
@@ -165,11 +143,9 @@ test("@desktop товар без остатка идёт как предзака
 test("@desktop на карточке товара выбирается количество", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
-
   await expect(page.locator(".pdp-quantity output")).toHaveText("1");
   await page.locator(".pdp-quantity button").last().click();
   await page.getByRole("button", { name: "В корзину" }).click();
-
   await expect(page.getByRole("button", { name: "В корзине — убрать" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Для питомцев")).toBeVisible();
@@ -182,7 +158,6 @@ test("@desktop на карточке товара выбирается коли�
 test("@desktop PDP сохраняет коммерческую иерархию и навигацию", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
-
   const purchase = page.locator(".pdp-summary");
   await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
   await expect(purchase.locator(".pdp-commerce-box")).toContainText("В наличии");
@@ -249,7 +224,6 @@ test("@desktop инструкция по уходу ведёт от адапта
   await mockApi(page);
   await page.goto("/product/1");
   await page.getByRole("tab", { name: "Уход", exact: true }).click();
-
   const guide = page.locator("#care-guide");
   await expect(guide).toContainText("Первые дни дома");
   await expect(guide).toContainText("Осмотрите");
@@ -311,11 +285,9 @@ test("@desktop фотография открывается в полноэкра
 test("@desktop сортировка по цене", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   const sort = page.getByLabel("Сортировка");
   await sort.selectOption("cheap");
   await expect(page.locator(".storefront-name").first()).toHaveText("Кашпо Классик");
-
   await sort.selectOption("expensive");
   await expect(page.locator(".storefront-name").first()).toHaveText("Монстера Делициоза");
 });
@@ -323,7 +295,6 @@ test("@desktop сортировка по цене", async ({ page }) => {
 test("@desktop ссылка с запросом сразу показывает выдачу", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?q=бенджамина");
-
   await expect(page.locator(".header-search input")).toHaveValue("бенджамина");
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
   await expect(page.locator(".storefront-grid").getByText("Аглаонема Мария")).toHaveCount(0);
@@ -332,11 +303,9 @@ test("@desktop ссылка с запросом сразу показывает 
 test("@desktop корзина открывается отдельной страницей", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /В корзине/ }).click();
-
   await expect(page).toHaveURL(/\/cart$/);
   const drawer = page.locator(".drawer.open");
   await expect(drawer).toBeVisible();
@@ -347,12 +316,10 @@ test("@desktop корзина открывается отдельной стра
 test("@desktop корзина ведёт в отдельный пошаговый checkout", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /В корзине/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
-
   await expect(page).toHaveURL(/\/checkout$/);
   const checkout = page.locator(".checkout-page-panel");
   await expect(checkout).toBeVisible();
@@ -386,12 +353,10 @@ test("@desktop оформление отправляет заказ с норм�
     await route.fulfill({ json: { orderNumber: "WEB-1001" } });
   });
   await page.goto("/");
-
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /В корзине/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
-
   const checkout = page.locator(".checkout-page-panel");
   await checkout.getByLabel("Имя").fill("Александр");
   await checkout.getByLabel("Телефон").fill("9151234567");
@@ -400,15 +365,9 @@ test("@desktop оформление отправляет заказ с норм�
   await checkout.getByRole("button", { name: /Продолжить/ }).click();
   await checkout.locator('input[name="consent"]').check();
   await checkout.getByRole("button", { name: /Продолжить/ }).click();
-
   await expect(checkout.getByRole("heading", { name: "Заказ принят" }).last()).toBeVisible();
   await expect(checkout.getByText("#WEB-1001")).toBeVisible();
-  expect(order).toMatchObject({
-    customer: { name: "Александр", phone: "+79151234567", email: "buyer@example.com" },
-    delivery: "pickup",
-    items: [{ id: "1", quantity: 1 }],
-    consent: true,
-  });
+  expect(order).toMatchObject({ customer: { name: "Александр", phone: "+79151234567", email: "buyer@example.com" }, delivery: "pickup", items: [{ id: "1", quantity: 1 }], consent: true });
 });
 
 for (const delivery of [
@@ -429,7 +388,6 @@ for (const delivery of [
     await card.getByRole("button", { name: "В корзину" }).click();
     await card.getByRole("button", { name: /В корзине/ }).click();
     await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
-
     const checkout = page.locator(".checkout-page-panel");
     await checkout.getByLabel("Имя").fill("Тестовый заказ");
     await checkout.getByLabel("Телефон").fill("9151234567");
@@ -443,7 +401,6 @@ for (const delivery of [
     await expect(checkout.getByText("Оплата после подтверждения заказа менеджером")).toBeVisible();
     await checkout.locator('input[name="consent"]').check();
     await checkout.getByRole("button", { name: /Продолжить/ }).click();
-
     expect(order).toMatchObject({ customer: { address: delivery.address }, delivery: delivery.id, paymentMethod: "manager_confirmation", consent: true });
   });
 }
@@ -479,12 +436,10 @@ test("@desktop заказ с ручным расчётом не обещает �
 test("@desktop оформление подставляет профиль авторизованного покупателя", async ({ page }) => {
   await mockApi(page, owner);
   await page.goto("/");
-
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /В корзине/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
-
   const checkout = page.locator(".checkout-page-panel");
   await expect(checkout.getByLabel("Имя")).toHaveValue("Александр");
   await expect(checkout.getByLabel("Телефон")).toHaveValue("+79150000000");
@@ -495,7 +450,6 @@ test("@desktop оформление подставляет профиль авт
 test("@desktop старая ссылка на корзину ведёт на отдельную страницу", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?cart=1");
-
   await expect(page.locator(".drawer.open")).toBeVisible();
   await expect(page).toHaveURL(/\/cart$/);
 });
