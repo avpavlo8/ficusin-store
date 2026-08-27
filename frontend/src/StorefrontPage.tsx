@@ -270,12 +270,15 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   // the UI rather than silently inventing a different product rule.
   const found = useMemo(() => searching ? searchProducts(products, query) : contextProducts, [products, contextProducts, query, searching]);
 
+  // Facets belong to the current catalogue context, not to the global search
+  // result. A global catalogue has no selected category/collection, so it has
+  // no attribute facets. Category and collection pages keep their own context
+  // even though search results themselves remain global by documented rule.
   const facetPopulation = useMemo(() => {
-    if (searching) return searchProducts(products, query);
     if (landing?.type === "collection") return contextProducts;
     if (category != null) return contextProducts;
     return [];
-  }, [searching, products, query, landing, category, contextProducts]);
+  }, [landing, category, contextProducts]);
 
   const facets = useMemo(() => {
     const result = new Map<string, Facet>();
@@ -428,10 +431,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     }
     const values = [...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true }));
     const isBoolean = facet.dataType === "boolean" || values.every((value) => value === "true" || value === "false");
-    if (facet.displayMode === "chips" || isBoolean) {
+    if (facet.displayMode === "chips") {
       return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={compatibleAttributeFilters[code] === value ? "active" : ""} aria-pressed={compatibleAttributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</button>)}</div></fieldset>;
     }
-    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{attributeLabel(value)}</option>)}</select></label>;
+    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}</option>)}</select></label>;
   };
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
