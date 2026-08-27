@@ -24,6 +24,11 @@
     padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
+  .legal-page,
+  .store-footer {
+    overflow-x: clip;
+  }
+
   .development-notice {
     min-height: var(--development-notice-h);
     box-sizing: border-box;
