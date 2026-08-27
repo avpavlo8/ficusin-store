@@ -48,6 +48,14 @@ test("@desktop общий каталог не показывает смешан�
   await expect(page.getByText("Освещение", { exact: true })).toHaveCount(0);
 });
 
+test("@desktop глобальный поиск не включает атрибутные фильтры без контекста", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?q=фикус");
+  await expect(page.locator(".storefront-attribute-filters")).toHaveCount(0);
+  await expect(page.getByText("Освещение", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
+});
+
 test("@desktop категория растений показывает только растительные фильтры", async ({ page }) => {
   await mockApi(page);
   await openPlantFilters(page);
@@ -129,6 +137,17 @@ test("@desktop range chips select и boolean имеют разные контр�
   await expect(flowering.locator("button", { hasText: "Нет" })).toHaveCount(1);
   await expect(flowering).not.toContainText("true");
   await expect(flowering).not.toContainText("false");
+});
+
+test("@desktop explicit boolean display_mode=select remains a select", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/catalog/pots");
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  const drainage = page.locator(".storefront-attribute-filters label", { hasText: "Дренажное отверстие" });
+  await expect(drainage.locator("select")).toHaveCount(1);
+  await expect(drainage.locator("option", { hasText: "Да" })).toHaveCount(1);
+  await expect(drainage.locator("option", { hasText: "Нет" })).toHaveCount(1);
+  await expect(drainage.locator("button")).toHaveCount(0);
 });
 
 test("@desktop смена категории очищает несовместимые значения", async ({ page }) => {
