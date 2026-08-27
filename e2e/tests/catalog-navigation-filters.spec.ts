@@ -35,7 +35,7 @@ test("@desktop сброс дополнительных фильтров сохр
   await mockApi(page);
   await page.goto("/collections/tall");
   await page.locator(".home-filter-button:visible").click();
-  await page.getByLabel("Только в наличии").first().check();
+  await page.locator(".home-catalog-toolbar .storefront-check input").check();
   await page.getByRole("button", { name: "Сбросить все" }).click();
   await expect(page).toHaveURL(/\/collections\/tall$/);
   await expect(page.locator(".preset.active")).toContainText("Вырастает высоким");
@@ -147,7 +147,8 @@ test("@desktop explicit boolean display_mode=select remains a select", async ({ 
   const drainage = filterPanel(page).locator("label", { hasText: "Дренажное отверстие" });
   await expect(drainage.locator("select")).toHaveCount(1);
   await expect(drainage.locator("option", { hasText: "Есть" })).toHaveCount(1);
-  await expect(drainage.locator("option", { hasText: "Нет" })).toHaveCount(1);
+  await expect(drainage).not.toContainText("true");
+  await expect(drainage).not.toContainText("false");
   await expect(drainage.locator("button")).toHaveCount(0);
 });
 
