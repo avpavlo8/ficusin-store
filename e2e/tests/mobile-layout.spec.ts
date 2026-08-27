@@ -127,7 +127,9 @@ test("@phone hero не прячет витрину за рекламными э�
   for (const width of [360, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
-    const firstProduct = await page.locator(".storefront-card").first().boundingBox();
+    const card = page.locator(".storefront-card").first();
+    await expect(card).toBeVisible();
+    const firstProduct = await card.boundingBox();
     expect(firstProduct?.y, `первый товар слишком низко при ${width}px`).toBeLessThan(1500);
     expect(await horizontalOverflow(page), `${width}px шире экрана`).toBeLessThanOrEqual(1);
   }
