@@ -19,6 +19,7 @@ test("@phone mobile shell is stable at every audit width", async ({ page }) => {
     await expect(page.locator(".store-header")).toBeVisible();
     await expect(page.locator(".tab-bar")).toBeVisible();
     await expect(page.locator(".tab-bar > *")).toHaveCount(5);
+    await expect(page.locator(".storefront-card").first()).toBeVisible();
 
     const bar = await page.locator(".tab-bar").boundingBox();
     const mainPadding = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("main")!).paddingBottom));
