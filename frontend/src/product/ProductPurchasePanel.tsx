@@ -23,6 +23,10 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
       <div className="pdp-actions"><div className="pdp-quantity" aria-label="Количество"><button type="button" onClick={() => onQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1} aria-label="Уменьшить количество">−</button><output aria-live="polite">{quantity}</output><button type="button" onClick={() => onQuantity(Math.min(limit, quantity + 1))} disabled={!variant || quantity >= limit} aria-label="Увеличить количество">+</button></div><button type="button" className={inCart ? "pdp-cart-button in-cart" : "pdp-cart-button"} onClick={onBuy} disabled={!variant}>{inCart ? "В корзине — убрать" : available ? "Добавить в корзину" : "Оформить предзаказ"}</button><button type="button" className={favorite ? "pdp-favorite active" : "pdp-favorite"} onClick={onFavorite} aria-pressed={favorite} aria-label={favorite ? "Убрать из избранного" : "Добавить в избранное"}>{favorite ? "♥" : "♡"}</button></div>
       <ul className="pdp-assurances" aria-label="Гарантии"><li>Надёжная упаковка</li><li>Проверка перед отправкой</li><li>Бережная доставка</li></ul>
     </section>
+    <div className="pdp-mobile-buybar" aria-label="Быстрая покупка">
+      <strong>{variant ? money(variant.price) : "Цена уточняется"}</strong>
+      <button type="button" onClick={onBuy} disabled={!variant}>{inCart ? "В корзине — убрать" : available ? "Добавить в корзину" : "Оформить предзаказ"}</button>
+    </div>
     {facts.length > 0 && <section className="pdp-key-characteristics" aria-label="Ключевые характеристики"><h2>Главное о товаре</h2><dl>{facts.map((item) => <div key={item.code}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></section>}
     {variant && <p className="pdp-sku">Артикул: {variant.sku}</p>}
   </aside>;
