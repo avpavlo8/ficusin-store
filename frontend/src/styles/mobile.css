@@ -272,6 +272,10 @@
     gap: 12px;
   }
 
+  .product-page .pdp-identity > div {
+    min-width: 0;
+  }
+
   .product-page .pdp-lead {
     font-size: 15px;
   }
