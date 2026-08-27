@@ -82,7 +82,13 @@
 
 @media (max-width: 767px) {
   :root {
-    --development-notice-h: 72px;
+    --development-notice-h: 56px;
     --header-h: 68px;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --development-notice-h: 64px;
   }
 }
