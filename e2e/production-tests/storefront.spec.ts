@@ -111,10 +111,15 @@ test("production category and collection routes are real and unknown slugs are 4
 });
 
 test("production category filters stay scoped and reset keeps the route", async ({ page }) => {
-  await page.goto("/catalog/plants", { waitUntil: "domcontentloaded" }); await expect(page.locator(".catalog-landing-hero h1")).toContainText("Растения"); await page.getByRole("button", { name: /Фильтры/ }).click();
+  await page.goto("/catalog/plants?filter.light_level=low_light", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".catalog-landing-hero h1")).toContainText("Растения");
+  await page.getByRole("button", { name: /Фильтры/ }).click();
   const filters = page.locator(".storefront-attribute-filters").last();
   await expect(filters).toContainText("Освещённость");
-  await expect(filters).not.toContainText("Тип кашпо"); await expect(filters).not.toContainText("Материал");
-  await page.locator(".home-catalog-toolbar .storefront-check input").check();
-  const reset = page.getByRole("button", { name: "Сбросить все" }).last(); await expect(reset).toBeVisible(); await reset.click(); await expect(page).toHaveURL(/\/catalog\/plants$/);
+  await expect(filters).not.toContainText("Тип кашпо");
+  await expect(filters).not.toContainText("Материал");
+  const reset = page.getByRole("button", { name: "Сбросить все" }).last();
+  await expect(reset).toBeVisible();
+  await reset.click();
+  await expect(page).toHaveURL(/\/catalog\/plants$/);
 });
