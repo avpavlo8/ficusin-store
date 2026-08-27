@@ -82,13 +82,13 @@
 
 @media (max-width: 767px) {
   :root {
-    --development-notice-h: 56px;
+    --development-notice-h: calc(56px + env(safe-area-inset-top, 0px));
     --header-h: 68px;
   }
 }
 
 @media (max-width: 480px) {
   :root {
-    --development-notice-h: 64px;
+    --development-notice-h: calc(64px + env(safe-area-inset-top, 0px));
   }
 }
