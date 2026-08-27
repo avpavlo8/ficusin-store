@@ -1,0 +1,50 @@
+name: finalize public catalog patch
+
+on:
+  push:
+    branches: [fix/public-catalog-final-audit]
+    paths-ignore:
+      - .github/workflows/catalog-finalize-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'chore: finalize public catalog patch') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+      - name: Patch StorefrontPage contract usage
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path("frontend/src/StorefrontPage.tsx")
+          s = p.read_text()
+          if "function attributeDisplayLabels" in s:
+              raise SystemExit("StorefrontPage already patched")
+          replacements = [
+              ('''  value: string | number | boolean | string[];\n  filterable: boolean;''', '''  value: string | number | boolean | string[];\n  displayValue?: string | number | string[];\n  options?: string[];\n  optionLabels?: Record<string, string>;\n  filterable: boolean;'''),
+              ('''type Facet = {\n  name: string;\n  unit?: string;\n  values: Set<string>;\n  displayMode: FilterDisplayMode;''', '''type Facet = {\n  name: string;\n  unit?: string;\n  values: Set<string>;\n  labels: Map<string, string>;\n  displayMode: FilterDisplayMode;'''),
+              ('''function inferredDisplayMode(attribute: FilterAttribute): FilterDisplayMode {\n  if (attribute.displayMode) return attribute.displayMode;\n  if (attribute.dataType === "number" || attributeValues(attribute).some((value) => typeof value === "number")) return "range";\n  if (attribute.dataType === "boolean" || attributeValues(attribute).some((value) => typeof value === "boolean")) return "chips";\n  return "select";\n}''', '''function inferredDisplayMode(attribute: FilterAttribute): FilterDisplayMode {\n  if (attribute.displayMode) return attribute.displayMode;\n  if (attribute.dataType === "number" || attributeValues(attribute).some((value) => typeof value === "number")) return "range";\n  if (attribute.dataType === "boolean" || attributeValues(attribute).some((value) => typeof value === "boolean")) return "chips";\n  return "select";\n}\n\nfunction attributeDisplayLabels(attribute: FilterAttribute): Map<string, string> {\n  const labels = new Map<string, string>();\n  Object.entries(attribute.optionLabels || {}).forEach(([value, label]) => {\n    if (label) labels.set(value, label);\n  });\n  if (attribute.displayValue !== undefined && attribute.displayValue !== null) {\n    const values = attributeValues(attribute).map(String);\n    const displayed = (Array.isArray(attribute.displayValue) ? attribute.displayValue : [attribute.displayValue]).map(String);\n    if (values.length === displayed.length) values.forEach((value, index) => {\n      if (displayed[index]) labels.set(value, displayed[index]);\n    });\n    else if (values.length === 1 && displayed.length) labels.set(values[0], displayed.join(", "));\n  }\n  return labels;\n}'''),
+              ('''        values: new Set<string>(),\n        displayMode: mode,''', '''        values: new Set<string>(),\n        labels: new Map<string, string>(),\n        displayMode: mode,'''),
+              ('''      attributeValues(attribute).forEach((value) => {\n        if (value === null || value === undefined || String(value) === "") return;\n        facet.values.add(String(value));\n        if (typeof value === "number" || (mode === "range" && Number.isFinite(Number(value)))) facet.numericValues.push(Number(value));\n      });\n      result.set(attribute.code, facet);''', '''      attributeValues(attribute).forEach((value) => {\n        if (value === null || value === undefined || String(value) === "") return;\n        facet.values.add(String(value));\n        if (typeof value === "number" || (mode === "range" && Number.isFinite(Number(value)))) facet.numericValues.push(Number(value));\n      });\n      attributeDisplayLabels(attribute).forEach((label, value) => facet.labels.set(value, label));\n      result.set(attribute.code, facet);'''),
+              ('''      chips.push({ key: `attribute-${code}`, label: `${facet?.name || code}: ${attributeLabel(value)}`, remove: () => setAttributeFilters((current) => ({ ...current, [code]: "" })) });''', '''      chips.push({ key: `attribute-${code}`, label: `${facet?.name || code}: ${facet?.labels.get(value) || attributeLabel(value)}`, remove: () => setAttributeFilters((current) => ({ ...current, [code]: "" })) });'''),
+              ('''{isBoolean ? (value === "true" ? "Да" : "Нет") : attributeLabel(value)}''', '''{isBoolean ? (value === "true" ? "Есть" : "Нет") : facet.labels.get(value) || attributeLabel(value)}'''),
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit(f"missing expected source fragment: {old[:80]}")
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+      - name: Commit patched source and remove runner
+        run: |
+          rm .github/workflows/catalog-finalize-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/StorefrontPage.tsx .github/workflows/catalog-finalize-patch.yml
+          git commit -m "chore: finalize public catalog patch"
+          git push origin HEAD:${{ github.ref_name }}
