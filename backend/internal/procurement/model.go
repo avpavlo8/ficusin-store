@@ -15,6 +15,13 @@ var (
 	ErrUnsupportedDocument = errors.New("unsupported procurement document")
 )
 
+// UserFacingError is a checked integration/preflight problem that an
+// operator can fix. Unlike an internal database error, its text is safe and
+// useful to return to the admin interface verbatim.
+type UserFacingError struct{ Message string }
+
+func (err *UserFacingError) Error() string { return err.Message }
+
 const (
 	KindInternational = "international"
 	KindDomestic      = "domestic"
@@ -396,20 +403,24 @@ type ActionItem struct {
 
 // ActionPreviewLine exposes every line of one aggregate Saby document.
 type ActionPreviewLine struct {
-	SabyID   string  `json:"sabyId"`
-	Code     string  `json:"code"`
-	Name     string  `json:"name"`
-	Quantity int     `json:"quantity,omitempty"`
-	OldPrice float64 `json:"oldPrice,omitempty"`
-	NewPrice float64 `json:"newPrice,omitempty"`
+	SabyID     string  `json:"sabyId"`
+	Code       string  `json:"code"`
+	Name       string  `json:"name"`
+	Quantity   int     `json:"quantity,omitempty"`
+	OldBalance int     `json:"oldBalance,omitempty"`
+	NewBalance int     `json:"newBalance,omitempty"`
+	OldPrice   float64 `json:"oldPrice,omitempty"`
+	NewPrice   float64 `json:"newPrice,omitempty"`
 }
 
 // ChannelProduct — карточка маркетплейса, какой её отдаёт площадка.
 type ChannelProduct struct {
-	ExternalID string
-	Article    string
-	Name       string
-	Barcodes   []string
+	ExternalID       string
+	Article          string
+	Name             string
+	Barcodes         []string
+	CurrentPrice     *float64
+	CurrentBasePrice *float64
 }
 
 // ChannelLinkResult — итог подтягивания справочника канала.
