@@ -18,7 +18,7 @@ import (
 
 func (store *PostgresStore) listSuppliers(ctx context.Context) ([]Supplier, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT id, name, kind, country_code, tax_id, default_currency, active, created_at
+		SELECT id, name, kind, country_code, tax_id, kpp, default_currency, active, created_at
 		FROM procurement_suppliers
 		ORDER BY active DESC, name
 	`)
@@ -29,7 +29,7 @@ func (store *PostgresStore) listSuppliers(ctx context.Context) ([]Supplier, erro
 	items := make([]Supplier, 0)
 	for rows.Next() {
 		var item Supplier
-		if err := rows.Scan(&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.TaxID, &item.DefaultCurrency, &item.Active, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.TaxID, &item.KPP, &item.DefaultCurrency, &item.Active, &item.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan procurement supplier: %w", err)
 		}
 		items = append(items, item)

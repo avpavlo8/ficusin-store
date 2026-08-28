@@ -93,7 +93,7 @@ func (stub *procurementStub) SetExclusion(context.Context, procurement.Actor, pr
 func (stub *procurementStub) SyncChannelCatalog(_ context.Context, _ procurement.Actor, channel string) (procurement.ChannelLinkResult, error) {
 	return procurement.ChannelLinkResult{Channel: channel}, nil
 }
-func (stub *procurementStub) PrepareBatch(_ context.Context, _ procurement.Actor, _ int64, kind string) (procurement.ActionBatch, error) {
+func (stub *procurementStub) PrepareBatch(_ context.Context, _ procurement.Actor, _ int64, kind string, _ []string) (procurement.ActionBatch, error) {
 	return procurement.ActionBatch{ID: 1, Kind: kind}, nil
 }
 func (stub *procurementStub) ApproveBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {

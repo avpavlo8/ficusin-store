@@ -86,6 +86,7 @@ type Supplier struct {
 	Kind            string    `json:"kind"`
 	CountryCode     string    `json:"countryCode"`
 	TaxID           string    `json:"taxId"`
+	KPP             string    `json:"kpp"`
 	DefaultCurrency string    `json:"defaultCurrency"`
 	Active          bool      `json:"active"`
 	CreatedAt       time.Time `json:"createdAt"`
@@ -96,6 +97,7 @@ type SupplierCreate struct {
 	Kind            string `json:"kind"`
 	CountryCode     string `json:"countryCode"`
 	TaxID           string `json:"taxId"`
+	KPP             string `json:"kpp"`
 	DefaultCurrency string `json:"defaultCurrency"`
 }
 
@@ -372,21 +374,33 @@ type ActionBatch struct {
 }
 
 type ActionItem struct {
-	ID                  int64    `json:"id"`
-	LineID              int64    `json:"lineId"`
-	ProductName         string   `json:"productName"`
-	Channel             string   `json:"channel"`
-	ExternalArticle     string   `json:"externalArticle"`
-	OldValue            *float64 `json:"oldValue,omitempty"`
-	NewValue            float64  `json:"newValue"`
-	CompareAtValue      *float64 `json:"compareAtValue,omitempty"`
-	Quantity            *int     `json:"quantity,omitempty"`
-	Status              string   `json:"status"`
-	ErrorMessage        string   `json:"errorMessage"`
-	ExternalOperationID string   `json:"externalOperationId,omitempty"`
-	ExternalURL         string   `json:"externalUrl,omitempty"`
-	Payload             json.RawMessage `json:"-"`
-	Attempts            int             `json:"-"`
+	ID                  int64               `json:"id"`
+	LineID              int64               `json:"lineId"`
+	ProductName         string              `json:"productName"`
+	ProductCode         string              `json:"productCode"`
+	Channel             string              `json:"channel"`
+	ExternalArticle     string              `json:"externalArticle"`
+	OldValue            *float64            `json:"oldValue,omitempty"`
+	NewValue            float64             `json:"newValue"`
+	CompareAtValue      *float64            `json:"compareAtValue,omitempty"`
+	Quantity            *int                `json:"quantity,omitempty"`
+	Status              string              `json:"status"`
+	ErrorMessage        string              `json:"errorMessage"`
+	ExternalOperationID string              `json:"externalOperationId,omitempty"`
+	ExternalURL         string              `json:"externalUrl,omitempty"`
+	PreviewLines        []ActionPreviewLine `json:"previewLines,omitempty"`
+	Payload             json.RawMessage     `json:"-"`
+	Attempts            int                 `json:"-"`
+}
+
+// ActionPreviewLine exposes every line of one aggregate Saby document.
+type ActionPreviewLine struct {
+	SabyID   string  `json:"sabyId"`
+	Code     string  `json:"code"`
+	Name     string  `json:"name"`
+	Quantity int     `json:"quantity,omitempty"`
+	OldPrice float64 `json:"oldPrice,omitempty"`
+	NewPrice float64 `json:"newPrice,omitempty"`
 }
 
 // ChannelProduct — карточка маркетплейса, какой её отдаёт площадка.

@@ -32,7 +32,7 @@ type procurementService interface {
 	SetExclusion(context.Context, procurement.Actor, procurement.ExclusionUpdate) error
 	ListProducts(context.Context, int64, string) ([]procurement.ProductDirectoryItem, error)
 	UpdateProduct(context.Context, procurement.Actor, procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error)
-	PrepareBatch(context.Context, procurement.Actor, int64, string) (procurement.ActionBatch, error)
+	PrepareBatch(context.Context, procurement.Actor, int64, string, []string) (procurement.ActionBatch, error)
 	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	CheckIntegration(context.Context, procurement.Actor, string) (procurement.IntegrationHealth, error)
@@ -522,13 +522,14 @@ func (handlers procurementHandlers) prepareBatch(response http.ResponseWriter, r
 		return
 	}
 	var input struct {
-		Kind string `json:"kind"`
+		Kind     string   `json:"kind"`
+		Channels []string `json:"channels"`
 	}
 	if decodeJSON(request, &input) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный тип документа"})
 		return
 	}
-	item, err := handlers.service.PrepareBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID, input.Kind)
+	item, err := handlers.service.PrepareBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID, input.Kind, input.Channels)
 	if err != nil {
 		handlers.failed(response, "prepare procurement batch", err)
 		return

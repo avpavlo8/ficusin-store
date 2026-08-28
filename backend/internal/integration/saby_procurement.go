@@ -38,8 +38,10 @@ type SabyClient struct {
 	serviceURL   string
 	mu           sync.Mutex
 	catalogMu    sync.Mutex
+	priceTypeMu  sync.Mutex
 	token        string
 	tokenUntil   time.Time
+	priceDocType string
 }
 
 type sabyCatalogPage struct {
@@ -253,6 +255,7 @@ type sabyDraftPayload struct {
 	Supplier    struct {
 		Name  string `json:"name"`
 		TaxID string `json:"taxId"`
+		KPP   string `json:"kpp"`
 	} `json:"supplier"`
 	Lines []struct {
 		SabyID   string  `json:"sabyId"`
@@ -283,6 +286,9 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	if err := json.Unmarshal(item.Payload, &payload); err != nil || payload.OrderID <= 0 || len(payload.Lines) == 0 {
 		return procurement.ActionExecution{}, errors.New("некорректный снимок черновика Saby")
 	}
+	if item.Channel == "saby_receipt" && len(payload.Supplier.TaxID) == 10 && len(payload.Supplier.KPP) != 9 {
+		return procurement.ActionExecution{}, errors.New("у российского поставщика не заполнен КПП")
+	}
 	organization, warehouse, err := client.receiptContext(ctx)
 	if err != nil {
 		return procurement.ActionExecution{}, err
@@ -301,6 +307,9 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		if payload.Supplier.TaxID != "" {
 			counterparty["ИНН"] = payload.Supplier.TaxID
 		}
+		if payload.Supplier.KPP != "" {
+			counterparty["КПП"] = payload.Supplier.KPP
+		}
 		document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
 		document["Склад"] = warehouse
 		for _, line := range payload.Lines {
@@ -311,7 +320,11 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 			})
 		}
 	} else if item.Channel == "saby_price" {
-		document["Тип"] = "ИзменениеЦен"
+		priceDocType, err := client.discoverPriceDocumentType(ctx)
+		if err != nil {
+			return procurement.ActionExecution{}, err
+		}
+		document["Тип"] = priceDocType
 		document["Название"] = "Изменение цен"
 		document["Регламент"] = map[string]any{"Название": "Изменение цен"}
 		for _, line := range payload.Lines {
@@ -333,6 +346,36 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор черновика")
 	}
 	return procurement.ActionExecution{Completed: true, ExternalOperationID: id, ExternalURL: safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))}, nil
+}
+
+// Internal price documents are not listed in Saby's public EDO type table.
+// Probe price-only aliases with a read-only list call and cache the alias that
+// this account accepts before writing a draft. Probing never creates or posts
+// a document.
+func (client *SabyClient) discoverPriceDocumentType(ctx context.Context) (string, error) {
+	client.priceTypeMu.Lock()
+	defer client.priceTypeMu.Unlock()
+	if client.priceDocType != "" {
+		return client.priceDocType, nil
+	}
+	candidates := []string{"АктИзмЦен", "ИзмЦен", "АктИзмененияЦен", "ИзменениеЦены", "ИзмененияЦен", "PriceChange", "PriceListChange"}
+	dateTo := time.Now().In(time.FixedZone("MSK", 3*60*60))
+	dateFrom := dateTo.AddDate(-5, 0, 0)
+	for _, candidate := range candidates {
+		var result any
+		err := client.rpc(ctx, "СБИС.СписокДокументов", map[string]any{"Фильтр": map[string]any{
+			"ДатаС": dateFrom.Format("02.01.2006"), "ДатаПо": dateTo.Format("02.01.2006"),
+			"Тип": candidate, "Навигация": map[string]any{"РазмерСтраницы": "1"},
+		}}, &result)
+		if err == nil {
+			client.priceDocType = candidate
+			return candidate, nil
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), "не найден тип документа") {
+			return "", fmt.Errorf("определить тип документа изменения цен Saby: %w", err)
+		}
+	}
+	return "", errors.New("Saby не предоставил API-тип документа «Изменение цен» для этого аккаунта")
 }
 
 func safeSabyURL(value string) string {
@@ -543,10 +586,20 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 	content, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 	if err != nil { return response.StatusCode, fmt.Errorf("read Saby response: %w", err) }
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response.StatusCode, &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content))}
+		return response.StatusCode, &remoteError{Status: response.StatusCode, Message: sabyErrorMessage(content)}
 	}
 	if err := json.Unmarshal(content, target); err != nil {
 		return response.StatusCode, fmt.Errorf("decode Saby response: %w", err)
 	}
 	return response.StatusCode, nil
+}
+
+func sabyErrorMessage(content []byte) string {
+	var response sabyRPCResponse
+	if json.Unmarshal(content, &response) == nil && response.Error != nil {
+		message := strings.TrimSpace(response.Error.Details)
+		if message == "" { message = strings.TrimSpace(response.Error.Message) }
+		if message != "" { return safeRemoteMessage(message) }
+	}
+	return safeRemoteMessage(string(content))
 }
