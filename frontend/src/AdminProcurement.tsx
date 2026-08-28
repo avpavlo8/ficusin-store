@@ -51,6 +51,11 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     try {
       const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[] } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
       const link = result.link;
+	  if (channel === "saby") {
+		setIntegrationNotice({ channel, ok: true, text: `Справочник СБИС обновлён: ${link.fetched} позиций. Новые карточки уже доступны для сопоставления.` });
+		await load();
+		return;
+	  }
       const detail = link.linked === 0 && link.fetched > 0
         ? ` Сравнивали ${link.channelKeys} ключей канала с ${link.catalogKeys} ключами СБИС. У канала: ${(link.channelSamples || []).join(", ") || "нет"}. В СБИС: ${(link.catalogSamples || []).join(", ") || "нет"}.`
         : "";
@@ -94,7 +99,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
     <div className="procurement-safety">
-      <div><strong>Изменения только после подтверждения</strong><p>Сайт применяет цену сразу. Подключённые маркетплейсы отправляются в надёжную очередь и считаются выполненными только после ответа их API.</p><small>WB: {data.integrations.wb ? "подключён" : "нужен токен"} · Ozon: {data.integrations.ozon ? "подключён" : "нужны ключи"} · СБИС: {data.integrations.saby ? "подключён" : "черновик пока вручную"}</small></div>
+      <div><strong>Изменения только после подтверждения</strong><p>Сайт применяет цену сразу. Для СБИС он создаёт только непроведённые документы; остатки и цены меняются после того, как вы сами нажмёте «Провести» в СБИС.</p><small>WB: {data.integrations.wb ? "подключён" : "нужен токен"} · Ozon: {data.integrations.ozon ? "подключён" : "нужны ключи"} · СБИС: {data.integrations.saby ? "черновики подключены" : "нужны ключи"}</small></div>
       <span>Проводка СБИС вручную</span>
     </div>
     <div className="admin-stats procurement-stats">
@@ -108,6 +113,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       <button className="admin-primary" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Новая закупка</button>
       <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Поставщики</button>
       <button className="secondary-button" onClick={() => setRequestDialog(true)}>Добавить запрос</button>
+	  <button className="secondary-button" disabled={syncingCatalog !== "" || !data.integrations.saby} onClick={() => void syncCatalog("saby")}>{syncingCatalog === "saby" ? "Обновляем СБИС…" : "Обновить товары из СБИС"}</button>
       <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
     </div>
 
@@ -195,11 +201,11 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
         {item.lastError && <em>{item.lastError}</em>}
         {integrationNotice?.channel === item.channel && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
         <button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : "Проверить подключение"}</button>
-        {item.channel !== "saby" && <button className="secondary-button" disabled={syncingCatalog !== ""} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Подтягиваем…" : "Подтянуть артикулы"}</button>}
+		<button className="secondary-button" disabled={syncingCatalog !== "" || !item.configured} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Подтягиваем…" : item.channel === "saby" ? "Обновить справочник" : "Подтянуть артикулы"}</button>
       </article>)}</div>
       <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Что не совпало, разбирается руками на вкладке «Продажи без товара».</p>
       <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки», «Финансы» и «Контент» — без последней чтение карточек закрыто и кнопка «Подтянуть артикулы» ответит ошибкой площадки. Ozon проверяется по безопасному чтению списка товаров.</p>
-      <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Создание поступлений и изменение прайса остаются выключенными, пока не подтверждён поддерживаемый Saby контракт записи.</p>
+	  <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления сразу читает полный каталог и прайс-лист — ждать фоновой синхронизации больше не нужно.</p>
     </section>}
 
     {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}

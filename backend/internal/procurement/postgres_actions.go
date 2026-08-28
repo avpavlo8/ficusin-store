@@ -266,17 +266,35 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	}
 	if kind == "receipt" {
 		_, err = tx.Exec(ctx, `
-			INSERT INTO procurement_action_items (
-				batch_id, procurement_order_line_id, channel, external_article, new_value, quantity
+			WITH receipt_lines AS (
+				SELECT MIN(l.id) AS id, o.id AS order_id, o.order_number,
+					supplier.name AS supplier_name, supplier.tax_id AS supplier_tax_id,
+					l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
+					COALESCE(NULLIF(n.name, ''), MAX(l.raw_name)) AS name,
+					SUM(COALESCE(l.invoiced_qty, l.ordered_qty))::INTEGER AS quantity
+				FROM procurement_order_lines l
+				JOIN procurement_orders o ON o.id = l.procurement_order_id
+				JOIN procurement_suppliers supplier ON supplier.id = o.supplier_id
+				JOIN saby_nomenclature n ON n.saby_id = l.saby_id
+				WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
+					AND l.saby_id IS NOT NULL
+				GROUP BY o.id, o.order_number, supplier.name, supplier.tax_id,
+					l.saby_id, n.code, n.name
 			)
-			SELECT $1, MIN(l.id), 'saby_receipt', l.saby_id,
-				SUM(l.unit_cost_rub * COALESCE(l.invoiced_qty, l.ordered_qty)) /
-					NULLIF(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0),
-				SUM(COALESCE(l.invoiced_qty, l.ordered_qty))
-			FROM procurement_order_lines l
-			WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
-				AND l.saby_id IS NOT NULL AND l.unit_cost_rub IS NOT NULL
-			GROUP BY l.saby_id
+			INSERT INTO procurement_action_items (
+				batch_id, procurement_order_line_id, channel, external_article, new_value, quantity, payload
+			)
+			SELECT $1, MIN(id), 'saby_receipt', order_id::TEXT, 0, SUM(quantity)::INTEGER,
+				jsonb_build_object(
+					'orderId', order_id,
+					'orderNumber', order_number,
+					'supplier', jsonb_build_object('name', supplier_name, 'taxId', supplier_tax_id),
+					'lines', jsonb_agg(jsonb_build_object(
+						'sabyId', saby_id, 'code', code, 'name', name, 'quantity', quantity
+					) ORDER BY id)
+				)
+			FROM receipt_lines
+			GROUP BY order_id, order_number, supplier_name, supplier_tax_id
 		`, batchID, orderID)
 	} else {
 		var conflicts int
@@ -322,16 +340,43 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				SELECT MAX(base_price_minor) AS base_price_minor FROM product_variants WHERE saby_id = p.saby_id
 			) pv ON TRUE
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id = p.saby_id
-			CROSS JOIN (VALUES ('site'), ('saby_price'), ('wb'), ('ozon')) AS channel(name)
+			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 			CROSS JOIN procurement_pricing_settings settings
 			WHERE channel.name IN ('wb', 'ozon') OR channel.name = 'site' AND (
 				COALESCE(pv.base_price_minor, 0) <= 0 OR ABS(p.retail - pv.base_price_minor::NUMERIC / 100)
 					> (pv.base_price_minor::NUMERIC / 100 * settings.price_change_threshold)
-			) OR channel.name = 'saby_price' AND (
-				n.price_minor <= 0 OR ABS(p.retail - n.price_minor::NUMERIC / 100)
-					> (n.price_minor::NUMERIC / 100 * settings.price_change_threshold)
 			)
 		`, batchID, orderID)
+		if err == nil {
+			_, err = tx.Exec(ctx, `
+				WITH changed AS (
+					SELECT MIN(l.id) AS id, l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
+						n.name, n.price_minor::NUMERIC / 100 AS old_price, MAX(l.proposed_retail_rub) AS new_price
+					FROM procurement_order_lines l
+					JOIN saby_nomenclature n ON n.saby_id = l.saby_id
+					CROSS JOIN procurement_pricing_settings settings
+					WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
+						AND l.saby_id IS NOT NULL AND l.proposed_retail_rub IS NOT NULL
+						AND (n.price_minor <= 0 OR ABS(l.proposed_retail_rub - n.price_minor::NUMERIC / 100)
+							> (n.price_minor::NUMERIC / 100 * settings.price_change_threshold))
+					GROUP BY l.saby_id, n.code, n.name, n.price_minor
+				)
+				INSERT INTO procurement_action_items (
+					batch_id, procurement_order_line_id, channel, external_article,
+					old_value, new_value, payload
+				)
+				SELECT $1, MIN(id), 'saby_price', $2::TEXT, MIN(old_price), 0,
+					jsonb_build_object(
+						'orderId', $2,
+						'lines', jsonb_agg(jsonb_build_object(
+							'sabyId', saby_id, 'code', code, 'name', name,
+							'oldPrice', old_price, 'newPrice', new_price
+						) ORDER BY id)
+					)
+				FROM changed
+				HAVING COUNT(*) > 0
+			`, batchID, orderID)
+		}
 	}
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("fill procurement action batch: %w", err)
@@ -387,15 +432,18 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 				WHEN channel = 'site' THEN 'completed'
 				WHEN channel = 'wb' AND $2 AND external_article <> '' THEN 'queued'
 				WHEN channel = 'ozon' AND $3 AND external_article <> '' THEN 'queued'
+				WHEN channel = 'saby_receipt' AND $4 THEN 'queued'
+				WHEN channel = 'saby_price' AND $5 THEN 'queued'
 				WHEN channel IN ('wb', 'ozon') AND external_article = '' THEN 'skipped'
 				ELSE 'not_configured' END,
 			error_message = CASE
-				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '') THEN ''
+				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '')
+					OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) THEN ''
 				WHEN channel IN ('wb', 'ozon') AND external_article = '' THEN 'Не заполнен артикул канала'
 				ELSE 'API-адаптер канала не настроен' END,
 			completed_at = CASE WHEN channel = 'site' THEN CURRENT_TIMESTAMP ELSE NULL END,
 			next_attempt_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
-	`, batchID, configured["wb"], configured["ozon"]); err != nil {
+	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"]); err != nil {
 		return ActionBatch{}, fmt.Errorf("update procurement action statuses: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
@@ -445,7 +493,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 			SELECT item.id, item.procurement_order_line_id, COALESCE(n.name, line.raw_name),
 				item.channel, item.external_article, item.old_value::DOUBLE PRECISION,
 				item.new_value::DOUBLE PRECISION, item.compare_at_value::DOUBLE PRECISION,
-				item.quantity, item.status, item.error_message
+				item.quantity, item.status, item.error_message, item.external_operation_id, item.external_url
 			FROM procurement_action_items item
 			JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
 			LEFT JOIN saby_nomenclature n ON n.saby_id = line.saby_id
@@ -459,7 +507,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 			var item ActionItem
 			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.Channel,
 				&item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
-				&item.Status, &item.ErrorMessage); err != nil {
+				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL); err != nil {
 				itemRows.Close()
 				return nil, fmt.Errorf("scan procurement batch item: %w", err)
 			}
@@ -486,9 +534,11 @@ func (store *PostgresStore) ClaimAction(ctx context.Context) (*ActionItem, error
 		FROM candidate WHERE item.id = candidate.id
 		RETURNING item.id, item.procurement_order_line_id, item.channel, item.external_article,
 			item.old_value::DOUBLE PRECISION, item.new_value::DOUBLE PRECISION,
-			item.compare_at_value::DOUBLE PRECISION, item.quantity, item.external_operation_id, item.attempts
+			item.compare_at_value::DOUBLE PRECISION, item.quantity, item.external_operation_id,
+			item.external_url, item.payload, item.attempts
 	`).Scan(&item.ID, &item.LineID, &item.Channel, &item.ExternalArticle, &item.OldValue,
-		&item.NewValue, &item.CompareAtValue, &item.Quantity, &item.ExternalOperationID, &item.Attempts)
+		&item.NewValue, &item.CompareAtValue, &item.Quantity, &item.ExternalOperationID,
+		&item.ExternalURL, &item.Payload, &item.Attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -526,10 +576,11 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_items SET status = $2, error_message = $3,
 			external_operation_id = CASE WHEN $4 = '' THEN external_operation_id ELSE $4 END,
+			external_url = CASE WHEN $5 = '' THEN external_url ELSE $5 END,
 			completed_at = CASE WHEN $2 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
-			next_attempt_at = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second'), locked_until = NULL,
+			next_attempt_at = CURRENT_TIMESTAMP + ($6 * INTERVAL '1 second'), locked_until = NULL,
 			updated_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, actionID, status, message, result.ExternalOperationID, int(delay.Seconds())); err != nil {
+	`, actionID, status, message, result.ExternalOperationID, result.ExternalURL, int(delay.Seconds())); err != nil {
 		return fmt.Errorf("update procurement action result: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
@@ -562,10 +613,11 @@ func (store *PostgresStore) RetryBatch(ctx context.Context, actor Actor, batchID
 		UPDATE procurement_action_items SET status = 'queued', attempts = 0, error_message = '',
 			next_attempt_at = CURRENT_TIMESTAMP, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE batch_id = $1 AND external_article <> '' AND (
-			(status = 'failed' AND channel IN ('wb', 'ozon')) OR
-			(status = 'not_configured' AND ((channel = 'wb' AND $2) OR (channel = 'ozon' AND $3)))
+			(status = 'failed' AND channel IN ('wb', 'ozon', 'saby_receipt', 'saby_price')) OR
+			(status = 'not_configured' AND ((channel = 'wb' AND $2) OR (channel = 'ozon' AND $3)
+				OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5)))
 		)
-	`, batchID, configured["wb"], configured["ozon"])
+	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"])
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("retry procurement actions: %w", err)
 	}

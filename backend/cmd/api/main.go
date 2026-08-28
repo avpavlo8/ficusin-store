@@ -200,7 +200,8 @@ func main() {
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	)
-	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient)
+	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient).
+		WithSabyCatalogSync(sabyService)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
