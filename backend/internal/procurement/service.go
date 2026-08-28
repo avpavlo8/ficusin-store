@@ -3,6 +3,7 @@ package procurement
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -474,7 +475,41 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 	if kind == "prices" && len(selected) == 0 {
 		return ActionBatch{}, ErrInvalidInput
 	}
+	// Старая цена площадки нужна не только для показа: оператор должен
+	// видеть реальное изменение до подтверждения. Обновляем карточки прямо
+	// перед снимком batch, чтобы не подставлять вчерашнее значение.
+	if kind == "prices" {
+		source, canRead := service.executor.(ChannelCatalogSource)
+		remember, canRemember := service.store.(interface {
+			RememberChannelProducts(context.Context, string, []ChannelProduct) error
+		})
+		for _, channel := range selected {
+			if channel != "wb" && channel != "ozon" {
+				continue
+			}
+			if service.executor == nil || !service.executor.Configured(channel) || !canRead || !canRemember {
+				return ActionBatch{}, &UserFacingError{Message: channelDisplayName(channel) + ": подключение не настроено, текущую цену получить нельзя"}
+			}
+			items, err := source.FetchCatalog(ctx, channel)
+			if err != nil {
+				return ActionBatch{}, &UserFacingError{Message: fmt.Sprintf("%s: не удалось получить карточки и текущие цены: %v", channelDisplayName(channel), err)}
+			}
+			if err := remember.RememberChannelProducts(ctx, channel, items); err != nil {
+				return ActionBatch{}, fmt.Errorf("%s: сохранить текущие цены: %w", channelDisplayName(channel), err)
+			}
+		}
+	}
 	return service.store.PrepareBatch(ctx, actor, orderID, kind, selected)
+}
+
+func channelDisplayName(channel string) string {
+	if channel == "wb" {
+		return "Wildberries"
+	}
+	if channel == "ozon" {
+		return "Ozon"
+	}
+	return channel
 }
 
 func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID int64) (ActionBatch, error) {

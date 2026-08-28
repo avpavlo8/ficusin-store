@@ -772,7 +772,70 @@ func (executor *MarketplaceExecutor) fetchWBCatalog(ctx context.Context) ([]proc
 			"limit": 100, "updatedAt": response.Cursor.UpdatedAt, "nmID": response.Cursor.NmID,
 		}
 	}
+	prices, err := executor.fetchWBPrices(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("прочитать текущие цены Wildberries (токену нужна категория «Цены и скидки»): %w", err)
+	}
+	for index := range items {
+		if price, ok := prices[items[index].ExternalID]; ok {
+			items[index].CurrentPrice = price.current
+			items[index].CurrentBasePrice = price.base
+		}
+	}
 	return items, nil
+}
+
+type channelPrice struct {
+	current *float64
+	base    *float64
+}
+
+func numberPointer(value marketplaceNumber) *float64 {
+	if value <= 0 {
+		return nil
+	}
+	converted := float64(value)
+	return &converted
+}
+
+func (executor *MarketplaceExecutor) fetchWBPrices(ctx context.Context) (map[string]channelPrice, error) {
+	result := make(map[string]channelPrice)
+	headers := map[string]string{"Authorization": executor.wbToken}
+	for offset := 0; offset < 200000; offset += 1000 {
+		endpoint := executor.wbBase + "/api/v2/list/goods/filter?" + url.Values{
+			"limit": {"1000"}, "offset": {strconv.Itoa(offset)},
+		}.Encode()
+		var response struct {
+			Data struct {
+				ListGoods []struct {
+					NmID  int64 `json:"nmID"`
+					Sizes []struct {
+						Price           marketplaceNumber `json:"price"`
+						DiscountedPrice marketplaceNumber `json:"discountedPrice"`
+					} `json:"sizes"`
+				} `json:"listGoods"`
+			} `json:"data"`
+		}
+		if err := executor.requestRead(ctx, http.MethodGet, endpoint, nil, headers, &response); err != nil {
+			return nil, err
+		}
+		for _, product := range response.Data.ListGoods {
+			var current, base marketplaceNumber
+			for _, size := range product.Sizes {
+				if size.DiscountedPrice > current {
+					current = size.DiscountedPrice
+				}
+				if size.Price > base {
+					base = size.Price
+				}
+			}
+			result[strconv.FormatInt(product.NmID, 10)] = channelPrice{current: numberPointer(current), base: numberPointer(base)}
+		}
+		if len(response.Data.ListGoods) < 1000 {
+			break
+		}
+	}
+	return result, nil
 }
 
 func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]procurement.ChannelProduct, error) {
@@ -872,5 +935,56 @@ func (executor *MarketplaceExecutor) fetchOzonCatalog(ctx context.Context) ([]pr
 			items = append(items, procurement.ChannelProduct{ExternalID: offer, Article: offer})
 		}
 	}
+	prices, err := executor.fetchOzonPrices(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("прочитать текущие цены Ozon (ключу нужен доступ к товарам и ценам): %w", err)
+	}
+	for index := range items {
+		if price, ok := prices[items[index].ExternalID]; ok {
+			items[index].CurrentPrice = price.current
+			items[index].CurrentBasePrice = price.base
+		}
+	}
 	return items, nil
+}
+
+func (executor *MarketplaceExecutor) fetchOzonPrices(ctx context.Context) (map[string]channelPrice, error) {
+	result := make(map[string]channelPrice)
+	headers := map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}
+	cursor := ""
+	for page := 0; page < 200; page++ {
+		var response struct {
+			Items []struct {
+				OfferID string `json:"offer_id"`
+				Price struct {
+					MarketingSellerPrice marketplaceNumber `json:"marketing_seller_price"`
+					MarketingPrice       marketplaceNumber `json:"marketing_price"`
+					RetailPrice          marketplaceNumber `json:"retail_price"`
+					OldPrice             marketplaceNumber `json:"old_price"`
+				} `json:"price"`
+			} `json:"items"`
+			Cursor string `json:"cursor"`
+		}
+		payload := map[string]any{"filter": map[string]any{"visibility": "ALL"}, "cursor": cursor, "limit": 1000}
+		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v5/product/info/prices", payload, headers, &response); err != nil {
+			return nil, err
+		}
+		for _, product := range response.Items {
+			current := product.Price.MarketingSellerPrice
+			if current <= 0 {
+				current = product.Price.MarketingPrice
+			}
+			if current <= 0 {
+				current = product.Price.RetailPrice
+			}
+			result[strings.TrimSpace(product.OfferID)] = channelPrice{
+				current: numberPointer(current), base: numberPointer(product.Price.OldPrice),
+			}
+		}
+		if len(response.Items) == 0 || response.Cursor == "" || response.Cursor == cursor {
+			break
+		}
+		cursor = response.Cursor
+	}
+	return result, nil
 }

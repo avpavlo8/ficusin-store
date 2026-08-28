@@ -591,6 +591,10 @@ func (handlers procurementHandlers) retryBatch(response http.ResponseWriter, req
 func (handlers procurementHandlers) failed(response http.ResponseWriter, operation string, err error) {
 	status := http.StatusServiceUnavailable
 	message := "Не удалось выполнить операцию"
+	var userFacing *procurement.UserFacingError
+	if errors.As(err, &userFacing) {
+		status, message = http.StatusUnprocessableEntity, userFacing.Message
+	}
 	if errors.Is(err, procurement.ErrInvalidInput) {
 		status, message = http.StatusBadRequest, "Проверьте заполненные поля"
 	}

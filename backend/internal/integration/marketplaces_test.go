@@ -189,6 +189,50 @@ func TestMarketplaceProbesAreReadOnly(t *testing.T) {
 	}
 }
 
+func TestWBCatalogIncludesCurrentPrice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/content/v2/get/cards/list":
+			_, _ = response.Write([]byte(`{"cards":[{"nmID":123,"vendorCode":"orchid-12","title":"Орхидея D12","sizes":[{"skus":["46001"]}]}],"cursor":{"total":1}}`))
+		case "/api/v2/list/goods/filter":
+			_, _ = response.Write([]byte(`{"data":{"listGoods":[{"nmID":123,"sizes":[{"price":3841,"discountedPrice":3201}]}]}}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("token", "", "")
+	executor.wbContentBase, executor.wbBase, executor.client = server.URL, server.URL, server.Client()
+	items, err := executor.FetchCatalog(context.Background(), "wb")
+	if err != nil || len(items) != 1 || items[0].CurrentPrice == nil || *items[0].CurrentPrice != 3201 {
+		t.Fatalf("items = %#v, err = %v", items, err)
+	}
+}
+
+func TestOzonCatalogIncludesCurrentPrice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/v3/product/list":
+			_, _ = response.Write([]byte(`{"result":{"items":[{"offer_id":"orchid-12"}],"last_id":""}}`))
+		case "/v3/product/info/list":
+			_, _ = response.Write([]byte(`{"items":[{"offer_id":"orchid-12","name":"Орхидея D12","barcodes":["46001"]}]}`))
+		case "/v5/product/info/prices":
+			_, _ = response.Write([]byte(`{"items":[{"offer_id":"orchid-12","price":{"marketing_seller_price":"3201","old_price":"3841"}}],"cursor":""}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	items, err := executor.FetchCatalog(context.Background(), "ozon")
+	if err != nil || len(items) != 1 || items[0].CurrentPrice == nil || *items[0].CurrentPrice != 3201 {
+		t.Fatalf("items = %#v, err = %v", items, err)
+	}
+}
+
 func TestReadOnlyMarketplaceRequestRetriesRateLimit(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

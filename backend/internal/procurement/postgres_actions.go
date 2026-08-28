@@ -271,6 +271,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					supplier.name AS supplier_name, supplier.tax_id AS supplier_tax_id, supplier.kpp AS supplier_kpp,
 					l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
 					COALESCE(NULLIF(n.name, ''), MAX(l.raw_name)) AS name,
+					n.balance::INTEGER AS old_balance,
 					SUM(COALESCE(l.invoiced_qty, l.ordered_qty))::INTEGER AS quantity
 				FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
@@ -279,7 +280,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
 					AND l.saby_id IS NOT NULL
 				GROUP BY o.id, o.order_number, supplier.name, supplier.tax_id, supplier.kpp,
-					l.saby_id, n.code, n.name
+					l.saby_id, n.code, n.name, n.balance
 			)
 			INSERT INTO procurement_action_items (
 				batch_id, procurement_order_line_id, channel, external_article, new_value, quantity, payload
@@ -290,27 +291,18 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					'orderNumber', order_number,
 					'supplier', jsonb_build_object('name', supplier_name, 'taxId', supplier_tax_id, 'kpp', supplier_kpp),
 					'lines', jsonb_agg(jsonb_build_object(
-						'sabyId', saby_id, 'code', code, 'name', name, 'quantity', quantity
+						'sabyId', saby_id, 'code', code, 'name', name, 'quantity', quantity,
+						'oldBalance', old_balance, 'newBalance', old_balance + quantity
 					) ORDER BY id)
 				)
 			FROM receipt_lines
 			GROUP BY order_id, order_number, supplier_name, supplier_tax_id, supplier_kpp
 		`, batchID, orderID)
 	} else {
-		var conflicts int
-		if err := tx.QueryRow(ctx, `
-			SELECT COUNT(*)::INTEGER FROM (
-				SELECT saby_id FROM procurement_order_lines
-				WHERE procurement_order_id = $1 AND match_status = 'confirmed' AND saby_id IS NOT NULL
-				GROUP BY saby_id HAVING COUNT(DISTINCT proposed_retail_rub) > 1
-					OR COUNT(DISTINCT proposed_marketplace_rub) > 1
-			) conflict
-		`, orderID).Scan(&conflicts); err != nil {
-			return ActionBatch{}, fmt.Errorf("check procurement price conflicts: %w", err)
-		}
-		if conflicts > 0 {
-			return ActionBatch{}, ErrInvalidInput
-		}
+		// Один товар СБИС может встретиться в накладной несколько раз с
+		// разной закупочной ценой. Для продажи безопасно брать максимальную
+		// рассчитанную цену: так дешёвая строка не заставит продавать более
+		// дорогую поставку в убыток и Ozon не получит две команды на один SKU.
 		_, err = tx.Exec(ctx, `
 			WITH products AS (
 				SELECT saby_id, MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
@@ -330,6 +322,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				CASE channel.name
 					WHEN 'site' THEN COALESCE(pv.base_price_minor, 0)::NUMERIC / 100
 					WHEN 'saby_price' THEN COALESCE(n.price_minor, 0)::NUMERIC / 100
+					WHEN 'wb' THEN wb_product.current_price
+					WHEN 'ozon' THEN ozon_product.current_price
 					ELSE NULL
 				END,
 				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.marketplace ELSE p.retail END,
@@ -340,6 +334,11 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				SELECT MAX(base_price_minor) AS base_price_minor FROM product_variants WHERE saby_id = p.saby_id
 			) pv ON TRUE
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id = p.saby_id
+			LEFT JOIN procurement_channel_products wb_product
+				ON wb_product.channel = 'wb' AND wb_product.external_id = pc.wb_nm_id::TEXT
+			LEFT JOIN procurement_channel_products ozon_product
+				ON ozon_product.channel = 'ozon'
+				AND ozon_product.external_id = COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, '')
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 			WHERE channel.name = ANY($3::TEXT[])
 		`, batchID, orderID, channels)
@@ -432,7 +431,8 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 			error_message = CASE
 				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '')
 					OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) THEN ''
-				WHEN channel IN ('wb', 'ozon') AND external_article = '' THEN 'Не заполнен артикул канала'
+				WHEN channel = 'wb' AND external_article = '' THEN 'Не заполнен WB nmID. Укажите его в справочнике закупок или нажмите «Подтянуть артикулы».'
+				WHEN channel = 'ozon' AND external_article = '' THEN 'Не заполнен Ozon offer_id. Укажите его в справочнике закупок или нажмите «Подтянуть артикулы».'
 				ELSE 'API-адаптер канала не настроен' END,
 			completed_at = CASE WHEN channel = 'site' THEN CURRENT_TIMESTAMP ELSE NULL END,
 			next_attempt_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
