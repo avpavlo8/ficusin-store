@@ -22,6 +22,7 @@ type procurementService interface {
 	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
 	CalculateOrder(context.Context, procurement.Actor, int64, procurement.CalculationInput) (procurement.OrderDetail, error)
 	UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error)
+	DeleteOrder(context.Context, procurement.Actor, int64) error
 	UpdateOrderLine(context.Context, procurement.Actor, int64, procurement.OrderLineUpdate) (procurement.OrderDetail, error)
 	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
@@ -241,6 +242,22 @@ func (handlers procurementHandlers) updateOrderStatus(response http.ResponseWrit
 		return
 	}
 	writeJSON(response, http.StatusOK, item)
+}
+
+func (handlers procurementHandlers) deleteOrder(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	if err := handlers.service.DeleteOrder(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID); err != nil {
+		handlers.failed(response, "delete procurement order", err)
+		return
+	}
+	response.WriteHeader(http.StatusNoContent)
 }
 
 func (handlers procurementHandlers) updateOrderLine(response http.ResponseWriter, request *http.Request) {
@@ -588,6 +605,9 @@ func (handlers procurementHandlers) failed(response http.ResponseWriter, operati
 	}
 	if errors.Is(err, procurement.ErrSupplierInUse) {
 		status, message = http.StatusConflict, "Поставщика нельзя удалить: с ним уже есть закупки или документы"
+	}
+	if errors.Is(err, procurement.ErrOrderNotCancelled) {
+		status, message = http.StatusConflict, "Сначала отмените закупку, затем её можно удалить"
 	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: message})

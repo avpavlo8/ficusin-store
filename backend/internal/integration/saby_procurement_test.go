@@ -67,15 +67,6 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"code":"3","name":"ул. Новоселов, д. 40а","address":"ул. Новоселов, д. 40а","organisation":{"inn":"620000000001","name":"Павловский Александр Владимирович"}}]}`))
 			return
 		}
-		if rpc.Method == "СБИС.СписокДокументов" {
-			filter := rpc.Params["Фильтр"].(map[string]any)
-			if filter["Тип"] == "ИзмЦен" {
-				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Документ":[]}}`))
-			} else {
-				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Не найден тип документа"}}`))
-			}
-			return
-		}
 		if rpc.Method != "СБИС.ЗаписатьДокумент" { t.Fatalf("unsafe Saby method: %s", rpc.Method) }
 		document, ok := rpc.Params["Документ"].(map[string]any)
 		if !ok { t.Fatalf("document is missing: %+v", rpc.Params) }
@@ -94,23 +85,20 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if !result.Completed || result.ExternalOperationID == "" || result.ExternalURL == "" { t.Fatalf("unexpected result: %+v", result) }
 	pricePayload := json.RawMessage(`{"orderId":323,"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","newPrice":2650}]}`)
-	if _, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_price", Payload: pricePayload}); err != nil { t.Fatal(err) }
+	if _, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_price", Payload: pricePayload}); err == nil || !strings.Contains(err.Error(), "импорт XLSX") { t.Fatalf("price error = %v", err) }
 
 	for _, method := range methods {
 		if strings.Contains(method, "ПодготовитьДействие") || strings.Contains(method, "ВыполнитьДействие") {
 			t.Fatalf("draft flow attempted to post a document: %s", method)
 		}
 	}
-	if len(documents) != 2 { t.Fatalf("documents = %d, want 2", len(documents)) }
+	if len(documents) != 1 { t.Fatalf("documents = %d, want 1", len(documents)) }
 	if documents[0]["Тип"] != "ДокОтгрВх" { t.Fatalf("receipt type: %+v", documents[0]) }
 	counterparty := documents[0]["Контрагент"].(map[string]any)["СвЮЛ"].(map[string]any)
 	if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
 	receiptLines := documents[0]["Наименования"].([]any)
 	receiptLine := receiptLines[0].(map[string]any)
 	if receiptLine["Количество"] != "2" || receiptLine["СуммаСебест"] != "0" { t.Fatalf("receipt lines: %+v", receiptLines) }
-	if documents[1]["Тип"] != "ИзмЦен" { t.Fatalf("price type: %+v", documents[1]) }
-	priceLines := documents[1]["Наименования"].([]any)
-	if priceLines[0].(map[string]any)["Цена"] != "2650.00" { t.Fatalf("price lines: %+v", priceLines) }
 }
 
 func TestSabyErrorMessageUsesJSONRPCDetails(t *testing.T) {

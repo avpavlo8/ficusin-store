@@ -582,7 +582,7 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 		message = executeErr.Error()
 		if attempts >= 5 {
 			status = "failed"
-		} else {
+		} else if result.RetryAfter <= 0 {
 			delay = time.Duration(attempts*attempts) * 15 * time.Second
 		}
 	} else if result.Completed {

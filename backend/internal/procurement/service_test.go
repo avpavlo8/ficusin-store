@@ -15,6 +15,7 @@ type storeStub struct {
 	aliasID           int64
 	resolution        AliasResolution
 	deletedSupplierID int64
+	deletedOrderID    int64
 	exclusion         ExclusionUpdate
 	batchChannels     []string
 }
@@ -46,6 +47,10 @@ func (stub *storeStub) CalculateOrder(context.Context, Actor, int64, Calculation
 }
 func (stub *storeStub) UpdateOrderStatus(context.Context, Actor, int64, OrderStatusUpdate) (OrderDetail, error) {
 	return OrderDetail{}, nil
+}
+func (stub *storeStub) DeleteOrder(_ context.Context, _ Actor, orderID int64) error {
+	stub.deletedOrderID = orderID
+	return nil
 }
 func (stub *storeStub) UpdateOrderLine(context.Context, Actor, int64, OrderLineUpdate) (OrderDetail, error) {
 	return OrderDetail{}, nil
@@ -151,6 +156,17 @@ func TestDeleteSupplierValidatesID(t *testing.T) {
 	}
 	if err := service.DeleteSupplier(context.Background(), Actor{}, 17); err != nil || store.deletedSupplierID != 17 {
 		t.Fatalf("deleted supplier = %d, err = %v", store.deletedSupplierID, err)
+	}
+}
+
+func TestDeleteOrderValidatesID(t *testing.T) {
+	store := &storeStub{}
+	service := NewService(store)
+	if err := service.DeleteOrder(context.Background(), Actor{}, 0); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v", err)
+	}
+	if err := service.DeleteOrder(context.Background(), Actor{}, 23); err != nil || store.deletedOrderID != 23 {
+		t.Fatalf("error = %v, deleted = %d", err, store.deletedOrderID)
 	}
 }
 

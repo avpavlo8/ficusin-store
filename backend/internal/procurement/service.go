@@ -17,6 +17,7 @@ type Store interface {
 	OrderDetail(context.Context, int64) (OrderDetail, error)
 	CalculateOrder(context.Context, Actor, int64, CalculationInput) (OrderDetail, error)
 	UpdateOrderStatus(context.Context, Actor, int64, OrderStatusUpdate) (OrderDetail, error)
+	DeleteOrder(context.Context, Actor, int64) error
 	UpdateOrderLine(context.Context, Actor, int64, OrderLineUpdate) (OrderDetail, error)
 	ImportDocument(context.Context, Actor, DocumentUpload, ParsedDocument) (ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
@@ -298,6 +299,13 @@ func (service *Service) UpdateOrderStatus(ctx context.Context, actor Actor, orde
 		return OrderDetail{}, ErrInvalidInput
 	}
 	return service.store.UpdateOrderStatus(ctx, actor, orderID, input)
+}
+
+func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID int64) error {
+	if orderID <= 0 {
+		return ErrInvalidInput
+	}
+	return service.store.DeleteOrder(ctx, actor, orderID)
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {

@@ -731,6 +731,39 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	return store.OrderDetail(ctx, orderID)
 }
 
+// DeleteOrder permanently removes only an already-cancelled purchase. The
+// source document is removed in the same transaction so its SHA-256 no longer
+// blocks a deliberate re-import of the same PDF.
+func (store *PostgresStore) DeleteOrder(ctx context.Context, actor Actor, orderID int64) error {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete procurement order: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT status FROM procurement_orders WHERE id = $1 FOR UPDATE`, orderID).Scan(&status); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("lock procurement order for deletion: %w", err)
+	}
+	if status != "cancelled" {
+		return ErrOrderNotCancelled
+	}
+	if err := audit(ctx, tx, actor, "procurement.order.delete", "procurement_order", orderID, map[string]any{"status": status}); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM procurement_documents WHERE procurement_order_id = $1`, orderID); err != nil {
+		return fmt.Errorf("delete procurement documents: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM procurement_orders WHERE id = $1`, orderID); err != nil {
+		return fmt.Errorf("delete procurement order: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete procurement order: %w", err)
+	}
+	return nil
+}
+
 func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, input RequestCreate) (Request, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {

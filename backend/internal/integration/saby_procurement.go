@@ -38,10 +38,8 @@ type SabyClient struct {
 	serviceURL   string
 	mu           sync.Mutex
 	catalogMu    sync.Mutex
-	priceTypeMu  sync.Mutex
 	token        string
 	tokenUntil   time.Time
-	priceDocType string
 }
 
 type sabyCatalogPage struct {
@@ -289,6 +287,9 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	if item.Channel == "saby_receipt" && len(payload.Supplier.TaxID) == 10 && len(payload.Supplier.KPP) != 9 {
 		return procurement.ActionExecution{}, errors.New("у российского поставщика не заполнен КПП")
 	}
+	if item.Channel == "saby_price" {
+		return procurement.ActionExecution{}, errors.New("публичный API Saby не поддерживает внутренний документ «Изменение цен»; используйте импорт XLSX в Склад → Документы → Из файла")
+	}
 	organization, warehouse, err := client.receiptContext(ctx)
 	if err != nil {
 		return procurement.ActionExecution{}, err
@@ -319,20 +320,6 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 				"СуммаСебест": "0", "СуммаСебестБезНДС": "0", "СуммаСебестНДС": "0",
 			})
 		}
-	} else if item.Channel == "saby_price" {
-		priceDocType, err := client.discoverPriceDocumentType(ctx)
-		if err != nil {
-			return procurement.ActionExecution{}, err
-		}
-		document["Тип"] = priceDocType
-		document["Название"] = "Изменение цен"
-		document["Регламент"] = map[string]any{"Название": "Изменение цен"}
-		for _, line := range payload.Lines {
-			lines = append(lines, map[string]any{
-				"КодЕИ": "796", "НазваниеЕИ": "шт", "НомНомер": line.Code,
-				"Номенклатура": line.Name, "Цена": strconv.FormatFloat(line.NewPrice, 'f', 2, 64),
-			})
-		}
 	} else {
 		return procurement.ActionExecution{}, fmt.Errorf("канал %s не поддерживается", item.Channel)
 	}
@@ -346,36 +333,6 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор черновика")
 	}
 	return procurement.ActionExecution{Completed: true, ExternalOperationID: id, ExternalURL: safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))}, nil
-}
-
-// Internal price documents are not listed in Saby's public EDO type table.
-// Probe price-only aliases with a read-only list call and cache the alias that
-// this account accepts before writing a draft. Probing never creates or posts
-// a document.
-func (client *SabyClient) discoverPriceDocumentType(ctx context.Context) (string, error) {
-	client.priceTypeMu.Lock()
-	defer client.priceTypeMu.Unlock()
-	if client.priceDocType != "" {
-		return client.priceDocType, nil
-	}
-	candidates := []string{"АктИзмЦен", "ИзмЦен", "АктИзмененияЦен", "ИзменениеЦены", "ИзмененияЦен", "PriceChange", "PriceListChange"}
-	dateTo := time.Now().In(time.FixedZone("MSK", 3*60*60))
-	dateFrom := dateTo.AddDate(-5, 0, 0)
-	for _, candidate := range candidates {
-		var result any
-		err := client.rpc(ctx, "СБИС.СписокДокументов", map[string]any{"Фильтр": map[string]any{
-			"ДатаС": dateFrom.Format("02.01.2006"), "ДатаПо": dateTo.Format("02.01.2006"),
-			"Тип": candidate, "Навигация": map[string]any{"РазмерСтраницы": "1"},
-		}}, &result)
-		if err == nil {
-			client.priceDocType = candidate
-			return candidate, nil
-		}
-		if !strings.Contains(strings.ToLower(err.Error()), "не найден тип документа") {
-			return "", fmt.Errorf("определить тип документа изменения цен Saby: %w", err)
-		}
-	}
-	return "", errors.New("Saby не предоставил API-тип документа «Изменение цен» для этого аккаунта")
 }
 
 func safeSabyURL(value string) string {

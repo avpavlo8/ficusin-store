@@ -442,7 +442,7 @@ func (executor *MarketplaceExecutor) executeWB(ctx context.Context, item procure
 		}
 		if err := executor.request(ctx, http.MethodPost, executor.wbBase+"/api/v2/upload/task", payload,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
-			return procurement.ActionExecution{}, err
+			return marketplaceRetryExecution(err), err
 		}
 		if response.Error || response.Data.ID <= 0 {
 			return procurement.ActionExecution{}, fmt.Errorf("Wildberries отклонил загрузку: %s", safeRemoteMessage(response.ErrorText))
@@ -468,7 +468,9 @@ func (executor *MarketplaceExecutor) executeWB(ctx context.Context, item procure
 		if errors.As(err, &remote) && remote.Status == http.StatusNotFound {
 			return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID, RetryAfter: 5 * time.Second}, nil
 		}
-		return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID}, err
+		result := marketplaceRetryExecution(err)
+		result.ExternalOperationID = item.ExternalOperationID
+		return result, err
 	}
 	if response.Error {
 		return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID}, fmt.Errorf("Wildberries не подтвердил загрузку: %s", safeRemoteMessage(response.ErrorText))
@@ -509,7 +511,7 @@ func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procu
 	err := executor.request(ctx, http.MethodPost, executor.ozonBase+"/v1/product/import/prices", payload,
 		map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response)
 	if err != nil {
-		return procurement.ActionExecution{}, err
+		return marketplaceRetryExecution(err), err
 	}
 	if len(response.Result) != 1 || !response.Result[0].Updated {
 		message := "Ozon не подтвердил изменение цены"
@@ -525,6 +527,21 @@ type remoteError struct {
 	Status     int
 	Message    string
 	RetryAfter time.Duration
+}
+
+// A 429 response means the marketplace rejected the mutation before applying
+// it, so retrying after its advertised window is safe. Network and 5xx errors
+// remain non-immediate because their outcome can be ambiguous.
+func marketplaceRetryExecution(err error) procurement.ActionExecution {
+	var remote *remoteError
+	if !errors.As(err, &remote) || remote.Status != http.StatusTooManyRequests {
+		return procurement.ActionExecution{}
+	}
+	delay := remote.RetryAfter
+	if delay <= 0 {
+		delay = 65 * time.Second
+	}
+	return procurement.ActionExecution{RetryAfter: delay}
 }
 
 func (err *remoteError) Error() string {

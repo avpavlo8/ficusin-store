@@ -22,6 +22,7 @@ type procurementStub struct {
 	searchInputs       []string
 	aliasInputs        []procurement.AliasResolution
 	deletedSupplierIDs []int64
+	deletedOrderIDs    []int64
 }
 
 func (stub *procurementStub) Dashboard(context.Context) (procurement.Dashboard, error) {
@@ -55,6 +56,10 @@ func (stub *procurementStub) CalculateOrder(_ context.Context, _ procurement.Act
 }
 func (stub *procurementStub) UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
+}
+func (stub *procurementStub) DeleteOrder(_ context.Context, _ procurement.Actor, orderID int64) error {
+	stub.deletedOrderIDs = append(stub.deletedOrderIDs, orderID)
+	return nil
 }
 func (stub *procurementStub) UpdateOrderLine(context.Context, procurement.Actor, int64, procurement.OrderLineUpdate) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
