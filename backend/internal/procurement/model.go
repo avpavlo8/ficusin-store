@@ -10,6 +10,7 @@ var (
 	ErrInvalidInput        = errors.New("invalid procurement input")
 	ErrNotFound            = errors.New("procurement entity not found")
 	ErrDuplicate           = errors.New("procurement document already imported")
+	ErrOrderNotCancelled   = errors.New("procurement order is not cancelled")
 	ErrSupplierInUse       = errors.New("procurement supplier is in use")
 	ErrUnsupportedDocument = errors.New("unsupported procurement document")
 )
