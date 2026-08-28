@@ -16,6 +16,7 @@ type storeStub struct {
 	resolution        AliasResolution
 	deletedSupplierID int64
 	exclusion         ExclusionUpdate
+	batchChannels     []string
 }
 
 func (stub *storeStub) Dashboard(context.Context) (Dashboard, error) { return Dashboard{}, nil }
@@ -83,7 +84,9 @@ func (stub *storeStub) SetExclusion(_ context.Context, _ Actor, input ExclusionU
 func (stub *storeStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
 	return ChannelLinkResult{Channel: channel, Fetched: len(items)}, nil
 }
-func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string) (ActionBatch, error) {
+
+func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string, channels []string) (ActionBatch, error) {
+	stub.batchChannels = append([]string(nil), channels...)
 	return ActionBatch{Kind: kind}, nil
 }
 func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
@@ -117,12 +120,25 @@ func TestCreateSupplierNormalizesInput(t *testing.T) {
 	store := &storeStub{}
 	_, err := NewService(store).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
 		Name: "  ТК Ярославский ", Kind: KindDomestic, CountryCode: "ru", DefaultCurrency: "rub",
+		TaxID: "7627031650", KPP: "762701001",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if store.supplierInput.Name != "ТК Ярославский" || store.supplierInput.CountryCode != "RU" || store.supplierInput.DefaultCurrency != "RUB" {
 		t.Fatalf("unexpected normalized supplier: %+v", store.supplierInput)
+	}
+}
+
+func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
+	t.Parallel()
+	store := &storeStub{}
+	_, err := NewService(store).PrepareBatch(context.Background(), Actor{}, 12, "prices", []string{"saby_price", "ozon", "ozon", "unknown"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(store.batchChannels) != 2 || store.batchChannels[0] != "saby_price" || store.batchChannels[1] != "ozon" {
+		t.Fatalf("channels = %#v", store.batchChannels)
 	}
 }
 

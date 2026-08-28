@@ -28,7 +28,7 @@ type Store interface {
 	LinkChannelProducts(context.Context, Actor, string, []ChannelProduct) (ChannelLinkResult, error)
 	ListProducts(context.Context, int64, string) ([]ProductDirectoryItem, error)
 	UpdateProduct(context.Context, Actor, ProductDirectoryUpdate) (ProductDirectoryItem, error)
-	PrepareBatch(context.Context, Actor, int64, string) (ActionBatch, error)
+	PrepareBatch(context.Context, Actor, int64, string, []string) (ActionBatch, error)
 	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ClaimAction(context.Context) (*ActionItem, error)
 	FinishAction(context.Context, int64, ActionExecution, error) error
@@ -211,13 +211,20 @@ func (service *Service) CreateSupplier(
 	input.Kind = strings.TrimSpace(input.Kind)
 	input.CountryCode = strings.ToUpper(strings.TrimSpace(input.CountryCode))
 	input.TaxID = strings.TrimSpace(input.TaxID)
+	input.KPP = strings.TrimSpace(input.KPP)
 	input.DefaultCurrency = strings.ToUpper(strings.TrimSpace(input.DefaultCurrency))
 	if input.Name == "" || !oneOf(input.Kind, KindInternational, KindDomestic) ||
 		!oneOf(input.DefaultCurrency, "EUR", "USD", "RUB") || len(input.CountryCode) > 2 ||
-		(input.TaxID != "" && (len(input.TaxID) != 10 && len(input.TaxID) != 12)) {
+		(input.TaxID != "" && (len(input.TaxID) != 10 && len(input.TaxID) != 12)) ||
+		(input.KPP != "" && len(input.KPP) != 9) || (input.Kind == KindDomestic && len(input.TaxID) == 10 && input.KPP == "") {
 		return Supplier{}, ErrInvalidInput
 	}
 	for _, char := range input.TaxID {
+		if char < '0' || char > '9' {
+			return Supplier{}, ErrInvalidInput
+		}
+	}
+	for _, char := range input.KPP {
 		if char < '0' || char > '9' {
 			return Supplier{}, ErrInvalidInput
 		}
@@ -443,12 +450,23 @@ func (service *Service) SetExclusion(ctx context.Context, actor Actor, input Exc
 	return service.store.SetExclusion(ctx, actor, input)
 }
 
-func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID int64, kind string) (ActionBatch, error) {
+func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID int64, kind string, channels []string) (ActionBatch, error) {
 	kind = strings.TrimSpace(kind)
 	if orderID <= 0 || !oneOf(kind, "receipt", "prices") {
 		return ActionBatch{}, ErrInvalidInput
 	}
-	return service.store.PrepareBatch(ctx, actor, orderID, kind)
+	selected, seen := make([]string, 0, len(channels)), map[string]bool{}
+	for _, channel := range channels {
+		channel = strings.TrimSpace(channel)
+		if !oneOf(channel, "site", "wb", "ozon", "saby_price") || seen[channel] {
+			continue
+		}
+		seen[channel], selected = true, append(selected, channel)
+	}
+	if kind == "prices" && len(selected) == 0 {
+		return ActionBatch{}, ErrInvalidInput
+	}
+	return service.store.PrepareBatch(ctx, actor, orderID, kind, selected)
 }
 
 func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID int64) (ActionBatch, error) {

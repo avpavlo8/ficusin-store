@@ -179,16 +179,25 @@
 .procurement-settings-grid input, .procurement-costs input { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: white; }
 .procurement-settings-grid .admin-checkbox { display: flex; align-items: center; align-self: end; min-height: 40px; }
 .procurement-settings-grid .admin-checkbox input { width: auto; }
-.procurement-order-dialog { width: min(1180px, calc(100vw - 28px)); max-height: calc(100vh - 30px); overflow: hidden; display: flex; flex-direction: column; }
-.procurement-order-body { overflow-y: auto; padding-right: 3px; }
+.procurement-order-dialog { width: min(1500px, calc(100vw - 20px)); height: min(960px, calc(100dvh - 20px)); max-height: calc(100dvh - 20px); overflow: hidden; display: flex; flex-direction: column; }
+.procurement-order-body { min-height: 0; overflow: auto; padding-right: 3px; scrollbar-gutter: stable; }
 .procurement-costs { margin-bottom: 16px; padding: 14px; display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)) auto; gap: 12px; align-items: end; border-radius: 12px; background: var(--cream); }
 .procurement-lines { min-width: 1120px; }
 .procurement-price-change { color: #9b522f; font-weight: 800; background: #fff4ed; }
 .procurement-batch-buttons { margin: 18px 0; display: flex; justify-content: flex-end; gap: 9px; }
 .procurement-batch-buttons button { padding: 10px 13px; font-size: 12px; }
 .procurement-batch-buttons .admin-primary { border-color: var(--green); background: var(--green); color: white; }
+.procurement-price-channels { margin: 18px 0 0; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px 22px; border: 1px solid var(--line); border-radius: 12px; }
+.procurement-price-channels legend { padding: 0 7px; color: var(--green); font-size: 12px; font-weight: 800; }
+.procurement-price-channels label { display: inline-flex; align-items: center; gap: 7px; color: #526058; font-size: 13px; font-weight: 700; }
+.procurement-price-channels input { width: auto; margin: 0; }
 .procurement-batch { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 13px; }
 .procurement-batch h3 { margin: 0; color: var(--green); font: 400 22px Georgia, serif; }
+.procurement-batch-table { max-width: 100%; overflow-x: auto; }
+.procurement-batch-table table { min-width: 900px; }
+.procurement-batch-table td { vertical-align: top; }
+.procurement-action-status { min-width: 190px; max-width: 320px; overflow-wrap: anywhere; }
+.procurement-action-status > * { display: block; margin-top: 4px; }
 .procurement-plan-dialog { width: min(900px, calc(100vw - 28px)); }
 .procurement-plan-table { min-width: 690px; }
 .procurement-plan-table input { width: 120px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px; font: inherit; }

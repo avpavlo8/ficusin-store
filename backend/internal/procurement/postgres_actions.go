@@ -221,7 +221,7 @@ func (store *PostgresStore) SetExclusion(ctx context.Context, actor Actor, input
 	}
 	return nil
 }
-func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, orderID int64, kind string) (ActionBatch, error) {
+func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, orderID int64, kind string, channels []string) (ActionBatch, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("begin prepare procurement batch: %w", err)
@@ -268,7 +268,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		_, err = tx.Exec(ctx, `
 			WITH receipt_lines AS (
 				SELECT MIN(l.id) AS id, o.id AS order_id, o.order_number,
-					supplier.name AS supplier_name, supplier.tax_id AS supplier_tax_id,
+					supplier.name AS supplier_name, supplier.tax_id AS supplier_tax_id, supplier.kpp AS supplier_kpp,
 					l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
 					COALESCE(NULLIF(n.name, ''), MAX(l.raw_name)) AS name,
 					SUM(COALESCE(l.invoiced_qty, l.ordered_qty))::INTEGER AS quantity
@@ -278,7 +278,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 				WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
 					AND l.saby_id IS NOT NULL
-				GROUP BY o.id, o.order_number, supplier.name, supplier.tax_id,
+				GROUP BY o.id, o.order_number, supplier.name, supplier.tax_id, supplier.kpp,
 					l.saby_id, n.code, n.name
 			)
 			INSERT INTO procurement_action_items (
@@ -288,13 +288,13 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				jsonb_build_object(
 					'orderId', order_id,
 					'orderNumber', order_number,
-					'supplier', jsonb_build_object('name', supplier_name, 'taxId', supplier_tax_id),
+					'supplier', jsonb_build_object('name', supplier_name, 'taxId', supplier_tax_id, 'kpp', supplier_kpp),
 					'lines', jsonb_agg(jsonb_build_object(
 						'sabyId', saby_id, 'code', code, 'name', name, 'quantity', quantity
 					) ORDER BY id)
 				)
 			FROM receipt_lines
-			GROUP BY order_id, order_number, supplier_name, supplier_tax_id
+			GROUP BY order_id, order_number, supplier_name, supplier_tax_id, supplier_kpp
 		`, batchID, orderID)
 	} else {
 		var conflicts int
@@ -341,24 +341,17 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			) pv ON TRUE
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id = p.saby_id
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
-			CROSS JOIN procurement_pricing_settings settings
-			WHERE channel.name IN ('wb', 'ozon') OR channel.name = 'site' AND (
-				COALESCE(pv.base_price_minor, 0) <= 0 OR ABS(p.retail - pv.base_price_minor::NUMERIC / 100)
-					> (pv.base_price_minor::NUMERIC / 100 * settings.price_change_threshold)
-			)
-		`, batchID, orderID)
-		if err == nil {
+			WHERE channel.name = ANY($3::TEXT[])
+		`, batchID, orderID, channels)
+		if err == nil && containsString(channels, "saby_price") {
 			_, err = tx.Exec(ctx, `
-				WITH changed AS (
+				WITH products AS (
 					SELECT MIN(l.id) AS id, l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
 						n.name, n.price_minor::NUMERIC / 100 AS old_price, MAX(l.proposed_retail_rub) AS new_price
 					FROM procurement_order_lines l
 					JOIN saby_nomenclature n ON n.saby_id = l.saby_id
-					CROSS JOIN procurement_pricing_settings settings
 					WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
 						AND l.saby_id IS NOT NULL AND l.proposed_retail_rub IS NOT NULL
-						AND (n.price_minor <= 0 OR ABS(l.proposed_retail_rub - n.price_minor::NUMERIC / 100)
-							> (n.price_minor::NUMERIC / 100 * settings.price_change_threshold))
 					GROUP BY l.saby_id, n.code, n.name, n.price_minor
 				)
 				INSERT INTO procurement_action_items (
@@ -373,7 +366,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 							'oldPrice', old_price, 'newPrice', new_price
 						) ORDER BY id)
 					)
-				FROM changed
+				FROM products
 				HAVING COUNT(*) > 0
 			`, batchID, orderID)
 		}
@@ -381,7 +374,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("fill procurement action batch: %w", err)
 	}
-	if err := audit(ctx, tx, actor, "procurement.batch.prepare", "procurement_action_batch", batchID, map[string]any{"kind": kind}); err != nil {
+	if err := audit(ctx, tx, actor, "procurement.batch.prepare", "procurement_action_batch", batchID, map[string]any{"kind": kind, "channels": channels}); err != nil {
 		return ActionBatch{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -490,10 +483,10 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 			return nil, fmt.Errorf("scan procurement batch: %w", err)
 		}
 		itemRows, err := store.pool.Query(ctx, `
-			SELECT item.id, item.procurement_order_line_id, COALESCE(n.name, line.raw_name),
+			SELECT item.id, item.procurement_order_line_id, COALESCE(n.name, line.raw_name), COALESCE(n.code, ''),
 				item.channel, item.external_article, item.old_value::DOUBLE PRECISION,
 				item.new_value::DOUBLE PRECISION, item.compare_at_value::DOUBLE PRECISION,
-				item.quantity, item.status, item.error_message, item.external_operation_id, item.external_url
+				item.quantity, item.status, item.error_message, item.external_operation_id, item.external_url, item.payload
 			FROM procurement_action_items item
 			JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
 			LEFT JOIN saby_nomenclature n ON n.saby_id = line.saby_id
@@ -505,18 +498,40 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 		batch.Items = make([]ActionItem, 0)
 		for itemRows.Next() {
 			var item ActionItem
-			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.Channel,
+			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.ProductCode, &item.Channel,
 				&item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
-				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL); err != nil {
+				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL, &item.Payload); err != nil {
 				itemRows.Close()
 				return nil, fmt.Errorf("scan procurement batch item: %w", err)
 			}
+			populateActionPreview(&item)
 			batch.Items = append(batch.Items, item)
 		}
 		itemRows.Close()
 		batches = append(batches, batch)
 	}
 	return batches, rows.Err()
+}
+
+func populateActionPreview(item *ActionItem) {
+	if item == nil || len(item.Payload) == 0 {
+		return
+	}
+	var payload struct {
+		Lines []ActionPreviewLine `json:"lines"`
+	}
+	if json.Unmarshal(item.Payload, &payload) == nil {
+		item.PreviewLines = payload.Lines
+	}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (store *PostgresStore) ClaimAction(ctx context.Context) (*ActionItem, error) {

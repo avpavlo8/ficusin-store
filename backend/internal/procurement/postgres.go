@@ -238,11 +238,11 @@ func (store *PostgresStore) CreateSupplier(
 
 	var item Supplier
 	err = tx.QueryRow(ctx, `
-		INSERT INTO procurement_suppliers (name, kind, country_code, tax_id, default_currency)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, name, kind, country_code, tax_id, default_currency, active, created_at
-	`, input.Name, input.Kind, input.CountryCode, input.TaxID, input.DefaultCurrency).Scan(
-		&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.TaxID,
+		INSERT INTO procurement_suppliers (name, kind, country_code, tax_id, kpp, default_currency)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, name, kind, country_code, tax_id, kpp, default_currency, active, created_at
+	`, input.Name, input.Kind, input.CountryCode, input.TaxID, input.KPP, input.DefaultCurrency).Scan(
+		&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.TaxID, &item.KPP,
 		&item.DefaultCurrency, &item.Active, &item.CreatedAt,
 	)
 	if err != nil {
@@ -269,9 +269,9 @@ func (store *PostgresStore) DeleteSupplier(ctx context.Context, actor Actor, sup
 
 	var item Supplier
 	err = tx.QueryRow(ctx, `
-		SELECT id, name, kind, country_code, tax_id, default_currency, active, created_at
+		SELECT id, name, kind, country_code, tax_id, kpp, default_currency, active, created_at
 		FROM procurement_suppliers WHERE id = $1 FOR UPDATE
-	`, supplierID).Scan(&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.TaxID, &item.DefaultCurrency, &item.Active, &item.CreatedAt)
+	`, supplierID).Scan(&item.ID, &item.Name, &item.Kind, &item.CountryCode, &item.TaxID, &item.KPP, &item.DefaultCurrency, &item.Active, &item.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
