@@ -89,6 +89,9 @@ func (stub *storeStub) SetExclusion(_ context.Context, _ Actor, input ExclusionU
 func (stub *storeStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
 	return ChannelLinkResult{Channel: channel, Fetched: len(items)}, nil
 }
+func (stub *storeStub) RememberChannelProducts(context.Context, string, []ChannelProduct) error {
+	return nil
+}
 
 func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string, channels []string) (ActionBatch, error) {
 	stub.batchChannels = append([]string(nil), channels...)
@@ -138,7 +141,8 @@ func TestCreateSupplierNormalizesInput(t *testing.T) {
 func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	_, err := NewService(store).PrepareBatch(context.Background(), Actor{}, 12, "prices", []string{"saby_price", "ozon", "ozon", "unknown"})
+	service := NewServiceWithExecutor(store, channelCatalogStub{})
+	_, err := service.PrepareBatch(context.Background(), Actor{}, 12, "prices", []string{"saby_price", "ozon", "ozon", "unknown"})
 	if err != nil {
 		t.Fatal(err)
 	}
