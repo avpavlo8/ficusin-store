@@ -61,7 +61,7 @@ export type PlantPassport = { origin: string; lighting: string; watering: string
 export type ReviewModerationItem = { id: number; product: string; author: string; rating: number; text: string; status: "published" | "rejected"; createdAt: string; media: Array<{ url: string; contentType: string }> };
 
 export type ProcurementSupplier = {
-  id: number; name: string; kind: "international" | "domestic"; countryCode: string;
+  id: number; name: string; kind: "international" | "domestic"; countryCode: string; taxId: string;
   defaultCurrency: "EUR" | "USD" | "RUB"; active: boolean; createdAt: string;
 };
 
@@ -128,7 +128,7 @@ export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: b
 
 export type ProcurementProduct = { sabyId: string; sabyCode: string; sabyArticle: string; name: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; minimumOrderQty: number; orderMultiple: number; aliases: string[] };
 
-export type ProcurementActionItem = { id: number; lineId: number; productName: string; channel: string; externalArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string };
+export type ProcurementActionItem = { id: number; lineId: number; productName: string; channel: string; externalArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string; externalOperationId?: string; externalUrl?: string };
 
 export type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
 

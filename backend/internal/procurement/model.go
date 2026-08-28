@@ -1,6 +1,7 @@
 package procurement
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -84,6 +85,7 @@ type Supplier struct {
 	Name            string    `json:"name"`
 	Kind            string    `json:"kind"`
 	CountryCode     string    `json:"countryCode"`
+	TaxID           string    `json:"taxId"`
 	DefaultCurrency string    `json:"defaultCurrency"`
 	Active          bool      `json:"active"`
 	CreatedAt       time.Time `json:"createdAt"`
@@ -93,6 +95,7 @@ type SupplierCreate struct {
 	Name            string `json:"name"`
 	Kind            string `json:"kind"`
 	CountryCode     string `json:"countryCode"`
+	TaxID           string `json:"taxId"`
 	DefaultCurrency string `json:"defaultCurrency"`
 }
 
@@ -380,8 +383,10 @@ type ActionItem struct {
 	Quantity            *int     `json:"quantity,omitempty"`
 	Status              string   `json:"status"`
 	ErrorMessage        string   `json:"errorMessage"`
-	ExternalOperationID string   `json:"-"`
-	Attempts            int      `json:"-"`
+	ExternalOperationID string   `json:"externalOperationId,omitempty"`
+	ExternalURL         string   `json:"externalUrl,omitempty"`
+	Payload             json.RawMessage `json:"-"`
+	Attempts            int             `json:"-"`
 }
 
 // ChannelProduct — карточка маркетплейса, какой её отдаёт площадка.

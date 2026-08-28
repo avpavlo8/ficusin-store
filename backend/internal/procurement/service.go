@@ -51,9 +51,17 @@ type ChannelCatalogSource interface {
 	FetchCatalog(context.Context, string) ([]ChannelProduct, error)
 }
 
+// SabyCatalogRefresher performs an on-demand import of the complete Saby
+// nomenclature into the local directory. The implementation lives in the
+// integration package; procurement only coordinates the operator action.
+type SabyCatalogRefresher interface {
+	RefreshSabyCatalog(context.Context) (ChannelLinkResult, error)
+}
+
 type ActionExecution struct {
 	Completed           bool
 	ExternalOperationID string
+	ExternalURL         string
 	RetryAfter          time.Duration
 }
 
@@ -134,6 +142,21 @@ func (service *Service) CheckIntegration(ctx context.Context, actor Actor, chann
 // связь тихо припишет продажи чужой карточке.
 func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, channel string) (ChannelLinkResult, error) {
 	channel = strings.TrimSpace(channel)
+	if channel == "saby" {
+		refresher, ok := service.executor.(SabyCatalogRefresher)
+		if service.executor == nil || !ok {
+			return ChannelLinkResult{}, errors.New("обновление справочника СБИС не поддерживается")
+		}
+		if !service.executor.Configured("saby") {
+			return ChannelLinkResult{}, errors.New("ключи СБИС не настроены")
+		}
+		result, err := refresher.RefreshSabyCatalog(ctx)
+		if err != nil {
+			return ChannelLinkResult{}, err
+		}
+		_ = actor // actor remains at the service boundary for the audit extension.
+		return result, nil
+	}
 	if !oneOf(channel, "wb", "ozon") {
 		return ChannelLinkResult{}, ErrInvalidInput
 	}
@@ -187,10 +210,17 @@ func (service *Service) CreateSupplier(
 	input.Name = strings.TrimSpace(input.Name)
 	input.Kind = strings.TrimSpace(input.Kind)
 	input.CountryCode = strings.ToUpper(strings.TrimSpace(input.CountryCode))
+	input.TaxID = strings.TrimSpace(input.TaxID)
 	input.DefaultCurrency = strings.ToUpper(strings.TrimSpace(input.DefaultCurrency))
 	if input.Name == "" || !oneOf(input.Kind, KindInternational, KindDomestic) ||
-		!oneOf(input.DefaultCurrency, "EUR", "USD", "RUB") || len(input.CountryCode) > 2 {
+		!oneOf(input.DefaultCurrency, "EUR", "USD", "RUB") || len(input.CountryCode) > 2 ||
+		(input.TaxID != "" && (len(input.TaxID) != 10 && len(input.TaxID) != 12)) {
 		return Supplier{}, ErrInvalidInput
+	}
+	for _, char := range input.TaxID {
+		if char < '0' || char > '9' {
+			return Supplier{}, ErrInvalidInput
+		}
 	}
 	return service.store.CreateSupplier(ctx, actor, input)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
+	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 )
 
 // ProcurementExecutor keeps failures isolated by channel. A broken Saby
@@ -12,10 +13,23 @@ import (
 type ProcurementExecutor struct {
 	marketplaces *MarketplaceExecutor
 	saby         *SabyClient
+	sabySink     interface {
+		Sync(context.Context, []saby.CatalogItem) (saby.Result, error)
+	}
 }
 
 func NewProcurementExecutor(marketplaces *MarketplaceExecutor, saby *SabyClient) *ProcurementExecutor {
 	return &ProcurementExecutor{marketplaces: marketplaces, saby: saby}
+}
+
+// WithSabyCatalogSync connects the read-only Saby Retail client to the local
+// catalogue importer. It is explicit so tests and deployments without Saby
+// credentials keep the integration disabled without a second code path.
+func (executor *ProcurementExecutor) WithSabyCatalogSync(sink interface {
+	Sync(context.Context, []saby.CatalogItem) (saby.Result, error)
+}) *ProcurementExecutor {
+	executor.sabySink = sink
+	return executor
 }
 
 func (executor *ProcurementExecutor) Configured(channel string) bool {
@@ -24,11 +38,8 @@ func (executor *ProcurementExecutor) Configured(channel string) bool {
 		return executor != nil && executor.marketplaces != nil && executor.marketplaces.Configured(channel)
 	case "saby":
 		return executor != nil && executor.saby != nil && executor.saby.Configured()
-	// Public Saby Retail documentation exposes price lists for reading, but
-	// does not document a write endpoint. Keep write channels disabled until
-	// a supported contract is configured; never report a guessed write as OK.
 	case "saby_price", "saby_receipt":
-		return false
+		return executor != nil && executor.saby != nil && executor.saby.Configured()
 	default:
 		return false
 	}
@@ -38,6 +49,11 @@ func (executor *ProcurementExecutor) Execute(ctx context.Context, item procureme
 	switch item.Channel {
 	case "wb", "ozon":
 		return executor.marketplaces.Execute(ctx, item)
+	case "saby_receipt", "saby_price":
+		if executor == nil || executor.saby == nil || !executor.saby.Configured() {
+			return procurement.ActionExecution{}, fmt.Errorf("канал %s не настроен", item.Channel)
+		}
+		return executor.saby.CreateDraft(ctx, item)
 	default:
 		return procurement.ActionExecution{}, fmt.Errorf("канал %s не поддерживается", item.Channel)
 	}
@@ -63,4 +79,21 @@ func (executor *ProcurementExecutor) Probe(ctx context.Context, channel string) 
 	default:
 		return fmt.Errorf("канал %s не поддерживается", channel)
 	}
+}
+
+func (executor *ProcurementExecutor) RefreshSabyCatalog(ctx context.Context) (procurement.ChannelLinkResult, error) {
+	if executor == nil || executor.saby == nil || executor.sabySink == nil {
+		return procurement.ChannelLinkResult{}, fmt.Errorf("обновление справочника СБИС не настроено")
+	}
+	items, err := executor.saby.FetchCatalog(ctx)
+	if err != nil {
+		return procurement.ChannelLinkResult{}, err
+	}
+	result, err := executor.sabySink.Sync(ctx, items)
+	if err != nil {
+		return procurement.ChannelLinkResult{}, fmt.Errorf("сохранить справочник СБИС: %w", err)
+	}
+	return procurement.ChannelLinkResult{
+		Channel: "saby", Fetched: result.ItemsRead, Linked: result.ItemsRead,
+	}, nil
 }
