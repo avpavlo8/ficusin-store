@@ -49,7 +49,6 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	var mutex sync.Mutex
 	methods := make([]string, 0)
 	documents := make([]map[string]any, 0)
-	priceWrites := make([]map[string]any, 0)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -60,45 +59,17 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			Method string         `json:"method"`
 			Params map[string]any `json:"params"`
 		}
-		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil {
-			t.Fatal(err)
-		}
+		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
 		mutex.Lock()
 		methods = append(methods, rpc.Method)
 		mutex.Unlock()
-		switch rpc.Method {
-		case "sabyWarehouse.List":
+		if rpc.Method == "sabyWarehouse.List" {
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"code":"3","name":"ул. Новоселов, д. 40а","address":"ул. Новоселов, д. 40а","organisation":{"inn":"620000000001","name":"Павловский Александр Владимирович"}}]}`))
 			return
-		case "PriceChange.Создать":
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[38692,"price-guid",null,null],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Дата"},{"n":"Примечание"}],"f":1}}`))
-			return
-		case "PriceChange.Записать":
-			encoded, _ := json.Marshal(rpc.Params["Запись"])
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":` + string(encoded) + `}`))
-			return
-		case "PriceChange.AddPricesLRS":
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"added_nomenclature_count":1}}`))
-			return
-		case "PriceChangePosition.GetList":
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"recordset","d":[[11152,42,1650]],"s":[{"n":"Id"},{"n":"Nomenclature"},{"n":"Price"}],"f":1}}`))
-			return
-		case "PriceChangePosition.Записать":
-			position, _ := rpc.Params["Запись"].(map[string]any)
-			mutex.Lock()
-			priceWrites = append(priceWrites, position)
-			mutex.Unlock()
-			encoded, _ := json.Marshal(position)
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":` + string(encoded) + `}`))
-			return
-		case "СБИС.ЗаписатьДокумент":
-		default:
-			t.Fatalf("unsafe Saby method: %s", rpc.Method)
 		}
+		if rpc.Method != "СБИС.ЗаписатьДокумент" { t.Fatalf("unsafe Saby method: %s", rpc.Method) }
 		document, ok := rpc.Params["Документ"].(map[string]any)
-		if !ok {
-			t.Fatalf("document is missing: %+v", rpc.Params)
-		}
+		if !ok { t.Fatalf("document is missing: %+v", rpc.Params) }
 		mutex.Lock()
 		documents = append(documents, document)
 		index := len(documents)
@@ -111,44 +82,23 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	client.authURL, client.apiBase, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL, server.URL+"/service/?srv=1", server.Client()
 	receiptPayload := json.RawMessage(`{"orderId":323,"orderNumber":"323","supplier":{"name":"ТК Ярославский, ООО","taxId":"7627031650","kpp":"762701001"},"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","quantity":2,"unitCost":125.5}]}`)
 	result, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: receiptPayload})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Completed || result.ExternalOperationID == "" || result.ExternalURL == "" {
-		t.Fatalf("unexpected result: %+v", result)
-	}
+	if err != nil { t.Fatal(err) }
+	if !result.Completed || result.ExternalOperationID == "" || result.ExternalURL == "" { t.Fatalf("unexpected result: %+v", result) }
 	pricePayload := json.RawMessage(`{"orderId":323,"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","newPrice":2650}]}`)
-	priceResult, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_price", Payload: pricePayload})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !priceResult.Completed || priceResult.ExternalOperationID != "price-guid" {
-		t.Fatalf("unexpected price result: %+v", priceResult)
-	}
+	if _, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_price", Payload: pricePayload}); err == nil || !strings.Contains(err.Error(), "импорт XLSX") { t.Fatalf("price error = %v", err) }
 
 	for _, method := range methods {
 		if strings.Contains(method, "ПодготовитьДействие") || strings.Contains(method, "ВыполнитьДействие") {
 			t.Fatalf("draft flow attempted to post a document: %s", method)
 		}
 	}
-	if len(documents) != 1 {
-		t.Fatalf("documents = %d, want 1", len(documents))
-	}
-	if len(priceWrites) != 1 || sabyRecordField(priceWrites[0], "Price") != float64(2650) {
-		t.Fatalf("price writes: %+v", priceWrites)
-	}
-	if documents[0]["Тип"] != "ДокОтгрВх" {
-		t.Fatalf("receipt type: %+v", documents[0])
-	}
+	if len(documents) != 1 { t.Fatalf("documents = %d, want 1", len(documents)) }
+	if documents[0]["Тип"] != "ДокОтгрВх" { t.Fatalf("receipt type: %+v", documents[0]) }
 	counterparty := documents[0]["Контрагент"].(map[string]any)["СвЮЛ"].(map[string]any)
-	if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" {
-		t.Fatalf("counterparty: %+v", counterparty)
-	}
+	if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
 	receiptLines := documents[0]["Наименования"].([]any)
 	receiptLine := receiptLines[0].(map[string]any)
-	if receiptLine["Количество"] != "2" || receiptLine["СуммаСебест"] != "251.00" || receiptLine["ТипНоменклатуры"].(map[string]any)["ВидУчета"] != "Товар" {
-		t.Fatalf("receipt lines: %+v", receiptLines)
-	}
+	if receiptLine["Количество"] != "2" || receiptLine["СуммаСебест"] != "251.00" || receiptLine["ТипНоменклатуры"].(map[string]any)["ВидУчета"] != "Товар" { t.Fatalf("receipt lines: %+v", receiptLines) }
 }
 
 func TestSabyErrorMessageUsesJSONRPCDetails(t *testing.T) {
