@@ -23,6 +23,8 @@ def rec(values, types=None):
 
 copied=rpc("РеалВх.Копировать",{"ИдО":"38766","ИмяМетода":"РеалВх.Список"})
 doc=copied
+if isinstance(doc,dict) and "d" in doc and "s" in doc:
+    doc["_type"]="record"
 if isinstance(copied,dict) and copied.get("_type")!="record":
     for value in copied.values():
         if isinstance(value,dict) and value.get("_type")=="record":
