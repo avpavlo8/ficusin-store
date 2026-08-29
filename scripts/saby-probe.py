@@ -208,7 +208,7 @@ def sbis_record(values):
         # Protocol 2 uses numeric type identifiers in the object schema.
         "s": {
             name: {
-                "t": 1 if isinstance(value, bool) else 2 if isinstance(value, int) else 7
+                "t": "boolean" if isinstance(value, bool) else "integer" if isinstance(value, int) else "string"
             }
             for name, value in values.items()
         },
