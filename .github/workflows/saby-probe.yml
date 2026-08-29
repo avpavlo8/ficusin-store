@@ -1,13 +1,9 @@
-name: Saby probe
+name: Saby receipt contract probe
 
-# Только вручную. Разведка нужна раз в жизни вопроса, расписание ей ни к чему.
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      search:
-        description: Название товара для поиска (например, Араукария)
-        required: false
-        default: Араукария
 
 permissions:
   contents: read
@@ -16,12 +12,41 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Probe Saby nomenclature
-        env:
-          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
-          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
-          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
-          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
-          SABY_PROBE_SEARCH: ${{ inputs.search }}
-        run: python3 scripts/saby-probe.py
+      - name: Inspect public Saby warehouse client modules
+        run: |
+          python3 - <<'PY'
+          import re
+          import urllib.error
+          import urllib.request
+
+          base = "https://cdn.sbis.ru/static/resources/"
+          suffix = "?x_module=4b7a60ece34e6b52c3a701ab0b5947fc"
+          paths = [
+              "WHDCore/Document/dialog.min.js",
+              "WHDCore/Document/base-superbundle.package.min.js",
+              "WHDCore/Document/document-superbundle.package.min.js",
+              "WHDCore/Document/Document.min.js",
+              "WHDCore/Document/Operations.min.js",
+              "WHDCore/document-superbundle.package.min.js",
+              "WHDCore/base-superbundle.package.min.js",
+              "WHDCore/WHDCore.package.min.js",
+          ]
+          methods = set()
+          for path in paths:
+              try:
+                  with urllib.request.urlopen(base + path + suffix, timeout=30) as response:
+                      text = response.read().decode("utf-8", "replace")
+              except Exception as error:
+                  print("MISS", path, type(error).__name__, str(error)[:120])
+                  continue
+              print("OK", path, len(text))
+              methods.update(re.findall(r'["\x27]([A-Za-zА-Яа-яЁё0-9_]+\.(?:Создать|Записать|Прочитать[^"\x27]*|GetList|Список|Добавить[^"\x27]*|Удалить))["\x27]', text))
+              for marker in ("РеалВх", "WHDCoreDoc", "AddNomenclature", "Nomenclature"):
+                  pos = text.find(marker)
+                  if pos >= 0:
+                      snippet = re.sub(r"\s+", " ", text[max(0, pos-240):pos+500])
+                      print("SNIPPET", path, marker, snippet[:740])
+          print("METHODS")
+          for method in sorted(methods):
+              print(method)
+          PY
