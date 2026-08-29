@@ -65,7 +65,7 @@ def rpc(token, method, params):
     """Read-only JSON-RPC call used by the manual schema probe."""
     response = request_json(
         urllib.request.Request(
-            "https://online.sbis.ru/service/?srv=1",
+            "https://ret.saby.ru/service/?srv=1",
             data=json.dumps(
                 {"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
                 ensure_ascii=False,
@@ -79,7 +79,8 @@ def rpc(token, method, params):
     )
     if response.get("error"):
         error = response["error"]
-        raise SystemExit("%s: %s" % (method, error.get("message") or "ошибка Saby"))
+        message = error.get("details") or error.get("message") or "ошибка Saby"
+        raise SystemExit("%s: %s" % (method, message))
     return response.get("result")
 
 
