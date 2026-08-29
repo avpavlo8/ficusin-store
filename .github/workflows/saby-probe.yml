@@ -12,7 +12,7 @@ jobs:
       - name: Download Saby core runtime
         run: |
           mkdir -p /tmp/saby-core
-          curl --fail --location --retry 2 'https://online.sbis.ru/resources/contents.min.js?x_module=26.4213-107.24' -o /tmp/saby-core/contents.min.js
+          curl --fail --location --retry 2 'https://cdn.sbis.ru/static/resources/contents.min.js?x_module=26.4213-107.24' -o /tmp/saby-core/contents.min.js
           wc -c /tmp/saby-core/contents.min.js
       - uses: actions/upload-artifact@v4
         with:
