@@ -17,7 +17,7 @@ def rpc(token, method, params):
 token=req(urllib.request.Request("https://online.sbis.ru/oauth/service/",
     data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),
     headers={"Content-Type":"application/json"},method="POST")).get("token")
-result=rpc(token,"СБИС.ПрочитатьДокумент",{"Документ":{"Идентификатор":"b3e70b39-6c41-4ea1-8acd-e63afd5b0ee5","ДопПоля":"ДополнительныеПоля,Расширение"}})
+result=rpc(token,"ДокОтгрВх.Прочитать",{"ИдО":"b3e70b39-6c41-4ea1-8acd-e63afd5b0ee5","ИмяМетода":"ДокОтгрВх.Список"})
 def walk(v,path=""):
     if isinstance(v,dict):
         for k,x in v.items():
