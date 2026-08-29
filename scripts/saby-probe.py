@@ -67,14 +67,7 @@ def rpc(token, method, params):
         urllib.request.Request(
             "https://ret.saby.ru/service/?srv=1",
             data=json.dumps(
-                {
-                    "jsonrpc": "2.0",
-                    "method": method,
-                    # BLObject.call serializes the method parameter block as a
-                    # Record too, not as an untyped JSON object.
-                    "params": sbis_record(params),
-                    "id": 1,
-                },
+                {"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
                 ensure_ascii=False,
             ).encode("utf-8"),
             headers={
@@ -273,7 +266,7 @@ if search.startswith("__pricechange_create__:"):
         token,
         "PriceChange.Создать",
         {
-            "Фильтр": sbis_record({"ВызовИзБраузера": True}),
+            "Фильтр": {"ВызовИзБраузера": True},
             "ИмяМетода": "PriceChange.Список",
         },
     )
@@ -319,13 +312,9 @@ if search.startswith("__pricechange_create__:"):
             token,
             "PriceChangePosition.GetList",
             {
-                "Фильтр": sbis_record(
-                    {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0}
-                ),
+                "Фильтр": {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0},
                 "Сортировка": None,
-                "Навигация": sbis_record(
-                    {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True}
-                ),
+                "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
                 "ДопПоля": [],
             },
         )
