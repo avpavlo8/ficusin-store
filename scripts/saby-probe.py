@@ -175,6 +175,30 @@ def as_int(value):
         return 0
 
 
+def sbis_type(value):
+    if isinstance(value, bool):
+        return "Логическое"
+    if isinstance(value, int):
+        return "Число целое"
+    if isinstance(value, float):
+        return "Число вещественное"
+    if isinstance(value, list):
+        return "Массив"
+    if isinstance(value, dict):
+        return "Запись"
+    return "Строка"
+
+
+def sbis_record(values):
+    """Encode a Wasaby Record exactly as the Retail JSON-RPC transport does."""
+    return {
+        "_type": "record",
+        "d": list(values.values()),
+        "s": [{"n": name, "t": sbis_type(value)} for name, value in values.items()],
+        "f": 1,
+    }
+
+
 required = ("SABY_APP_CLIENT_ID", "SABY_APP_SECRET", "SABY_SECRET_KEY", "SABY_POINT_ID")
 missing = [name for name in required if not os.environ.get(name)]
 if missing:
@@ -207,12 +231,21 @@ query = {
 search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
 if search.startswith("__pricechange_create__:"):
     source_document_id = int(search.rsplit(":", 1)[1])
-    source_document = rpc(
+    source_positions = rpc(
         token,
-        "PriceChange.ПрочитатьДляУчастника",
-        {"ИдО": str(source_document_id), "ИмяМетода": "PriceChange.Список"},
+        "PriceChangePosition.GetList",
+        {
+            "Фильтр": sbis_record(
+                {"PriceChange": source_document_id, "HowPriceOrMarkupChanged": 0}
+            ),
+            "Сортировка": None,
+            "Навигация": sbis_record(
+                {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True}
+            ),
+            "ДопПоля": [],
+        },
     )
-    source_position = first_record(source_document, "Nomenclature")
+    source_position = first_record(source_positions, "Nomenclature")
     nomenclature_id = as_int(record_field(source_position, "Nomenclature") if source_position else None)
     if nomenclature_id <= 0:
         raise SystemExit("в эталонном документе нет позиции с идентификатором номенклатуры")
@@ -220,7 +253,10 @@ if search.startswith("__pricechange_create__:"):
     created = rpc(
         token,
         "PriceChange.Создать",
-        {"Фильтр": {"ВызовИзБраузера": True}, "ИмяМетода": "PriceChange.Список"},
+        {
+            "Фильтр": sbis_record({"ВызовИзБраузера": True}),
+            "ИмяМетода": "PriceChange.Список",
+        },
     )
     document = first_record(created, "@Документ")
     if not document:
@@ -264,9 +300,13 @@ if search.startswith("__pricechange_create__:"):
             token,
             "PriceChangePosition.GetList",
             {
-                "Фильтр": {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0},
+                "Фильтр": sbis_record(
+                    {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0}
+                ),
                 "Сортировка": None,
-                "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
+                "Навигация": sbis_record(
+                    {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True}
+                ),
                 "ДопПоля": [],
             },
         )
