@@ -55,7 +55,7 @@ def setf(rec,name,value):
     return False
 
 def record(values):
-    return {"d":[v for v,t in values.values()],"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
+    return {"d":{k:v for k,(v,t) in values.items()},"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
 
 def recordset(fields, rows):
     return {"s":[{"n":n,"t":t} for n,t in fields],
@@ -76,7 +76,7 @@ products=[x for x in (catalog.get("nomenclatures") or catalog.get("items") or []
 if not products:raise SystemExit("test product not found")
 nom_id=int(products[0]["id"])
 
-created=rpc(token,"РеалВх.Создать",{"Фильтр":{"ВызовИзБраузера":True},"ИмяМетода":"РеалВх.Список"})
+created=rpc(token,"РеалВх.Создать",{"Фильтр":record({"ВызовИзБраузера":(True,"Логическое")}),"ИмяМетода":"РеалВх.Список"})
 docs=records(created,"@Документ")
 if not docs:raise SystemExit("РеалВх.Создать did not return document")
 doc=docs[0]
