@@ -201,11 +201,11 @@ def sbis_type(value):
 
 
 def sbis_record(values):
-    """Encode a Wasaby Record exactly as the Retail JSON-RPC transport does."""
+    """Encode a Record in the internal JSON protocol 2 representation."""
     return {
         "_type": "record",
-        "d": list(values.values()),
-        "s": [{"n": name, "t": sbis_type(value)} for name, value in values.items()],
+        "d": dict(values),
+        "s": {name: {"t": sbis_type(value)} for name, value in values.items()},
         "f": 1,
     }
 
@@ -266,7 +266,7 @@ if search.startswith("__pricechange_create__:"):
         token,
         "PriceChange.Создать",
         {
-            "Фильтр": {"ВызовИзБраузера": True},
+            "Фильтр": sbis_record({"ВызовИзБраузера": True}),
             "ИмяМетода": "PriceChange.Список",
         },
     )
@@ -312,9 +312,13 @@ if search.startswith("__pricechange_create__:"):
             token,
             "PriceChangePosition.GetList",
             {
-                "Фильтр": {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0},
+                "Фильтр": sbis_record(
+                    {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0}
+                ),
                 "Сортировка": None,
-                "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
+                "Навигация": sbis_record(
+                    {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True}
+                ),
                 "ДопПоля": [],
             },
         )
