@@ -12,23 +12,24 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Download public Saby warehouse client modules
+      - name: Download public Saby purchase modules
         run: |
           python3 - <<'PY'
           import os
           import urllib.request
           base = "https://cdn.sbis.ru/static/resources/"
-          suffix = "?x_module=4b7a60ece34e6b52c3a701ab0b5947fc"
+          suffix = "?x_module=a7aefafc858545a9b27d5bddb0394e96"
           paths = [
-              "WHDCore/Document/dialog.min.js",
-              "WHDCore/Lib/bl.min.js",
-              "WHDCore/NomList/data.min.js",
-              "WHDCore/Lib/documentHelpers.min.js",
-              "WHDCore/Lib/libs.min.js",
-              "WHDCore/Document/check.min.js",
-              "WHDCore/Controls/Input/warehouse.min.js",
-              "WHDNomList/utils.min.js",
-              "WHD/Controls/actions.min.js",
+              "WHD/page-x-packages/purchases/scripts.min.js",
+              "WHD/Docs/Inflow/dialog.min.js",
+              "WHD/Docs/Inflow/Columns/columnsNew.min.js",
+              "WHD/Docs/Inflow/Columns/common.min.js",
+              "WHD/Docs/Inflow/MainTab/controls.min.js",
+              "WHD/Docs/Inflow/MainTab/common.min.js",
+              "WHD/Docs/Inflow/MainTab/nomListNew.min.js",
+              "WHD/Docs/Inflow/MainTab/mainTabNew.min.js",
+              "WHD/Docs/Inflow/mainTabControls.min.js",
+              "WHD/Docs/Inflow/controls.min.js",
           ]
           os.makedirs("/tmp/whd", exist_ok=True)
           for path in paths:
@@ -44,6 +45,6 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: whd-contract-sources
+          name: whd-purchase-sources
           path: /tmp/whd
           retention-days: 1
