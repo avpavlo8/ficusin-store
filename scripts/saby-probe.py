@@ -67,7 +67,14 @@ def rpc(token, method, params):
         urllib.request.Request(
             "https://ret.saby.ru/service/?srv=1",
             data=json.dumps(
-                {"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
+                {
+                    "jsonrpc": "2.0",
+                    "method": method,
+                    # BLObject.call serializes the method parameter block as a
+                    # Record too, not as an untyped JSON object.
+                    "params": sbis_record(params),
+                    "id": 1,
+                },
                 ensure_ascii=False,
             ).encode("utf-8"),
             headers={
@@ -204,10 +211,7 @@ def sbis_record(values):
     """Encode a Wasaby Record exactly as the Retail JSON-RPC transport does."""
     return {
         "_type": "record",
-        # Internal JSON protocol 2 requires the data block to be an object.
-        # Array-backed records are an older response representation that the
-        # readers above still accept for compatibility.
-        "d": dict(values),
+        "d": list(values.values()),
         "s": [{"n": name, "t": sbis_type(value)} for name, value in values.items()],
         "f": 1,
     }
