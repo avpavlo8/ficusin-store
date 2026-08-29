@@ -1,4 +1,4 @@
-"""Разведка: какие идентификаторы номенклатуры отдаёт API СБИС.
+"""Разведка API СБИС и одноразовая проверка черновика изменения цен.
 
 Связка продаж маркетплейсов с товаром упирается в один вопрос — есть ли в
 ответе `nomenclature/list` то, чем товар опознаётся на площадке. В карточке
@@ -8,7 +8,9 @@
 Документация метода перечисляет не все из них, поэтому спрашиваем саму
 площадку.
 
-Скрипт ничего не создаёт и не меняет. В журнал печатается форма ответа:
+Обычный режим ничего не создаёт и не меняет. Специальный режим
+``__pricechange_create__:<id>`` создаёт один непроведённый тестовый документ,
+используя товар из указанного эталонного документа. В журнал печатается форма ответа:
 какие поля пришли, какого они типа, сколько в списках элементов и на что
 похожи значения. Сами значения не печатаются — журнал публичного
 репозитория читает кто угодно.
@@ -90,6 +92,78 @@ def print_record_schema(title, value):
     print("  ", shape(value))
 
 
+def record_has_field(record, name):
+    if not isinstance(record, dict):
+        return False
+    if name in record:
+        return True
+    return any(isinstance(field, dict) and field.get("n") == name for field in record.get("s") or [])
+
+
+def record_field(record, name):
+    if name in record:
+        return record[name]
+    fields = record.get("s") or []
+    data = record.get("d") or []
+    for index, field in enumerate(fields):
+        if isinstance(field, dict) and field.get("n") == name:
+            return data[index] if index < len(data) else None
+    return None
+
+
+def set_record_field(record, name, value):
+    if name in record:
+        record[name] = value
+        return
+    fields = record.get("s") or []
+    data = record.get("d") or []
+    for index, field in enumerate(fields):
+        if isinstance(field, dict) and field.get("n") == name:
+            while len(data) <= index:
+                data.append(None)
+            data[index] = value
+            record["d"] = data
+            return
+    raise SystemExit("в записи Saby нет поля %s" % name)
+
+
+def collect_records(value, required_field):
+    result = []
+
+    def walk(current):
+        if isinstance(current, dict):
+            if current.get("_type") == "record" and record_has_field(current, required_field):
+                result.append(current)
+            if current.get("_type") == "recordset":
+                fields = current.get("s") or []
+                for row in current.get("d") or []:
+                    if isinstance(row, list):
+                        record = {"_type": "record", "s": fields, "d": row, "f": 1}
+                        if record_has_field(record, required_field):
+                            result.append(record)
+            for key, child in current.items():
+                if not (key == "d" and current.get("_type") == "recordset"):
+                    walk(child)
+        elif isinstance(current, list):
+            for child in current:
+                walk(child)
+
+    walk(value)
+    return result
+
+
+def first_record(value, required_field):
+    records = collect_records(value, required_field)
+    return records[0] if records else None
+
+
+def as_int(value):
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
 required = ("SABY_APP_CLIENT_ID", "SABY_APP_SECRET", "SABY_SECRET_KEY", "SABY_POINT_ID")
 missing = [name for name in required if not os.environ.get(name)]
 if missing:
@@ -120,6 +194,96 @@ query = {
     "page": 0,
 }
 search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
+if search.startswith("__pricechange_create__:"):
+    source_document_id = int(search.rsplit(":", 1)[1])
+    source_positions = rpc(
+        token,
+        "PriceChangePosition.GetList",
+        {
+            "Фильтр": {"PriceChange": source_document_id, "HowPriceOrMarkupChanged": 0},
+            "Сортировка": None,
+            "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
+            "ДопПоля": [],
+        },
+    )
+    source_position = first_record(source_positions, "Nomenclature")
+    nomenclature_id = as_int(record_field(source_position, "Nomenclature") if source_position else None)
+    if nomenclature_id <= 0:
+        raise SystemExit("в эталонном документе нет позиции с идентификатором номенклатуры")
+
+    created = rpc(
+        token,
+        "PriceChange.Создать",
+        {"Фильтр": {"ВызовИзБраузера": True}, "ИмяМетода": "PriceChange.Список"},
+    )
+    document = first_record(created, "@Документ")
+    if not document:
+        raise SystemExit("PriceChange.Создать не вернул карточку документа")
+    set_record_field(document, "Примечание", "Тест API Ficusin Store — не проводить")
+    written = rpc(token, "PriceChange.Записать", {"Запись": document})
+    saved = first_record(written, "@Документ")
+    if saved:
+        document = saved
+    document_id = as_int(record_field(document, "@Документ"))
+    if document_id <= 0:
+        raise SystemExit("PriceChange.Записать не вернул внутренний номер документа")
+
+    rpc(
+        token,
+        "PriceChange.AddPricesLRS",
+        {
+            "Document": document_id,
+            "NomenclatureList": [],
+            "NomenclatureFilter": {
+                "BalanceForOrganization": "-1",
+                "GetPath": 0,
+                "PublicationSaleState": 1,
+                "Source": ["LC"],
+                "TranslitSearchString": True,
+                "Warehouse": None,
+                "currentTab": "LC",
+                "selection": {
+                    "marked": [str(nomenclature_id)],
+                    "excluded": [],
+                    "type": "leaf",
+                    "recursive": True,
+                },
+            },
+        },
+    )
+
+    target_position = None
+    for _ in range(10):
+        positions = rpc(
+            token,
+            "PriceChangePosition.GetList",
+            {
+                "Фильтр": {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0},
+                "Сортировка": None,
+                "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
+                "ДопПоля": [],
+            },
+        )
+        target_position = next(
+            (
+                row
+                for row in collect_records(positions, "Nomenclature")
+                if as_int(record_field(row, "Nomenclature")) == nomenclature_id
+            ),
+            None,
+        )
+        if target_position:
+            break
+        import time
+
+        time.sleep(0.5)
+    if not target_position:
+        raise SystemExit("Saby не добавил позицию в новый документ")
+    set_record_field(target_position, "Price", 2650)
+    rpc(token, "PriceChangePosition.Записать", {"Запись": target_position})
+    print("Тестовый черновик изменения цен создан и заполнен через API; документ не проведён.")
+    raise SystemExit(0)
+
 if search.startswith("__pricechange_copy__:"):
     document_id = int(search.rsplit(":", 1)[1])
     copied = rpc(

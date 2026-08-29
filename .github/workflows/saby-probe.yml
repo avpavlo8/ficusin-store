@@ -8,6 +8,10 @@ on:
         description: Название товара для поиска (например, Араукария)
         required: false
         default: Араукария
+  # Одноразовая проверка ветки интеграции. В main этого триггера не будет.
+  push:
+    branches:
+      - codex/saby-pricechange-api
 
 permissions:
   contents: read
@@ -23,5 +27,5 @@ jobs:
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
-          SABY_PROBE_SEARCH: ${{ inputs.search }}
+          SABY_PROBE_SEARCH: ${{ github.event_name == 'push' && '__pricechange_create__:38691' || inputs.search }}
         run: python3 scripts/saby-probe.py
