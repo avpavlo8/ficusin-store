@@ -1,28 +1,38 @@
-import json, os, urllib.request
-token=json.load(urllib.request.urlopen(urllib.request.Request("https://online.sbis.ru/oauth/service/",data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),headers={"Content-Type":"application/json"},method="POST")))["token"]
-os.makedirs("/tmp/saby-modules",exist_ok=True)
-base="https://cdn.sbis.ru/static/resources/"
-paths={
- "Types/serializer.min.js":"309ef622dae8e3d383b41db9e51c1630",
- "Types/entity.min.js":"309ef622dae8e3d383b41db9e51c1630",
- "Types/collection.min.js":"309ef622dae8e3d383b41db9e51c1630",
- "Types/source.min.js":"309ef622dae8e3d383b41db9e51c1630",
- "TransportCore/transport.min.js":"2f303808ce92ace6b813398a7370f0d0",
- "Browser/Transport.min.js":"1176a2de9445136329dd3209f17a9827",
- "BrowserTransport/Transport.min.js":"1176a2de9445136329dd3209f17a9827",
- "BrowserTransport/bundle.min.js":"1176a2de9445136329dd3209f17a9827",
- "BrowserTransport.min.js":"1176a2de9445136329dd3209f17a9827",\n "BrowserTransport/transport.min.js":"1176a2de9445136329dd3209f17a9827",
- "BrowserTransport/RPCJSON.min.js":"1176a2de9445136329dd3209f17a9827",
- "Browser/transport.min.js":"0be9805ed98858df248b6a2dfb76ba78",
- "Browser/Transport.min.js":"0be9805ed98858df248b6a2dfb76ba78",
- "Browser/bundle.min.js":"0be9805ed98858df248b6a2dfb76ba78",
- "Browser/library.min.js":"0be9805ed98858df248b6a2dfb76ba78",
- "BrowserTransport/library.min.js":"1176a2de9445136329dd3209f17a9827",
-}
-for path,h in paths.items():
+import json, os, urllib.error, urllib.request
+
+def request(req):
     try:
-        data=urllib.request.urlopen(urllib.request.Request(base+path+"?x_module="+h,headers={"X-SBISAccessToken":token}),timeout=60).read()
-    except Exception as error:
-        print("MISS",path,type(error).__name__);continue
-    open("/tmp/saby-modules/"+path.replace("/","__"),"wb").write(data)
-    print("OK",path,len(data))
+        with urllib.request.urlopen(req,timeout=60) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        return json.loads(error.read())
+
+token=request(urllib.request.Request("https://online.sbis.ru/oauth/service/",data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),headers={"Content-Type":"application/json"},method="POST"))["token"]
+
+def rpc(method,params):
+    result=request(urllib.request.Request("https://online.sbis.ru/service/?srv=1",data=json.dumps({"jsonrpc":"2.0","method":method,"params":params,"id":1},ensure_ascii=False).encode(),headers={"Content-Type":"application/json-rpc; charset=utf-8","X-SBISAccessToken":token},method="POST"))
+    if result.get("error"):
+        print(method,"ERROR",result["error"].get("details") or result["error"].get("message"))
+        raise SystemExit(1)
+    print(method,"OK")
+    return result.get("result")
+
+def rec(values, types=None):
+    types=types or {}
+    return {"_type":"record","d":list(values.values()),"s":[{"n":name,"t":types.get(name, "Логическое" if isinstance(value,bool) else "Число целое" if isinstance(value,int) else "Строка")} for name,value in values.items()]}
+
+copied=rpc("РеалВх.Копировать",{"ИдО":"38766","ИмяМетода":"РеалВх.Список"})
+doc=copied
+if isinstance(copied,dict) and copied.get("_type")!="record":
+    for value in copied.values():
+        if isinstance(value,dict) and value.get("_type")=="record":
+            doc=value;break
+if not isinstance(doc,dict) or doc.get("_type")!="record":
+    print("COPY_NO_RECORD",type(copied).__name__, sorted(copied)[:15] if isinstance(copied,dict) else "")
+    raise SystemExit(1)
+
+row=rec({"Номенклатура":"X8999268","КодЕГАИС":"","Количество":1,"Раздел":None},{"Номенклатура":"Строка","КодЕГАИС":"Строка","Количество":"Число вещественное","Раздел":"Строка"})
+rows={"_type":"recordset","d":[row["d"]],"s":row["s"]}
+actions=rec({"changed_document":True})
+result=rpc("РеалВх.NomCreateWithSaveBatch",{"doc_rec":doc,"rs":rows,"actions":actions})
+print("BATCH_RESULT",type(result).__name__, sorted(result)[:15] if isinstance(result,dict) else "")
