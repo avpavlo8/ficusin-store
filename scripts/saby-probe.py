@@ -244,25 +244,26 @@ query = {
 }
 search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
 if search.startswith("__pricechange_create__:"):
-    source_document_id = int(search.rsplit(":", 1)[1])
-    source_positions = rpc(
-        token,
-        "PriceChangePosition.GetList",
-        {
-            "Фильтр": sbis_record(
-                {"PriceChange": source_document_id, "HowPriceOrMarkupChanged": 0}
-            ),
-            "Сортировка": None,
-            "Навигация": sbis_record(
-                {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True}
-            ),
-            "ДопПоля": [],
-        },
+    product_search = search.split(":", 1)[1].strip() or "Араукария"
+    catalog_query = {
+        "pointId": os.environ["SABY_POINT_ID"],
+        "searchString": product_search,
+        "withBarcode": "true",
+        "pageSize": 25,
+        "page": 0,
+    }
+    catalog = request_json(
+        urllib.request.Request(
+            "https://api.sbis.ru/retail/v2/nomenclature/list?"
+            + urllib.parse.urlencode(catalog_query),
+            headers={"X-SBISAccessToken": token},
+        )
     )
-    source_position = first_record(source_positions, "Nomenclature")
-    nomenclature_id = as_int(record_field(source_position, "Nomenclature") if source_position else None)
+    catalog_items = catalog.get("nomenclatures") or catalog.get("items") or []
+    source_product = next((item for item in catalog_items if not item.get("isParent")), None)
+    nomenclature_id = as_int(source_product.get("id") if source_product else None)
     if nomenclature_id <= 0:
-        raise SystemExit("в эталонном документе нет позиции с идентификатором номенклатуры")
+        raise SystemExit("Retail API не вернул идентификатор тестового товара")
 
     created = rpc(
         token,
