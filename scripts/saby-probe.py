@@ -71,7 +71,7 @@ def rpc(token, method, params, allow_error=False):
                 ensure_ascii=False,
             ).encode("utf-8"),
             headers={
-                "Content-Type": "application/json; charset=utf-8",
+                "Content-Type": "application/json-rpc; charset=utf-8",
                 "X-SBISAccessToken": token,
             },
             method="POST",
@@ -203,17 +203,11 @@ def sbis_type(value):
 
 
 def sbis_record(values):
-    """Encode a Record in the internal JSON protocol 2 representation."""
+    """Encode a Wasaby Record for the standard Saby JSON-RPC transport."""
     return {
         "_type": "record",
-        "d": dict(values),
-        # Protocol 2 uses numeric type identifiers in the object schema.
-        "s": {
-            name: {
-                "t": "boolean" if isinstance(value, bool) else "integer" if isinstance(value, int) else "string"
-            }
-            for name, value in values.items()
-        },
+        "d": list(values.values()),
+        "s": [{"n": name, "t": sbis_type(value)} for name, value in values.items()],
         "f": 1,
     }
 
@@ -270,33 +264,14 @@ if search.startswith("__pricechange_create__:"):
     if nomenclature_id <= 0:
         raise SystemExit("Retail API не вернул идентификатор тестового товара")
 
-    created = None
-    accepted_boolean_type = None
-    type_candidates = [
-        "Логическое", "boolean", "Boolean", "bool", "Bool", "BOOL",
-        "b", "B", "boolean_type", "ftBoolean",
-        *range(0, 32),
-    ]
-    for candidate in type_candidates:
-        probe_filter = {
-            "_type": "record",
-            "d": {"ВызовИзБраузера": True},
-            "s": {"ВызовИзБраузера": {"t": candidate}},
-            "f": 1,
-        }
-        attempt = rpc(
-            token,
-            "PriceChange.Создать",
-            {"Фильтр": probe_filter, "ИмяМетода": "PriceChange.Список"},
-            allow_error=True,
-        )
-        if not (isinstance(attempt, dict) and attempt.get("__probe_error__")):
-            created = attempt
-            accepted_boolean_type = candidate
-            break
-    if created is None:
-        raise SystemExit("Saby не принял ни один безопасный вариант типа поля фильтра")
-    print("PriceChange.Создать принял тип поля:", accepted_boolean_type)
+    created = rpc(
+        token,
+        "PriceChange.Создать",
+        {
+            "Фильтр": sbis_record({"ВызовИзБраузера": True}),
+            "ИмяМетода": "PriceChange.Список",
+        },
+    )
     document = first_record(created, "@Документ")
     if not document:
         raise SystemExit("PriceChange.Создать не вернул карточку документа")
