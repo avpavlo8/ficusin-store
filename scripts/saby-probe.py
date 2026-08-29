@@ -1,141 +1,96 @@
-"""Разведка: какие идентификаторы номенклатуры отдаёт API СБИС.
+import json, os, urllib.error, urllib.parse, urllib.request
 
-Связка продаж маркетплейсов с товаром упирается в один вопрос — есть ли в
-ответе `nomenclature/list` то, чем товар опознаётся на площадке. В карточке
-СБИС видно, что у растения несколько кодов сразу: код товара `X941092466`,
-два штрихкода EAN13 и штрихкод Ozon вида `OZN1851256804`, а ниже — «внешний
-код» с артикулом площадки («араукария 40» для OZON и для Wildberries).
-Документация метода перечисляет не все из них, поэтому спрашиваем саму
-площадку.
+def req(request):
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        body=error.read()
+        try: return json.loads(body)
+        except Exception: raise SystemExit("HTTP %d" % error.code)
 
-Скрипт ничего не создаёт и не меняет. В журнал печатается форма ответа:
-какие поля пришли, какого они типа, сколько в списках элементов и на что
-похожи значения. Сами значения не печатаются — журнал публичного
-репозитория читает кто угодно.
-"""
+def rpc(token, method, params):
+    response=req(urllib.request.Request(
+        "https://online.sbis.ru/service/?srv=1",
+        data=json.dumps({"jsonrpc":"2.0","method":method,"params":params,"id":1},ensure_ascii=False).encode(),
+        headers={"Content-Type":"application/json-rpc; charset=utf-8","X-SBISAccessToken":token},
+        method="POST"))
+    if response.get("error"):
+        error=response["error"]
+        raise SystemExit(method+": "+str(error.get("details") or error.get("message")))
+    return response.get("result")
 
-import json
-import os
-import re
-import urllib.parse
-import urllib.request
+def records(value, field):
+    found=[]
+    def walk(v):
+        if isinstance(v,dict):
+            schema=v.get("s") or []
+            names=[x.get("n") for x in schema if isinstance(x,dict)]
+            if field in v or field in names: found.append(v)
+            if v.get("_type")=="recordset":
+                for row in v.get("d") or []:
+                    if isinstance(row,list): found.append({"_type":"record","s":schema,"d":row,"f":1})
+            for k,x in v.items():
+                if not (k=="d" and v.get("_type")=="recordset"): walk(x)
+        elif isinstance(v,list):
+            for x in v: walk(x)
+    walk(value)
+    return [x for x in found if get(x,field) is not None]
 
+def get(rec,name):
+    if name in rec:return rec[name]
+    data=rec.get("d") or []
+    for i,f in enumerate(rec.get("s") or []):
+        if isinstance(f,dict) and f.get("n")==name:
+            return data.get(name) if isinstance(data,dict) else (data[i] if i<len(data) else None)
 
-def shape(value):
-    """Описание значения без самого значения."""
-    if value is None:
-        return "пусто"
-    if isinstance(value, bool):
-        return "да/нет"
-    if isinstance(value, (int, float)):
-        return "число"
-    if isinstance(value, list):
-        if not value:
-            return "список, пуст"
-        return "список из %d, внутри %s" % (len(value), shape(value[0]))
-    if isinstance(value, dict):
-        if not value:
-            return "объект, пуст"
-        return "объект с полями: " + ", ".join(sorted(value)[:12])
-    text = str(value).strip()
-    if not text:
-        return "строка, пуста"
-    pattern = re.sub(r"\d", "9", re.sub(r"[A-Za-zА-Яа-яЁё]", "A", text))
-    return "строка %d симв., шаблон %s" % (len(text), pattern[:24])
+def setf(rec,name,value):
+    if name in rec:rec[name]=value;return True
+    data=rec.get("d") or []
+    for i,f in enumerate(rec.get("s") or []):
+        if isinstance(f,dict) and f.get("n")==name:
+            if isinstance(data,dict):data[name]=value
+            else:data[i]=value
+            return True
+    return False
 
+def record(values):
+    return {"_type":"record","d":list(values.values()),"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
 
-def request_json(request):
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.load(response)
+def recordset(fields, rows):
+    return {"_type":"recordset","s":[{"n":n,"t":t} for n,t in fields],
+            "d":[[row.get(n) for n,t in fields] for row in rows]}
 
+required=("SABY_APP_CLIENT_ID","SABY_APP_SECRET","SABY_SECRET_KEY","SABY_POINT_ID")
+missing=[x for x in required if not os.environ.get(x)]
+if missing:raise SystemExit("missing configuration: "+",".join(missing))
+token=req(urllib.request.Request("https://online.sbis.ru/oauth/service/",
+    data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),
+    headers={"Content-Type":"application/json"},method="POST")).get("token")
+if not token:raise SystemExit("no token")
 
-required = ("SABY_APP_CLIENT_ID", "SABY_APP_SECRET", "SABY_SECRET_KEY", "SABY_POINT_ID")
-missing = [name for name in required if not os.environ.get(name)]
-if missing:
-    raise SystemExit("не заданы: " + ", ".join(missing))
+catalog=req(urllib.request.Request("https://api.sbis.ru/retail/v2/nomenclature/list?"+urllib.parse.urlencode({
+    "pointId":os.environ["SABY_POINT_ID"],"searchString":"Диффенбахия Reflector","pageSize":25,"page":0}),
+    headers={"X-SBISAccessToken":token}))
+products=[x for x in (catalog.get("nomenclatures") or catalog.get("items") or []) if not x.get("isParent")]
+if not products:raise SystemExit("test product not found")
+nom_id=int(products[0]["id"])
 
-token = request_json(
-    urllib.request.Request(
-        "https://online.sbis.ru/oauth/service/",
-        data=json.dumps(
-            {
-                "app_client_id": os.environ["SABY_APP_CLIENT_ID"],
-                "app_secret": os.environ["SABY_APP_SECRET"],
-                "secret_key": os.environ["SABY_SECRET_KEY"],
-            }
-        ).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-).get("token")
-if not token:
-    raise SystemExit("СБИС не вернул токен")
+created=rpc(token,"РеалВх.Создать",{"Фильтр":record({"ВызовИзБраузера":(True,"Логическое")}),"ИмяМетода":"РеалВх.Список"})
+docs=records(created,"@Документ")
+if not docs:raise SystemExit("РеалВх.Создать did not return document")
+doc=docs[0]
+setf(doc,"Примечание","Тест поступления API Ficusin Store — не проводить")
+written=rpc(token,"РеалВх.Записать",{"Запись":doc})
+saved=records(written,"@Документ")
+if saved:doc=saved[0]
+doc_id=int(get(doc,"@Документ") or 0)
+if not doc_id:raise SystemExit("РеалВх.Записать did not return id")
 
-query = {
-    "pointId": os.environ["SABY_POINT_ID"],
-    "withBalance": "true",
-    "withBarcode": "true",
-    "pageSize": 50,
-    "page": 0,
-}
-search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
-if search:
-    query["searchString"] = search
-
-result = request_json(
-    urllib.request.Request(
-        "https://api.sbis.ru/retail/v2/nomenclature/list?" + urllib.parse.urlencode(query),
-        headers={"X-SBISAccessToken": token},
-    )
-)
-
-items = result.get("nomenclatures") or result.get("items") or result.get("result") or []
-print("Ответ верхнего уровня, поля:", ", ".join(sorted(result)))
-print("Позиций в ответе:", len(items))
-
-# Поиск возвращает и разделы каталога, причём первым. У раздела нет ни
-# артикула, ни штрихкодов, и если судить по нему — выйдет, что их нет ни у
-# кого. Смотрим только на товары.
-products = [item for item in items if not item.get("isParent")]
-print("Из них товаров (не разделов):", len(products))
-if not products:
-    raise SystemExit("товаров не нашлось — уточните SABY_PROBE_SEARCH")
-
-seen = {}
-for item in products:
-    for key, value in item.items():
-        current = shape(value)
-        if key not in seen or seen[key] in ("пусто", "строка, пуста", "список, пуст"):
-            seen[key] = current
-
-print("\nПоля товара (по всем %d найденным):" % len(products))
-for key in sorted(seen):
-    print("  %-22s %s" % (key, seen[key]))
-
-# Отдельно разворачиваем всё, что похоже на идентификатор: именно они решают,
-# можно ли связать товар с карточкой маркетплейса. Берём тот товар, у
-# которого этих сведений больше всего.
-def richness(item):
-    return sum(1 for key in ("barcodes", "attributes", "article", "code") if item.get(key))
-
-
-sample = max(products, key=richness)
-print("\nПодробно по спискам идентификаторов (у самого заполненного товара):")
-for key in ("barcodes", "attributes", "externalIds", "codes", "code", "codeType", "article"):
-    if key not in sample:
-        print("  %s: поля нет" % key)
-        continue
-    value = sample[key]
-    if isinstance(value, list) and value:
-        print("  %s: %d элем." % (key, len(value)))
-        for element in value[:8]:
-            if isinstance(element, dict):
-                print("    объект:", {name: shape(inner) for name, inner in element.items()})
-            else:
-                print("    ", shape(element))
-    elif isinstance(value, dict) and value:
-        print("  %s: объект" % key)
-        for name, inner in list(value.items())[:8]:
-            print("    %-18s %s" % (name, shape(inner)))
-    else:
-        print("  %s: %s" % (key, shape(value)))
+batch=rpc(token,"РеалВх.NomCreateWithSaveBatch",{
+    "doc_rec":record({"@Документ":(doc_id,"Число целое")}),
+    "rs":recordset([("Номенклатура","Число целое"),("КодЕГАИС","Строка"),("Количество","Число вещественное"),("Раздел","Число целое")],
+                   [{"Номенклатура":nom_id,"КодЕГАИС":None,"Количество":1.0,"Раздел":None}]),
+    "actions":record({"changed_document":(True,"Логическое")})})
+positions=records(batch,"Номенклатура")
+print("RECEIPT_PROBE_OK document_id=%d returned_positions=%d" % (doc_id,len(positions)))
