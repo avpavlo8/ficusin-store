@@ -207,17 +207,12 @@ query = {
 search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
 if search.startswith("__pricechange_create__:"):
     source_document_id = int(search.rsplit(":", 1)[1])
-    source_positions = rpc(
+    source_document = rpc(
         token,
-        "PriceChangePosition.GetList",
-        {
-            "Фильтр": {"PriceChange": source_document_id, "HowPriceOrMarkupChanged": 0},
-            "Сортировка": None,
-            "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
-            "ДопПоля": [],
-        },
+        "PriceChange.ПрочитатьДляУчастника",
+        {"ИдО": str(source_document_id), "ИмяМетода": "PriceChange.Список"},
     )
-    source_position = first_record(source_positions, "Nomenclature")
+    source_position = first_record(source_document, "Nomenclature")
     nomenclature_id = as_int(record_field(source_position, "Nomenclature") if source_position else None)
     if nomenclature_id <= 0:
         raise SystemExit("в эталонном документе нет позиции с идентификатором номенклатуры")
