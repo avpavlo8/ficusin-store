@@ -261,6 +261,7 @@ type sabyDraftPayload struct {
 		Name     string  `json:"name"`
 		Quantity int     `json:"quantity"`
 		NewPrice float64 `json:"newPrice"`
+		UnitCost float64 `json:"unitCost"`
 	} `json:"lines"`
 }
 
@@ -314,10 +315,13 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
 		document["Склад"] = warehouse
 		for _, line := range payload.Lines {
+			cost := line.UnitCost * float64(line.Quantity)
 			lines = append(lines, map[string]any{
 				"КодЕИ": "796", "НазваниеЕИ": "шт", "Количество": strconv.Itoa(line.Quantity),
 				"НомНомер": line.Code, "Номенклатура": line.Name, "НДС": "Без НДС",
-				"СуммаСебест": "0", "СуммаСебестБезНДС": "0", "СуммаСебестНДС": "0",
+				"ТипНоменклатуры": map[string]any{"ВидУчета": "Товар"},
+				"СуммаСебест": strconv.FormatFloat(cost, 'f', 2, 64),
+				"СуммаСебестБезНДС": strconv.FormatFloat(cost, 'f', 2, 64), "СуммаСебестНДС": "0",
 			})
 		}
 	} else {
