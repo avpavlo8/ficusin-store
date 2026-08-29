@@ -20,6 +20,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: saby-authenticated-runtime
-          path: /tmp/saby-contents.min.js
+          name: saby-serializer-modules
+          path: /tmp/saby-modules
           retention-days: 1
