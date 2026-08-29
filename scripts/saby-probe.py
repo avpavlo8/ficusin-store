@@ -205,7 +205,9 @@ def sbis_record(values):
     return {
         "_type": "record",
         "d": dict(values),
-        "s": {name: {"t": sbis_type(value)} for name, value in values.items()},
+        # Protocol 2 uses an object schema; for input records the server can
+        # infer primitive field types from the data block.
+        "s": {name: {} for name in values},
         "f": 1,
     }
 
