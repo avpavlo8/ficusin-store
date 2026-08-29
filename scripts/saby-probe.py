@@ -45,12 +45,8 @@ copied=rpc(token,"РеалВх.Копировать",{"ИдО":"38766","ИмяМ
 docs=records(copied,"@Документ")
 if not docs:raise SystemExit("copy returned no document")
 doc=docs[0]
-setf(doc,"Примечание","Поступление Ficusin Store — API проверка, не проводить")
-written=rpc(token,"РеалВх.Записать",{"Запись":doc})
-saved=records(written,"@Документ")
-if saved:doc=saved[0]
 doc_id=int(get(doc,"@Документ") or 0)
-rpc(token,"РеалВх.DocNomDeleteAll",{"DocId":doc_id,"AddFields":None})
+if not doc_id:raise SystemExit("copy returned no id")
 added=rpc(token,"РеалВх.NomCreateWithSaveBatch",{
  "doc_rec":rec({"@Документ":doc_id},{"@Документ":"Число целое"}),
  "rs":rs([{"Номенклатура":nom_id,"КодЕГАИС":None,"Количество":1.0,"Раздел":None}],{"Номенклатура":"Число целое","КодЕГАИС":"Строка","Количество":"Число вещественное","Раздел":"Число целое"}),
