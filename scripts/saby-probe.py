@@ -61,7 +61,7 @@ def request_json(request):
             raise SystemExit("Saby HTTP %d без JSON-описания ошибки" % error.code) from error
 
 
-def rpc(token, method, params):
+def rpc(token, method, params, allow_error=False):
     """Read-only JSON-RPC call used by the manual schema probe."""
     response = request_json(
         urllib.request.Request(
@@ -80,6 +80,8 @@ def rpc(token, method, params):
     if response.get("error"):
         error = response["error"]
         message = error.get("details") or error.get("message") or "ошибка Saby"
+        if allow_error:
+            return {"__probe_error__": message}
         raise SystemExit("%s: %s" % (method, message))
     return response.get("result")
 
@@ -268,14 +270,33 @@ if search.startswith("__pricechange_create__:"):
     if nomenclature_id <= 0:
         raise SystemExit("Retail API не вернул идентификатор тестового товара")
 
-    created = rpc(
-        token,
-        "PriceChange.Создать",
-        {
-            "Фильтр": sbis_record({"ВызовИзБраузера": True}),
-            "ИмяМетода": "PriceChange.Список",
-        },
-    )
+    created = None
+    accepted_boolean_type = None
+    type_candidates = [
+        "Логическое", "boolean", "Boolean", "bool", "Bool", "BOOL",
+        "b", "B", "boolean_type", "ftBoolean",
+        *range(0, 32),
+    ]
+    for candidate in type_candidates:
+        probe_filter = {
+            "_type": "record",
+            "d": {"ВызовИзБраузера": True},
+            "s": {"ВызовИзБраузера": {"t": candidate}},
+            "f": 1,
+        }
+        attempt = rpc(
+            token,
+            "PriceChange.Создать",
+            {"Фильтр": probe_filter, "ИмяМетода": "PriceChange.Список"},
+            allow_error=True,
+        )
+        if not (isinstance(attempt, dict) and attempt.get("__probe_error__")):
+            created = attempt
+            accepted_boolean_type = candidate
+            break
+    if created is None:
+        raise SystemExit("Saby не принял ни один безопасный вариант типа поля фильтра")
+    print("PriceChange.Создать принял тип поля:", accepted_boolean_type)
     document = first_record(created, "@Документ")
     if not document:
         raise SystemExit("PriceChange.Создать не вернул карточку документа")
