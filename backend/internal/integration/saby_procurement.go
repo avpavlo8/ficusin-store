@@ -27,19 +27,19 @@ const (
 // SabyClient caches one service session. Saby allows only five active
 // sessions per application, so authenticating for every request is unsafe.
 type SabyClient struct {
-	client      *http.Client
-	appClientID string
-	appSecret   string
-	secretKey   string
-	pointID     int64
-	priceListID int64
-	authURL     string
-	apiBase     string
-	serviceURL  string
-	mu          sync.Mutex
-	catalogMu   sync.Mutex
-	token       string
-	tokenUntil  time.Time
+	client       *http.Client
+	appClientID  string
+	appSecret    string
+	secretKey    string
+	pointID      int64
+	priceListID  int64
+	authURL      string
+	apiBase      string
+	serviceURL   string
+	mu           sync.Mutex
+	catalogMu    sync.Mutex
+	token        string
+	tokenUntil   time.Time
 }
 
 type sabyCatalogPage struct {
@@ -71,7 +71,7 @@ func (client *SabyClient) FetchCatalog(ctx context.Context) ([]sabydomain.Catalo
 	defer client.catalogMu.Unlock()
 
 	base := url.Values{
-		"pointId":     {strconv.FormatInt(client.pointID, 10)},
+		"pointId": {strconv.FormatInt(client.pointID, 10)},
 		"withBalance": {"true"}, "withBarcode": {"true"}, "pageSize": {"1000"},
 	}
 	complete, err := client.fetchCatalogTree(ctx, base)
@@ -240,7 +240,7 @@ func emptySabyValue(value any) bool {
 
 func NewSabyClient(appClientID, appSecret, secretKey string, pointID, priceListID int64) *SabyClient {
 	return &SabyClient{
-		client:      &http.Client{Timeout: 20 * time.Second},
+		client: &http.Client{Timeout: 20 * time.Second},
 		appClientID: strings.TrimSpace(appClientID), appSecret: strings.TrimSpace(appSecret),
 		secretKey: strings.TrimSpace(secretKey), pointID: pointID, priceListID: priceListID,
 		authURL: defaultSabyAuth, apiBase: defaultSabyAPI, serviceURL: defaultSabyService,
@@ -289,15 +289,15 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		return procurement.ActionExecution{}, errors.New("у российского поставщика не заполнен КПП")
 	}
 	if item.Channel == "saby_price" {
-		return client.createPriceChangeDraft(ctx, payload)
+		return procurement.ActionExecution{}, errors.New("публичный API Saby не поддерживает внутренний документ «Изменение цен»; используйте импорт XLSX в Склад → Документы → Из файла")
 	}
 	organization, warehouse, err := client.receiptContext(ctx)
 	if err != nil {
 		return procurement.ActionExecution{}, err
 	}
 	document := map[string]any{
-		"Дата":            time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
-		"Примечание":      fmt.Sprintf("Черновик Ficusin Store, закупка №%d", payload.OrderID),
+		"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
+		"Примечание": fmt.Sprintf("Черновик Ficusin Store, закупка №%d", payload.OrderID),
 		"НашаОрганизация": organization,
 	}
 	lines := make([]map[string]any, 0, len(payload.Lines))
@@ -337,227 +337,6 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор черновика")
 	}
 	return procurement.ActionExecution{Completed: true, ExternalOperationID: id, ExternalURL: safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))}, nil
-}
-
-// createPriceChangeDraft uses the same warehouse business-logic services as
-// the Saby Retail card. PriceChange is not an EDO document type, therefore it
-// cannot be created by inventing a value for СБИС.ЗаписатьДокумент. The card
-// creates the header, adds catalogue positions, and writes each position via
-// the dedicated PriceChange/PriceChangePosition contracts.
-func (client *SabyClient) createPriceChangeDraft(ctx context.Context, payload sabyDraftPayload) (procurement.ActionExecution, error) {
-	var created any
-	if err := client.rpc(ctx, "PriceChange.Создать", map[string]any{
-		"Фильтр":    map[string]any{"ВызовИзБраузера": true},
-		"ИмяМетода": "PriceChange.Список",
-	}, &created); err != nil {
-		return procurement.ActionExecution{}, fmt.Errorf("создать документ изменения цен Saby: %w", err)
-	}
-	document := findSabyRecord(created, "@Документ")
-	if document == nil {
-		return procurement.ActionExecution{}, errors.New("Saby не вернул карточку документа изменения цен")
-	}
-	setSabyRecordField(document, "Дата", time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("2006-01-02"))
-	setSabyRecordField(document, "Примечание", fmt.Sprintf("Черновик Ficusin Store, закупка №%d", payload.OrderID))
-
-	var written any
-	if err := client.rpc(ctx, "PriceChange.Записать", map[string]any{"Запись": document}, &written); err != nil {
-		return procurement.ActionExecution{}, fmt.Errorf("сохранить документ изменения цен Saby: %w", err)
-	}
-	if saved := findSabyRecord(written, "@Документ"); saved != nil {
-		document = saved
-	}
-	documentID := sabyInt64(sabyRecordField(document, "@Документ"))
-	if documentID <= 0 {
-		return procurement.ActionExecution{}, errors.New("Saby не вернул номер документа изменения цен")
-	}
-
-	marked := make([]string, 0, len(payload.Lines))
-	prices := make(map[int64]float64, len(payload.Lines))
-	for _, line := range payload.Lines {
-		id, err := strconv.ParseInt(strings.TrimSpace(line.SabyID), 10, 64)
-		if err != nil || id <= 0 {
-			return procurement.ActionExecution{}, fmt.Errorf("у товара %q нет числового идентификатора Saby", line.Name)
-		}
-		marked = append(marked, strconv.FormatInt(id, 10))
-		prices[id] = line.NewPrice
-	}
-	selection := map[string]any{
-		"marked": marked, "excluded": []string{}, "type": "leaf", "recursive": true,
-	}
-	filter := map[string]any{
-		"BalanceForOrganization": "-1", "GetPath": 0, "PublicationSaleState": 1,
-		"Source": []string{"LC"}, "TranslitSearchString": true, "Warehouse": nil,
-		"currentTab": "LC", "selection": selection,
-	}
-	var added any
-	if err := client.rpc(ctx, "PriceChange.AddPricesLRS", map[string]any{
-		"Document": documentID, "NomenclatureList": []any{}, "NomenclatureFilter": filter,
-	}, &added); err != nil {
-		return procurement.ActionExecution{}, fmt.Errorf("добавить товары в изменение цен Saby: %w", err)
-	}
-
-	positions, err := client.waitForPriceChangePositions(ctx, documentID, prices)
-	if err != nil {
-		return procurement.ActionExecution{}, err
-	}
-	for nomenclatureID, position := range positions {
-		setSabyRecordField(position, "Price", prices[nomenclatureID])
-		var updated any
-		if err := client.rpc(ctx, "PriceChangePosition.Записать", map[string]any{"Запись": position}, &updated); err != nil {
-			return procurement.ActionExecution{}, fmt.Errorf("записать цену товара Saby %d: %w", nomenclatureID, err)
-		}
-	}
-
-	externalID := strings.TrimSpace(fmt.Sprint(sabyRecordField(document, "ИдентификаторДокумента")))
-	if externalID == "" || externalID == "<nil>" {
-		externalID = strconv.FormatInt(documentID, 10)
-	}
-	return procurement.ActionExecution{Completed: true, ExternalOperationID: externalID}, nil
-}
-
-func (client *SabyClient) waitForPriceChangePositions(ctx context.Context, documentID int64, prices map[int64]float64) (map[int64]map[string]any, error) {
-	for attempt := 0; attempt < 10; attempt++ {
-		var listed any
-		err := client.rpc(ctx, "PriceChangePosition.GetList", map[string]any{
-			"Фильтр":     map[string]any{"PriceChange": documentID, "HowPriceOrMarkupChanged": 0},
-			"Сортировка": nil,
-			"Навигация":  map[string]any{"Страница": 0, "РазмерСтраницы": max(50, len(prices)+10), "ЕстьЕще": true},
-			"ДопПоля":    []any{},
-		}, &listed)
-		if err != nil {
-			return nil, fmt.Errorf("прочитать позиции изменения цен Saby: %w", err)
-		}
-		found := make(map[int64]map[string]any, len(prices))
-		for _, record := range collectSabyRecords(listed, "Nomenclature") {
-			id := sabyInt64(sabyRecordField(record, "Nomenclature"))
-			if _, wanted := prices[id]; wanted {
-				found[id] = record
-			}
-		}
-		if len(found) == len(prices) {
-			return found, nil
-		}
-		if attempt < 9 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(500 * time.Millisecond):
-			}
-		}
-	}
-	return nil, errors.New("Saby добавил не все позиции в документ изменения цен")
-}
-
-func collectSabyRecords(value any, requiredField string) []map[string]any {
-	result := make([]map[string]any, 0)
-	var walk func(any)
-	walk = func(current any) {
-		switch typed := current.(type) {
-		case map[string]any:
-			if sabyRecordHasField(typed, requiredField) {
-				result = append(result, typed)
-			}
-			if typed["_type"] == "recordset" {
-				fields, _ := typed["s"].([]any)
-				if rows, ok := typed["d"].([]any); ok {
-					for _, row := range rows {
-						if data, ok := row.([]any); ok {
-							record := map[string]any{"_type": "record", "d": data, "s": fields, "f": 1}
-							if sabyRecordHasField(record, requiredField) {
-								result = append(result, record)
-							}
-						}
-					}
-				}
-			}
-			for key, child := range typed {
-				if key != "d" || typed["_type"] != "recordset" {
-					walk(child)
-				}
-			}
-		case []any:
-			for _, child := range typed {
-				walk(child)
-			}
-		}
-	}
-	walk(value)
-	return result
-}
-
-func findSabyRecord(value any, requiredField string) map[string]any {
-	records := collectSabyRecords(value, requiredField)
-	if len(records) == 0 {
-		return nil
-	}
-	return records[0]
-}
-
-func sabyRecordHasField(record map[string]any, name string) bool {
-	if _, ok := record[name]; ok {
-		return true
-	}
-	fields, _ := record["s"].([]any)
-	for _, raw := range fields {
-		field, _ := raw.(map[string]any)
-		if field["n"] == name {
-			return true
-		}
-	}
-	return false
-}
-
-func sabyRecordField(record map[string]any, name string) any {
-	if value, ok := record[name]; ok {
-		return value
-	}
-	fields, _ := record["s"].([]any)
-	data, _ := record["d"].([]any)
-	for index, raw := range fields {
-		field, _ := raw.(map[string]any)
-		if field["n"] == name && index < len(data) {
-			return data[index]
-		}
-	}
-	return nil
-}
-
-func setSabyRecordField(record map[string]any, name string, value any) bool {
-	if _, ok := record[name]; ok {
-		record[name] = value
-		return true
-	}
-	fields, _ := record["s"].([]any)
-	data, _ := record["d"].([]any)
-	for index, raw := range fields {
-		field, _ := raw.(map[string]any)
-		if field["n"] == name && index < len(data) {
-			data[index] = value
-			record["d"] = data
-			return true
-		}
-	}
-	return false
-}
-
-func sabyInt64(value any) int64 {
-	switch typed := value.(type) {
-	case float64:
-		return int64(typed)
-	case json.Number:
-		result, _ := typed.Int64()
-		return result
-	case string:
-		result, _ := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-		return result
-	case map[string]any:
-		for _, key := range []string{"@Номенклатура", "@Документ", "Id", "id"} {
-			if result := sabyInt64(typed[key]); result > 0 {
-				return result
-			}
-		}
-	}
-	return 0
 }
 
 func safeSabyURL(value string) string {
@@ -627,15 +406,9 @@ func (client *SabyClient) receiptContext(ctx context.Context) (map[string]any, m
 	if len(inn) == 12 {
 		parts := strings.Fields(strings.TrimPrefix(strings.TrimSpace(orgName), "ИП "))
 		person := map[string]any{"ИНН": inn}
-		if len(parts) > 0 {
-			person["Фамилия"] = parts[0]
-		}
-		if len(parts) > 1 {
-			person["Имя"] = parts[1]
-		}
-		if len(parts) > 2 {
-			person["Отчество"] = parts[2]
-		}
+		if len(parts) > 0 { person["Фамилия"] = parts[0] }
+		if len(parts) > 1 { person["Имя"] = parts[1] }
+		if len(parts) > 2 { person["Отчество"] = parts[2] }
 		organization["СвФЛ"] = person
 	} else {
 		organization["СвЮЛ"] = map[string]any{"ИНН": inn, "КПП": kpp, "Название": orgName}
@@ -651,13 +424,9 @@ func collectMaps(value any) []map[string]any {
 		switch typed := current.(type) {
 		case map[string]any:
 			result = append(result, typed)
-			for _, child := range typed {
-				walk(child)
-			}
+			for _, child := range typed { walk(child) }
 		case []any:
-			for _, child := range typed {
-				walk(child)
-			}
+			for _, child := range typed { walk(child) }
 		}
 	}
 	walk(value)
@@ -676,15 +445,11 @@ func nestedString(value any, path ...string) string {
 			}
 		}
 		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" {
-				return found
-			}
+			if found := nestedString(child, path...); found != "" { return found }
 		}
 	case []any:
 		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" {
-				return found
-			}
+			if found := nestedString(child, path...); found != "" { return found }
 		}
 	}
 	return ""
@@ -744,9 +509,7 @@ func (client *SabyClient) accessToken(ctx context.Context, force bool) (string, 
 	payload := map[string]string{
 		"app_client_id": client.appClientID, "app_secret": client.appSecret, "secret_key": client.secretKey,
 	}
-	var response struct {
-		Token string `json:"token"`
-	}
+	var response struct { Token string `json:"token"` }
 	if _, err := client.requestJSON(ctx, http.MethodPost, client.authURL, payload, "", &response); err != nil {
 		return "", fmt.Errorf("авторизация Saby: %w", err)
 	}
@@ -764,15 +527,11 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 	var body io.Reader
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
-		if err != nil {
-			return 0, fmt.Errorf("encode Saby request: %w", err)
-		}
+		if err != nil { return 0, fmt.Errorf("encode Saby request: %w", err) }
 		body = bytes.NewReader(encoded)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
-	if err != nil {
-		return 0, fmt.Errorf("create Saby request: %w", err)
-	}
+	if err != nil { return 0, fmt.Errorf("create Saby request: %w", err) }
 	request.Header.Set("Accept", "application/json")
 	if payload != nil {
 		contentType := "application/json"
@@ -781,18 +540,12 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 		}
 		request.Header.Set("Content-Type", contentType)
 	}
-	if token != "" {
-		request.Header.Set("X-SBISAccessToken", token)
-	}
+	if token != "" { request.Header.Set("X-SBISAccessToken", token) }
 	response, err := client.client.Do(request)
-	if err != nil {
-		return 0, fmt.Errorf("Saby request failed: %w", err)
-	}
+	if err != nil { return 0, fmt.Errorf("Saby request failed: %w", err) }
 	defer response.Body.Close() //nolint:errcheck
 	content, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-	if err != nil {
-		return response.StatusCode, fmt.Errorf("read Saby response: %w", err)
-	}
+	if err != nil { return response.StatusCode, fmt.Errorf("read Saby response: %w", err) }
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return response.StatusCode, &remoteError{Status: response.StatusCode, Message: sabyErrorMessage(content)}
 	}
@@ -806,12 +559,8 @@ func sabyErrorMessage(content []byte) string {
 	var response sabyRPCResponse
 	if json.Unmarshal(content, &response) == nil && response.Error != nil {
 		message := strings.TrimSpace(response.Error.Details)
-		if message == "" {
-			message = strings.TrimSpace(response.Error.Message)
-		}
-		if message != "" {
-			return safeRemoteMessage(message)
-		}
+		if message == "" { message = strings.TrimSpace(response.Error.Message) }
+		if message != "" { return safeRemoteMessage(message) }
 	}
 	return safeRemoteMessage(string(content))
 }
