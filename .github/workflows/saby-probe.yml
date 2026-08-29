@@ -12,18 +12,38 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Download public Saby warehouse client module
+      - name: Download public Saby warehouse client modules
         run: |
           python3 - <<'PY'
+          import os
           import urllib.request
-          url = "https://cdn.sbis.ru/static/resources/WHDCore/Document/dialog.min.js?x_module=4b7a60ece34e6b52c3a701ab0b5947fc"
-          with urllib.request.urlopen(url, timeout=60) as response:
-              content = response.read()
-          open("/tmp/whd-dialog.min.js", "wb").write(content)
-          print("Downloaded public WHDCore module:", len(content), "bytes")
+          base = "https://cdn.sbis.ru/static/resources/"
+          suffix = "?x_module=4b7a60ece34e6b52c3a701ab0b5947fc"
+          paths = [
+              "WHDCore/Document/dialog.min.js",
+              "WHDCore/Lib/bl.min.js",
+              "WHDCore/NomList/data.min.js",
+              "WHDCore/Lib/documentHelpers.min.js",
+              "WHDCore/Lib/libs.min.js",
+              "WHDCore/Document/check.min.js",
+              "WHDCore/Controls/Input/warehouse.min.js",
+              "WHDNomList/utils.min.js",
+              "WHD/Controls/actions.min.js",
+          ]
+          os.makedirs("/tmp/whd", exist_ok=True)
+          for path in paths:
+              try:
+                  with urllib.request.urlopen(base + path + suffix, timeout=60) as response:
+                      content = response.read()
+              except Exception as error:
+                  print("MISS", path, type(error).__name__, str(error)[:120])
+                  continue
+              target = "/tmp/whd/" + path.replace("/", "__")
+              open(target, "wb").write(content)
+              print("OK", path, len(content))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: whd-dialog-source
-          path: /tmp/whd-dialog.min.js
+          name: whd-contract-sources
+          path: /tmp/whd
           retention-days: 1
