@@ -17,3 +17,9 @@ jobs:
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
         run: python3 scripts/saby-probe.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saby-authenticated-runtime
+          path: /tmp/saby-contents.min.js
+          retention-days: 1
