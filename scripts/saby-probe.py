@@ -55,7 +55,7 @@ def setf(rec,name,value):
     return False
 
 def record(values):
-    return {"_type":"record","d":list(values.values()),"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
+    return {"_type":"record","d":[v for v,t in values.values()],"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
 
 def recordset(fields, rows):
     return {"_type":"recordset","s":[{"n":n,"t":t} for n,t in fields],
