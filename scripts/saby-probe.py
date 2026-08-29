@@ -9,7 +9,7 @@ def rpc(token,method,params):
     if result.get("error"):raise SystemExit(method+": "+str(result["error"].get("details") or result["error"]))
     return result.get("result")
 def rec(values,types):
-    return {"_type":"record","d":[values[k] for k in types],"s":[{"n":k,"t":types[k]} for k in types],"f":1}
+    return {"_type":"record","d":[values[k] for k in types],"s":[{"n":k,"t":types[k]} for k in types]}
 def rs(rows,types):
     return {"_type":"recordset","d":[[row.get(k) for k in types] for row in rows],"s":[{"n":k,"t":types[k]} for k in types]}
 def records(value,field):
@@ -48,7 +48,7 @@ doc=docs[0]
 doc_id=int(get(doc,"@Документ") or 0)
 if not doc_id:raise SystemExit("copy returned no id")
 added=rpc(token,"РеалВх.NomCreateWithSaveBatch",{
- "doc_rec":rec({"@Документ":doc_id},{"@Документ":"Число целое"}),
+ "doc_rec":rec({"@Документ":doc_id},{"@Документ":"Идентификатор"}),
  "rs":rs([{"Номенклатура":nom_id,"КодЕГАИС":None,"Количество":1.0,"Раздел":None}],{"Номенклатура":"Число целое","КодЕГАИС":"Строка","Количество":"Число вещественное","Раздел":"Число целое"}),
  "actions":rec({"changed_document":True},{"changed_document":"Логическое"})})
 print("RECEIPT_COPY_OK document_id=%d positions_in_response=%d"%(doc_id,len(records(added,"Номенклатура"))))
