@@ -80,7 +80,7 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 
 	client := NewSabyClient("client", "secret", "service", 278, 6)
 	client.authURL, client.apiBase, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL, server.URL+"/service/?srv=1", server.Client()
-	receiptPayload := json.RawMessage(`{"orderId":323,"orderNumber":"323","supplier":{"name":"ТК Ярославский, ООО","taxId":"7627031650","kpp":"762701001"},"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","quantity":2}]}`)
+	receiptPayload := json.RawMessage(`{"orderId":323,"orderNumber":"323","supplier":{"name":"ТК Ярославский, ООО","taxId":"7627031650","kpp":"762701001"},"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","quantity":2,"unitCost":125.5}]}`)
 	result, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: receiptPayload})
 	if err != nil { t.Fatal(err) }
 	if !result.Completed || result.ExternalOperationID == "" || result.ExternalURL == "" { t.Fatalf("unexpected result: %+v", result) }
@@ -98,7 +98,7 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
 	receiptLines := documents[0]["Наименования"].([]any)
 	receiptLine := receiptLines[0].(map[string]any)
-	if receiptLine["Количество"] != "2" || receiptLine["СуммаСебест"] != "0" { t.Fatalf("receipt lines: %+v", receiptLines) }
+	if receiptLine["Количество"] != "2" || receiptLine["СуммаСебест"] != "251.00" || receiptLine["ТипНоменклатуры"].(map[string]any)["ВидУчета"] != "Товар" { t.Fatalf("receipt lines: %+v", receiptLines) }
 }
 
 func TestSabyErrorMessageUsesJSONRPCDetails(t *testing.T) {

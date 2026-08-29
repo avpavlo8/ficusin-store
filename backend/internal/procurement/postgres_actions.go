@@ -272,6 +272,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
 					COALESCE(NULLIF(n.name, ''), MAX(l.raw_name)) AS name,
 					n.balance::INTEGER AS old_balance,
+					MAX(COALESCE(l.unit_cost_rub, l.purchase_unit_rub, l.unit_price, l.expected_unit_price, 0))::DOUBLE PRECISION AS unit_cost,
 					SUM(COALESCE(l.invoiced_qty, l.ordered_qty))::INTEGER AS quantity
 				FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
@@ -291,7 +292,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					'orderNumber', order_number,
 					'supplier', jsonb_build_object('name', supplier_name, 'taxId', supplier_tax_id, 'kpp', supplier_kpp),
 					'lines', jsonb_agg(jsonb_build_object(
-						'sabyId', saby_id, 'code', code, 'name', name, 'quantity', quantity,
+						'sabyId', saby_id, 'code', code, 'name', name, 'quantity', quantity, 'unitCost', unit_cost,
 						'oldBalance', old_balance, 'newBalance', old_balance + quantity
 					) ORDER BY id)
 				)
