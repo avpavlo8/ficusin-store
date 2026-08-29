@@ -8,11 +8,6 @@ on:
         description: Название товара для поиска (например, Араукария)
         required: false
         default: Араукария
-  # Одноразовая проверка при открытии PR. В main этого триггера не будет.
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize]
 
 permissions:
   contents: read
@@ -28,5 +23,5 @@ jobs:
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
-          SABY_PROBE_SEARCH: ${{ github.event_name == 'pull_request' && '__pricechange_create__:Араукария' || inputs.search }}
+          SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-probe.py
