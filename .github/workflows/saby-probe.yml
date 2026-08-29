@@ -12,39 +12,11 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Download public Saby purchase modules
-        run: |
-          python3 - <<'PY'
-          import os
-          import urllib.request
-          base = "https://cdn.sbis.ru/static/resources/"
-          suffix = "?x_module=a7aefafc858545a9b27d5bddb0394e96"
-          paths = [
-              "WHD/page-x-packages/purchases/scripts.min.js",
-              "WHD/Docs/Inflow/dialog.min.js",
-              "WHD/Docs/Inflow/Columns/columnsNew.min.js",
-              "WHD/Docs/Inflow/Columns/common.min.js",
-              "WHD/Docs/Inflow/MainTab/controls.min.js",
-              "WHD/Docs/Inflow/MainTab/common.min.js",
-              "WHD/Docs/Inflow/MainTab/nomListNew.min.js",
-              "WHD/Docs/Inflow/MainTab/mainTabNew.min.js",
-              "WHD/Docs/Inflow/mainTabControls.min.js",
-              "WHD/Docs/Inflow/controls.min.js",
-          ]
-          os.makedirs("/tmp/whd", exist_ok=True)
-          for path in paths:
-              try:
-                  with urllib.request.urlopen(base + path + suffix, timeout=60) as response:
-                      content = response.read()
-              except Exception as error:
-                  print("MISS", path, type(error).__name__, str(error)[:120])
-                  continue
-              target = "/tmp/whd/" + path.replace("/", "__")
-              open(target, "wb").write(content)
-              print("OK", path, len(content))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: whd-purchase-sources
-          path: /tmp/whd
-          retention-days: 1
+      - uses: actions/checkout@v4
+      - name: Create one unposted receipt and add one position
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+        run: python3 scripts/saby-probe.py
