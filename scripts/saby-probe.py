@@ -205,10 +205,6 @@ def sbis_type(value):
 def sbis_record(values):
     """Encode a Wasaby Record for the standard Saby JSON-RPC transport."""
     return {
-        # Business-logic arguments use the internal Saby entity marker.  The
-        # ``_type`` marker appears in some decoded responses, but the Types
-        # SbisRecord adapter serializes request records as ``_entity``.
-        "_entity": "record",
         "d": list(values.values()),
         "s": [{"n": name, "t": sbis_type(value)} for name, value in values.items()],
         "f": 1,
