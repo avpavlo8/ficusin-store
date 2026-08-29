@@ -17,14 +17,15 @@ def rpc(token, method, params):
 token=req(urllib.request.Request("https://online.sbis.ru/oauth/service/",
     data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),
     headers={"Content-Type":"application/json"},method="POST")).get("token")
-result=rpc(token,"ДокОтгрВх.Прочитать",{"ИдО":"b3e70b39-6c41-4ea1-8acd-e63afd5b0ee5","ИмяМетода":"ДокОтгрВх.Список"})
+result=rpc(token,"СБИС.ПрочитатьДокумент",{"Документ":{"Идентификатор":"b3e70b39-6c41-4ea1-8acd-e63afd5b0ee5","ДопПоля":"ДополнительныеПоля,Расширение"}})
 def walk(v,path=""):
     if isinstance(v,dict):
         for k,x in v.items():
             p=path+"."+k if path else k
-            if isinstance(x,(int,float)) or (isinstance(x,str) and x.isdigit()):
-                print(p,":",x)
-            elif isinstance(x,(dict,list)): walk(x,p)
+            low=p.lower()
+            if any(word in low for word in ("идентификатор","расшир","документ","guid","идо")) and not isinstance(x,(dict,list)):
+                print(p,":",type(x).__name__,len(str(x)))
+            if isinstance(x,(dict,list)): walk(x,p)
     elif isinstance(v,list):
         for i,x in enumerate(v): walk(x,path+"[]")
 walk(result)
