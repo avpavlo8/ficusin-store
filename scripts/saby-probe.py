@@ -11,7 +11,13 @@ paths={
  "Browser/Transport.min.js":"1176a2de9445136329dd3209f17a9827",
  "BrowserTransport/Transport.min.js":"1176a2de9445136329dd3209f17a9827",
  "BrowserTransport/bundle.min.js":"1176a2de9445136329dd3209f17a9827",
- "BrowserTransport.min.js":"1176a2de9445136329dd3209f17a9827",
+ "BrowserTransport.min.js":"1176a2de9445136329dd3209f17a9827",\n "BrowserTransport/transport.min.js":"1176a2de9445136329dd3209f17a9827",
+ "BrowserTransport/RPCJSON.min.js":"1176a2de9445136329dd3209f17a9827",
+ "Browser/transport.min.js":"0be9805ed98858df248b6a2dfb76ba78",
+ "Browser/Transport.min.js":"0be9805ed98858df248b6a2dfb76ba78",
+ "Browser/bundle.min.js":"0be9805ed98858df248b6a2dfb76ba78",
+ "Browser/library.min.js":"0be9805ed98858df248b6a2dfb76ba78",
+ "BrowserTransport/library.min.js":"1176a2de9445136329dd3209f17a9827",
 }
 for path,h in paths.items():
     try:
