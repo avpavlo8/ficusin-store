@@ -76,7 +76,7 @@ products=[x for x in (catalog.get("nomenclatures") or catalog.get("items") or []
 if not products:raise SystemExit("test product not found")
 nom_id=int(products[0]["id"])
 
-created=rpc(token,"РеалВх.Создать",{"Фильтр":record({"ВызовИзБраузера":(True,"Логическое")}),"ИмяМетода":"РеалВх.Список"})
+created=rpc(token,"ДокОтгрВх.Создать",{"Фильтр":{"ВызовИзБраузера":True},"ИмяМетода":"ДокОтгрВх.Список"})
 docs=records(created,"@Документ")
 if not docs:raise SystemExit("РеалВх.Создать did not return document")
 doc=docs[0]
