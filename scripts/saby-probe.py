@@ -7,7 +7,11 @@ paths={
  "Types/entity.min.js":"309ef622dae8e3d383b41db9e51c1630",
  "Types/collection.min.js":"309ef622dae8e3d383b41db9e51c1630",
  "Types/source.min.js":"309ef622dae8e3d383b41db9e51c1630",
- "TransportCore/transport.min.js":"2f303808ce92ace6b813398a7370f0d0",\n "Browser/Transport.min.js":"1176a2de9445136329dd3209f17a9827",\n "BrowserTransport/Transport.min.js":"1176a2de9445136329dd3209f17a9827",\n "BrowserTransport/bundle.min.js":"1176a2de9445136329dd3209f17a9827",\n "BrowserTransport.min.js":"1176a2de9445136329dd3209f17a9827",
+ "TransportCore/transport.min.js":"2f303808ce92ace6b813398a7370f0d0",
+ "Browser/Transport.min.js":"1176a2de9445136329dd3209f17a9827",
+ "BrowserTransport/Transport.min.js":"1176a2de9445136329dd3209f17a9827",
+ "BrowserTransport/bundle.min.js":"1176a2de9445136329dd3209f17a9827",
+ "BrowserTransport.min.js":"1176a2de9445136329dd3209f17a9827",
 }
 for path,h in paths.items():
     try:
