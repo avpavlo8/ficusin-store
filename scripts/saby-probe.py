@@ -65,7 +65,7 @@ def rpc(token, method, params, allow_error=False):
     """Read-only JSON-RPC call used by the manual schema probe."""
     response = request_json(
         urllib.request.Request(
-            "https://ret.saby.ru/service/?srv=1",
+            "https://online.sbis.ru/service/?srv=1",
             data=json.dumps(
                 {"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
                 ensure_ascii=False,
