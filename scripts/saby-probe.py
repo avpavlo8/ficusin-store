@@ -19,6 +19,7 @@
 import json
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -47,8 +48,17 @@ def shape(value):
 
 
 def request_json(request):
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        # Saby transports JSON-RPC warnings as HTTP 500. Preserve the JSON body
+        # so rpc() can report the useful contract error instead of a generic 500.
+        body = error.read()
+        try:
+            return json.loads(body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise SystemExit("Saby HTTP %d без JSON-описания ошибки" % error.code) from error
 
 
 def rpc(token, method, params):
