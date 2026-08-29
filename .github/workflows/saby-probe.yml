@@ -1,4 +1,4 @@
-name: Saby serializer source probe
+name: Saby receipt link probe
 on:
   pull_request:
     branches: [main]
@@ -9,13 +9,10 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Saby core runtime
-        run: |
-          mkdir -p /tmp/saby-core
-          curl --fail --location --retry 2 'https://cdn.sbis.ru/static/resources/contents.min.js?x_module=26.4213-107.24' -o /tmp/saby-core/contents.min.js
-          wc -c /tmp/saby-core/contents.min.js
-      - uses: actions/upload-artifact@v4
-        with:
-          name: saby-core-runtime
-          path: /tmp/saby-core
-          retention-days: 1
+      - uses: actions/checkout@v4
+      - name: Inspect receipt identifiers
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+        run: python3 scripts/saby-probe.py
