@@ -28,5 +28,5 @@ jobs:
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
-          SABY_PROBE_SEARCH: ${{ github.event_name == 'pull_request' && '__pricechange_create__:38691' || inputs.search }}
+          SABY_PROBE_SEARCH: ${{ github.event_name == 'pull_request' && '__pricechange_create__:Араукария' || inputs.search }}
         run: python3 scripts/saby-probe.py
