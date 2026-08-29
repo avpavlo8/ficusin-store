@@ -89,10 +89,13 @@ def print_record_schema(title, value):
     print("\n" + title)
     if isinstance(value, dict) and value.get("_type") == "record":
         fields = value.get("s") or []
-        data = value.get("d") or []
+        data = value.get("d") or {}
         for index, field in enumerate(fields):
             name = field.get("n") if isinstance(field, dict) else str(field)
-            print("  %-36s %s" % (name, shape(data[index] if index < len(data) else None)))
+            field_value = data.get(name) if isinstance(data, dict) else (
+                data[index] if index < len(data) else None
+            )
+            print("  %-36s %s" % (name, shape(field_value)))
         return
     if isinstance(value, dict) and value.get("_type") == "recordset":
         print("  recordset, rows:", len(value.get("d") or []))
@@ -115,7 +118,9 @@ def record_field(record, name):
     if name in record:
         return record[name]
     fields = record.get("s") or []
-    data = record.get("d") or []
+    data = record.get("d") or {}
+    if isinstance(data, dict):
+        return data.get(name)
     for index, field in enumerate(fields):
         if isinstance(field, dict) and field.get("n") == name:
             return data[index] if index < len(data) else None
@@ -127,7 +132,13 @@ def set_record_field(record, name, value):
         record[name] = value
         return
     fields = record.get("s") or []
-    data = record.get("d") or []
+    data = record.get("d") or {}
+    if isinstance(data, dict):
+        if any(isinstance(field, dict) and field.get("n") == name for field in fields):
+            data[name] = value
+            record["d"] = data
+            return
+        raise SystemExit("в записи Saby нет поля %s" % name)
     for index, field in enumerate(fields):
         if isinstance(field, dict) and field.get("n") == name:
             while len(data) <= index:
@@ -148,7 +159,7 @@ def collect_records(value, required_field):
             if current.get("_type") == "recordset":
                 fields = current.get("s") or []
                 for row in current.get("d") or []:
-                    if isinstance(row, list):
+                    if isinstance(row, (dict, list)):
                         record = {"_type": "record", "s": fields, "d": row, "f": 1}
                         if record_has_field(record, required_field):
                             result.append(record)
@@ -193,7 +204,10 @@ def sbis_record(values):
     """Encode a Wasaby Record exactly as the Retail JSON-RPC transport does."""
     return {
         "_type": "record",
-        "d": list(values.values()),
+        # Internal JSON protocol 2 requires the data block to be an object.
+        # Array-backed records are an older response representation that the
+        # readers above still accept for compatibility.
+        "d": dict(values),
         "s": [{"n": name, "t": sbis_type(value)} for name, value in values.items()],
         "f": 1,
     }
