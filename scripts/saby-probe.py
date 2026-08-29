@@ -37,6 +37,10 @@ def setf(r,name,value):
         if f.get("n")==name:r["d"][i]=value;return
 
 token=req(urllib.request.Request("https://online.sbis.ru/oauth/service/",data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),headers={"Content-Type":"application/json"},method="POST")).get("token")
+core=urllib.request.urlopen(urllib.request.Request("https://online.sbis.ru/resources/contents.min.js?x_module=26.4213-107.24",headers={"X-SBISAccessToken":token}),timeout=60).read()
+open("/tmp/saby-contents.min.js","wb").write(core)
+print("CORE_DOWNLOADED",len(core))
+raise SystemExit(0)
 catalog=req(urllib.request.Request("https://api.sbis.ru/retail/v2/nomenclature/list?"+urllib.parse.urlencode({"pointId":os.environ["SABY_POINT_ID"],"searchString":"Диффенбахия Reflector","pageSize":25,"page":0}),headers={"X-SBISAccessToken":token}))
 products=[x for x in (catalog.get("nomenclatures") or catalog.get("items") or []) if not x.get("isParent")]
 if not products:raise SystemExit("product not found")
