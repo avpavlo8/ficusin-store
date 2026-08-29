@@ -55,10 +55,10 @@ def setf(rec,name,value):
     return False
 
 def record(values):
-    return {"_type":"record","d":[v for v,t in values.values()],"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
+    return {"d":[v for v,t in values.values()],"s":[{"n":k,"t":t} for k,(v,t) in values.items()],"f":1}
 
 def recordset(fields, rows):
-    return {"_type":"recordset","s":[{"n":n,"t":t} for n,t in fields],
+    return {"s":[{"n":n,"t":t} for n,t in fields],
             "d":[[row.get(n) for n,t in fields] for row in rows]}
 
 required=("SABY_APP_CLIENT_ID","SABY_APP_SECRET","SABY_SECRET_KEY","SABY_POINT_ID")
