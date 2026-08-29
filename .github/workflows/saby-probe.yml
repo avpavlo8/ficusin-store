@@ -15,4 +15,5 @@ jobs:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
         run: python3 scripts/saby-probe.py
