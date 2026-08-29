@@ -49,6 +49,47 @@ def request_json(request):
         return json.load(response)
 
 
+def rpc(token, method, params):
+    """Read-only JSON-RPC call used by the manual schema probe."""
+    response = request_json(
+        urllib.request.Request(
+            "https://online.sbis.ru/service/?srv=1",
+            data=json.dumps(
+                {"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
+                ensure_ascii=False,
+            ).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "X-SBISAccessToken": token,
+            },
+            method="POST",
+        )
+    )
+    if response.get("error"):
+        error = response["error"]
+        raise SystemExit("%s: %s" % (method, error.get("message") or "ошибка Saby"))
+    return response.get("result")
+
+
+def print_record_schema(title, value):
+    """Print field names and shapes, never values from the customer account."""
+    print("\n" + title)
+    if isinstance(value, dict) and value.get("_type") == "record":
+        fields = value.get("s") or []
+        data = value.get("d") or []
+        for index, field in enumerate(fields):
+            name = field.get("n") if isinstance(field, dict) else str(field)
+            print("  %-36s %s" % (name, shape(data[index] if index < len(data) else None)))
+        return
+    if isinstance(value, dict) and value.get("_type") == "recordset":
+        print("  recordset, rows:", len(value.get("d") or []))
+        fields = value.get("s") or []
+        for field in fields:
+            print("  ", field.get("n") if isinstance(field, dict) else str(field))
+        return
+    print("  ", shape(value))
+
+
 required = ("SABY_APP_CLIENT_ID", "SABY_APP_SECRET", "SABY_SECRET_KEY", "SABY_POINT_ID")
 missing = [name for name in required if not os.environ.get(name)]
 if missing:
@@ -79,6 +120,38 @@ query = {
     "page": 0,
 }
 search = os.environ.get("SABY_PROBE_SEARCH", "").strip()
+if search.startswith("__pricechange_copy__:"):
+    document_id = int(search.rsplit(":", 1)[1])
+    copied = rpc(
+        token,
+        "PriceChange.Копировать",
+        {"ИдО": str(document_id), "ИмяМетода": "PriceChange.Список"},
+    )
+    print("Черновик изменения цен скопирован через API.")
+    print_record_schema("Ответ PriceChange.Копировать", copied)
+    raise SystemExit(0)
+
+if search.startswith("__pricechange_schema__:"):
+    document_id = int(search.rsplit(":", 1)[1])
+    document = rpc(
+        token,
+        "PriceChange.ПрочитатьДляУчастника",
+        {"ИдО": str(document_id), "ИмяМетода": "PriceChange.Список"},
+    )
+    print_record_schema("PriceChange.ПрочитатьДляУчастника", document)
+    positions = rpc(
+        token,
+        "PriceChangePosition.GetList",
+        {
+            "Фильтр": {"PriceChange": document_id, "HowPriceOrMarkupChanged": 0},
+            "Сортировка": None,
+            "Навигация": {"Страница": 0, "РазмерСтраницы": 50, "ЕстьЕще": True},
+            "ДопПоля": [],
+        },
+    )
+    print_record_schema("PriceChangePosition.GetList", positions)
+    raise SystemExit(0)
+
 if search:
     query["searchString"] = search
 
