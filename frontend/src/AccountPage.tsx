@@ -50,7 +50,7 @@ type OrderDetail = {
 };
 
 type FavoriteProduct = {
-  id: string; sku?: string; name: string; latin: string; price: number; image: string; stock: number;
+  id: string; name: string; latin: string; price: number; image: string; stock: number;
 };
 
 type Section = "orders" | "profile" | "favorites" | "reviews";
@@ -610,18 +610,18 @@ function FavoritesSection() {
   return <>
     <SectionHeading eyebrow="Сохранённые товары" title="Избранное" />
     {items.length ? (
-      <div className="storefront-grid">
+      <div className="product-grid">
         {items.map((product) => (
-          <article className="storefront-card ui-card" key={product.id}>
-            <button className="storefront-fav active" onClick={() => remove(product.id)} aria-label="Убрать из избранного">♥</button>
-            <a className="storefront-image" href={`/product/${product.id}`}><img src={product.image} alt={product.name} loading="lazy" /></a>
-            <a className="storefront-name" href={`/product/${product.id}`}>{product.name}</a>
-            {product.latin && <p className="storefront-latin">{product.latin}</p>}
-            <div className="storefront-buy"><span className="storefront-price"><strong>{money.format(product.price)}</strong>{product.stock <= 0 && <em>Под заказ</em>}</span>
-            <button type="button" disabled={product.stock <= 0}
-              onClick={() => { const key = product.sku || product.id; setCart((current) => ({ ...current, [key]: Math.min(product.stock, (current[key] || 0) + 1) })); }}>
-              {product.stock <= 0 ? "Нет в наличии" : cart[product.sku || product.id] ? `В корзине · ${cart[product.sku || product.id]}` : "В корзину"}
-            </button></div>
+          <article className="product-card" key={product.id}>
+            <button className="favorite-button active" onClick={() => remove(product.id)} aria-label="Убрать из избранного">♥</button>
+            <a className="product-image" href={`/product/${product.id}`}><img src={product.image} alt={product.name} /></a>
+            <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
+            <p>{product.latin}</p>
+            <strong>{money.format(product.price)}</strong>
+            <button className={cart[product.id] ? "primary-button" : "secondary-button"} type="button" disabled={product.stock <= 0}
+              onClick={() => setCart((current) => ({ ...current, [product.id]: Math.min(product.stock, (current[product.id] || 0) + 1) }))}>
+              {product.stock <= 0 ? "Нет в наличии" : cart[product.id] ? `Добавить ещё · ${cart[product.id]}` : "В корзину"}
+            </button>
           </article>
         ))}
       </div>

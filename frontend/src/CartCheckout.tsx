@@ -119,6 +119,7 @@ export function CartDrawer({
             {!page && <div className="cart-bonus" hidden />}
             {!page && <button className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
             {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" aria-label="Перейти к оформлению" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
+            {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
           </aside>
         )}
       </div>
@@ -220,10 +221,10 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const advance = (next: 2|3) => {
     const current = formRef.current?.querySelector<HTMLElement>(`[data-checkout-step="${step}"]`);
     const fields = Array.from(current?.querySelectorAll<HTMLInputElement>("input,textarea,select") || []);
-	const errors = Object.fromEntries(fields.filter((field) => !field.checkValidity()).map((field) => [field.name, field.validationMessage]));
-	setContactErrors(errors);
-	const invalid = fields.find((field) => !field.checkValidity());
-	if (invalid) { invalid.focus(); return; }
+    const errors = Object.fromEntries(fields.filter((field) => !field.checkValidity()).map((field) => [field.name, field.validationMessage]));
+    setContactErrors(errors);
+    const invalid = fields.find((field) => !field.checkValidity());
+    if (invalid) { invalid.focus(); return; }
 	track("checkout_step", { value: total, quantity: cartCount, properties: { from: step, to: next } });
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -327,7 +328,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
           </div>
-        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd className={deliveryFeePending ? "delivery-pending" : ""}>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div></aside></div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div><img src="/assets/redesign/checkout-summary-art.png" alt="" /></aside></div>
       )}
     </aside>
   );

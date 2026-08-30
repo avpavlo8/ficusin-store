@@ -57,45 +57,5 @@ export const attributeValue = (value: string | number | boolean | string[], unit
   return `${values.map(attributeLabel).join(", ")}${unit ? ` ${unit}` : ""}`;
 };
 
-export const productAttributeValue = (attribute: ProductAttribute) => {
-  const displayed = attribute.displayValue;
-  if (displayed !== undefined && displayed !== null) {
-    const values = Array.isArray(displayed) ? displayed : [displayed];
-    return `${values.join(", ")}${attribute.unit ? ` ${attribute.unit}` : ""}`;
-  }
-  const values = Array.isArray(attribute.value) ? attribute.value : [attribute.value];
-  const labels = values.map((value) => attribute.optionLabels?.[String(value)] || attributeLabel(value));
-  return `${labels.join(", ")}${attribute.unit ? ` ${attribute.unit}` : ""}`;
-};
-
 export const money = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value);
 export const stars = (rating: number) => `${"★".repeat(Math.round(rating))}${"☆".repeat(5 - Math.round(rating))}`;
-
-export type KeyCharacteristic = { code: string; label: string; value: string };
-
-const firstAttribute = (attributes: ProductAttribute[], ...tokens: string[]) => attributes.find((item) =>
-  tokens.some((token) => `${item.code} ${item.name}`.toLocaleLowerCase("ru").includes(token)),
-);
-const plantOnlyAttributeCodes = new Set(["plant_type", "height_cm", "pot_diameter_cm", "light_level", "watering", "humidity", "care_level", "toxicity", "pet_safety", "placement", "growth_habit", "height_class", "flowering"]);
-
-/** One source for the first-screen facts. Codes returned here are excluded from the full table. */
-export function keyCharacteristics(product: ProductDetail, variant?: ProductVariant): KeyCharacteristic[] {
-  const attributes = [...product.attributes, ...(variant?.attributes || [])].filter((item) => item.showInCharacteristics !== false);
-  const result: KeyCharacteristic[] = [];
-  const add = (code: string, label: string, value?: string | number) => {
-    if (value === undefined || value === null || String(value).trim() === "" || result.some((item) => item.code === code)) return;
-    result.push({ code, label, value: String(value) });
-  };
-  if (product.catalogSection === "plants") {
-    add("height_cm", "Высота", variant?.heightCm ? `${variant.heightCm} см` : undefined);
-    add("pot_diameter_cm", "Диаметр горшка", variant?.potDiameterCm ? `${variant.potDiameterCm} см` : undefined);
-    const kind = firstAttribute(attributes, "plant_type", "тип растения");
-    const pets = firstAttribute(attributes, "pet_safety", "toxicity", "питом", "токсич");
-    add(kind?.code || "plant_type", "Тип растения", kind ? productAttributeValue(kind) : product.plantKind ? attributeLabel(product.plantKind) : undefined);
-    add("origin", "Происхождение", product.passport.origin);
-    add(pets?.code || "pet_safety", "Для питомцев", pets ? productAttributeValue(pets) : product.petSafety ? attributeLabel(product.petSafety) : undefined);
-  } else {
-    attributes.filter((item) => !plantOnlyAttributeCodes.has(item.code)).slice(0, 5).forEach((item) => add(item.code, item.name, productAttributeValue(item)));
-  }
-  return result.slice(0, 5);
-}

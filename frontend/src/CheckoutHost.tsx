@@ -12,7 +12,6 @@ export type CartProduct = {
   price: number;
   image: string;
   stock?: number;
-  variantLabel?: string;
 };
 
 type StoreUser = {
