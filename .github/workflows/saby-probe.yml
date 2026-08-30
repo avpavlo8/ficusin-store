@@ -1,4 +1,4 @@
-name: Saby live receipt verification
+name: Saby live receipt read verification
 
 # Только вручную. Разведка нужна раз в жизни вопроса, расписание ей ни к чему.
 on:
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create and verify a receipt with positions
+      - name: Read the created receipt back from Saby
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
