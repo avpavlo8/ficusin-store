@@ -1,40 +1,31 @@
-import json, os, urllib.error, urllib.request
-
-def request(req):
-    try:
-        with urllib.request.urlopen(req,timeout=60) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as error:
-        return json.loads(error.read())
-
-token=request(urllib.request.Request("https://online.sbis.ru/oauth/service/",data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),headers={"Content-Type":"application/json"},method="POST"))["token"]
-
-def rpc(method,params):
-    result=request(urllib.request.Request("https://online.sbis.ru/service/?srv=1",data=json.dumps({"jsonrpc":"2.0","method":method,"params":params,"id":1},ensure_ascii=False).encode(),headers={"Content-Type":"application/json-rpc; charset=utf-8","X-SBISAccessToken":token},method="POST"))
-    if result.get("error"):
-        print(method,"ERROR",result["error"].get("details") or result["error"].get("message"))
-        raise SystemExit(1)
-    print(method,"OK")
-    return result.get("result")
-
-def rec(values, types=None):
-    types=types or {}
-    return {"_type":"record","d":list(values.values()),"s":[{"n":name,"t":types.get(name, "Логическое" if isinstance(value,bool) else "Число целое" if isinstance(value,int) else "Строка")} for name,value in values.items()]}
-
-copied=rpc("РеалВх.Копировать",{"ИдО":"38766","ИмяМетода":"РеалВх.Список"})
-doc=copied
-if isinstance(doc,dict) and "d" in doc and "s" in doc:
-    doc["_type"]="record"
-if isinstance(copied,dict) and copied.get("_type")!="record":
-    for value in copied.values():
-        if isinstance(value,dict) and value.get("_type")=="record":
-            doc=value;break
-if not isinstance(doc,dict) or doc.get("_type")!="record":
-    print("COPY_NO_RECORD",type(copied).__name__, sorted(copied)[:15] if isinstance(copied,dict) else "")
-    raise SystemExit(1)
-
-row=rec({"Номенклатура":"X8999268","КодЕГАИС":"","Количество":1,"Раздел":None},{"Номенклатура":"Строка","КодЕГАИС":"Строка","Количество":"Число вещественное","Раздел":"Строка"})
-rows={"_type":"recordset","d":[row["d"]],"s":row["s"]}
-actions=rec({"changed_document":True})
-result=rpc("РеалВх.NomCreateWithSaveBatch",{"doc_rec":doc,"rs":rows,"actions":actions})
-print("BATCH_RESULT",type(result).__name__, sorted(result)[:15] if isinstance(result,dict) else "")
+import json, os, re, urllib.error, urllib.request
+token=json.load(urllib.request.urlopen(urllib.request.Request("https://online.sbis.ru/oauth/service/",data=json.dumps({"app_client_id":os.environ["SABY_APP_CLIENT_ID"],"app_secret":os.environ["SABY_APP_SECRET"],"secret_key":os.environ["SABY_SECRET_KEY"]}).encode(),headers={"Content-Type":"application/json"},method="POST")))["token"]
+os.makedirs("/tmp/saby-transport",exist_ok=True)
+hashes={"Browser":"0be9805ed98858df248b6a2dfb76ba78","BrowserTransport":"1176a2de9445136329dd3209f17a9827"}
+patterns=[
+ "static/resources/{m}/{m}.min.js","static/resources/{m}.min.js","static/resources/{m}-min.js",
+ "static/resources/{m}/library.min.js","static/resources/{m}/bundle.min.js","static/resources/{m}/transport.min.js",
+ "static/resources/{m}/Transport.min.js","static/{m}/{m}.min.js","static/{m}.min.js",
+ "cdn/{m}/{m}.min.js","cdn/{m}.min.js",
+]
+hosts=["https://cdn.sbis.ru/","https://online.sbis.ru/"]
+for module,h in hashes.items():
+ for host in hosts:
+  for pattern in patterns:
+   url=host+pattern.format(m=module)+"?x_module="+h
+   try:
+    data=urllib.request.urlopen(urllib.request.Request(url,headers={"X-SBISAccessToken":token}),timeout=20).read()
+   except Exception:
+    continue
+   name=re.sub(r"[^A-Za-z0-9_.-]","_",url.split("?")[0])
+   open("/tmp/saby-transport/"+name,"wb").write(data)
+   print("OK",url,len(data))
+for url in ["https://online.sbis.ru/page/purchases?org=g-1","https://online.sbis.ru/"]:
+ try:
+  data=urllib.request.urlopen(urllib.request.Request(url,headers={"X-SBISAccessToken":token}),timeout=30).read()
+ except Exception as error:
+  print("PAGE_MISS",url,type(error).__name__); continue
+ open("/tmp/saby-transport/page.html","wb").write(data)
+ print("PAGE_OK",url,len(data))
+ for match in sorted(set(re.findall(rb'[^"\' ]*BrowserTransport[^"\' ]*',data))):
+  print("REF",match[:500].decode("utf-8","replace"))
