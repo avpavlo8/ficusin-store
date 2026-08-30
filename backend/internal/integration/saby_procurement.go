@@ -283,7 +283,7 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	}
 	var payload sabyDraftPayload
 	if err := json.Unmarshal(item.Payload, &payload); err != nil || payload.OrderID <= 0 || len(payload.Lines) == 0 {
-		return procurement.ActionExecution{}, errors.New("некорректный снимок черновика Saby")
+		return procurement.ActionExecution{}, errors.New("некорректный состав документа Saby")
 	}
 	if item.Channel == "saby_receipt" && len(payload.Supplier.TaxID) == 10 && len(payload.Supplier.KPP) != 9 {
 		return procurement.ActionExecution{}, errors.New("у российского поставщика не заполнен КПП")
@@ -291,52 +291,78 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	if item.Channel == "saby_price" {
 		return procurement.ActionExecution{}, errors.New("публичный API Saby не поддерживает внутренний документ «Изменение цен»; используйте импорт XLSX в Склад → Документы → Из файла")
 	}
-	organization, warehouse, err := client.receiptContext(ctx)
-	if err != nil {
-		return procurement.ActionExecution{}, err
-	}
-	document := map[string]any{
-		"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
-		"Примечание": fmt.Sprintf("Черновик Ficusin Store, закупка №%d", payload.OrderID),
-		"НашаОрганизация": organization,
-	}
-	lines := make([]map[string]any, 0, len(payload.Lines))
-	if item.Channel == "saby_receipt" {
-		document["Тип"] = "ДокОтгрВх"
-		document["Название"] = "Поступление"
-		document["Регламент"] = map[string]any{"Название": "Поступление"}
-		counterparty := map[string]any{"Название": payload.Supplier.Name}
-		if payload.Supplier.TaxID != "" {
-			counterparty["ИНН"] = payload.Supplier.TaxID
-		}
-		if payload.Supplier.KPP != "" {
-			counterparty["КПП"] = payload.Supplier.KPP
-		}
-		document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
-		document["Склад"] = warehouse
-		for _, line := range payload.Lines {
-			cost := line.UnitCost * float64(line.Quantity)
-			lines = append(lines, map[string]any{
-				"КодЕИ": "796", "НазваниеЕИ": "шт", "Количество": strconv.Itoa(line.Quantity),
-				"НомНомер": line.Code, "Номенклатура": line.Name, "НДС": "Без НДС",
-				"ТипНоменклатуры": map[string]any{"ВидУчета": "Товар"},
-				"СуммаСебест": strconv.FormatFloat(cost, 'f', 2, 64),
-				"СуммаСебестБезНДС": strconv.FormatFloat(cost, 'f', 2, 64), "СуммаСебестНДС": "0",
-			})
-		}
-	} else {
+	if item.Channel != "saby_receipt" {
 		return procurement.ActionExecution{}, fmt.Errorf("канал %s не поддерживается", item.Channel)
 	}
-	document["Наименования"] = lines
-	var written map[string]any
-	if err := client.rpc(ctx, "СБИС.ЗаписатьДокумент", map[string]any{"Документ": document}, &written); err != nil {
-		return procurement.ActionExecution{}, fmt.Errorf("создать черновик Saby: %w", err)
+
+	// A warehouse receipt is an internal РеалВх document. СБИС.ЗаписатьДокумент
+	// creates an EDO envelope and silently ignores its Наименования field here.
+	// The Retail card creates the header and then appends nomenclature in one
+	// RecordSet using JSON-RPC protocol 6; use that same contract.
+	var document map[string]any
+	filter := sabyRecord(map[string]any{"ТипДокумента": int64(224)}) // ДокОтгрВх / Поступление
+	if err := client.rpc(ctx, "РеалВх.Создать", map[string]any{"Фильтр": filter, "ИмяМетода": "РеалВх.Список"}, &document); err != nil {
+		return procurement.ActionExecution{}, fmt.Errorf("создать поступление Saby: %w", err)
 	}
-	id := nestedString(written, "Идентификатор")
-	if id == "" {
-		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор черновика")
+	if document["_type"] == nil {
+		document["_type"] = "record"
 	}
-	return procurement.ActionExecution{Completed: true, ExternalOperationID: id, ExternalURL: safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))}, nil
+	setSabyRecordField(document, "Примечание", fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID))
+
+	quantities := make(map[int64]float64, len(payload.Lines))
+	for _, line := range payload.Lines {
+		id, err := strconv.ParseInt(strings.TrimSpace(line.SabyID), 10, 64)
+		if err != nil || id <= 0 {
+			return procurement.ActionExecution{}, fmt.Errorf("у товара %q нет числового идентификатора Saby", line.Name)
+		}
+		quantities[id] += float64(line.Quantity)
+	}
+	fields := []any{
+		map[string]any{"n": "Номенклатура", "t": "Число целое"},
+		map[string]any{"n": "КодЕГАИС", "t": "Строка"},
+		map[string]any{"n": "Количество", "t": "Число вещественное"},
+		map[string]any{"n": "Раздел", "t": "Строка"},
+	}
+	rows := make([]any, 0, len(quantities))
+	for id, quantity := range quantities {
+		rows = append(rows, []any{id, "", quantity, nil})
+	}
+	recordSet := map[string]any{"_type": "recordset", "d": rows, "s": fields}
+	var added []any
+	if err := client.rpc(ctx, "РеалВх.NomCreateWithSaveBatch", map[string]any{
+		"doc_rec": document, "rs": recordSet,
+		"actions": sabyRecord(map[string]any{"changed_document": true}),
+	}, &added); err != nil {
+		return procurement.ActionExecution{}, fmt.Errorf("добавить товары в поступление Saby: %w", err)
+	}
+	if len(added) != len(rows) {
+		return procurement.ActionExecution{}, fmt.Errorf("Saby добавил %d из %d позиций поступления", len(added), len(rows))
+	}
+	guid := strings.TrimSpace(fmt.Sprint(sabyRecordField(document, "ИдентификаторДокумента")))
+	if guid == "" || guid == "<nil>" {
+		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор поступления")
+	}
+	link := "https://ret.saby.ru/opendoc.html?guid=" + url.QueryEscape(guid) + "&f3=259&client=43033516"
+	return procurement.ActionExecution{Completed: true, ExternalOperationID: guid, ExternalURL: link}, nil
+}
+
+func sabyRecord(values map[string]any) map[string]any {
+	data := make([]any, 0, len(values))
+	fields := make([]any, 0, len(values))
+	for name, value := range values {
+		typeName := "Строка"
+		switch value.(type) {
+		case bool:
+			typeName = "Логическое"
+		case int, int64:
+			typeName = "Число целое"
+		case float64:
+			typeName = "Число вещественное"
+		}
+		data = append(data, value)
+		fields = append(fields, map[string]any{"n": name, "t": typeName})
+	}
+	return map[string]any{"_type": "record", "d": data, "s": fields}
 }
 
 func safeSabyURL(value string) string {
@@ -352,7 +378,7 @@ func safeSabyURL(value string) string {
 }
 
 func (client *SabyClient) rpc(ctx context.Context, method string, params any, target any) error {
-	request := map[string]any{"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+	request := map[string]any{"jsonrpc": "2.0", "protocol": 6, "method": method, "params": params, "id": 1}
 	var response sabyRPCResponse
 	if err := client.authorizedJSON(ctx, http.MethodPost, client.serviceURL, request, &response); err != nil {
 		return err
