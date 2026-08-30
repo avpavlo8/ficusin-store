@@ -99,7 +99,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
     <div className="procurement-safety">
-      <div><strong>Изменения только после подтверждения</strong><p>Сайт применяет цену сразу. Для СБИС он создаёт только непроведённые документы; остатки и цены меняются после того, как вы сами нажмёте «Провести» в СБИС.</p><small>WB: {data.integrations.wb ? "подключён" : "нужен токен"} · Ozon: {data.integrations.ozon ? "подключён" : "нужны ключи"} · СБИС: {data.integrations.saby ? "черновики подключены" : "нужны ключи"}</small></div>
+      <div><strong>Изменения только после подтверждения</strong><p>Сайт применяет цену сразу. Для СБИС он создаёт документы поступления без проведения; остатки меняются после того, как вы сами нажмёте «Провести» в СБИС.</p><small>WB: {data.integrations.wb ? "подключён" : "нужен токен"} · Ozon: {data.integrations.ozon ? "подключён" : "нужны ключи"} · СБИС: {data.integrations.saby ? "поступления подключены" : "нужны ключи"}</small></div>
       <span>Проводка СБИС вручную</span>
     </div>
     <div className="admin-stats procurement-stats">
