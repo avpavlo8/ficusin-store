@@ -134,7 +134,7 @@ export type ProcurementActionItem = { id: number; lineId: number; productName: s
 export type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
 
 export type ProcurementOrderLine = {
-  id: number; sabyId: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
+  id: number; sabyId: string; sabyCode: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
   unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;

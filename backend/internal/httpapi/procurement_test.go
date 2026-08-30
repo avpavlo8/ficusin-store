@@ -51,6 +51,9 @@ func (stub *procurementStub) CreatePlan(_ context.Context, _ procurement.Actor, 
 func (stub *procurementStub) OrderDetail(context.Context, int64) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
 }
+func (stub *procurementStub) SabyPriceXLSX(context.Context, int64) ([]byte, string, error) {
+	return []byte("xlsx"), "saby-prices.xlsx", nil
+}
 func (stub *procurementStub) CalculateOrder(_ context.Context, _ procurement.Actor, _ int64, _ procurement.CalculationInput) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
 }

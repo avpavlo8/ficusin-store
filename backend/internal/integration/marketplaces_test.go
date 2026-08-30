@@ -257,6 +257,13 @@ func TestReadOnlyMarketplaceRequestRetriesRateLimit(t *testing.T) {
 	}
 }
 
+func TestMarketplaceRetryAfterAcceptsWildberriesDecimalSeconds(t *testing.T) {
+	response := &http.Response{Header: http.Header{"X-Ratelimit-Retry": []string{"2.5s"}}}
+	if got := marketplaceRetryAfter(response); got != 2500*time.Millisecond {
+		t.Fatalf("retry delay = %v, want 2.5s", got)
+	}
+}
+
 func TestReadOnlyMarketplaceRequestRetriesEmptyJSON(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

@@ -86,7 +86,6 @@ func TestSabyProbeCachesServiceSession(t *testing.T) {
 func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	var mutex sync.Mutex
 	methods := make([]string, 0)
-	added := false
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -111,17 +110,13 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			counterparty := document["Контрагент"].(map[string]any)["СвЮЛ"].(map[string]any)
 			if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
 			if nestedString(document["Склад"], "Название") != "ул. Новоселов, д. 40а" { t.Fatalf("warehouse: %+v", document["Склад"]) }
+			table := document["ТаблДок"].(map[string]any)
+			goods := table["Товары"].([]any)
+			row := goods[0].(map[string]any)
+			if nestedString(row["Номенклатура"], "ИдСБИС") != "42" || row["Количество"] != "2" { t.Fatalf("goods: %+v", goods) }
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"receipt-guid","СсылкаДляНашаОрганизация":"https://ret.saby.ru/opendoc.html?guid=receipt-guid"}}`))
 		case "ДокОтгрВх.Прочитать":
-			lines := `[]`
-			if added { lines = `[[42,2]]` }
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,"receipt-guid",{"_type":"recordset","d":` + lines + `,"s":[{"n":"Номенклатура","t":"Число целое"},{"n":"Количество","t":"Число вещественное"}]}],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"},{"n":"Строки","t":"Выборка"}]}}`))
-		case "РеалВх.NomCreateWithSaveBatch":
-			recordSet := rpc.Params["rs"].(map[string]any)
-			rows := recordSet["d"].([]any)
-			if len(rows) != 1 || rows[0].([]any)[0] != float64(42) || rows[0].([]any)[2] != float64(2) { t.Fatalf("rows: %+v", rows) }
-			added = true
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"created":true}}`))
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,"receipt-guid",{"_type":"recordset","d":[[42,2]],"s":[{"n":"Номенклатура","t":"Число целое"},{"n":"Количество","t":"Число вещественное"}]}],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"},{"n":"Строки","t":"Выборка"}]}}`))
 		default:
 			t.Fatalf("unsafe Saby method: %s", rpc.Method)
 		}
@@ -142,12 +137,12 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			t.Fatalf("draft flow attempted to post a document: %s", method)
 		}
 	}
-	want := []string{"sabyWarehouse.List", "СБИС.ЗаписатьДокумент", "ДокОтгрВх.Прочитать", "РеалВх.NomCreateWithSaveBatch", "ДокОтгрВх.Прочитать"}
+	want := []string{"sabyWarehouse.List", "СБИС.ЗаписатьДокумент", "ДокОтгрВх.Прочитать"}
 	if fmt.Sprint(methods) != fmt.Sprint(want) { t.Fatalf("methods: %+v, want %+v", methods, want) }
 }
 
-func TestSabyReceiptRetryReusesHeaderAndOnlyAddsMissingQuantity(t *testing.T) {
-	var writes, adds int
+func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
+	var writes int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -161,19 +156,16 @@ func TestSabyReceiptRetryReusesHeaderAndOnlyAddsMissingQuantity(t *testing.T) {
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"code":"3","name":"ул. Новоселов, д. 40а","organisation":{"inn":"620000000001","name":"ИП Павловский"}}]}`))
 		case "СБИС.ЗаписатьДокумент":
 			writes++
+			document := rpc.Params["Документ"].(map[string]any)
+			if document["ВнешнийИдентификатор"] != "ficusin-procurement-323" { t.Fatalf("external id: %+v", document) }
+			if _, exists := document["ИдСБИС"]; exists { t.Fatalf("retry must use external id, not an ambiguous Saby GUID: %+v", document) }
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"retry-guid"}}`))
 		case "ДокОтгрВх.Прочитать":
-			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,{"_type":"recordset","d":[[42,%d]],"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"Строки"}]}}`, adds)
-		case "РеалВх.NomCreateWithSaveBatch":
-			adds++
-			if adds == 1 {
-				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary"}}`))
+			if writes == 1 {
+				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary read error"}}`))
 				return
 			}
-			recordSet := rpc.Params["rs"].(map[string]any)
-			row := recordSet["d"].([]any)[0].([]any)
-			if row[2] != float64(1) { t.Fatalf("retry must add one missing item, row=%+v", row) }
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"created":true}}`))
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,{"_type":"recordset","d":[[42,2]],"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"Строки"}]}}`))
 		default:
 			t.Fatalf("unexpected method: %s", rpc.Method)
 		}
@@ -186,7 +178,7 @@ func TestSabyReceiptRetryReusesHeaderAndOnlyAddsMissingQuantity(t *testing.T) {
 	if err == nil || first.ExternalOperationID != "retry-guid" { t.Fatalf("first: %+v, err=%v", first, err) }
 	second, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload, ExternalOperationID: first.ExternalOperationID, ExternalURL: first.ExternalURL})
 	if err != nil || !second.Completed { t.Fatalf("second: %+v, err=%v", second, err) }
-	if writes != 1 || adds != 2 { t.Fatalf("writes=%d adds=%d", writes, adds) }
+	if writes != 2 { t.Fatalf("writes=%d", writes) }
 }
 
 func TestSabyErrorMessageUsesJSONRPCDetails(t *testing.T) {

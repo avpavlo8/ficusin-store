@@ -667,9 +667,10 @@ func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, en
 
 func marketplaceRetryAfter(response *http.Response) time.Duration {
 	value := firstNonEmpty(response.Header.Get("Retry-After"), response.Header.Get("X-Ratelimit-Retry"))
-	seconds, err := strconv.Atoi(strings.TrimSpace(value))
+	value = strings.TrimSpace(strings.TrimSuffix(value, "s"))
+	seconds, err := strconv.ParseFloat(value, 64)
 	if err == nil && seconds > 0 {
-		return time.Duration(seconds) * time.Second
+		return time.Duration(seconds * float64(time.Second))
 	}
 	return 0
 }

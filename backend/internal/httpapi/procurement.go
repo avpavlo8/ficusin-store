@@ -20,6 +20,7 @@ type procurementService interface {
 	CreateOrder(context.Context, procurement.Actor, procurement.OrderCreate) (procurement.OrderSummary, error)
 	CreatePlan(context.Context, procurement.Actor, procurement.PlanCreate) (procurement.OrderSummary, error)
 	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
+	SabyPriceXLSX(context.Context, int64) ([]byte, string, error)
 	CalculateOrder(context.Context, procurement.Actor, int64, procurement.CalculationInput) (procurement.OrderDetail, error)
 	UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error)
 	DeleteOrder(context.Context, procurement.Actor, int64) error
@@ -198,6 +199,26 @@ func (handlers procurementHandlers) orderDetail(response http.ResponseWriter, re
 		return
 	}
 	writeJSON(response, http.StatusOK, item)
+}
+
+func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	content, name, err := handlers.service.SabyPriceXLSX(request.Context(), orderID)
+	if err != nil {
+		handlers.failed(response, "build Saby price XLSX", err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	response.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	response.Header().Set("Cache-Control", "no-store")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(content)
 }
 
 func (handlers procurementHandlers) calculateOrder(response http.ResponseWriter, request *http.Request) {
