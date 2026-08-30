@@ -79,7 +79,7 @@ const batchDisplayRows = (batch: ProcurementActionBatch) => batch.items.flatMap(
 export const batchStatusLabel = (value: string) => ({ draft: "Черновик", processing: "Выполняется", completed: "Выполнено", partially_completed: "Выполнено частично", failed: "Ошибка", cancelled: "Отменено" }[value] || value);
 
 export const actionStatus = (item: ProcurementActionItem) => {
-  const label = item.channel === "saby_receipt" && item.status === "draft" ? "Подготовлено" : ({ draft: "Черновик", queued: "В очереди", processing: "Отправляется", completed: "Выполнено", failed: "Ошибка", skipped: "Пропущено", not_configured: "API не подключён" } as Record<string, string>)[item.status] || item.status);
+  const label = item.channel === "saby_receipt" && item.status === "draft" ? "Подготовлено" : (({ draft: "Черновик", queued: "В очереди", processing: "Отправляется", completed: "Выполнено", failed: "Ошибка", skipped: "Пропущено", not_configured: "API не подключён" } as Record<string, string>)[item.status] || item.status);
   return <><span className={item.status === "completed" ? "procurement-ok" : item.status === "failed" || item.status === "not_configured" || item.status === "skipped" ? "procurement-warning" : ""}>{label}</span>{item.externalUrl && <a href={item.externalUrl} target="_blank" rel="noreferrer"><small>{item.channel === "saby_receipt" ? "Открыть поступление в СБИС" : "Открыть документ в СБИС"}</small></a>}{item.errorMessage && <small>{item.errorMessage}</small>}</>;
 };
 
