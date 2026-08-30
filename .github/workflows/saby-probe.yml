@@ -1,13 +1,9 @@
-name: Saby probe
+name: Saby live receipt verification
 
 # Только вручную. Разведка нужна раз в жизни вопроса, расписание ей ни к чему.
 on:
-  workflow_dispatch:
-    inputs:
-      search:
-        description: Название товара для поиска (например, Араукария)
-        required: false
-        default: Араукария
+  push:
+    branches: [codex/saby-live-receipt-20260830]
 
 permissions:
   contents: read
@@ -17,11 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Probe Saby nomenclature
+      - name: Create and verify a receipt with positions
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
-          SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-probe.py
