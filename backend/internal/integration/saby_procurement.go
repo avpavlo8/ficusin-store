@@ -365,6 +365,36 @@ func sabyRecord(values map[string]any) map[string]any {
 	return map[string]any{"_type": "record", "d": data, "s": fields}
 }
 
+func sabyRecordField(record map[string]any, name string) any {
+	fields, _ := record["s"].([]any)
+	data, _ := record["d"].([]any)
+	for index, raw := range fields {
+		field, _ := raw.(map[string]any)
+		if field["n"] == name && index < len(data) {
+			return data[index]
+		}
+	}
+	return record[name]
+}
+
+func setSabyRecordField(record map[string]any, name string, value any) bool {
+	fields, _ := record["s"].([]any)
+	data, _ := record["d"].([]any)
+	for index, raw := range fields {
+		field, _ := raw.(map[string]any)
+		if field["n"] == name && index < len(data) {
+			data[index] = value
+			record["d"] = data
+			return true
+		}
+	}
+	if _, exists := record[name]; exists {
+		record[name] = value
+		return true
+	}
+	return false
+}
+
 func safeSabyURL(value string) string {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme != "https" {
