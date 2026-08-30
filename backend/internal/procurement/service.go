@@ -73,6 +73,19 @@ type Service struct {
 	executor Executor
 }
 
+func (service *Service) SabyPriceXLSX(ctx context.Context, orderID int64) ([]byte, string, error) {
+	detail, err := service.store.OrderDetail(ctx, orderID)
+	if err != nil {
+		return nil, "", err
+	}
+	content, count, err := BuildSabyPriceXLSX(detail.Lines)
+	if err != nil {
+		return nil, "", err
+	}
+	name := fmt.Sprintf("saby-prices-%d-%d-items.xlsx", orderID, count)
+	return content, name, nil
+}
+
 func NewService(store Store) *Service {
 	return &Service{store: store, parser: NewPDFParser()}
 }

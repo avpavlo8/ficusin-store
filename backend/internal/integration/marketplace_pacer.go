@@ -40,6 +40,11 @@ func marketplacePace(host string) time.Duration {
 	case strings.HasSuffix(host, "statistics-api.wildberries.ru"),
 		strings.HasSuffix(host, "finance-api.wildberries.ru"):
 		return 65 * time.Second
+	case strings.HasSuffix(host, "discounts-prices-api.wildberries.ru"):
+		// The price endpoint shares a seller-wide limiter with other
+		// integrations. A one-second cadence still produced bursts of 429 in
+		// production; ten seconds keeps this worker deliberately gradual.
+		return 10 * time.Second
 	case strings.HasSuffix(host, "wildberries.ru"):
 		return time.Second
 	default:

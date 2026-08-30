@@ -301,82 +301,69 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	}
 
 	quantities := make(map[int64]float64, len(payload.Lines))
+	lines := make([]map[string]any, 0, len(payload.Lines))
 	for _, line := range payload.Lines {
 		id, err := strconv.ParseInt(strings.TrimSpace(line.SabyID), 10, 64)
 		if err != nil || id <= 0 {
 			return procurement.ActionExecution{}, fmt.Errorf("у товара %q нет числового идентификатора Saby", line.Name)
 		}
 		quantities[id] += float64(line.Quantity)
+		row := map[string]any{
+			"Номенклатура": map[string]any{"ИдСБИС": strconv.FormatInt(id, 10)},
+			"ЕдИзм": map[string]any{"ИдСБИС": "796"},
+			"Количество": strconv.Itoa(line.Quantity),
+		}
+		if line.UnitCost > 0 {
+			price := strconv.FormatFloat(line.UnitCost, 'f', 2, 64)
+			total := strconv.FormatFloat(line.UnitCost*float64(line.Quantity), 'f', 2, 64)
+			row["Цена"], row["ЦенаБезНДС"] = price, price
+			row["Сумма"], row["СуммаБезНДС"], row["СуммаНДС"] = total, total, "0.00"
+		}
+		lines = append(lines, row)
 	}
 
-	// СБИС.ЗаписатьДокумент reliably fills the receipt header (supplier,
-	// organization and warehouse), but ignores warehouse rows. The internal
-	// Retail method reliably saves rows, so use the public method for the header
-	// and then continue with the exact internal record returned for that GUID.
-	// Persist the GUID through ActionExecution on every later error: the worker
-	// can retry the same draft instead of creating another empty document.
+	// The public API3 receipt contract calls its table section ТаблДок.Товары.
+	// "Наименования" belongs to another document representation and was silently
+	// ignored; the internal NomCreateWithSaveBatch workaround was brittle and in
+	// production rejected one of its synthetic fields as a non-Int64 value.
+	// Keep a stable external identifier so a retry updates the same draft.
 	guid := strings.TrimSpace(item.ExternalOperationID)
 	link := safeSabyURL(item.ExternalURL)
+	organization, warehouse, err := client.receiptContext(ctx)
+	if err != nil {
+		return procurement.ActionExecution{}, err
+	}
+	document := map[string]any{
+		"Тип": "ДокОтгрВх", "Название": "Поступление", "Регламент": "Поступление",
+		"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
+		"Комментарий": fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID),
+		"ВнешнийИдентификатор": fmt.Sprintf("ficusin-procurement-%d", payload.OrderID),
+		"НашаОрганизация": organization, "Склад": warehouse,
+		"СуммаВключаетНДС": false,
+		"ТаблДок": map[string]any{"Товары": lines},
+	}
+	counterparty := map[string]any{"Название": payload.Supplier.Name, "ИНН": payload.Supplier.TaxID}
+	if payload.Supplier.KPP != "" {
+		counterparty["КПП"] = payload.Supplier.KPP
+	}
+	document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
+	var written map[string]any
+	if err := client.rpc(ctx, "СБИС.ЗаписатьДокумент", map[string]any{"Документ": document}, &written); err != nil {
+		return procurement.ActionExecution{ExternalOperationID: guid, ExternalURL: link}, fmt.Errorf("создать поступление Saby с товарами: %w", err)
+	}
+	if writtenID := nestedString(written, "Идентификатор"); writtenID != "" {
+		guid = writtenID
+	}
+	if writtenLink := safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация")); writtenLink != "" {
+		link = writtenLink
+	}
 	if guid == "" {
-		organization, warehouse, err := client.receiptContext(ctx)
-		if err != nil {
-			return procurement.ActionExecution{}, err
-		}
-		document := map[string]any{
-			"Тип": "ДокОтгрВх", "Название": "Поступление",
-			"Регламент": map[string]any{"Название": "Поступление"},
-			"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
-			"Примечание": fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID),
-			"НашаОрганизация": organization, "Склад": warehouse,
-		}
-		counterparty := map[string]any{"Название": payload.Supplier.Name, "ИНН": payload.Supplier.TaxID}
-		if payload.Supplier.KPP != "" {
-			counterparty["КПП"] = payload.Supplier.KPP
-		}
-		document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
-		var written map[string]any
-		if err := client.rpc(ctx, "СБИС.ЗаписатьДокумент", map[string]any{"Документ": document}, &written); err != nil {
-			return procurement.ActionExecution{}, fmt.Errorf("создать шапку поступления Saby: %w", err)
-		}
-		guid = nestedString(written, "Идентификатор")
-		link = safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))
-		if guid == "" {
-			return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор поступления")
-		}
+		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор поступления")
 	}
 	if link == "" {
 		link = "https://ret.saby.ru/opendoc.html?guid=" + url.QueryEscape(guid) + "&f3=259&client=43033516"
 	}
 	execution := procurement.ActionExecution{ExternalOperationID: guid, ExternalURL: link}
-	document, current, err := client.readReceipt(ctx, guid)
-	if err != nil {
-		return execution, fmt.Errorf("открыть созданное поступление Saby %s: %w", link, err)
-	}
-	fields := []any{
-		map[string]any{"n": "Номенклатура", "t": "Число целое"},
-		map[string]any{"n": "КодЕГАИС", "t": "Строка"},
-		map[string]any{"n": "Количество", "t": "Число вещественное"},
-		map[string]any{"n": "Раздел", "t": "Строка"},
-	}
-	rows := make([]any, 0, len(quantities))
-	for id, quantity := range quantities {
-		missing := quantity - current[id]
-		if missing > 0.0001 {
-			rows = append(rows, []any{id, "", missing, nil})
-		}
-	}
-	if len(rows) == 0 {
-		execution.Completed = true
-		return execution, nil
-	}
-	recordSet := map[string]any{"_type": "recordset", "d": rows, "s": fields}
-	var added any
-	if err := client.rpc(ctx, "РеалВх.NomCreateWithSaveBatch", map[string]any{
-		"doc_rec": document, "rs": recordSet,
-		"actions": sabyRecord(map[string]any{"changed_document": true}),
-	}, &added); err != nil {
-		return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
-	}
 	_, saved, err := client.readReceipt(ctx, guid)
 	if err != nil {
 		return execution, fmt.Errorf("проверить позиции поступления Saby %s: %w", link, err)
