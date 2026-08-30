@@ -357,6 +357,7 @@ type ProductDirectoryItem struct {
 	MinimumOrderQty    int      `json:"minimumOrderQty"`
 	OrderMultiple      int      `json:"orderMultiple"`
 	Aliases            []string `json:"aliases"`
+	AliasIDs           []int64  `json:"aliasIds"`
 }
 
 type ProductDirectoryUpdate struct {

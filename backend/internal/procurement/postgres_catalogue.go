@@ -535,12 +535,41 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_order_lines SET
-			saby_id = NULLIF($2, ''), match_status = $3, updated_at = CURRENT_TIMESTAMP
+			saby_id = NULLIF($2, ''), match_status = $3,
+			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
+			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
+			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
+			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE supplier_alias_id = $1 AND procurement_order_id IN (
 			SELECT id FROM procurement_orders WHERE status NOT IN ('received', 'cancelled')
 		)
 	`, aliasID, input.SabyID, input.MatchStatus); err != nil {
 		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
+	}
+	// A prepared document contains a snapshot of the old Saby IDs and balances.
+	// After an alias is moved to another card that snapshot must not be reused.
+	// Cancel only batches which have not produced a successful external action;
+	// an already completed Saby document remains immutable and visible in history.
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_action_batches batch SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+		WHERE batch.procurement_order_id IN (
+			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1
+		) AND batch.status IN ('draft', 'partially_completed')
+		AND NOT EXISTS (
+			SELECT 1 FROM procurement_action_items item
+			WHERE item.batch_id = batch.id AND item.status = 'completed'
+		)
+	`, aliasID); err != nil {
+		return AliasReview{}, fmt.Errorf("cancel stale procurement batches after rematch: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_orders SET status = 'review', calculated_at = NULL,
+			calculation_settings = NULL, calculation_version = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE status NOT IN ('received', 'cancelled') AND id IN (
+			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1
+		)
+	`, aliasID); err != nil {
+		return AliasReview{}, fmt.Errorf("invalidate procurement calculation after rematch: %w", err)
 	}
 	if input.MatchStatus == "confirmed" {
 		if _, err := tx.Exec(ctx, `

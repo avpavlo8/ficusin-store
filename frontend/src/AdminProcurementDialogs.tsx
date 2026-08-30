@@ -73,7 +73,7 @@ export function ProcurementOrderDetailDialog({ orderId, onClose, onSaved, onErro
 export const channelLabel = (value: string) => ({ site: "Сайт", saby_price: "СБИС — цена", saby_receipt: "СБИС — поступление", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 
 const batchDisplayRows = (batch: ProcurementActionBatch) => batch.items.flatMap((item) => item.previewLines?.length
-  ? item.previewLines.map((line, index) => ({ key: `${item.id}-${line.sabyId}`, item, productName: line.name, productCode: line.code, oldValue: line.oldPrice, newValue: line.newPrice || 0, quantity: line.quantity, oldBalance: line.oldBalance, newBalance: line.newBalance, showStatus: index === 0 }))
+  ? item.previewLines.map((line, index) => ({ key: `${item.id}-${line.sabyId}`, item, productName: line.name, productCode: [line.code, `ID ${line.sabyId}`].filter(Boolean).join(" · "), oldValue: line.oldPrice, newValue: line.newPrice || 0, quantity: line.quantity, oldBalance: line.oldBalance, newBalance: line.newBalance, showStatus: index === 0 }))
   : [{ key: String(item.id), item, productName: item.productName, productCode: item.productCode, oldValue: item.oldValue, newValue: item.newValue, quantity: item.quantity, oldBalance: undefined, newBalance: undefined, showStatus: true }]);
 
 export const batchStatusLabel = (value: string) => ({ draft: "Черновик", processing: "Выполняется", completed: "Выполнено", partially_completed: "Выполнено частично", failed: "Ошибка", cancelled: "Отменено" }[value] || value);

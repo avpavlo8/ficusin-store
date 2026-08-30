@@ -22,6 +22,11 @@ const (
 	defaultSabyAuth    = "https://online.sbis.ru/oauth/service/"
 	defaultSabyAPI     = "https://api.sbis.ru"
 	defaultSabyService = "https://online.sbis.ru/service/?srv=1"
+	// Responses of internal warehouse methods contain the saved document and
+	// all of its rows. A real receipt is routinely larger than 64 KiB; cutting
+	// it at that boundary turns a successful Saby write into an ambiguous
+	// "unexpected end of JSON input" on our side.
+	maxSabyResponse = 8 << 20
 )
 
 // SabyClient caches one service session. Saby allows only five active
@@ -295,20 +300,6 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		return procurement.ActionExecution{}, fmt.Errorf("канал %s не поддерживается", item.Channel)
 	}
 
-	// A warehouse receipt is an internal РеалВх document. СБИС.ЗаписатьДокумент
-	// creates an EDO envelope and silently ignores its Наименования field here.
-	// The Retail card creates the header and then appends nomenclature in one
-	// RecordSet using JSON-RPC protocol 6; use that same contract.
-	var document map[string]any
-	filter := sabyRecord(map[string]any{"ТипДокумента": int64(224)}) // ДокОтгрВх / Поступление
-	if err := client.rpc(ctx, "РеалВх.Создать", map[string]any{"Фильтр": filter, "ИмяМетода": "РеалВх.Список"}, &document); err != nil {
-		return procurement.ActionExecution{}, fmt.Errorf("создать поступление Saby: %w", err)
-	}
-	if document["_type"] == nil {
-		document["_type"] = "record"
-	}
-	setSabyRecordField(document, "Примечание", fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID))
-
 	quantities := make(map[int64]float64, len(payload.Lines))
 	for _, line := range payload.Lines {
 		id, err := strconv.ParseInt(strings.TrimSpace(line.SabyID), 10, 64)
@@ -316,6 +307,50 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 			return procurement.ActionExecution{}, fmt.Errorf("у товара %q нет числового идентификатора Saby", line.Name)
 		}
 		quantities[id] += float64(line.Quantity)
+	}
+
+	// СБИС.ЗаписатьДокумент reliably fills the receipt header (supplier,
+	// organization and warehouse), but ignores warehouse rows. The internal
+	// Retail method reliably saves rows, so use the public method for the header
+	// and then continue with the exact internal record returned for that GUID.
+	// Persist the GUID through ActionExecution on every later error: the worker
+	// can retry the same draft instead of creating another empty document.
+	guid := strings.TrimSpace(item.ExternalOperationID)
+	link := safeSabyURL(item.ExternalURL)
+	if guid == "" {
+		organization, warehouse, err := client.receiptContext(ctx)
+		if err != nil {
+			return procurement.ActionExecution{}, err
+		}
+		document := map[string]any{
+			"Тип": "ДокОтгрВх", "Название": "Поступление",
+			"Регламент": map[string]any{"Название": "Поступление"},
+			"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
+			"Примечание": fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID),
+			"НашаОрганизация": organization, "Склад": warehouse,
+		}
+		counterparty := map[string]any{"Название": payload.Supplier.Name, "ИНН": payload.Supplier.TaxID}
+		if payload.Supplier.KPP != "" {
+			counterparty["КПП"] = payload.Supplier.KPP
+		}
+		document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
+		var written map[string]any
+		if err := client.rpc(ctx, "СБИС.ЗаписатьДокумент", map[string]any{"Документ": document}, &written); err != nil {
+			return procurement.ActionExecution{}, fmt.Errorf("создать шапку поступления Saby: %w", err)
+		}
+		guid = nestedString(written, "Идентификатор")
+		link = safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))
+		if guid == "" {
+			return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор поступления")
+		}
+	}
+	if link == "" {
+		link = "https://ret.saby.ru/opendoc.html?guid=" + url.QueryEscape(guid) + "&f3=259&client=43033516"
+	}
+	execution := procurement.ActionExecution{ExternalOperationID: guid, ExternalURL: link}
+	document, current, err := client.readReceipt(ctx, guid)
+	if err != nil {
+		return execution, fmt.Errorf("открыть созданное поступление Saby %s: %w", link, err)
 	}
 	fields := []any{
 		map[string]any{"n": "Номенклатура", "t": "Число целое"},
@@ -325,25 +360,130 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	}
 	rows := make([]any, 0, len(quantities))
 	for id, quantity := range quantities {
-		rows = append(rows, []any{id, "", quantity, nil})
+		missing := quantity - current[id]
+		if missing > 0.0001 {
+			rows = append(rows, []any{id, "", missing, nil})
+		}
+	}
+	if len(rows) == 0 {
+		execution.Completed = true
+		return execution, nil
 	}
 	recordSet := map[string]any{"_type": "recordset", "d": rows, "s": fields}
-	var added []any
+	var added any
 	if err := client.rpc(ctx, "РеалВх.NomCreateWithSaveBatch", map[string]any{
 		"doc_rec": document, "rs": recordSet,
 		"actions": sabyRecord(map[string]any{"changed_document": true}),
 	}, &added); err != nil {
-		return procurement.ActionExecution{}, fmt.Errorf("добавить товары в поступление Saby: %w", err)
+		return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
 	}
-	if len(added) != len(rows) {
-		return procurement.ActionExecution{}, fmt.Errorf("Saby добавил %d из %d позиций поступления", len(added), len(rows))
+	_, saved, err := client.readReceipt(ctx, guid)
+	if err != nil {
+		return execution, fmt.Errorf("проверить позиции поступления Saby %s: %w", link, err)
 	}
-	guid := strings.TrimSpace(fmt.Sprint(sabyRecordField(document, "ИдентификаторДокумента")))
-	if guid == "" || guid == "<nil>" {
-		return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор поступления")
+	for id, quantity := range quantities {
+		if saved[id]+0.0001 < quantity {
+			return execution, fmt.Errorf("Saby сохранил для товара %d количество %.3g из %.3g; документ: %s", id, saved[id], quantity, link)
+		}
 	}
-	link := "https://ret.saby.ru/opendoc.html?guid=" + url.QueryEscape(guid) + "&f3=259&client=43033516"
-	return procurement.ActionExecution{Completed: true, ExternalOperationID: guid, ExternalURL: link}, nil
+	execution.Completed = true
+	return execution, nil
+}
+
+func (client *SabyClient) readReceipt(ctx context.Context, guid string) (map[string]any, map[int64]float64, error) {
+	var result any
+	if err := client.rpc(ctx, "ДокОтгрВх.Прочитать", map[string]any{"ИдО": guid, "ИмяМетода": "ДокОтгрВх.Список"}, &result); err != nil {
+		return nil, nil, err
+	}
+	document := findSabyRecord(result, "@Документ")
+	if document == nil {
+		return nil, nil, errors.New("Saby не вернул внутреннюю запись документа")
+	}
+	if document["_type"] == nil {
+		document["_type"] = "record"
+	}
+	return document, sabyLineQuantities(result), nil
+}
+
+func findSabyRecord(value any, fieldName string) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		if sabyRecordField(typed, fieldName) != nil {
+			return typed
+		}
+		for _, child := range typed {
+			if found := findSabyRecord(child, fieldName); found != nil {
+				return found
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if found := findSabyRecord(child, fieldName); found != nil {
+				return found
+			}
+		}
+	}
+	return nil
+}
+
+func sabyLineQuantities(value any) map[int64]float64 {
+	result := make(map[int64]float64)
+	var walk func(any)
+	walk = func(current any) {
+		switch typed := current.(type) {
+		case map[string]any:
+			fields, _ := typed["s"].([]any)
+			data, _ := typed["d"].([]any)
+			nomIndex, quantityIndex := sabyFieldIndex(fields, "Номенклатура"), sabyFieldIndex(fields, "Количество")
+			if nomIndex >= 0 && quantityIndex >= 0 {
+				if len(data) > 0 {
+					if _, recordSet := data[0].([]any); recordSet {
+						for _, rawRow := range data {
+							row, _ := rawRow.([]any)
+							addSabyQuantity(result, row, nomIndex, quantityIndex)
+						}
+					} else {
+						addSabyQuantity(result, data, nomIndex, quantityIndex)
+					}
+				}
+			}
+			for key, child := range typed {
+				if key != "d" || nomIndex < 0 {
+					walk(child)
+				}
+			}
+		case []any:
+			for _, child := range typed {
+				walk(child)
+			}
+		}
+	}
+	walk(value)
+	return result
+}
+
+func sabyFieldIndex(fields []any, name string) int {
+	for index, raw := range fields {
+		field, _ := raw.(map[string]any)
+		if field["n"] == name {
+			return index
+		}
+	}
+	return -1
+}
+
+func addSabyQuantity(result map[int64]float64, row []any, nomIndex, quantityIndex int) {
+	if nomIndex >= len(row) || quantityIndex >= len(row) {
+		return
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(row[nomIndex])), 10, 64)
+	if err != nil || id <= 0 {
+		return
+	}
+	quantity, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(fmt.Sprint(row[quantityIndex])), ",", "."), 64)
+	if err == nil {
+		result[id] += quantity
+	}
 }
 
 func sabyRecord(values map[string]any) map[string]any {
@@ -600,13 +740,23 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 	response, err := client.client.Do(request)
 	if err != nil { return 0, fmt.Errorf("Saby request failed: %w", err) }
 	defer response.Body.Close() //nolint:errcheck
-	content, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	limit := int64(maxSabyResponse)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		limit = 64 << 10
+	}
+	content, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil { return response.StatusCode, fmt.Errorf("read Saby response: %w", err) }
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return response.StatusCode, &remoteError{Status: response.StatusCode, Message: sabyErrorMessage(content)}
 	}
+	if int64(len(content)) > limit {
+		return response.StatusCode, fmt.Errorf("Saby ответил %d, но ответ длиннее %d МБ", response.StatusCode, maxSabyResponse>>20)
+	}
+	if len(bytes.TrimSpace(content)) == 0 {
+		return response.StatusCode, fmt.Errorf("Saby ответил %d без тела ответа", response.StatusCode)
+	}
 	if err := json.Unmarshal(content, target); err != nil {
-		return response.StatusCode, fmt.Errorf("decode Saby response: %w", err)
+		return response.StatusCode, fmt.Errorf("разобрать ответ Saby (%d): %w", response.StatusCode, err)
 	}
 	return response.StatusCode, nil
 }

@@ -27,7 +27,10 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			sp.minimum_order_qty, sp.order_multiple,
 			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
-				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::TEXT[])
+				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::TEXT[]),
+			COALESCE((SELECT ARRAY_AGG(a.id ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
+				FROM procurement_supplier_aliases a
+				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::BIGINT[])
 		FROM procurement_supplier_products sp
 		JOIN procurement_suppliers s ON s.id = sp.supplier_id
 		JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
@@ -49,7 +52,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
 			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
 			&item.MinimumOrderQty, &item.OrderMultiple,
-			&item.Aliases); err != nil {
+			&item.Aliases, &item.AliasIDs); err != nil {
 			return nil, fmt.Errorf("scan procurement product directory: %w", err)
 		}
 		items = append(items, item)
