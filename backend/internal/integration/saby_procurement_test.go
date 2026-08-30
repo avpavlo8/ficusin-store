@@ -48,7 +48,6 @@ func TestSabyProbeCachesServiceSession(t *testing.T) {
 func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	var mutex sync.Mutex
 	methods := make([]string, 0)
-	documents := make([]map[string]any, 0)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -56,25 +55,26 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			return
 		}
 		var rpc struct {
-			Method string         `json:"method"`
+			Method   string         `json:"method"`
+			Protocol int            `json:"protocol"`
 			Params map[string]any `json:"params"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
+		if rpc.Protocol != 6 { t.Fatalf("protocol = %d", rpc.Protocol) }
 		mutex.Lock()
 		methods = append(methods, rpc.Method)
 		mutex.Unlock()
-		if rpc.Method == "sabyWarehouse.List" {
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"code":"3","name":"ул. Новоселов, д. 40а","address":"ул. Новоселов, д. 40а","organisation":{"inn":"620000000001","name":"Павловский Александр Владимирович"}}]}`))
-			return
+		switch rpc.Method {
+		case "РеалВх.Создать":
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,"receipt-guid"],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"}]}}`))
+		case "РеалВх.NomCreateWithSaveBatch":
+			recordSet := rpc.Params["rs"].(map[string]any)
+			rows := recordSet["d"].([]any)
+			if len(rows) != 1 || rows[0].([]any)[0] != float64(42) || rows[0].([]any)[2] != float64(2) { t.Fatalf("rows: %+v", rows) }
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"created":true}]}`))
+		default:
+			t.Fatalf("unsafe Saby method: %s", rpc.Method)
 		}
-		if rpc.Method != "СБИС.ЗаписатьДокумент" { t.Fatalf("unsafe Saby method: %s", rpc.Method) }
-		document, ok := rpc.Params["Документ"].(map[string]any)
-		if !ok { t.Fatalf("document is missing: %+v", rpc.Params) }
-		mutex.Lock()
-		documents = append(documents, document)
-		index := len(documents)
-		mutex.Unlock()
-		_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"draft-` + string(rune('0'+index)) + `","СсылкаДляНашаОрганизация":"https://online.sbis.ru/draft"}}`))
 	}))
 	defer server.Close()
 
@@ -92,13 +92,7 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			t.Fatalf("draft flow attempted to post a document: %s", method)
 		}
 	}
-	if len(documents) != 1 { t.Fatalf("documents = %d, want 1", len(documents)) }
-	if documents[0]["Тип"] != "ДокОтгрВх" { t.Fatalf("receipt type: %+v", documents[0]) }
-	counterparty := documents[0]["Контрагент"].(map[string]any)["СвЮЛ"].(map[string]any)
-	if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
-	receiptLines := documents[0]["Наименования"].([]any)
-	receiptLine := receiptLines[0].(map[string]any)
-	if receiptLine["Количество"] != "2" || receiptLine["СуммаСебест"] != "251.00" || receiptLine["ТипНоменклатуры"].(map[string]any)["ВидУчета"] != "Товар" { t.Fatalf("receipt lines: %+v", receiptLines) }
+	if len(methods) != 2 || methods[0] != "РеалВх.Создать" || methods[1] != "РеалВх.NomCreateWithSaveBatch" { t.Fatalf("methods: %+v", methods) }
 }
 
 func TestSabyErrorMessageUsesJSONRPCDetails(t *testing.T) {
