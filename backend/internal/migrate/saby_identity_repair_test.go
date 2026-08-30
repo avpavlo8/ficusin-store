@@ -37,3 +37,33 @@ func TestSabyIdentityRepairIsConservative(t *testing.T) {
 		}
 	}
 }
+
+func TestProcurementSabyIdentityRepairKeepsOneCurrentCard(t *testing.T) {
+	raw, err := os.ReadFile("../../../timeweb/migrations/081_procurement_canonical_saby_ids.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(raw)
+	for _, required := range []string{
+		"saby_id ~ '^[0-9]+$'",
+		"HAVING COUNT(*) = 1",
+		"UPDATE procurement_supplier_aliases",
+		"UPDATE procurement_order_lines",
+		"INSERT INTO procurement_product_channels",
+		"item.status = 'completed'",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Errorf("procurement Saby repair lost safety condition %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"DELETE FROM saby_nomenclature",
+		"DELETE FROM procurement_orders",
+		"DELETE FROM procurement_order_lines",
+		"status = 'received'",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Errorf("procurement Saby repair became destructive: %q", forbidden)
+		}
+	}
+}

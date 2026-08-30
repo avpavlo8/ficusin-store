@@ -1,6 +1,6 @@
 import unittest
 
-from saby_catalog_merge import merge_catalog_items
+from saby_catalog_merge import build_sales_product_ids, merge_catalog_items
 
 
 class MergeCatalogItemsTest(unittest.TestCase):
@@ -50,6 +50,14 @@ class MergeCatalogItemsTest(unittest.TestCase):
         merged, conflicts = merge_catalog_items([], [{"id": 99, "name": "Товар", "balance": 2, "cost": 100}])
         self.assertEqual(merged, [{"id": 99, "name": "Товар", "balance": 2, "cost": 100}])
         self.assertEqual(conflicts, 0)
+
+    def test_sales_ids_use_numeric_catalogue_id_not_x_code(self):
+        identifiers = build_sales_product_ids([
+            {"id": 2971, "code": "X8999268", "nomNumber": "X8999268", "article": "PHAL-3"}
+        ])
+        self.assertEqual(identifiers["x8999268"], "2971")
+        self.assertEqual(identifiers["2971"], "2971")
+        self.assertEqual(identifiers["phal-3"], "2971")
 
 
 if __name__ == "__main__":

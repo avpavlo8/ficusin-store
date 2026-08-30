@@ -6,7 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from saby_catalog_merge import merge_catalog_items
+from saby_catalog_merge import build_sales_product_ids, merge_catalog_items
 
 stage = "settings"
 
@@ -170,20 +170,10 @@ try:
     # catalogue endpoint uses its own `id` as the canonical key. Build the
     # translation from every stable identifier returned in the same catalogue
     # snapshot so sales and balances reach one product in the store database.
-    sales_product_ids = {}
-    for item in catalog_items:
-        human_code = str(item.get("nomNumber") or "").strip()
-        canonical_id = (
-            human_code
-            if human_code.upper().startswith("X")
-            else str(item.get("id") or "").strip()
-        )
-        if not canonical_id:
-            continue
-        for field in ("id", "externalId", "code", "nomNumber", "article"):
-            source_id = str(item.get(field) or "").strip()
-            if source_id:
-                sales_product_ids[source_id.casefold()] = canonical_id
+    # nomNumber/code (X...) is searchable and human-readable, but it is not
+    # the catalogue identity. Always translate sales to catalogue.id so stock,
+    # sales and procurement all refer to one card.
+    sales_product_ids = build_sales_product_ids(catalog_items)
 
     stage = "saby-sales"
     sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))

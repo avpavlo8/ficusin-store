@@ -35,7 +35,8 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 		JOIN procurement_suppliers s ON s.id = sp.supplier_id
 		JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
 		LEFT JOIN procurement_product_channels pc ON pc.saby_id = n.saby_id
-		WHERE ($1 = 0 OR sp.supplier_id = $1) AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
+		WHERE n.missing_since IS NULL AND n.saby_id ~ '^[0-9]+$'
+			AND ($1 = 0 OR sp.supplier_id = $1) AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
 			OR n.code ILIKE '%' || $2 || '%' OR n.article ILIKE '%' || $2 || '%'
 			OR n.saby_id ILIKE '%' || $2 || '%' OR sp.supplier_article ILIKE '%' || $2 || '%')
 		ORDER BY s.name, n.name LIMIT 500
@@ -67,7 +68,8 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM saby_nomenclature WHERE saby_id = $1)`, input.SabyID).Scan(&exists); err != nil || !exists {
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM saby_nomenclature
+		WHERE saby_id = $1 AND missing_since IS NULL AND saby_id ~ '^[0-9]+$')`, input.SabyID).Scan(&exists); err != nil || !exists {
 		return ProductDirectoryItem{}, ErrNotFound
 	}
 	_, err = tx.Exec(ctx, `

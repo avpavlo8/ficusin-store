@@ -468,10 +468,12 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 		SELECT saby_id, code, article, name, balance,
 			price_minor::DOUBLE PRECISION / 100
 		FROM saby_nomenclature
-		WHERE name ILIKE '%' || $1 || '%'
+		WHERE missing_since IS NULL
+			AND saby_id ~ '^[0-9]+$'
+			AND (name ILIKE '%' || $1 || '%'
 			OR code ILIKE '%' || $1 || '%'
 			OR article ILIKE '%' || $1 || '%'
-			OR saby_id ILIKE '%' || $1 || '%'
+			OR saby_id ILIKE '%' || $1 || '%')
 		ORDER BY CASE
 			WHEN UPPER(code) = UPPER($1) OR UPPER(article) = UPPER($1) OR UPPER(saby_id) = UPPER($1) THEN 0
 			WHEN name ILIKE $1 || '%' THEN 1
@@ -513,7 +515,10 @@ func (store *PostgresStore) ResolveAlias(
 		return AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
 	}
 	if input.MatchStatus == "confirmed" {
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM saby_nomenclature WHERE saby_id = $1)`, input.SabyID).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM saby_nomenclature
+			WHERE saby_id = $1 AND missing_since IS NULL AND saby_id ~ '^[0-9]+$'
+		)`, input.SabyID).Scan(&exists); err != nil {
 			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
 		}
 		if !exists {
