@@ -78,3 +78,17 @@ def merge_catalog_items(catalog_items, price_items):
                 merged[field] = value
 
     return list(by_id.values()), balance_conflicts
+
+
+def build_sales_product_ids(catalog_items):
+    """Map every Saby product identifier to the numeric catalogue card ID."""
+    result = {}
+    for item in catalog_items:
+        canonical_id = str(item.get("id") or "").strip()
+        if not canonical_id:
+            continue
+        for field in ("id", "externalId", "code", "nomNumber", "article"):
+            source_id = str(item.get(field) or "").strip()
+            if source_id:
+                result[source_id.casefold()] = canonical_id
+    return result
