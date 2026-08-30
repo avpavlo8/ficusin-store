@@ -6,6 +6,7 @@ query=urllib.parse.urlencode({"pointId":os.environ["SABY_POINT_ID"],"withBalance
 page=load(urllib.request.Request("https://api.sbis.ru/retail/v2/nomenclature/list?"+query,headers={"X-SBISAccessToken":token}))
 rows=page.get("nomenclatures") or page.get("items") or page.get("result") or []
 for row in rows:
+ print("ROW",json.dumps(row,ensure_ascii=False,sort_keys=True))
  text=" ".join(str(row.get(k,"")) for k in ("id","hierarchicalId","code","article","name"))
  if "X8999268" in text:
   print(json.dumps(row,ensure_ascii=False,sort_keys=True))
