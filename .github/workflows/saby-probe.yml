@@ -1,25 +1,27 @@
-name: Saby receipt link probe
+name: Saby probe
+
+# Только вручную. Разведка нужна раз в жизни вопроса, расписание ей ни к чему.
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      search:
+        description: Название товара для поиска (например, Араукария)
+        required: false
+        default: Араукария
+
 permissions:
   contents: read
+
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect receipt identifiers
+      - name: Probe Saby nomenclature
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+          SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-probe.py
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: saby-transport
-          path: /tmp/saby-transport
-          retention-days: 1
