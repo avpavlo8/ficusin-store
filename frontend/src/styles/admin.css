@@ -51,6 +51,9 @@
 .success h2 { color: var(--green); font-size: 42px; font-weight: 400; }
 .success p { color: #667067; line-height: 1.6; }
 .success .primary-button { margin-top: 20px; }
+.mobile-menu { width: min(380px,100%); gap: 25px; }
+.mobile-menu > button { align-self: flex-end; }
+.mobile-menu a { padding-bottom: 17px; border-bottom: 1px solid var(--line); font: 400 28px Georgia, serif; }
 
 .legal-page { min-height: 100vh; background: var(--paper); }
 .legal-document { width: min(920px, 90vw); margin: 72px auto 100px; }

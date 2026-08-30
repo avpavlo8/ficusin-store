@@ -4,6 +4,7 @@ import { StoreHeader } from "./StoreHeader";
 function LegalPage({
   eyebrow,
   title,
+  scenic = false,
   children,
 }: {
   eyebrow: string;
@@ -12,9 +13,10 @@ function LegalPage({
   children: ReactNode;
 }) {
   return (
-    <main className="legal-page">
+    <main className={`legal-page ${scenic ? "legal-page-scenic" : ""}`}>
       <StoreHeader />
       <article className="legal-document">
+        {scenic && <div className="legal-scene" aria-hidden="true" />}
         <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>
         <p className="legal-updated">Редакция от 28 июля 2026 года</p>

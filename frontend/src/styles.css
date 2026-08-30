@@ -6,9 +6,7 @@
    каскад не изменился ни на одно правило. Новые стили кладите в файл своего
    раздела, а не в конец списка. */
 
-@import "./styles/tokens.css";
 @import "./styles/base.css";
-@import "./styles/components.css";
 @import "./styles/admin.css";
 @import "./styles/account.css";
 @import "./styles/product.css";
@@ -20,6 +18,5 @@
 @import "./styles/header.css";
 @import "./styles/admin-orders.css";
 @import "./styles/admin-orders-fixes.css";
-@import "./styles/mobile.css";
 
 .route-loading{min-height:70vh;display:grid;place-items:center;background:#fffaf3;color:#31482c}.route-loading span{font:500 22px Georgia,serif}
