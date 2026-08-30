@@ -8,14 +8,11 @@ def rpc(method,params):
  response=request(urllib.request.Request("https://online.sbis.ru/service/?srv=1",data=json.dumps({"jsonrpc":"2.0","protocol":6,"method":method,"params":params,"id":1},ensure_ascii=False).encode(),headers={"Content-Type":"application/json-rpc; charset=utf-8","X-SBISAccessToken":token},method="POST"))
  if response.get("error"):
   print(method,"ERROR",response["error"].get("details") or response["error"].get("message"));raise SystemExit(1)
- print(method,"OK");return response.get("result")
-def rec(values,types=None):
- types=types or {}
- return {"_type":"record","d":list(values.values()),"s":[{"n":name,"t":types.get(name,"Логическое" if isinstance(value,bool) else "Число целое" if isinstance(value,int) else "Число вещественное" if isinstance(value,float) else "Строка")} for name,value in values.items()]}
-doc=rpc("РеалВх.Создать",{"Фильтр":rec({"ВызовИзБраузера":True}),"ИмяМетода":"РеалВх.Список"})
-if isinstance(doc,dict) and "d" in doc and "s" in doc:doc["_type"]="record"
-row=rec({"Номенклатура":2971,"КодЕГАИС":"","Количество":1.0,"Раздел":None})
-rows={"_type":"recordset","d":[row["d"]],"s":row["s"]}
-actions=rec({"changed_document":True})
-result=rpc("РеалВх.NomCreateWithSaveBatch",{"doc_rec":doc,"rs":rows,"actions":actions})
-print("RESULT",type(result).__name__,sorted(result)[:12] if isinstance(result,dict) else "")
+ return response.get("result")
+doc=rpc("РеалВх.Копировать",{"ИдО":"38766","ИмяМетода":"РеалВх.Список"})
+fields=doc.get("s") or []; data=doc.get("d") or []
+for i,field in enumerate(fields):
+ name=field.get("n","")
+ if any(word in name for word in ("Тип","Регламент","Документ","Склад","Контрагент","Лицо")):
+  value=data[i] if i<len(data) else None
+  print(name,field.get("t"),json.dumps(value,ensure_ascii=False)[:500])
