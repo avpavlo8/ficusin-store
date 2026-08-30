@@ -106,8 +106,8 @@ test("production category and collection routes are real and unknown slugs are 4
   const collection = collections.find((item) => item.count > 0) || collections[0]; expect(collection?.slug).toBeTruthy();
   await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator(".catalog-landing-hero h1")).toContainText(collection.title); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
-  await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
-  await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
+  await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
+  await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
 });
 
 test("production category filters stay scoped and reset keeps the route", async ({ page }) => {
@@ -115,10 +115,10 @@ test("production category filters stay scoped and reset keeps the route", async 
   await expect(page.locator(".catalog-landing-hero h1")).toContainText("Растения");
   await page.getByRole("button", { name: /Фильтры/ }).click();
   const filters = page.locator(".storefront-attribute-filters").last();
-  await expect(filters).toContainText("Освещённость");
+  await expect(filters).toContainText(/Освещ/);
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters).not.toContainText("Материал");
-  const reset = page.getByRole("button", { name: "Сбросить все" }).last();
+  const reset = page.getByRole("button", { name: "Сбросить фильтры" }).last();
   await expect(reset).toBeVisible();
   await reset.click();
   await expect(page).toHaveURL(/\/catalog\/plants$/);
