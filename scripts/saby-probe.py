@@ -12,7 +12,7 @@ def rpc(method,params):
 def rec(values,types=None):
  types=types or {}
  return {"_type":"record","d":list(values.values()),"s":[{"n":name,"t":types.get(name,"Логическое" if isinstance(value,bool) else "Число целое" if isinstance(value,int) else "Число вещественное" if isinstance(value,float) else "Строка")} for name,value in values.items()]}
-doc=rpc("РеалВх.Копировать",{"ИдО":"38766","ИмяМетода":"РеалВх.Список"})
+doc=rpc("РеалВх.Создать",{"Фильтр":rec({"ВызовИзБраузера":True}),"ИмяМетода":"РеалВх.Список"})
 if isinstance(doc,dict) and "d" in doc and "s" in doc:doc["_type"]="record"
 row=rec({"Номенклатура":2971,"КодЕГАИС":"","Количество":1.0,"Раздел":None})
 rows={"_type":"recordset","d":[row["d"]],"s":row["s"]}
