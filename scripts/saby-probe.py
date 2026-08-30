@@ -9,8 +9,8 @@ def rpc(method,params):
  if response.get("error"):
   print(method,"ERROR",response["error"].get("details") or response["error"].get("message"));raise SystemExit(1)
  return response.get("result")
-doc=rpc("РеалВх.Копировать",{"ИдО":"38766","ИмяМетода":"РеалВх.Список"})
-fields=doc.get("s") or []; data=doc.get("d") or []
+doc=rpc("РеалВх.Создать",{"Фильтр":{"_type":"record","d":[224],"s":[{"n":"ТипДокумента","t":"Число целое"}]},"ИмяМетода":"РеалВх.Список"})
+print("CREATED", isinstance(doc,dict), sorted(doc)[:5] if isinstance(doc,dict) else "")\nraise SystemExit(0)\nfields=doc.get("s") or []; data=doc.get("d") or []
 for i,field in enumerate(fields):
  name=field.get("n","")
  if any(word in name for word in ("Тип","Регламент","Документ","Склад","Контрагент","Лицо")):
