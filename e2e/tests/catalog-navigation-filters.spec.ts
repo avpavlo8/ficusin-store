@@ -132,7 +132,7 @@ test("@desktop range chips select и boolean имеют разные контр�
   const careChips = filters.locator(".catalog-chip-filter", { hasText: "Сложность ухода" }).locator("button");
   await expect(careChips).toHaveCount(2);
   const flowering = filters.locator(".catalog-chip-filter", { hasText: "Цветёт" });
-  await expect(flowering.locator("button", { hasText: "Да" })).toHaveCount(1);
+  await expect(flowering.locator("button", { hasText: "Есть" })).toHaveCount(1);
   await expect(flowering.locator("button", { hasText: "Нет" })).toHaveCount(1);
   await expect(flowering).not.toContainText("true");
   await expect(flowering).not.toContainText("false");

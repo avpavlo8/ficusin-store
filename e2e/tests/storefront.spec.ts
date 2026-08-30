@@ -280,7 +280,11 @@ test("@desktop пустые вопросы и отзывы остаются по
 
 test("@desktop фотография открывается в полноэкранной галерее", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/1");
+  await page.route("**/api/v1/products/gallery", (route) => route.fulfill({ json: { product: {
+    id: "gallery", name: "Аглаонема с фотографией", latin: "Aglaonema", shortDescription: "", description: "", careInstructions: "",
+    images: ["/assets/product-pothos.png"], variants: [], recommendations: [], passport: {}, importantWarnings: [], rating: 0, reviewsCount: 0, reviews: [], catalogSection: "plants",
+  } } }));
+  await page.goto("/product/gallery");
   await page.getByRole("button", { name: "Открыть фотографию на весь экран" }).click();
   await expect(page.getByRole("dialog", { name: /Фотографии/ })).toBeVisible();
   await page.keyboard.press("Escape");
