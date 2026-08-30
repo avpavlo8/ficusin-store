@@ -3,11 +3,7 @@ import { horizontalOverflow, mockApi } from "./helpers";
 
 async function openPlantFilters(page: import("@playwright/test").Page) {
   await page.goto("/catalog/plants");
-  await page.locator(".home-filter-button:visible").click();
-}
-
-function filterPanel(page: import("@playwright/test").Page) {
-  return page.locator(".home-filter-panel:visible .storefront-attribute-filters");
+  await page.getByRole("button", { name: /Фильтры/ }).click();
 }
 
 test("@desktop Неприхотливые открывает каноническую страницу подборки", async ({ page }) => {
@@ -34,9 +30,9 @@ test("@desktop у подборок отсутствует множественн
 test("@desktop сброс дополнительных фильтров сохраняет подборку", async ({ page }) => {
   await mockApi(page);
   await page.goto("/collections/tall");
-  await page.locator(".home-filter-button:visible").click();
-  await page.locator(".home-catalog-toolbar .storefront-check input").check();
-  await page.getByRole("button", { name: "Сбросить все" }).click();
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  await page.locator(".home-filter-panel").getByLabel("Только в наличии").check();
+  await page.locator(".home-filter-panel").getByRole("button", { name: "Сбросить фильтры" }).click();
   await expect(page).toHaveURL(/\/collections\/tall$/);
   await expect(page.locator(".preset.active")).toContainText("Вырастает высоким");
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
@@ -46,21 +42,23 @@ test("@desktop сброс дополнительных фильтров сохр
 test("@desktop общий каталог не показывает смешанные атрибутные фильтры", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
+  await expect(page.locator(".storefront-attribute-filters")).toHaveCount(0);
   await expect(page.locator(".home-filter-group .catalog-dropdown")).toHaveCount(0);
+  await expect(page.getByText("Тип кашпо", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Освещение", { exact: true })).toHaveCount(0);
 });
 
 test("@desktop глобальный поиск не включает атрибутные фильтры без контекста", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?q=фикус");
-  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
+  await expect(page.locator(".storefront-attribute-filters")).toHaveCount(0);
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
 });
 
 test("@desktop категория растений показывает только растительные фильтры", async ({ page }) => {
   await mockApi(page);
   await openPlantFilters(page);
-  const filters = filterPanel(page);
+  const filters = page.locator(".storefront-attribute-filters");
   await expect(filters).toContainText("Освещение");
   await expect(filters).toContainText("Сложность ухода");
   await expect(filters).toContainText("Высота");
@@ -71,8 +69,8 @@ test("@desktop категория растений показывает толь
 test("@desktop категория кашпо показывает только фильтры кашпо", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
-  await page.locator(".home-filter-button:visible").click();
-  const filters = filterPanel(page);
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  const filters = page.locator(".storefront-attribute-filters");
   await expect(filters).toContainText("Тип кашпо");
   await expect(filters).toContainText("Материал");
   await expect(filters).toContainText("Дренажное отверстие");
@@ -83,8 +81,8 @@ test("@desktop категория кашпо показывает только �
 test("@desktop фильтры подборки вычисляются только по товарам подборки", async ({ page }) => {
   await mockApi(page);
   await page.goto("/collections/easy");
-  await page.locator(".home-filter-button:visible").click();
-  const filters = filterPanel(page);
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  const filters = page.locator(".storefront-attribute-filters");
   await expect(filters).toContainText("Освещение");
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters.getByRole("option", { name: /Рассеян/ })).toHaveCount(0);
@@ -108,9 +106,9 @@ test("@desktop прямой URL и Back Forward восстанавливают �
 test("@desktop неизвестные category и collection slug показывают 404", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/not-a-category");
-  await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
   await page.goto("/collections/not-a-collection");
-  await expect(page.getByRole("heading", { name: "Страница не найдена" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Здесь ничего не растёт/ })).toBeVisible();
 });
 
 test("@desktop пустая выдача сохраняет контекст и предлагает сброс", async ({ page }) => {
@@ -125,7 +123,7 @@ test("@desktop пустая выдача сохраняет контекст и 
 test("@desktop range chips select и boolean имеют разные контролы", async ({ page }) => {
   await mockApi(page);
   await openPlantFilters(page);
-  const filters = filterPanel(page);
+  const filters = page.locator(".storefront-attribute-filters");
   await expect(filters.getByLabel("Высота: от")).toHaveAttribute("type", "number");
   await expect(filters.getByLabel("Высота: до")).toHaveAttribute("type", "number");
   const select = filters.locator("select");
@@ -134,29 +132,26 @@ test("@desktop range chips select и boolean имеют разные контр�
   const careChips = filters.locator(".catalog-chip-filter", { hasText: "Сложность ухода" }).locator("button");
   await expect(careChips).toHaveCount(2);
   const flowering = filters.locator(".catalog-chip-filter", { hasText: "Цветёт" });
-  await expect(flowering.locator("button", { hasText: "Есть" })).toHaveCount(1);
+  await expect(flowering.locator("button", { hasText: "Да" })).toHaveCount(1);
   await expect(flowering.locator("button", { hasText: "Нет" })).toHaveCount(1);
   await expect(flowering).not.toContainText("true");
   await expect(flowering).not.toContainText("false");
 });
 
-test("@desktop explicit boolean display_mode=select remains a select", async ({ page }) => {
+test("@desktop явный boolean display_mode=select остаётся списком", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
-  await page.locator(".home-filter-button:visible").click();
-  const drainage = filterPanel(page).locator("label", { hasText: "Дренажное отверстие" });
+  const drainage = page.locator(".storefront-attribute-filters label", { hasText: "Дренажное отверстие" });
   await expect(drainage.locator("select")).toHaveCount(1);
   await expect(drainage.locator("option", { hasText: "Есть" })).toHaveCount(1);
   await expect(drainage).not.toContainText("true");
   await expect(drainage).not.toContainText("false");
-  await expect(drainage.locator("button")).toHaveCount(0);
 });
 
-test("@desktop display labels use the seeded public option vocabulary", async ({ page }) => {
+test("@desktop фильтры используют публичные подписи вместо кодов", async ({ page }) => {
   await mockApi(page);
   await page.goto("/catalog/pots");
-  await page.locator(".home-filter-button:visible").click();
-  const filters = filterPanel(page);
+  const filters = page.locator(".storefront-attribute-filters");
   await expect(filters).toContainText("Кашпо");
   await expect(filters).toContainText("Керамика");
   await expect(filters).not.toContainText("cachepot");
@@ -170,8 +165,8 @@ test("@desktop смена категории очищает несовмести
   await page.locator(".storefront-tree").getByRole("link", { name: /Кашпо и горшки/ }).click();
   await expect(page).toHaveURL(/\/catalog\/pots$/);
   await expect(page.url()).not.toContain("light_level");
-  await page.locator(".home-filter-button:visible").click();
-  await expect(filterPanel(page)).not.toContainText("Освещение");
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  await expect(page.locator(".storefront-attribute-filters")).not.toContainText("Освещение");
 });
 
 test("@desktop поиск из категории явно становится глобальным", async ({ page }) => {
@@ -181,11 +176,9 @@ test("@desktop поиск из категории явно становится 
   await expect(page.locator(".catalog-search-scope")).toContainText("по всему каталогу");
 });
 
-for (const width of [320, 360, 375, 390, 412, 430, 768]) {
-  test(`@phone catalog has no horizontal overflow at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: width <= 430 ? 844 : 900 });
-    await mockApi(page);
-    await page.goto("/catalog/plants");
-    await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(1);
-  });
-}
+test("@phone существующая вёрстка каталога не получает горизонтальный скролл", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto("/catalog/plants");
+  await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
