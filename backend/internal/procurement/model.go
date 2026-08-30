@@ -182,6 +182,7 @@ type OrderValidation struct {
 type OrderLine struct {
 	ID                           int64    `json:"id"`
 	SabyID                       string   `json:"sabyId"`
+	SabyCode                     string   `json:"sabyCode"`
 	SabyName                     string   `json:"sabyName"`
 	RawName                      string   `json:"rawName"`
 	SupplierArticle              string   `json:"supplierArticle"`

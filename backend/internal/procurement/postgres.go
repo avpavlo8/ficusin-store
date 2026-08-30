@@ -428,7 +428,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 		return OrderDetail{}, fmt.Errorf("load procurement order costs: %w", err)
 	}
 	rows, err := store.pool.Query(ctx, `
-		SELECT l.id, COALESCE(l.saby_id, ''), COALESCE(n.name, ''), l.raw_name,
+		SELECT l.id, COALESCE(l.saby_id, ''), COALESCE(n.code, ''), COALESCE(n.name, ''), l.raw_name,
 			l.supplier_article, COALESCE(l.invoiced_qty, l.ordered_qty),
 			l.ordered_qty, l.invoiced_qty,
 			COALESCE(l.unit_price, l.expected_unit_price, 0)::DOUBLE PRECISION,
@@ -452,7 +452,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	detail.Lines = make([]OrderLine, 0)
 	for rows.Next() {
 		var line OrderLine
-		if err := rows.Scan(&line.ID, &line.SabyID, &line.SabyName, &line.RawName,
+		if err := rows.Scan(&line.ID, &line.SabyID, &line.SabyCode, &line.SabyName, &line.RawName,
 			&line.SupplierArticle, &line.Quantity, &line.OrderedQuantity, &line.InvoicedQuantity,
 			&line.UnitPrice, &line.ExpectedUnitPrice, &line.LoadUnit,
 			&line.PotDiameterCM, &line.HeightCM, &line.MatchStatus,

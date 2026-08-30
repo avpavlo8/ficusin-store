@@ -64,3 +64,9 @@ func TestPacedTransportDoesNotDelayOtherHosts(t *testing.T) {
 		}
 	}
 }
+
+func TestWildberriesPriceUpdatesUseGradualCadence(t *testing.T) {
+	if got := marketplacePace("discounts-prices-api.wildberries.ru"); got != 10*time.Second {
+		t.Fatalf("WB price pause = %v, want 10s", got)
+	}
+}

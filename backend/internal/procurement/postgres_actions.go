@@ -586,7 +586,10 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 	}
 	if executeErr != nil {
 		message = executeErr.Error()
-		if attempts >= 5 {
+		// A marketplace 429 is known not to have applied the mutation and
+		// carries RetryAfter. Keep it queued instead of turning a temporary
+		// seller-wide limit into a permanent error after five attempts.
+		if attempts >= 5 && result.RetryAfter <= 0 {
 			status = "failed"
 		} else if result.RetryAfter <= 0 {
 			delay = time.Duration(attempts*attempts) * 15 * time.Second
