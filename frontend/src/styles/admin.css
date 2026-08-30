@@ -216,6 +216,13 @@
 .procurement-checklist small { display: block; color: #66756c; }
 .procurement-directory { min-width: 1050px; }
 .procurement-directory td small { display: block; margin-top: 3px; }
+.procurement-alias-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.procurement-alias-edit-row:last-child { border-bottom: 0; }
+.procurement-alias-reassign { margin-top: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.procurement-alias-reassign .admin-block-heading { margin-bottom: 10px; }
+.procurement-alias-reassign .admin-block-heading > div { display: grid; gap: 3px; }
+.procurement-alias-reassign label { display: grid; gap: 6px; }
+.procurement-alias-reassign .procurement-candidates { min-height: 0; max-height: 260px; }
 .procurement-request-candidates { display: grid; gap: 5px; }
 .procurement-request-candidates button { padding: 9px 11px; display: flex; justify-content: space-between; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--green); text-align: left; cursor: pointer; }
 .procurement-selected-product { padding: 11px; display: flex; align-items: center; gap: 10px; border-radius: 9px; background: var(--cream); }
