@@ -239,8 +239,15 @@ func (store *PostgresStore) IgnoreSalesProduct(ctx context.Context, actor Actor,
 // по названию нельзя. Та, на которой лежит товар, и есть действующая.
 func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
 	patterns := make([]string, 0, 8)
+	stopWords := map[string]bool{
+		"цветок": true, "цветы": true, "горшке": true, "горшок": true,
+		"живой": true, "живое": true, "растение": true, "растения": true,
+		"микс": true, "mix": true, "асс": true, "штука": true,
+	}
 	for _, token := range strings.FieldsFunc(strings.ToLower(query), func(r rune) bool { return !(r >= 'а' && r <= 'я') && !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') }) {
-		if len([]rune(token)) >= 3 { patterns = append(patterns, "%"+token+"%") }
+		if len([]rune(token)) >= 3 && !stopWords[token] {
+			patterns = append(patterns, "%"+token+"%")
+		}
 	}
 	if len(patterns) == 0 { patterns = append(patterns, "%"+query+"%") }
 	rows, err := store.pool.Query(ctx, `
@@ -253,7 +260,9 @@ func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, quer
 				OR article ILIKE '%' || $1 || '%'
 				OR saby_id ILIKE '%' || $1 || '%'
 				OR name ILIKE ANY($3::TEXT[]))
-		ORDER BY balance DESC, name, saby_id
+		ORDER BY (name ILIKE '%' || $1 || '%') DESC,
+			(SELECT COUNT(*) FROM UNNEST($3::TEXT[]) pattern WHERE name ILIKE pattern) DESC,
+			balance DESC, name, saby_id
 		LIMIT $2
 	`, query, linkableCandidatesLimit, patterns)
 	if err != nil {
