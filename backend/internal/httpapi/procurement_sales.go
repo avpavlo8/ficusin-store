@@ -16,9 +16,10 @@ import (
 // procurementService: его реализует ещё и заглушка в тестах, и каждый новый
 // метод там стоит правки, никак с задачей не связанной.
 type salesLinkService interface {
-	UnlinkedSales(context.Context, string) ([]procurement.UnlinkedSale, error)
+	UnlinkedSales(context.Context, string, ...bool) ([]procurement.UnlinkedSale, error)
 	SearchLinkableNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
 	LinkSalesProduct(context.Context, procurement.Actor, procurement.SalesLink) (procurement.SalesLinkResult, error)
+	IgnoreSalesProduct(context.Context, procurement.Actor, string, string, bool) error
 }
 
 // salesLinking отвечает, умеет ли текущая сборка разбирать продажи руками.
@@ -41,12 +42,29 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 	if !able {
 		return
 	}
-	items, err := service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
+	items, err := service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"), request.URL.Query().Get("ignored") == "1")
 	if err != nil {
 		handlers.failed(response, "list unlinked procurement sales", err)
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+}
+
+func (handlers procurementHandlers) ignoreSales(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok { return }
+	service, able := handlers.salesLinking(response)
+	if !able { return }
+	var input struct { Channel string `json:"channel"`; ExternalID string `json:"externalId"`; Ignored bool `json:"ignored"` }
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар для исключения"})
+		return
+	}
+	if err := service.IgnoreSalesProduct(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input.Channel, input.ExternalID, input.Ignored); err != nil {
+		handlers.failed(response, "ignore procurement sales", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
 }
 
 // linkableNomenclature — поиск товара для связывания.

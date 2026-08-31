@@ -105,6 +105,7 @@ export type NomenclatureCandidate = {
 export type UnlinkedSale = {
   channel: string; externalId: string; article: string; name: string;
   days: number; units: number; grossRub: number; lastSale: string;
+	ignored: boolean;
 };
 
 // Итог связывания. takenFrom не пустой, когда код пришлось отобрать у

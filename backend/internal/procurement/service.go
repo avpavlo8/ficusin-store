@@ -44,6 +44,24 @@ type Executor interface {
 	Execute(context.Context, ActionItem) (ActionExecution, error)
 }
 
+// ActionGroupStore and GroupExecutor are optional bulk extensions used by
+// marketplace adapters. Both Wildberries and Ozon accept up to 1000 prices in
+// one request; claiming them together avoids seller-wide rate limits while the
+// base Store/Executor interfaces stay compatible with lightweight test stubs.
+type ActionGroupStore interface {
+	ClaimActionGroup(context.Context) ([]ActionItem, error)
+}
+
+type ActionOutcome struct {
+	ItemID int64
+	Result ActionExecution
+	Err    error
+}
+
+type GroupExecutor interface {
+	ExecuteGroup(context.Context, []ActionItem) []ActionOutcome
+}
+
 type IntegrationProber interface {
 	Probe(context.Context, string) error
 }

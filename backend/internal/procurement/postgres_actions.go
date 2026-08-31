@@ -249,8 +249,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		WHERE procurement_order_id = $1 AND kind = $2 AND status NOT IN ('cancelled', 'completed')
 		ORDER BY id DESC LIMIT 1 FOR UPDATE
 	`, orderID, kind).Scan(&existingID, &existingStatus)
-	if err == nil && existingStatus != "draft" {
-		return ActionBatch{}, ErrInvalidInput
+	if err == nil && oneOf(existingStatus, "approved", "processing") {
+		return ActionBatch{}, &UserFacingError{Message: "Для этой закупки уже выполняется пакет " + map[string]string{"receipt": "поступления", "prices": "изменения цен"}[kind] + ". Дождитесь его завершения или повторите ошибки в открытом пакете."}
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return ActionBatch{}, fmt.Errorf("lock procurement action batch: %w", err)
@@ -567,6 +567,63 @@ func (store *PostgresStore) ClaimAction(ctx context.Context) (*ActionItem, error
 		return nil, fmt.Errorf("claim procurement action: %w", err)
 	}
 	return &item, nil
+}
+
+// ClaimActionGroup claims one marketplace upload at a time. Initial uploads
+// are grouped by batch and channel; polling groups the rows sharing the same
+// external operation id. Saby documents intentionally remain single actions.
+func (store *PostgresStore) ClaimActionGroup(ctx context.Context) ([]ActionItem, error) {
+	rows, err := store.pool.Query(ctx, `
+		WITH seed AS (
+			SELECT id, batch_id, channel, COALESCE(external_operation_id, '') AS operation_id
+			FROM procurement_action_items
+			WHERE ((status = 'queued' AND next_attempt_at <= CURRENT_TIMESTAMP)
+				OR (status = 'processing' AND locked_until < CURRENT_TIMESTAMP))
+			ORDER BY next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+		), candidates AS (
+			SELECT item.id FROM procurement_action_items item JOIN seed
+				ON item.batch_id = seed.batch_id AND item.channel = seed.channel
+				AND COALESCE(item.external_operation_id, '') = seed.operation_id
+			WHERE seed.channel IN ('wb', 'ozon') AND ((item.status = 'queued' AND item.next_attempt_at <= CURRENT_TIMESTAMP)
+				OR (item.status = 'processing' AND item.locked_until < CURRENT_TIMESTAMP))
+			ORDER BY item.id FOR UPDATE SKIP LOCKED LIMIT 1000
+		), claimed AS (
+			UPDATE procurement_action_items item SET status = 'processing', attempts = attempts + 1,
+				last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '2 minutes',
+				updated_at = CURRENT_TIMESTAMP
+			FROM candidates WHERE item.id = candidates.id
+			RETURNING item.*
+		)
+		SELECT id, procurement_order_line_id, channel, external_article,
+			old_value::DOUBLE PRECISION, new_value::DOUBLE PRECISION,
+			compare_at_value::DOUBLE PRECISION, quantity, external_operation_id,
+			external_url, payload, attempts FROM claimed ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("claim procurement action group: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ActionItem, 0, 32)
+	for rows.Next() {
+		var item ActionItem
+		if err := rows.Scan(&item.ID, &item.LineID, &item.Channel, &item.ExternalArticle, &item.OldValue,
+			&item.NewValue, &item.CompareAtValue, &item.Quantity, &item.ExternalOperationID,
+			&item.ExternalURL, &item.Payload, &item.Attempts); err != nil {
+			return nil, fmt.Errorf("scan procurement action group: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read procurement action group: %w", err)
+	}
+	if len(items) > 0 {
+		return items, nil
+	}
+	item, err := store.ClaimAction(ctx)
+	if err != nil || item == nil {
+		return nil, err
+	}
+	return []ActionItem{*item}, nil
 }
 
 func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, result ActionExecution, executeErr error) error {

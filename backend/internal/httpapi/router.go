@@ -237,6 +237,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/procurement/sales/unlinked", procurementAPI.unlinkedSales)
 	mux.HandleFunc("GET /api/v1/admin/procurement/sales/nomenclature", procurementAPI.linkableNomenclature)
 	mux.HandleFunc("POST /api/v1/admin/procurement/sales/link", procurementAPI.linkSales)
+	mux.HandleFunc("PUT /api/v1/admin/procurement/sales/ignore", procurementAPI.ignoreSales)
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/aliases/{id}", procurementAPI.resolveAlias)
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/availability", procurementAPI.updateAvailability)
 	mux.HandleFunc("PUT /api/v1/admin/procurement/exclusions", procurementAPI.updateExclusion)

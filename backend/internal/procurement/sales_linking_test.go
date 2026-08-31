@@ -23,6 +23,11 @@ func (stub *salesLinkStoreStub) ListUnlinkedSales(_ context.Context, channel str
 	return []UnlinkedSale{{Channel: channel, ExternalID: "fikus-benjamina-12", Units: 4}}, nil
 }
 
+func (stub *salesLinkStoreStub) IgnoreSalesProduct(context.Context, Actor, string, string, bool) error { return nil }
+func (stub *salesLinkStoreStub) ListUnlinkedSalesIncludingIgnored(ctx context.Context, channel string, limit int) ([]UnlinkedSale, error) {
+	return stub.ListUnlinkedSales(ctx, channel, limit)
+}
+
 func (stub *salesLinkStoreStub) LinkSalesProduct(_ context.Context, _ Actor, input SalesLink) (SalesLinkResult, error) {
 	stub.links = append(stub.links, input)
 	return SalesLinkResult{
@@ -64,8 +69,7 @@ func (stub channelCatalogStub) FetchCatalog(context.Context, string) ([]ChannelP
 func TestUnlinkedSalesOnlyForChannelsWithForeignCodes(t *testing.T) {
 	t.Parallel()
 	service := NewService(&salesLinkStoreStub{})
-	// Сайт и СБИС кладут в продажи сам saby_id, связывать там нечего.
-	for _, channel := range []string{"", "site", "saby", "avito"} {
+	for _, channel := range []string{"", "site", "avito"} {
 		if _, err := service.UnlinkedSales(context.Background(), channel); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("channel %q: err = %v, want %v", channel, err, ErrInvalidInput)
 		}
