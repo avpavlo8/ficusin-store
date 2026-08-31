@@ -680,7 +680,7 @@ func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, en
 		if errors.As(lastErr, &remote) && remote.Status == http.StatusTooManyRequests && wbRequestBucket(endpoint) != "" {
 			return lastErr
 		}
-		retry := remote != nil && remote.Status >= 500
+		retry := remote != nil && (remote.Status == http.StatusTooManyRequests || remote.Status >= 500)
 		if !retry && !errors.As(lastErr, &empty) {
 			return lastErr
 		}

@@ -88,7 +88,7 @@ func TestWBMirrorOwnsOneHourlyCatalogueAndSalesRefresh(t *testing.T) {
 	if store.finished["catalog"] != time.Hour || store.finished["sales"] != time.Hour {
 		t.Fatalf("next runs = %+v", store.finished)
 	}
-	if days := int(store.salesTo.Sub(store.salesFrom).Hours()/24) + 1; days != wbSalesDays {
+	if days := int(source.salesTo.Sub(source.salesFrom).Hours()/24) + 1; days != wbSalesDays {
 		t.Fatalf("sales window = %d days, want %d", days, wbSalesDays)
 	}
 }
@@ -111,4 +111,3 @@ func TestWBMirrorPublishesExactRateLimitDelay(t *testing.T) {
 }
 
 func fmtWrap(err error) error { return errors.Join(errors.New("Wildberries mirror"), err) }
-
