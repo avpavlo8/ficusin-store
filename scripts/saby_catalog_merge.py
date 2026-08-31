@@ -88,8 +88,10 @@ def catalogue_ids_in_section(catalog_items, section_name):
 
     result = set()
     for item in catalog_items:
-        if item.get("isParent"):
-            continue
+        # Saby may serialise isParent as the strings "true"/"false".
+        # Membership is determined by ancestry; folder IDs cannot occur in
+        # receipt positions, so excluding by a loosely typed flag is unsafe
+        # and unnecessary.
         path = item.get("_ficusinSectionPath") or []
         if not any(str(part).strip().casefold() == wanted for part in path):
             continue
