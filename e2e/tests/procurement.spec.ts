@@ -132,7 +132,7 @@ test("@desktop marketplace check shows its result immediately", async ({ page })
   await page.getByRole("button", { name: "Закупки" }).click();
   await page.getByRole("button", { name: "Интеграции" }).click();
   const wb = page.locator(".integration-health-grid article").filter({ hasText: "Wildberries" });
-  await wb.getByRole("button", { name: "Проверить подключение" }).click();
+  await wb.getByRole("button", { name: "Проверить зеркало" }).click();
   await expect(wb.getByRole("status")).toHaveText("Wildberries: подключение работает");
   await expect(wb).toHaveClass(/connected/);
 });
