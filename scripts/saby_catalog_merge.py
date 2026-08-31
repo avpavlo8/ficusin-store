@@ -80,6 +80,25 @@ def merge_catalog_items(catalog_items, price_items):
     return list(by_id.values()), balance_conflicts
 
 
+def catalogue_ids_in_section(catalog_items, section_name):
+    """Return canonical product IDs that belong to one Saby catalogue branch."""
+    wanted = str(section_name or "").strip().casefold()
+    if not wanted:
+        return set()
+
+    result = set()
+    for item in catalog_items:
+        if item.get("isParent"):
+            continue
+        path = item.get("_ficusinSectionPath") or []
+        if not any(str(part).strip().casefold() == wanted for part in path):
+            continue
+        canonical_id = str(item.get("id") or "").strip()
+        if canonical_id:
+            result.add(canonical_id)
+    return result
+
+
 def build_sales_product_ids(catalog_items):
     """Map every Saby product identifier to the numeric catalogue card ID."""
     result = {}
@@ -87,7 +106,7 @@ def build_sales_product_ids(catalog_items):
         canonical_id = str(item.get("id") or "").strip()
         if not canonical_id:
             continue
-        for field in ("id", "externalId", "code", "nomNumber", "article"):
+        for field in ("id", "externalId", "hierarchicalId", "uuid", "UUID", "code", "nomNumber", "article"):
             source_id = str(item.get(field) or "").strip()
             if source_id:
                 result[source_id.casefold()] = canonical_id
