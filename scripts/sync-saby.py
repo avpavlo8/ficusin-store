@@ -6,7 +6,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from saby_catalog_merge import build_sales_product_ids, merge_catalog_items
+from saby_catalog_merge import (
+    build_sales_product_ids,
+    catalogue_ids_in_section,
+    merge_catalog_items,
+)
 
 stage = "settings"
 
@@ -104,7 +108,7 @@ try:
             or []
         )
 
-    def load_section(base_query, folder, seen_folders, depth):
+    def load_section(base_query, folder, seen_folders, depth, section_path=()):
         collected = []
         known = set()
         for page in range(200):
@@ -115,11 +119,17 @@ try:
             # Повтор вместо новой страницы означает, что листать больше
             # нечего: так обмен не зависнет, если page вдруг перестанет
             # учитываться.
-            fresh = [
-                item
-                for item in request_page(query)
-                if item.get("hierarchicalId") not in known
-            ]
+            fresh = []
+            for source_item in request_page(query):
+                if source_item.get("hierarchicalId") in known:
+                    continue
+                item = dict(source_item)
+                # The retail API returns one catalogue level at a time and does
+                # not repeat parent names on child products. Keep the ancestry
+                # while walking the tree so sales can be limited to the exact
+                # Saby section selected by the store owner.
+                item["_ficusinSectionPath"] = list(section_path)
+                fresh.append(item)
             if not fresh:
                 break
             for item in fresh:
@@ -137,8 +147,11 @@ try:
             if section in seen_folders:
                 continue
             seen_folders.add(section)
+            child_path = section_path + (str(item.get("name") or "").strip(),)
             collected.extend(
-                load_section(base_query, section, seen_folders, depth + 1)
+                load_section(
+                    base_query, section, seen_folders, depth + 1, child_path
+                )
             )
         return collected
 
@@ -174,6 +187,13 @@ try:
     # the catalogue identity. Always translate sales to catalogue.id so stock,
     # sales and procurement all refer to one card.
     sales_product_ids = build_sales_product_ids(catalog_items)
+    indoor_plant_ids = catalogue_ids_in_section(
+        catalog_items, "Комнатные растения"
+    )
+    if not indoor_plant_ids:
+        # An empty category would silently erase all Saby demand from the
+        # procurement calculation, so fail the sync instead.
+        raise RuntimeError("empty indoor plants category")
 
     stage = "saby-sales"
     sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))
@@ -218,6 +238,8 @@ try:
                 if not source_id:
                     continue
                 saby_id = sales_product_ids.get(source_id.casefold(), source_id)
+                if saby_id not in indoor_plant_ids:
+                    continue
                 try:
                     quantity = float(position.get("Quantity") or 0)
                     total = float(position.get("TotalPrice") or 0)
