@@ -90,7 +90,15 @@ type SalesIgnoreStore interface {
 var ErrSalesLinkUnsupported = errors.New("procurement store cannot link sales manually")
 
 // UnlinkedSales отдаёт коды канала, оставшиеся без товара.
-func (service *Service) UnlinkedSales(ctx context.Context, channel string, includeIgnored ...bool) ([]UnlinkedSale, error) {
+func (service *Service) UnlinkedSales(ctx context.Context, channel string) ([]UnlinkedSale, error) {
+	return service.unlinkedSales(ctx, channel, false)
+}
+
+func (service *Service) UnlinkedSalesWithIgnored(ctx context.Context, channel string) ([]UnlinkedSale, error) {
+	return service.unlinkedSales(ctx, channel, true)
+}
+
+func (service *Service) unlinkedSales(ctx context.Context, channel string, showIgnored bool) ([]UnlinkedSale, error) {
 	channel = strings.TrimSpace(channel)
 	if !oneOf(channel, manualSalesChannels...) {
 		return nil, ErrInvalidInput
@@ -99,7 +107,6 @@ func (service *Service) UnlinkedSales(ctx context.Context, channel string, inclu
 	if !able {
 		return nil, ErrSalesLinkUnsupported
 	}
-	showIgnored := len(includeIgnored) > 0 && includeIgnored[0]
 	if showIgnored {
 		if ignoredStore, ok := service.store.(SalesIgnoreStore); ok {
 			return ignoredStore.ListUnlinkedSalesIncludingIgnored(ctx, channel, unlinkedSalesLimit)

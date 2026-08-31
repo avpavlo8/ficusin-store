@@ -149,6 +149,7 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 
 func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 	var writes int
+	var reads int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -166,7 +167,8 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 			if _, exists := document["ИдСБИС"]; exists { t.Fatalf("retry must use external id, not an ambiguous Saby GUID: %+v", document) }
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"retry-guid"}}`))
 		case "ДокОтгрВх.Прочитать":
-			if writes == 1 {
+			reads++
+			if reads == 1 {
 				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary read error"}}`))
 				return
 			}

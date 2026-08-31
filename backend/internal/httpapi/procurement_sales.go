@@ -16,9 +16,13 @@ import (
 // procurementService: его реализует ещё и заглушка в тестах, и каждый новый
 // метод там стоит правки, никак с задачей не связанной.
 type salesLinkService interface {
-	UnlinkedSales(context.Context, string, ...bool) ([]procurement.UnlinkedSale, error)
+	UnlinkedSales(context.Context, string) ([]procurement.UnlinkedSale, error)
 	SearchLinkableNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
 	LinkSalesProduct(context.Context, procurement.Actor, procurement.SalesLink) (procurement.SalesLinkResult, error)
+}
+
+type ignoredSalesService interface {
+	UnlinkedSalesWithIgnored(context.Context, string) ([]procurement.UnlinkedSale, error)
 	IgnoreSalesProduct(context.Context, procurement.Actor, string, string, bool) error
 }
 
@@ -42,7 +46,17 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 	if !able {
 		return
 	}
-	items, err := service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"), request.URL.Query().Get("ignored") == "1")
+	var items []procurement.UnlinkedSale
+	var err error
+	if request.URL.Query().Get("ignored") == "1" {
+		if ignored, ok := handlers.service.(ignoredSalesService); ok {
+			items, err = ignored.UnlinkedSalesWithIgnored(request.Context(), request.URL.Query().Get("channel"))
+		} else {
+			items, err = service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
+		}
+	} else {
+		items, err = service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
+	}
 	if err != nil {
 		handlers.failed(response, "list unlinked procurement sales", err)
 		return
@@ -53,8 +67,11 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 func (handlers procurementHandlers) ignoreSales(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
 	if !ok { return }
-	service, able := handlers.salesLinking(response)
-	if !able { return }
+	service, able := handlers.service.(ignoredSalesService)
+	if !able {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Исключение продаж пока недоступно"})
+		return
+	}
 	var input struct { Channel string `json:"channel"`; ExternalID string `json:"externalId"`; Ignored bool `json:"ignored"` }
 	if decodeJSON(request, &input) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар для исключения"})
