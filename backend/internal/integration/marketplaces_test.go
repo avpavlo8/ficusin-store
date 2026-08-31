@@ -22,9 +22,12 @@ func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 			t.Fatal(err)
 		}
 		prices, ok := body["prices"].([]any)
-		if !ok || len(prices) != 1 || prices[0].(map[string]any)["min_price"] != "" {
+		if !ok || len(prices) != 1 {
 			t.Fatalf("unexpected Ozon price payload: %#v", body)
 		}
+		row := prices[0].(map[string]any)
+		if row["offer_id"] != "OZ-1" { t.Fatalf("unexpected Ozon price payload: %#v", body) }
+		if _, exists := row["min_price"]; exists { t.Fatalf("empty optional min_price must be omitted: %#v", row) }
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`{"result":[{"offer_id":"OZ-1","updated":true,"errors":[]}]}`))
 	}))

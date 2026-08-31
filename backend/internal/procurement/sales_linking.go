@@ -13,7 +13,7 @@ import (
 // manualSalesChannels — каналы, у которых внешний код продажи может
 // разойтись с номенклатурой. Сайт и СБИС кладут в продажи сам saby_id,
 // связывать там нечего.
-var manualSalesChannels = []string{"wb", "ozon"}
+var manualSalesChannels = []string{"wb", "ozon", "saby"}
 
 // unlinkedSalesLimit — сколько внешних кодов отдаём на экран за раз.
 //
@@ -41,6 +41,7 @@ type UnlinkedSale struct {
 	Units      int     `json:"units"`
 	GrossRUB   float64 `json:"grossRub"`
 	LastSale   string  `json:"lastSale"`
+	Ignored    bool    `json:"ignored"`
 }
 
 // SalesLink — решение человека: этот внешний код принадлежит этому товару.
@@ -80,11 +81,24 @@ type SalesLinkStore interface {
 	RememberChannelProducts(context.Context, string, []ChannelProduct) error
 }
 
+type SalesIgnoreStore interface {
+	IgnoreSalesProduct(context.Context, Actor, string, string, bool) error
+	ListUnlinkedSalesIncludingIgnored(context.Context, string, int) ([]UnlinkedSale, error)
+}
+
 // ErrSalesLinkUnsupported — хранилище не умеет разбирать продажи руками.
 var ErrSalesLinkUnsupported = errors.New("procurement store cannot link sales manually")
 
 // UnlinkedSales отдаёт коды канала, оставшиеся без товара.
 func (service *Service) UnlinkedSales(ctx context.Context, channel string) ([]UnlinkedSale, error) {
+	return service.unlinkedSales(ctx, channel, false)
+}
+
+func (service *Service) UnlinkedSalesWithIgnored(ctx context.Context, channel string) ([]UnlinkedSale, error) {
+	return service.unlinkedSales(ctx, channel, true)
+}
+
+func (service *Service) unlinkedSales(ctx context.Context, channel string, showIgnored bool) ([]UnlinkedSale, error) {
 	channel = strings.TrimSpace(channel)
 	if !oneOf(channel, manualSalesChannels...) {
 		return nil, ErrInvalidInput
@@ -93,7 +107,24 @@ func (service *Service) UnlinkedSales(ctx context.Context, channel string) ([]Un
 	if !able {
 		return nil, ErrSalesLinkUnsupported
 	}
+	if showIgnored {
+		if ignoredStore, ok := service.store.(SalesIgnoreStore); ok {
+			return ignoredStore.ListUnlinkedSalesIncludingIgnored(ctx, channel, unlinkedSalesLimit)
+		}
+	}
 	return store.ListUnlinkedSales(ctx, channel, unlinkedSalesLimit)
+}
+
+func (service *Service) IgnoreSalesProduct(ctx context.Context, actor Actor, channel, externalID string, ignored bool) error {
+	channel, externalID = strings.TrimSpace(channel), strings.TrimSpace(externalID)
+	if !oneOf(channel, manualSalesChannels...) || externalID == "" || len(externalID) > 200 {
+		return ErrInvalidInput
+	}
+	store, able := service.store.(SalesIgnoreStore)
+	if !able {
+		return ErrSalesLinkUnsupported
+	}
+	return store.IgnoreSalesProduct(ctx, actor, channel, externalID, ignored)
 }
 
 // SearchLinkableNomenclature ищет товар, за которым можно закрепить код.
@@ -139,6 +170,14 @@ func (service *Service) LinkSalesProduct(ctx context.Context, actor Actor, input
 }
 
 func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel string, limit int) ([]UnlinkedSale, error) {
+	return store.listUnlinkedSales(ctx, channel, limit, false)
+}
+
+func (store *PostgresStore) ListUnlinkedSalesIncludingIgnored(ctx context.Context, channel string, limit int) ([]UnlinkedSale, error) {
+	return store.listUnlinkedSales(ctx, channel, limit, true)
+}
+
+func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel string, limit int, includeIgnored bool) ([]UnlinkedSale, error) {
 	// Подпись карточки берётся слева: площадку могли ещё ни разу не
 	// прочитать, и это не повод прятать продажи — код покажем как есть.
 	rows, err := store.pool.Query(ctx, `
@@ -146,15 +185,19 @@ func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel strin
 			COALESCE(SUM(sale.units), 0)::INTEGER,
 			COALESCE(SUM(sale.gross_rub), 0)::DOUBLE PRECISION,
 			MAX(sale.sale_date)::TEXT,
-			COALESCE(MAX(card.article), ''), COALESCE(MAX(card.name), '')
+			COALESCE(MAX(card.article), ''), COALESCE(MAX(card.name), ''),
+			BOOL_OR(ignored.external_product_id IS NOT NULL)
 		FROM procurement_sales_daily sale
 		LEFT JOIN procurement_channel_products card
 			ON card.channel = sale.channel AND card.external_id = sale.external_product_id
+		LEFT JOIN procurement_ignored_sales_products ignored
+			ON ignored.channel = sale.channel AND ignored.external_product_id = sale.external_product_id
 		WHERE sale.channel = $1 AND sale.saby_id IS NULL
+			AND ($3 OR ignored.external_product_id IS NULL)
 		GROUP BY sale.external_product_id
 		ORDER BY SUM(sale.units) DESC, MAX(sale.sale_date) DESC
 		LIMIT $2
-	`, channel, limit)
+	`, channel, limit, includeIgnored)
 	if err != nil {
 		return nil, fmt.Errorf("list unlinked sales: %w", err)
 	}
@@ -164,7 +207,7 @@ func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel strin
 		item := UnlinkedSale{Channel: channel}
 		if err := rows.Scan(
 			&item.ExternalID, &item.Days, &item.Units, &item.GrossRUB, &item.LastSale,
-			&item.Article, &item.Name,
+			&item.Article, &item.Name, &item.Ignored,
 		); err != nil {
 			return nil, fmt.Errorf("scan unlinked sales: %w", err)
 		}
@@ -173,12 +216,33 @@ func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel strin
 	return items, rows.Err()
 }
 
+func (store *PostgresStore) IgnoreSalesProduct(ctx context.Context, actor Actor, channel, externalID string, ignored bool) error {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil { return fmt.Errorf("begin ignore sales product: %w", err) }
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if ignored {
+		if _, err = tx.Exec(ctx, `INSERT INTO procurement_ignored_sales_products(channel, external_product_id, ignored_by)
+			VALUES ($1,$2,$3) ON CONFLICT(channel,external_product_id) DO UPDATE SET ignored_by=EXCLUDED.ignored_by, ignored_at=CURRENT_TIMESTAMP`, channel, externalID, actor.CustomerID); err != nil {
+			return fmt.Errorf("ignore sales product: %w", err)
+		}
+	} else if _, err = tx.Exec(ctx, `DELETE FROM procurement_ignored_sales_products WHERE channel=$1 AND external_product_id=$2`, channel, externalID); err != nil {
+		return fmt.Errorf("restore sales product: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.sales.ignore", "procurement_sales_daily", 0, map[string]any{"channel": channel, "externalId": externalID, "ignored": ignored}); err != nil { return err }
+	return tx.Commit(ctx)
+}
+
 // SearchLinkableNomenclature отдаёт живые позиции справочника.
 //
 // Сортировка по остатку не косметика: у растения нередко заведено две
 // карточки — рабочая и оставшаяся с прошлой выгрузки, — и различить их
 // по названию нельзя. Та, на которой лежит товар, и есть действующая.
 func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	patterns := make([]string, 0, 8)
+	for _, token := range strings.FieldsFunc(strings.ToLower(query), func(r rune) bool { return !(r >= 'а' && r <= 'я') && !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') }) {
+		if len([]rune(token)) >= 3 { patterns = append(patterns, "%"+token+"%") }
+	}
+	if len(patterns) == 0 { patterns = append(patterns, "%"+query+"%") }
 	rows, err := store.pool.Query(ctx, `
 		SELECT saby_id, code, article, name, balance,
 			price_minor::DOUBLE PRECISION / 100
@@ -187,10 +251,11 @@ func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, quer
 			AND (name ILIKE '%' || $1 || '%'
 				OR code ILIKE '%' || $1 || '%'
 				OR article ILIKE '%' || $1 || '%'
-				OR saby_id ILIKE '%' || $1 || '%')
+				OR saby_id ILIKE '%' || $1 || '%'
+				OR name ILIKE ANY($3::TEXT[]))
 		ORDER BY balance DESC, name, saby_id
 		LIMIT $2
-	`, query, linkableCandidatesLimit)
+	`, query, linkableCandidatesLimit, patterns)
 	if err != nil {
 		return nil, fmt.Errorf("search linkable nomenclature: %w", err)
 	}
@@ -287,7 +352,7 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 			WHERE wb_nm_id = $1 AND saby_id <> $2
 			RETURNING saby_id
 		`, wbNumberID, input.SabyID, actor.CustomerID).Scan(&result.TakenFrom)
-	} else {
+	} else if input.Channel == "ozon" {
 		err = tx.QueryRow(ctx, `
 			UPDATE procurement_product_channels
 			SET ozon_offer_id = '', updated_by = $3, updated_at = CURRENT_TIMESTAMP
@@ -306,7 +371,7 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 			ON CONFLICT (saby_id) DO UPDATE SET wb_nm_id = EXCLUDED.wb_nm_id,
 				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
 		`, input.SabyID, wbNumberID, actor.CustomerID)
-	} else {
+	} else if input.Channel == "ozon" {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO procurement_product_channels (saby_id, ozon_offer_id, updated_by)
 			VALUES ($1, $2, $3)
@@ -335,7 +400,10 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(DISTINCT external_product_id)::INTEGER FROM procurement_sales_daily
-		WHERE channel = $1 AND saby_id IS NULL
+		WHERE channel = $1 AND saby_id IS NULL AND NOT EXISTS (
+			SELECT 1 FROM procurement_ignored_sales_products ignored
+			WHERE ignored.channel = procurement_sales_daily.channel
+				AND ignored.external_product_id = procurement_sales_daily.external_product_id)
 	`, input.Channel).Scan(&result.Remaining); err != nil {
 		return SalesLinkResult{}, fmt.Errorf("count remaining sales: %w", err)
 	}

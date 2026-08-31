@@ -5,11 +5,13 @@ import type { NomenclatureCandidate, SalesLinkResult, UnlinkedSale } from "./adm
 
 // Каналы, у которых внешний код продажи может разойтись с номенклатурой.
 // Сайт и СБИС кладут в продажи сам код товара, разбирать там нечего.
-const linkableChannels = ["ozon", "wb"];
+const linkableChannels = ["ozon", "wb", "saby"];
 
 const externalCodeHint = (channel: string) => channel === "wb"
   ? "Внешний код Wildberries — числовой nmID, по нему растение не узнать. Название карточки берётся с площадки кнопкой «Подтянуть артикулы» на вкладке «Интеграции»: пока её не нажимали, в списке будет только число."
-  : "Внешний код Ozon — это offer_id карточки, он часто похож на название растения, поэтому подставляется в поиск как есть.";
+  : channel === "ozon"
+	? "Внешний код Ozon — это offer_id карточки. Поиск также предлагает живые товары СБИС по похожим словам из названия."
+	: "Здесь показаны продажи СБИС, код которых не удалось связать с живой номенклатурой.";
 
 // saleTitle — чем подписан код в списке.
 //
@@ -26,13 +28,21 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState<UnlinkedSale | null>(null);
   const [notice, setNotice] = useState("");
+	const [showIgnored, setShowIgnored] = useState(false);
   const load = useCallback(() => {
     setLoading(true);
-    return api<{ items: UnlinkedSale[] }>(`/api/v1/admin/procurement/sales/unlinked?channel=${channel}`)
+    return api<{ items: UnlinkedSale[] }>(`/api/v1/admin/procurement/sales/unlinked?channel=${channel}&ignored=${showIgnored ? 1 : 0}`)
       .then((result) => setItems(result.items || []))
       .catch((error) => onError((error as Error).message))
       .finally(() => setLoading(false));
-  }, [channel, onError]);
+  }, [channel, onError, showIgnored]);
+	const ignore = async (item: UnlinkedSale, ignored: boolean) => {
+		try {
+			await api("/api/v1/admin/procurement/sales/ignore", { method: "PUT", body: JSON.stringify({ channel: item.channel, externalId: item.externalId, ignored }) });
+			setNotice(ignored ? `«${saleTitle(item) || item.externalId}» больше не учитывается в закупках.` : "Товар возвращён в список сопоставления.");
+			void load();
+		} catch (error) { onError((error as Error).message); }
+	};
   // Линтер запрещает setState прямо в теле эффекта, а переключение канала и
   // без того не должно бить в сервер на каждый щелчок.
   useEffect(() => {
@@ -49,6 +59,7 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
     <p className="admin-hint procurement-note">Связывание по выгрузке идёт только на точное совпадение кода, артикула или штрихкода. По названию его делать нельзя: «Фикус Бенджамина 12» и «Фикус Бенджамина 14» — разные растения с разной ценой. Всё, что не совпало, ждёт здесь и в расчёт закупки не попадает. {externalCodeHint(channel)}</p>
     <div className="admin-toolbar">
       {linkableChannels.map((item) => <button key={item} className={item === channel ? "admin-primary" : "secondary-button"} onClick={() => { setChannel(item); setNotice(""); }}>{salesChannelLabel(item)}</button>)}
+		<button className="secondary-button" onClick={() => setShowIgnored((value) => !value)}>{showIgnored ? "Скрыть пропущенные" : "Показать пропущенные"}</button>
       <span>{loading ? "Загружаем…" : "Связь сохраняется в справочнике и чинит уже загруженные продажи"}</span>
     </div>
     {notice && <p className="integration-check-result success" role="status">{notice}</p>}
@@ -60,7 +71,7 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
       <td>{money.format(item.grossRub)}</td>
       <td>{item.days}</td>
       <td>{item.lastSale ? new Date(`${item.lastSale}T00:00:00`).toLocaleDateString("ru-RU") : "—"}</td>
-      <td><button className="table-action" onClick={() => setLinking(item)}>Сопоставить</button></td>
+		<td><div className="table-actions">{!item.ignored && <button className="table-action" onClick={() => setLinking(item)}>Сопоставить</button>}<button className="table-action" onClick={() => void ignore(item, !item.ignored)}>{item.ignored ? "Учитывать" : "Не учитывать"}</button></div></td>
     </tr>)}</tbody></table></div> : <div className="procurement-zero">
       <strong>{loading ? "Загружаем…" : "Разбирать нечего"}</strong>
       <span>Все продажи этого канала связаны с номенклатурой и участвуют в расчёте закупки.</span>

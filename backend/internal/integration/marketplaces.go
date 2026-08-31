@@ -417,22 +417,58 @@ func (executor *MarketplaceExecutor) Execute(ctx context.Context, item procureme
 	}
 }
 
+func (executor *MarketplaceExecutor) ExecuteGroup(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
+	if len(items) == 0 {
+		return nil
+	}
+	switch items[0].Channel {
+	case "wb":
+		return executor.executeWBGroup(ctx, items)
+	case "ozon":
+		return executor.executeOzonGroup(ctx, items)
+	default:
+		outcomes := make([]procurement.ActionOutcome, 0, len(items))
+		for _, item := range items {
+			result, err := executor.Execute(ctx, item)
+			outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: result, Err: err})
+		}
+		return outcomes
+	}
+}
+
+func sameOutcome(items []procurement.ActionItem, result procurement.ActionExecution, err error) []procurement.ActionOutcome {
+	outcomes := make([]procurement.ActionOutcome, 0, len(items))
+	for _, item := range items {
+		outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: result, Err: err})
+	}
+	return outcomes
+}
+
 func (executor *MarketplaceExecutor) executeWB(ctx context.Context, item procurement.ActionItem) (procurement.ActionExecution, error) {
+	outcome := executor.executeWBGroup(ctx, []procurement.ActionItem{item})[0]
+	return outcome.Result, outcome.Err
+}
+
+func (executor *MarketplaceExecutor) executeWBGroup(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
 	if !executor.Configured("wb") {
-		return procurement.ActionExecution{}, errors.New("токен Wildberries не настроен")
+		return sameOutcome(items, procurement.ActionExecution{}, errors.New("токен Wildberries не настроен"))
 	}
-	nmID, err := strconv.ParseInt(strings.TrimSpace(item.ExternalArticle), 10, 64)
-	if err != nil || nmID <= 0 {
-		return procurement.ActionExecution{}, errors.New("для Wildberries нужен числовой nmID, а не артикул продавца")
-	}
-	if item.ExternalOperationID == "" {
-		price := int64(item.NewValue)
+	if items[0].ExternalOperationID == "" {
+		data := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			nmID, err := strconv.ParseInt(strings.TrimSpace(item.ExternalArticle), 10, 64)
+			if err != nil || nmID <= 0 {
+				return sameOutcome(items, procurement.ActionExecution{}, errors.New("для Wildberries нужен числовой nmID, а не артикул продавца"))
+			}
+			price := int64(item.NewValue)
 		discount := int64(0)
 		if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
 			price = int64(*item.CompareAtValue)
 			discount = int64((1 - item.NewValue/float64(price)) * 100)
 		}
-		payload := map[string]any{"data": []map[string]any{{"nmID": nmID, "price": price, "discount": discount}}}
+			data = append(data, map[string]any{"nmID": nmID, "price": price, "discount": discount})
+		}
+		payload := map[string]any{"data": data}
 		var response struct {
 			Data struct {
 				ID int64 `json:"id"`
@@ -442,17 +478,22 @@ func (executor *MarketplaceExecutor) executeWB(ctx context.Context, item procure
 		}
 		if err := executor.request(ctx, http.MethodPost, executor.wbBase+"/api/v2/upload/task", payload,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
-			return marketplaceRetryExecution(err), err
+			// WB reports an idempotent no-op as HTTP 400. The requested prices
+			// are already effective, so the batch is complete rather than failed.
+			if strings.Contains(strings.ToLower(err.Error()), "already set") || strings.Contains(strings.ToLower(err.Error()), "уже установ") {
+				return sameOutcome(items, procurement.ActionExecution{Completed: true}, nil)
+			}
+			return sameOutcome(items, marketplaceRetryExecution(err), err)
 		}
 		if response.Error || response.Data.ID <= 0 {
-			return procurement.ActionExecution{}, fmt.Errorf("Wildberries отклонил загрузку: %s", safeRemoteMessage(response.ErrorText))
+			return sameOutcome(items, procurement.ActionExecution{}, fmt.Errorf("Wildberries отклонил загрузку: %s", safeRemoteMessage(response.ErrorText)))
 		}
-		return procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(response.Data.ID, 10), RetryAfter: 5 * time.Second}, nil
+		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(response.Data.ID, 10), RetryAfter: 5 * time.Second}, nil)
 	}
 
-	uploadID, err := strconv.ParseInt(item.ExternalOperationID, 10, 64)
+	uploadID, err := strconv.ParseInt(items[0].ExternalOperationID, 10, 64)
 	if err != nil || uploadID <= 0 {
-		return procurement.ActionExecution{}, errors.New("повреждён идентификатор загрузки Wildberries")
+		return sameOutcome(items, procurement.ActionExecution{}, errors.New("повреждён идентификатор загрузки Wildberries"))
 	}
 	endpoint := executor.wbBase + "/api/v2/history/tasks?" + url.Values{"uploadID": {strconv.FormatInt(uploadID, 10)}}.Encode()
 	var response struct {
@@ -466,38 +507,49 @@ func (executor *MarketplaceExecutor) executeWB(ctx context.Context, item procure
 	if err != nil {
 		var remote *remoteError
 		if errors.As(err, &remote) && remote.Status == http.StatusNotFound {
-			return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID, RetryAfter: 5 * time.Second}, nil
+			return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID, RetryAfter: 5 * time.Second}, nil)
 		}
 		result := marketplaceRetryExecution(err)
-		result.ExternalOperationID = item.ExternalOperationID
-		return result, err
+		result.ExternalOperationID = items[0].ExternalOperationID
+		return sameOutcome(items, result, err)
 	}
 	if response.Error {
-		return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID}, fmt.Errorf("Wildberries не подтвердил загрузку: %s", safeRemoteMessage(response.ErrorText))
+		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID}, fmt.Errorf("Wildberries не подтвердил загрузку: %s", safeRemoteMessage(response.ErrorText)))
 	}
 	switch response.Data.Status {
 	case 3:
-		return procurement.ActionExecution{Completed: true, ExternalOperationID: item.ExternalOperationID}, nil
+		return sameOutcome(items, procurement.ActionExecution{Completed: true, ExternalOperationID: items[0].ExternalOperationID}, nil)
 	case 4, 5, 6:
-		return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID}, fmt.Errorf("Wildberries завершил загрузку со статусом %d", response.Data.Status)
+		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID}, fmt.Errorf("Wildberries завершил загрузку со статусом %d", response.Data.Status))
 	default:
-		return procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID, RetryAfter: 5 * time.Second}, nil
+		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID, RetryAfter: 5 * time.Second}, nil)
 	}
 }
 
 func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procurement.ActionItem) (procurement.ActionExecution, error) {
+	outcome := executor.executeOzonGroup(ctx, []procurement.ActionItem{item})[0]
+	return outcome.Result, outcome.Err
+}
+
+func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
 	if !executor.Configured("ozon") {
-		return procurement.ActionExecution{}, errors.New("ключи Ozon не настроены")
+		return sameOutcome(items, procurement.ActionExecution{}, errors.New("ключи Ozon не настроены"))
 	}
-	price := strconv.FormatInt(int64(item.NewValue), 10)
-	oldPrice := "0"
-	if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
-		oldPrice = strconv.FormatInt(int64(*item.CompareAtValue), 10)
+	prices := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		price := strconv.FormatInt(int64(item.NewValue), 10)
+		oldPrice := "0"
+		if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
+			oldPrice = strconv.FormatInt(int64(*item.CompareAtValue), 10)
+		}
+		// Optional empty fields are deliberately omitted: Ozon validates an
+		// explicitly supplied min_price/enum even when the seller did not set it.
+		prices = append(prices, map[string]any{
+			"offer_id": strings.TrimSpace(item.ExternalArticle), "price": price,
+			"old_price": oldPrice, "currency_code": "RUB",
+		})
 	}
-	payload := map[string]any{"prices": []map[string]any{{
-		"offer_id": strings.TrimSpace(item.ExternalArticle), "price": price,
-		"old_price": oldPrice, "min_price": "", "currency_code": "RUB", "auto_action_enabled": "UNKNOWN",
-	}}}
+	payload := map[string]any{"prices": prices}
 	var response struct {
 		Result []struct {
 			OfferID string `json:"offer_id"`
@@ -511,16 +563,33 @@ func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procu
 	err := executor.request(ctx, http.MethodPost, executor.ozonBase+"/v1/product/import/prices", payload,
 		map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response)
 	if err != nil {
-		return marketplaceRetryExecution(err), err
+		return sameOutcome(items, marketplaceRetryExecution(err), err)
 	}
-	if len(response.Result) != 1 || !response.Result[0].Updated {
-		message := "Ozon не подтвердил изменение цены"
-		if len(response.Result) == 1 && len(response.Result[0].Errors) > 0 {
-			message += ": " + safeRemoteMessage(response.Result[0].Errors[0].Message)
+	byOffer := make(map[string]struct {
+		updated bool
+		message string
+	}, len(response.Result))
+	for _, item := range response.Result {
+		message := ""
+		if len(item.Errors) > 0 {
+			message = safeRemoteMessage(item.Errors[0].Message)
 		}
-		return procurement.ActionExecution{}, errors.New(message)
+		byOffer[item.OfferID] = struct { updated bool; message string }{item.Updated, message}
 	}
-	return procurement.ActionExecution{Completed: true}, nil
+	outcomes := make([]procurement.ActionOutcome, 0, len(items))
+	for _, item := range items {
+		remote, found := byOffer[strings.TrimSpace(item.ExternalArticle)]
+		if found && remote.updated {
+			outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{Completed: true}})
+			continue
+		}
+		message := "Ozon не подтвердил изменение цены"
+		if found && remote.message != "" {
+			message += ": " + remote.message
+		}
+		outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Err: errors.New(message)})
+	}
+	return outcomes
 }
 
 type remoteError struct {

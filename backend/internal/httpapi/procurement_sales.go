@@ -21,6 +21,11 @@ type salesLinkService interface {
 	LinkSalesProduct(context.Context, procurement.Actor, procurement.SalesLink) (procurement.SalesLinkResult, error)
 }
 
+type ignoredSalesService interface {
+	UnlinkedSalesWithIgnored(context.Context, string) ([]procurement.UnlinkedSale, error)
+	IgnoreSalesProduct(context.Context, procurement.Actor, string, string, bool) error
+}
+
 // salesLinking отвечает, умеет ли текущая сборка разбирать продажи руками.
 func (handlers procurementHandlers) salesLinking(response http.ResponseWriter) (salesLinkService, bool) {
 	service, able := handlers.service.(salesLinkService)
@@ -41,12 +46,42 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 	if !able {
 		return
 	}
-	items, err := service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
+	var items []procurement.UnlinkedSale
+	var err error
+	if request.URL.Query().Get("ignored") == "1" {
+		if ignored, ok := handlers.service.(ignoredSalesService); ok {
+			items, err = ignored.UnlinkedSalesWithIgnored(request.Context(), request.URL.Query().Get("channel"))
+		} else {
+			items, err = service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
+		}
+	} else {
+		items, err = service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
+	}
 	if err != nil {
 		handlers.failed(response, "list unlinked procurement sales", err)
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+}
+
+func (handlers procurementHandlers) ignoreSales(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok { return }
+	service, able := handlers.service.(ignoredSalesService)
+	if !able {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Исключение продаж пока недоступно"})
+		return
+	}
+	var input struct { Channel string `json:"channel"`; ExternalID string `json:"externalId"`; Ignored bool `json:"ignored"` }
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар для исключения"})
+		return
+	}
+	if err := service.IgnoreSalesProduct(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input.Channel, input.ExternalID, input.Ignored); err != nil {
+		handlers.failed(response, "ignore procurement sales", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
 }
 
 // linkableNomenclature — поиск товара для связывания.

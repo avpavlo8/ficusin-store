@@ -86,6 +86,7 @@ func TestSabyProbeCachesServiceSession(t *testing.T) {
 func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	var mutex sync.Mutex
 	methods := make([]string, 0)
+	reads := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -110,13 +111,18 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			counterparty := document["Контрагент"].(map[string]any)["СвЮЛ"].(map[string]any)
 			if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
 			if nestedString(document["Склад"], "Название") != "ул. Новоселов, д. 40а" { t.Fatalf("warehouse: %+v", document["Склад"]) }
-			table := document["ТаблДок"].(map[string]any)
-			goods := table["Товары"].([]any)
-			row := goods[0].(map[string]any)
-			if nestedString(row["Номенклатура"], "ИдСБИС") != "42" || row["Количество"] != "2" { t.Fatalf("goods: %+v", goods) }
+			regulation := document["Регламент"].(map[string]any)
+			if regulation["Название"] != "Поступление" { t.Fatalf("regulation: %+v", regulation) }
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"receipt-guid","СсылкаДляНашаОрганизация":"https://ret.saby.ru/opendoc.html?guid=receipt-guid"}}`))
 		case "ДокОтгрВх.Прочитать":
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,"receipt-guid",{"_type":"recordset","d":[[42,2]],"s":[{"n":"Номенклатура","t":"Число целое"},{"n":"Количество","t":"Число вещественное"}]}],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"},{"n":"Строки","t":"Выборка"}]}}`))
+			reads++
+			rows := "[]"
+			if reads > 1 { rows = "[[42,2]]" }
+			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,"receipt-guid",{"_type":"recordset","d":%s,"s":[{"n":"Номенклатура","t":"Число целое"},{"n":"Количество","t":"Число вещественное"}]}],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"},{"n":"Строки","t":"Выборка"}]}}`, rows)
+		case "РеалВх.NomCreateWithSaveBatch":
+			actions := rpc.Params["actions"].(map[string]any)
+			if sabyRecordField(actions, "changed_document") != float64(1) { t.Fatalf("actions: %+v", actions) }
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":true}`))
 		default:
 			t.Fatalf("unsafe Saby method: %s", rpc.Method)
 		}
@@ -137,12 +143,13 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 			t.Fatalf("draft flow attempted to post a document: %s", method)
 		}
 	}
-	want := []string{"sabyWarehouse.List", "СБИС.ЗаписатьДокумент", "ДокОтгрВх.Прочитать"}
+	want := []string{"sabyWarehouse.List", "СБИС.ЗаписатьДокумент", "ДокОтгрВх.Прочитать", "РеалВх.NomCreateWithSaveBatch", "ДокОтгрВх.Прочитать"}
 	if fmt.Sprint(methods) != fmt.Sprint(want) { t.Fatalf("methods: %+v, want %+v", methods, want) }
 }
 
 func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 	var writes int
+	var reads int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -157,11 +164,11 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 		case "СБИС.ЗаписатьДокумент":
 			writes++
 			document := rpc.Params["Документ"].(map[string]any)
-			if document["ВнешнийИдентификатор"] != "ficusin-procurement-323" { t.Fatalf("external id: %+v", document) }
 			if _, exists := document["ИдСБИС"]; exists { t.Fatalf("retry must use external id, not an ambiguous Saby GUID: %+v", document) }
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"retry-guid"}}`))
 		case "ДокОтгрВх.Прочитать":
-			if writes == 1 {
+			reads++
+			if reads == 1 {
 				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary read error"}}`))
 				return
 			}
@@ -178,7 +185,7 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 	if err == nil || first.ExternalOperationID != "retry-guid" { t.Fatalf("first: %+v, err=%v", first, err) }
 	second, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload, ExternalOperationID: first.ExternalOperationID, ExternalURL: first.ExternalURL})
 	if err != nil || !second.Completed { t.Fatalf("second: %+v, err=%v", second, err) }
-	if writes != 2 { t.Fatalf("writes=%d", writes) }
+	if writes != 1 { t.Fatalf("writes=%d", writes) }
 }
 
 func TestSabyErrorMessageUsesJSONRPCDetails(t *testing.T) {

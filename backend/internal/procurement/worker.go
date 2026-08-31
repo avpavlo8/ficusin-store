@@ -34,6 +34,28 @@ func (worker *ActionWorker) Run(ctx context.Context) {
 }
 
 func (worker *ActionWorker) runOne(ctx context.Context) {
+	groupStore, groups := worker.store.(ActionGroupStore)
+	groupExecutor, executesGroups := worker.executor.(GroupExecutor)
+	if groups && executesGroups {
+		items, err := groupStore.ClaimActionGroup(ctx)
+		if err != nil {
+			worker.logger.Error("claim procurement action group failed", "error", err)
+			return
+		}
+		if len(items) == 0 {
+			return
+		}
+		for _, outcome := range groupExecutor.ExecuteGroup(ctx, items) {
+			if err := worker.store.FinishAction(ctx, outcome.ItemID, outcome.Result, outcome.Err); err != nil {
+				worker.logger.Error("finish procurement action failed", "action_id", outcome.ItemID, "error", err)
+				continue
+			}
+			if outcome.Err != nil {
+				worker.logger.Warn("procurement action failed", "action_id", outcome.ItemID, "error", outcome.Err)
+			}
+		}
+		return
+	}
 	item, err := worker.store.ClaimAction(ctx)
 	if err != nil {
 		worker.logger.Error("claim procurement action failed", "error", err)
