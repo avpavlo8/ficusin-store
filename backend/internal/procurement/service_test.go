@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type storeStub struct {
@@ -18,6 +19,7 @@ type storeStub struct {
 	deletedOrderID    int64
 	exclusion         ExclusionUpdate
 	batchChannels     []string
+	integrationHealth []IntegrationHealth
 }
 
 func (stub *storeStub) Dashboard(context.Context) (Dashboard, error) { return Dashboard{}, nil }
@@ -106,7 +108,18 @@ func (stub *storeStub) RetryBatch(_ context.Context, _ Actor, batchID int64, _ m
 	return ActionBatch{ID: batchID}, nil
 }
 func (stub *storeStub) ListIntegrationHealth(context.Context) ([]IntegrationHealth, error) {
-	return nil, nil
+	return stub.integrationHealth, nil
+}
+
+type probeExecutorStub struct{ probeCalls int }
+
+func (*probeExecutorStub) Configured(string) bool { return true }
+func (*probeExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
+	return ActionExecution{}, nil
+}
+func (stub *probeExecutorStub) Probe(context.Context, string) error {
+	stub.probeCalls++
+	return nil
 }
 func (stub *storeStub) RecordIntegrationCheck(_ context.Context, channel string, configured bool, checkErr error) (IntegrationHealth, error) {
 	item := IntegrationHealth{Channel: channel, Configured: configured}
@@ -148,6 +161,20 @@ func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 	}
 	if len(store.batchChannels) != 2 || store.batchChannels[0] != "saby_price" || store.batchChannels[1] != "ozon" {
 		t.Fatalf("channels = %#v", store.batchChannels)
+	}
+}
+
+func TestWildberriesConnectionCheckReadsMirrorWithoutCallingAPI(t *testing.T) {
+	t.Parallel()
+	moment := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
+	store := &storeStub{integrationHealth: []IntegrationHealth{{Channel: "wb", LastSuccessAt: &moment}}}
+	executor := &probeExecutorStub{}
+	result, err := NewServiceWithExecutor(store, executor).CheckIntegration(context.Background(), Actor{}, "wb")
+	if err != nil || result.LastError != "" {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	if executor.probeCalls != 0 {
+		t.Fatalf("WB probe calls = %d, want 0", executor.probeCalls)
 	}
 }
 

@@ -196,7 +196,7 @@ func main() {
 	procurementStore := procurement.NewPostgresStore(pool)
 	marketplaceExecutor := integration.NewMarketplaceExecutor(
 		cfg.Marketplaces.WBToken, cfg.Marketplaces.OzonClientID, cfg.Marketplaces.OzonAPIKey,
-	)
+	).WithWBRequestLimiter(procurementStore)
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	)
@@ -275,6 +275,7 @@ func main() {
 	}
 	go notificationWorker.Run(ctx)
 	go procurement.NewActionWorker(procurementStore, procurementExecutor, logger).Run(ctx)
+	go procurement.NewWBMirrorWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
 

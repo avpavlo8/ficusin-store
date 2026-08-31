@@ -16,6 +16,7 @@ type salesLinkStoreStub struct {
 	links      []SalesLink
 	queries    []string
 	remembered map[string][]ChannelProduct
+	cached     map[string][]ChannelProduct
 }
 
 func (stub *salesLinkStoreStub) ListUnlinkedSales(_ context.Context, channel string, limit int) ([]UnlinkedSale, error) {
@@ -48,6 +49,10 @@ func (stub *salesLinkStoreStub) RememberChannelProducts(_ context.Context, chann
 	return nil
 }
 
+func (stub *salesLinkStoreStub) CachedChannelProducts(_ context.Context, channel string) ([]ChannelProduct, error) {
+	return stub.cached[channel], nil
+}
+
 func (stub *salesLinkStoreStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
 	return ChannelLinkResult{Channel: channel, Fetched: len(items), Linked: len(items)}, nil
 }
@@ -56,13 +61,19 @@ func (stub *salesLinkStoreStub) LinkChannelProducts(_ context.Context, _ Actor, 
 type plainStoreStub struct{ Store }
 
 // channelCatalogStub — площадка, которая отдаёт свой справочник карточек.
-type channelCatalogStub struct{ items []ChannelProduct }
+type channelCatalogStub struct {
+	items []ChannelProduct
+	calls *int
+}
 
 func (channelCatalogStub) Configured(string) bool { return true }
 func (channelCatalogStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
 	return ActionExecution{}, nil
 }
 func (stub channelCatalogStub) FetchCatalog(context.Context, string) ([]ChannelProduct, error) {
+	if stub.calls != nil {
+		(*stub.calls)++
+	}
 	return stub.items, nil
 }
 
@@ -161,10 +172,12 @@ func TestLinkableNomenclatureNeedsAMeaningfulQuery(t *testing.T) {
 // вкладке Wildberries: внешний код там числовой nmID.
 func TestChannelCatalogSyncRemembersCardLabels(t *testing.T) {
 	t.Parallel()
-	store := &salesLinkStoreStub{}
-	source := channelCatalogStub{items: []ChannelProduct{
+	items := []ChannelProduct{
 		{ExternalID: "1851256804", Article: "muholovka", Name: "Венерина мухоловка"},
-	}}
+	}
+	store := &salesLinkStoreStub{cached: map[string][]ChannelProduct{"wb": items}}
+	remoteCalls := 0
+	source := channelCatalogStub{items: []ChannelProduct{{ExternalID: "must-not-be-read"}}, calls: &remoteCalls}
 	result, err := NewServiceWithExecutor(store, source).SyncChannelCatalog(context.Background(), Actor{}, "wb")
 	if err != nil || result.Fetched != 1 {
 		t.Fatalf("result = %+v, err = %v", result, err)
@@ -172,6 +185,9 @@ func TestChannelCatalogSyncRemembersCardLabels(t *testing.T) {
 	remembered := store.remembered["wb"]
 	if len(remembered) != 1 || remembered[0].Name != "Венерина мухоловка" {
 		t.Fatalf("remembered = %+v", store.remembered)
+	}
+	if remoteCalls != 0 {
+		t.Fatalf("WB API calls = %d, want 0", remoteCalls)
 	}
 }
 

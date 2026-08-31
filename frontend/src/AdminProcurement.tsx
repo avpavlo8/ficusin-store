@@ -200,11 +200,11 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
         <small>{item.lastSuccessAt ? `Последний успех: ${new Date(item.lastSuccessAt).toLocaleString("ru-RU")}` : "Успешных проверок ещё нет"}</small>
         {item.lastError && <em>{item.lastError}</em>}
         {integrationNotice?.channel === item.channel && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
-        <button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : "Проверить подключение"}</button>
-		<button className="secondary-button" disabled={syncingCatalog !== "" || !item.configured} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Подтягиваем…" : item.channel === "saby" ? "Обновить справочник" : "Подтянуть артикулы"}</button>
+		<button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : item.channel === "wb" ? "Проверить зеркало" : "Проверить подключение"}</button>
+		<button className="secondary-button" disabled={syncingCatalog !== "" || !item.configured} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Сопоставляем…" : item.channel === "saby" ? "Обновить справочник" : item.channel === "wb" ? "Сопоставить из зеркала" : "Подтянуть артикулы"}</button>
       </article>)}</div>
       <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Что не совпало, разбирается руками на вкладке «Продажи без товара».</p>
-      <p className="admin-hint procurement-note">Для Wildberries токен должен включать категории «Цены и скидки», «Финансы» и «Контент» — без последней чтение карточек закрыто и кнопка «Подтянуть артикулы» ответит ошибкой площадки. Ozon проверяется по безопасному чтению списка товаров.</p>
+      <p className="admin-hint procurement-note">Wildberries раз в час фоново сохраняет карточки, артикулы, цены и продажи в локальное зеркало. Разделы сайта и кнопка сопоставления читают только базу и не создают дополнительных запросов к WB. Токену нужны категории «Цены и скидки», «Статистика» и «Контент».</p>
 	  <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления сразу читает полный каталог и прайс-лист — ждать фоновой синхронизации больше не нужно.</p>
     </section>}
 
