@@ -420,13 +420,23 @@ func (store *PostgresStore) ReplaceSales(
 	inserted := 0
 	for _, record := range normalized {
 		command, err := tx.Exec(ctx, `
+			WITH resolved AS (
+				SELECT COALESCE(
+					(SELECT saby_id FROM saby_nomenclature WHERE saby_id = NULLIF($4, '')),
+					(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'wb' AND wb_nm_id::TEXT = $3 LIMIT 1),
+					(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'ozon' AND ozon_offer_id = $3 LIMIT 1)
+				) AS saby_id
+			)
 			INSERT INTO procurement_sales_daily (
 				channel, sale_date, external_product_id, saby_id, units, gross_rub
-			) VALUES ($1, $2, $3, COALESCE(
-				(SELECT saby_id FROM saby_nomenclature WHERE saby_id = NULLIF($4, '')),
-				(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'wb' AND wb_nm_id::TEXT = $3 LIMIT 1),
-				(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'ozon' AND ozon_offer_id = $3 LIMIT 1)
-			), $5, $6)
+			)
+			SELECT $1, $2, $3, resolved.saby_id, $5, $6
+			FROM resolved
+			WHERE $1 <> 'saby' OR EXISTS (
+				SELECT 1 FROM products
+				WHERE products.saby_id = resolved.saby_id
+					AND products.catalog_section = 'plants'
+			)
 			ON CONFLICT (channel, sale_date, external_product_id) DO UPDATE SET
 				saby_id = EXCLUDED.saby_id, units = EXCLUDED.units,
 				gross_rub = EXCLUDED.gross_rub, synced_at = CURRENT_TIMESTAMP

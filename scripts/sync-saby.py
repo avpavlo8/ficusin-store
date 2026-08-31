@@ -6,11 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from saby_catalog_merge import (
-    build_sales_product_ids,
-    catalogue_ids_in_section,
-    merge_catalog_items,
-)
+from saby_catalog_merge import build_sales_product_ids, merge_catalog_items
 
 stage = "settings"
 
@@ -187,14 +183,6 @@ try:
     # the catalogue identity. Always translate sales to catalogue.id so stock,
     # sales and procurement all refer to one card.
     sales_product_ids = build_sales_product_ids(catalog_items)
-    indoor_plant_ids = catalogue_ids_in_section(
-        catalog_items, "Комнатные растения"
-    )
-    if not indoor_plant_ids:
-        # An empty category would silently erase all Saby demand from the
-        # procurement calculation, so fail the sync instead.
-        raise RuntimeError("empty indoor plants category")
-
     stage = "saby-sales"
     sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))
     moscow = datetime.timezone(datetime.timedelta(hours=3))
@@ -238,8 +226,6 @@ try:
                 if not source_id:
                     continue
                 saby_id = sales_product_ids.get(source_id.casefold(), source_id)
-                if saby_id not in indoor_plant_ids:
-                    continue
                 try:
                     quantity = float(position.get("Quantity") or 0)
                     total = float(position.get("TotalPrice") or 0)
