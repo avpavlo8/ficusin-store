@@ -59,6 +59,25 @@ func (executor *ProcurementExecutor) Execute(ctx context.Context, item procureme
 	}
 }
 
+// ExecuteGroup preserves the marketplace bulk contract through the channel
+// router used by the production worker. Without this delegation the worker
+// sees only the single-item Executor method and WB receives one request per
+// card despite MarketplaceExecutor supporting batches.
+func (executor *ProcurementExecutor) ExecuteGroup(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
+	if len(items) == 0 {
+		return nil
+	}
+	if (items[0].Channel == "wb" || items[0].Channel == "ozon") && executor != nil && executor.marketplaces != nil {
+		return executor.marketplaces.ExecuteGroup(ctx, items)
+	}
+	outcomes := make([]procurement.ActionOutcome, 0, len(items))
+	for _, item := range items {
+		result, err := executor.Execute(ctx, item)
+		outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: result, Err: err})
+	}
+	return outcomes
+}
+
 // FetchCatalog отдаёт справочник карточек маркетплейса. СБИС здесь не
 // участвует: его номенклатура и есть то, с чем эти карточки связывают.
 func (executor *ProcurementExecutor) FetchCatalog(ctx context.Context, channel string) ([]procurement.ChannelProduct, error) {
