@@ -3,6 +3,8 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,27 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
+type wbLimiterStub struct {
+	reserved []string
+	deferred map[string]time.Duration
+}
+
+func (stub *wbLimiterStub) ReserveWBRequest(_ context.Context, bucket string, _ time.Duration) (time.Duration, error) {
+	stub.reserved = append(stub.reserved, bucket)
+	return 0, nil
+}
+
+func (stub *wbLimiterStub) DeferWBRequests(_ context.Context, bucket string, delay time.Duration) error {
+	stub.deferred[bucket] = delay
+	return nil
+}
 
 func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -42,33 +65,28 @@ func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 
 func TestWBSalesIncludeSalesAndSubtractReturns(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.Path != "/api/finance/v1/sales-reports/detailed" {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/v1/supplier/sales" {
 			t.Fatalf("unexpected WB report request: %s %s", request.Method, request.URL.Path)
 		}
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`[
-			{"rrdId":1,"nmId":123,"docTypeName":"Продажа","sellerOperName":"Продажа","quantity":2,"retailAmount":"3000","saleDt":"2026-08-05T12:00:00Z"},
-			{"rrdId":2,"nmId":123,"docTypeName":"Возврат","sellerOperName":"Возврат","quantity":1,"retailAmount":"1500","saleDt":"2026-08-06T12:00:00Z"}
+			{"nmId":123,"saleID":"S1","date":"2026-08-05T12:00:00Z","finishedPrice":1500},
+			{"nmId":123,"saleID":"R1","date":"2026-08-06T12:00:00Z","finishedPrice":1500}
 		]`))
 	}))
 	defer server.Close()
 	executor := NewMarketplaceExecutor("token", "", "")
-	executor.wbStatsBase, executor.client = server.URL, server.Client()
+	executor.wbReportsBase, executor.client = server.URL, server.Client()
 	records, err := executor.FetchSales(context.Background(), "wb", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
-	if err != nil || len(records) != 2 || records[0].Units != 2 || records[1].Units != -1 {
+	if err != nil || len(records) != 2 || records[0].Units != 1 || records[1].Units != -1 {
 		t.Fatalf("records = %+v, err = %v", records, err)
 	}
 }
 
-func TestWBSalesFallBackToOperationalReportOnFinanceRateLimit(t *testing.T) {
-	finance := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Content-Type", "application/json")
-		response.Header().Set("X-Ratelimit-Retry", "1")
-		response.WriteHeader(http.StatusTooManyRequests)
-		_, _ = response.Write([]byte(`{"title":"too many requests"}`))
-	}))
-	defer finance.Close()
+func TestWBSalesUseOnlyOperationalReport(t *testing.T) {
+	calls := 0
 	reports := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		calls++
 		if request.Method != http.MethodGet || request.URL.Path != "/api/v1/supplier/sales" || request.URL.Query().Get("flag") != "0" {
 			t.Fatalf("unexpected operational report request: %s %s", request.Method, request.URL.String())
 		}
@@ -80,10 +98,13 @@ func TestWBSalesFallBackToOperationalReportOnFinanceRateLimit(t *testing.T) {
 	}))
 	defer reports.Close()
 	executor := NewMarketplaceExecutor("token", "", "")
-	executor.wbStatsBase, executor.wbReportsBase = finance.URL, reports.URL
+	executor.wbReportsBase = reports.URL
 	records, err := executor.FetchSales(context.Background(), "wb", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
 	if err != nil || len(records) != 2 || records[0].Units != 1 || records[1].Units != -1 {
 		t.Fatalf("records = %+v, err = %v", records, err)
+	}
+	if calls != 1 {
+		t.Fatalf("operational report calls = %d, want 1", calls)
 	}
 }
 
@@ -181,14 +202,14 @@ func TestMarketplaceProbesAreReadOnly(t *testing.T) {
 	}))
 	defer server.Close()
 	executor := NewMarketplaceExecutor("token", "client", "secret")
-	executor.wbBase, executor.wbStatsBase, executor.ozonBase, executor.client = server.URL, server.URL, server.URL, server.Client()
+	executor.wbBase, executor.wbReportsBase, executor.ozonBase, executor.client = server.URL, server.URL, server.URL, server.Client()
 	for _, channel := range []string{"wb", "ozon"} {
 		if err := executor.Probe(context.Background(), channel); err != nil {
 			t.Fatalf("probe %s: %v", channel, err)
 		}
 	}
 	if pingCalls != 2 {
-		t.Fatalf("WB price and finance pings = %d, want 2", pingCalls)
+		t.Fatalf("WB price and statistics pings = %d, want 2", pingCalls)
 	}
 }
 
@@ -264,6 +285,34 @@ func TestMarketplaceRetryAfterAcceptsWildberriesDecimalSeconds(t *testing.T) {
 	response := &http.Response{Header: http.Header{"X-Ratelimit-Retry": []string{"2.5s"}}}
 	if got := marketplaceRetryAfter(response); got != 2500*time.Millisecond {
 		t.Fatalf("retry delay = %v, want 2.5s", got)
+	}
+}
+
+func TestWildberries429StopsImmediatelyAndPublishesRetryWindow(t *testing.T) {
+	calls := 0
+	limiter := &wbLimiterStub{deferred: map[string]time.Duration{}}
+	executor := NewMarketplaceExecutor("token", "", "").WithWBRequestLimiter(limiter)
+	executor.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header: http.Header{"X-Ratelimit-Retry": []string{"137"}},
+			Body: io.NopCloser(strings.NewReader(`{"status":429,"detail":"rate limit exceeded"}`)),
+		}, nil
+	})}
+	_, err := executor.FetchSales(context.Background(), "wb", time.Now().AddDate(0, 0, -30), time.Now())
+	if err == nil {
+		t.Fatal("expected rate limit")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want exactly one", calls)
+	}
+	var retryable interface{ RetryDelay() time.Duration }
+	if !errors.As(err, &retryable) || retryable.RetryDelay() != 137*time.Second {
+		t.Fatalf("retry error = %v", err)
+	}
+	if limiter.deferred["sales"] != 137*time.Second {
+		t.Fatalf("published delay = %v", limiter.deferred["sales"])
 	}
 }
 

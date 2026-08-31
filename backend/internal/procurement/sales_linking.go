@@ -294,17 +294,22 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 		if externalID == "" {
 			continue
 		}
+		barcodes := item.Barcodes
+		if barcodes == nil {
+			barcodes = []string{}
+		}
 		batch.Queue(`
 			INSERT INTO procurement_channel_products (
-				channel, external_id, article, name, current_price, current_base_price
-			) VALUES ($1, $2, $3, $4, $5, $6)
+				channel, external_id, article, name, barcodes, current_price, current_base_price
+			) VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (channel, external_id) DO UPDATE SET
 				article = EXCLUDED.article, name = EXCLUDED.name,
+				barcodes = EXCLUDED.barcodes,
 				current_price = COALESCE(EXCLUDED.current_price, procurement_channel_products.current_price),
 				current_base_price = COALESCE(EXCLUDED.current_base_price, procurement_channel_products.current_base_price),
 				seen_at = CURRENT_TIMESTAMP
 		`, channel, externalID, strings.TrimSpace(item.Article), strings.TrimSpace(item.Name),
-			item.CurrentPrice, item.CurrentBasePrice)
+			barcodes, item.CurrentPrice, item.CurrentBasePrice)
 	}
 	if batch.Len() == 0 {
 		return nil

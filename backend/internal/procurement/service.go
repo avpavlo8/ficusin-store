@@ -71,6 +71,10 @@ type ChannelCatalogSource interface {
 	FetchCatalog(context.Context, string) ([]ChannelProduct, error)
 }
 
+type ChannelCatalogCache interface {
+	CachedChannelProducts(context.Context, string) ([]ChannelProduct, error)
+}
+
 // SabyCatalogRefresher performs an on-demand import of the complete Saby
 // nomenclature into the local directory. The implementation lives in the
 // integration package; procurement only coordinates the operator action.
@@ -154,6 +158,27 @@ func (service *Service) CheckIntegration(ctx context.Context, actor Actor, chann
 	var checkErr error
 	if !configured {
 		checkErr = errors.New("переменные окружения не настроены полностью")
+	} else if channel == "wb" {
+		// A manual diagnostic must not become a third WB caller. The hourly
+		// mirror already exercises the real content, price and statistics
+		// methods; report its persisted result instead of spending API quota on
+		// pings that can be green while the useful endpoint is rate-limited.
+		health, err := service.store.ListIntegrationHealth(ctx)
+		if err != nil {
+			return IntegrationHealth{}, err
+		}
+		checkErr = errors.New("фоновое зеркало Wildberries ещё не завершило первую загрузку")
+		for _, state := range health {
+			if state.Channel != "wb" {
+				continue
+			}
+			if state.LastError != "" {
+				checkErr = errors.New(state.LastError)
+			} else if state.LastSuccessAt != nil {
+				checkErr = nil
+			}
+			break
+		}
 	} else if prober, ok := service.executor.(IntegrationProber); !ok {
 		checkErr = errors.New("проверка подключения не поддерживается")
 	} else {
@@ -167,8 +192,9 @@ func (service *Service) CheckIntegration(ctx context.Context, actor Actor, chann
 	return item, nil
 }
 
-// SyncChannelCatalog подтягивает артикулы WB или Ozon и связывает их с
-// номенклатурой СБИС по точному совпадению кода, артикула или штрихкода.
+// SyncChannelCatalog связывает артикулы WB или Ozon с номенклатурой СБИС по
+// точному совпадению кода, артикула или штрихкода. WB читается только из
+// часового локального зеркала; Ozon пока загружается по этому ручному действию.
 //
 // Совпадение по названию сознательно не используется: «Фикус Бенджамина 12»
 // и «Фикус Бенджамина 14» — разные растения с разной ценой, и ошибочная
@@ -193,14 +219,27 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 	if !oneOf(channel, "wb", "ozon") {
 		return ChannelLinkResult{}, ErrInvalidInput
 	}
-	source, ok := service.executor.(ChannelCatalogSource)
-	if service.executor == nil || !ok {
-		return ChannelLinkResult{}, errors.New("чтение справочника канала не поддерживается")
+	var items []ChannelProduct
+	var err error
+	if channel == "wb" {
+		cache, ok := service.store.(ChannelCatalogCache)
+		if !ok {
+			return ChannelLinkResult{}, errors.New("локальное зеркало Wildberries не поддерживается")
+		}
+		items, err = cache.CachedChannelProducts(ctx, channel)
+		if err == nil && len(items) == 0 {
+			return ChannelLinkResult{}, &UserFacingError{Message: "Wildberries: локальное зеркало ещё не загрузилось; фоновая синхронизация повторится автоматически"}
+		}
+	} else {
+		source, ok := service.executor.(ChannelCatalogSource)
+		if service.executor == nil || !ok {
+			return ChannelLinkResult{}, errors.New("чтение справочника канала не поддерживается")
+		}
+		if !service.executor.Configured(channel) {
+			return ChannelLinkResult{}, errors.New("ключи канала не настроены")
+		}
+		items, err = source.FetchCatalog(ctx, channel)
 	}
-	if !service.executor.Configured(channel) {
-		return ChannelLinkResult{}, errors.New("ключи канала не настроены")
-	}
-	items, err := source.FetchCatalog(ctx, channel)
 	if err != nil {
 		return ChannelLinkResult{}, err
 	}
@@ -506,16 +545,16 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 	if kind == "prices" && len(selected) == 0 {
 		return ActionBatch{}, ErrInvalidInput
 	}
-	// Старая цена площадки нужна не только для показа: оператор должен
-	// видеть реальное изменение до подтверждения. Обновляем карточки прямо
-	// перед снимком batch, чтобы не подставлять вчерашнее значение.
+	// Ozon пока обновляет старую цену перед снимком. Wildberries намеренно
+	// отсутствует: карточки и цены раз в час кладёт в PostgreSQL единственный
+	// WBMirrorWorker, а пользовательские операции читают только это зеркало.
 	if kind == "prices" {
 		source, canRead := service.executor.(ChannelCatalogSource)
 		remember, canRemember := service.store.(interface {
 			RememberChannelProducts(context.Context, string, []ChannelProduct) error
 		})
 		for _, channel := range selected {
-			if channel != "wb" && channel != "ozon" {
+			if channel != "ozon" {
 				continue
 			}
 			if service.executor == nil || !service.executor.Configured(channel) || !canRead || !canRemember {

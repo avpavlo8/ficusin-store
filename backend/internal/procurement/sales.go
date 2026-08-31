@@ -52,11 +52,8 @@ type SalesWorker struct {
 	source   SalesSource
 	logger   *slog.Logger
 	interval time.Duration
-	// externalEvery — как часто спрашиваем сами площадки. Wildberries держит
-	// лимит на продавца, общий на все его интеграции сразу, и четыре захода
-	// в сутки мы тратили сами: отчёт отвечал 429 ещё до того, как им
-	// воспользовался кто-то другой. Продажи за год меняются медленно, чаще
-	// раза в день их спрашивать незачем.
+	// externalEvery — cadence of channels without a dedicated mirror. WB is
+	// deliberately absent: WBMirrorWorker owns every read from that API.
 	externalEvery time.Duration
 	// externalAt — когда площадки ответили в последний раз. Отмечаем только
 	// удачную попытку: неудачная должна повториться на ближайшем такте, а не
@@ -100,7 +97,7 @@ func (worker *SalesWorker) run(ctx context.Context) {
 			worker.logger.Error("site sales synchronization failed", "error", refreshErr)
 		}
 	}
-	for _, channel := range []string{"wb", "ozon"} {
+	for _, channel := range []string{"ozon"} {
 		if !worker.externalDue(channel) {
 			continue
 		}

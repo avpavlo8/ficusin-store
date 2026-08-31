@@ -34,15 +34,15 @@ func (salesSourceStub) FetchSales(_ context.Context, channel string, from, _ tim
 	return []SalesRecord{{Date: from, ExternalID: channel + "-1", Units: 2}}, nil
 }
 
-func TestSalesWorkerRefreshesEveryAutomaticChannel(t *testing.T) {
+func TestSalesWorkerLeavesWildberriesToItsDedicatedMirror(t *testing.T) {
 	store := &salesStoreStub{replaced: map[string][]SalesRecord{}, states: map[string]string{}}
 	worker := NewSalesWorker(store, salesSourceStub{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	worker.now = func() time.Time { return time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC) }
 	worker.run(context.Background())
-	if store.states["site"] != "ok" || store.states["wb"] != "ok" || store.states["ozon"] != "ok" {
+	if store.states["site"] != "ok" || store.states["ozon"] != "ok" {
 		t.Fatalf("states = %+v", store.states)
 	}
-	if len(store.replaced["wb"]) != 1 || len(store.replaced["ozon"]) != 1 {
+	if _, called := store.replaced["wb"]; called || len(store.replaced["ozon"]) != 1 {
 		t.Fatalf("replaced = %+v", store.replaced)
 	}
 }

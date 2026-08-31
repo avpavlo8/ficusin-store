@@ -25,7 +25,6 @@ const maxMarketplaceResponse = 64 << 20
 
 const (
 	defaultWBBase    = "https://discounts-prices-api.wildberries.ru"
-	defaultWBStats   = "https://finance-api.wildberries.ru"
 	defaultWBReports = "https://statistics-api.wildberries.ru"
 	defaultWBContent = "https://content-api.wildberries.ru"
 	defaultOzonBase  = "https://api-seller.ozon.ru"
@@ -33,14 +32,23 @@ const (
 
 type MarketplaceExecutor struct {
 	client       *http.Client
+	wbLimiter    WBRequestLimiter
 	wbToken      string
 	ozonClientID string
 	ozonAPIKey   string
 	wbBase        string
-	wbStatsBase   string
 	wbReportsBase string
 	wbContentBase string
 	ozonBase      string
+}
+
+// WBRequestLimiter coordinates seller-token limits across deployments and
+// application instances. The production implementation stores reservations
+// in PostgreSQL; tests and deployments without a database keep using the
+// in-process paced transport.
+type WBRequestLimiter interface {
+	ReserveWBRequest(context.Context, string, time.Duration) (time.Duration, error)
+	DeferWBRequests(context.Context, string, time.Duration) error
 }
 
 type marketplaceNumber float64
@@ -65,9 +73,14 @@ func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *Marketpla
 		client: &http.Client{Timeout: 90 * time.Second, Transport: newPacedTransport(nil)},
 		wbToken: strings.TrimSpace(wbToken),
 		ozonClientID: strings.TrimSpace(ozonClientID), ozonAPIKey: strings.TrimSpace(ozonAPIKey),
-		wbBase: defaultWBBase, wbStatsBase: defaultWBStats, wbReportsBase: defaultWBReports,
+		wbBase: defaultWBBase, wbReportsBase: defaultWBReports,
 		wbContentBase: defaultWBContent, ozonBase: defaultOzonBase,
 	}
+}
+
+func (executor *MarketplaceExecutor) WithWBRequestLimiter(limiter WBRequestLimiter) *MarketplaceExecutor {
+	executor.wbLimiter = limiter
+	return executor
 }
 
 func (executor *MarketplaceExecutor) FetchSales(
@@ -89,81 +102,16 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 	if !executor.Configured("wb") {
 		return nil, errors.New("токен Wildberries не настроен")
 	}
-	const limit = 100000
-	type wbReportRow struct {
-		RrdID           int64             `json:"rrdId"`
-		NmID            int64             `json:"nmId"`
-		DocType         string            `json:"docTypeName"`
-		Operation       string            `json:"sellerOperName"`
-		Quantity        marketplaceNumber `json:"quantity"`
-		RetailAmount    marketplaceNumber `json:"retailAmount"`
-		SaleDate        string            `json:"saleDt"`
-		RealizationDate string            `json:"rrDate"`
-	}
-	rows := make([]wbReportRow, 0)
-	var rrdID int64
-	for page := 0; page < 100; page++ {
-		payload := map[string]any{
-			"dateFrom": from.Format("2006-01-02"), "dateTo": to.Format("2006-01-02"),
-			"limit": limit, "rrdId": rrdID, "period": "daily",
-			"fields": []string{"rrdId", "nmId", "docTypeName", "sellerOperName", "quantity", "retailAmount", "saleDt", "rrDate"},
-		}
-		var response []wbReportRow
-		headers := map[string]string{"Authorization": executor.wbToken}
-		err := executor.request(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload, headers, &response)
-		if isRateLimit(err) {
-			return executor.fetchWBOperationalSales(ctx, from, to)
-		}
-		if err != nil {
-			err = executor.requestRead(ctx, http.MethodPost, executor.wbStatsBase+"/api/finance/v1/sales-reports/detailed", payload, headers, &response)
-		}
-		if err != nil {
-			if isRateLimit(err) {
-				return executor.fetchWBOperationalSales(ctx, from, to)
-			}
-			return nil, fmt.Errorf("получить продажи Wildberries: %w", err)
-		}
-		if len(response) == 0 {
-			break
-		}
-		rows = append(rows, response...)
-		next := response[len(response)-1].RrdID
-		if len(response) < limit {
-			break
-		}
-		if next <= 0 || next == rrdID {
-			return nil, errors.New("Wildberries вернул некорректный курсор финансового отчёта")
-		}
-		rrdID = next
-	}
-	records := make([]procurement.SalesRecord, 0, len(rows))
-	for _, row := range rows {
-		if row.NmID <= 0 || row.Quantity == 0 {
-			continue
-		}
-		date, err := parseMarketplaceDate(firstNonEmpty(row.SaleDate, row.RealizationDate))
-		if err != nil || date.Before(from) || date.After(to.Add(24*time.Hour-time.Second)) {
-			continue
-		}
-		sign := 1
-		kind := strings.ToLower(row.DocType + " " + row.Operation)
-		if strings.Contains(kind, "возврат") || strings.Contains(kind, "return") {
-			sign = -1
-		} else if !strings.Contains(kind, "продаж") && !strings.Contains(kind, "sale") {
-			continue
-		}
-		records = append(records, procurement.SalesRecord{
-			Date: date, ExternalID: strconv.FormatInt(row.NmID, 10),
-			Units: sign * int(math.Round(math.Abs(float64(row.Quantity)))), GrossRUB: float64(sign) * math.Abs(float64(row.RetailAmount)),
-		})
-	}
-	return records, nil
+	// The previous implementation called the strict financial report first
+	// and immediately fell back to operational sales after its 429. One sync
+	// therefore consumed two seller-wide API calls. The local mirror needs the
+	// rolling operational window only; older rows remain in PostgreSQL.
+	return executor.fetchWBOperationalSales(ctx, from, to)
 }
 
-// fetchWBOperationalSales uses WB's operational sales report as a fallback
-// when the financial report's global one-request-per-minute seller limit is
-// occupied by another integration. The report contains both sales and returns
-// and keeps 90 days, which covers the procurement recommendation window.
+// fetchWBOperationalSales is the single source for the hourly sales mirror.
+// It contains both sales and returns and keeps the rolling window used by the
+// procurement recommendation. Exactly one request is made per mirror run.
 func (executor *MarketplaceExecutor) fetchWBOperationalSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
 	type wbSale struct {
 		NmID          int64             `json:"nmId"`
@@ -379,13 +327,12 @@ func (executor *MarketplaceExecutor) Probe(ctx context.Context, channel string) 
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
 			return fmt.Errorf("проверить доступ Wildberries к ценам: %w", err)
 		}
-		// Every WB API category has its own read-only /ping. Using the finance
-		// ping verifies the permission needed for sales history without consuming
-		// the financial report endpoint's strict rate limit.
+		// The mirror reads operational sales from the statistics API, so its
+		// category ping verifies the permission without consuming the report.
 		response = nil
-		if err := executor.requestRead(ctx, http.MethodGet, executor.wbStatsBase+"/ping", nil,
+		if err := executor.requestRead(ctx, http.MethodGet, executor.wbReportsBase+"/ping", nil,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
-			return fmt.Errorf("проверить доступ Wildberries к финансам: %w", err)
+			return fmt.Errorf("проверить доступ Wildberries к статистике: %w", err)
 		}
 		return nil
 	case "ozon":
@@ -598,6 +545,8 @@ type remoteError struct {
 	RetryAfter time.Duration
 }
 
+func (err *remoteError) RetryDelay() time.Duration { return err.RetryAfter }
+
 // A 429 response means the marketplace rejected the mutation before applying
 // it, so retrying after its advertised window is safe. Network and 5xx errors
 // remain non-immediate because their outcome can be ambiguous.
@@ -649,6 +598,15 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
+	if bucket := wbRequestBucket(endpoint); bucket != "" && executor.wbLimiter != nil {
+		wait, err := executor.wbLimiter.ReserveWBRequest(ctx, bucket, marketplacePace(request.URL.Hostname()))
+		if err != nil {
+			return fmt.Errorf("reserve Wildberries API request: %w", err)
+		}
+		if err := waitForContext(ctx, wait); err != nil {
+			return err
+		}
+	}
 	response, err := executor.client.Do(request)
 	if err != nil {
 		return fmt.Errorf("marketplace request failed: %w", err)
@@ -670,7 +628,17 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		return fmt.Errorf("read marketplace response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response)}
+		remote := &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response)}
+		if remote.Status == http.StatusTooManyRequests && executor.wbLimiter != nil {
+			delay := remote.RetryAfter
+			if delay <= 0 {
+				delay = 65 * time.Second
+			}
+			if bucket := wbRequestBucket(endpoint); bucket != "" {
+				_ = executor.wbLimiter.DeferWBRequests(ctx, bucket, delay)
+			}
+		}
+		return remote
 	}
 	if int64(len(content)) >= limit {
 		return fmt.Errorf("%s ответил %d, но ответ длиннее %d МБ — уменьшите размер страницы",
@@ -706,32 +674,57 @@ func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, en
 		}
 		var remote *remoteError
 		var empty *emptyBodyError
-		retry := errors.As(lastErr, &remote) && (remote.Status == http.StatusTooManyRequests || remote.Status >= 500)
+		// A 429 has already published its X-RateLimit-Retry window through the
+		// shared gate. Return it to the durable worker instead of sleeping and
+		// spending two more requests from the same user operation.
+		if errors.As(lastErr, &remote) && remote.Status == http.StatusTooManyRequests && wbRequestBucket(endpoint) != "" {
+			return lastErr
+		}
+		retry := remote != nil && remote.Status >= 500
 		if !retry && !errors.As(lastErr, &empty) {
 			return lastErr
 		}
 		delay := time.Duration(attempt+1) * time.Second
-		if remote != nil && remote.Status == http.StatusTooManyRequests && remote.RetryAfter == 0 {
-			// WB's financial report has a strict global seller limit. A quick
-			// retry only consumes the next attempt, so use a conservative pause
-			// when the API omits an explicit Retry-After value.
-			delay = time.Minute
-		}
-		if remote != nil && remote.RetryAfter > delay {
-			delay = remote.RetryAfter
-		}
-		if delay > time.Minute {
-			delay = time.Minute
-		}
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
+		if err := waitForContext(ctx, delay); err != nil {
+			return err
 		}
 	}
 	return lastErr
+}
+
+func waitForContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func wbRequestBucket(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch {
+	case strings.HasSuffix(host, "statistics-api.wildberries.ru"),
+		strings.HasSuffix(host, "finance-api.wildberries.ru"):
+		return "sales"
+	case strings.HasSuffix(host, "discounts-prices-api.wildberries.ru"):
+		return "prices"
+	case strings.HasSuffix(host, "content-api.wildberries.ru"):
+		return "content"
+	case strings.HasSuffix(host, "wildberries.ru"):
+		return "general"
+	default:
+		return ""
+	}
 }
 
 func marketplaceRetryAfter(response *http.Response) time.Duration {

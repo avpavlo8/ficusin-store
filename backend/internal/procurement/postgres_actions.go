@@ -437,7 +437,7 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 			error_message = CASE
 				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '')
 					OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) THEN ''
-				WHEN channel = 'wb' AND external_article = '' THEN 'Не заполнен WB nmID. Укажите его в справочнике закупок или нажмите «Подтянуть артикулы».'
+				WHEN channel = 'wb' AND external_article = '' THEN 'Не заполнен WB nmID. Укажите его в справочнике закупок или нажмите «Сопоставить из зеркала».'
 				WHEN channel = 'ozon' AND external_article = '' THEN 'Не заполнен Ozon offer_id. Укажите его в справочнике закупок или нажмите «Подтянуть артикулы».'
 				ELSE 'API-адаптер канала не настроен' END,
 			completed_at = CASE WHEN channel = 'site' THEN CURRENT_TIMESTAMP ELSE NULL END,
@@ -663,6 +663,24 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 			updated_at = CURRENT_TIMESTAMP WHERE id = $1
 	`, actionID, status, message, result.ExternalOperationID, result.ExternalURL, int(delay.Seconds())); err != nil {
 		return fmt.Errorf("update procurement action result: %w", err)
+	}
+	// Once WB confirms the upload, advance the local mirror immediately. The
+	// next hourly read will verify it, but screens do not need to show the old
+	// price in the meantime.
+	if status == "completed" {
+		if _, err := tx.Exec(ctx, `
+			UPDATE procurement_channel_products product SET
+				current_price = item.new_value,
+				current_base_price = CASE
+					WHEN item.compare_at_value > item.new_value THEN item.compare_at_value
+					ELSE item.new_value END,
+				seen_at = CURRENT_TIMESTAMP
+			FROM procurement_action_items item
+			WHERE item.id = $1 AND item.channel = 'wb'
+				AND product.channel = 'wb' AND product.external_id = item.external_article
+		`, actionID); err != nil {
+			return fmt.Errorf("update confirmed Wildberries mirror price: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches SET status = CASE
