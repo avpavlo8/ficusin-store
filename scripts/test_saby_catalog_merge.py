@@ -1,6 +1,10 @@
 import unittest
 
-from saby_catalog_merge import build_sales_product_ids, merge_catalog_items
+from saby_catalog_merge import (
+    build_sales_product_ids,
+    catalogue_ids_in_section,
+    merge_catalog_items,
+)
 
 
 class MergeCatalogItemsTest(unittest.TestCase):
@@ -58,6 +62,42 @@ class MergeCatalogItemsTest(unittest.TestCase):
         self.assertEqual(identifiers["x8999268"], "2971")
         self.assertEqual(identifiers["2971"], "2971")
         self.assertEqual(identifiers["phal-3"], "2971")
+
+    def test_sales_ids_include_saby_receipt_uuid(self):
+        identifiers = build_sales_product_ids([
+            {
+                "id": 2971,
+                "hierarchicalId": "059ac0b1-d01a-4c2d-b90b-f09e3af43318",
+            }
+        ])
+        self.assertEqual(
+            identifiers["059ac0b1-d01a-4c2d-b90b-f09e3af43318"], "2971"
+        )
+
+    def test_catalogue_section_selects_only_leaf_products(self):
+        items = [
+            {
+                "id": 10,
+                "name": "Комнатные растения",
+                "isParent": True,
+                "_ficusinSectionPath": [],
+            },
+            {
+                "id": 11,
+                "name": "Фикус",
+                "isParent": False,
+                "_ficusinSectionPath": ["Комнатные растения", "Фикусы"],
+            },
+            {
+                "id": 12,
+                "name": "Кашпо",
+                "isParent": False,
+                "_ficusinSectionPath": ["Кашпо"],
+            },
+        ]
+        self.assertEqual(
+            catalogue_ids_in_section(items, "комнатные РАСТЕНИЯ"), {"11"}
+        )
 
 
 if __name__ == "__main__":
