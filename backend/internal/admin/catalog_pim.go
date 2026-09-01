@@ -333,7 +333,7 @@ func (repository *PostgresRepository) ListProductVariants(ctx context.Context, p
 			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=v.id),0)::INTEGER,
 			v.wholesale_min_qty,v.is_active=1,v.archived_at IS NOT NULL,
 			COALESCE((SELECT jsonb_object_agg(d.code,av.value) FROM variant_attribute_values av JOIN attribute_definitions d ON d.id=av.attribute_id WHERE av.variant_id=v.id),'{}'::jsonb),
-			COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',e.provider,'type',e.id_type,'externalId',e.external_id) ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.variant_id=v.id),'[]'::jsonb),
+			COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',e.provider,'type',e.id_type,'externalId',e.external_id) ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.variant_id=v.id AND e.status='active' AND NOT (e.provider='wildberries' AND e.id_type IN ('sku','nm_id'))),'[]'::jsonb),
 			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,m.object_key) ORDER BY m.is_primary DESC,m.sort_order,m.id) FROM product_media m LEFT JOIN media_mirror mirror ON mirror.source_url=m.object_key WHERE m.variant_id=v.id),'[]'::jsonb),p.saby_fields
 		FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.product_id=$1 ORDER BY v.archived_at NULLS FIRST,v.id
 	`,productID);if err!=nil{return nil,fmt.Errorf("list variants: %w",err)};defer rows.Close();items:=[]AdminVariant{}
@@ -401,8 +401,8 @@ func validateRequiredVariantAttributes(ctx context.Context, tx pgx.Tx, productID
 }
 
 func replaceVariantExternalIDs(ctx context.Context,tx pgx.Tx,productID,variantID int64,values []ExternalID) error {
-	if _,err:=tx.Exec(ctx,`DELETE FROM product_external_ids WHERE variant_id=$1 AND provider NOT IN ('ficusin','saby')`,variantID);err!=nil{return err}
-	for _,item:=range values{provider:=strings.ToLower(strings.TrimSpace(item.Provider));kind:=strings.ToLower(strings.TrimSpace(item.Type));external:=strings.TrimSpace(item.ExternalID);if provider==""||kind==""||external==""||provider=="ficusin"||provider=="saby"{continue};if _,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,id_type,external_id) DO UPDATE SET product_id=EXCLUDED.product_id,variant_id=EXCLUDED.variant_id,updated_at=CURRENT_TIMESTAMP`,productID,variantID,provider,kind,external);err!=nil{return err}}
+	if _,err:=tx.Exec(ctx,`UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP WHERE variant_id=$1 AND provider NOT IN ('ficusin','saby') AND NOT (provider='wildberries' AND id_type IN ('sku','nm_id')) AND status='active'`,variantID);err!=nil{return err}
+	for _,item:=range values{provider:=strings.ToLower(strings.TrimSpace(item.Provider));kind:=strings.ToLower(strings.TrimSpace(item.Type));external:=strings.TrimSpace(item.ExternalID);if provider==""||kind==""||external==""||provider=="ficusin"||provider=="saby"{continue};tag,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,last_seen_at) VALUES($1,$2,$3,$4,$5,'active',NOT EXISTS(SELECT 1 FROM product_external_ids current WHERE current.variant_id=$2 AND current.provider=$3 AND current.id_type=$4 AND current.status='active' AND current.is_primary),'manual',CURRENT_TIMESTAMP) ON CONFLICT(provider,id_type,external_id) DO UPDATE SET product_id=EXCLUDED.product_id,variant_id=EXCLUDED.variant_id,status='active',source='manual',last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE product_external_ids.product_id=EXCLUDED.product_id`,productID,variantID,provider,kind,external);if err!=nil{return err};if tag.RowsAffected()!=1{return fmt.Errorf("%w: внешний идентификатор уже связан с другим товаром",ErrInvalidInput)}}
 	return nil
 }
 

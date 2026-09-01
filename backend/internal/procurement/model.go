@@ -340,6 +340,7 @@ type SalesSyncStatus struct {
 }
 
 type ProductDirectoryItem struct {
+	VariantID          int64    `json:"variantId"`
 	SabyID             string   `json:"sabyId"`
 	SabyCode           string   `json:"sabyCode"`
 	SabyArticle        string   `json:"sabyArticle"`
@@ -355,6 +356,10 @@ type ProductDirectoryItem struct {
 	WBNmID             *int64   `json:"wbNmId,omitempty"`
 	WBVendorCode       string   `json:"wbVendorCode"`
 	OzonOfferID        string   `json:"ozonOfferId"`
+	WBArticles         []string `json:"wbArticles"`
+	WBLegacyArticles   []string `json:"wbLegacyArticles"`
+	OzonArticles       []string `json:"ozonArticles"`
+	OzonLegacyArticles []string `json:"ozonLegacyArticles"`
 	MinimumOrderQty    int      `json:"minimumOrderQty"`
 	OrderMultiple      int      `json:"orderMultiple"`
 	Aliases            []string `json:"aliases"`
@@ -362,6 +367,7 @@ type ProductDirectoryItem struct {
 }
 
 type ProductDirectoryUpdate struct {
+	VariantID          int64  `json:"variantId"`
 	SabyID             string `json:"sabyId"`
 	SupplierID         int64  `json:"supplierId"`
 	SupplierArticle    string `json:"supplierArticle"`
@@ -390,6 +396,7 @@ type ActionItem struct {
 	ProductCode         string              `json:"productCode"`
 	Channel             string              `json:"channel"`
 	ExternalArticle     string              `json:"externalArticle"`
+	DisplayArticle      string              `json:"displayArticle"`
 	OldValue            *float64            `json:"oldValue,omitempty"`
 	NewValue            float64             `json:"newValue"`
 	CompareAtValue      *float64            `json:"compareAtValue,omitempty"`
@@ -473,12 +480,13 @@ type AliasReview struct {
 }
 
 type NomenclatureCandidate struct {
-	SabyID  string  `json:"sabyId"`
-	Code    string  `json:"code"`
-	Article string  `json:"article"`
-	Name    string  `json:"name"`
-	Balance int     `json:"balance"`
-	Price   float64 `json:"price"`
+	VariantID int64   `json:"variantId"`
+	SabyID   string  `json:"sabyId"`
+	Code     string  `json:"code"`
+	Article  string  `json:"article"`
+	Name     string  `json:"name"`
+	Balance  int     `json:"balance"`
+	Price    float64 `json:"price"`
 }
 
 type AliasResolution struct {

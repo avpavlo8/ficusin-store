@@ -8,7 +8,7 @@ import type { NomenclatureCandidate, SalesLinkResult, UnlinkedSale } from "./adm
 const linkableChannels = ["ozon", "wb", "saby"];
 
 const externalCodeHint = (channel: string) => channel === "wb"
-  ? "Внешний код Wildberries — числовой nmID, по нему растение не узнать. Названия и артикулы раз в час попадают в локальное зеркало; на вкладке «Интеграции» их можно сопоставить с товарами без нового запроса к WB."
+  ? "В Wildberries показываем артикул продавца. Числовой nmID хранится только как технический ключ API и не используется как название товара."
   : channel === "ozon"
 	? "Внешний код Ozon — это offer_id карточки. Поиск также предлагает живые товары СБИС по похожим словам из названия."
 	: "Здесь показаны продажи СБИС, код которых не удалось связать с живой номенклатурой.";
@@ -21,6 +21,10 @@ const saleTitle = (item: UnlinkedSale) => [
   item.article && item.article !== item.externalId ? item.article : "",
   item.name,
 ].filter(Boolean).join(" · ");
+
+const visibleMarketplaceArticle = (item: UnlinkedSale) => item.channel === "wb"
+  ? (item.article || "Артикул WB не загружен")
+  : item.externalId;
 
 export function ProcurementUnlinkedSales({ onError }: { onError: (value: string) => void }) {
   const [channel, setChannel] = useState("ozon");
@@ -66,7 +70,7 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
     {items.length ? <div className="admin-table-wrap"><table className="admin-table procurement-unlinked-sales"><thead><tr>
       <th>Карточка канала</th><th>Штук</th><th>Сумма</th><th>Дней</th><th>Последняя продажа</th><th></th>
     </tr></thead><tbody>{items.map((item) => <tr key={item.externalId}>
-      <td><strong>{item.externalId}</strong><small>{saleTitle(item) || "Название с площадки не загружено"}</small></td>
+      <td><strong>{visibleMarketplaceArticle(item)}</strong><small>{item.name || "Название с площадки не загружено"}{item.channel === "wb" ? ` · технический nmID ${item.externalId}` : ""}</small></td>
       <td>{item.units}</td>
       <td>{money.format(item.grossRub)}</td>
       <td>{item.days}</td>
@@ -114,7 +118,7 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
           // такими строками нечего — за ними один saby_id, — а React ещё и
           // ругается на повторяющийся ключ.
           const unique = new Map<string, NomenclatureCandidate>();
-          for (const item of result.items || []) if (!unique.has(item.sabyId)) unique.set(item.sabyId, item);
+          for (const item of result.items || []) if (!unique.has(String(item.variantId))) unique.set(String(item.variantId), item);
           setCandidates([...unique.values()]);
         })
         .catch(() => setCandidates([]))
@@ -127,7 +131,7 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
     try {
       const result = await api<{ link: SalesLinkResult }>("/api/v1/admin/procurement/sales/link", {
         method: "POST",
-        body: JSON.stringify({ channel: sale.channel, externalId: sale.externalId, sabyId: candidate.sabyId }),
+        body: JSON.stringify({ channel: sale.channel, externalId: sale.externalId, variantId: candidate.variantId }),
       });
       onLinked(result.link);
     } catch (error) { onError((error as Error).message); }
@@ -138,10 +142,10 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
   return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} />
     <div className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
       <header><div><p className="eyebrow">{salesChannelLabel(sale.channel)} · {sale.units} шт.</p><h2 id="sales-link-title">Сопоставить продажи</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
-      <div className="procurement-match-source"><strong>{sale.externalId}</strong><span>{saleTitle(sale) || "Название с площадки не загружено"}</span></div>
-      <p className="admin-hint procurement-note">Код закрепится за выбранным товаром: уже загруженные продажи под ним вернутся в расчёт, а следующие выгрузки свяжутся сами. Позиции, пропавшие из выгрузки СБИС, здесь не показываются — приписать продажи карточке, которой в магазине уже нет, значит потерять их второй раз.</p>
-      <label className="procurement-match-search">Поиск по живой номенклатуре СБИС<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название, код или артикул" /></label>
-      <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в СБИС…</span></div> : candidates.length ? candidates.map((item) => <article key={item.sabyId}>
+      <div className="procurement-match-source"><strong>{visibleMarketplaceArticle(sale)}</strong><span>{sale.name || "Название с площадки не загружено"}{sale.channel === "wb" ? ` · технический nmID ${sale.externalId}` : ""}</span></div>
+      <p className="admin-hint procurement-note">Артикул закрепится за нашим товаром в едином справочнике. Уже загруженные продажи вернутся в расчёт, следующие выгрузки используют сохранённую связь, а сменившийся артикул останется в истории.</p>
+      <label className="procurement-match-search">Поиск по единому справочнику товаров<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название или код X…" /></label>
+      <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в справочнике…</span></div> : candidates.length ? candidates.map((item) => <article key={item.variantId}>
         <div><strong>{item.name}</strong><span>{candidateKeys(item)}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
         <button disabled={saving} onClick={() => void link(item)}>Связать</button>
       </article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Попробуйте часть названия без размера — код маркетплейса не обязан совпадать с написанием в СБИС.</span></div>}</div>

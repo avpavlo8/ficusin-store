@@ -100,11 +100,18 @@ func (store *PostgresStore) ReserveWBRequest(ctx context.Context, bucket string,
 	}
 	var seconds float64
 	err := store.pool.QueryRow(ctx, `
-		WITH reservation AS (
+		WITH shared_gate AS (
+			SELECT GREATEST(COALESCE(MAX(next_request_at), CURRENT_TIMESTAMP),
+				CURRENT_TIMESTAMP) AS opens_at
+			FROM procurement_wb_rate_limits
+			WHERE bucket IN ($1, '__global__')
+		), reservation AS (
 			INSERT INTO procurement_wb_rate_limits (bucket, next_request_at)
-			VALUES ($1, CURRENT_TIMESTAMP + make_interval(secs => $2::DOUBLE PRECISION))
+			SELECT $1, opens_at + make_interval(secs => $2::DOUBLE PRECISION)
+			FROM shared_gate
 			ON CONFLICT (bucket) DO UPDATE SET
-				next_request_at = GREATEST(procurement_wb_rate_limits.next_request_at, CURRENT_TIMESTAMP)
+				next_request_at = GREATEST(procurement_wb_rate_limits.next_request_at,
+					(SELECT opens_at FROM shared_gate), CURRENT_TIMESTAMP)
 					+ make_interval(secs => $2::DOUBLE PRECISION),
 				updated_at = CURRENT_TIMESTAMP
 			RETURNING next_request_at - make_interval(secs => $2::DOUBLE PRECISION) AS reserved_at
@@ -118,6 +125,21 @@ func (store *PostgresStore) ReserveWBRequest(ctx context.Context, bucket string,
 	return time.Duration(seconds * float64(time.Second)), nil
 }
 
+// WBRequestDelay reads the shared breaker without reserving another slot.
+// It is called immediately before HTTP I/O, after the original reservation
+// wait, so a 429 received by a different bucket also pauses queued requests.
+func (store *PostgresStore) WBRequestDelay(ctx context.Context, bucket string) (time.Duration, error) {
+	if bucket == "" { return 0, ErrInvalidInput }
+	var seconds float64
+	err := store.pool.QueryRow(ctx, `
+		SELECT GREATEST(COALESCE(EXTRACT(EPOCH FROM
+			(MAX(next_request_at) - CURRENT_TIMESTAMP)), 0), 0)
+		FROM procurement_wb_rate_limits WHERE bucket='__global__'
+	`).Scan(&seconds)
+	if err != nil { return 0, fmt.Errorf("read Wildberries request pause: %w", err) }
+	return time.Duration(seconds * float64(time.Second)), nil
+}
+
 // DeferWBRequests publishes the server-provided retry window to every app
 // instance before the current caller returns the 429 to its durable worker.
 func (store *PostgresStore) DeferWBRequests(ctx context.Context, bucket string, delay time.Duration) error {
@@ -126,7 +148,8 @@ func (store *PostgresStore) DeferWBRequests(ctx context.Context, bucket string, 
 	}
 	_, err := store.pool.Exec(ctx, `
 		INSERT INTO procurement_wb_rate_limits (bucket, next_request_at)
-		VALUES ($1, CURRENT_TIMESTAMP + make_interval(secs => $2::DOUBLE PRECISION))
+		SELECT requested, CURRENT_TIMESTAMP + make_interval(secs => $2::DOUBLE PRECISION)
+		FROM UNNEST(ARRAY[$1::TEXT, '__global__']) requested
 		ON CONFLICT (bucket) DO UPDATE SET
 			next_request_at = GREATEST(procurement_wb_rate_limits.next_request_at,
 				CURRENT_TIMESTAMP + make_interval(secs => $2::DOUBLE PRECISION)),

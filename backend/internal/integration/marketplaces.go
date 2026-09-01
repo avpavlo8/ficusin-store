@@ -48,6 +48,7 @@ type MarketplaceExecutor struct {
 // in-process paced transport.
 type WBRequestLimiter interface {
 	ReserveWBRequest(context.Context, string, time.Duration) (time.Duration, error)
+	WBRequestDelay(context.Context, string) (time.Duration, error)
 	DeferWBRequests(context.Context, string, time.Duration) error
 }
 
@@ -602,6 +603,16 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		wait, err := executor.wbLimiter.ReserveWBRequest(ctx, bucket, marketplacePace(request.URL.Hostname()))
 		if err != nil {
 			return fmt.Errorf("reserve Wildberries API request: %w", err)
+		}
+		if err := waitForContext(ctx, wait); err != nil {
+			return err
+		}
+		// A different WB endpoint may have received 429 while this request was
+		// already waiting in its bucket. Re-check the shared circuit breaker
+		// immediately before I/O so queued work cannot leak through the pause.
+		wait, err = executor.wbLimiter.WBRequestDelay(ctx, bucket)
+		if err != nil {
+			return fmt.Errorf("check Wildberries API pause: %w", err)
 		}
 		if err := waitForContext(ctx, wait); err != nil {
 			return err

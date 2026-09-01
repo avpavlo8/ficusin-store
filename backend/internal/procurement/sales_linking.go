@@ -48,7 +48,10 @@ type UnlinkedSale struct {
 type SalesLink struct {
 	Channel    string `json:"channel"`
 	ExternalID string `json:"externalId"`
-	SabyID     string `json:"sabyId"`
+	VariantID  int64  `json:"variantId"`
+	// SabyID remains accepted for one compatible release. New clients send
+	// VariantID and never bind marketplace history directly to a remote ID.
+	SabyID string `json:"sabyId"`
 }
 
 // SalesLinkResult — что изменилось после связывания.
@@ -145,12 +148,12 @@ func (service *Service) SearchLinkableNomenclature(ctx context.Context, query st
 	return store.SearchLinkableNomenclature(ctx, query)
 }
 
-// LinkSalesProduct закрепляет внешний код за товаром СБИС.
+// LinkSalesProduct закрепляет внешний код за нашим каноническим SKU.
 func (service *Service) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
 	input.Channel = strings.TrimSpace(input.Channel)
 	input.ExternalID = strings.TrimSpace(input.ExternalID)
 	input.SabyID = strings.TrimSpace(input.SabyID)
-	if !oneOf(input.Channel, manualSalesChannels...) || input.ExternalID == "" || input.SabyID == "" ||
+	if !oneOf(input.Channel, manualSalesChannels...) || input.ExternalID == "" || (input.VariantID <= 0 && input.SabyID == "") ||
 		len(input.ExternalID) > 200 || len(input.SabyID) > 200 {
 		return SalesLinkResult{}, ErrInvalidInput
 	}
@@ -192,7 +195,7 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 			ON card.channel = sale.channel AND card.external_id = sale.external_product_id
 		LEFT JOIN procurement_ignored_sales_products ignored
 			ON ignored.channel = sale.channel AND ignored.external_product_id = sale.external_product_id
-		WHERE sale.channel = $1 AND sale.saby_id IS NULL
+		WHERE sale.channel = $1 AND sale.canonical_variant_id IS NULL
 			AND ($3 OR ignored.external_product_id IS NULL)
 		GROUP BY sale.external_product_id
 		ORDER BY SUM(sale.units) DESC, MAX(sale.sale_date) DESC
@@ -232,7 +235,7 @@ func (store *PostgresStore) IgnoreSalesProduct(ctx context.Context, actor Actor,
 	return tx.Commit(ctx)
 }
 
-// SearchLinkableNomenclature отдаёт живые позиции справочника.
+// SearchLinkableNomenclature отдаёт позиции нашего канонического справочника.
 //
 // Сортировка по остатку не косметика: у растения нередко заведено две
 // карточки — рабочая и оставшаяся с прошлой выгрузки, — и различить их
@@ -251,18 +254,22 @@ func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, quer
 	}
 	if len(patterns) == 0 { patterns = append(patterns, "%"+query+"%") }
 	rows, err := store.pool.Query(ctx, `
-		SELECT saby_id, code, article, name, balance,
-			price_minor::DOUBLE PRECISION / 100
-		FROM saby_nomenclature
-		WHERE missing_since IS NULL
-			AND (name ILIKE '%' || $1 || '%'
-				OR code ILIKE '%' || $1 || '%'
-				OR article ILIKE '%' || $1 || '%'
-				OR saby_id ILIKE '%' || $1 || '%'
-				OR name ILIKE ANY($3::TEXT[]))
-		ORDER BY (name ILIKE '%' || $1 || '%') DESC,
-			(SELECT COUNT(*) FROM UNNEST($3::TEXT[]) pattern WHERE name ILIKE pattern) DESC,
-			balance DESC, name, saby_id
+		SELECT directory.variant_id, directory.saby_id, directory.master_code,
+			COALESCE(nomenclature.article, ''), directory.name,
+			COALESCE(nomenclature.balance, 0),
+			COALESCE(nomenclature.price_minor, 0)::DOUBLE PRECISION / 100
+		FROM canonical_product_directory directory
+		LEFT JOIN saby_nomenclature nomenclature ON nomenclature.saby_id = directory.saby_id
+		WHERE directory.active AND directory.master_code <> ''
+			AND (directory.name ILIKE '%' || $1 || '%'
+				OR directory.master_code ILIKE '%' || $1 || '%'
+				OR COALESCE(nomenclature.article, '') ILIKE '%' || $1 || '%'
+				OR directory.saby_id ILIKE '%' || $1 || '%'
+				OR directory.name ILIKE ANY($3::TEXT[]))
+		ORDER BY (directory.master_code = UPPER($1)) DESC,
+			(directory.name ILIKE '%' || $1 || '%') DESC,
+			(SELECT COUNT(*) FROM UNNEST($3::TEXT[]) pattern WHERE directory.name ILIKE pattern) DESC,
+			COALESCE(nomenclature.balance, 0) DESC, directory.name, directory.variant_id
 		LIMIT $2
 	`, query, linkableCandidatesLimit, patterns)
 	if err != nil {
@@ -272,7 +279,7 @@ func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, quer
 	items := make([]NomenclatureCandidate, 0, linkableCandidatesLimit)
 	for rows.Next() {
 		var item NomenclatureCandidate
-		if err := rows.Scan(&item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
+		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
 			return nil, fmt.Errorf("scan linkable nomenclature: %w", err)
 		}
 		items = append(items, item)
@@ -333,21 +340,20 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 // старая — никогда.
 func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
 	result := SalesLinkResult{Channel: input.Channel, ExternalID: input.ExternalID, SabyID: input.SabyID}
-	var wbNumberID int64
-	if input.Channel == "wb" {
-		parsed, err := strconv.ParseInt(input.ExternalID, 10, 64)
-		if err != nil {
-			return SalesLinkResult{}, ErrInvalidInput
-		}
-		wbNumberID = parsed
-	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("begin sales link: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	err = tx.QueryRow(ctx, `SELECT name FROM saby_nomenclature WHERE saby_id = $1`, input.SabyID).Scan(&result.SabyName)
+	var productID, variantID int64
+	err = tx.QueryRow(ctx, `
+		SELECT product_id, variant_id, saby_id, name
+		FROM canonical_product_directory
+		WHERE active AND (($1 > 0 AND variant_id = $1) OR ($1 <= 0 AND saby_id = $2))
+		ORDER BY ($1 > 0 AND variant_id = $1) DESC, variant_id
+		LIMIT 1
+	`, input.VariantID, input.SabyID).Scan(&productID, &variantID, &result.SabyID, &result.SabyName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SalesLinkResult{}, ErrNotFound
 	}
@@ -355,52 +361,58 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 		return SalesLinkResult{}, fmt.Errorf("load nomenclature for sales link: %w", err)
 	}
 
-	// Карточка маркетплейса продаёт ровно один товар, а поле кода в
-	// справочнике одно на товар. Если код уже закреплён за другим растением,
-	// оставить обе связи нельзя: одна из них припишет чужие продажи. Человек
-	// сейчас сказал, чей это код, — снимаем прежнюю и показываем, у кого.
-	if input.Channel == "wb" {
-		err = tx.QueryRow(ctx, `
-			UPDATE procurement_product_channels
-			SET wb_nm_id = NULL, updated_by = $3, updated_at = CURRENT_TIMESTAMP
-			WHERE wb_nm_id = $1 AND saby_id <> $2
-			RETURNING saby_id
-		`, wbNumberID, input.SabyID, actor.CustomerID).Scan(&result.TakenFrom)
-	} else if input.Channel == "ozon" {
-		err = tx.QueryRow(ctx, `
-			UPDATE procurement_product_channels
-			SET ozon_offer_id = '', updated_by = $3, updated_at = CURRENT_TIMESTAMP
-			WHERE ozon_offer_id = $1 AND saby_id <> $2
-			RETURNING saby_id
-		`, input.ExternalID, input.SabyID, actor.CustomerID).Scan(&result.TakenFrom)
-	}
+	provider, idType := "ozon", "offer_id"
+	if input.Channel == "wb" { provider, idType = "wildberries", "sku" }
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(directory.master_code, directory.saby_id)
+		FROM product_external_ids external
+		JOIN canonical_product_directory directory ON directory.variant_id = external.variant_id
+		WHERE external.provider = $1 AND external.id_type = $2
+			AND external.external_id = $3 AND external.variant_id <> $4
+	`, provider, idType, input.ExternalID, variantID).Scan(&result.TakenFrom)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SalesLinkResult{}, fmt.Errorf("release channel code: %w", err)
 	}
-
-	if input.Channel == "wb" {
-		_, err = tx.Exec(ctx, `
-			INSERT INTO procurement_product_channels (saby_id, wb_nm_id, updated_by)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (saby_id) DO UPDATE SET wb_nm_id = EXCLUDED.wb_nm_id,
-				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-		`, input.SabyID, wbNumberID, actor.CustomerID)
-	} else if input.Channel == "ozon" {
-		_, err = tx.Exec(ctx, `
-			INSERT INTO procurement_product_channels (saby_id, ozon_offer_id, updated_by)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (saby_id) DO UPDATE SET ozon_offer_id = EXCLUDED.ozon_offer_id,
-				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-		`, input.SabyID, input.ExternalID, actor.CustomerID)
-	}
+	var mappingID int64
+	err = tx.QueryRow(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type,
+			external_id, status, is_primary, source, linked_by, confirmed_at, last_seen_at)
+		VALUES($1,$2,$3,$4,$5,'active',FALSE,'manual',$6,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			status='active', is_primary=FALSE, source='manual', linked_by=EXCLUDED.linked_by,
+			confirmed_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP,
+			updated_at=CURRENT_TIMESTAMP
+		RETURNING id
+	`, productID, variantID, provider, idType, input.ExternalID, actor.CustomerID).Scan(&mappingID)
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("save channel code: %w", err)
 	}
+	// WB's numeric nmID is only the API join key. Store the seller article
+	// next to it, because this is the identifier people see and report on.
+	if input.Channel == "wb" {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,
+				external_id,status,is_primary,source,linked_by,confirmed_at,last_seen_at)
+			SELECT $1,$2,'wildberries','vendor_code',BTRIM(article),'active',FALSE,
+				'manual',$4,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
+			FROM procurement_channel_products
+			WHERE channel='wb' AND external_id=$3 AND BTRIM(article)<>''
+			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+				product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+				status='active', is_primary=FALSE, source='manual', linked_by=EXCLUDED.linked_by,
+				confirmed_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP,
+				updated_at=CURRENT_TIMESTAMP
+		`, productID, variantID, input.ExternalID, actor.CustomerID)
+		if err != nil { return SalesLinkResult{}, fmt.Errorf("save Wildberries article: %w", err) }
+	}
 
 	command, err := tx.Exec(ctx, `
-		UPDATE procurement_sales_daily SET saby_id = $3
-		WHERE channel = $1 AND external_product_id = $2 AND saby_id IS DISTINCT FROM $3
-	`, input.Channel, input.ExternalID, input.SabyID)
+		UPDATE procurement_sales_daily SET saby_id = $3,
+			canonical_variant_id = $4, external_mapping_id = $5
+		WHERE channel = $1 AND external_product_id = $2
+			AND (canonical_variant_id IS DISTINCT FROM $4 OR saby_id IS DISTINCT FROM $3)
+	`, input.Channel, input.ExternalID, result.SabyID, variantID, mappingID)
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("backfill linked sales: %w", err)
 	}
@@ -414,7 +426,7 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(DISTINCT external_product_id)::INTEGER FROM procurement_sales_daily
-		WHERE channel = $1 AND saby_id IS NULL AND NOT EXISTS (
+		WHERE channel = $1 AND canonical_variant_id IS NULL AND NOT EXISTS (
 			SELECT 1 FROM procurement_ignored_sales_products ignored
 			WHERE ignored.channel = procurement_sales_daily.channel
 				AND ignored.external_product_id = procurement_sales_daily.external_product_id)

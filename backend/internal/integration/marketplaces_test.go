@@ -30,6 +30,10 @@ func (stub *wbLimiterStub) ReserveWBRequest(_ context.Context, bucket string, _ 
 	return 0, nil
 }
 
+func (stub *wbLimiterStub) WBRequestDelay(_ context.Context, _ string) (time.Duration, error) {
+	return 0, nil
+}
+
 func (stub *wbLimiterStub) DeferWBRequests(_ context.Context, bucket string, delay time.Duration) error {
 	stub.deferred[bucket] = delay
 	return nil

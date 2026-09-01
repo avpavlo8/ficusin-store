@@ -150,6 +150,19 @@ func TestLinkSalesProductAcceptsNumericWildberriesCode(t *testing.T) {
 	}
 }
 
+func TestLinkSalesProductUsesCanonicalVariantWithoutRemoteIdentity(t *testing.T) {
+	t.Parallel()
+	store := &salesLinkStoreStub{}
+	if _, err := NewService(store).LinkSalesProduct(context.Background(), Actor{}, SalesLink{
+		Channel: "ozon", ExternalID: "olive-d12-old", VariantID: 42,
+	}); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(store.links) != 1 || store.links[0].VariantID != 42 || store.links[0].SabyID != "" {
+		t.Fatalf("links = %+v", store.links)
+	}
+}
+
 func TestLinkableNomenclatureNeedsAMeaningfulQuery(t *testing.T) {
 	t.Parallel()
 	service := NewService(&salesLinkStoreStub{})

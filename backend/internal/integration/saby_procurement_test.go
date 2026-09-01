@@ -83,6 +83,29 @@ func TestSabyProbeCachesServiceSession(t *testing.T) {
 	}
 }
 
+func TestSabyCatalogPageAcceptsObjectWrappedRows(t *testing.T) {
+	t.Parallel()
+	var page sabyCatalogPage
+	if err := json.Unmarshal([]byte(`{"nomenclatures":{"items":[{"id":42,"code":"X42","name":"Олива европейская D12"}]}}`), &page); err != nil {
+		t.Fatal(err)
+	}
+	rows := page.rows()
+	if len(rows) != 1 || sabyValue(rows[0]["code"]) != "X42" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestSabyCatalogPageAcceptsSingleObjectRow(t *testing.T) {
+	t.Parallel()
+	var page sabyCatalogPage
+	if err := json.Unmarshal([]byte(`{"nomenclatures":{"id":42,"code":"X42","name":"Олива европейская D12"}}`), &page); err != nil {
+		t.Fatal(err)
+	}
+	if rows := page.rows(); len(rows) != 1 || sabyValue(rows[0]["id"]) != "42" {
+		t.Fatalf("rows = %+v", rows)
+	}
+}
+
 func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	var mutex sync.Mutex
 	methods := make([]string, 0)
