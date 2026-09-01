@@ -183,6 +183,11 @@ try:
     # the catalogue identity. Always translate sales to catalogue.id so stock,
     # sales and procurement all refer to one card.
     sales_product_ids = build_sales_product_ids(catalog_items)
+    catalogue_by_id = {
+        str(item.get("id") or "").strip(): item
+        for item in catalog_items
+        if str(item.get("id") or "").strip()
+    }
     stage = "saby-sales"
     sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))
     moscow = datetime.timezone(datetime.timedelta(hours=3))
@@ -226,6 +231,22 @@ try:
                 if not source_id:
                     continue
                 saby_id = sales_product_ids.get(source_id.casefold(), source_id)
+                catalogue_item = catalogue_by_id.get(saby_id, {})
+                name = str(
+                    position.get("NomenclatureName")
+                    or position.get("Name")
+                    or position.get("NomName")
+                    or catalogue_item.get("name")
+                    or ""
+                ).strip()
+                article = str(
+                    position.get("NomNumber")
+                    or position.get("Article")
+                    or catalogue_item.get("nomNumber")
+                    or catalogue_item.get("article")
+                    or catalogue_item.get("code")
+                    or ""
+                ).strip()
                 try:
                     quantity = float(position.get("Quantity") or 0)
                     total = float(position.get("TotalPrice") or 0)
@@ -236,6 +257,10 @@ try:
                 current = sales_by_day.setdefault(key, {"units": 0, "grossRub": 0.0})
                 current["units"] += sign * int(round(abs(quantity)))
                 current["grossRub"] += sign * abs(total)
+                if name:
+                    current["name"] = name
+                if article:
+                    current["article"] = article
         if len(orders) < 100:
             break
     else:
@@ -245,6 +270,8 @@ try:
         {
             "date": sale_date,
             "sabyId": saby_id,
+            "article": values.get("article", ""),
+            "name": values.get("name", ""),
             "units": values["units"],
             "grossRub": round(values["grossRub"], 2),
         }
@@ -307,6 +334,9 @@ try:
         "article",
         "code",
         "externalId",
+        "hierarchicalId",
+        "uuid",
+        "UUID",
         "nomNumber",
         # Штрихкодов у растения несколько: два EAN13 с этикетки и код,
         # который сгенерировал маркетплейс (вида OZN…). Раньше просили

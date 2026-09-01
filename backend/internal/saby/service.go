@@ -35,6 +35,7 @@ func (service *Service) SyncSales(ctx context.Context, upload SalesUpload) (Sale
 		return SalesResult{}, errors.New("invalid Saby sales period")
 	}
 	records := make([]procurement.SalesRecord, 0, len(upload.Items))
+	cards := make([]procurement.ChannelProduct, 0, len(upload.Items))
 	for _, item := range upload.Items {
 		date, parseErr := time.Parse("2006-01-02", strings.TrimSpace(item.Date))
 		if parseErr != nil || strings.TrimSpace(item.SabyID) == "" {
@@ -44,8 +45,19 @@ func (service *Service) SyncSales(ctx context.Context, upload SalesUpload) (Sale
 			Date: date, ExternalID: item.SabyID, SabyID: item.SabyID,
 			Units: item.Units, GrossRUB: item.GrossRUB,
 		})
+		if strings.TrimSpace(item.Name) != "" || strings.TrimSpace(item.Article) != "" {
+			cards = append(cards, procurement.ChannelProduct{
+				ExternalID: item.SabyID, Article: item.Article, Name: item.Name,
+			})
+		}
 	}
-	rows, err := procurement.NewPostgresStore(service.pool).ReplaceSales(ctx, "saby", from, to, records)
+	store := procurement.NewPostgresStore(service.pool)
+	if len(cards) > 0 {
+		if err := store.RememberChannelProducts(ctx, "saby", cards); err != nil {
+			return SalesResult{}, fmt.Errorf("remember Saby sale names: %w", err)
+		}
+	}
+	rows, err := store.ReplaceSales(ctx, "saby", from, to, records)
 	if err != nil {
 		return SalesResult{}, fmt.Errorf("replace Saby sales: %w", err)
 	}
@@ -73,6 +85,7 @@ func (service *Service) SyncSales(ctx context.Context, upload SalesUpload) (Sale
 type normalizedItem struct {
 	id          string
 	code        string
+	externalIDs []string
 	article     string
 	barcode     string
 	barcodes    []string
@@ -142,6 +155,7 @@ func (service *Service) Sync(ctx context.Context, items []CatalogItem) (Result, 
 type poolRow struct {
 	SabyID      string   `json:"saby_id"`
 	Code        string   `json:"code"`
+	ExternalIDs []string `json:"external_ids"`
 	Article     string   `json:"article"`
 	Barcode     string   `json:"barcode"`
 	Barcodes    []string `json:"barcodes"`
@@ -149,7 +163,7 @@ type poolRow struct {
 	Description string   `json:"description"`
 	PriceMinor  int64    `json:"price_minor"`
 	Balance     int      `json:"balance"`
-	Images      []string `json:"images"`
+	Images      []string       `json:"images"`
 	Attributes  map[string]any `json:"attributes"`
 }
 
@@ -232,7 +246,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		// leaves every inventory row unmatched. The code remains available in its
 		// own indexed column for procurement and manager-facing lookup.
 		rows = append(rows, poolRow{
-			SabyID: item.id, Code: item.code, Article: item.article, Barcode: item.barcode,
+			SabyID: item.id, Code: item.code, ExternalIDs: item.externalIDs,
+			Article: item.article, Barcode: item.barcode,
 			Barcodes: item.barcodes,
 			Name: item.name, Description: item.description,
 			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images, Attributes: item.attributes,
@@ -249,20 +264,21 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	// ищет здесь, а не ходит в СБИС в момент нажатия кнопки.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO saby_nomenclature (
-			saby_id, code, article, barcode, barcodes, name, description,
+			saby_id, code, external_ids, article, barcode, barcodes, name, description,
 			price_minor, balance, images, characteristics, seen_at, missing_since
 		)
-		SELECT item.saby_id, item.code, item.article, item.barcode,
+		SELECT item.saby_id, item.code,
+			ARRAY(SELECT jsonb_array_elements_text(item.external_ids)), item.article, item.barcode,
 			ARRAY(SELECT jsonb_array_elements_text(item.barcodes)), item.name,
 			item.description, item.price_minor, item.balance,
 			ARRAY(SELECT jsonb_array_elements_text(item.images)), item.attributes,
 			CURRENT_TIMESTAMP, NULL
 		FROM jsonb_to_recordset($1::jsonb) AS item(
-			saby_id TEXT, code TEXT, article TEXT, barcode TEXT, barcodes JSONB,
+			saby_id TEXT, code TEXT, external_ids JSONB, article TEXT, barcode TEXT, barcodes JSONB,
 			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB, attributes JSONB
 		)
 		ON CONFLICT (saby_id) DO UPDATE SET
-			code = EXCLUDED.code, article = EXCLUDED.article,
+			code = EXCLUDED.code, external_ids = EXCLUDED.external_ids, article = EXCLUDED.article,
 			barcode = EXCLUDED.barcode, barcodes = EXCLUDED.barcodes,
 			name = EXCLUDED.name,
 			description = EXCLUDED.description, price_minor = EXCLUDED.price_minor,
@@ -321,6 +337,62 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			updated_at=CURRENT_TIMESTAMP
 	`); err != nil {
 		return fmt.Errorf("map Saby codes: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE product_external_ids external SET status='legacy',is_primary=FALSE,
+			last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+		FROM products product JOIN product_variants variant ON variant.product_id=product.id
+		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
+		WHERE external.variant_id=variant.id AND external.provider='saby'
+			AND external.id_type='alias'
+			AND NOT (external.external_id=ANY(source.external_ids))
+	`); err != nil { return fmt.Errorf("retire changed Saby aliases: %w", err) }
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
+		SELECT p.id, pv.id, 'saby', 'alias', alias.external_id,'active',FALSE,'sync',CURRENT_TIMESTAMP
+		FROM products p
+		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
+		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
+		CROSS JOIN LATERAL UNNEST(source.external_ids) alias(external_id)
+		WHERE NULLIF(BTRIM(alias.external_id),'') IS NOT NULL
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			status='active',is_primary=FALSE,last_seen_at=CURRENT_TIMESTAMP,
+			updated_at=CURRENT_TIMESTAMP
+	`); err != nil {
+		return fmt.Errorf("map Saby aliases: %w", err)
+	}
+
+	// Old sales may contain a Retail UUID or an X-code instead of catalogue.id.
+	// Resolve them after every catalogue snapshot, including rows that were
+	// loaded before the canonical directory existed.
+	if _, err := tx.Exec(ctx, `
+		WITH resolved AS (
+			SELECT sale.channel, sale.sale_date, sale.external_product_id,
+				directory.variant_id, directory.saby_id, mapping.id AS mapping_id
+			FROM procurement_sales_daily sale
+			JOIN LATERAL (
+				SELECT external.id, external.variant_id
+				FROM product_external_ids external
+				WHERE external.provider='saby'
+					AND external.id_type IN ('id','code','alias')
+					AND external.external_id=sale.external_product_id
+					AND external.status IN ('active','legacy')
+				ORDER BY (external.status='active') DESC, external.updated_at DESC
+				LIMIT 1
+			) mapping ON TRUE
+			JOIN canonical_product_directory directory ON directory.variant_id=mapping.variant_id
+			JOIN products product ON product.id=directory.product_id AND product.catalog_section='plants'
+			WHERE sale.channel='saby'
+		)
+		UPDATE procurement_sales_daily sale SET
+			saby_id=resolved.saby_id, canonical_variant_id=resolved.variant_id,
+			external_mapping_id=resolved.mapping_id, synced_at=CURRENT_TIMESTAMP
+		FROM resolved
+		WHERE sale.channel=resolved.channel AND sale.sale_date=resolved.sale_date
+			AND sale.external_product_id=resolved.external_product_id
+	`); err != nil {
+		return fmt.Errorf("repair Saby sales aliases: %w", err)
 	}
 
 	// Пропавшее из выгрузки не удаляем и не архивируем: обнуляем остаток и
@@ -509,6 +581,7 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 		result = append(result, normalizedItem{
 			id:          id,
 			code:        itemCode(item),
+			externalIDs: itemExternalIDs(item),
 			article:     valueString(item.Article),
 			barcode:     valueString(item.Barcode),
 			barcodes:    catalogBarcodes(item),
@@ -519,6 +592,21 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 			images:      images,
 			attributes:  normalizeCharacteristics(item.Attributes),
 		})
+	}
+	return result
+}
+
+func itemExternalIDs(item CatalogItem) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, 3)
+	primaryID, code := valueString(item.ID), itemCode(item)
+	for _, candidate := range []any{item.ExternalID, item.HierarchicalID, item.UUID} {
+		value := valueString(candidate)
+		if value == "" || value == primaryID || value == code || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
 	}
 	return result
 }

@@ -7,21 +7,23 @@ import "time"
 // Поля с кодами приняты как any: СБИС отдаёт их то строкой, то числом, и
 // строгий тип уронил бы разбор всей выгрузки из-за одной позиции.
 type CatalogItem struct {
-	ID          any      `json:"id"`
-	Article     any      `json:"article"`
-	Code        any      `json:"code"`
-	ExternalID  any      `json:"externalId"`
-	NomNumber   any      `json:"nomNumber"`
-	Barcode     any      `json:"barcode"`
-	Barcodes    []CatalogBarcode `json:"barcodes"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Cost        any      `json:"cost"`
-	Balance     any      `json:"balance"`
-	Images      []string `json:"images"`
-	Attributes  any      `json:"attributes"`
-	Published   *bool    `json:"published"`
-	IsParent    bool     `json:"isParent"`
+	ID             any              `json:"id"`
+	Article        any              `json:"article"`
+	Code           any              `json:"code"`
+	ExternalID     any              `json:"externalId"`
+	HierarchicalID any              `json:"hierarchicalId"`
+	UUID           any              `json:"uuid"`
+	NomNumber      any              `json:"nomNumber"`
+	Barcode        any              `json:"barcode"`
+	Barcodes       []CatalogBarcode `json:"barcodes"`
+	Name           string           `json:"name"`
+	Description    string           `json:"description"`
+	Cost           any              `json:"cost"`
+	Balance        any              `json:"balance"`
+	Images         []string         `json:"images"`
+	Attributes     any              `json:"attributes"`
+	Published      *bool            `json:"published"`
+	IsParent       bool             `json:"isParent"`
 }
 
 // CatalogBarcode — один из штрихкодов позиции. Их несколько: свои с
@@ -34,6 +36,8 @@ type CatalogBarcode struct {
 type SalesItem struct {
 	Date     string  `json:"date"`
 	SabyID   string  `json:"sabyId"`
+	Article  string  `json:"article"`
+	Name     string  `json:"name"`
 	Units    int     `json:"units"`
 	GrossRUB float64 `json:"grossRub"`
 }

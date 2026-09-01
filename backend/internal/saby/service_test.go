@@ -39,7 +39,9 @@ func TestLooksLikeGUID(t *testing.T) {
 
 func TestNormalizeKeepsCodes(t *testing.T) {
 	items := normalizeItems([]CatalogItem{{
-		ID: "42", NomNumber: "X1150532", Article: "ART-1", Barcode: "4600000000001",
+		ID: "42", NomNumber: "X1150532", ExternalID: "card-external",
+		HierarchicalID: "17460b69-327e-4ec4-aabb-f064710a135a",
+		Article: "ART-1", Barcode: "4600000000001",
 		Name: "Аглаонема", Cost: 1490.0, Balance: 3.0,
 	}})
 	if len(items) != 1 {
@@ -51,6 +53,9 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 	}
 	if item.code != "X1150532" || item.article != "ART-1" || item.barcode != "4600000000001" {
 		t.Errorf("коды потерялись: %+v", item)
+	}
+	if !sameStrings(item.externalIDs, []string{"card-external", "17460b69-327e-4ec4-aabb-f064710a135a"}) {
+		t.Errorf("внешние идентификаторы потерялись: %+v", item.externalIDs)
 	}
 	if item.costMinor != 149000 || item.balance != 3 {
 		t.Errorf("цена или остаток посчитаны неверно: %+v", item)

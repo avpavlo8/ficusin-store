@@ -360,47 +360,50 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		quantities[id] += float64(line.Quantity)
 	}
 
-	// СБИС.ЗаписатьДокумент creates the accounting document header, including
-	// supplier, organization and warehouse. Its public EDO contract has no
-	// writable warehouse table, so append all nomenclature with the same Retail
-	// method used by the Saby receipt editor. A retry reuses the saved GUID.
-	guid := strings.TrimSpace(item.ExternalOperationID)
+	// A receipt is one internal Retail document. Keep its numeric @Документ as
+	// the operation ID: every РеалВх/ДокОтгрВх method requires Int64 and rejects
+	// the public UUID with "Тип не преобразуется к Int64". The UUID is used only
+	// for the human-facing link and for the public header update.
+	internalID, _ := strconv.ParseInt(strings.TrimSpace(item.ExternalOperationID), 10, 64)
+	guid := ""
 	link := safeSabyURL(item.ExternalURL)
-	if guid == "" {
-		organization, warehouse, err := client.receiptContext(ctx)
+	if internalID <= 0 {
+		link = ""
+	}
+	var document map[string]any
+	saved := make(map[int64]float64)
+	var err error
+	if internalID > 0 {
+		document, saved, err = client.readReceipt(ctx, internalID)
 		if err != nil {
-			return procurement.ActionExecution{}, err
+			execution := procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(internalID, 10), ExternalURL: link}
+			return execution, fmt.Errorf("открыть созданное поступление Saby %s: %w", link, err)
 		}
-		document := map[string]any{
-			"Тип": "ДокОтгрВх", "Название": "Поступление",
-			"Регламент": map[string]any{"Название": "Поступление"},
-			"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
-			"Примечание": fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID),
-			"НашаОрганизация": organization, "Склад": warehouse,
+	} else {
+		// Legacy failed attempts persisted a UUID. It cannot address an internal
+		// document, so a retry deliberately starts one valid document instead of
+		// repeating the same invalid call against the old empty header.
+		filter := sabyRecord(map[string]any{"ТипДокумента": int64(224)}) // ДокОтгрВх / Поступление
+		if err := client.rpc(ctx, "РеалВх.Создать", map[string]any{"Фильтр": filter, "ИмяМетода": "РеалВх.Список"}, &document); err != nil {
+			return procurement.ActionExecution{}, fmt.Errorf("создать поступление Saby: %w", err)
 		}
-		counterparty := map[string]any{"Название": payload.Supplier.Name, "ИНН": payload.Supplier.TaxID}
-		if payload.Supplier.KPP != "" {
-			counterparty["КПП"] = payload.Supplier.KPP
+		if document["_type"] == nil {
+			document["_type"] = "record"
 		}
-		document["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
-		var written map[string]any
-		if err := client.rpc(ctx, "СБИС.ЗаписатьДокумент", map[string]any{"Документ": document}, &written); err != nil {
-			return procurement.ActionExecution{}, fmt.Errorf("создать шапку поступления Saby: %w", err)
+		internalID, _ = sabyInt64Field(document, "@Документ")
+		if internalID <= 0 {
+			return procurement.ActionExecution{}, errors.New("Saby не вернул числовой идентификатор поступления")
 		}
-		guid = nestedString(written, "Идентификатор")
-		link = safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация"))
-		if guid == "" {
-			return procurement.ActionExecution{}, errors.New("Saby не вернул идентификатор поступления")
-		}
+	}
+	guid = strings.TrimSpace(fmt.Sprint(sabyRecordField(document, "ИдентификаторДокумента")))
+	if guid == "" || guid == "<nil>" {
+		return procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(internalID, 10)}, errors.New("Saby не вернул UUID поступления")
 	}
 	if link == "" {
 		link = "https://ret.saby.ru/opendoc.html?guid=" + url.QueryEscape(guid) + "&f3=259&client=43033516"
 	}
-	execution := procurement.ActionExecution{ExternalOperationID: guid, ExternalURL: link}
-	document, saved, err := client.readReceipt(ctx, guid)
-	if err != nil {
-		return execution, fmt.Errorf("открыть созданное поступление Saby %s: %w", link, err)
-	}
+	execution := procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(internalID, 10), ExternalURL: link}
+	setSabyRecordField(document, "Примечание", fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID))
 	fields := []any{
 		map[string]any{"n": "Номенклатура", "t": "Число целое"},
 		map[string]any{"n": "КодЕГАИС", "t": "Строка"},
@@ -413,35 +416,72 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 			rows = append(rows, []any{id, "", missing, nil})
 		}
 	}
-	if len(rows) == 0 {
-		execution.Completed = true
-		return execution, nil
-	}
-	recordSet := map[string]any{"_type": "recordset", "d": rows, "s": fields}
-	var added any
-	if err := client.rpc(ctx, "РеалВх.NomCreateWithSaveBatch", map[string]any{
-		"doc_rec": document, "rs": recordSet,
-		// This flag is an Int64 in the Retail method contract, not a JSON bool.
-		"actions": sabyRecord(map[string]any{"changed_document": int64(1)}),
-	}, &added); err != nil {
-		return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
-	}
-	_, saved, err = client.readReceipt(ctx, guid)
-	if err != nil {
-		return execution, fmt.Errorf("проверить позиции поступления Saby %s: %w", link, err)
+	if len(rows) > 0 {
+		recordSet := map[string]any{"_type": "recordset", "d": rows, "s": fields}
+		var added any
+		if err := client.rpc(ctx, "РеалВх.NomCreateWithSaveBatch", map[string]any{
+			"doc_rec": document, "rs": recordSet,
+			"actions": sabyRecord(map[string]any{"changed_document": true}),
+		}, &added); err != nil {
+			return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
+		}
+		document, saved, err = client.readReceipt(ctx, internalID)
+		if err != nil {
+			return execution, fmt.Errorf("проверить позиции поступления Saby %s: %w", link, err)
+		}
 	}
 	for id, quantity := range quantities {
 		if saved[id]+0.0001 < quantity {
 			return execution, fmt.Errorf("Saby сохранил для товара %d количество %.3g из %.3g; документ: %s", id, saved[id], quantity, link)
 		}
 	}
+
+	// The public API is the supported way to resolve the counterparty and our
+	// organization by INN/KPP. Address the already-created internal receipt by
+	// UUID, updating only its header; rows remain owned by the Retail contract.
+	organization, warehouse, err := client.receiptContext(ctx)
+	if err != nil {
+		return execution, err
+	}
+	header := map[string]any{
+		"Идентификатор": guid,
+		"Тип": "ДокОтгрВх", "Название": "Поступление",
+		"Регламент": map[string]any{"Название": "Поступление"},
+		"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
+		"Примечание": fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID),
+		"НашаОрганизация": organization, "Склад": warehouse,
+	}
+	counterparty := map[string]any{"Название": payload.Supplier.Name, "ИНН": payload.Supplier.TaxID}
+	if payload.Supplier.KPP != "" {
+		counterparty["КПП"] = payload.Supplier.KPP
+	}
+	header["Контрагент"] = map[string]any{"СвЮЛ": counterparty}
+	var written map[string]any
+	if err := client.rpc(ctx, "СБИС.ЗаписатьДокумент", map[string]any{"Документ": header}, &written); err != nil {
+		return execution, fmt.Errorf("заполнить реквизиты поступления Saby %s: %w", link, err)
+	}
+	if writtenLink := safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация")); writtenLink != "" {
+		execution.ExternalURL = writtenLink
+	}
+	_, saved, err = client.readReceipt(ctx, internalID)
+	if err != nil {
+		return execution, fmt.Errorf("проверить поступление после заполнения реквизитов Saby %s: %w", execution.ExternalURL, err)
+	}
+	for id, quantity := range quantities {
+		if saved[id]+0.0001 < quantity {
+			return execution, fmt.Errorf("после заполнения реквизитов Saby сохранил для товара %d количество %.3g из %.3g; документ: %s", id, saved[id], quantity, execution.ExternalURL)
+		}
+	}
 	execution.Completed = true
 	return execution, nil
 }
 
-func (client *SabyClient) readReceipt(ctx context.Context, guid string) (map[string]any, map[int64]float64, error) {
+func (client *SabyClient) readReceipt(ctx context.Context, internalID int64) (map[string]any, map[int64]float64, error) {
+	if internalID <= 0 {
+		return nil, nil, errors.New("некорректный числовой идентификатор поступления Saby")
+	}
 	var result any
-	if err := client.rpc(ctx, "ДокОтгрВх.Прочитать", map[string]any{"ИдО": guid, "ИмяМетода": "ДокОтгрВх.Список"}, &result); err != nil {
+	if err := client.rpc(ctx, "ДокОтгрВх.Прочитать", map[string]any{"ИдО": internalID, "ИмяМетода": "ДокОтгрВх.Список"}, &result); err != nil {
 		return nil, nil, err
 	}
 	document := findSabyRecord(result, "@Документ")
@@ -452,6 +492,15 @@ func (client *SabyClient) readReceipt(ctx context.Context, guid string) (map[str
 		document["_type"] = "record"
 	}
 	return document, sabyLineQuantities(result), nil
+}
+
+func sabyInt64Field(record map[string]any, name string) (int64, error) {
+	value := strings.TrimSpace(fmt.Sprint(sabyRecordField(record, name)))
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("поле %s не является положительным Int64", name)
+	}
+	return id, nil
 }
 
 func findSabyRecord(value any, fieldName string) map[string]any {

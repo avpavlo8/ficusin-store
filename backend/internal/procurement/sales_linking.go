@@ -188,11 +188,23 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 			COALESCE(SUM(sale.units), 0)::INTEGER,
 			COALESCE(SUM(sale.gross_rub), 0)::DOUBLE PRECISION,
 			MAX(sale.sale_date)::TEXT,
-			COALESCE(MAX(card.article), ''), COALESCE(MAX(card.name), ''),
+			COALESCE(MAX(NULLIF(card.article,'')), MAX(saby_card.article), ''),
+			COALESCE(MAX(NULLIF(card.name,'')), MAX(saby_card.name), ''),
 			BOOL_OR(ignored.external_product_id IS NOT NULL)
 		FROM procurement_sales_daily sale
 		LEFT JOIN procurement_channel_products card
 			ON card.channel = sale.channel AND card.external_id = sale.external_product_id
+		LEFT JOIN LATERAL (
+			SELECT nomenclature.article, nomenclature.name
+			FROM saby_nomenclature nomenclature
+			WHERE sale.channel='saby' AND (
+				nomenclature.saby_id=sale.external_product_id
+				OR nomenclature.code=sale.external_product_id
+				OR sale.external_product_id=ANY(nomenclature.external_ids)
+			)
+			ORDER BY (nomenclature.missing_since IS NULL) DESC, nomenclature.seen_at DESC
+			LIMIT 1
+		) saby_card ON TRUE
 		LEFT JOIN procurement_ignored_sales_products ignored
 			ON ignored.channel = sale.channel AND ignored.external_product_id = sale.external_product_id
 		WHERE sale.channel = $1 AND sale.canonical_variant_id IS NULL
