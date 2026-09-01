@@ -430,7 +430,9 @@ func (store *PostgresStore) ReplaceSales(
 					WHERE mapping.variant_id = directory.variant_id
 						AND mapping.external_id = $3
 						AND mapping.status IN ('active','legacy')
-						AND (($1='wb' AND mapping.provider='wildberries'
+						AND (($1='saby' AND mapping.provider='saby'
+							AND mapping.id_type IN ('id','code','alias'))
+							OR ($1='wb' AND mapping.provider='wildberries'
 							AND mapping.id_type IN ('sku','nm_id'))
 							OR ($1='ozon' AND mapping.provider='ozon'
 							AND mapping.id_type='offer_id'))
@@ -438,7 +440,8 @@ func (store *PostgresStore) ReplaceSales(
 						(mapping.status='active') DESC, mapping.updated_at DESC
 					LIMIT 1
 				) external ON TRUE
-				WHERE (($1 IN ('saby','site') AND directory.saby_id = NULLIF($4,''))
+				WHERE (($1='site' AND directory.saby_id = NULLIF($4,''))
+					OR ($1='saby' AND (directory.saby_id = NULLIF($4,'') OR external.id IS NOT NULL))
 					OR ($1 IN ('wb','ozon') AND external.id IS NOT NULL))
 				ORDER BY (external.id IS NOT NULL) DESC, directory.variant_id
 				LIMIT 1
