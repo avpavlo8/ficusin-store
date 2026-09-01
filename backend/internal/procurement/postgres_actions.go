@@ -20,26 +20,35 @@ import (
 
 func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT n.saby_id, n.code, n.article, n.name, n.balance, n.price_minor::DOUBLE PRECISION / 100,
-			sp.supplier_id, s.name, sp.supplier_article, sp.availability_status,
-			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), pc.wb_nm_id,
-			COALESCE(pc.wb_vendor_code, ''), COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, ''),
-			sp.minimum_order_qty, sp.order_multiple,
+		SELECT directory.variant_id, directory.saby_id, directory.master_code,
+			COALESCE(n.article,''), directory.name, COALESCE(n.balance,0),
+			COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
+			s.id, s.name, COALESCE(sp.supplier_article,''), COALESCE(sp.availability_status,'unknown'),
+			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), NULL::BIGINT,
+			COALESCE(directory.wb_articles[1], ''), COALESCE(directory.ozon_articles[1], ''),
+			directory.wb_articles,directory.wb_legacy_articles,
+			directory.ozon_articles,directory.ozon_legacy_articles,
+			COALESCE(sp.minimum_order_qty,1), COALESCE(sp.order_multiple,1),
 			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
-				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::TEXT[]),
+				WHERE a.supplier_id = s.id AND (a.canonical_variant_id=directory.variant_id
+					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::TEXT[]),
 			COALESCE((SELECT ARRAY_AGG(a.id ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
-				WHERE a.supplier_id = sp.supplier_id AND a.matched_saby_id = sp.saby_id), ARRAY[]::BIGINT[])
-		FROM procurement_supplier_products sp
-		JOIN procurement_suppliers s ON s.id = sp.supplier_id
-		JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
-		LEFT JOIN procurement_product_channels pc ON pc.saby_id = n.saby_id
-		WHERE n.missing_since IS NULL AND n.saby_id ~ '^[0-9]+$'
-			AND ($1 = 0 OR sp.supplier_id = $1) AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
-			OR n.code ILIKE '%' || $2 || '%' OR n.article ILIKE '%' || $2 || '%'
-			OR n.saby_id ILIKE '%' || $2 || '%' OR sp.supplier_article ILIKE '%' || $2 || '%')
-		ORDER BY s.name, n.name LIMIT 500
+				WHERE a.supplier_id = s.id AND (a.canonical_variant_id=directory.variant_id
+					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::BIGINT[])
+		FROM canonical_product_directory directory
+		JOIN procurement_suppliers s ON s.is_active AND ($1=0 OR s.id=$1)
+		LEFT JOIN procurement_supplier_products sp ON sp.supplier_id=s.id
+			AND (sp.canonical_variant_id=directory.variant_id
+				OR (sp.canonical_variant_id IS NULL AND sp.saby_id=directory.saby_id))
+		LEFT JOIN saby_nomenclature n ON n.saby_id = directory.saby_id
+		LEFT JOIN procurement_product_channels pc ON pc.saby_id = directory.saby_id
+		WHERE directory.active AND directory.master_code <> ''
+			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
+			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
+			OR directory.saby_id ILIKE '%' || $2 || '%' OR COALESCE(sp.supplier_article,'') ILIKE '%' || $2 || '%')
+		ORDER BY s.name, directory.name LIMIT 500
 	`, supplierID, query)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement product directory: %w", err)
@@ -48,10 +57,12 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 	items := make([]ProductDirectoryItem, 0)
 	for rows.Next() {
 		var item ProductDirectoryItem
-		if err := rows.Scan(&item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name,
+		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name,
 			&item.Balance, &item.CurrentPriceRUB, &item.SupplierID, &item.SupplierName,
 			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
 			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
+			&item.WBArticles,&item.WBLegacyArticles,
+			&item.OzonArticles,&item.OzonLegacyArticles,
 			&item.MinimumOrderQty, &item.OrderMultiple,
 			&item.Aliases, &item.AliasIDs); err != nil {
 			return nil, fmt.Errorf("scan procurement product directory: %w", err)
@@ -67,25 +78,27 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 		return ProductDirectoryItem{}, fmt.Errorf("begin update procurement product: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM saby_nomenclature
-		WHERE saby_id = $1 AND missing_since IS NULL AND saby_id ~ '^[0-9]+$')`, input.SabyID).Scan(&exists); err != nil || !exists {
+	var variantID int64
+	if err := tx.QueryRow(ctx, `SELECT variant_id,saby_id FROM canonical_product_directory
+		WHERE active AND (($1>0 AND variant_id=$1) OR ($1<=0 AND saby_id=$2))
+		ORDER BY ($1>0 AND variant_id=$1) DESC,variant_id LIMIT 1`, input.VariantID, input.SabyID).Scan(&variantID,&input.SabyID); err != nil {
 		return ProductDirectoryItem{}, ErrNotFound
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO procurement_supplier_products (
-			supplier_id, saby_id, supplier_article, availability_status, check_after, unavailable_since,
+			supplier_id, saby_id, canonical_variant_id, supplier_article, availability_status, check_after, unavailable_since,
 			minimum_order_qty, order_multiple, updated_by
-		) VALUES ($1, $2, $3, $4, NULLIF($5, '')::DATE,
+		) VALUES ($1, $2, $9, $3, $4, NULLIF($5, '')::DATE,
 			CASE WHEN $4 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $6, $7, $8)
 		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET supplier_article = EXCLUDED.supplier_article,
+			canonical_variant_id = EXCLUDED.canonical_variant_id,
 			availability_status = EXCLUDED.availability_status, check_after = EXCLUDED.check_after,
 			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
 				THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
 			minimum_order_qty = EXCLUDED.minimum_order_qty, order_multiple = EXCLUDED.order_multiple,
 			updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
 	`, input.SupplierID, input.SabyID, input.SupplierArticle, input.AvailabilityStatus, input.CheckAfter,
-		input.MinimumOrderQty, input.OrderMultiple, actor.CustomerID)
+		input.MinimumOrderQty, input.OrderMultiple, actor.CustomerID, variantID)
 	if err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement supplier product: %w", err)
 	}
@@ -104,10 +117,11 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_supplier_aliases SET availability_status = $3,
 			check_after = NULLIF($4, '')::DATE,
+			canonical_variant_id = $5,
 			unavailable_since = CASE WHEN $3 = 'temporarily_unavailable' THEN COALESCE(unavailable_since, CURRENT_DATE) ELSE NULL END,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE supplier_id = $1 AND matched_saby_id = $2
-	`, input.SupplierID, input.SabyID, input.AvailabilityStatus, input.CheckAfter); err != nil {
+	`, input.SupplierID, input.SabyID, input.AvailabilityStatus, input.CheckAfter, variantID); err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("sync procurement alias availability: %w", err)
 	}
 	if err := audit(ctx, tx, actor, "procurement.product.update", "procurement_product", input.SupplierID, input); err != nil {
@@ -137,13 +151,15 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 	defer tx.Rollback(ctx) //nolint:errcheck
 	command, err := tx.Exec(ctx, `
 		INSERT INTO procurement_supplier_products (
-			supplier_id, saby_id, availability_status, check_after, unavailable_since, updated_by
+			supplier_id, saby_id, canonical_variant_id,availability_status, check_after, unavailable_since, updated_by
 		)
-		SELECT $1, $2, $3, NULLIF($4, '')::DATE,
+		SELECT $1, $2,directory.variant_id,$3, NULLIF($4, '')::DATE,
 			CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5
-		WHERE EXISTS (SELECT 1 FROM procurement_suppliers WHERE id = $1)
-			AND EXISTS (SELECT 1 FROM saby_nomenclature WHERE saby_id = $2)
+		FROM canonical_product_directory directory
+		WHERE directory.saby_id=$2 AND directory.active
+			AND EXISTS (SELECT 1 FROM procurement_suppliers WHERE id = $1)
 		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET
+			canonical_variant_id=EXCLUDED.canonical_variant_id,
 			availability_status = EXCLUDED.availability_status,
 			check_after = EXCLUDED.check_after,
 			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
@@ -311,20 +327,20 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		// дорогую поставку в убыток и Ozon не получит две команды на один SKU.
 		_, err = tx.Exec(ctx, `
 			WITH products AS (
-				SELECT saby_id, MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
+				SELECT canonical_variant_id,saby_id, MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
 					MAX(proposed_marketplace_rub) AS marketplace,
 					MAX(proposed_marketplace_strike_rub) AS strike
 				FROM procurement_order_lines
 				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
-					AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
-				GROUP BY saby_id
+					AND canonical_variant_id IS NOT NULL AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
+				GROUP BY canonical_variant_id,saby_id
 			)
 			INSERT INTO procurement_action_items (
 				batch_id, procurement_order_line_id, channel, external_article, old_value, new_value, compare_at_value
 			)
 			SELECT $1, p.line_id, channel.name,
-				CASE channel.name WHEN 'wb' THEN COALESCE(pc.wb_nm_id::TEXT, '')
-					WHEN 'ozon' THEN COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, '') ELSE p.saby_id END,
+				CASE channel.name WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1], '')
+					WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1], '') ELSE p.saby_id END,
 				CASE channel.name
 					WHEN 'site' THEN COALESCE(pv.base_price_minor, 0)::NUMERIC / 100
 					WHEN 'saby_price' THEN COALESCE(n.price_minor, 0)::NUMERIC / 100
@@ -335,16 +351,16 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.marketplace ELSE p.retail END,
 				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.strike ELSE NULL END
 			FROM products p
+			JOIN canonical_product_directory directory ON directory.variant_id=p.canonical_variant_id
 			JOIN saby_nomenclature n ON n.saby_id = p.saby_id
 			LEFT JOIN LATERAL (
 				SELECT MAX(base_price_minor) AS base_price_minor FROM product_variants WHERE saby_id = p.saby_id
 			) pv ON TRUE
-			LEFT JOIN procurement_product_channels pc ON pc.saby_id = p.saby_id
 			LEFT JOIN procurement_channel_products wb_product
-				ON wb_product.channel = 'wb' AND wb_product.external_id = pc.wb_nm_id::TEXT
+				ON wb_product.channel = 'wb' AND wb_product.external_id = directory.wb_nm_ids[1]
 			LEFT JOIN procurement_channel_products ozon_product
 				ON ozon_product.channel = 'ozon'
-				AND ozon_product.external_id = COALESCE(NULLIF(pc.ozon_offer_id, ''), pc.ozon_article, '')
+				AND ozon_product.external_id = directory.ozon_articles[1]
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 			WHERE channel.name = ANY($3::TEXT[])
 		`, batchID, orderID, channels)
@@ -489,13 +505,20 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 			return nil, fmt.Errorf("scan procurement batch: %w", err)
 		}
 		itemRows, err := store.pool.Query(ctx, `
-			SELECT item.id, item.procurement_order_line_id, COALESCE(n.name, line.raw_name), COALESCE(n.code, ''),
-				item.channel, item.external_article, item.old_value::DOUBLE PRECISION,
+			SELECT item.id, item.procurement_order_line_id, COALESCE(directory.name,n.name, line.raw_name), COALESCE(directory.master_code,n.code, ''),
+				item.channel, item.external_article,
+				CASE WHEN item.channel='wb' THEN COALESCE(NULLIF(wb_card.article,''),directory.wb_articles[1],'')
+					WHEN item.channel='ozon' THEN COALESCE(directory.ozon_articles[1],item.external_article)
+					ELSE item.external_article END,
+				item.old_value::DOUBLE PRECISION,
 				item.new_value::DOUBLE PRECISION, item.compare_at_value::DOUBLE PRECISION,
 				item.quantity, item.status, item.error_message, item.external_operation_id, item.external_url, item.payload
 			FROM procurement_action_items item
 			JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
 			LEFT JOIN saby_nomenclature n ON n.saby_id = line.saby_id
+			LEFT JOIN canonical_product_directory directory ON directory.variant_id=line.canonical_variant_id
+			LEFT JOIN procurement_channel_products wb_card ON item.channel='wb'
+				AND wb_card.channel='wb' AND wb_card.external_id=item.external_article
 			WHERE item.batch_id = $1 ORDER BY item.channel, item.id
 		`, batch.ID)
 		if err != nil {
@@ -505,7 +528,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 		for itemRows.Next() {
 			var item ActionItem
 			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.ProductCode, &item.Channel,
-				&item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
+				&item.ExternalArticle,&item.DisplayArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
 				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL, &item.Payload); err != nil {
 				itemRows.Close()
 				return nil, fmt.Errorf("scan procurement batch item: %w", err)
@@ -634,7 +657,8 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var batchID int64
 	var attempts int
-	if err := tx.QueryRow(ctx, `SELECT batch_id, attempts FROM procurement_action_items WHERE id = $1 FOR UPDATE`, actionID).Scan(&batchID, &attempts); err != nil {
+	var channel string
+	if err := tx.QueryRow(ctx, `SELECT batch_id, attempts,channel FROM procurement_action_items WHERE id = $1 FOR UPDATE`, actionID).Scan(&batchID, &attempts,&channel); err != nil {
 		return fmt.Errorf("lock finished procurement action: %w", err)
 	}
 	status, message, delay := "queued", "", result.RetryAfter
@@ -646,9 +670,13 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 		// A marketplace 429 is known not to have applied the mutation and
 		// carries RetryAfter. Keep it queued instead of turning a temporary
 		// seller-wide limit into a permanent error after five attempts.
-		if attempts >= 5 && result.RetryAfter <= 0 {
+		if result.RetryAfter > 0 {
+			marketplace := "Площадка"
+			if channel == "wb" { marketplace = "Wildberries" }
+			message = fmt.Sprintf("%s временно ограничил API; запрос сохранён и повторится автоматически не раньше чем через %s", marketplace, result.RetryAfter.Round(time.Second))
+		} else if attempts >= 5 {
 			status = "failed"
-		} else if result.RetryAfter <= 0 {
+		} else {
 			delay = time.Duration(attempts*attempts) * 15 * time.Second
 		}
 	} else if result.Completed {
@@ -893,9 +921,12 @@ func upsertAlias(
 	}
 	if sabyID != "" {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO procurement_supplier_products (supplier_id, saby_id, supplier_article, availability_status)
-			VALUES ($1, $2, $3, 'available')
+			INSERT INTO procurement_supplier_products (supplier_id, saby_id, canonical_variant_id,supplier_article, availability_status)
+			SELECT $1, $2,directory.variant_id,$3,'available'
+			FROM canonical_product_directory directory WHERE directory.saby_id=$2
+			ORDER BY directory.variant_id LIMIT 1
 			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET availability_status = 'available',
+				canonical_variant_id=EXCLUDED.canonical_variant_id,
 				unavailable_since = NULL, check_after = NULL,
 				supplier_article = CASE WHEN EXCLUDED.supplier_article <> '' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
 				updated_at = CURRENT_TIMESTAMP

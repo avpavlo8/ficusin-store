@@ -397,7 +397,9 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			p.saby_updated_at, p.category_id, p.plant_passport, p.important_warnings,
 			COALESCE((SELECT jsonb_agg(jsonb_build_object(
 				'provider', e.provider, 'type', e.id_type, 'externalId', e.external_id)
-				ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.product_id=p.id), '[]'::jsonb),
+				ORDER BY e.provider,e.id_type) FROM product_external_ids e
+				WHERE e.product_id=p.id AND e.status='active'
+					AND NOT (e.provider='wildberries' AND e.id_type IN ('sku','nm_id'))), '[]'::jsonb),
 			COALESCE((SELECT jsonb_object_agg(a.code,v.value) FROM product_attribute_values v
 				JOIN attribute_definitions a ON a.id=v.attribute_id WHERE v.product_id=p.id), '{}'::jsonb),
 			EXISTS(
@@ -656,18 +658,20 @@ func (repository *PostgresRepository) UpdateProduct(
 	return repository.productByID(ctx, id)
 }
 
-// replaceEditableExternalIDs replaces only manager-owned mappings. Ficusin
-// and Saby identities are maintained by migrations/import and cannot be
-// deleted or forged from the product editor.
+// replaceEditableExternalIDs retires omitted manager-owned mappings instead
+// of deleting them. Historical marketplace articles must keep resolving old
+// sales after somebody corrects a card in the editor.
 func replaceEditableExternalIDs(ctx context.Context, tx pgx.Tx, productID int64, mappings []ExternalID) error {
-	if _,err:=tx.Exec(ctx,"DELETE FROM product_external_ids WHERE product_id=$1 AND provider NOT IN ('ficusin','saby')",productID);err!=nil{return fmt.Errorf("clear external mappings: %w",err)}
+	if _,err:=tx.Exec(ctx,`UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP WHERE product_id=$1 AND provider NOT IN ('ficusin','saby') AND NOT (provider='wildberries' AND id_type IN ('sku','nm_id')) AND status='active'`,productID);err!=nil{return fmt.Errorf("retire external mappings: %w",err)}
 	for _,mapping:=range mappings{
 		provider:=strings.ToLower(strings.TrimSpace(mapping.Provider));kind:=strings.ToLower(strings.TrimSpace(mapping.Type));external:=strings.TrimSpace(mapping.ExternalID)
 		if provider=="ficusin"||provider=="saby"{continue}
 		if !safeMappingToken(provider)||!safeMappingToken(kind)||external==""||len(external)>240{return fmt.Errorf("%w: неверный внешний идентификатор",ErrInvalidInput)}
-		tag,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id)
-			SELECT $1,pv.id,$2,$3,$4 FROM product_variants pv WHERE pv.product_id=$1 ORDER BY pv.is_active DESC,pv.id LIMIT 1
-			ON CONFLICT(provider,id_type,external_id) DO NOTHING`,productID,provider,kind,external)
+		tag,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,last_seen_at)
+			SELECT $1,pv.id,$2,$3,$4,'active',NOT EXISTS(SELECT 1 FROM product_external_ids current WHERE current.variant_id=pv.id AND current.provider=$2 AND current.id_type=$3 AND current.status='active' AND current.is_primary),'manual',CURRENT_TIMESTAMP
+			FROM product_variants pv WHERE pv.product_id=$1 ORDER BY pv.is_active DESC,pv.id LIMIT 1
+			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET product_id=EXCLUDED.product_id,variant_id=EXCLUDED.variant_id,status='active',source='manual',last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+			WHERE product_external_ids.product_id=EXCLUDED.product_id`,productID,provider,kind,external)
 		if err!=nil{return fmt.Errorf("save external mapping: %w",err)}
 		if tag.RowsAffected()!=1{return fmt.Errorf("%w: внешний идентификатор уже связан с другим товаром",ErrInvalidInput)}
 	}

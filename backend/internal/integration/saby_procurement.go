@@ -47,10 +47,61 @@ type SabyClient struct {
 	tokenUntil   time.Time
 }
 
+type sabyCatalogRows []map[string]any
+
+// UnmarshalJSON accepts both Saby catalogue shapes seen in production. Most
+// tenants return an array, while some wrap it in an object such as
+// {"nomenclatures":{"items":[...]}}. A strict []map decoder made a healthy
+// integration look disconnected whenever Saby switched between the shapes.
+func (rows *sabyCatalogRows) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) || len(trimmed) == 0 {
+		*rows = nil
+		return nil
+	}
+	if trimmed[0] == '[' {
+		var decoded []map[string]any
+		if err := json.Unmarshal(trimmed, &decoded); err != nil {
+			return err
+		}
+		*rows = decoded
+		return nil
+	}
+	if trimmed[0] != '{' {
+		return fmt.Errorf("ожидался массив или объект каталога")
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &object); err != nil {
+		return err
+	}
+	for _, key := range []string{"items", "nomenclatures", "result", "data"} {
+		if nested, exists := object[key]; exists {
+			var decoded sabyCatalogRows
+			if err := json.Unmarshal(nested, &decoded); err != nil {
+				return err
+			}
+			*rows = decoded
+			return nil
+		}
+	}
+	// A single card is also a valid one-row page. Do not turn metadata-only
+	// objects into phantom goods.
+	if _, hasID := object["id"]; hasID {
+		var item map[string]any
+		if err := json.Unmarshal(trimmed, &item); err != nil {
+			return err
+		}
+		*rows = []map[string]any{item}
+		return nil
+	}
+	*rows = nil
+	return nil
+}
+
 type sabyCatalogPage struct {
-	Nomenclatures []map[string]any `json:"nomenclatures"`
-	Items         []map[string]any `json:"items"`
-	Result        []map[string]any `json:"result"`
+	Nomenclatures sabyCatalogRows `json:"nomenclatures"`
+	Items         sabyCatalogRows `json:"items"`
+	Result        sabyCatalogRows `json:"result"`
 }
 
 func (page sabyCatalogPage) rows() []map[string]any {

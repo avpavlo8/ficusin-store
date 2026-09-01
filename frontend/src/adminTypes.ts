@@ -94,7 +94,7 @@ export type ProcurementDocument = {
 };
 
 export type NomenclatureCandidate = {
-  sabyId: string; code: string; article: string; name: string; balance: number; price: number;
+  variantId: number; sabyId: string; code: string; article: string; name: string; balance: number; price: number;
 };
 
 // Внешний код маркетплейса, продажи которого не дошли до товара СБИС.
@@ -127,10 +127,10 @@ export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?:
 
 export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
 
-export type ProcurementProduct = { sabyId: string; sabyCode: string; sabyArticle: string; name: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[] };
+export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: string; sabyArticle: string; name: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; wbArticles: string[]; wbLegacyArticles: string[]; ozonArticles: string[]; ozonLegacyArticles: string[]; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[] };
 
 export type ProcurementActionPreviewLine = { sabyId: string; code: string; name: string; quantity?: number; oldBalance?: number; newBalance?: number; oldPrice?: number; newPrice?: number };
-export type ProcurementActionItem = { id: number; lineId: number; productName: string; productCode: string; channel: string; externalArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string; externalOperationId?: string; externalUrl?: string; previewLines?: ProcurementActionPreviewLine[] };
+export type ProcurementActionItem = { id: number; lineId: number; productName: string; productCode: string; channel: string; externalArticle: string; displayArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string; externalOperationId?: string; externalUrl?: string; previewLines?: ProcurementActionPreviewLine[] };
 
 export type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
 

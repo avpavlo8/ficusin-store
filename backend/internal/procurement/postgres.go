@@ -366,19 +366,21 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 	for _, source := range input.Items {
 		command, err := tx.Exec(ctx, `
 			INSERT INTO procurement_order_lines (
-				procurement_order_id, supplier_alias_id, saby_id, raw_name,
+				procurement_order_id, supplier_alias_id, saby_id, canonical_variant_id,raw_name,
 				supplier_article, ordered_qty, expected_unit_price, match_status, customer_request
 			)
-			SELECT $1, alias.id, n.saby_id, n.name,
+			SELECT $1, alias.id, directory.saby_id,directory.variant_id,directory.name,
 				COALESCE(alias.supplier_article, ''), $4, NULLIF($5, 0), 'confirmed',
-				EXISTS (SELECT 1 FROM procurement_requests r WHERE r.saby_id = n.saby_id AND r.status = 'open')
-			FROM saby_nomenclature n
+				EXISTS (SELECT 1 FROM procurement_requests r WHERE (r.canonical_variant_id=directory.variant_id
+					OR (r.canonical_variant_id IS NULL AND r.saby_id=directory.saby_id)) AND r.status = 'open')
+			FROM canonical_product_directory directory
 			LEFT JOIN LATERAL (
 				SELECT id, supplier_article FROM procurement_supplier_aliases
-				WHERE supplier_id = $2 AND matched_saby_id = n.saby_id AND match_status = 'confirmed'
+				WHERE supplier_id = $2 AND (canonical_variant_id=directory.variant_id
+					OR (canonical_variant_id IS NULL AND matched_saby_id=directory.saby_id)) AND match_status = 'confirmed'
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1
 			) alias ON TRUE
-			WHERE n.saby_id = $3
+			WHERE directory.active AND directory.saby_id = $3
 		`, orderID, input.SupplierID, source.SabyID, source.Quantity, source.ExpectedUnitPrice)
 		if err != nil {
 			return OrderSummary{}, fmt.Errorf("insert procurement plan line: %w", err)
@@ -922,6 +924,7 @@ func (store *PostgresStore) ImportDocument(
 			err = tx.QueryRow(ctx, `
 				UPDATE procurement_order_lines SET procurement_document_id = $2,
 					supplier_alias_id = $3, raw_name = $5, supplier_article = $6,
+					canonical_variant_id=(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3),
 					invoiced_qty = $7, unit_price = $8, line_total = $9, load_unit = $10,
 					match_status = $11, source_page = $12, source_line = $13,
 					pot_diameter_cm = $14, height_cm = $15, updated_at = CURRENT_TIMESTAMP
@@ -938,10 +941,10 @@ func (store *PostgresStore) ImportDocument(
 		if sabyID == "" || errors.Is(err, pgx.ErrNoRows) {
 			_, err = tx.Exec(ctx, `
 				INSERT INTO procurement_order_lines (
-					procurement_order_id, procurement_document_id, supplier_alias_id, saby_id,
+					procurement_order_id, procurement_document_id, supplier_alias_id, saby_id,canonical_variant_id,
 					raw_name, supplier_article, invoiced_qty, unit_price, line_total,
 					load_unit, match_status, source_page, source_line, pot_diameter_cm, height_cm
-				) VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				) VALUES ($1, $2, $3, NULLIF($4, ''),(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
 				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
 				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM,

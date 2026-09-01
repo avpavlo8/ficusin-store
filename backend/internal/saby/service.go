@@ -279,26 +279,45 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	// Refresh integration mappings independently from product identity. Empty
 	// supplier values never delete a mapping that was already confirmed.
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)
-		SELECT p.id, pv.id, 'saby', 'id', source.saby_id
+		UPDATE product_external_ids external SET status='legacy',is_primary=FALSE,
+			last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+		FROM products product JOIN product_variants variant ON variant.product_id=product.id
+		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
+		WHERE external.variant_id=variant.id AND external.provider='saby'
+			AND external.id_type='id' AND external.external_id<>source.saby_id
+	`); err != nil { return fmt.Errorf("retire changed Saby IDs: %w", err) }
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
+		SELECT p.id, pv.id, 'saby', 'id', source.saby_id,'active',TRUE,'sync',CURRENT_TIMESTAMP
 		FROM products p
 		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
 		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
 		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
 			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			status='active',is_primary=TRUE,last_seen_at=CURRENT_TIMESTAMP,
 			updated_at=CURRENT_TIMESTAMP
 	`); err != nil {
 		return fmt.Errorf("map Saby IDs: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)
-		SELECT p.id, pv.id, 'saby', 'code', source.code
+		UPDATE product_external_ids external SET status='legacy',is_primary=FALSE,
+			last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+		FROM products product JOIN product_variants variant ON variant.product_id=product.id
+		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
+		WHERE external.variant_id=variant.id AND external.provider='saby'
+			AND external.id_type='code' AND NULLIF(BTRIM(source.code),'') IS NOT NULL
+			AND external.external_id<>source.code
+	`); err != nil { return fmt.Errorf("retire changed Saby codes: %w", err) }
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
+		SELECT p.id, pv.id, 'saby', 'code', source.code,'active',TRUE,'sync',CURRENT_TIMESTAMP
 		FROM products p
 		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
 		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
 		WHERE NULLIF(BTRIM(source.code),'') IS NOT NULL
 		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
 			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			status='active',is_primary=TRUE,last_seen_at=CURRENT_TIMESTAMP,
 			updated_at=CURRENT_TIMESTAMP
 	`); err != nil {
 		return fmt.Errorf("map Saby codes: %w", err)

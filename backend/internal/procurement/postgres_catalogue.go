@@ -421,24 +421,43 @@ func (store *PostgresStore) ReplaceSales(
 	for _, record := range normalized {
 		command, err := tx.Exec(ctx, `
 			WITH resolved AS (
-				SELECT COALESCE(
-					(SELECT saby_id FROM saby_nomenclature WHERE saby_id = NULLIF($4, '')),
-					(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'wb' AND wb_nm_id::TEXT = $3 LIMIT 1),
-					(SELECT saby_id FROM procurement_product_channels WHERE $1 = 'ozon' AND ozon_offer_id = $3 LIMIT 1)
-				) AS saby_id
+				SELECT directory.variant_id, directory.saby_id,
+					external.id AS external_mapping_id, directory.product_id
+				FROM canonical_product_directory directory
+				LEFT JOIN LATERAL (
+					SELECT mapping.id
+					FROM product_external_ids mapping
+					WHERE mapping.variant_id = directory.variant_id
+						AND mapping.external_id = $3
+						AND mapping.status IN ('active','legacy')
+						AND (($1='wb' AND mapping.provider='wildberries'
+							AND mapping.id_type IN ('sku','nm_id'))
+							OR ($1='ozon' AND mapping.provider='ozon'
+							AND mapping.id_type='offer_id'))
+					ORDER BY (mapping.source='manual') DESC,
+						(mapping.status='active') DESC, mapping.updated_at DESC
+					LIMIT 1
+				) external ON TRUE
+				WHERE (($1 IN ('saby','site') AND directory.saby_id = NULLIF($4,''))
+					OR ($1 IN ('wb','ozon') AND external.id IS NOT NULL))
+				ORDER BY (external.id IS NOT NULL) DESC, directory.variant_id
+				LIMIT 1
 			)
 			INSERT INTO procurement_sales_daily (
-				channel, sale_date, external_product_id, saby_id, units, gross_rub
+				channel, sale_date, external_product_id, saby_id,
+				canonical_variant_id, external_mapping_id, units, gross_rub
 			)
-			SELECT $1, $2, $3, resolved.saby_id, $5, $6
-			FROM resolved
+			SELECT $1, $2, $3, resolved.saby_id, resolved.variant_id,
+				resolved.external_mapping_id, $5, $6
+			FROM (SELECT 1) seed LEFT JOIN resolved ON TRUE
 			WHERE $1 <> 'saby' OR EXISTS (
-				SELECT 1 FROM products
-				WHERE products.saby_id = resolved.saby_id
+				SELECT 1 FROM products WHERE products.id = resolved.product_id
 					AND products.catalog_section = 'plants'
 			)
 			ON CONFLICT (channel, sale_date, external_product_id) DO UPDATE SET
-				saby_id = EXCLUDED.saby_id, units = EXCLUDED.units,
+				saby_id = EXCLUDED.saby_id,
+				canonical_variant_id = EXCLUDED.canonical_variant_id,
+				external_mapping_id = EXCLUDED.external_mapping_id, units = EXCLUDED.units,
 				gross_rub = EXCLUDED.gross_rub, synced_at = CURRENT_TIMESTAMP
 		`, channel, record.Date, record.ExternalID, record.SabyID, record.Units, record.GrossRUB)
 		if err != nil {
@@ -475,20 +494,22 @@ func finishSalesSync(ctx context.Context, tx pgx.Tx, channel string, from, to ti
 
 func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT saby_id, code, article, name, balance,
-			price_minor::DOUBLE PRECISION / 100
-		FROM saby_nomenclature
-		WHERE missing_since IS NULL
-			AND saby_id ~ '^[0-9]+$'
-			AND (name ILIKE '%' || $1 || '%'
-			OR code ILIKE '%' || $1 || '%'
-			OR article ILIKE '%' || $1 || '%'
-			OR saby_id ILIKE '%' || $1 || '%')
+		SELECT directory.variant_id,directory.saby_id,directory.master_code,
+			COALESCE(nomenclature.article,''),directory.name,
+			COALESCE(nomenclature.balance,0),
+			COALESCE(nomenclature.price_minor,0)::DOUBLE PRECISION / 100
+		FROM canonical_product_directory directory
+		LEFT JOIN saby_nomenclature nomenclature ON nomenclature.saby_id=directory.saby_id
+		WHERE directory.active AND directory.master_code<>''
+			AND (directory.name ILIKE '%' || $1 || '%'
+			OR directory.master_code ILIKE '%' || $1 || '%'
+			OR COALESCE(nomenclature.article,'') ILIKE '%' || $1 || '%'
+			OR directory.saby_id ILIKE '%' || $1 || '%')
 		ORDER BY CASE
-			WHEN UPPER(code) = UPPER($1) OR UPPER(article) = UPPER($1) OR UPPER(saby_id) = UPPER($1) THEN 0
-			WHEN name ILIKE $1 || '%' THEN 1
+			WHEN UPPER(directory.master_code) = UPPER($1) OR UPPER(COALESCE(nomenclature.article,'')) = UPPER($1) OR UPPER(directory.saby_id) = UPPER($1) THEN 0
+			WHEN directory.name ILIKE $1 || '%' THEN 1
 			ELSE 2
-		END, balance DESC, name
+		END, COALESCE(nomenclature.balance,0) DESC, directory.name
 		LIMIT 30
 	`, query)
 	if err != nil {
@@ -498,7 +519,7 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 	items := make([]NomenclatureCandidate, 0)
 	for rows.Next() {
 		var item NomenclatureCandidate
-		if err := rows.Scan(&item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
+		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
 			return nil, fmt.Errorf("scan Saby nomenclature candidate: %w", err)
 		}
 		items = append(items, item)
@@ -519,19 +540,18 @@ func (store *PostgresStore) ResolveAlias(
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var exists bool
+	var canonicalVariantID int64
 	if err := tx.QueryRow(ctx, `SELECT TRUE FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
 		return AliasReview{}, ErrNotFound
 	} else if err != nil {
 		return AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
 	}
 	if input.MatchStatus == "confirmed" {
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (
-			SELECT 1 FROM saby_nomenclature
-			WHERE saby_id = $1 AND missing_since IS NULL AND saby_id ~ '^[0-9]+$'
-		)`, input.SabyID).Scan(&exists); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
+			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err,pgx.ErrNoRows) {
 			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
 		}
-		if !exists {
+		if canonicalVariantID == 0 {
 			return AliasReview{}, ErrNotFound
 		}
 	}
@@ -543,14 +563,16 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_supplier_aliases SET
 			matched_saby_id = NULLIF($2, ''), match_status = $3,
+			canonical_variant_id = CASE WHEN $3='confirmed' THEN $5 ELSE NULL END,
 			confidence = $4, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
-	`, aliasID, input.SabyID, input.MatchStatus, confidence); err != nil {
+	`, aliasID, input.SabyID, input.MatchStatus, confidence, canonicalVariantID); err != nil {
 		return AliasReview{}, fmt.Errorf("resolve procurement alias: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_order_lines SET
 			saby_id = NULLIF($2, ''), match_status = $3,
+			canonical_variant_id = CASE WHEN $3='confirmed' THEN $4 ELSE NULL END,
 			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
@@ -558,7 +580,7 @@ func (store *PostgresStore) ResolveAlias(
 		WHERE supplier_alias_id = $1 AND procurement_order_id IN (
 			SELECT id FROM procurement_orders WHERE status NOT IN ('received', 'cancelled')
 		)
-	`, aliasID, input.SabyID, input.MatchStatus); err != nil {
+	`, aliasID, input.SabyID, input.MatchStatus, canonicalVariantID); err != nil {
 		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
 	}
 	// A prepared document contains a snapshot of the old Saby IDs and balances.
@@ -816,8 +838,8 @@ func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, inpu
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item Request
 	err = tx.QueryRow(ctx, `
-		INSERT INTO procurement_requests (kind, saby_id, requested_name, quantity, notes, created_by)
-		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6)
+		INSERT INTO procurement_requests (kind, saby_id,canonical_variant_id, requested_name, quantity, notes, created_by)
+		VALUES ($1, NULLIF($2, ''),(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1), $3, $4, $5, $6)
 		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
 	`, input.Kind, input.SabyID, input.RequestedName, input.Quantity, input.Notes, actor.CustomerID).Scan(
 		&item.ID, &item.Kind, &item.SabyID, &item.RequestedName, &item.Quantity,
@@ -846,7 +868,8 @@ func (store *PostgresStore) UpdateRequest(ctx context.Context, actor Actor, requ
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item Request
 	err = tx.QueryRow(ctx, `
-		UPDATE procurement_requests SET saby_id = NULLIF($2, ''), requested_name = $3,
+		UPDATE procurement_requests SET saby_id = NULLIF($2, ''),
+			canonical_variant_id=(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1), requested_name = $3,
 			quantity = $4, status = $5, notes = $6, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
