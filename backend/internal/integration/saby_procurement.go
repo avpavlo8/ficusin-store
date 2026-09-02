@@ -388,10 +388,10 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		link = ""
 	}
 	var document map[string]any
-	saved := make(map[int64]float64)
+	savedLineCount := 0
 	var err error
 	if internalID > 0 {
-		document, saved, err = client.readReceipt(ctx, internalID)
+		document, savedLineCount, err = client.readReceipt(ctx, internalID)
 		if err != nil {
 			execution := procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(internalID, 10), ExternalURL: link}
 			return execution, fmt.Errorf("открыть созданное поступление Saby %s: %w", link, err)
@@ -428,9 +428,14 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		map[string]any{"n": "Раздел", "t": "Строка"},
 	}
 	rows := make([]any, 0, len(quantities))
-	for id, quantity := range quantities {
-		if missing := quantity - saved[id]; missing > 0.0001 {
-			rows = append(rows, []any{id, "", missing, nil})
+	// NomCreateWithSaveBatch is one atomic Saby operation. On a retry, a
+	// non-empty document means that operation already reached Saby even when
+	// the previous HTTP response was interrupted. Never reconstruct individual
+	// rows from the undocumented relation-cell encoding: doing so produced
+	// false `0 из N` errors and could append duplicate orchid lines.
+	if savedLineCount == 0 {
+		for id, quantity := range quantities {
+			rows = append(rows, []any{id, "", quantity, nil})
 		}
 	}
 	if len(rows) > 0 {
@@ -441,15 +446,6 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 			"actions": sabyRecord(map[string]any{"changed_document": true}),
 		}, &added); err != nil {
 			return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
-		}
-		document, saved, err = client.readReceipt(ctx, internalID)
-		if err != nil {
-			return execution, fmt.Errorf("проверить позиции поступления Saby %s: %w", link, err)
-		}
-	}
-	for id, quantity := range quantities {
-		if saved[id]+0.0001 < quantity {
-			return execution, fmt.Errorf("Saby сохранил для товара %d количество %.3g из %.3g; документ: %s", id, saved[id], quantity, link)
 		}
 	}
 
@@ -485,35 +481,30 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	if writtenLink := safeSabyURL(nestedString(written, "СсылкаДляНашаОрганизация")); writtenLink != "" {
 		execution.ExternalURL = writtenLink
 	}
-	_, saved, err = client.readReceipt(ctx, internalID)
+	_, _, err = client.readReceipt(ctx, internalID)
 	if err != nil {
 		return execution, fmt.Errorf("проверить поступление после заполнения реквизитов Saby %s: %w", execution.ExternalURL, err)
-	}
-	for id, quantity := range quantities {
-		if saved[id]+0.0001 < quantity {
-			return execution, fmt.Errorf("после заполнения реквизитов Saby сохранил для товара %d количество %.3g из %.3g; документ: %s", id, saved[id], quantity, execution.ExternalURL)
-		}
 	}
 	execution.Completed = true
 	return execution, nil
 }
 
-func (client *SabyClient) readReceipt(ctx context.Context, internalID int64) (map[string]any, map[int64]float64, error) {
+func (client *SabyClient) readReceipt(ctx context.Context, internalID int64) (map[string]any, int, error) {
 	if internalID <= 0 {
-		return nil, nil, errors.New("некорректный числовой идентификатор поступления Saby")
+		return nil, 0, errors.New("некорректный числовой идентификатор поступления Saby")
 	}
 	var result any
 	if err := client.rpc(ctx, "ДокОтгрВх.Прочитать", map[string]any{"ИдО": internalID, "ИмяМетода": "ДокОтгрВх.Список"}, &result); err != nil {
-		return nil, nil, err
+		return nil, 0, err
 	}
 	document := findSabyRecord(result, "@Документ")
 	if document == nil {
-		return nil, nil, errors.New("Saby не вернул внутреннюю запись документа")
+		return nil, 0, errors.New("Saby не вернул внутреннюю запись документа")
 	}
 	if document["_type"] == nil {
 		document["_type"] = "record"
 	}
-	return document, sabyLineQuantities(result), nil
+	return document, sabyLineCount(result), nil
 }
 
 func sabyInt64Field(record map[string]any, name string) (int64, error) {
@@ -580,6 +571,40 @@ func sabyLineQuantities(value any) map[int64]float64 {
 	}
 	walk(value)
 	return result
+}
+
+// sabyLineCount deliberately ignores relation-cell contents. Their protocol-6
+// shape varies between nomenclature cards, while the recordset schema and row
+// count are stable enough to answer the only retry question: is the document
+// empty or has the atomic batch already been written?
+func sabyLineCount(value any) int {
+	maximum := 0
+	var walk func(any)
+	walk = func(current any) {
+		switch typed := current.(type) {
+		case map[string]any:
+			fields, _ := typed["s"].([]any)
+			data, _ := typed["d"].([]any)
+			if sabyFieldIndex(fields, "Номенклатура") >= 0 && sabyFieldIndex(fields, "Количество") >= 0 && len(data) > 0 {
+				count := 1
+				if _, recordSet := data[0].([]any); recordSet {
+					count = len(data)
+				}
+				if count > maximum {
+					maximum = count
+				}
+			}
+			for _, child := range typed {
+				walk(child)
+			}
+		case []any:
+			for _, child := range typed {
+				walk(child)
+			}
+		}
+	}
+	walk(value)
+	return maximum
 }
 
 func sabyFieldIndex(fields []any, name string) int {
