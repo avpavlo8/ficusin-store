@@ -42,6 +42,13 @@ class MergeCatalogItemsTest(unittest.TestCase):
         self.assertEqual(merged[0]["description"], "Описание")
         self.assertEqual(merged[0]["cost"], 2990)
 
+    def test_catalogue_card_price_is_not_overwritten_by_channel_price(self):
+        merged, _ = merge_catalog_items(
+            [{"id": 42, "name": "Орхидея 2 стрелы", "cost": 1590}],
+            [{"id": 42, "name": "Орхидея 2 стрелы", "cost": 1790}],
+        )
+        self.assertEqual(merged[0]["cost"], 1590)
+
     def test_item_absent_from_price_list_keeps_full_catalog_stock(self):
         merged, conflicts = merge_catalog_items(
             [{"id": 77, "name": "Справочный товар", "balance": 4}],

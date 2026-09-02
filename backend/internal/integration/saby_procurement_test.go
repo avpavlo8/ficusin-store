@@ -289,7 +289,7 @@ func TestSabyFetchCatalogMergesCompleteCatalogueAndPriceList(t *testing.T) {
 			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":42,"name":"Имя из прайса","balance":"5","cost":2990},{"id":99,"name":"Новый товар","balance":2,"cost":100}]}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"nomenclatures":[{"id":42,"name":"Каноническое имя","balance":"0","code":"X42"}]}`))
+		_, _ = response.Write([]byte(`{"nomenclatures":[{"id":42,"name":"Каноническое имя","balance":"0","cost":1590,"code":"X42"}]}`))
 	}))
 	defer server.Close()
 
@@ -302,7 +302,7 @@ func TestSabyFetchCatalogMergesCompleteCatalogueAndPriceList(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("items = %d, want 2: %+v", len(items), items)
 	}
-	if items[0].Name != "Каноническое имя" || items[0].Balance != "5" || items[0].Cost != float64(2990) {
+	if items[0].Name != "Каноническое имя" || items[0].Balance != "5" || items[0].Cost != float64(1590) {
 		t.Fatalf("unexpected merged item: %+v", items[0])
 	}
 }

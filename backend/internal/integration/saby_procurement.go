@@ -256,12 +256,15 @@ func mergeSabyCatalog(complete, priced []map[string]any) []map[string]any {
 			order = append(order, key)
 		}
 		for field, value := range item {
-			if field == "cost" || field == "balance" {
+			if field == "balance" {
 				if !emptySabyValue(value) {
 					current[field] = value
 				}
 				continue
 			}
+			// The catalogue card is Saby's master price for this store. A
+			// configured price column may be channel-specific or stale, so it
+			// is only a fallback when the card itself has no price.
 			if existing, ok := current[field]; !ok || emptySabyValue(existing) {
 				current[field] = value
 			}

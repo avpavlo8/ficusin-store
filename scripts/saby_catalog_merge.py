@@ -1,9 +1,10 @@
-"""Правила объединения полного каталога Saby и «Общего прайс-листа».
+"""Правила объединения полного каталога Saby и выбранного прайс-листа.
 
 Полный каталог нужен, чтобы менеджер мог найти любую номенклатуру по коду.
-Для товара, который присутствует в выбранном прайс-листе, именно прайс-лист
-является источником боевой цены и остатка витрины. Это соответствует тому,
-что оператор видит в Saby в контексте этого прайс-листа.
+Цена карточки каталога — источник правды для закупок и сайта. Выбранная в
+интеграции колонка цен может быть старой или предназначенной для другого
+канала, поэтому она только заполняет отсутствующую цену. Остаток торговой
+точки по-прежнему уточняется из прайс-листа.
 """
 
 
@@ -28,7 +29,7 @@ def _number(value):
 
 
 def merge_catalog_items(catalog_items, price_items):
-    """Merge Saby snapshots with the selected price list authoritative for sale data.
+    """Merge Saby snapshots, keeping the catalogue card price authoritative.
 
     Returns ``(items, balance_conflicts)``. A conflict is diagnostic only: if
     the price-list row contains ``balance``, that value wins. The full catalog
@@ -68,8 +69,9 @@ def merge_catalog_items(catalog_items, price_items):
                     merged[field] = value
                 continue
             if field == "cost":
-                # Цена выбранного прайс-листа всегда важнее общей карточки.
-                if not _empty(value):
+                # Менеджер меняет основную цену в карточке Saby. Настроенная
+                # колонка цен может отставать или относиться к другому каналу.
+                if (field not in merged or _empty(merged[field])) and not _empty(value):
                     merged[field] = value
                 continue
             # Название, описание, фотографии и идентичность берём из полного
