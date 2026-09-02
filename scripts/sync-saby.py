@@ -6,7 +6,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from saby_catalog_merge import build_sales_product_ids, merge_catalog_items
+from saby_catalog_merge import (
+    build_sales_product_ids,
+    catalogue_ids_in_section,
+    merge_catalog_items,
+)
 
 stage = "settings"
 
@@ -188,6 +192,9 @@ try:
         for item in catalog_items
         if str(item.get("id") or "").strip()
     }
+    plant_catalogue_ids = catalogue_ids_in_section(
+        catalog_items, "Комнатные растения"
+    )
     stage = "saby-sales"
     sales_days = max(7, min(365, int(os.environ.get("SABY_SALES_SYNC_DAYS", "365"))))
     moscow = datetime.timezone(datetime.timedelta(hours=3))
@@ -231,6 +238,8 @@ try:
                 if not source_id:
                     continue
                 saby_id = sales_product_ids.get(source_id.casefold(), source_id)
+                if saby_id not in plant_catalogue_ids:
+                    continue
                 catalogue_item = catalogue_by_id.get(saby_id, {})
                 name = str(
                     position.get("NomenclatureName")
@@ -355,10 +364,13 @@ try:
         "published",
         "isParent",
     )
-    public_catalog = [
-        {key: item.get(key) for key in allowed_fields if key in item}
-        for item in catalog_items
-    ]
+    public_catalog = []
+    for item in catalog_items:
+        public_item = {
+            key: item.get(key) for key in allowed_fields if key in item
+        }
+        public_item["sectionPath"] = item.get("_ficusinSectionPath") or []
+        public_catalog.append(public_item)
 
     # Keep enough aggregate evidence in Actions to distinguish an invalid
     # warehouse/point response from a mapping or database failure. Product

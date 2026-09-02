@@ -95,6 +95,7 @@ type normalizedItem struct {
 	balance     int
 	images      []string
 	attributes  map[string]any
+	sectionPath []string
 }
 
 func NewService(pool *pgxpool.Pool, verifier *OIDCVerifier) *Service {
@@ -163,8 +164,9 @@ type poolRow struct {
 	Description string   `json:"description"`
 	PriceMinor  int64    `json:"price_minor"`
 	Balance     int      `json:"balance"`
-	Images      []string       `json:"images"`
-	Attributes  map[string]any `json:"attributes"`
+	Images      []string         `json:"images"`
+	Attributes  map[string]any   `json:"attributes"`
+	SectionPath []string         `json:"section_path"`
 }
 
 // Kept as one statement so the live PostgreSQL test can execute the exact
@@ -265,17 +267,19 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO saby_nomenclature (
 			saby_id, code, external_ids, article, barcode, barcodes, name, description,
-			price_minor, balance, images, characteristics, seen_at, missing_since
+			price_minor, balance, images, characteristics, section_path, seen_at, missing_since
 		)
 		SELECT item.saby_id, item.code,
 			ARRAY(SELECT jsonb_array_elements_text(item.external_ids)), item.article, item.barcode,
 			ARRAY(SELECT jsonb_array_elements_text(item.barcodes)), item.name,
 			item.description, item.price_minor, item.balance,
 			ARRAY(SELECT jsonb_array_elements_text(item.images)), item.attributes,
+			ARRAY(SELECT jsonb_array_elements_text(item.section_path)),
 			CURRENT_TIMESTAMP, NULL
 		FROM jsonb_to_recordset($1::jsonb) AS item(
 			saby_id TEXT, code TEXT, external_ids JSONB, article TEXT, barcode TEXT, barcodes JSONB,
-			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB, attributes JSONB
+			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB, attributes JSONB,
+			section_path JSONB
 		)
 		ON CONFLICT (saby_id) DO UPDATE SET
 			code = EXCLUDED.code, external_ids = EXCLUDED.external_ids, article = EXCLUDED.article,
@@ -283,6 +287,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			name = EXCLUDED.name,
 			description = EXCLUDED.description, price_minor = EXCLUDED.price_minor,
 			balance = EXCLUDED.balance, images = EXCLUDED.images,
+			section_path = EXCLUDED.section_path,
 			characteristics = CASE WHEN EXCLUDED.characteristics='{}'::jsonb THEN saby_nomenclature.characteristics ELSE EXCLUDED.characteristics END,
 			seen_at = CURRENT_TIMESTAMP, missing_since = NULL
 	`, catalogue); err != nil {
@@ -591,7 +596,23 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 			balance:     max(0, int(math.Floor(balance))),
 			images:      images,
 			attributes:  normalizeCharacteristics(item.Attributes),
+			sectionPath: normalizeSectionPath(item.SectionPath),
 		})
+	}
+	return result
+}
+
+func normalizeSectionPath(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		key := strings.ToLower(value)
+		if value == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, value)
 	}
 	return result
 }

@@ -195,7 +195,7 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 		LEFT JOIN procurement_channel_products card
 			ON card.channel = sale.channel AND card.external_id = sale.external_product_id
 		LEFT JOIN LATERAL (
-			SELECT nomenclature.article, nomenclature.name
+			SELECT nomenclature.article, nomenclature.name, nomenclature.section_path
 			FROM saby_nomenclature nomenclature
 			WHERE sale.channel='saby' AND (
 				nomenclature.saby_id=sale.external_product_id
@@ -209,6 +209,10 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 			ON ignored.channel = sale.channel AND ignored.external_product_id = sale.external_product_id
 		WHERE sale.channel = $1 AND sale.canonical_variant_id IS NULL
 			AND ($3 OR ignored.external_product_id IS NULL)
+			AND (sale.channel <> 'saby' OR EXISTS (
+				SELECT 1 FROM UNNEST(saby_card.section_path) section_name
+				WHERE LOWER(BTRIM(section_name)) = LOWER('Комнатные растения')
+			))
 		GROUP BY sale.external_product_id
 		ORDER BY SUM(sale.units) DESC, MAX(sale.sale_date) DESC
 		LIMIT $2
