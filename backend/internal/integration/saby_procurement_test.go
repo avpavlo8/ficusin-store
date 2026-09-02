@@ -214,7 +214,9 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"Идентификатор":"retry-guid"}}`))
 		case "ДокОтгрВх.Прочитать":
 			if rpc.Params["ИдО"] != float64(8) { t.Fatalf("ИдО must remain numeric: %#v", rpc.Params["ИдО"]) }
-			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,"retry-guid",{"_type":"recordset","d":[[42,%d]],"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Строки"}]}}`, saved)
+			rows := "[]"
+			if saved > 0 { rows = fmt.Sprintf("[[42,%d]]", saved) }
+			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,"retry-guid",{"_type":"recordset","d":%s,"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Строки"}]}}`, rows)
 		default:
 			t.Fatalf("unexpected method: %s", rpc.Method)
 		}
