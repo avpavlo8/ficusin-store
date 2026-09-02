@@ -43,6 +43,7 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 		HierarchicalID: "17460b69-327e-4ec4-aabb-f064710a135a",
 		Article: "ART-1", Barcode: "4600000000001",
 		Name: "Аглаонема", Cost: 1490.0, Balance: 3.0,
+		SectionPath: []string{" Каталог ", "Комнатные растения", "комнатные РАСТЕНИЯ", ""},
 	}})
 	if len(items) != 1 {
 		t.Fatalf("ожидали одну позицию, получили %d", len(items))
@@ -59,6 +60,9 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 	}
 	if item.costMinor != 149000 || item.balance != 3 {
 		t.Errorf("цена или остаток посчитаны неверно: %+v", item)
+	}
+	if !sameStrings(item.sectionPath, []string{"Каталог", "Комнатные растения"}) {
+		t.Errorf("ветка каталога потерялась: %+v", item.sectionPath)
 	}
 }
 

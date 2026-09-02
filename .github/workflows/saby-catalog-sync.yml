@@ -9,7 +9,9 @@ on:
       - timeweb/migrations/*saby*.sql
       - .github/workflows/saby-catalog-sync.yml
   schedule:
-    - cron: '0 */6 * * *'
+    # Cached Saby prices and balances are the source for every site screen.
+    # Refresh hourly; the admin button remains available for an immediate pull.
+    - cron: '17 * * * *'
   workflow_dispatch: {}
 
 permissions:

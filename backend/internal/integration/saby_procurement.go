@@ -157,10 +157,10 @@ func (client *SabyClient) FetchCatalog(ctx context.Context) ([]sabydomain.Catalo
 }
 
 func (client *SabyClient) fetchCatalogTree(ctx context.Context, base url.Values) ([]map[string]any, error) {
-	return client.fetchCatalogSection(ctx, base, "", make(map[string]bool), 0)
+	return client.fetchCatalogSection(ctx, base, "", make(map[string]bool), 0, nil)
 }
 
-func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Values, folder string, seenFolders map[string]bool, depth int) ([]map[string]any, error) {
+func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Values, folder string, seenFolders map[string]bool, depth int, sectionPath []string) ([]map[string]any, error) {
 	rows := make([]map[string]any, 0)
 	seenRows := make(map[string]bool)
 	for pageNumber := 0; pageNumber < 200; pageNumber++ {
@@ -183,6 +183,7 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 				continue
 			}
 			seenRows[key] = true
+			item["sectionPath"] = append([]string(nil), sectionPath...)
 			rows = append(rows, item)
 			fresh++
 		}
@@ -198,7 +199,7 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 	}
 	parents := append([]map[string]any(nil), rows...)
 	for _, item := range parents {
-		if parent, _ := item["isParent"].(bool); !parent {
+		if !sabyBool(item["isParent"]) {
 			continue
 		}
 		folderID := sabyValue(item["hierarchicalId"])
@@ -206,13 +207,26 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 			continue
 		}
 		seenFolders[folderID] = true
-		children, err := client.fetchCatalogSection(ctx, base, folderID, seenFolders, depth+1)
+		childPath := append(append([]string(nil), sectionPath...), sabyValue(item["name"]))
+		children, err := client.fetchCatalogSection(ctx, base, folderID, seenFolders, depth+1, childPath)
 		if err != nil {
 			return nil, err
 		}
 		rows = append(rows, children...)
 	}
 	return rows, nil
+}
+
+func sabyBool(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
+		return err == nil && parsed
+	default:
+		return false
+	}
 }
 
 func mergeSabyCatalog(complete, priced []map[string]any) []map[string]any {
@@ -447,9 +461,14 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		"Идентификатор": guid,
 		"Тип": "ДокОтгрВх", "Название": "Поступление",
 		"Регламент": map[string]any{"Название": "Поступление"},
+		"Направление": "Входящий",
 		"Дата": time.Now().In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"),
+		"Номер": strings.TrimSpace(payload.OrderNumber),
 		"Примечание": fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID),
 		"НашаОрганизация": organization, "Склад": warehouse,
+	}
+	if header["Номер"] == "" {
+		header["Номер"] = strconv.FormatInt(payload.OrderID, 10)
 	}
 	counterparty := map[string]any{"Название": payload.Supplier.Name, "ИНН": payload.Supplier.TaxID}
 	if payload.Supplier.KPP != "" {
@@ -574,14 +593,89 @@ func addSabyQuantity(result map[int64]float64, row []any, nomIndex, quantityInde
 	if nomIndex >= len(row) || quantityIndex >= len(row) {
 		return
 	}
-	id, err := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(row[nomIndex])), 10, 64)
-	if err != nil || id <= 0 {
+	id, ok := sabyNestedInt64(row[nomIndex], "@Номенклатура", "Номенклатура", "ИдО", "id")
+	if !ok || id <= 0 {
 		return
 	}
-	quantity, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(fmt.Sprint(row[quantityIndex])), ",", "."), 64)
-	if err == nil {
+	quantity, ok := sabyNestedFloat(row[quantityIndex], "Количество", "quantity", "value")
+	if ok {
 		result[id] += quantity
 	}
+}
+
+// Internal Saby recordsets do not keep relation cells scalar. Depending on
+// the account and the method version, `Номенклатура` can be an Int64, a plain
+// object or a nested protocol-6 record containing `@Номенклатура`. Treating
+// the object as text made a successfully saved receipt look empty (`0 из 3`).
+func sabyNestedInt64(value any, preferredKeys ...string) (int64, bool) {
+	if number, ok := sabyScalarFloat(value); ok {
+		return int64(number), number > 0 && number == float64(int64(number))
+	}
+	for _, key := range preferredKeys {
+		if nested, ok := sabyNamedValue(value, key); ok {
+			if number, found := sabyNestedInt64(nested); found {
+				return number, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func sabyNestedFloat(value any, preferredKeys ...string) (float64, bool) {
+	if number, ok := sabyScalarFloat(value); ok {
+		return number, true
+	}
+	for _, key := range preferredKeys {
+		if nested, ok := sabyNamedValue(value, key); ok {
+			if number, found := sabyNestedFloat(nested); found {
+				return number, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func sabyScalarFloat(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case json.Number:
+		number, err := typed.Float64()
+		return number, err == nil
+	case string:
+		number, err := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(typed), ",", "."), 64)
+		return number, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func sabyNamedValue(value any, name string) (any, bool) {
+	record, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	for key, nested := range record {
+		if strings.EqualFold(key, name) {
+			return nested, true
+		}
+	}
+	fields, _ := record["s"].([]any)
+	data, _ := record["d"].([]any)
+	for index, raw := range fields {
+		field, _ := raw.(map[string]any)
+		fieldName := strings.TrimSpace(fmt.Sprint(field["n"]))
+		if strings.EqualFold(fieldName, name) && index < len(data) {
+			return data[index], true
+		}
+	}
+	return nil, false
 }
 
 func sabyRecord(values map[string]any) map[string]any {

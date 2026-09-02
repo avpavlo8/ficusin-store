@@ -149,6 +149,7 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 		case "СБИС.ЗаписатьДокумент":
 			document := rpc.Params["Документ"].(map[string]any)
 			if document["Идентификатор"] != "receipt-guid" { t.Fatalf("public header must address existing receipt: %+v", document) }
+			if document["Номер"] != "323" || document["Направление"] != "Входящий" { t.Fatalf("formal receipt fields: %+v", document) }
 			counterparty := document["Контрагент"].(map[string]any)["СвЮЛ"].(map[string]any)
 			if counterparty["ИНН"] != "7627031650" || counterparty["КПП"] != "762701001" { t.Fatalf("counterparty: %+v", counterparty) }
 			if nestedString(document["Склад"], "Название") != "ул. Новоселов, д. 40а" { t.Fatalf("warehouse: %+v", document["Склад"]) }
@@ -248,6 +249,31 @@ func TestSabyReceiptRequiresKPPForRussianCompany(t *testing.T) {
 	}
 }
 
+func TestSabyLineQuantitiesReadsNestedRelationCells(t *testing.T) {
+	t.Parallel()
+	result := map[string]any{
+		"_type": "recordset",
+		"s": []any{
+			map[string]any{"n": "Номенклатура"},
+			map[string]any{"n": "Количество"},
+		},
+		"d": []any{
+			[]any{
+				map[string]any{
+					"_type": "record",
+					"s": []any{map[string]any{"n": "@Номенклатура"}},
+					"d": []any{float64(3604)},
+				},
+				map[string]any{"Количество": "3,0"},
+			},
+		},
+	}
+	quantities := sabyLineQuantities(result)
+	if quantities[3604] != 3 {
+		t.Fatalf("quantities = %+v, want item 3604 quantity 3", quantities)
+	}
+}
+
 func TestSabyFetchCatalogMergesCompleteCatalogueAndPriceList(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
@@ -278,5 +304,12 @@ func TestSabyFetchCatalogMergesCompleteCatalogueAndPriceList(t *testing.T) {
 	}
 	if items[0].Name != "Каноническое имя" || items[0].Balance != "5" || items[0].Cost != float64(2990) {
 		t.Fatalf("unexpected merged item: %+v", items[0])
+	}
+}
+
+func TestSabyBoolAcceptsStringFolderFlag(t *testing.T) {
+	t.Parallel()
+	if !sabyBool("true") || !sabyBool(true) || sabyBool("false") || sabyBool(nil) {
+		t.Fatal("Saby folder flag must accept both JSON booleans and their string form")
 	}
 }
