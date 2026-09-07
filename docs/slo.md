@@ -17,8 +17,10 @@ the first 30 days, then approve or adjust them with the business owner.
 | Sev-1 recovery or safe degradation | ≤30 minutes | target exceeded |
 | Mobile p75 LCP / INP / CLS | ≤2.5s / 200ms / 0.1 | two rolling windows over budget |
 
-The scheduled `Production monitor` is the minimum external synthetic check. It
-does not replace provider dashboards or an APM. Before horizontal scaling, add
+The scheduled `Production monitor` is the minimum external synthetic check. A
+failure creates or updates a deduplicated GitHub Sev-1 issue and recovery closes
+it. This is evidence and a notification fallback, not a staffed pager. It does
+not replace provider dashboards or an APM. Before horizontal scaling, add
 central RED metrics, traces, error tracking and business counters for order,
 payment, receipt, reservation, delivery and every durable worker queue.
 

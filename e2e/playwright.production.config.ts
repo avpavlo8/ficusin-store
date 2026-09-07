@@ -7,7 +7,7 @@ export default defineConfig({
   retries: 1,
   reporter: [["github"], ["list"]],
   use: {
-    baseURL: "https://www.ficusin.ru",
+    baseURL: process.env.FICUSIN_BASE_URL || "https://www.ficusin.ru",
     serviceWorkers: "block",
     trace: "on-first-retry",
   },

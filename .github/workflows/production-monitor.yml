@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: production-monitor
@@ -18,6 +19,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Verify runtime, database, catalogue and guest cart
+        id: critical_reads
         shell: bash
         run: |
           set -euo pipefail
@@ -43,3 +45,36 @@ jobs:
           assert isinstance(cart.get("lines"), list), cart
           print(f"version={health['version']} products={len(catalog['products'])}")
           PY
+      - name: Open or update the production incident
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='[Sev-1] Production critical reads are failing'
+          issue="$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "[Sev-1] Production critical reads are failing") | .number' | head -1)"
+          body="$(printf '%s\n\n%s\n%s\n%s\n\n%s' \
+            'The scheduled external monitor could not verify runtime, database, catalogue and guest cart.' \
+            "Run: ${RUN_URL}" "Commit: ${GITHUB_SHA}" "Detected: $(date -u +%FT%TZ)" \
+            'Treat this as customer-impacting until the failed request is identified and the commerce queues are reconciled.')"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+      - name: Close the incident after recovery
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          issue="$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "[Sev-1] Production critical reads are failing") | .number' | head -1)"
+          if [[ -n "$issue" ]]; then
+            gh issue close "$issue" --comment "External checks recovered at $(date -u +%FT%TZ). Verification: ${RUN_URL}"
+          fi

@@ -123,3 +123,39 @@ test("production category filters stay scoped and reset keeps the route", async 
   await reset.click();
   await expect(page).toHaveURL(/\/catalog\/plants$/);
 });
+
+test("production guest cart keeps an exact SKU and renders the server snapshot", async ({ page }) => {
+  const catalogResponse = await page.request.get("/api/v1/catalog");
+  expect(catalogResponse.ok()).toBeTruthy();
+  const products = (await catalogResponse.json()).products as Array<{
+    sku: string;
+    name: string;
+    stock: number;
+  }>;
+  const product = products.find((item) => item.stock > 0 && item.sku);
+  expect(product, "production needs one in-stock SKU for the cart synthetic").toBeTruthy();
+  if (!product) return;
+
+  try {
+    const saved = await page.request.put("/api/v1/cart", {
+      data: { items: { [product.sku]: 1 } },
+    });
+    expect(saved.ok()).toBeTruthy();
+    const cart = await saved.json() as {
+      items: Record<string, number>;
+      lines: Array<{ sku: string; name: string; available: boolean }>;
+    };
+    expect(cart.items).toEqual({ [product.sku]: 1 });
+    expect(cart.lines).toEqual([
+      expect.objectContaining({ sku: product.sku, name: product.name, available: true }),
+    ]);
+
+    await page.goto("/cart", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { level: 1, name: "Корзина" })).toBeVisible();
+    await expect(page.locator(".cart-line").filter({ hasText: product.name })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Оформить заказ/ }).first()).toBeVisible();
+  } finally {
+    const cleared = await page.request.put("/api/v1/cart", { data: { items: {} } });
+    expect(cleared.ok()).toBeTruthy();
+  }
+});

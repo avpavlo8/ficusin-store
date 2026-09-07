@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      base_url:
+        description: HTTPS deployment to verify (production or a Timeweb staging app)
+        required: true
+        default: https://ficusin.ru
+        type: string
 
 concurrency:
   group: production-smoke-${{ github.ref }}
@@ -11,19 +17,46 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
+    environment:
+      name: ${{ github.event_name == 'push' && 'production' || 'staging-verification' }}
+      url: ${{ github.event_name == 'push' && 'https://ficusin.ru' || inputs.base_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate deployment target
+        id: target
+        env:
+          REQUESTED_BASE_URL: ${{ github.event_name == 'push' && 'https://ficusin.ru' || inputs.base_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >>"$GITHUB_OUTPUT"
+          import os
+          from urllib.parse import urlsplit
+
+          raw = os.environ["REQUESTED_BASE_URL"].strip().rstrip("/")
+          target = urlsplit(raw)
+          host = (target.hostname or "").lower()
+          allowed = host in {"ficusin.ru", "www.ficusin.ru"} or host.endswith(".twc1.net")
+          if target.scheme != "https" or not allowed or target.username or target.password or target.port:
+              raise SystemExit("base_url must be an HTTPS Ficusin or Timeweb application without credentials or a custom port")
+          if target.path or target.query or target.fragment:
+              raise SystemExit("base_url must contain only scheme and host")
+          print(f"base_url={raw}")
+          PY
       - uses: docker/setup-buildx-action@v3
       - name: Build expected frontend from the production Docker stage
         run: |
           rm -rf frontend/dist
           docker buildx build --target frontend-dist --output type=local,dest=frontend/dist .
       - name: Wait for Timeweb and verify production
+        env:
+          BASE_URL: ${{ steps.target.outputs.base_url }}
         shell: bash
         run: |
           set -euo pipefail
@@ -46,14 +79,15 @@ jobs:
           echo "expected_js=${expected_js}"
           echo "expected_css=${expected_css}"
 
-          for attempt in $(seq 1 36); do
-            health="$(curl -fsS --max-time 10 "https://ficusin.ru/api/v1/health?deploy=${GITHUB_SHA}" || true)"
-            readiness="$(curl -fsS --max-time 10 "https://ficusin.ru/api/v1/ready?deploy=${GITHUB_SHA}" || true)"
+          deadline=$((SECONDS + 1200))
+          for attempt in $(seq 1 72); do
+            health="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/health?deploy=${GITHUB_SHA}" || true)"
+            readiness="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/ready?deploy=${GITHUB_SHA}" || true)"
             actual_backend="$(printf '%s' "$health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)"
-            html="$(curl -fsS --max-time 15 "https://ficusin.ru/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            html="$(curl -fsS --max-time 15 "${BASE_URL}/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
-            catalog_count="$(curl -fsS --max-time 20 "https://ficusin.ru/api/v1/catalog?deploy=${GITHUB_SHA}&attempt=${attempt}" \
+            catalog_count="$(curl -fsS --max-time 20 "${BASE_URL}/api/v1/catalog?deploy=${GITHUB_SHA}&attempt=${attempt}" \
               | python3 -c 'import json,sys; data=json.load(sys.stdin); products=data.get("products"); print(len(products) if isinstance(products, list) else 0)' \
               2>/dev/null || printf '0')"
 
@@ -69,6 +103,9 @@ jobs:
               echo "Production is healthy, serves the exact frontend bundle and a non-empty catalog for ${GITHUB_SHA}."
               exit 0
             fi
+            if (( SECONDS >= deadline )); then
+              break
+            fi
             sleep 20
           done
 
@@ -82,6 +119,8 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
         working-directory: e2e
       - name: Verify real production in desktop and mobile browsers
+        env:
+          FICUSIN_BASE_URL: ${{ steps.target.outputs.base_url }}
         run: npx playwright test --config playwright.production.config.ts
         working-directory: e2e
       - uses: actions/upload-artifact@v4
@@ -89,4 +128,30 @@ jobs:
         with:
           name: production-playwright-report
           path: e2e/playwright-report
-          retention-days: 7
+          retention-days: 30
+      - name: Open or update a failed release incident
+        if: failure() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='[Sev-1] Production release verification failed'
+          issue="$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "[Sev-1] Production release verification failed") | .number' | head -1)"
+          body="$(printf '%s\n\n%s\n%s\n%s' \
+            'Production did not verify the exact main revision or failed browser commerce reads.' \
+            "Run: ${RUN_URL}" "Commit: ${GITHUB_SHA}" "Detected: $(date -u +%FT%TZ)")"
+          if [[ -n "$issue" ]]; then gh issue comment "$issue" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
+      - name: Close the release incident after recovery
+        if: success() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          issue="$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "[Sev-1] Production release verification failed") | .number' | head -1)"
+          if [[ -n "$issue" ]]; then gh issue close "$issue" --comment "Exact release and browser checks recovered. ${RUN_URL}"; fi
