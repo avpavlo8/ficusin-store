@@ -1,0 +1,45 @@
+name: Production monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: true
+
+jobs:
+  critical-reads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify runtime, database, catalogue and guest cart
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          curl --fail --silent --show-error --max-time 10 https://ficusin.ru/api/v1/health >"$work/health.json"
+          curl --fail --silent --show-error --max-time 10 https://ficusin.ru/api/v1/ready >"$work/ready.json"
+          curl --fail --silent --show-error --max-time 20 https://ficusin.ru/api/v1/catalog >"$work/catalog.json"
+          curl --fail --silent --show-error --max-time 10 --cookie-jar "$work/cookies" https://ficusin.ru/api/v1/cart >"$work/cart.json"
+
+          python3 - "$work" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          health = json.loads((root / "health.json").read_text())
+          ready = json.loads((root / "ready.json").read_text())
+          catalog = json.loads((root / "catalog.json").read_text())
+          cart = json.loads((root / "cart.json").read_text())
+          assert health.get("status") == "ok" and health.get("version"), health
+          assert ready.get("status") == "ok", ready
+          assert isinstance(catalog.get("products"), list) and catalog["products"], "catalog is empty"
+          assert isinstance(cart.get("items"), dict), cart
+          assert isinstance(cart.get("lines"), list), cart
+          print(f"version={health['version']} products={len(catalog['products'])}")
+          PY

@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
 import { PushToggle } from "./PushToggle";
 import { useSharedCart } from "./lib/cart";
+import { sharedAPIJSON } from "./lib/api";
 
 export type StoreUser = {
   id: number;
@@ -50,7 +51,7 @@ type OrderDetail = {
 };
 
 type FavoriteProduct = {
-  id: string; name: string; latin: string; price: number; image: string; stock: number;
+  id: string; sku: string; name: string; latin: string; price: number; image: string; stock: number;
 };
 
 type Section = "orders" | "profile" | "favorites" | "reviews";
@@ -587,8 +588,7 @@ function FavoritesSection() {
   const [cart, setCart] = useSharedCart();
 
   useEffect(() => {
-    fetch("/api/v1/catalog")
-      .then((response) => response.json())
+    sharedAPIJSON<{ products?: FavoriteProduct[] }>("/api/v1/catalog")
       .then((data: { products?: FavoriteProduct[] }) => setProducts(data.products || []))
       .catch(() => undefined);
   }, []);
@@ -618,9 +618,9 @@ function FavoritesSection() {
             <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
             <p>{product.latin}</p>
             <strong>{money.format(product.price)}</strong>
-            <button className={cart[product.id] ? "primary-button" : "secondary-button"} type="button" disabled={product.stock <= 0}
-              onClick={() => setCart((current) => ({ ...current, [product.id]: Math.min(product.stock, (current[product.id] || 0) + 1) }))}>
-              {product.stock <= 0 ? "Нет в наличии" : cart[product.id] ? `Добавить ещё · ${cart[product.id]}` : "В корзину"}
+            <button className={cart[product.sku] ? "primary-button" : "secondary-button"} type="button" disabled={product.stock <= 0}
+              onClick={() => setCart((current) => ({ ...current, [product.sku]: Math.min(product.stock, (current[product.sku] || 0) + 1) }))}>
+              {product.stock <= 0 ? "Нет в наличии" : cart[product.sku] ? `Добавить ещё · ${cart[product.sku]}` : "В корзину"}
             </button>
           </article>
         ))}

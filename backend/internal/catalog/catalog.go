@@ -46,6 +46,20 @@ type Product struct {
 	FilterAttributes []ProductAttribute `json:"filterAttributes"`
 }
 
+// CartProduct is the server-owned display snapshot for one sellable SKU.
+// The browser must not download the whole catalogue just to render a cart,
+// and a non-default variant must remain visible after a direct /cart visit.
+type CartProduct struct {
+	ID           string  `json:"id"`
+	SKU          string  `json:"sku"`
+	Name         string  `json:"name"`
+	VariantLabel string  `json:"variantLabel"`
+	Price        float64 `json:"price"`
+	Image        string  `json:"image"`
+	Stock        int     `json:"stock"`
+	Available    bool    `json:"available"`
+}
+
 type Collection struct {
 	Slug     string `json:"slug"`
 	Title    string `json:"title"`

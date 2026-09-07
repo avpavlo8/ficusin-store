@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 )
 
 type cartStore interface {
@@ -19,6 +20,10 @@ type cartStore interface {
 	Save(ctx context.Context, customerID int64, items map[string]int) error
 	LoadGuest(ctx context.Context, tokenHash string) (map[string]int, error)
 	SaveGuest(ctx context.Context, tokenHash string, items map[string]int, expiresAt time.Time) error
+}
+
+type cartProductRepository interface {
+	CartProducts(context.Context, []string) ([]catalog.CartProduct, error)
 }
 
 // maximumCartLines caps what we are willing to store. A real cart is a
@@ -40,7 +45,7 @@ func hashCartToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func cartHandler(logger *slog.Logger, authentication authService, store cartStore, cookieSecure bool) http.Handler {
+func cartHandler(logger *slog.Logger, authentication authService, store cartStore, products cartProductRepository, cookieSecure bool) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		var customerID int64
 		if cookie, err := request.Cookie(auth.CookieName); err == nil {
@@ -82,7 +87,7 @@ func cartHandler(logger *slog.Logger, authentication authService, store cartStor
 				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "Не удалось загрузить корзину"})
 				return
 			}
-			writeJSON(response, http.StatusOK, map[string]any{"items": items})
+			writeCart(response, request, logger, products, items)
 			return
 		}
 
@@ -116,6 +121,38 @@ func cartHandler(logger *slog.Logger, authentication authService, store cartStor
 			})
 			return
 		}
-		writeJSON(response, http.StatusOK, map[string]any{"items": items})
+		writeCart(response, request, logger, products, items)
 	})
+}
+
+func writeCart(response http.ResponseWriter, request *http.Request, logger *slog.Logger, products cartProductRepository, items map[string]int) {
+	lines := []catalog.CartProduct{}
+	missing := []string{}
+	if products != nil && len(items) > 0 {
+		skus := make([]string, 0, len(items))
+		for sku := range items {
+			skus = append(skus, sku)
+		}
+		resolved, err := products.CartProducts(request.Context(), skus)
+		if err != nil {
+			logger.Error("load cart products failed", "error", err)
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить товары корзины"})
+			return
+		}
+		lines = resolved
+		found := make(map[string]struct{}, len(lines))
+		for _, line := range lines {
+			found[line.SKU] = struct{}{}
+		}
+		for _, sku := range skus {
+			if _, ok := found[sku]; !ok {
+				missing = append(missing, sku)
+				lines = append(lines, catalog.CartProduct{
+					ID: sku, SKU: sku, Name: "Товар больше не доступен",
+					VariantLabel: sku, Image: "/assets/hero-monstera.webp", Available: false,
+				})
+			}
+		}
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"items": items, "lines": lines, "missingSkus": missing})
 }

@@ -15,6 +15,55 @@ type PostgresRepository struct {
 	pool *pgxpool.Pool
 }
 
+// CartProducts resolves exact SKUs, including non-default variants. Archived
+// or unpublished rows are returned with Available=false so the cart can tell
+// the customer what changed instead of silently pretending that it is empty.
+func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []string) ([]CartProduct, error) {
+	if len(skus) == 0 {
+		return []CartProduct{}, nil
+	}
+	rows, err := repository.pool.Query(ctx, `
+		SELECT product.product_code::TEXT, variant.sku, product.name, variant.label,
+			variant.base_price_minor,
+			COALESCE((
+				SELECT COALESCE(mirror.card_url, mirror.large_url, media.object_key)
+				FROM product_media media
+				LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
+				WHERE media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
+				ORDER BY (media.variant_id=variant.id) DESC, media.is_primary DESC, media.sort_order, media.id
+				LIMIT 1
+			), '/assets/hero-monstera.webp'),
+			COALESCE((
+				SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0))
+				FROM inventory item WHERE item.variant_id=variant.id
+			),0)::INTEGER,
+			(product.status='published' AND variant.is_active=1 AND variant.archived_at IS NULL)
+		FROM product_variants variant
+		JOIN products product ON product.id=variant.product_id
+		WHERE variant.sku=ANY($1)
+		ORDER BY product.product_code, variant.id
+	`, skus)
+	if err != nil {
+		return nil, fmt.Errorf("query cart products: %w", err)
+	}
+	defer rows.Close()
+	products := make([]CartProduct, 0, len(skus))
+	for rows.Next() {
+		var product CartProduct
+		var priceMinor int64
+		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.VariantLabel,
+			&priceMinor, &product.Image, &product.Stock, &product.Available); err != nil {
+			return nil, fmt.Errorf("scan cart product: %w", err)
+		}
+		product.Price = float64(priceMinor) / 100
+		products = append(products, product)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read cart products: %w", err)
+	}
+	return products, nil
+}
+
 // DetailBySlug keeps the old method name only to avoid widening the repository
 // interface during this release. The argument is now the numeric Ficusin
 // product code; old name/Saby slugs are removed by migration 055.

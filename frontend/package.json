@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "budget": "node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
-    "lint": "eslint . && npm run lint:css",
+    "lint": "eslint . --max-warnings=0 && npm run lint:css",
     "lint:css": "node scripts/check-dead-css.mjs"
   },
   "dependencies": {

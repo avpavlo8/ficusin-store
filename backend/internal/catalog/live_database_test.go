@@ -112,6 +112,35 @@ func TestCatalogQueryPlanOnLiveDatabase(t *testing.T) {
 	t.Logf("catalog EXPLAIN: %s", rawPlan)
 }
 
+func TestCartProductsOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	var sku string
+	if err := pool.QueryRow(ctx, `
+		SELECT variant.sku FROM product_variants variant
+		JOIN products product ON product.id=variant.product_id
+		WHERE product.status='published' AND variant.is_active=1 AND variant.archived_at IS NULL
+		ORDER BY variant.id LIMIT 1
+	`).Scan(&sku); err != nil {
+		t.Fatalf("select cart SKU: %v", err)
+	}
+	items, err := NewPostgresRepository(pool).CartProducts(ctx, []string{sku})
+	if err != nil {
+		t.Fatalf("load cart product: %v", err)
+	}
+	if len(items) != 1 || items[0].SKU != sku || !items[0].Available {
+		t.Fatalf("unexpected cart product: %#v", items)
+	}
+}
+
 func TestLegacySabyProductCodeResolvesOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {

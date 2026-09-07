@@ -23,6 +23,10 @@ type catalogRepository interface {
 	DetailBySlug(context.Context, string) (catalog.ProductDetail, error)
 }
 
+type readinessChecker interface {
+	Ping(context.Context) error
+}
+
 type Dependencies struct {
 	Catalog          catalogRepository
 	Auth             authService
@@ -49,6 +53,7 @@ type Dependencies struct {
 	CatalogAI        catalogAIGenerator
 	Analytics        analyticsStore
 	SiteURL          string
+	Readiness        readinessChecker
 }
 type catalogAIGenerator interface {
 	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
@@ -99,6 +104,20 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
 	})
+	mux.HandleFunc("GET /api/v1/ready", func(response http.ResponseWriter, request *http.Request) {
+		if dependencies.Readiness == nil {
+			writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
+			return
+		}
+		ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
+		defer cancel()
+		if err := dependencies.Readiness.Ping(ctx); err != nil {
+			logger.Error("readiness check failed", "error", err)
+			writeJSON(response, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "version": BuildVersion})
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
+	})
 	mux.HandleFunc("POST /api/v1/analytics/events", analyticsLimiter.guard("Слишком много событий", analyticsEventsHandler(logger, dependencies.Auth, dependencies.Analytics)))
 	mux.HandleFunc("GET /api/v1/analytics/config", analyticsConfigHandler(dependencies.Settings))
 	mux.Handle("GET /api/v1/catalog", catalogHandler(logger, publicCatalog, publicCache))
@@ -123,7 +142,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		accountOrdersHandler(logger, dependencies.Auth, dependencies.Orders),
 	)
 	if dependencies.Cart != nil {
-		cartAPI := cartHandler(logger, dependencies.Auth, dependencies.Cart, dependencies.CookieSecure)
+		cartProducts, _ := dependencies.Catalog.(cartProductRepository)
+		cartAPI := cartHandler(logger, dependencies.Auth, dependencies.Cart, cartProducts, dependencies.CookieSecure)
 		mux.Handle("GET /api/v1/cart", cartAPI)
 		mux.Handle("PUT /api/v1/cart", cartAPI)
 		mux.Handle("GET /api/v1/account/cart", cartAPI)
@@ -268,7 +288,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	}
 	handler = canonicalHostRedirect(dependencies.SiteURL, handler)
 	return requestLogger(logger, invalidatePublicCacheAfterMutation(publicCache, invalidateDetails,
-		gzipResponses(securityHeaders(dependencies.CookieSecure, recoverPanics(logger, handler)))))
+		gzipResponses(securityHeaders(dependencies.CookieSecure, rejectCrossOriginMutations(dependencies.SiteURL, recoverPanics(logger, handler))))))
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

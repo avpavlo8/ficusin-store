@@ -12,6 +12,8 @@ export type CartProduct = {
   price: number;
   image: string;
   stock?: number;
+  variantLabel?: string;
+  available?: boolean;
 };
 
 type StoreUser = {
@@ -31,6 +33,10 @@ type CheckoutHostProps = {
   onCartChange: Dispatch<SetStateAction<Cart>>;
   cartPage?: boolean;
   checkoutPage?: boolean;
+  cartStatus?: "loading" | "ready" | "saving" | "error";
+  cartError?: string;
+  missingCartItems?: number;
+  onCartRetry?: () => void;
 };
 
 // Cart keys are Ficusin SKUs, not product-card codes. That is the only way
@@ -44,6 +50,10 @@ export default function CheckoutHost({
   onCartChange,
   cartPage = false,
   checkoutPage = false,
+  cartStatus = "ready",
+  cartError = "",
+  missingCartItems = 0,
+  onCartRetry,
 }: CheckoutHostProps) {
   const cart = externalCart;
   const setCart = onCartChange;
@@ -119,6 +129,7 @@ export default function CheckoutHost({
   }
 
   function beginCheckout() {
+	if (cartStatus !== "ready" || missingCartItems > 0 || cartLines.some((item) => item.available === false)) return;
 	track("begin_checkout", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
     window.location.assign("/checkout");
   }
@@ -126,6 +137,7 @@ export default function CheckoutHost({
   return (
     <div className="cart-checkout-host">
       {notice && <div className="toast" role="status">{notice}</div>}
+      {cartStatus === "error" && !cartPage && !checkoutPage && <div className="toast cart-error-toast" role="alert"><span>{cartError || "Изменение корзины не сохранено"}</span>{onCartRetry && <button type="button" onClick={onCartRetry}>Повторить</button>}</div>}
 
       {paymentReturn && (
         <div className="payment-return" role="status">
@@ -160,9 +172,17 @@ export default function CheckoutHost({
         onQuantityChange={setQuantity}
         onCheckout={beginCheckout}
         page={cartPage}
+        status={cartStatus}
+        error={cartError}
+        missingCount={missingCartItems}
+        onRetry={onCartRetry}
       />}
 
-      <CheckoutPanel user={!!user} page={checkoutPage} {...checkout.panelProps} />
+      {checkoutPage && cartStatus === "loading" ? <section className="checkout-load-state" role="status"><h1>Загружаем оформление…</h1><p>Проверяем состав и актуальные цены корзины.</p></section>
+        : checkoutPage && cartStatus === "error" ? <section className="checkout-load-state error" role="alert"><h1>Не удалось открыть оформление</h1><p>{cartError}</p>{onCartRetry && <button type="button" className="primary-button" onClick={onCartRetry}>Повторить</button>}</section>
+          : checkoutPage && (missingCartItems > 0 || cartLines.some((item) => item.available === false)) ? <section className="checkout-load-state error" role="alert"><h1>Состав корзины изменился</h1><p>Вернитесь в корзину и удалите недоступные товары.</p><a className="primary-button" href="/cart">Вернуться в корзину</a></section>
+            : checkoutPage && cartStatus === "ready" && !cartLines.length ? <section className="checkout-load-state"><h1>Корзина пуста</h1><p>Перед оформлением добавьте товары.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></section>
+              : <CheckoutPanel user={!!user} page={checkoutPage} {...checkout.panelProps} />}
     </div>
   );
 }

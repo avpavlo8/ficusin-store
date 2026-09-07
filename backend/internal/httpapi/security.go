@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -47,6 +48,39 @@ func securityHeaders(secure bool, next http.Handler) http.Handler {
 		// carry no markup to protect.
 		if !strings.HasPrefix(request.URL.Path, "/api/") {
 			header.Set("Content-Security-Policy", contentSecurityPolicy)
+		}
+		next.ServeHTTP(response, request)
+	})
+}
+
+// rejectCrossOriginMutations adds an explicit browser boundary for every
+// cookie-authenticated mutation. Requests without Origin remain valid for
+// server-to-server webhooks and command-line clients; browsers always attach
+// Origin to a cross-site fetch, even when they cannot read the response.
+func rejectCrossOriginMutations(siteURL string, next http.Handler) http.Handler {
+	expected, _ := url.Parse(strings.TrimSpace(siteURL))
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet || request.Method == http.MethodHead || request.Method == http.MethodOptions {
+			next.ServeHTTP(response, request)
+			return
+		}
+		rawOrigin := strings.TrimSpace(request.Header.Get("Origin"))
+		if rawOrigin == "" {
+			next.ServeHTTP(response, request)
+			return
+		}
+		origin, err := url.Parse(rawOrigin)
+		host := request.Host
+		scheme := "https"
+		if expected != nil && expected.Host != "" {
+			host = expected.Host
+			scheme = expected.Scheme
+		} else if request.TLS == nil {
+			scheme = "http"
+		}
+		if err != nil || !strings.EqualFold(origin.Host, host) || !strings.EqualFold(origin.Scheme, scheme) {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Запрос с другого сайта отклонён"})
+			return
 		}
 		next.ServeHTTP(response, request)
 	})

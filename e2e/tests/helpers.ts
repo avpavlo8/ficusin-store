@@ -112,6 +112,20 @@ export const owner = {
 
 type Session = typeof guest | typeof owner;
 const carts = new WeakMap<Page, Record<string, number>>();
+const catalogue = [product, ficus, monstera, pot];
+
+function cartResponse(page: Page) {
+  const items = carts.get(page) || {};
+  const lines = Object.keys(items).map((sku) => {
+    const item = catalogue.find((candidate) => candidate.sku === sku);
+    return item ? { ...item, variantLabel: item.size, available: true } : {
+      id: sku, sku, name: "Товар больше не доступен", variantLabel: sku,
+      price: 0, image: "/assets/hero-monstera.webp", stock: 0, available: false,
+    };
+  });
+  const missingSkus = Object.keys(items).filter((sku) => !catalogue.some((candidate) => candidate.sku === sku));
+  return { items, lines, missingSkus };
+}
 
 function cartFromRequest(raw: string | null): Record<string, number> | null {
   if (!raw) return null;
@@ -148,7 +162,7 @@ export async function mockApi(page: Page, session: Session = guest) {
       const items = cartFromRequest(route.request().postData());
       if (items) carts.set(page, items);
     }
-    await route.fulfill({ json: { items: carts.get(page) || {} } });
+    await route.fulfill({ json: cartResponse(page) });
   });
 
   await context.route("**/api/v1/products/*", (route) => route.fulfill({ json: { product: {

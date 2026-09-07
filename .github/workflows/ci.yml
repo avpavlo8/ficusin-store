@@ -13,6 +13,17 @@ permissions:
   contents: read
 
 jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -28,6 +39,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      - run: npm run budget
+      - run: npm audit --omit=dev --audit-level=high
       - name: Verify rich-care images in production bundle
         run: test -s dist/images/care/light.webp && test -s dist/images/care/watering.webp && test -s dist/images/care/humidity.webp && test -s dist/images/care/repotting.webp
 
@@ -44,13 +57,13 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
-      - run: npm install
+      - run: npm ci
         working-directory: e2e
       - id: browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
       - run: npx playwright install --with-deps chromium webkit
         if: steps.browsers.outputs.cache-hit != 'true'
         working-directory: e2e
@@ -67,7 +80,7 @@ jobs:
             e2e/playwright-report
             e2e/test-results
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   backend:
     runs-on: ubuntu-latest
@@ -82,6 +95,8 @@ jobs:
           cache-dependency-path: backend/go.sum
       - run: go test ./...
       - run: go vet ./...
+      - name: Check Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - run: go build ./cmd/api
 
   migrations:
@@ -352,8 +367,9 @@ jobs:
           for attempt in $(seq 1 60); do
             state="$(docker inspect -f '{{.State.Status}}' ficusin-runtime)"
             health="$(curl -fsS --max-time 5 http://127.0.0.1:3000/api/v1/health || true)"
-            echo "attempt=${attempt} state=${state} health=${health}"
-            if [[ "$health" == *'"status":"ok"'* ]]; then
+            readiness="$(curl -fsS --max-time 5 http://127.0.0.1:3000/api/v1/ready || true)"
+            echo "attempt=${attempt} state=${state} health=${health} readiness=${readiness}"
+            if [[ "$health" == *'"status":"ok"'* && "$readiness" == *'"status":"ok"'* ]]; then
               ready=1
               break
             fi

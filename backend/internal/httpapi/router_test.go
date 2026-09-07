@@ -114,6 +114,22 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+type readinessStub struct{ err error }
+
+func (stub readinessStub) Ping(context.Context) error { return stub.err }
+
+func TestReadinessChecksDatabase(t *testing.T) {
+	t.Parallel()
+	dependencies := testDependencies(catalogStub{}, authStub{})
+	dependencies.Readiness = readinessStub{err: errors.New("database unavailable")}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/ready", nil)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+}
+
 func TestCatalog(t *testing.T) {
 	t.Parallel()
 

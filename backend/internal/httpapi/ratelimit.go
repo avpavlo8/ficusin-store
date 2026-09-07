@@ -75,23 +75,30 @@ func (limiter *rateLimiter) guard(message string, next http.HandlerFunc) http.Ha
 	}
 }
 
-// clientIP reports who is calling. The app sits behind Timeweb's proxy, so
-// the direct remote address is always the proxy; the left-most entry of
-// X-Forwarded-For is the closest thing to the real client we have.
+// clientIP trusts forwarding headers only when the direct peer belongs to a
+// private/loopback proxy network. Walking X-Forwarded-For from the proxy side
+// prevents a caller from bypassing a limit by prepending an arbitrary value.
 func clientIP(request *http.Request) string {
-	forwarded := request.Header.Get("X-Forwarded-For")
-	if forwarded != "" {
-		first, _, _ := strings.Cut(forwarded, ",")
-		if first = strings.TrimSpace(first); first != "" {
-			return first
-		}
-	}
-	if real := strings.TrimSpace(request.Header.Get("X-Real-IP")); real != "" {
-		return real
-	}
 	host, _, err := net.SplitHostPort(request.RemoteAddr)
 	if err != nil {
-		return request.RemoteAddr
+		host = request.RemoteAddr
 	}
-	return host
+	remote := net.ParseIP(strings.TrimSpace(host))
+	if remote == nil {
+		return strings.TrimSpace(host)
+	}
+	if !remote.IsPrivate() && !remote.IsLoopback() {
+		return remote.String()
+	}
+	parts := strings.Split(request.Header.Get("X-Forwarded-For"), ",")
+	for index := len(parts) - 1; index >= 0; index-- {
+		candidate := net.ParseIP(strings.TrimSpace(parts[index]))
+		if candidate != nil && !candidate.IsPrivate() && !candidate.IsLoopback() {
+			return candidate.String()
+		}
+	}
+	if real := net.ParseIP(strings.TrimSpace(request.Header.Get("X-Real-IP"))); real != nil {
+		return real.String()
+	}
+	return remote.String()
 }
