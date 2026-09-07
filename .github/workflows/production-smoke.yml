@@ -3,13 +3,9 @@ name: Production smoke
 on:
   push:
     branches: [main]
-  pull_request:
-    paths:
-      - .github/workflows/production-smoke.yml
   workflow_dispatch:
 
 concurrency:
-  # A PR smoke must never cancel the real main production verification.
   group: production-smoke-${{ github.ref }}
   cancel-in-progress: true
 
