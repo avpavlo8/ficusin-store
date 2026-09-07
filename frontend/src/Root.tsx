@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import StorefrontPage from "./StorefrontPage";
 import ProductPage from "./ProductPage";
+import NotFoundPage from "./NotFoundPage";
 import { StoreFooter } from "./StoreFooter";
 
 const AdminPage = lazy(() => import("./AdminPage"));
@@ -8,7 +9,6 @@ const FavoritesPage = lazy(() => import("./FavoritesPage"));
 const AccountPage = lazy(() => import("./AccountPage"));
 const AccountOrderPage = lazy(() => import("./AccountOrderPage"));
 const CartPage = lazy(() => import("./CartPage"));
-const NotFoundPage = lazy(() => import("./NotFoundPage"));
 const LoginPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.LoginPage })));
 const RegisterPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.RegisterPage })));
 const DeliveryPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.DeliveryPage })));

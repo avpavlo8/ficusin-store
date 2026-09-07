@@ -101,6 +101,7 @@ func main() {
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 	listener, err := net.Listen("tcp", cfg.HTTP.Address)
 	if err != nil {
@@ -233,6 +234,7 @@ func main() {
 		CatalogAI:        catalogAI,
 		Analytics:        analyticsStore,
 		SiteURL:          cfg.SiteURL,
+		Readiness:        pool,
 	}))
 	go func() {
 		ticker := time.NewTicker(time.Minute)

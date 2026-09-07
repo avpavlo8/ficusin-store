@@ -20,3 +20,29 @@ func TestSecurityHeadersAllowYandexMetrikaWebSockets(t *testing.T) {
 		}
 	}
 }
+
+func TestCrossOriginMutationIsRejected(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPut, "https://ficusin.ru/api/v1/cart", strings.NewReader(`{"items":{}}`))
+	request.Header.Set("Origin", "https://attacker.example")
+	response := httptest.NewRecorder()
+	called := false
+	rejectCrossOriginMutations("https://ficusin.ru", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })).ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || called {
+		t.Fatalf("cross-origin mutation status=%d called=%v", response.Code, called)
+	}
+}
+
+func TestSameOriginAndServerMutationsAreAllowed(t *testing.T) {
+	for _, origin := range []string{"https://ficusin.ru", ""} {
+		request := httptest.NewRequest(http.MethodPost, "https://ficusin.ru/api/v1/orders", nil)
+		if origin != "" {
+			request.Header.Set("Origin", origin)
+		}
+		response := httptest.NewRecorder()
+		called := false
+		rejectCrossOriginMutations("https://ficusin.ru", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })).ServeHTTP(response, request)
+		if !called {
+			t.Fatalf("origin %q was rejected: %d", origin, response.Code)
+		}
+	}
+}

@@ -10,6 +10,7 @@ export type CartLine = {
   image: string;
   stock?: number;
   variantLabel?: string;
+  available?: boolean;
   quantity: number;
 };
 
@@ -21,6 +22,10 @@ type CartDrawerProps = {
   onQuantityChange: (id: string, quantity: number) => void;
   onCheckout: () => void;
   page?: boolean;
+  status?: "loading" | "ready" | "saving" | "error";
+  error?: string;
+  missingCount?: number;
+  onRetry?: () => void;
 };
 
 const money = (value: number) =>
@@ -60,6 +65,10 @@ export function CartDrawer({
   onQuantityChange,
   onCheckout,
   page = false,
+  status = "ready",
+  error = "",
+  missingCount = 0,
+  onRetry,
 }: CartDrawerProps) {
   const checkoutActionRef = useRef<HTMLButtonElement>(null);
   const [checkoutActionVisible, setCheckoutActionVisible] = useState(false);
@@ -73,12 +82,12 @@ export function CartDrawer({
     return () => observer.disconnect();
   }, [page, lines.length]);
   const lineCards = lines.map((item) => (
-    <div className="cart-line" key={item.id}>
+    <div className={`cart-line ${item.available === false ? "unavailable" : ""}`} key={item.id}>
       <img src={item.image} alt="" />
       <div className="cart-line-copy">
         <h3>{item.name}</h3>
         <small>Вариант: {item.variantLabel || item.id}</small>
-        <span className={`cart-stock ${item.stock === 0 ? "out" : ""}`}>{item.stock === 0 ? "Под заказ" : "В наличии"}</span>
+        <span className={`cart-stock ${item.available === false || item.stock === 0 ? "out" : ""}`}>{item.available === false ? "Больше не продаётся" : item.stock === 0 ? "Под заказ" : "В наличии"}</span>
         <div className="cart-line-mobile-price">{money(item.price)}</div>
       </div>
       <strong className="cart-unit-price">{money(item.price)}</strong>
@@ -92,17 +101,20 @@ export function CartDrawer({
     </div>
   ));
   return (
-    <aside className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`} aria-hidden={!open}>
+    <aside className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`} aria-hidden={!open} inert={!open}>
       <div className="drawer-head">
-        <div><p className="eyebrow">Ваш выбор</p><h2>Корзина</h2></div>
+        <div><p className="eyebrow">Ваш выбор</p>{page ? <h1>Корзина</h1> : <h2>Корзина</h2>}</div>
         <button onClick={onClose} aria-label="Закрыть корзину"><LineIcon name="close" /></button>
       </div>
       <div className="cart-content">
         <section className="cart-table">
           {page && !!lines.length && <div className="cart-table-head"><span>Товар</span><span>Цена</span><span>Количество</span><span>Сумма</span><i /></div>}
           <div className="cart-lines">
+            {status === "loading" && !lines.length && <div className="cart-state" role="status"><strong>Загружаем корзину…</strong><p>Ваши товары появятся здесь после загрузки.</p></div>}
+            {status === "error" && <div className="cart-state error" role="alert"><strong>Не удалось загрузить корзину</strong><p>{error || "Проверьте соединение и попробуйте ещё раз."}</p>{onRetry && <button type="button" onClick={onRetry}>Повторить</button>}</div>}
+            {(missingCount > 0 || lines.some((item) => item.available === false)) && <div className="cart-state warning" role="alert"><strong>Состав корзины изменился</strong><p>Некоторые товары больше недоступны. Удалите их перед оформлением.</p></div>}
             {lineCards}
-            {!lines.length && (
+            {status === "ready" && !lines.length && !missingCount && (
               <div className="empty-cart">
                 <span>⌁</span><h3>Корзина пока пуста</h3>
                 <p>Добавьте растения из каталога — они появятся здесь.</p>
@@ -110,16 +122,15 @@ export function CartDrawer({
               </div>
             )}
           </div>
-          {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button ref={checkoutActionRef} className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
+          {page && !!lines.length && <div className="cart-page-actions"><a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a><button ref={checkoutActionRef} className="primary-button" disabled={status !== "ready" || missingCount > 0 || lines.some((item) => item.available === false)} onClick={onCheckout}>Оформить заказ <span>→</span></button></div>}
         </section>
         {!!lines.length && (
           <aside className="cart-summary">
             <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>при оформлении</dd></div></dl>
             <div className="cart-summary-total"><span>Итого</span><strong>{money(subtotal)}</strong></div>
             {!page && <div className="cart-bonus" hidden />}
-            {!page && <button className="primary-button" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
-            {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" aria-label="Перейти к оформлению" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
-            {page && <img className="cart-summary-art" src="/assets/redesign/checkout-summary-art.png" alt="" />}
+            {!page && <button className="primary-button" disabled={status !== "ready" || missingCount > 0 || lines.some((item) => item.available === false)} onClick={onCheckout}>Оформить заказ <span>→</span></button>}
+            {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" disabled={status !== "ready" || missingCount > 0 || lines.some((item) => item.available === false)} aria-label="Перейти к оформлению" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
           </aside>
         )}
       </div>
@@ -237,7 +248,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const confirmationPending = Boolean(orderNumber && orderConfirmationPending);
 
   return (
-    <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
+    <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen} inert={!checkoutOpen}>
       <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{confirmationPending ? "Заказ ждёт подтверждения" : orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
       {orderNumber ? (
         <div className="success">
@@ -328,7 +339,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
           </div>
-        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div><img src="/assets/redesign/checkout-summary-art.png" alt="" /></aside></div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Подытог</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>Итого</span><strong>{money(total)}</strong></div></aside></div>
       )}
     </aside>
   );

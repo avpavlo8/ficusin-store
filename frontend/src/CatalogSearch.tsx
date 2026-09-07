@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { searchProducts, suggestions, type Searchable } from "./lib/search";
+import { sharedAPIJSON } from "./lib/api";
 
 type SearchProduct = Searchable & { image?: string; price?: number };
 
@@ -24,8 +25,7 @@ export function CatalogSearch({ value, onChange, inlineResults = false, classNam
   const query = value ?? ownValue;
 
   useEffect(() => {
-    fetch("/api/v1/catalog")
-      .then((response) => response.ok ? response.json() : { products: [] })
+    sharedAPIJSON<{ products?: SearchProduct[] }>("/api/v1/catalog")
       .then((data: { products?: SearchProduct[] }) => setProducts(data.products || []))
       .catch(() => setProducts([]))
       .finally(() => setLoaded(true));

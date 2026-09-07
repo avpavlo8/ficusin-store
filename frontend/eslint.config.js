@@ -20,8 +20,20 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
+        "error",
+        {
+          allowConstantExport: true,
+          allowExportNames: [
+            "STORAGE_EVENT", "useStoreUser", "orderCategoryTree",
+            "normalizeProcurementOrderDetail", "procurementStatusLabels", "procurementSourceLabels", "procurementParserLabels",
+            "channelLabel", "batchStatusLabel", "actionStatus",
+            "availabilityLabel", "salesChannelLabel", "salesSyncLabel", "recommendationStatusLabel",
+            "recommendationEmptyTitle", "recommendationEmptyText", "integrationChannelLabel",
+            "updateAvailability", "setExclusion", "updateRequestStatus",
+            "sabyFieldLabels", "money", "roles", "roleLabel", "paymentLabels", "paymentMethodLabels",
+            "orderStatuses", "statusLabels", "api", "selectZeroNumberInput",
+          ],
+        },
       ],
     },
   },

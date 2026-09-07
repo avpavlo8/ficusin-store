@@ -44,6 +44,25 @@ test("@desktop прямой URL корзины меняет количество
   await expect(drawer.locator(".cart-summary-total strong")).toHaveText("2 980 ₽");
 });
 
+test("@desktop ошибка API корзины не выглядит как пустая корзина", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/cart", (route) => route.fulfill({ status: 503, json: { error: "Не удалось загрузить корзину" } }));
+  await page.goto("/cart");
+  await expect(page.getByRole("alert")).toContainText("Не удалось загрузить корзину");
+  await expect(page.getByText("Корзина пока пуста")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Повторить" })).toBeVisible();
+});
+
+test("@desktop неизвестный SKU блокирует оформление и не теряется молча", async ({ page }) => {
+  await mockApi(page);
+  await setStoredCounts(page, [], { "removed-sku": 1 });
+  await page.goto("/cart");
+  await expect(page.getByRole("alert")).toContainText("Состав корзины изменился");
+  await expect(page.getByText("Корзина пока пуста")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Оформить заказ/ }).first()).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Удалить Товар больше не доступен" })).toBeVisible();
+});
+
 test("@desktop избранное добавляет в корзину без навигации", async ({ page }) => {
   await mockApi(page);
   await setStoredCounts(page, ["1"], {});

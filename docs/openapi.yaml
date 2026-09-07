@@ -1,7 +1,8 @@
 openapi: 3.1.0
 info:
   title: Ficusin Store API
-  version: 1.0.0
+  version: 1.1.0
+  description: Core typed contract. The exhaustive route and ownership inventory is maintained in docs/api-inventory.md.
 servers:
   - url: /api/v1
 paths:
@@ -19,6 +20,16 @@ paths:
                 properties:
                   status:
                     const: ok
+                  version:
+                    type: string
+  /ready:
+    get:
+      operationId: readiness
+      responses:
+        "200":
+          description: API and PostgreSQL are ready to serve traffic
+        "503":
+          description: A required dependency is unavailable
   /catalog:
     get:
       operationId: listCatalog
@@ -49,42 +60,50 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductDetail"
-  /auth/register:
+                type: object
+                required: [product]
+                properties:
+                  product:
+                    $ref: "#/components/schemas/ProductDetail"
+  /auth/request-code:
     post:
-      operationId: register
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Registration"
-      responses:
-        "201":
-          description: Account and session created
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "409":
-          $ref: "#/components/responses/ValidationError"
-  /auth/login:
-    post:
-      operationId: login
+      operationId: requestCallVerification
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [identifier, password]
+              required: [phone, flow]
               properties:
-                identifier:
-                  type: string
-                password:
-                  type: string
+                phone: {type: string}
+                flow: {type: string, enum: [login, register]}
+      responses:
+        "200":
+          description: Phone number to call and opaque verification ID
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/ValidationError"
+  /auth/verify-code:
+    post:
+      operationId: verifyCall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallVerification"
       responses:
         "200":
           description: Session created
+        "202":
+          description: Call confirmation is still pending
         "401":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/ValidationError"
+        "409":
           $ref: "#/components/responses/ValidationError"
   /auth/logout:
     post:
@@ -126,6 +145,36 @@ paths:
                       $ref: "#/components/schemas/OrderSummary"
         "401":
           $ref: "#/components/responses/ValidationError"
+  /cart:
+    get:
+      operationId: getCart
+      responses:
+        "200":
+          description: Server cart with self-contained exact-SKU display lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+    put:
+      operationId: replaceCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: object
+                  additionalProperties: {type: integer, minimum: 1, maximum: 20}
+      responses:
+        "200":
+          description: Saved server cart and resolved display lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
   /delivery/cdek:
     get:
       operationId: cdekLocations
@@ -155,12 +204,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [cityCode, itemCount]
+              required: [cityCode, items]
               properties:
                 cityCode:
                   type: integer
-                itemCount:
-                  type: integer
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/OrderItemInput"
       responses:
         "200":
           description: Delivery quote
@@ -181,7 +232,7 @@ paths:
   /admin/dashboard:
     get:
       operationId: adminDashboard
-      description: Requires an authenticated customer whose email is listed in ADMIN_EMAILS.
+      description: Requires an authenticated customer with an active role in admin_users.
       responses:
         "200":
           description: Store totals, latest orders and latest synchronization runs
@@ -309,10 +360,12 @@ components:
         filterable: {type: boolean}
         summaryPosition: {type: integer}
         showInCharacteristics: {type: boolean}
-    Registration:
+    CallVerification:
       type: object
-      required: [fullName, phone, email, password, accountType, consent]
+      required: [phone, flow, checkId]
       properties:
+        checkId: {type: string}
+        flow: {type: string, enum: [login, register]}
         fullName:
           type: string
         phone:
@@ -320,10 +373,6 @@ components:
         email:
           type: string
           format: email
-        password:
-          type: string
-          minLength: 10
-          maxLength: 128
         accountType:
           type: string
           enum: [retail, wholesale]
@@ -337,6 +386,37 @@ components:
           type: string
         consent:
           type: boolean
+    OrderItemInput:
+      type: object
+      required: [id, quantity]
+      properties:
+        id: {type: string, description: Exact Ficusin SKU}
+        quantity: {type: integer, minimum: 1, maximum: 20}
+    CartProduct:
+      type: object
+      required: [id, sku, name, variantLabel, price, image, stock, available]
+      properties:
+        id: {type: string}
+        sku: {type: string}
+        name: {type: string}
+        variantLabel: {type: string}
+        price: {type: number}
+        image: {type: string}
+        stock: {type: integer}
+        available: {type: boolean}
+    Cart:
+      type: object
+      required: [items, lines, missingSkus]
+      properties:
+        items:
+          type: object
+          additionalProperties: {type: integer}
+        lines:
+          type: array
+          items: {$ref: "#/components/schemas/CartProduct"}
+        missingSkus:
+          type: array
+          items: {type: string}
     User:
       type: object
       required:
