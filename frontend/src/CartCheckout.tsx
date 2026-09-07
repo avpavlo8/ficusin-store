@@ -101,7 +101,7 @@ export function CartDrawer({
     </div>
   ));
   return (
-    <aside className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`} aria-hidden={!open}>
+    <aside className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`} aria-hidden={!open} inert={!open}>
       <div className="drawer-head">
         <div><p className="eyebrow">Ваш выбор</p>{page ? <h1>Корзина</h1> : <h2>Корзина</h2>}</div>
         <button onClick={onClose} aria-label="Закрыть корзину"><LineIcon name="close" /></button>
@@ -248,7 +248,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const confirmationPending = Boolean(orderNumber && orderConfirmationPending);
 
   return (
-    <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen}>
+    <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen} inert={!checkoutOpen}>
       <div className="drawer-head"><div><p className="eyebrow">Бережно соберём и доставим</p><h2>{confirmationPending ? "Заказ ждёт подтверждения" : orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
       {orderNumber ? (
         <div className="success">

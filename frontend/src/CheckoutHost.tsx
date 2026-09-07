@@ -181,7 +181,7 @@ export default function CheckoutHost({
       {checkoutPage && cartStatus === "loading" ? <section className="checkout-load-state" role="status"><h1>Загружаем оформление…</h1><p>Проверяем состав и актуальные цены корзины.</p></section>
         : checkoutPage && cartStatus === "error" ? <section className="checkout-load-state error" role="alert"><h1>Не удалось открыть оформление</h1><p>{cartError}</p>{onCartRetry && <button type="button" className="primary-button" onClick={onCartRetry}>Повторить</button>}</section>
           : checkoutPage && (missingCartItems > 0 || cartLines.some((item) => item.available === false)) ? <section className="checkout-load-state error" role="alert"><h1>Состав корзины изменился</h1><p>Вернитесь в корзину и удалите недоступные товары.</p><a className="primary-button" href="/cart">Вернуться в корзину</a></section>
-            : checkoutPage && cartStatus === "ready" && !cartLines.length ? <section className="checkout-load-state"><h1>Корзина пуста</h1><p>Перед оформлением добавьте товары.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></section>
+            : checkoutPage && cartStatus === "ready" && !cartLines.length && !checkout.panelProps.orderNumber ? <section className="checkout-load-state"><h1>Корзина пуста</h1><p>Перед оформлением добавьте товары.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></section>
               : <CheckoutPanel user={!!user} page={checkoutPage} {...checkout.panelProps} />}
     </div>
   );

@@ -1,7 +1,7 @@
 /* Единая клиентская шапка. Эталон — утверждённая шапка главной страницы. */
 .header.store-header {
   --store-header-ink: #291d13;
-  --store-header-orange: #e74827;
+  --store-header-orange: #b93620;
   width: calc(100% - 36px);
   max-width: 1780px;
   height: 92px;
