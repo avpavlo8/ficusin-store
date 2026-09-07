@@ -309,6 +309,8 @@ jobs:
 
   image:
     runs-on: ubuntu-latest
+    env:
+      PGPASSWORD: postgres
     services:
       postgres:
         image: postgres:16

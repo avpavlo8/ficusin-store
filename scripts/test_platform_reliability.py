@@ -15,6 +15,7 @@ class PlatformReliabilityContractTest(unittest.TestCase):
         self.assertIn("./internal/order/", workflow)
         self.assertIn("./internal/payment/", workflow)
         self.assertIn("verify-commerce-image.sh", workflow)
+        self.assertIn("PGPASSWORD: postgres", workflow)
 
     def test_monitor_opens_and_closes_an_incident(self) -> None:
         workflow = read(".github/workflows/production-monitor.yml")
