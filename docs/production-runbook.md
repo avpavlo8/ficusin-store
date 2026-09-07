@@ -6,13 +6,20 @@ Last reviewed: 2026-09-07
 ## Release gate
 
 1. Merge only a reviewed pull request whose required Verify and CodeQL checks
-   are green. Never push directly to `main`.
+   are green. Never push directly to `main`; enforce the settings in
+   `docs/branch-protection.md` at GitHub, not by convention.
 2. Record the expected commit SHA, frontend asset hashes and backend build
    version. The production smoke workflow must observe that exact release.
 3. Verify `/api/v1/health`, `/api/v1/ready`, catalogue read, cart read/write with
    a disposable guest session and the browser smoke suite.
 4. Stop the rollout when 5xx, checkout failures, latency or worker errors exceed
    the current baseline. Do not wait for a customer report.
+
+For a candidate Timeweb application, manually run `Production smoke`, provide
+its HTTPS `*.twc1.net` URL and require a green result before promotion. The
+workflow rejects credentials, ports, paths and unrelated hosts. A push to
+`main` always verifies `https://ficusin.ru` and cannot be redirected to another
+target.
 
 ## Rollback
 
@@ -42,6 +49,22 @@ Last reviewed: 2026-09-07
 - stale Saby catalogue watermark and stock/price reconciliation failures;
 - growing outbox, notification, shipment, procurement and marketplace retry queues;
 - PostgreSQL pool exhaustion, slow queries, migration duration and storage pressure.
+
+The repository monitor and post-release workflow open a single deduplicated
+GitHub Sev-1 issue on failure, append evidence on repeated failure and close it
+after recovery. GitHub notifications for the Platform owner are mandatory. An
+issue is an incident record, not a pager: production operation still requires a
+separate always-on notification route with an acknowledged on-call owner.
+
+## Commerce release evidence
+
+Every pull request runs two complementary paths against an ephemeral database:
+
+- package-level order and payment lifecycle tests prove idempotency, immutable
+  order lines, stock reservation/release, consent, outbox and refund state;
+- the production Docker image test exercises guest cart and a safe
+  pickup/pay-on-delivery order over HTTP and rejects a forged online-payment
+  request. No real payment or shipment provider credentials are supplied.
 
 ## Evidence and retention
 
