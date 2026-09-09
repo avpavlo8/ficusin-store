@@ -49,7 +49,7 @@ jobs:
               raise SystemExit("base_url must contain only scheme and host")
           print(f"base_url={raw}")
           PY
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build expected frontend from the production Docker stage
         run: |
           rm -rf frontend/dist
