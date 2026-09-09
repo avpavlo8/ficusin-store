@@ -347,9 +347,7 @@ func (store *PostgresStore) CreateOrder(
 
 func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input PlanCreate) (OrderSummary, error) {
 	tx, err := store.pool.Begin(ctx)
-	if err != nil {
-		return OrderSummary{}, fmt.Errorf("begin create procurement plan: %w", err)
-	}
+	if err != nil { return OrderSummary{}, fmt.Errorf("begin create procurement plan: %w", err) }
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var orderID int64
 	err = tx.QueryRow(ctx, `
@@ -357,54 +355,60 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 		SELECT id, $2, 'recommendation', default_currency, 'ordered', $3
 		FROM procurement_suppliers WHERE id = $1 AND active = TRUE RETURNING id
 	`, input.SupplierID, input.OrderNumber, actor.CustomerID).Scan(&orderID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return OrderSummary{}, ErrNotFound
-	}
-	if err != nil {
-		return OrderSummary{}, fmt.Errorf("insert procurement plan: %w", err)
-	}
+	if errors.Is(err, pgx.ErrNoRows) { return OrderSummary{}, ErrNotFound }
+	if err != nil { return OrderSummary{}, fmt.Errorf("insert procurement plan: %w", err) }
 	for _, source := range input.Items {
-		command, err := tx.Exec(ctx, `
-			INSERT INTO procurement_order_lines (
-				procurement_order_id, supplier_alias_id, saby_id, canonical_variant_id,raw_name,
-				supplier_article, ordered_qty, expected_unit_price, match_status, customer_request
-			)
-			SELECT $1, alias.id, directory.saby_id,directory.variant_id,directory.name,
-				COALESCE(alias.supplier_article, ''), $4, NULLIF($5, 0), 'confirmed',
+		quantity := source.Quantity
+		if source.PackageCount > 0 && source.UnitsPerPackage > 0 { quantity = source.PackageCount * source.UnitsPerPackage }
+		if quantity <= 0 { return OrderSummary{}, ErrInvalidInput }
+		loadUnit := strings.TrimSpace(source.LoadUnit)
+		if loadUnit == "" { loadUnit = "shelf" }
+		if strings.TrimSpace(source.SabyID) == "" {
+			rawName := strings.TrimSpace(source.RawName)
+			if rawName == "" { return OrderSummary{}, ErrInvalidInput }
+			_, err = tx.Exec(ctx, `
+				INSERT INTO procurement_order_lines (procurement_order_id, raw_name, supplier_article,
+					ordered_qty, expected_unit_price, load_unit, pot_diameter_cm, height_cm, match_status)
+				VALUES ($1, $2, $3, $4, NULLIF($5, 0), $6, $7, $8, 'new_product')
+			`, orderID, rawName, strings.TrimSpace(source.SupplierArticle), quantity,
+				source.ExpectedUnitPrice, loadUnit, source.PotDiameterCM, source.HeightCM)
+			if err != nil { return OrderSummary{}, fmt.Errorf("insert manual procurement plan line: %w", err) }
+			continue
+		}
+		command, insertErr := tx.Exec(ctx, `
+			INSERT INTO procurement_order_lines (procurement_order_id, supplier_alias_id, saby_id,
+				canonical_variant_id, raw_name, supplier_article, ordered_qty, expected_unit_price,
+				load_unit, pot_diameter_cm, height_cm, match_status, customer_request)
+			SELECT $1, alias.id, directory.saby_id, directory.variant_id,
+				COALESCE(NULLIF($6, ''), alias.raw_name, directory.name),
+				COALESCE(NULLIF($7, ''), alias.supplier_article, ''), $4, NULLIF($5, 0), $8,
+				COALESCE($9, alias.pot_diameter_cm), COALESCE($10, alias.height_cm), 'confirmed',
 				EXISTS (SELECT 1 FROM procurement_requests r WHERE (r.canonical_variant_id=directory.variant_id
 					OR (r.canonical_variant_id IS NULL AND r.saby_id=directory.saby_id)) AND r.status = 'open')
 			FROM canonical_product_directory directory
 			LEFT JOIN LATERAL (
-				SELECT id, supplier_article FROM procurement_supplier_aliases
-				WHERE supplier_id = $2 AND (canonical_variant_id=directory.variant_id
-					OR (canonical_variant_id IS NULL AND matched_saby_id=directory.saby_id)) AND match_status = 'confirmed'
+				SELECT id, raw_name, supplier_article, pot_diameter_cm, height_cm
+				FROM procurement_supplier_aliases WHERE supplier_id = $2 AND
+					(canonical_variant_id=directory.variant_id OR
+					(canonical_variant_id IS NULL AND matched_saby_id=directory.saby_id))
+					AND match_status = 'confirmed'
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1
 			) alias ON TRUE
 			WHERE directory.active AND directory.saby_id = $3
-		`, orderID, input.SupplierID, source.SabyID, source.Quantity, source.ExpectedUnitPrice)
-		if err != nil {
-			return OrderSummary{}, fmt.Errorf("insert procurement plan line: %w", err)
-		}
-		if command.RowsAffected() == 0 {
-			return OrderSummary{}, ErrNotFound
-		}
+		`, orderID, input.SupplierID, source.SabyID, quantity, source.ExpectedUnitPrice,
+			strings.TrimSpace(source.RawName), strings.TrimSpace(source.SupplierArticle), loadUnit,
+			source.PotDiameterCM, source.HeightCM)
+		if insertErr != nil { return OrderSummary{}, fmt.Errorf("insert procurement plan line: %w", insertErr) }
+		if command.RowsAffected() == 0 { return OrderSummary{}, ErrNotFound }
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_requests SET status = 'included', updated_at = CURRENT_TIMESTAMP
 		WHERE status = 'open' AND saby_id = ANY($1::TEXT[])
-	`, planSabyIDs(input.Items)); err != nil {
-		return OrderSummary{}, fmt.Errorf("include procurement requests in plan: %w", err)
-	}
+	`, planSabyIDs(input.Items)); err != nil { return OrderSummary{}, fmt.Errorf("include procurement requests in plan: %w", err) }
 	order, err := loadOrderSummary(ctx, tx, orderID)
-	if err != nil {
-		return OrderSummary{}, err
-	}
-	if err := audit(ctx, tx, actor, "procurement.plan.create", "procurement_order", orderID, input); err != nil {
-		return OrderSummary{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return OrderSummary{}, fmt.Errorf("commit procurement plan: %w", err)
-	}
+	if err != nil { return OrderSummary{}, err }
+	if err := audit(ctx, tx, actor, "procurement.plan.create", "procurement_order", orderID, input); err != nil { return OrderSummary{}, err }
+	if err := tx.Commit(ctx); err != nil { return OrderSummary{}, fmt.Errorf("commit procurement plan: %w", err) }
 	return order, nil
 }
 
