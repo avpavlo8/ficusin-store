@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { StoreHeader, useStoreUser } from "./StoreHeader";
 import { Categories, Collections, Products } from "./AdminCatalog";
 import { Procurement } from "./AdminProcurement";
-import { Customers, Dashboard, Orders } from "./AdminSales";
+import { Customers, Orders } from "./AdminSales";
+import { Dashboard } from "./AdminDashboard";
+import { WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
+import "./styles/admin-workspace.css";
 import { Settings } from "./AdminSettings";
-import { api, roleLabel, selectZeroNumberInput } from "./adminShared";
+import { api, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { Analytics } from "./AdminAnalytics";
 
@@ -16,7 +18,6 @@ export default function AdminPage() {
   // section can open on the right row instead of a blank list.
   const [focusOrder, setFocusOrder] = useState("");
   const [wholesaleOnly, setWholesaleOnly] = useState(false);
-  const user = useStoreUser();
 
   useEffect(() => {
     api<AdminData>("/api/v1/admin/dashboard")
@@ -27,43 +28,23 @@ export default function AdminPage() {
   const go = (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
     setFocusOrder(options?.orderNumber || "");
     setWholesaleOnly(Boolean(options?.wholesaleOnly));
+    setError("");
     setSection(next);
   };
 
   if (!data) return <main className="account-page admin-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
-    <StoreHeader showTabBar={false} />
+    <a className="workspace-loading-brand" href="/">Фикусин</a>
     <section className="account-shell"><div className="account-content"><p>{error || "Загружаем панель…"}</p></div></section>
   </main>;
 
   const can = (permission: string) => data.permissions.includes(permission);
-  const initial = data.user.fullName.trim().charAt(0).toUpperCase() || "Ф";
   return (
     <main className="account-page admin-page" onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
-      <StoreHeader showTabBar={false} />
       <section className="account-shell">
-        <aside className="account-sidebar">
-          <div className="account-avatar">
-            {user?.avatarUpdatedAt
-              ? <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
-              : <span>{initial}</span>}
-          </div>
-          <h1>{data.user.fullName}</h1>
-          <p>{roleLabel(data.role)}</p>
-          <nav>
-            <Nav active={section === "dashboard"} onClick={() => go("dashboard")}>Обзор</Nav>
-            {can("analytics.read") && <Nav active={section === "analytics"} onClick={() => go("analytics")}>Аналитика</Nav>}
-            {can("products.read") && <Nav active={section === "products"} onClick={() => go("products")}>Товары</Nav>}
-            {can("products.read") && <Nav active={section === "categories"} onClick={() => go("categories")}>Категории</Nav>}
-            {can("products.read") && <Nav active={section === "collections"} onClick={() => go("collections")}>Подборки</Nav>}
-            {can("orders.read") && <Nav active={section === "orders"} onClick={() => go("orders")}>Заказы</Nav>}
-            {can("procurement.read") && <Nav active={section === "procurement"} onClick={() => go("procurement")}>Закупки</Nav>}
-            {can("customers.read") && <Nav active={section === "customers"} onClick={() => go("customers")}>Клиенты</Nav>}
-            {data.role === "owner" && <Nav active={section === "settings"} onClick={() => go("settings")}>Настройки</Nav>}
-          </nav>
-          <a className="account-switch" href="/account">Личный кабинет →</a>
-          <a className="account-switch" href="/">Вернуться в магазин →</a>
-        </aside>
+        <WorkspaceSidebar data={data} section={section} onNavigate={go} />
         <div className="account-content">
+          <WorkspaceToolbar data={data} section={section} onNavigate={go} />
+          <div className="workspace-body">
           {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
@@ -74,12 +55,9 @@ export default function AdminPage() {
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "collections" && <Collections onError={setError} />}
           {section === "categories" && <Categories canEdit={data.role === "owner"} owner={data.role === "owner"} onError={setError} />}
+          </div>
         </div>
       </section>
     </main>
   );
-}
-
-export function Nav({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button className={active ? "active" : ""} onClick={onClick}><span className="admin-nav-dot" aria-hidden="true" />{children}</button>;
 }

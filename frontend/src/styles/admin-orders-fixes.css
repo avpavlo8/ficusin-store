@@ -1,25 +1,5 @@
 /* Точечные исправления экрана заказов после проверки production. */
 
-/* Базовый account.css стилизует любой span внутри nav как отдельный пункт.
-   admin-nav-dot тоже span, поэтому превращался в серый квадрат 28x28. */
-.admin-page .account-sidebar nav button > .admin-nav-dot {
-  width: 8px;
-  height: 8px;
-  min-width: 8px;
-  min-height: 8px;
-  padding: 0;
-  display: block;
-  flex: none;
-  gap: 0;
-  justify-content: initial;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(237, 242, 233, .5);
-  box-shadow: none;
-}
-.admin-page .account-sidebar nav button.active > .admin-nav-dot {
-  background: #294326;
-}
 
 /* Не режем исходный баннер через cover. Картинка целиком помещается по
    высоте справа, а светлая часть слева естественно продолжается фоном. */
