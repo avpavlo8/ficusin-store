@@ -31,9 +31,11 @@ func NewLetterWorker(pool *pgxpool.Pool, sender letterSender, logger *slog.Logge
 }
 
 func (worker *LetterWorker) Run(ctx context.Context) {
-	if !worker.sender.Configured() {
-		return
-	}
+	// Process immediately on startup so a restarted instance does not leave
+	// customer communication waiting for another full interval. The worker
+	// also stays alive when mail is disabled: newly queued rows are then
+	// closed explicitly as disabled work instead of becoming stale forever.
+	worker.process(ctx)
 	ticker := time.NewTicker(worker.interval)
 	defer ticker.Stop()
 	for {
@@ -47,10 +49,15 @@ func (worker *LetterWorker) Run(ctx context.Context) {
 }
 
 func (worker *LetterWorker) process(ctx context.Context) {
+	if worker.sender == nil || !worker.sender.Configured() {
+		worker.cancelDisabled(ctx)
+		return
+	}
+
 	rows, err := worker.pool.Query(ctx, `
 		SELECT id, recipient, subject, body
 		FROM outbox
-		WHERE sent_at IS NULL AND attempts < 5
+		WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts < 5
 		ORDER BY id
 		LIMIT 20
 	`)
@@ -59,8 +66,8 @@ func (worker *LetterWorker) process(ctx context.Context) {
 		return
 	}
 	type pending struct {
-		id                        int64
-		recipient, subject, body  string
+		id                       int64
+		recipient, subject, body string
 	}
 	letters := make([]pending, 0)
 	for rows.Next() {
@@ -83,17 +90,35 @@ func (worker *LetterWorker) process(ctx context.Context) {
 			worker.logger.Error("send letter failed", "error", err, "letter_id", item.id)
 			if _, failed := worker.pool.Exec(ctx, `
 				UPDATE outbox SET attempts = attempts + 1, last_error = $2
-				WHERE id = $1
+				WHERE id = $1 AND sent_at IS NULL AND cancelled_at IS NULL
 			`, item.id, err.Error()); failed != nil {
 				worker.logger.Error("record letter failure", "error", failed)
 			}
 			continue
 		}
 		if _, err := worker.pool.Exec(ctx, `
-			UPDATE outbox SET sent_at = CURRENT_TIMESTAMP WHERE id = $1
+			UPDATE outbox SET sent_at = CURRENT_TIMESTAMP
+			WHERE id = $1 AND cancelled_at IS NULL
 		`, item.id); err != nil {
 			worker.logger.Error("mark letter sent failed", "error", err, "letter_id", item.id)
 		}
+	}
+}
+
+func (worker *LetterWorker) cancelDisabled(ctx context.Context) {
+	command, err := worker.pool.Exec(ctx, `
+		UPDATE outbox
+		SET cancelled_at = CURRENT_TIMESTAMP,
+			cancel_reason = 'mail_not_configured',
+			last_error = 'почта отключена конфигурацией'
+		WHERE sent_at IS NULL AND cancelled_at IS NULL
+	`)
+	if err != nil {
+		worker.logger.Error("close disabled outbox failed", "error", err)
+		return
+	}
+	if command.RowsAffected() > 0 {
+		worker.logger.Info("closed outbox while mail is disabled", "letters", command.RowsAffected())
 	}
 }
 
