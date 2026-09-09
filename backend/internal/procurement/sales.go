@@ -67,7 +67,7 @@ type SalesWorker struct {
 func NewSalesWorker(store SalesStore, source SalesSource, logger *slog.Logger) *SalesWorker {
 	return &SalesWorker{
 		store: store, source: source, logger: logger,
-		interval: 6 * time.Hour, externalEvery: 24 * time.Hour,
+		interval: 6 * time.Hour, externalEvery: 6 * time.Hour,
 		externalAt: map[string]time.Time{}, deepAt: map[string]time.Time{}, now: time.Now,
 	}
 }
@@ -97,7 +97,7 @@ func (worker *SalesWorker) run(ctx context.Context) {
 			worker.logger.Error("site sales synchronization failed", "error", refreshErr)
 		}
 	}
-	for _, channel := range []string{"ozon"} {
+	for _, channel := range []string{"saby", "ozon"} {
 		if !worker.externalDue(channel) {
 			continue
 		}
