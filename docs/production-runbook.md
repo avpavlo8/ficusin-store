@@ -10,7 +10,7 @@ Last reviewed: 2026-09-07
    `docs/branch-protection.md` at GitHub, not by convention.
 2. Record the expected commit SHA, frontend asset hashes and backend build
    version. The production smoke workflow must observe that exact release.
-3. Verify `/api/v1/health`, `/api/v1/ready`, catalogue read, cart read/write with
+3. Verify `/api/v1/health`, `/api/v1/ready`, `/api/v1/operations/health`, catalogue read, cart read/write with
    a disposable guest session and the browser smoke suite.
 4. Stop the rollout when 5xx, checkout failures, latency or worker errors exceed
    the current baseline. Do not wait for a customer report.
@@ -50,11 +50,11 @@ target.
 - growing outbox, notification, shipment, procurement and marketplace retry queues;
 - PostgreSQL pool exhaustion, slow queries, migration duration and storage pressure.
 
-The repository monitor and post-release workflow open a single deduplicated
-GitHub Sev-1 issue on failure, append evidence on repeated failure and close it
-after recovery. GitHub notifications for the Platform owner are mandatory. An
-issue is an incident record, not a pager: production operation still requires a
-separate always-on notification route with an acknowledged on-call owner.
+The repository monitor runs every five minutes. It opens a single deduplicated
+GitHub Sev-1 issue on failure, appends evidence on repeated failure and closes it
+after recovery. Delayed queues create a separate Sev-2 issue. Configure the
+`PRODUCTION_ALERT_WEBHOOK_URL` Actions secret for the acknowledged on-call
+channel; GitHub notifications remain mandatory as the fallback.
 
 ## Commerce release evidence
 
@@ -70,4 +70,6 @@ Every pull request runs two complementary paths against an ephemeral database:
 
 Retain release metadata, failed browser artifacts, incident timelines and audit
 logs for at least the period approved by the business and security owners. Run a
-documented restore drill monthly and record measured RPO/RTO.
+documented restore drill monthly and record measured RPO/RTO. The procedure and
+15-minute RPO / 30-minute RTO acceptance targets are in
+[`disaster-recovery.md`](disaster-recovery.md).

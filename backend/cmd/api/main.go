@@ -25,6 +25,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/migrate"
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
+	"github.com/avpavlo8/ficusin-store/backend/internal/operations"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
@@ -207,6 +208,7 @@ func main() {
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
 	analyticsStore := commerceanalytics.NewStore(pool)
+	operationsProbe := operations.NewProbe(pool)
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
 		Catalog:          catalogRepository,
@@ -235,6 +237,7 @@ func main() {
 		Analytics:        analyticsStore,
 		SiteURL:          cfg.SiteURL,
 		Readiness:        pool,
+		Operations:       operationsProbe,
 	}))
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -280,6 +283,7 @@ func main() {
 	go procurement.NewWBMirrorWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
+	go operationsProbe.Run(ctx, logger)
 
 	logger.Info("api ready", "address", cfg.HTTP.Address)
 	select {

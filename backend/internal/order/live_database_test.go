@@ -106,7 +106,8 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		       i.reserved_qty::TEXT || ':' ||
 		       (SELECT COUNT(*) FROM consent_events c WHERE c.order_id=o.id)::TEXT || ':' ||
 		       (SELECT COUNT(*) FROM outbox x WHERE x.recipient=$2)::TEXT || ':' ||
-		       (SELECT COUNT(*) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve')::TEXT
+		       (SELECT COUNT(*) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve')::TEXT || ':' ||
+		       (SELECT SUM(quantity) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve')::TEXT
 		FROM orders o
 		JOIN order_items oi ON oi.order_id=o.id
 		JOIN inventory i ON i.variant_id=oi.variant_id
@@ -114,7 +115,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	`, created.OrderNumber, email).Scan(&orderID, &facts); err != nil {
 		t.Fatalf("read order facts: %v", err)
 	}
-	if facts != payment.StatusOnDelivery+":2980.00:"+sku+":2:2:2:1:1:1" {
+	if facts != payment.StatusOnDelivery+":2980.00:"+sku+":2:2:2:1:1:1:2" {
 		t.Fatalf("commerce transaction is incomplete: %s", facts)
 	}
 

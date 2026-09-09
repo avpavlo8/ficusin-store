@@ -2,7 +2,7 @@ name: Production monitor
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Verify runtime, database, catalogue and guest cart
+      - name: Verify runtime, database, commerce invariants, catalogue and guest cart
         id: critical_reads
         shell: bash
         run: |
@@ -28,6 +28,7 @@ jobs:
 
           curl --fail --silent --show-error --max-time 10 https://ficusin.ru/api/v1/health >"$work/health.json"
           curl --fail --silent --show-error --max-time 10 https://ficusin.ru/api/v1/ready >"$work/ready.json"
+          curl --fail --silent --show-error --max-time 15 https://ficusin.ru/api/v1/operations/health >"$work/operations.json"
           curl --fail --silent --show-error --max-time 20 https://ficusin.ru/api/v1/catalog >"$work/catalog.json"
           curl --fail --silent --show-error --max-time 10 --cookie-jar "$work/cookies" https://ficusin.ru/api/v1/cart >"$work/cart.json"
 
@@ -36,15 +37,21 @@ jobs:
           root = pathlib.Path(sys.argv[1])
           health = json.loads((root / "health.json").read_text())
           ready = json.loads((root / "ready.json").read_text())
+          operations = json.loads((root / "operations.json").read_text())
           catalog = json.loads((root / "catalog.json").read_text())
           cart = json.loads((root / "cart.json").read_text())
           assert health.get("status") == "ok" and health.get("version"), health
           assert ready.get("status") == "ok", ready
+          assert operations.get("status") in {"ok", "degraded"}, operations
+          assert isinstance(operations.get("criticalChecks"), list), operations
+          assert isinstance(operations.get("warningChecks"), list), operations
           assert isinstance(catalog.get("products"), list) and catalog["products"], "catalog is empty"
           assert isinstance(cart.get("items"), dict), cart
           assert isinstance(cart.get("lines"), list), cart
           print(f"version={health['version']} products={len(catalog['products'])}")
           PY
+          commerce_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$work/operations.json")"
+          echo "commerce_status=${commerce_status}" >>"$GITHUB_OUTPUT"
       - name: Open or update the production incident
         if: failure()
         env:
@@ -57,13 +64,64 @@ jobs:
           issue="$(gh issue list --state open --limit 100 --json number,title \
             --jq '.[] | select(.title == "[Sev-1] Production critical reads are failing") | .number' | head -1)"
           body="$(printf '%s\n\n%s\n%s\n%s\n\n%s' \
-            'The scheduled external monitor could not verify runtime, database, catalogue and guest cart.' \
+            'The scheduled external monitor could not verify runtime, database, commerce invariants, catalogue and guest cart.' \
             "Run: ${RUN_URL}" "Commit: ${GITHUB_SHA}" "Detected: $(date -u +%FT%TZ)" \
             'Treat this as customer-impacting until the failed request is identified and the commerce queues are reconciled.')"
           if [[ -n "$issue" ]]; then
             gh issue comment "$issue" --body "$body"
           else
             gh issue create --title "$title" --body "$body"
+          fi
+      - name: Notify the external incident webhook
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.PRODUCTION_ALERT_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$ALERT_WEBHOOK_URL" ]]; then
+            echo 'PRODUCTION_ALERT_WEBHOOK_URL is not configured; GitHub issue remains the fallback pager.'
+            exit 0
+          fi
+          payload="$(python3 - "$RUN_URL" <<'PY'
+          import json, sys
+          print(json.dumps({"text": f"SEV-1: ficusin.ru production checks failed. {sys.argv[1]}"}))
+          PY
+          )"
+          curl --fail --silent --show-error --max-time 10 \
+            -H 'Content-Type: application/json' --data "$payload" "$ALERT_WEBHOOK_URL"
+      - name: Open or update a degraded-commerce incident
+        if: success() && steps.critical_reads.outputs.commerce_status == 'degraded'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='[Sev-2] Production commerce health is degraded'
+          issue="$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "[Sev-2] Production commerce health is degraded") | .number' | head -1)"
+          body="$(printf '%s\n\n%s\n%s' \
+            'The commerce invariant probe reports delayed or exhausted asynchronous work.' \
+            "Run: ${RUN_URL}" "Detected: $(date -u +%FT%TZ)")"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+      - name: Close the degraded-commerce incident after recovery
+        if: success() && steps.critical_reads.outputs.commerce_status == 'ok'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          issue="$(gh issue list --state open --limit 100 --json number,title \
+            --jq '.[] | select(.title == "[Sev-2] Production commerce health is degraded") | .number' | head -1)"
+          if [[ -n "$issue" ]]; then
+            gh issue close "$issue" --comment "Commerce queues recovered at $(date -u +%FT%TZ). Verification: ${RUN_URL}"
           fi
       - name: Close the incident after recovery
         if: success()
