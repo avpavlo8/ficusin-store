@@ -101,7 +101,14 @@ FROM (
   WHERE cdek_create_state = 'retry'
     AND cdek_next_attempt_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
   UNION ALL
-  SELECT 'failed_procurement_action', 'warning', COUNT(*)::bigint,
+  SELECT CASE failed.channel
+           WHEN 'wb' THEN 'failed_procurement_action_wb'
+           WHEN 'ozon' THEN 'failed_procurement_action_ozon'
+           WHEN 'saby_receipt' THEN 'failed_procurement_action_saby_receipt'
+           WHEN 'saby_price' THEN 'failed_procurement_action_saby_price'
+           ELSE 'failed_procurement_action_other'
+         END,
+         'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(failed.created_at)))::bigint
   FROM procurement_action_items failed
   JOIN procurement_action_batches failed_batch ON failed_batch.id = failed.batch_id
@@ -115,6 +122,7 @@ FROM (
         AND resolved.id > failed.id
         AND resolved.status = 'completed'
     )
+  GROUP BY 1
   UNION ALL
   SELECT 'expired_procurement_lock', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(locked_until)))::bigint
