@@ -104,7 +104,9 @@ FROM (
   SELECT 'failed_procurement_action', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(failed.created_at)))::bigint
   FROM procurement_action_items failed
+  JOIN procurement_action_batches failed_batch ON failed_batch.id = failed.batch_id
   WHERE failed.status = 'failed'
+    AND failed_batch.status <> 'cancelled'
     AND NOT EXISTS (
       SELECT 1
       FROM procurement_action_items resolved
