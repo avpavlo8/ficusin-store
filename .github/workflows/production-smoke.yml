@@ -83,7 +83,10 @@ jobs:
           for attempt in $(seq 1 72); do
             health="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/health?deploy=${GITHUB_SHA}" || true)"
             readiness="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/ready?deploy=${GITHUB_SHA}" || true)"
-            operations="$(curl -fsS --max-time 15 "${BASE_URL}/api/v1/operations/health?deploy=${GITHUB_SHA}" || true)"
+            # operations/health intentionally uses HTTP 503 for a degraded state.
+            # Preserve its JSON body so the gate below can distinguish an allowed
+            # degraded release from an unavailable or mismatched deployment.
+            operations="$(curl -sS --max-time 15 "${BASE_URL}/api/v1/operations/health?deploy=${GITHUB_SHA}" || true)"
             actual_backend="$(printf '%s' "$health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)"
             operations_state="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("status", "") + ":" + data.get("version", ""))' 2>/dev/null || true)"
             html="$(curl -fsS --max-time 15 "${BASE_URL}/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
