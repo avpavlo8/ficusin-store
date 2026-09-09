@@ -107,6 +107,28 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 		t.Fatalf("current procurement failure was not detected: baseline=%d got=%d", baseline, got)
 	}
 
+	// A cancelled batch is an intentionally abandoned external plan. Keep its
+	// failed child row for audit, but it must not describe current work or keep
+	// production health degraded.
+	if _, err := pool.Exec(ctx, `
+		UPDATE procurement_action_batches SET status='cancelled' WHERE id=$1
+	`, failedBatchID); err != nil {
+		t.Fatalf("cancel failed batch: %v", err)
+	}
+	if got := affectedForCheck(t, ctx, probe, "failed_procurement_action"); got != baseline {
+		t.Fatalf("failure from cancelled batch still degrades operations: baseline=%d got=%d", baseline, got)
+	}
+
+	// Restore the active failure to prove the separate supersession rule below.
+	if _, err := pool.Exec(ctx, `
+		UPDATE procurement_action_batches SET status='partially_completed' WHERE id=$1
+	`, failedBatchID); err != nil {
+		t.Fatalf("restore failed batch: %v", err)
+	}
+	if got := affectedForCheck(t, ctx, probe, "failed_procurement_action"); got != baseline+1 {
+		t.Fatalf("restored unresolved failure was not detected: baseline=%d got=%d", baseline, got)
+	}
+
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO procurement_action_batches(procurement_order_id, kind, status)
 		VALUES ($1, 'prices', 'completed') RETURNING id
