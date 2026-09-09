@@ -63,7 +63,8 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 	defer pool.Close()
 
 	probe := NewProbe(pool)
-	baseline := affectedForCheck(t, ctx, probe, "failed_procurement_action")
+	checkCode := "failed_procurement_action_wb"
+	baseline := affectedForCheck(t, ctx, probe, checkCode)
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	var supplierID, orderID, lineID, failedBatchID, resolvedBatchID int64
@@ -103,7 +104,7 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 	`, failedBatchID, lineID); err != nil {
 		t.Fatalf("seed failed procurement action: %v", err)
 	}
-	if got := affectedForCheck(t, ctx, probe, "failed_procurement_action"); got != baseline+1 {
+	if got := affectedForCheck(t, ctx, probe, checkCode); got != baseline+1 {
 		t.Fatalf("current procurement failure was not detected: baseline=%d got=%d", baseline, got)
 	}
 
@@ -115,7 +116,7 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 	`, failedBatchID); err != nil {
 		t.Fatalf("cancel failed batch: %v", err)
 	}
-	if got := affectedForCheck(t, ctx, probe, "failed_procurement_action"); got != baseline {
+	if got := affectedForCheck(t, ctx, probe, checkCode); got != baseline {
 		t.Fatalf("failure from cancelled batch still degrades operations: baseline=%d got=%d", baseline, got)
 	}
 
@@ -125,7 +126,7 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 	`, failedBatchID); err != nil {
 		t.Fatalf("restore failed batch: %v", err)
 	}
-	if got := affectedForCheck(t, ctx, probe, "failed_procurement_action"); got != baseline+1 {
+	if got := affectedForCheck(t, ctx, probe, checkCode); got != baseline+1 {
 		t.Fatalf("restored unresolved failure was not detected: baseline=%d got=%d", baseline, got)
 	}
 
@@ -143,7 +144,7 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 	`, resolvedBatchID, lineID); err != nil {
 		t.Fatalf("seed resolved procurement action: %v", err)
 	}
-	if got := affectedForCheck(t, ctx, probe, "failed_procurement_action"); got != baseline {
+	if got := affectedForCheck(t, ctx, probe, checkCode); got != baseline {
 		t.Fatalf("superseded procurement failure still degrades operations: baseline=%d got=%d", baseline, got)
 	}
 }
