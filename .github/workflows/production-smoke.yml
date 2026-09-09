@@ -83,12 +83,14 @@ jobs:
           for attempt in $(seq 1 72); do
             health="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/health?deploy=${GITHUB_SHA}" || true)"
             readiness="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/ready?deploy=${GITHUB_SHA}" || true)"
-            # operations/health intentionally uses HTTP 503 for a degraded state.
-            # Preserve its JSON body so the gate below can distinguish an allowed
-            # degraded release from an unavailable or mismatched deployment.
+            # operations/health returns HTTP 503 when a critical commerce
+            # invariant is unavailable. Preserve the public JSON body so the
+            # release log identifies the invariant without exposing rows or IDs.
             operations="$(curl -sS --max-time 15 "${BASE_URL}/api/v1/operations/health?deploy=${GITHUB_SHA}" || true)"
             actual_backend="$(printf '%s' "$health" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true)"
             operations_state="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("status", "") + ":" + data.get("version", ""))' 2>/dev/null || true)"
+            critical_checks="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(",".join(sorted(str(x) for x in data.get("criticalChecks", []))))' 2>/dev/null || true)"
+            warning_checks="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(",".join(sorted(str(x) for x in data.get("warningChecks", []))))' 2>/dev/null || true)"
             html="$(curl -fsS --max-time 15 "${BASE_URL}/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
@@ -96,19 +98,34 @@ jobs:
               | python3 -c 'import json,sys; data=json.load(sys.stdin); products=data.get("products"); print(len(products) if isinstance(products, list) else 0)' \
               2>/dev/null || printf '0')"
 
-            echo "attempt=${attempt} health=${health} readiness=${readiness} operations=${operations_state} backend=${actual_backend} js=${actual_js} css=${actual_css} catalog_products=${catalog_count}"
+            echo "attempt=${attempt} health=${health} readiness=${readiness} operations=${operations_state} critical_checks=${critical_checks:-none} warning_checks=${warning_checks:-none} backend=${actual_backend} js=${actual_js} css=${actual_css} catalog_products=${catalog_count}"
 
+            exact_release=0
             if [[ "$health" == *'"status":"ok"'* \
               && "$readiness" == *'"status":"ok"'* \
-              && ( "$operations_state" == "ok:${expected_backend}" || "$operations_state" == "degraded:${expected_backend}" ) \
               && "$actual_backend" == "$expected_backend" \
               && "$actual_js" == "$expected_js" \
               && "$actual_css" == "$expected_css" \
               && "$catalog_count" =~ ^[0-9]+$ \
               && "$catalog_count" -gt 0 ]]; then
+              exact_release=1
+            fi
+
+            if [[ "$exact_release" == "1" \
+              && ( "$operations_state" == "ok:${expected_backend}" || "$operations_state" == "degraded:${expected_backend}" ) ]]; then
               echo "Production is healthy, serves the exact frontend bundle and a non-empty catalog for ${GITHUB_SHA}."
               exit 0
             fi
+
+            # Once the exact application revision is visible, an unavailable
+            # commerce snapshot is a real production condition rather than a
+            # deployment race. Fail immediately and keep the invariant codes in
+            # the log instead of sleeping until the release timeout.
+            if [[ "$exact_release" == "1" && "$operations_state" == "unavailable:${expected_backend}" ]]; then
+              echo "Exact production release is serving, but commerce invariants are unavailable: ${critical_checks:-unknown}." >&2
+              exit 1
+            fi
+
             if (( SECONDS >= deadline )); then
               break
             fi
