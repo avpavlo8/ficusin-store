@@ -596,16 +596,13 @@ func newOrderNumber(ctx context.Context, transaction pgx.Tx, customerID *int64) 
 	}
 
 	var placed int
-	if customerID != nil {
-		if err := transaction.QueryRow(ctx, `
-			SELECT COUNT(*)::INTEGER FROM orders WHERE customer_id = $1
-		`, *customerID).Scan(&placed); err != nil {
-			return "", fmt.Errorf("count customer orders: %w", err)
-		}
-	} else if err := transaction.QueryRow(ctx, `
-		SELECT COUNT(*)::INTEGER FROM orders WHERE customer_id IS NULL
-	`).Scan(&placed); err != nil {
-		return "", fmt.Errorf("count guest orders: %w", err)
+	if err := transaction.QueryRow(ctx, `
+		SELECT COALESCE(MAX(split_part(order_number, '-', 2)::BIGINT), 0)
+		FROM orders
+		WHERE split_part(order_number, '-', 1) = $1
+		  AND order_number ~ '^[0-9]+-[0-9]+$'
+	`, prefix).Scan(&placed); err != nil {
+		return "", fmt.Errorf("read last order number: %w", err)
 	}
 	return formatOrderNumber(prefix, placed+1), nil
 }

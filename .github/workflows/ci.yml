@@ -299,7 +299,7 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/admin/ ./internal/catalog/ ./internal/order/ ./internal/payment/ -run 'LiveDatabase' -v
+        run: go test -p 1 ./internal/admin/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ -run 'LiveDatabase' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest
@@ -405,3 +405,16 @@ jobs:
           # ephemeral database. Provider keys are deliberately absent: the
           # test cannot charge money, create a shipment or notify a customer.
           bash scripts/verify-commerce-image.sh
+
+          # Catch pool starvation and latency regressions without creating
+          # customer orders or contacting external providers.
+          node scripts/verify-commerce-load.mjs http://127.0.0.1:3000
+
+          # Prove that the runtime database can actually be restored. A backup
+          # file alone is not recovery evidence.
+          docker stop ficusin-runtime >/dev/null
+          createdb -h 127.0.0.1 -U postgres ficusin_restore_ci
+          bash scripts/verify-backup-restore.sh \
+            'postgres://postgres:postgres@127.0.0.1:5432/ficusin_runtime?sslmode=disable' \
+            'postgres://postgres:postgres@127.0.0.1:5432/ficusin_restore_ci?sslmode=disable'
+          dropdb -h 127.0.0.1 -U postgres ficusin_restore_ci

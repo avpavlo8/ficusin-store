@@ -54,6 +54,7 @@ type Dependencies struct {
 	Analytics        analyticsStore
 	SiteURL          string
 	Readiness        readinessChecker
+	Operations       operationsReader
 }
 type catalogAIGenerator interface {
 	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
@@ -104,6 +105,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
 	})
+	mux.HandleFunc("GET /api/v1/operations/health", operationsHealthHandler(logger, dependencies.Operations))
 	mux.HandleFunc("GET /api/v1/ready", func(response http.ResponseWriter, request *http.Request) {
 		if dependencies.Readiness == nil {
 			writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
@@ -207,6 +209,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
+	mux.HandleFunc("GET /api/v1/admin/operations", adminOperationsHandler(adminAPI, dependencies.Operations))
 	mux.HandleFunc("GET /api/v1/admin/analytics", analyticsSummaryHandler(logger, adminAPI, dependencies.Analytics))
 	mux.HandleFunc("GET /api/v1/admin/customers", adminAPI.customers)
 	mux.HandleFunc("PATCH /api/v1/admin/customers/{id}", adminAPI.updateCustomer)

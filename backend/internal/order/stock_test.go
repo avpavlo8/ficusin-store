@@ -33,6 +33,15 @@ func TestReleaseStockGivesBackReservedNotOrdered(t *testing.T) {
 	}
 }
 
+func TestReservationJournalRecordsOnlyPhysicalReservation(t *testing.T) {
+	t.Parallel()
+	for _, required := range []string{"oi.reserved_qty", "('reserve', 'release')"} {
+		if !strings.Contains(recordMovementSQL, required) {
+			t.Fatalf("stock movement SQL must contain %q", required)
+		}
+	}
+}
+
 // Заказ «после подтверждения менеджером» лежит в том же payment_status
 // pending, что и брошенная оплата картой. Общее условие автоотмены
 // отменяло его вместе с резервом, пока менеджер до него не дошёл.
