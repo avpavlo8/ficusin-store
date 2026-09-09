@@ -149,6 +149,87 @@ func TestSupersededProcurementFailureIsNotReportedAsCurrent(t *testing.T) {
 	}
 }
 
+func TestSabyReceiptFailureDiagnosticsExposeOnlyLifecyclePhase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	probe := NewProbe(pool)
+	codes := []string{
+		"failed_procurement_action_saby_receipt_not_started",
+		"failed_procurement_action_saby_receipt_retail_started",
+		"failed_procurement_action_saby_receipt_legacy_id",
+	}
+	baseline := make(map[string]int64, len(codes))
+	for _, code := range codes {
+		baseline[code] = affectedForCheck(t, ctx, probe, code)
+	}
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	var supplierID, orderID, batchID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO procurement_suppliers(name, kind, default_currency)
+		VALUES ($1, 'domestic', 'RUB') RETURNING id
+	`, "CI Saby receipt health "+suffix).Scan(&supplierID); err != nil {
+		t.Fatalf("seed supplier: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM procurement_orders WHERE id=$1", orderID)
+		_, _ = pool.Exec(ctx, "DELETE FROM procurement_suppliers WHERE id=$1", supplierID)
+	}()
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO procurement_orders(supplier_id, currency, status)
+		VALUES ($1, 'RUB', 'ready_to_receive') RETURNING id
+	`, supplierID).Scan(&orderID); err != nil {
+		t.Fatalf("seed procurement order: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO procurement_action_batches(procurement_order_id, kind, status)
+		VALUES ($1, 'receipt', 'partially_completed') RETURNING id
+	`, orderID).Scan(&batchID); err != nil {
+		t.Fatalf("seed receipt batch: %v", err)
+	}
+
+	phases := []struct {
+		name       string
+		externalID string
+	}{
+		{name: "not-started", externalID: ""},
+		{name: "retail-started", externalID: "123456789"},
+		{name: "legacy-id", externalID: "6e55ac5c-0615-4ca8-83ab-413705dfbf8e"},
+	}
+	for _, phase := range phases {
+		var lineID int64
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO procurement_order_lines(procurement_order_id, raw_name, ordered_qty)
+			VALUES ($1, $2, 1) RETURNING id
+		`, orderID, "CI Saby receipt "+phase.name).Scan(&lineID); err != nil {
+			t.Fatalf("seed %s line: %v", phase.name, err)
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO procurement_action_items(
+				batch_id, procurement_order_line_id, channel, external_article,
+				new_value, quantity, status, error_message, attempts, external_operation_id
+			) VALUES ($1, $2, 'saby_receipt', '', 0, 1, 'failed', 'CI redacted failure', 5, $3)
+		`, batchID, lineID, phase.externalID); err != nil {
+			t.Fatalf("seed %s action: %v", phase.name, err)
+		}
+	}
+
+	for _, code := range codes {
+		if got := affectedForCheck(t, ctx, probe, code); got != baseline[code]+1 {
+			t.Fatalf("%s classification mismatch: baseline=%d got=%d", code, baseline[code], got)
+		}
+	}
+}
+
 func affectedForCheck(t *testing.T, ctx context.Context, probe *Probe, code string) int64 {
 	t.Helper()
 	snapshot, err := probe.Snapshot(ctx)
