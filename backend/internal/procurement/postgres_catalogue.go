@@ -233,17 +233,23 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			-- вести к поставщику, у которого растение действительно есть.
 			SELECT sp.*, COALESCE(a.id, 0) AS alias_id, a.last_seen_at,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
+				COALESCE(a.raw_name, '') AS dutch_name, a.pot_diameter_cm, a.height_cm, last_line.expected_unit_price,
 				ROW_NUMBER() OVER (PARTITION BY sp.saby_id ORDER BY
 					CASE sp.availability_status WHEN 'available' THEN 0 WHEN 'check' THEN 1 WHEN 'unknown' THEN 2 ELSE 3 END,
 					a.last_seen_at DESC NULLS LAST, sp.updated_at DESC, sp.supplier_id) AS preference
 			FROM procurement_supplier_products sp
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id = sp.saby_id
-			LEFT JOIN LATERAL (SELECT id, last_seen_at FROM procurement_supplier_aliases
+			LEFT JOIN LATERAL (SELECT id, last_seen_at, raw_name, pot_diameter_cm, height_cm FROM procurement_supplier_aliases
 				WHERE supplier_id = sp.supplier_id AND matched_saby_id = sp.saby_id
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1) a ON TRUE
+			LEFT JOIN LATERAL (SELECT l.expected_unit_price FROM procurement_order_lines l
+				JOIN procurement_orders o ON o.id = l.procurement_order_id
+				WHERE l.saby_id = sp.saby_id AND o.supplier_id = sp.supplier_id AND l.expected_unit_price IS NOT NULL
+				ORDER BY o.created_at DESC, l.id DESC LIMIT 1) last_line ON TRUE
 		)
 			SELECT sp.alias_id, sp.supplier_id, n.saby_id, n.name, sp.article,
-				sp.availability_status, n.balance, COALESCE(i.units, 0),
+				sp.dutch_name, sp.pot_diameter_cm::DOUBLE PRECISION, sp.height_cm::DOUBLE PRECISION,
+				sp.expected_unit_price::DOUBLE PRECISION, sp.availability_status, n.balance, COALESCE(i.units, 0),
 				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
 				COALESCE(s.ozon_units, 0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),
 				sp.minimum_order_qty, sp.order_multiple, lo.last_ordered_at,
@@ -270,6 +276,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 	for rows.Next() {
 		var input recommendationInput
 		if err := rows.Scan(&input.AliasID, &input.SupplierID, &input.SabyID, &input.Name, &input.SupplierArticle,
+			&input.DutchName, &input.PotDiameterCM, &input.HeightCM, &input.LastUnitPrice,
 			&input.AvailabilityStatus, &input.Balance, &input.Incoming, &input.SiteSales, &input.SabySales,
 			&input.WBSales, &input.OzonSales, &input.CustomerRequests, &input.StaffRequests,
 			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt,
