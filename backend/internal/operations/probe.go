@@ -83,12 +83,13 @@ FROM (
   SELECT 'stale_outbox', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
   FROM outbox
-  WHERE sent_at IS NULL AND attempts < 5
+  WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts < 5
     AND created_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
   UNION ALL
   SELECT 'exhausted_outbox', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
-  FROM outbox WHERE sent_at IS NULL AND attempts >= 5
+  FROM outbox
+  WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts >= 5
   UNION ALL
   SELECT 'cdek_manual_review', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
@@ -101,8 +102,17 @@ FROM (
     AND cdek_next_attempt_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
   UNION ALL
   SELECT 'failed_procurement_action', 'warning', COUNT(*)::bigint,
-         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
-  FROM procurement_action_items WHERE status = 'failed'
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(failed.created_at)))::bigint
+  FROM procurement_action_items failed
+  WHERE failed.status = 'failed'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM procurement_action_items resolved
+      WHERE resolved.procurement_order_line_id = failed.procurement_order_line_id
+        AND resolved.channel = failed.channel
+        AND resolved.id > failed.id
+        AND resolved.status = 'completed'
+    )
   UNION ALL
   SELECT 'expired_procurement_lock', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(locked_until)))::bigint
