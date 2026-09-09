@@ -16,6 +16,8 @@ concurrency:
 jobs:
   critical-reads:
     runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
     timeout-minutes: 5
     steps:
       - name: Verify runtime, database, commerce invariants, catalogue and guest cart

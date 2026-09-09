@@ -33,8 +33,8 @@ pg_dump --format=custom --no-owner --no-privileges --file="$work/backup.dump" "$
 pg_restore --exit-on-error --no-owner --no-privileges --dbname="$restore_url" "$work/backup.dump"
 
 for table in orders order_items payments inventory outbox consent_events; do
-  source_signature="$(psql "$source_url" -Atc "SELECT COUNT(*)::text || ':' || COALESCE(SUM(id),0)::text FROM ${table}")"
-  restore_signature="$(psql "$restore_url" -Atc "SELECT COUNT(*)::text || ':' || COALESCE(SUM(id),0)::text FROM ${table}")"
+  source_signature="$(psql "$source_url" -v ON_ERROR_STOP=1 -Atc "SELECT row_to_json(t)::text FROM ${table} t ORDER BY id" | sha256sum)"
+  restore_signature="$(psql "$restore_url" -v ON_ERROR_STOP=1 -Atc "SELECT row_to_json(t)::text FROM ${table} t ORDER BY id" | sha256sum)"
   if [[ "$source_signature" != "$restore_signature" ]]; then
     echo "Restore verification failed for ${table}: source=${source_signature} restore=${restore_signature}." >&2
     exit 1
