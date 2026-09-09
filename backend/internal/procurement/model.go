@@ -141,9 +141,16 @@ type PlanCreate struct {
 }
 
 type PlanItem struct {
-	SabyID            string  `json:"sabyId"`
-	Quantity          int     `json:"quantity"`
-	ExpectedUnitPrice float64 `json:"expectedUnitPrice"`
+	SabyID            string   `json:"sabyId"`
+	RawName           string   `json:"rawName"`
+	SupplierArticle   string   `json:"supplierArticle"`
+	Quantity          int      `json:"quantity"`
+	PackageCount      int      `json:"packageCount"`
+	UnitsPerPackage   int      `json:"unitsPerPackage"`
+	ExpectedUnitPrice float64  `json:"expectedUnitPrice"`
+	PotDiameterCM     *float64 `json:"potDiameterCm,omitempty"`
+	HeightCM          *float64 `json:"heightCm,omitempty"`
+	LoadUnit          string   `json:"loadUnit"`
 }
 
 type OrderCosts struct {
