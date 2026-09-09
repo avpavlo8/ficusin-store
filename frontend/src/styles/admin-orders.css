@@ -11,17 +11,6 @@
   cursor: pointer;
   overflow: hidden;
 }
-.admin-page .account-sidebar nav button .admin-nav-dot {
-  width: 8px;
-  height: 8px;
-  border: 0;
-  background: rgba(237, 242, 233, .42);
-  box-shadow: 0 0 0 1px rgba(237, 242, 233, .18);
-}
-.admin-page .account-sidebar nav button.active .admin-nav-dot {
-  background: #294326;
-  box-shadow: none;
-}
 
 /* The previous 235px cover crop cut the bonsai at the top. Give the artwork
    enough height and anchor it to the right so the whole focal plant reads. */

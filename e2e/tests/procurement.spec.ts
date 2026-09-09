@@ -82,7 +82,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
 test("@desktop procurement opens inside the existing admin panel", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Изменения только после подтверждения")).toBeVisible({ timeout: 15_000 });
@@ -100,7 +100,7 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
 test("@phone procurement does not break the admin layout", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Изменения только после подтверждения")).toBeVisible({ timeout: 15_000 });
@@ -114,7 +114,7 @@ test("@phone procurement does not break the admin layout", async ({ page }) => {
 test("@desktop supplier deletion uses the site dialog and handles an empty success response", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Поставщики" }).click();
   await page.getByRole("button", { name: "Удалить" }).click();
 
@@ -129,7 +129,7 @@ test("@desktop supplier deletion uses the site dialog and handles an empty succe
 test("@desktop marketplace check shows its result immediately", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Интеграции" }).click();
   const wb = page.locator(".integration-health-grid article").filter({ hasText: "Wildberries" });
   await wb.getByRole("button", { name: "Проверить зеркало" }).click();
@@ -144,7 +144,7 @@ test("@desktop marketplace check shows its result immediately", async ({ page })
 test("@desktop unlinked marketplace sales are matched by hand", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Продажи без товара" }).click();
 
   await expect(page.getByText("fikus-benjamina-12").first()).toBeVisible();
@@ -163,7 +163,7 @@ test("@desktop unlinked marketplace sales are matched by hand", async ({ page })
 test("@desktop procurement blocks calculation until invoice checks pass", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
   await expect(page.getByText("Расчёт заблокирован")).toBeVisible();
   await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
@@ -173,7 +173,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
 test("@desktop procurement opens an order with no validation blockers", async ({ page }) => {
   await mockProcurement(page, { blockers: null, currency: "EUR" });
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
 
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -188,7 +188,7 @@ test("@desktop procurement opens an order with no validation blockers", async ({
 test("@desktop procurement shows one markup and clear rounding settings", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Формула v1" }).click();
 
   await expect(page.getByLabel("Наценка на закупочную стоимость, %")).toHaveValue("110");
@@ -201,7 +201,7 @@ test("@desktop procurement shows one markup and clear rounding settings", async 
 test("@desktop procurement separates actionable and already ordered recommendations", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Закупки" }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать" }).click();
 
   await expect(page.getByText("Тестовый товар D10")).toBeVisible();

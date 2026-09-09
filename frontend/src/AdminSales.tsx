@@ -1,33 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { AdminOrderEditor } from "./AdminOrderEditor";
 import { Dialog, PageHeading, api, money, orderStatuses, paymentLabels, paymentMethodLabels, roleLabel, roles, statusLabels } from "./adminShared";
-import type { AdminData, Customer, Order, Role, Section } from "./adminTypes";
-
-export function Dashboard({ data, onNavigate }: {
-  data: AdminData;
-  onNavigate: (section: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => void;
-}) {
-  const { dashboard, user } = data;
-  return <>
-    <PageHeading eyebrow="Панель управления" title={`Добрый день, ${user.fullName.split(" ")[0]}`} text="Состояние магазина на текущий момент" />
-    <div className="admin-alert"><div><strong>{dashboard.lastSync?.status === "success" ? "Каталог Saby синхронизирован" : "Ожидается синхронизация Saby"}</strong><p>{dashboard.lastSync ? `Обновлено позиций: ${dashboard.lastSync.itemsUpdated}` : "Данных о последней синхронизации пока нет."}</p></div></div>
-    <div className="admin-stats">
-      <button type="button" onClick={() => onNavigate("products")}><span>Товары</span><strong>{dashboard.products}</strong><small>{dashboard.variants} вариантов</small></button>
-      <button type="button" onClick={() => onNavigate("orders")}><span>Заказы</span><strong>{dashboard.orders}</strong><small>за всё время</small></button>
-      <button type="button" onClick={() => onNavigate("customers")}><span>Клиенты</span><strong>{dashboard.customers}</strong><small>розница и опт</small></button>
-      <button type="button" className={dashboard.wholesalePending ? "attention" : ""} onClick={() => onNavigate("customers", { wholesaleOnly: true })}><span>Оптовые заявки</span><strong>{dashboard.wholesalePending}</strong><small>ожидают проверки</small></button>
-    </div>
-    <section className="admin-block"><div className="admin-block-heading"><div><p className="eyebrow">Продажи</p><h2>Последние заказы</h2></div></div>
-      <div className="admin-order-list">{dashboard.recentOrders.map((order) => (
-        <button type="button" key={order.orderNumber} onClick={() => onNavigate("orders", { orderNumber: order.orderNumber })}>
-          <div><strong>{order.orderNumber}</strong><small>{order.customerName}</small></div>
-          <span>{money.format(order.total)}</span>
-          <b>{statusLabels[order.status] || order.status}</b>
-        </button>
-      ))}</div>
-    </section>
-  </>;
-}
+import type { Customer, Order, Role } from "./adminTypes";
 
 export function Customers({ can, wholesaleOnly, onError }: { can: (permission: string) => boolean; wholesaleOnly?: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Customer[]>([]);

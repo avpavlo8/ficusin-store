@@ -1,0 +1,192 @@
+/* The existing account shell stays shared; this skin is scoped to admin only. */
+.admin-page {
+  --workspace-paper: #f8f5ee;
+  --workspace-line: #e0dbd0;
+  --workspace-ink: #292a24;
+  --workspace-muted: #72756b;
+  --workspace-green: #244734;
+  --workspace-rust: #ab4129;
+  background: var(--workspace-paper);
+  color: var(--workspace-ink);
+  overflow-x: clip;
+}
+.admin-page svg { flex-shrink: 0; }
+.admin-page .account-shell { width: 100%; max-width: 1920px; margin: 0 auto; grid-template-columns: 224px minmax(0,1fr); gap: 0; align-items: start; }
+.admin-page .account-sidebar { min-height: 100dvh; height: 100dvh; overflow-y: auto; top: 0; padding: 28px 16px 18px; border: 0; border-right: 1px solid var(--workspace-line); border-radius: 0; background: #f1eee5; color: var(--workspace-ink); box-shadow: none; display: flex; flex-direction: column; }
+.admin-page .workspace-brand { display: flex; gap: 3px; align-items: start; padding: 0 10px; color: #25271f; font: 700 36px/.95 Georgia,serif; letter-spacing: -2px; }
+.admin-page .workspace-brand span { font: 22px Georgia,serif; color: var(--workspace-green); }
+.admin-page .account-sidebar .workspace-caption { margin: 14px 10px 28px; color: #68705f; font-size: 9px; font-weight: 600; letter-spacing: .17em; text-transform: uppercase; }
+.admin-page .account-sidebar nav { gap: 5px; }
+.admin-page .account-sidebar nav button { display: flex; align-items: center; gap: 13px; min-height: 45px; padding: 11px 14px; border-radius: 7px!important; font-size: 13px; color: #40473b; transition: background .15s,color .15s; }
+.admin-page .account-sidebar nav button svg { width: 20px; height: 20px; }
+.admin-page .account-sidebar nav button:hover { transform: none; background: #e6e6d9; }
+.admin-page .account-sidebar nav button.active { background: var(--workspace-green)!important; color: #fffaf0!important; font-weight: 600; }
+.workspace-sidebar-bottom { margin-top: auto; padding-top: 30px; }
+.workspace-store-link { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 10px; font-size: 11px; color: #666d5d; }
+.workspace-store-link svg { width: 15px; height: 15px; }
+.workspace-profile { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--workspace-line); padding: 18px 5px 0; }
+.workspace-profile>div { min-width: 0; }
+.workspace-profile strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.workspace-profile small { display: block; margin-top: 5px; color: #68705f; font-size: 10px; line-height: 1.5; }
+.workspace-avatar { width: 37px; height: 37px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #60684f; color: white; font-size: 16px; }
+.admin-page .account-content { padding: 0; min-height: 100dvh; border: 0; border-radius: 0; overflow: visible; background: transparent; box-shadow: none; }
+.admin-page .account-content:before { display: none; }
+.workspace-toolbar { height: 66px; padding: 0 30px; border-bottom: 1px solid var(--workspace-line); display: flex; align-items: center; gap: 26px; }
+.workspace-breadcrumb { display: flex; align-items: center; gap: 14px; color: #68705f; font-size: 12px; white-space: nowrap; }
+.workspace-breadcrumb span { color: #b2b4a7; }
+.workspace-breadcrumb strong { font-weight: 500; color: #343c30; }
+.workspace-search { position: relative; width: 330px; max-width: 42%; margin-left: auto; display: flex; align-items: center; }
+.workspace-search>svg { position: absolute; width: 17px; height: 17px; left: 12px; color: #68705f; }
+.admin-page .workspace-search input { width: 100%; height: 36px; padding: 8px 12px 8px 37px; border: 1px solid var(--workspace-line); border-radius: 6px; background: #efeee7; font-size: 12px; }
+.workspace-search-results { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 30; padding: 6px; border: 1px solid var(--workspace-line); border-radius: 8px; background: #fffdf7; box-shadow: 0 12px 36px #2737231a; }
+.workspace-search-results button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; border: 0; padding: 10px; background: transparent; cursor: pointer; text-align: left; font-size: 13px; }
+.workspace-search-results button:hover { background: #eceee3; }
+.workspace-search-results svg { width: 17px; height: 17px; }
+.workspace-search-results svg:last-child { margin-left: auto; }
+.workspace-search-results p { padding: 14px; margin: 0; font-size: 12px; }
+.workspace-toolbar-store { font-size: 12px; white-space: nowrap; color: #475c43; }
+.workspace-body { padding: 32px 30px 40px; }
+.workspace-welcome { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin: 0 0 30px; }
+.admin-page .workspace-welcome .eyebrow { margin-bottom: 12px; font-size: 10px; letter-spacing: .18em; color: var(--workspace-muted); }
+.workspace-welcome h1 { margin: 0 0 10px; font: 700 clamp(46px,4.8vw,76px)/1 Georgia,serif; letter-spacing: -3px; color: #23271e; }
+.workspace-welcome h1 em { color: var(--workspace-green); font-weight: 400; }
+.workspace-welcome p:last-child { margin: 0; font-size: 13px; color: #68705f; }
+.workspace-primary { display: flex; align-items: center; gap: 20px; border: 1px solid var(--workspace-rust); border-radius: 6px; background: var(--workspace-rust); color: #fffaf2; padding: 12px 16px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.workspace-primary:hover { background: #90341f; }
+.workspace-primary svg { width: 18px; height: 18px; }
+.workspace-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin-bottom: 30px; padding-bottom: 24px; border-bottom: 1px solid var(--workspace-line); }
+.workspace-metrics button { position: relative; display: grid; gap: 9px; text-align: left; border: 0; border-right: 1px solid var(--workspace-line); padding: 4px 22px; background: transparent; cursor: pointer; }
+.workspace-metrics button:first-child { padding-left: 0; }
+.workspace-metrics button:last-child { border: 0; }
+.workspace-metrics button:hover strong { color: var(--workspace-rust); }
+.workspace-metrics span { color: #626a5b; font-size: 12px; }
+.workspace-metrics strong { font: 400 40px/1.1 Georgia,serif; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.workspace-metrics small { font-size: 10px; color: #68705f; line-height: 1.4; }
+.workspace-metrics svg { width: 14px; height: 14px; position: absolute; right: 18px; top: 7px; color: #909784; }
+.workspace-dashboard-grid { display: grid; grid-template-columns: minmax(0,1fr) 270px; gap: 22px; align-items: start; }
+.workspace-dashboard-main, .workspace-dashboard-rail { display: grid; gap: 20px; min-width: 0; }
+.workspace-panel { padding: 22px; border: 1px solid var(--workspace-line); border-radius: 8px; background: #fcfaf5; min-width: 0; }
+.workspace-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.workspace-panel-heading .eyebrow, .workspace-shortcuts>.eyebrow { margin: 0 0 8px; font-size: 9px; letter-spacing: .15em; color: #68705f; }
+.workspace-panel-heading h2 { margin: 0; font: 400 27px/1.1 Georgia,serif; letter-spacing: -.6px; }
+.workspace-text-button { padding: 4px 0; border: 0; background: transparent; color: var(--workspace-rust); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.workspace-text-button:hover { text-decoration: underline; }
+.workspace-filters { display: flex; gap: 5px; flex-wrap: wrap; }
+.workspace-filters button { min-height: 32px; padding: 6px 10px; border: 1px solid transparent; border-radius: 5px; color: #6d7467; background: #eeeee6; font-size: 11px; cursor: pointer; }
+.workspace-filters button[aria-pressed="true"] { color: #fffaf0; background: var(--workspace-green); }
+.workspace-revenue-body { min-height: 230px; }
+.workspace-revenue-total { display: flex; align-items: center; gap: 20px; padding: 5px 0 0; }
+.workspace-revenue-total>strong { font: 400 31px Georgia,serif; font-variant-numeric: tabular-nums; letter-spacing: -.8px; }
+.workspace-revenue-total>span { color: #68705f; font-size: 10px; line-height: 1.6; }
+.workspace-chart { width: 100%; display: block; height: 174px; overflow: visible; }
+.workspace-chart-labels { display: flex; justify-content: space-between; padding: 0 12px 15px 24px; font-size: 10px; color: #68705f; }
+.workspace-empty { padding: 28px 8px; color: #68705f; font-size: 12px; line-height: 1.7; }
+.workspace-empty strong { display: block; color: #4f5e47; font-size: 16px; }
+.workspace-empty p { margin: 8px 0; max-width: 340px; }
+.workspace-revenue-body>.workspace-empty { min-height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.workspace-order-columns { display: grid; grid-template-columns: minmax(0,1fr) 105px 100px 14px; gap: 12px; padding: 22px 0 10px; border-bottom: 1px solid var(--workspace-line); color: #68705f; font-size: 10px; }
+.admin-page .workspace-recent .admin-order-list { display: grid; gap: 0; }
+.admin-page .workspace-recent .admin-order-list button { display: grid; grid-template-columns: minmax(0,1fr) 105px 100px 14px; align-items: center; gap: 12px; min-height: 67px; width: 100%; padding: 12px 0; border: 0; border-bottom: 1px solid #e8e4da; border-radius: 0; background: transparent; font-size: 12px; }
+.admin-page .workspace-recent .admin-order-list button:hover { background: #f1f0e7; }
+.admin-page .workspace-recent .admin-order-list button>div { min-width: 0; }
+.admin-page .workspace-recent .admin-order-list strong { display: block; overflow-wrap: anywhere; color: #36402f; font-size: 12px; }
+.admin-page .workspace-recent .admin-order-list small { display: block; color: #68705f; font-size: 11px; margin-top: 6px; overflow-wrap: anywhere; }
+.admin-page .workspace-recent .admin-order-list button>span { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-page .workspace-recent .workspace-status { width: fit-content; padding: 5px 8px; border-radius: 5px; font-size: 10px; font-weight: 500; background: #eeeee7; color: #76796e; white-space: nowrap; }
+.admin-page .workspace-recent .workspace-status[data-status="new"] { background: #f4e1d5; color: #983d22; }
+.admin-page .workspace-recent .workspace-status[data-status="assembling"], .admin-page .workspace-recent .workspace-status[data-status="confirmed"] { background: #e2e9db; color: #3f5b35; }
+.admin-page .workspace-recent .workspace-status[data-status="ready"], .admin-page .workspace-recent .workspace-status[data-status="completed"] { background: #2e4c39; color: #fffaf0; }
+.workspace-recent .admin-order-list svg { width: 14px; height: 14px; color: #8a927e; }
+.workspace-table-note { margin: 13px 0 0; color: #68705f; font-size: 10px; }
+.workspace-attention { border-radius: 8px; background: #244432; color: #f9f5e9; padding: 24px 20px 8px; }
+.workspace-attention>.eyebrow { color: #b9c3aa; font-size: 9px; letter-spacing: .18em; margin-bottom: 9px; }
+.workspace-attention h2 { font: 400 28px Georgia,serif; margin-bottom: 20px; }
+.workspace-attention>button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 18px 0; border: 0; border-top: 1px solid #ffffff26; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.workspace-attention>button:hover strong { color: #e2dba7; }
+.workspace-attention strong { display: block; font-size: 15px; font-weight: 500; }
+.workspace-attention small { display: block; color: #c1ccb8; font-size: 11px; line-height: 1.5; margin-top: 7px; }
+.workspace-attention svg { width: 17px; height: 17px; }
+.admin-page .workspace-attention .admin-alert { padding: 18px 0; margin: 0; border: 0; border-top: 1px solid #ffffff26; border-radius: 0; background: transparent; }
+.admin-page .workspace-attention .admin-alert strong { color: #f5f1df; font-size: 14px; font-weight: 500; }
+.admin-page .workspace-attention .admin-alert p { color: #bbc9b0; font-size: 11px; line-height: 1.6; margin-top: 7px; }
+.workspace-botanical { position: relative; overflow: hidden; min-height: 294px; border: 1px solid #dfd8ca; border-radius: 8px; padding: 22px 20px; background: #ece6d8; isolation: isolate; }
+.workspace-botanical>.eyebrow { position: relative; z-index: 1; font-size: 8px; letter-spacing: .14em; color: #6c7562; }
+.workspace-botanical h2 { position: relative; z-index: 1; font: 400 28px/1.05 Georgia,serif; letter-spacing: -.8px; color: #253f2b; }
+.workspace-botanical img { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 65% center; opacity: .8; }
+.workspace-botanical:after { content: ""; position: absolute; z-index: 0; inset: 0; background: linear-gradient(180deg,#f4eedee8 0%,#f4eedec9 26%,transparent 65%); pointer-events: none; }
+.workspace-botanical>span { position: absolute; z-index: 1; left: 20px; bottom: 18px; padding: 9px 12px; border: 1px solid #f3ebd4; background: #f8f1e5ed; font-size: 9px; line-height: 1.4; letter-spacing: .05em; }
+.workspace-rail-note { color: #68705f; font-size: 10px; line-height: 1.6; text-align: center; margin: -2px 0 0; }
+.workspace-shortcuts>div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.workspace-shortcuts button { display: grid; grid-template-columns: 1fr 16px; gap: 8px; padding: 14px 8px 2px 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.workspace-shortcuts button>svg:first-child { width: 22px; height: 22px; color: #5b7350; grid-column: 1/-1; margin-bottom: 4px; }
+.workspace-shortcuts strong { grid-column: 1/-1; font-size: 12px; font-weight: 500; }
+.workspace-shortcuts span { color: #68705f; font-size: 10px; line-height: 1.5; }
+.workspace-shortcuts svg:last-child { width: 14px; height: 14px; color: #a3aa96; }
+.workspace-shortcuts button:hover strong { color: var(--workspace-rust); }
+/* Compact the existing operational screens without changing their behavior. */
+.admin-page .account-title { min-height: 0; margin: 0 0 25px; padding: 0; align-items: start; }
+.admin-page .account-title h2 { color: #253e2c; font: 400 clamp(32px,3.5vw,48px)/1.05 Georgia,serif; text-shadow: none; }
+.admin-page .account-title .eyebrow { font-size: 9px; color: #808874; letter-spacing: .16em; margin-bottom: 10px; }
+.admin-page .account-title-note { font-size: 12px; line-height: 1.6; max-width: 750px; }
+.admin-page .admin-block, .admin-page .admin-table-wrap, .admin-page .procurement-block, .admin-page .admin-setting { border-color: var(--workspace-line); border-radius: 8px; background: #fcfaf5; box-shadow: none; }
+.admin-page .admin-block-heading h2 { font-size: 28px; }
+.admin-page .admin-table th { background: #eeede5; color: #6c7562; font-size: 10px; letter-spacing: .035em; }
+.admin-page .admin-table td { border-color: #e7e3d8; }
+.admin-page .admin-stats { gap: 12px; }
+.admin-page .admin-stats article, .admin-page .admin-stats button { min-height: 112px; padding: 17px; box-shadow: none; border-radius: 8px; border-color: var(--workspace-line); }
+.admin-page .admin-stats article strong, .admin-page .admin-stats button strong { font-size: 33px; }
+.admin-page .admin-primary, .admin-page .admin-settings-actions button { background: var(--workspace-rust); box-shadow: none; }
+.admin-page :where(button,a,input,select,textarea):focus-visible { outline: 2px solid #ac492a; outline-offset: 3px; }
+.workspace-loading-brand { display: block; padding: 28px; font: 700 36px Georgia,serif; }
+@media(min-width:1600px) { .admin-page .account-shell { grid-template-columns: 246px minmax(0,1fr); }.workspace-body { padding: 36px 38px; }.workspace-dashboard-grid { grid-template-columns: minmax(0,1fr) 302px; gap: 26px; }.workspace-panel { padding: 26px; } }
+@media(max-width:1200px) { .admin-page .account-shell { grid-template-columns: 192px minmax(0,1fr); }.admin-page .account-sidebar { padding-inline: 12px; }.admin-page .workspace-brand { font-size: 31px; }.workspace-toolbar { padding-inline: 22px; }.workspace-body { padding: 26px 22px; }.workspace-dashboard-grid { grid-template-columns: minmax(0,1fr) 230px; gap: 16px; }.workspace-panel { padding: 18px; }.workspace-panel-heading h2 { font-size: 24px; }.workspace-panel-heading { flex-wrap: wrap; }.workspace-order-columns,.admin-page .workspace-recent .admin-order-list button { grid-template-columns: minmax(0,1fr) 80px 86px; gap: 8px; }.workspace-recent .admin-order-list svg { display: none; }.workspace-metrics strong { font-size: 34px; }.workspace-attention { padding-inline: 18px; }.workspace-attention h2 { font-size: 25px; }.workspace-shortcuts>div { grid-template-columns: 1fr; }.workspace-shortcuts button { grid-template-columns: 24px 1fr 16px; align-items: center; padding: 8px 0; column-gap: 10px; }.workspace-shortcuts button>svg:first-child { grid-column: 1; grid-row: 1/3; margin: 0; }.workspace-shortcuts strong { grid-column: 2; }.workspace-shortcuts span { grid-column: 2; }.workspace-shortcuts svg:last-child { grid-column: 3; grid-row: 1/3; } }
+@media(max-width:1050px) { .workspace-dashboard-grid { grid-template-columns: minmax(0,1fr); }.workspace-dashboard-rail { grid-template-columns: 1fr 1fr; align-items: stretch; }.workspace-rail-note { display: none; }.workspace-botanical { min-height: 280px; }.workspace-search { max-width: 45%; }.workspace-welcome { align-items: flex-start; }.workspace-primary { padding: 11px; gap: 8px; }.workspace-metrics button { padding-inline: 14px; } }
+@media(max-width:760px) {
+  .admin-page .account-shell { display: block; width: 100%; margin: 0; }
+  .admin-page .account-sidebar { position: static; min-height: 0; height: auto; width: 100%; padding: 20px 16px 0; border: 0; border-bottom: 1px solid var(--workspace-line); overflow: visible; }
+  .admin-page .workspace-brand { padding: 0; font-size: 31px; }
+  .admin-page .account-sidebar .workspace-caption { margin: 8px 0 16px; font-size: 8px; }
+  .admin-page .account-sidebar nav { display: flex; gap: 5px; overflow-x: auto; padding: 0 0 12px; }
+  .admin-page .account-sidebar nav button { flex: 0 0 auto; width: auto; min-height: 42px; white-space: nowrap; gap: 7px; padding: 10px 12px; font-size: 12px; }
+  .admin-page .account-sidebar nav button svg { width: 16px; height: 16px; }
+  .workspace-sidebar-bottom { display: none; }
+  .workspace-toolbar { height: 58px; padding: 0 16px; gap: 12px; }
+  .workspace-breadcrumb { font-size: 11px; gap: 7px; }
+  .workspace-breadcrumb>span { display: none; }
+  .workspace-breadcrumb { font-size: 0; }
+  .workspace-breadcrumb strong { font-size: 11px; }
+  .workspace-search { max-width: none; width: 180px; flex: 1; }
+  .workspace-toolbar-store { font-size: 10px; }
+  .workspace-body { padding: 25px 16px 32px; }
+  .workspace-welcome { display: block; margin-bottom: 24px; }
+  .workspace-welcome h1 { font-size: 56px; letter-spacing: -2.5px; }
+  .workspace-welcome p:last-child { font-size: 12px; line-height: 1.6; }
+  .workspace-welcome .workspace-primary { margin-top: 18px; }
+  .workspace-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 0; margin-bottom: 22px; padding-bottom: 22px; }
+  .workspace-metrics button { padding: 0 16px; }
+  .workspace-metrics button:nth-child(odd) { padding-left: 0; }
+  .workspace-metrics button:nth-child(even) { border-right: 0; }
+  .workspace-metrics strong { font-size: 37px; }
+  .workspace-metrics svg { right: 16px; width: 12px; }
+  .workspace-dashboard-grid { gap: 20px; }
+  .workspace-dashboard-rail { grid-template-columns: 1fr; }
+  .workspace-botanical { min-height: 260px; }
+  .workspace-botanical img { object-position: center 55%; }
+  .workspace-panel { padding: 18px 14px; }
+  .workspace-panel-heading h2 { font-size: 25px; }
+  .workspace-order-columns { display: none; }
+  .admin-page .workspace-recent .admin-order-list button { grid-template-columns: minmax(0,1fr) auto; gap: 8px 12px; padding: 14px 0; }
+  .admin-page .workspace-recent .admin-order-list button>div { grid-row: 1/3; }
+  .admin-page .workspace-recent .workspace-status { grid-column: 2; justify-self: end; }
+  .admin-page .workspace-recent .admin-order-list button>span { text-align: right; }
+  .workspace-revenue-total { gap: 10px; flex-wrap: wrap; }
+  .workspace-revenue-total>strong { font-size: 29px; }
+  .workspace-chart { height: 144px; }
+  .workspace-revenue-body { min-height: 230px; }
+  .admin-page .admin-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .admin-page .admin-stats article strong, .admin-page .admin-stats button strong { font-size: 27px; }
+  .admin-page .account-title { margin: 0 0 22px; padding: 0; }
+}
+@media(prefers-reduced-motion:reduce) { .admin-page *, .admin-page *:before, .admin-page *:after { scroll-behavior: auto!important; transition: none!important; animation: none!important; } }
+
+.workspace-toolbar-profile { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; background: #244734; color: #fffaf0; font-size: 12px; }
