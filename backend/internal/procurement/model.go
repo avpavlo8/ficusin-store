@@ -304,6 +304,10 @@ type Recommendation struct {
 	SabyID           string     `json:"sabyId"`
 	Name             string     `json:"name"`
 	SupplierArticle  string     `json:"supplierArticle"`
+	DutchName       string     `json:"dutchName"`
+	PotDiameterCM   *float64   `json:"potDiameterCm,omitempty"`
+	HeightCM        *float64   `json:"heightCm,omitempty"`
+	LastUnitPrice   *float64   `json:"lastUnitPrice,omitempty"`
 	Availability     string     `json:"availability"`
 	Balance          int        `json:"balance"`
 	Incoming         int        `json:"incoming"`
