@@ -27,7 +27,7 @@ jobs:
       name: ${{ github.event_name == 'push' && 'production' || 'staging-verification' }}
       url: ${{ github.event_name == 'push' && 'https://ficusin.ru' || inputs.base_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate deployment target
         id: target
         env:
