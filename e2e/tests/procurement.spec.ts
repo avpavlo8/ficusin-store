@@ -256,10 +256,10 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(drawer.getByText("Продано 8", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
 
-  await expect(dialog.getByDisplayValue("Цитрус")).toBeVisible();
+  await expect(dialog.locator('input[value="Цитрус"]')).toBeVisible();
   await expect(dialog.getByText("Тестовый товар D10", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Рекомендовано: 12 шт.", { exact: true })).toBeVisible();
-  await expect(dialog.getByDisplayValue("SUP-1")).toBeVisible();
+  await expect(dialog.locator('input[value="SUP-1"]')).toBeVisible();
   await expect(dialog.getByLabel("Горшок, см", { exact: true })).toHaveValue("12");
   await expect(dialog.getByLabel("Высота, см", { exact: true })).toHaveValue("35");
   await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
