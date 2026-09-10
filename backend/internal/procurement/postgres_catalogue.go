@@ -233,7 +233,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			-- вести к поставщику, у которого растение действительно есть.
 			SELECT sp.*, COALESCE(a.id, 0) AS alias_id, a.last_seen_at,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
-				COALESCE(last_line.raw_name, a.raw_name, '') AS dutch_name,
+				COALESCE(NULLIF(last_line.supplier_category, ''), '') AS dutch_name,
 				CASE WHEN last_line.id IS NOT NULL THEN last_line.pot_diameter_cm ELSE a.pot_diameter_cm END AS pot_diameter_cm,
 				CASE WHEN last_line.id IS NOT NULL THEN last_line.height_cm ELSE a.height_cm END AS height_cm,
 				last_line.expected_unit_price,
@@ -245,7 +245,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			LEFT JOIN LATERAL (SELECT id, last_seen_at, raw_name, pot_diameter_cm, height_cm FROM procurement_supplier_aliases
 				WHERE supplier_id = sp.supplier_id AND matched_saby_id = sp.saby_id AND match_status = 'confirmed'
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1) a ON TRUE
-			LEFT JOIN LATERAL (SELECT l.id, l.raw_name, l.pot_diameter_cm, l.height_cm,
+			LEFT JOIN LATERAL (SELECT l.id, l.supplier_category, l.pot_diameter_cm, l.height_cm,
 				COALESCE(l.unit_price, l.expected_unit_price) AS expected_unit_price FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
 				WHERE l.saby_id = sp.saby_id AND o.supplier_id = sp.supplier_id AND o.status <> 'cancelled'
