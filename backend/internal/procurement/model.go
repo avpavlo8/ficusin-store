@@ -381,6 +381,11 @@ type ProductDirectoryItem struct {
 	OrderMultiple      int      `json:"orderMultiple"`
 	Aliases            []string `json:"aliases"`
 	AliasIDs           []int64  `json:"aliasIds"`
+	SupplierCategory   string   `json:"supplierCategory"`
+	ExpectedUnitPrice  *float64 `json:"expectedUnitPrice,omitempty"`
+	PotDiameterCM      *float64 `json:"potDiameterCm,omitempty"`
+	HeightCM           *float64 `json:"heightCm,omitempty"`
+	UnitsPerPackage    *int     `json:"unitsPerPackage,omitempty"`
 }
 
 type ProductDirectoryUpdate struct {
