@@ -95,6 +95,7 @@ export type ProcurementDocument = {
 
 export type NomenclatureCandidate = {
   variantId: number; sabyId: string; code: string; article: string; name: string; balance: number; price: number; totalSales: number;
+  sabySales: number; wbSales: number; ozonSales: number; siteSales: number; supplierLinked: boolean;
 };
 
 // Внешний код маркетплейса, продажи которого не дошли до товара СБИС.
