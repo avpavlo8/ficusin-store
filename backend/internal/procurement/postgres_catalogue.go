@@ -510,38 +510,33 @@ func finishSalesSync(ctx context.Context, tx pgx.Tx, channel string, from, to ti
 func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
 	rows, err := store.pool.Query(ctx, `
 		WITH candidates AS (
-			SELECT COALESCE(directory.variant_id,0) AS variant_id,nomenclature.saby_id,
-				COALESCE(NULLIF(directory.master_code,''),nomenclature.code) AS code,
+			SELECT nomenclature.saby_id,nomenclature.code,
 				COALESCE(nomenclature.article,'') AS article,
-				COALESCE(NULLIF(directory.name,''),nomenclature.name) AS name,
-				nomenclature.balance,nomenclature.price_minor,
-				EXISTS (SELECT 1 FROM procurement_supplier_aliases alias
-					JOIN procurement_suppliers supplier ON supplier.id=alias.supplier_id
-					WHERE alias.matched_saby_id=nomenclature.saby_id AND alias.match_status='confirmed'
-						AND supplier.active AND supplier.kind='international') AS supplier_linked
+				nomenclature.name,nomenclature.balance,nomenclature.price_minor
 			FROM saby_nomenclature nomenclature
-			LEFT JOIN LATERAL (SELECT variant_id,master_code,name FROM canonical_product_directory
-				WHERE active AND saby_id=nomenclature.saby_id ORDER BY variant_id LIMIT 1) directory ON TRUE
 			WHERE nomenclature.missing_since IS NULL
-				AND (COALESCE(NULLIF(directory.name,''),nomenclature.name) ILIKE '%' || $1 || '%'
-				OR COALESCE(NULLIF(directory.master_code,''),nomenclature.code) ILIKE '%' || $1 || '%'
+				AND (nomenclature.name ILIKE '%' || $1 || '%'
+				OR nomenclature.code ILIKE '%' || $1 || '%'
 				OR nomenclature.article ILIKE '%' || $1 || '%'
-				OR nomenclature.saby_id ILIKE '%' || $1 || '%'
-				OR EXISTS (SELECT 1 FROM procurement_supplier_aliases alias
-					WHERE alias.matched_saby_id=nomenclature.saby_id AND alias.match_status='confirmed'
-						AND alias.raw_name ILIKE '%' || $1 || '%'))
+				OR nomenclature.saby_id ILIKE '%' || $1 || '%')
 			ORDER BY CASE
-				WHEN UPPER(COALESCE(NULLIF(directory.master_code,''),nomenclature.code)) = UPPER($1) OR UPPER(nomenclature.article) = UPPER($1) OR UPPER(nomenclature.saby_id) = UPPER($1) THEN 0
-				WHEN EXISTS (SELECT 1 FROM procurement_supplier_aliases alias JOIN procurement_suppliers supplier ON supplier.id=alias.supplier_id
-					WHERE alias.matched_saby_id=nomenclature.saby_id AND alias.match_status='confirmed' AND supplier.active AND supplier.kind='international') THEN 1
-				WHEN COALESCE(NULLIF(directory.name,''),nomenclature.name) ILIKE $1 || '%' THEN 2
-				ELSE 3
-			END, nomenclature.balance DESC, COALESCE(NULLIF(directory.name,''),nomenclature.name)
+				WHEN UPPER(nomenclature.code) = UPPER($1) OR UPPER(nomenclature.article) = UPPER($1) OR UPPER(nomenclature.saby_id) = UPPER($1) THEN 0
+				WHEN nomenclature.name ILIKE $1 || '%' THEN 1 ELSE 2
+			END, nomenclature.balance DESC, nomenclature.name
 			LIMIT 30
+		), linked AS (
+			SELECT DISTINCT alias.matched_saby_id AS saby_id
+			FROM procurement_supplier_aliases alias
+			JOIN candidates candidate ON candidate.saby_id=alias.matched_saby_id
+			JOIN procurement_suppliers supplier ON supplier.id=alias.supplier_id
+			WHERE alias.match_status='confirmed' AND supplier.active AND supplier.kind='international'
 		)
-		SELECT candidate.variant_id,candidate.saby_id,candidate.code,candidate.article,candidate.name,
-			candidate.balance,candidate.price_minor::DOUBLE PRECISION / 100,candidate.supplier_linked
+		SELECT COALESCE((SELECT directory.variant_id FROM canonical_product_directory directory
+			WHERE directory.active AND directory.saby_id=candidate.saby_id ORDER BY directory.variant_id LIMIT 1),0),
+			candidate.saby_id,candidate.code,candidate.article,candidate.name,
+			candidate.balance,candidate.price_minor::DOUBLE PRECISION / 100,linked.saby_id IS NOT NULL
 		FROM candidates candidate
+		LEFT JOIN linked ON linked.saby_id=candidate.saby_id
 	`, query)
 	if err != nil {
 		return nil, fmt.Errorf("search Saby nomenclature for procurement: %w", err)
