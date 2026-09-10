@@ -104,7 +104,14 @@ FROM (
   SELECT CASE failed.channel
            WHEN 'wb' THEN 'failed_procurement_action_wb'
            WHEN 'ozon' THEN 'failed_procurement_action_ozon'
-           WHEN 'saby_receipt' THEN 'failed_procurement_action_saby_receipt'
+           WHEN 'saby_receipt' THEN
+             CASE
+               WHEN NULLIF(BTRIM(COALESCE(failed.external_operation_id, '')), '') IS NULL
+                 THEN 'failed_procurement_action_saby_receipt_not_started'
+               WHEN BTRIM(failed.external_operation_id) ~ '^[0-9]+$'
+                 THEN 'failed_procurement_action_saby_receipt_retail_started'
+               ELSE 'failed_procurement_action_saby_receipt_legacy_id'
+             END
            WHEN 'saby_price' THEN 'failed_procurement_action_saby_price'
            ELSE 'failed_procurement_action_other'
          END,
