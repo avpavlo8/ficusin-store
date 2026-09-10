@@ -11,7 +11,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "Тестовый поставщик", rawName: "Тестовая строка D10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "TEST-SABY-1", suggestedSabyName: "Тестовый товар D10", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
     requests: [], availability: [], recommendations: [
-      { aliasId: 9, supplierId: 1, sabyId: "TEST-SABY-1", name: "Тестовый товар D10", supplierArticle: "SUP-1", availability: "available", balance: 2, incoming: 0, siteSales: 2, sabySales: 5, wbSales: 1, ozonSales: 0, totalSales: 8, customerRequests: 1, staffRequests: 0, openRequests: 1, minimumOrderQty: 6, orderMultiple: 6, suggestedQty: 12, dailySales: 0.27, daysOfCover: 7.5, status: "recommended", reason: "Есть товар под заказ клиента" },
+      { aliasId: 9, supplierId: 1, sabyId: "TEST-SABY-1", name: "Тестовый товар D10", supplierArticle: "SUP-1", dutchName: "Цитрус", potDiameterCm: 12, heightCm: 35, lastUnitPrice: 5.3, availability: "available", balance: 2, incoming: 0, siteSales: 2, sabySales: 5, wbSales: 1, ozonSales: 0, totalSales: 8, customerRequests: 1, staffRequests: 0, openRequests: 1, minimumOrderQty: 6, orderMultiple: 6, suggestedQty: 12, dailySales: 0.27, daysOfCover: 7.5, status: "recommended", reason: "Есть товар под заказ клиента" },
       { aliasId: 10, supplierId: 1, sabyId: "TEST-SABY-2", name: "Товар уже едет", supplierArticle: "SUP-2", availability: "available", balance: 0, incoming: 6, siteSales: 0, sabySales: 4, wbSales: 0, ozonSales: 0, totalSales: 4, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 0, dailySales: 0.13, daysOfCover: 0, status: "already_ordered", reason: "Уже заказано 6 шт.; повторная закупка исключена" },
     ],
     salesSync: [
@@ -58,6 +58,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ integration: { channel: "wb", configured: true, lastCheckedAt: "2026-08-13T12:00:00Z", lastSuccessAt: "2026-08-13T12:00:00Z", lastError: "" } });
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
+      if (path === "/api/v1/admin/procurement/plans/preview" && init?.method === "POST") {
+        return json({ lines: [{ purchase: 636, cost: 700, retail: 1490 }] });
+      }
       if (path === "/api/v1/admin/procurement/nomenclature") {
         return json({ items: [{ sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 }] });
       }
@@ -228,12 +231,38 @@ test("@desktop @phone procurement fullscreen plan stays on screen and accepts ro
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
   await expect(dialog.getByRole("heading", { name: "Новый заказ поставщику" })).toBeInViewport();
-  const addRow = dialog.getByRole("button", { name: "+ Новая позиция", exact: true });
+  const addRow = dialog.getByRole("button", { name: "+ Новая строка", exact: true });
   await expect(addRow).toBeInViewport();
   await addRow.click();
-  await expect(dialog.getByPlaceholder("Заполните название")).toBeVisible();
+  await expect(dialog.getByPlaceholder("Категория")).toBeVisible();
   await dialog.getByLabel("Количество упаковок", { exact: true }).fill("2");
   await dialog.getByLabel("Штук в упаковке", { exact: true }).fill("12");
-  await expect(dialog.getByText("1 позиций · 24 шт.", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Создать и рассчитать · 1", exact: true })).toBeDisabled();
+  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Создать и рассчитать →", exact: true })).toBeDisabled();
+});
+
+test("@desktop procurement recommendation keeps category and purchasing context in the order", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  await dialog.getByRole("button", { name: "+ Из рекомендаций", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Рекомендации к закупке", exact: true });
+  await expect(drawer.getByText("Рекомендовано 12", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Остаток 2", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Продано 8", { exact: true })).toBeVisible();
+  await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
+
+  await expect(dialog.getByDisplayValue("Цитрус")).toBeVisible();
+  await expect(dialog.getByText("Тестовый товар D10", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Рекомендовано: 12 шт.", { exact: true })).toBeVisible();
+  await expect(dialog.getByDisplayValue("SUP-1")).toBeVisible();
+  await expect(dialog.getByLabel("Горшок, см", { exact: true })).toHaveValue("12");
+  await expect(dialog.getByLabel("Высота, см", { exact: true })).toHaveValue("35");
+  await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
+  await expect(dialog.getByLabel("Цена в евро", { exact: true })).toHaveValue("5.3");
+  await expect(dialog.getByText("31,80 €", { exact: true })).toBeVisible();
 });

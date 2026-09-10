@@ -339,6 +339,8 @@ func (service *Service) CreatePlan(ctx context.Context, actor Actor, input PlanC
 		item := &input.Items[index]
 		item.SabyID = strings.TrimSpace(item.SabyID)
 		item.RawName = strings.TrimSpace(item.RawName)
+		item.Category = strings.TrimSpace(item.Category)
+		item.SupplierArticle = strings.TrimSpace(item.SupplierArticle)
 		if item.PackageCount != 0 || item.UnitsPerPackage != 0 {
 			if item.PackageCount <= 0 || item.UnitsPerPackage <= 0 || item.PackageCount > 1000000/item.UnitsPerPackage {
 				return OrderSummary{}, ErrInvalidInput
