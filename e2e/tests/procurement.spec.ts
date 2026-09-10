@@ -210,3 +210,30 @@ test("@desktop procurement separates actionable and already ordered recommendati
   await expect(page.getByText("Товар уже едет")).toBeVisible();
   await expect(page.getByText("повторная закупка исключена")).toBeVisible();
 });
+
+test("@desktop @phone procurement fullscreen plan stays on screen and accepts rows", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  await expect(dialog).toBeVisible();
+  const viewport = page.viewportSize()!;
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
+  await expect(dialog.getByRole("heading", { name: "Новый заказ поставщику" })).toBeInViewport();
+  const addRow = dialog.getByRole("button", { name: "+ Новая позиция", exact: true });
+  await expect(addRow).toBeInViewport();
+  await addRow.click();
+  await expect(dialog.getByPlaceholder("Заполните название")).toBeVisible();
+  await dialog.getByLabel("Количество упаковок", { exact: true }).fill("2");
+  await dialog.getByLabel("Штук в упаковке", { exact: true }).fill("12");
+  await expect(dialog.getByText("1 позиций · 24 шт.", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Создать и рассчитать · 1", exact: true })).toBeDisabled();
+});
