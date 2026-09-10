@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -61,6 +62,22 @@ type procurementHandlers struct {
 	logger  *slog.Logger
 	admin   adminHandlers
 	service procurementService
+}
+
+func (handlers procurementHandlers) previewPlan(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit); !ok { return }
+	var input procurement.PlanCreate
+	if err := json.NewDecoder(http.MaxBytesReader(response, request.Body, 1<<20)).Decode(&input); err != nil {
+		handlers.failed(response, "decode procurement preview", procurement.ErrInvalidInput)
+		return
+	}
+	service, ok := handlers.service.(interface {
+		PreviewPlan(context.Context, procurement.PlanCreate) (procurement.PlanPreview, error)
+	})
+	if !ok { handlers.failed(response, "procurement preview unavailable", procurement.ErrInvalidInput); return }
+	preview, err := service.PreviewPlan(request.Context(), input)
+	if err != nil { handlers.failed(response, "preview procurement plan", err); return }
+	writeJSON(response, http.StatusOK, preview)
 }
 
 func newProcurementHandlers(logger *slog.Logger, administration adminHandlers, service procurementService) procurementHandlers {

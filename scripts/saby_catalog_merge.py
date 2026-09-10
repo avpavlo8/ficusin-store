@@ -115,3 +115,26 @@ def build_sales_product_ids(catalog_items):
             if source_id:
                 result[source_id.casefold()] = canonical_id
     return result
+
+
+def resolve_sales_product_id(position, identifiers, catalogue_ids):
+    """Resolve a receipt row using every stable identifier returned by Saby."""
+    fields = (
+        "NomenclatureUUID",
+        "NomenclatureID",
+        "Nomenclature",
+        "NomenclatureNumber",
+        "NomNumber",
+        "Article",
+        "Barcode",
+    )
+    candidates = [str(position.get(field) or "").strip() for field in fields]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        resolved = identifiers.get(candidate.casefold())
+        if resolved in catalogue_ids:
+            return resolved
+        if candidate in catalogue_ids:
+            return candidate
+    return ""

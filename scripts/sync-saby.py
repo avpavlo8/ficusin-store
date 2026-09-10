@@ -10,6 +10,7 @@ from saby_catalog_merge import (
     build_sales_product_ids,
     catalogue_ids_in_section,
     merge_catalog_items,
+    resolve_sales_product_id,
 )
 
 stage = "settings"
@@ -227,18 +228,10 @@ try:
             for position in positions:
                 if position.get("Refused") or position.get("IsModifier"):
                     continue
-                source_id = str(
-                    position.get("NomenclatureUUID")
-                    or position.get("NomenclatureID")
-                    or position.get("Nomenclature")
-                    or position.get("NomNumber")
-                    or position.get("Article")
-                    or ""
-                ).strip()
-                if not source_id:
-                    continue
-                saby_id = sales_product_ids.get(source_id.casefold(), source_id)
-                if saby_id not in plant_catalogue_ids:
+                saby_id = resolve_sales_product_id(
+                    position, sales_product_ids, plant_catalogue_ids
+                )
+                if not saby_id:
                     continue
                 catalogue_item = catalogue_by_id.get(saby_id, {})
                 name = str(
@@ -249,7 +242,8 @@ try:
                     or ""
                 ).strip()
                 article = str(
-                    position.get("NomNumber")
+                    position.get("NomenclatureNumber")
+                    or position.get("NomNumber")
                     or position.get("Article")
                     or catalogue_item.get("nomNumber")
                     or catalogue_item.get("article")

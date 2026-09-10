@@ -346,6 +346,17 @@ func (store *PostgresStore) CreateOrder(
 }
 
 func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input PlanCreate) (OrderSummary, error) {
+	var calculated []calculatedLine
+	var settings PricingSettings
+	if input.Costs != nil {
+		var err error
+		settings, err = store.loadSettings(ctx)
+		if err != nil { return OrderSummary{}, err }
+		var kind string
+		if err := store.pool.QueryRow(ctx, `SELECT kind FROM procurement_suppliers WHERE id=$1 AND active`, input.SupplierID).Scan(&kind); err != nil { return OrderSummary{}, ErrNotFound }
+		calculated, _, err = calculatePlan(settings, kind, input)
+		if err != nil { return OrderSummary{}, err }
+	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil { return OrderSummary{}, fmt.Errorf("begin create procurement plan: %w", err) }
 	defer tx.Rollback(ctx) //nolint:errcheck
@@ -380,9 +391,8 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 				canonical_variant_id, raw_name, supplier_article, ordered_qty, expected_unit_price,
 				load_unit, pot_diameter_cm, height_cm, match_status, customer_request)
 			SELECT $1, alias.id, directory.saby_id, directory.variant_id,
-				COALESCE(NULLIF($6, ''), alias.raw_name, directory.name),
-				COALESCE(NULLIF($7, ''), alias.supplier_article, ''), $4, NULLIF($5, 0), $8,
-				COALESCE($9, alias.pot_diameter_cm), COALESCE($10, alias.height_cm), 'confirmed',
+				$6, $7, $4, NULLIF($5, 0), $8,
+				$9, $10, 'confirmed',
 				EXISTS (SELECT 1 FROM procurement_requests r WHERE (r.canonical_variant_id=directory.variant_id
 					OR (r.canonical_variant_id IS NULL AND r.saby_id=directory.saby_id)) AND r.status = 'open')
 			FROM canonical_product_directory directory
@@ -405,6 +415,9 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 		UPDATE procurement_requests SET status = 'included', updated_at = CURRENT_TIMESTAMP
 		WHERE status = 'open' AND saby_id = ANY($1::TEXT[])
 	`, planSabyIDs(input.Items)); err != nil { return OrderSummary{}, fmt.Errorf("include procurement requests in plan: %w", err) }
+	if input.Costs != nil {
+		if err := savePlanCalculation(ctx, tx, orderID, input, calculated, settings); err != nil { return OrderSummary{}, err }
+	}
 	order, err := loadOrderSummary(ctx, tx, orderID)
 	if err != nil { return OrderSummary{}, err }
 	if err := audit(ctx, tx, actor, "procurement.plan.create", "procurement_order", orderID, input); err != nil { return OrderSummary{}, err }

@@ -117,7 +117,7 @@ export type SalesLinkResult = {
 
 export type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
 
-export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
+export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
 
 export type RecommendationStatus = "recommended" | "already_ordered" | "check_availability" | "supplier_unavailable" | "excluded";
 
