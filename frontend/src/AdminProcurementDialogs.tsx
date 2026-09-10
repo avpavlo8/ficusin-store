@@ -59,14 +59,17 @@ export function ProcurementPlanDialog({ suppliers, recommendations, settings, on
   useEffect(() => {
     if (sabyQuery.trim().length < 2) { setSabyResults([]); setSearchingSaby(false); return; }
     let cancelled = false;
+    const controller = new AbortController();
+    let requestTimeout = 0;
     const timer = window.setTimeout(() => {
       setSearchingSaby(true);
-      void api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(sabyQuery.trim())}`)
+      requestTimeout = window.setTimeout(() => controller.abort(), 8000);
+      void api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(sabyQuery.trim())}`, { signal: controller.signal })
         .then((result) => { if (!cancelled) setSabyResults(result.items.filter((candidate) => !items.some((line) => line.sabyId === candidate.sabyId))); })
-        .catch((error) => { if (!cancelled) onError((error as Error).message); })
-        .finally(() => { if (!cancelled) setSearchingSaby(false); });
+        .catch((error) => { if (!cancelled) onError((error as Error).name === "AbortError" ? "Поиск занял слишком много времени. Попробуйте точный код СБИС." : (error as Error).message); })
+        .finally(() => { window.clearTimeout(requestTimeout); if (!cancelled) setSearchingSaby(false); });
     }, 250);
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    return () => { cancelled = true; window.clearTimeout(timer); window.clearTimeout(requestTimeout); controller.abort(); };
   }, [items, onError, sabyQuery]);
   const save = async () => {
     if (!valid || saving) return;
