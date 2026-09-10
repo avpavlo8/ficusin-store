@@ -8,6 +8,7 @@ import (
 )
 
 type storeStub struct {
+	planInput         PlanCreate
 	supplierInput     SupplierCreate
 	orderInput        OrderCreate
 	documentInput     DocumentUpload
@@ -39,6 +40,7 @@ func (stub *storeStub) CreateOrder(_ context.Context, _ Actor, input OrderCreate
 	return OrderSummary{SupplierID: input.SupplierID, SourceKind: input.SourceKind, Currency: input.Currency}, nil
 }
 func (stub *storeStub) CreatePlan(_ context.Context, _ Actor, input PlanCreate) (OrderSummary, error) {
+	stub.planInput = input
 	return OrderSummary{SupplierID: input.SupplierID}, nil
 }
 func (stub *storeStub) OrderDetail(context.Context, int64) (OrderDetail, error) {
