@@ -1,5 +1,5 @@
 /* Procurement workspace overrides for the current editorial admin shell. */
-.admin-page .admin-dialog.procurement-plan-fullscreen{inset:0;width:auto;max-width:none;height:auto;max-height:none;border:0;border-radius:0;padding:20px 24px 0;background:var(--workspace-paper,#f8f5ee)}
+.admin-page .admin-dialog.procurement-plan-fullscreen{inset:0;transform:none;width:auto;max-width:none;height:auto;max-height:none;border:0;border-radius:0;padding:20px 24px 0;background:var(--workspace-paper,#f8f5ee)}
 .admin-page .procurement-plan-tools button.admin-primary,.admin-page .procurement-recommendation-list button.admin-primary{background:var(--workspace-green,#244734);color:#fffaf0}
 .admin-page .procurement-plan-table thead{position:sticky;top:0;z-index:1;background:#e6e2d8}
 .admin-page .procurement-plan-fullscreen button:focus-visible,.admin-page .procurement-plan-fullscreen input:focus-visible,.admin-page .procurement-plan-fullscreen select:focus-visible{outline:2px solid var(--workspace-rust,#ab4129);outline-offset:2px}
