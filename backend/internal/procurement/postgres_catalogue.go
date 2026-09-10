@@ -538,24 +538,10 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 				ELSE 3
 			END, nomenclature.balance DESC, COALESCE(NULLIF(directory.name,''),nomenclature.name)
 			LIMIT 30
-		), sales AS (
-			SELECT daily.saby_id,
-				COALESCE(SUM(daily.units),0)::INTEGER AS total_sales,
-				COALESCE(SUM(daily.units) FILTER (WHERE daily.channel='saby'),0)::INTEGER AS saby_sales,
-				COALESCE(SUM(daily.units) FILTER (WHERE daily.channel='wb'),0)::INTEGER AS wb_sales,
-				COALESCE(SUM(daily.units) FILTER (WHERE daily.channel='ozon'),0)::INTEGER AS ozon_sales,
-				COALESCE(SUM(daily.units) FILTER (WHERE daily.channel='site'),0)::INTEGER AS site_sales
-			FROM procurement_sales_daily daily
-			JOIN candidates candidate ON candidate.saby_id=daily.saby_id
-			WHERE daily.sale_date >= CURRENT_DATE - ((SELECT recommendation_days FROM procurement_pricing_settings WHERE id=1)-1)
-			GROUP BY daily.saby_id
 		)
 		SELECT candidate.variant_id,candidate.saby_id,candidate.code,candidate.article,candidate.name,
-			candidate.balance,candidate.price_minor::DOUBLE PRECISION / 100,
-			COALESCE(sales.total_sales,0),COALESCE(sales.saby_sales,0),COALESCE(sales.wb_sales,0),
-			COALESCE(sales.ozon_sales,0),COALESCE(sales.site_sales,0),candidate.supplier_linked
+			candidate.balance,candidate.price_minor::DOUBLE PRECISION / 100,candidate.supplier_linked
 		FROM candidates candidate
-		LEFT JOIN sales ON sales.saby_id=candidate.saby_id
 	`, query)
 	if err != nil {
 		return nil, fmt.Errorf("search Saby nomenclature for procurement: %w", err)
@@ -565,8 +551,7 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 	for rows.Next() {
 		var item NomenclatureCandidate
 		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.Code, &item.Article, &item.Name,
-			&item.Balance, &item.Price, &item.TotalSales, &item.SabySales, &item.WBSales,
-			&item.OzonSales, &item.SiteSales, &item.SupplierLinked); err != nil {
+			&item.Balance, &item.Price, &item.SupplierLinked); err != nil {
 			return nil, fmt.Errorf("scan Saby nomenclature candidate: %w", err)
 		}
 		items = append(items, item)

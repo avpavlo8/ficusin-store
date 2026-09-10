@@ -291,11 +291,9 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await drawer.getByPlaceholder("Название, код или артикул").fill("Bonsai Zantaxilum");
   await expect(drawer.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Остаток 3", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("Продано 7", { exact: true })).toBeVisible();
   await expect(drawer.getByText("X616872557", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Инвойсы Голландии", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("Рекомендуется 4", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("СБИС 1 · WB 3 · Ozon 2 · сайт 1", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Продажи и рекомендация подтянутся после добавления товара.", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
 
   await expect(dialog.locator("tbody tr")).toHaveCount(1);
