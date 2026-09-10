@@ -288,13 +288,13 @@ test("@desktop procurement draft survives leaving and reopening the page", async
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
   await dialog.getByPlaceholder("Категория").fill("Цитрус");
-  await dialog.getByPlaceholder("Артикул").fill("NL-42");
+  await dialog.getByPlaceholder("Артикул", { exact: true }).fill("NL-42");
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Категория")).toHaveValue("Цитрус");
-  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул")).toHaveValue("NL-42");
+  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-42");
 });
 
 test("@desktop procurement can add a linked Saby product outside recommendations", async ({ page }) => {
