@@ -62,7 +62,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ lines: [{ purchase: 636, cost: 700, retail: 1490 }] });
       }
       if (path === "/api/v1/admin/procurement/nomenclature") {
-        return json({ items: [{ sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Тестовый товар D10", balance: 4, price: 100 }] });
+        return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "TEST-002", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7 }] });
       }
       if (path === "/api/v1/admin/procurement/sales/nomenclature") {
         // Живой справочник иногда отдаёт одну запись дважды. Разбору продаж
@@ -277,4 +277,24 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(dialog.getByLabel("Цена в евро", { exact: true })).toHaveValue("5.3");
   await expect(dialog.getByText("31,80 €", { exact: true })).toBeVisible();
   expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
+});
+
+test("@desktop procurement can add a linked Saby product outside recommendations", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const drawer = page.getByLabel("Рекомендации к закупке", { exact: true });
+  await drawer.getByPlaceholder("Название, код или артикул").fill("Bonsai Zantaxilum");
+  await expect(drawer.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Остаток 3", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Продано 7", { exact: true })).toBeVisible();
+  await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
+
+  await expect(dialog.locator("tbody tr")).toHaveCount(1);
+  await expect(dialog.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
 });

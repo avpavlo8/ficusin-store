@@ -493,13 +493,14 @@ type AliasReview struct {
 }
 
 type NomenclatureCandidate struct {
-	VariantID int64   `json:"variantId"`
-	SabyID   string  `json:"sabyId"`
-	Code     string  `json:"code"`
-	Article  string  `json:"article"`
-	Name     string  `json:"name"`
-	Balance  int     `json:"balance"`
-	Price    float64 `json:"price"`
+	VariantID  int64   `json:"variantId"`
+	SabyID     string  `json:"sabyId"`
+	Code       string  `json:"code"`
+	Article    string  `json:"article"`
+	Name       string  `json:"name"`
+	Balance    int     `json:"balance"`
+	Price      float64 `json:"price"`
+	TotalSales int     `json:"totalSales"`
 }
 
 type AliasResolution struct {

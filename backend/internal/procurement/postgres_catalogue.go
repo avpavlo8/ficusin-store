@@ -509,22 +509,31 @@ func finishSalesSync(ctx context.Context, tx pgx.Tx, channel string, from, to ti
 
 func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT directory.variant_id,directory.saby_id,directory.master_code,
-			COALESCE(nomenclature.article,''),directory.name,
-			COALESCE(nomenclature.balance,0),
-			COALESCE(nomenclature.price_minor,0)::DOUBLE PRECISION / 100
-		FROM canonical_product_directory directory
-		LEFT JOIN saby_nomenclature nomenclature ON nomenclature.saby_id=directory.saby_id
-		WHERE directory.active AND directory.master_code<>''
-			AND (directory.name ILIKE '%' || $1 || '%'
-			OR directory.master_code ILIKE '%' || $1 || '%'
-			OR COALESCE(nomenclature.article,'') ILIKE '%' || $1 || '%'
-			OR directory.saby_id ILIKE '%' || $1 || '%')
+		WITH sales AS (
+			SELECT saby_id, COALESCE(SUM(units), 0)::INTEGER AS total_sales
+			FROM procurement_sales_daily
+			WHERE sale_date >= CURRENT_DATE - ((SELECT recommendation_days FROM procurement_pricing_settings WHERE id = 1) - 1)
+				AND saby_id IS NOT NULL
+			GROUP BY saby_id
+		)
+		SELECT COALESCE(directory.variant_id,0),nomenclature.saby_id,
+			COALESCE(NULLIF(directory.master_code,''),nomenclature.code),
+			COALESCE(nomenclature.article,''),COALESCE(NULLIF(directory.name,''),nomenclature.name),
+			nomenclature.balance,nomenclature.price_minor::DOUBLE PRECISION / 100,
+			COALESCE(sales.total_sales,0)
+		FROM saby_nomenclature nomenclature
+		LEFT JOIN canonical_product_directory directory ON directory.saby_id=nomenclature.saby_id AND directory.active
+		LEFT JOIN sales ON sales.saby_id=nomenclature.saby_id
+		WHERE nomenclature.missing_since IS NULL
+			AND (COALESCE(NULLIF(directory.name,''),nomenclature.name) ILIKE '%' || $1 || '%'
+			OR COALESCE(NULLIF(directory.master_code,''),nomenclature.code) ILIKE '%' || $1 || '%'
+			OR nomenclature.article ILIKE '%' || $1 || '%'
+			OR nomenclature.saby_id ILIKE '%' || $1 || '%')
 		ORDER BY CASE
-			WHEN UPPER(directory.master_code) = UPPER($1) OR UPPER(COALESCE(nomenclature.article,'')) = UPPER($1) OR UPPER(directory.saby_id) = UPPER($1) THEN 0
-			WHEN directory.name ILIKE $1 || '%' THEN 1
+			WHEN UPPER(COALESCE(NULLIF(directory.master_code,''),nomenclature.code)) = UPPER($1) OR UPPER(nomenclature.article) = UPPER($1) OR UPPER(nomenclature.saby_id) = UPPER($1) THEN 0
+			WHEN COALESCE(NULLIF(directory.name,''),nomenclature.name) ILIKE $1 || '%' THEN 1
 			ELSE 2
-		END, COALESCE(nomenclature.balance,0) DESC, directory.name
+		END, nomenclature.balance DESC, COALESCE(NULLIF(directory.name,''),nomenclature.name)
 		LIMIT 30
 	`, query)
 	if err != nil {
@@ -534,7 +543,7 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 	items := make([]NomenclatureCandidate, 0)
 	for rows.Next() {
 		var item NomenclatureCandidate
-		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price); err != nil {
+		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.Code, &item.Article, &item.Name, &item.Balance, &item.Price, &item.TotalSales); err != nil {
 			return nil, fmt.Errorf("scan Saby nomenclature candidate: %w", err)
 		}
 		items = append(items, item)
