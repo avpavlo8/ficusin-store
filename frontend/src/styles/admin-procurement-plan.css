@@ -10,7 +10,7 @@
 .admin-page .procurement-plan-tools button{height:36px;padding:0 13px;border:1px solid #d4ccbe;border-radius:9px;background:#fffdf8;font-weight:700}
 .admin-page .procurement-plan-tools>span{margin-left:auto;color:#777c72}
 .admin-page .procurement-plan-tools button.admin-primary,.admin-page .procurement-recommendation-list button.admin-primary{background:var(--workspace-green,#244734);color:#fffaf0}
-.admin-page .procurement-plan-table-wrap{min-height:0;margin:0 28px;border:1px solid #dcd5c8;border-radius:12px;overflow:auto;box-shadow:none}
+.admin-page .procurement-plan-table-wrap{flex:1 1 0;min-height:220px;max-height:none;margin:0 28px;border:1px solid #dcd5c8;border-radius:12px;overflow:auto;box-shadow:none}
 .admin-page .procurement-plan-table{width:100%;min-width:1120px;table-layout:fixed}
 .admin-page .procurement-plan-table thead{position:sticky;top:0;z-index:1;background:#e6e2d8}
 .admin-page .procurement-plan-table th{padding:11px 10px;font-size:9px;letter-spacing:.1em;text-transform:uppercase}
@@ -27,10 +27,10 @@
 .admin-page .procurement-plan-fullscreen button:focus-visible,.admin-page .procurement-plan-fullscreen input:focus-visible,.admin-page .procurement-plan-fullscreen select:focus-visible{outline:2px solid var(--workspace-rust,#ab4129);outline-offset:2px}
 .admin-page .procurement-plan-footer{min-height:96px;margin-top:auto;padding:14px 28px;border-top:1px solid #ddd5c8;background:#fbf8f1}
 .admin-page .procurement-plan-total{margin-right:auto;display:grid;gap:2px;text-align:left}.admin-page .procurement-plan-total span,.admin-page .procurement-plan-total small{color:#777c72;font-size:11px}.admin-page .procurement-plan-total strong{font-size:18px}
-.admin-page .procurement-recommendation-drawer{top:0;right:0;bottom:0;width:min(390px,100vw);max-height:none;padding:0;display:flex;flex-direction:column;border:0;border-left:1px solid #ddd5c8;border-radius:0;background:#fffdf8;box-shadow:-18px 0 45px rgba(52,53,47,.09)}
-.admin-page .procurement-recommendation-drawer>header{padding:22px 22px 16px;border-bottom:1px solid #ddd5c8}
+.admin-page .procurement-recommendation-drawer{position:fixed;z-index:1201;top:0;right:0;bottom:0;left:auto;width:min(390px,100vw);height:100dvh;max-height:none;padding:0;display:flex;flex-direction:column;border:0;border-left:1px solid #ddd5c8;border-radius:0;background:#fffdf8;box-shadow:-18px 0 45px rgba(52,53,47,.09)}
+.admin-page .procurement-recommendation-drawer>header{padding:22px 22px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:1px solid #ddd5c8}
 .admin-page .procurement-recommendation-drawer>header h3{margin:3px 0 0;font:400 23px/1.15 Georgia,serif}
-.admin-page .procurement-recommendation-list{padding:8px 14px;overflow:auto}
+.admin-page .procurement-recommendation-list{flex:1 1 auto;min-height:0;padding:8px 14px;overflow:auto}
 .admin-page .procurement-recommendation-list article{padding:13px 8px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border-bottom:1px solid #e9e3d9}
 .admin-page .procurement-recommendation-list article>div{min-width:0}.admin-page .procurement-recommendation-list article strong{font-size:12px}
 .admin-page .procurement-recommendation-metrics{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px 8px;color:#777d75;font-size:10px}.admin-page .procurement-recommendation-metrics span:first-child{padding:3px 6px;border-radius:5px;background:#f0ede5;color:#5e675f}

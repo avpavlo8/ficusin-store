@@ -251,6 +251,12 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
   await dialog.getByRole("button", { name: "+ Из рекомендаций", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "Рекомендации к закупке", exact: true });
+  const drawerBounds = await drawer.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(drawerBounds).not.toBeNull();
+  expect(drawerBounds!.x + drawerBounds!.width).toBeGreaterThanOrEqual(viewport.width - 1);
+  expect(drawerBounds!.y).toBe(0);
+  expect(drawerBounds!.height).toBeGreaterThanOrEqual(viewport.height - 1);
   await expect(drawer.getByText("Рекомендовано 12", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Остаток 2", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Продано 8", { exact: true })).toBeVisible();
@@ -265,4 +271,5 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
   await expect(dialog.getByLabel("Цена в евро", { exact: true })).toHaveValue("5.3");
   await expect(dialog.getByText("31,80 €", { exact: true })).toBeVisible();
+  expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
 });
