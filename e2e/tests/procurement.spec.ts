@@ -231,13 +231,18 @@ test("@desktop @phone procurement fullscreen plan stays on screen and accepts ro
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
   await expect(dialog.getByRole("heading", { name: "Новый заказ поставщику" })).toBeInViewport();
+  await expect(page.getByLabel("Рекомендации к закупке", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("columnheader", { name: "Категория", exact: true })).toBeVisible();
+  await expect(dialog.getByText("Заказ пока пуст", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "+ Из рекомендаций", exact: true })).toHaveCount(0);
+  await expect(dialog.getByPlaceholder("Категория")).toHaveCount(1);
+  await expect(dialog.getByText("0 позиции", { exact: false })).toBeVisible();
   const addRow = dialog.getByRole("button", { name: "+ Новая строка", exact: true });
   await expect(addRow).toBeInViewport();
-  await addRow.click();
   await expect(dialog.getByPlaceholder("Категория")).toBeVisible();
   await dialog.getByLabel("Количество упаковок", { exact: true }).fill("2");
   await dialog.getByLabel("Штук в упаковке", { exact: true }).fill("12");
-  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("0 позиции", { exact: false })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Создать и рассчитать →", exact: true })).toBeDisabled();
 });
 
@@ -249,8 +254,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
-  await dialog.getByRole("button", { name: "+ Из рекомендаций", exact: true }).click();
-  const drawer = page.getByRole("dialog", { name: "Рекомендации к закупке", exact: true });
+  const drawer = page.getByLabel("Рекомендации к закупке", { exact: true });
   const drawerBounds = await drawer.boundingBox();
   const viewport = page.viewportSize()!;
   expect(drawerBounds).not.toBeNull();
@@ -262,6 +266,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(drawer.getByText("Продано 8", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
 
+  await expect(dialog.locator("tbody tr")).toHaveCount(1);
   await expect(dialog.locator('input[value="Цитрус"]')).toBeVisible();
   await expect(dialog.getByText("Тестовый товар D10", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Рекомендовано: 12 шт.", { exact: true })).toBeVisible();
