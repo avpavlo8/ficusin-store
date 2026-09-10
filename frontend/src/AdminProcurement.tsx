@@ -4,6 +4,7 @@ import { ProcurementProducts, ProcurementSettingsPanel, availabilityLabel, integ
 import { ProcurementUnlinkedSales } from "./AdminProcurementSales";
 import { PageHeading, api } from "./adminShared";
 import type { IntegrationHealth, ProcurementAlias, ProcurementData, ProcurementOrder, ProcurementOrderDetail, RecommendationStatus } from "./adminTypes";
+import "./styles/admin-procurement-plan.css";
 
 export function normalizeProcurementOrderDetail(item: ProcurementOrderDetail): ProcurementOrderDetail {
   return {
@@ -213,7 +214,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
     {requestDialog && <ProcurementRequestDialog onClose={() => setRequestDialog(false)} onSaved={() => { setRequestDialog(false); void load(); }} onError={onError} />}
-    {planDialog && <ProcurementPlanDialog suppliers={data.suppliers} recommendations={actionableRecommendations} onClose={() => setPlanDialog(false)} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); }} onError={onError} />}
+    {planDialog && <ProcurementPlanDialog suppliers={data.suppliers} recommendations={actionableRecommendations} settings={data.settings} onClose={() => setPlanDialog(false)} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); }} onError={onError} />}
     {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
     {selectedOrder && <ProcurementOrderDetailDialog orderId={selectedOrder} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
   </>;

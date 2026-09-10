@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -335,10 +336,22 @@ func (service *Service) CreatePlan(ctx context.Context, actor Actor, input PlanC
 	}
 	seen := make(map[string]bool, len(input.Items))
 	for index := range input.Items {
-		input.Items[index].SabyID = strings.TrimSpace(input.Items[index].SabyID)
-		item := input.Items[index]
-		if item.SabyID == "" || item.Quantity <= 0 || item.ExpectedUnitPrice < 0 || seen[item.SabyID] {
+		item := &input.Items[index]
+		item.SabyID = strings.TrimSpace(item.SabyID)
+		item.RawName = strings.TrimSpace(item.RawName)
+		if item.PackageCount != 0 || item.UnitsPerPackage != 0 {
+			if item.PackageCount <= 0 || item.UnitsPerPackage <= 0 || item.PackageCount > 1000000/item.UnitsPerPackage {
+				return OrderSummary{}, ErrInvalidInput
+			}
+			item.Quantity = item.PackageCount * item.UnitsPerPackage
+		}
+		if (item.SabyID == "" && item.RawName == "") || item.Quantity <= 0 || item.Quantity > 1000000 || item.ExpectedUnitPrice < 0 || math.IsNaN(item.ExpectedUnitPrice) || math.IsInf(item.ExpectedUnitPrice, 0) || (item.SabyID != "" && seen[item.SabyID]) {
 			return OrderSummary{}, ErrInvalidInput
+		}
+		for _, dimension := range []*float64{item.PotDiameterCM, item.HeightCM} {
+			if dimension != nil && (*dimension <= 0 || math.IsNaN(*dimension) || math.IsInf(*dimension, 0)) {
+				return OrderSummary{}, ErrInvalidInput
+			}
 		}
 		seen[item.SabyID] = true
 	}

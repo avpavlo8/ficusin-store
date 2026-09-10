@@ -248,6 +248,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("DELETE /api/v1/admin/procurement/suppliers/{id}", procurementAPI.deleteSupplier)
 	mux.HandleFunc("POST /api/v1/admin/procurement/orders", procurementAPI.createOrder)
 	mux.HandleFunc("POST /api/v1/admin/procurement/plans", procurementAPI.createPlan)
+	mux.HandleFunc("POST /api/v1/admin/procurement/plans/preview", procurementAPI.previewPlan)
 	mux.HandleFunc("GET /api/v1/admin/procurement/orders/{id}", procurementAPI.orderDetail)
 	mux.HandleFunc("GET /api/v1/admin/procurement/orders/{id}/saby-prices.xlsx", procurementAPI.sabyPriceXLSX)
 	mux.HandleFunc("POST /api/v1/admin/procurement/orders/{id}/calculate", procurementAPI.calculateOrder)
