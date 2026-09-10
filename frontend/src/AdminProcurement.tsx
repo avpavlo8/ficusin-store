@@ -97,6 +97,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   const formatMoney = (value: number, currency: string) => currency ? new Intl.NumberFormat("ru-RU", {
     style: "currency", currency, maximumFractionDigits: 2,
   }).format(value) : "—";
+  if (planDialog) return <ProcurementPlanDialog suppliers={data.suppliers} recommendations={actionableRecommendations} settings={data.settings} onClose={() => setPlanDialog(false)} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); }} onError={onError} />;
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
     <div className="procurement-safety">
@@ -121,7 +122,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     <div className="procurement-tabs" role="tablist">
       <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
       <button className={view === "recommendations" ? "active" : ""} onClick={() => setView("recommendations")}>Что заказать</button>
-      <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Справочник</button>
+      <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Товары</button>
       <button className={view === "unlinkedSales" ? "active" : ""} onClick={() => setView("unlinkedSales")}>Продажи без товара</button>
       <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Под заказ <span>{data.summary.openRequests}</span></button>
       <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Проверить наличие <span>{data.summary.availabilityChecks}</span></button>
@@ -214,7 +215,6 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
     {requestDialog && <ProcurementRequestDialog onClose={() => setRequestDialog(false)} onSaved={() => { setRequestDialog(false); void load(); }} onError={onError} />}
-    {planDialog && <ProcurementPlanDialog suppliers={data.suppliers} recommendations={actionableRecommendations} settings={data.settings} onClose={() => setPlanDialog(false)} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); }} onError={onError} />}
     {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
     {selectedOrder && <ProcurementOrderDetailDialog orderId={selectedOrder} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
   </>;

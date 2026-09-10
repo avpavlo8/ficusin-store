@@ -20,6 +20,17 @@ import (
 
 func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
 	rows, err := store.pool.Query(ctx, `
+		WITH sales AS (
+			SELECT saby_id,
+				COALESCE(SUM(units) FILTER (WHERE channel='saby'),0)::INTEGER AS saby_sales,
+				COALESCE(SUM(units) FILTER (WHERE channel='site'),0)::INTEGER AS site_sales,
+				COALESCE(SUM(units) FILTER (WHERE channel='wb'),0)::INTEGER AS wb_sales,
+				COALESCE(SUM(units) FILTER (WHERE channel='ozon'),0)::INTEGER AS ozon_sales
+			FROM procurement_sales_daily
+			WHERE sale_date >= CURRENT_DATE - ((SELECT recommendation_days FROM procurement_pricing_settings WHERE id=1)-1)
+				AND saby_id IS NOT NULL
+			GROUP BY saby_id
+		)
 		SELECT directory.variant_id, directory.saby_id, directory.master_code,
 			COALESCE(n.article,''), directory.name, COALESCE(n.balance,0),
 			COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
@@ -36,7 +47,9 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE((SELECT ARRAY_AGG(a.id ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
 				WHERE a.supplier_id = s.id AND (a.canonical_variant_id=directory.variant_id
-					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::BIGINT[])
+					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::BIGINT[]),
+			COALESCE(sales.saby_sales,0),COALESCE(sales.site_sales,0),
+			COALESCE(sales.wb_sales,0),COALESCE(sales.ozon_sales,0)
 		FROM canonical_product_directory directory
 		JOIN procurement_suppliers s ON s.is_active AND ($1=0 OR s.id=$1)
 		LEFT JOIN procurement_supplier_products sp ON sp.supplier_id=s.id
@@ -44,6 +57,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				OR (sp.canonical_variant_id IS NULL AND sp.saby_id=directory.saby_id))
 		LEFT JOIN saby_nomenclature n ON n.saby_id = directory.saby_id
 		LEFT JOIN procurement_product_channels pc ON pc.saby_id = directory.saby_id
+		LEFT JOIN sales ON sales.saby_id = directory.saby_id
 		WHERE directory.active AND directory.master_code <> ''
 			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
 			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
@@ -64,7 +78,8 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.WBArticles,&item.WBLegacyArticles,
 			&item.OzonArticles,&item.OzonLegacyArticles,
 			&item.MinimumOrderQty, &item.OrderMultiple,
-			&item.Aliases, &item.AliasIDs); err != nil {
+			&item.Aliases, &item.AliasIDs, &item.SabySales, &item.SiteSales,
+			&item.WBSales, &item.OzonSales); err != nil {
 			return nil, fmt.Errorf("scan procurement product directory: %w", err)
 		}
 		items = append(items, item)

@@ -373,6 +373,10 @@ type ProductDirectoryItem struct {
 	WBLegacyArticles   []string `json:"wbLegacyArticles"`
 	OzonArticles       []string `json:"ozonArticles"`
 	OzonLegacyArticles []string `json:"ozonLegacyArticles"`
+	SabySales          int      `json:"sabySales"`
+	SiteSales          int      `json:"siteSales"`
+	WBSales            int      `json:"wbSales"`
+	OzonSales          int      `json:"ozonSales"`
 	MinimumOrderQty    int      `json:"minimumOrderQty"`
 	OrderMultiple      int      `json:"orderMultiple"`
 	Aliases            []string `json:"aliases"`
