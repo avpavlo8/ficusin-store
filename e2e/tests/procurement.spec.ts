@@ -62,7 +62,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ lines: [{ purchase: 636, cost: 700, retail: 1490 }] });
       }
       if (path === "/api/v1/admin/procurement/nomenclature") {
-        return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "TEST-002", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7 }] });
+        return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "X616872557", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7, sabySales: 1, wbSales: 3, ozonSales: 2, siteSales: 1, supplierLinked: true }] });
       }
       if (path === "/api/v1/admin/procurement/sales/nomenclature") {
         // Живой справочник иногда отдаёт одну запись дважды. Разбору продаж
@@ -292,6 +292,10 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await expect(drawer.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Остаток 3", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Продано 7", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("X616872557", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Инвойсы Голландии", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Рекомендуется 4", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("СБИС 1 · WB 3 · Ozon 2 · сайт 1", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
 
   await expect(dialog.locator("tbody tr")).toHaveCount(1);

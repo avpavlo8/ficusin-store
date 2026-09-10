@@ -498,9 +498,14 @@ type NomenclatureCandidate struct {
 	Code       string  `json:"code"`
 	Article    string  `json:"article"`
 	Name       string  `json:"name"`
-	Balance    int     `json:"balance"`
-	Price      float64 `json:"price"`
-	TotalSales int     `json:"totalSales"`
+	Balance        int     `json:"balance"`
+	Price          float64 `json:"price"`
+	TotalSales     int     `json:"totalSales"`
+	SabySales      int     `json:"sabySales"`
+	WBSales        int     `json:"wbSales"`
+	OzonSales      int     `json:"ozonSales"`
+	SiteSales      int     `json:"siteSales"`
+	SupplierLinked bool    `json:"supplierLinked"`
 }
 
 type AliasResolution struct {
