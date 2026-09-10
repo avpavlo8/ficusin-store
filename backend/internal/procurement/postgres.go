@@ -390,26 +390,47 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 			INSERT INTO procurement_order_lines (procurement_order_id, supplier_alias_id, saby_id,
 				canonical_variant_id, raw_name, supplier_article, ordered_qty, expected_unit_price,
 				load_unit, pot_diameter_cm, height_cm, match_status, customer_request)
-			SELECT $1, alias.id, directory.saby_id, directory.variant_id,
+			SELECT $1, alias.id, nomenclature.saby_id, directory.variant_id,
 				$6, $7, $4, NULLIF($5, 0), $8,
 				$9, $10, 'confirmed',
-				EXISTS (SELECT 1 FROM procurement_requests r WHERE (r.canonical_variant_id=directory.variant_id
-					OR (r.canonical_variant_id IS NULL AND r.saby_id=directory.saby_id)) AND r.status = 'open')
-			FROM canonical_product_directory directory
+				EXISTS (SELECT 1 FROM procurement_requests r WHERE ((directory.variant_id IS NOT NULL AND r.canonical_variant_id=directory.variant_id)
+					OR (r.canonical_variant_id IS NULL AND r.saby_id=nomenclature.saby_id)) AND r.status = 'open')
+			FROM saby_nomenclature nomenclature
+			LEFT JOIN LATERAL (
+				SELECT variant_id FROM canonical_product_directory
+				WHERE active AND saby_id=nomenclature.saby_id ORDER BY variant_id LIMIT 1
+			) directory ON TRUE
 			LEFT JOIN LATERAL (
 				SELECT id, raw_name, supplier_article, pot_diameter_cm, height_cm
 				FROM procurement_supplier_aliases WHERE supplier_id = $2 AND
-					(canonical_variant_id=directory.variant_id OR
-					(canonical_variant_id IS NULL AND matched_saby_id=directory.saby_id))
+					((directory.variant_id IS NOT NULL AND canonical_variant_id=directory.variant_id) OR
+					(canonical_variant_id IS NULL AND matched_saby_id=nomenclature.saby_id))
 					AND match_status = 'confirmed'
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1
 			) alias ON TRUE
-			WHERE directory.active AND directory.saby_id = $3
+			WHERE nomenclature.missing_since IS NULL AND nomenclature.saby_id = $3
 		`, orderID, input.SupplierID, source.SabyID, quantity, source.ExpectedUnitPrice,
 			strings.TrimSpace(source.RawName), strings.TrimSpace(source.SupplierArticle), loadUnit,
 			source.PotDiameterCM, source.HeightCM)
 		if insertErr != nil { return OrderSummary{}, fmt.Errorf("insert procurement plan line: %w", insertErr) }
 		if command.RowsAffected() == 0 { return OrderSummary{}, ErrNotFound }
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO procurement_supplier_products (supplier_id, saby_id, canonical_variant_id,
+				supplier_article, availability_status, updated_by)
+			SELECT $1, nomenclature.saby_id, directory.variant_id, $3, 'unknown', $4
+			FROM saby_nomenclature nomenclature
+			LEFT JOIN LATERAL (
+				SELECT variant_id FROM canonical_product_directory
+				WHERE active AND saby_id=nomenclature.saby_id ORDER BY variant_id LIMIT 1
+			) directory ON TRUE
+			WHERE nomenclature.saby_id=$2
+			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET
+				canonical_variant_id=COALESCE(EXCLUDED.canonical_variant_id, procurement_supplier_products.canonical_variant_id),
+				supplier_article=CASE WHEN EXCLUDED.supplier_article<>'' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+				updated_by=EXCLUDED.updated_by, updated_at=CURRENT_TIMESTAMP
+		`, input.SupplierID, source.SabyID, strings.TrimSpace(source.SupplierArticle), actor.CustomerID); err != nil {
+			return OrderSummary{}, fmt.Errorf("link procurement plan product to supplier: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_requests SET status = 'included', updated_at = CURRENT_TIMESTAMP
