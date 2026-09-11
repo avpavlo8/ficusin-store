@@ -38,8 +38,7 @@ async function mockCatalogAdmin(page: Page) {
 for (const target of ["desktop", "phone"] as const) {
   test(`@${target} подборки и PIM не выходят за границы экрана`, async ({ page }) => {
     await mockCatalogAdmin(page);
-    await page.locator(".account-sidebar").getByRole("button", { name: "Каталог", exact: true }).click();
-    await page.getByRole("navigation", { name: "Каталог", exact: true }).getByRole("link", { name: "Подборки" }).click();
+    await page.goto("/admin?section=collections");
     await expect(page.locator(".admin-collection-head", { hasText: "Для ванной" })).toBeVisible();
     const shellOverflow = await horizontalOverflow(page);
     await page.locator(".admin-collection-head", { hasText: "Для ванной" }).click();

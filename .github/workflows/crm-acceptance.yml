@@ -23,6 +23,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
       DATABASE_SSL_VERIFY: 'false'
       AUTH_COOKIE_SECURE: 'false'
+      TELEGRAM_BOT_TOKEN: ci-dummy-token
+      TELEGRAM_ORDER_CHAT_ID: '-100000000001'
       PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v4
@@ -39,8 +41,13 @@ jobs:
       - name: Start isolated app without external credentials
         run: |
           STATIC_DIR="$PWD/frontend/dist" MIGRATIONS_DIR="$PWD/timeweb/migrations" ./crm-api > crm-api.log 2>&1 &
+          app_pid=$!
           for attempt in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:8080/api/v1/ready; then break; fi
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              cat crm-api.log
+              exit 1
+            fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/api/v1/ready
