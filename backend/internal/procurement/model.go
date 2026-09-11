@@ -358,6 +358,7 @@ type ProductDirectoryItem struct {
 	SabyCode           string   `json:"sabyCode"`
 	SabyArticle        string   `json:"sabyArticle"`
 	Name               string   `json:"name"`
+	SabySection        string   `json:"sabySection"`
 	Balance            int      `json:"balance"`
 	CurrentPriceRUB    float64  `json:"currentPriceRub"`
 	SupplierID         int64    `json:"supplierId"`
