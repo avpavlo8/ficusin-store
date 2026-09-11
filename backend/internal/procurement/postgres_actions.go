@@ -32,7 +32,12 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			GROUP BY saby_id
 		)
 		SELECT directory.variant_id, directory.saby_id, COALESCE(NULLIF(directory.master_code,''), directory.display_sku),
-			COALESCE(n.article,''), directory.name, COALESCE(n.balance,0),
+			COALESCE(n.article,''), directory.name,
+			CASE
+				WHEN EXISTS (SELECT 1 FROM UNNEST(n.section_path) part WHERE LOWER(BTRIM(part))=LOWER('Цветы Marketplace')) THEN 'Цветы Marketplace'
+				ELSE 'Цветы'
+			END,
+			COALESCE(n.balance,0),
 			COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
 			s.id, s.name, COALESCE(sp.supplier_article,''), COALESCE(sp.availability_status,'unknown'),
 			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), NULL::BIGINT,
@@ -68,6 +73,10 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			ORDER BY o.created_at DESC,l.id DESC LIMIT 1
 		) last_line ON TRUE
 		WHERE directory.active
+			AND EXISTS (
+				SELECT 1 FROM UNNEST(n.section_path) part
+				WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы Marketplace'))
+			)
 			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
 			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
 			OR directory.saby_id ILIKE '%' || $2 || '%' OR COALESCE(sp.supplier_article,'') ILIKE '%' || $2 || '%')
@@ -80,7 +89,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 	items := make([]ProductDirectoryItem, 0)
 	for rows.Next() {
 		var item ProductDirectoryItem
-		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name,
+		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name, &item.SabySection,
 			&item.Balance, &item.CurrentPriceRUB, &item.SupplierID, &item.SupplierName,
 			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
 			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
