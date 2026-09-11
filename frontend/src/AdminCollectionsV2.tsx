@@ -35,8 +35,8 @@ function operatorsFor(attribute?: Attribute): Array<{ value: Rule["operator"]; l
   return [...common, { value: "in", label: "одно из" }, { value: "contains", label: "содержит" }];
 }
 
-function CollectionEditor({ item, attributes, products, onSaved, onDeleted, onError }: {
-  item: Definition; attributes: Attribute[]; products: Product[];
+function CollectionEditor({ owner, item, attributes, products, onSaved, onDeleted, onError }: {
+  owner: boolean; item: Definition; attributes: Attribute[]; products: Product[];
   onSaved: (value: Definition) => void; onDeleted: (id: number) => void; onError: (value: string) => void;
 }) {
   const [draft, setDraft] = useState<Definition>(() => structuredClone(item));
@@ -122,11 +122,11 @@ function CollectionEditor({ item, attributes, products, onSaved, onDeleted, onEr
       <div className="admin-collection-list">{shown.map((product) => <label key={product.id}><input type="checkbox" checked={draft.products.includes(product.id)} onChange={() => void toggleProduct(product.id)} /><span>{product.name}</span><small>{product.stock > 0 ? `${product.stock} шт.` : "под заказ"}</small></label>)}</div>
     </div>}
 
-    <div className="dialog-actions"><button type="button" className="danger" onClick={() => void remove()}>Удалить подборку</button><button type="button" className="primary" disabled={saving || !draft.title.trim() || !draft.slug.trim() || (draft.mode === "dynamic" && draft.rules.length === 0)} onClick={() => void save()}>{saving ? "Сохраняем…" : "Сохранить"}</button></div>
+    <div className="dialog-actions"><button type="button" className="danger" disabled={!owner} onClick={() => void remove()}>Удалить подборку</button><button type="button" className="primary" disabled={saving || !draft.title.trim() || !draft.slug.trim() || (draft.mode === "dynamic" && draft.rules.length === 0)} onClick={() => void save()}>{saving ? "Сохраняем…" : "Сохранить"}</button></div>
   </div>;
 }
 
-export function CollectionsV2({ onError }: { onError: (value: string) => void }) {
+export function CollectionsV2({ owner, onError }: { owner: boolean; onError: (value: string) => void }) {
   const [collections, setCollections] = useState<Definition[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [attributes, setAttributes] = useState<Attribute[]>([]);
@@ -152,7 +152,7 @@ export function CollectionsV2({ onError }: { onError: (value: string) => void })
     <div className="admin-toolbar"><button className="admin-primary" disabled={creating} onClick={() => { setCreating(true); void create(); }}>{creating ? "Создаём…" : "Новая подборка"}</button><span>{collections.length} подборок</span></div>
     <div className="admin-collections">{collections.map((collection) => <div key={collection.id} className="admin-collection">
       <button className="admin-collection-head" onClick={() => setOpened(opened === collection.id ? null : collection.id)}>{collection.coverUrl && <span className="admin-collection-thumb" style={{ backgroundImage: `url('${collection.coverUrl}')` }} />}<span className="admin-collection-copy"><b>{collection.title}</b><small>{collection.mode === "dynamic" ? "Автоматически по правилам" : collection.note || "Ручной список"}</small></span><span className="admin-collection-count">{collection.products.length} товаров</span></button>
-      {opened === collection.id && <CollectionEditor item={collection} attributes={attributes} products={products} onSaved={(saved) => setCollections((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate))} onDeleted={(id) => { setCollections((current) => current.filter((candidate) => candidate.id !== id)); setOpened(null); }} onError={onError} />}
+      {opened === collection.id && <CollectionEditor owner={owner} item={collection} attributes={attributes} products={products} onSaved={(saved) => setCollections((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate))} onDeleted={(id) => { setCollections((current) => current.filter((candidate) => candidate.id !== id)); setOpened(null); }} onError={onError} />}
     </div>)}{!collections.length && <p className="admin-hint">Подборок пока нет.</p>}</div>
   </>;
 }

@@ -379,7 +379,7 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 }
 
 func (handlers adminHandlers) createProduct(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 	if !ok {
 		return
 	}
@@ -406,7 +406,7 @@ func (handlers adminHandlers) createProduct(response http.ResponseWriter, reques
 }
 
 func (handlers adminHandlers) deleteDraftProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionDelete)
 	if !ok {
 		return
 	}
@@ -459,7 +459,7 @@ func (handlers adminHandlers) publishDraftProducts(response http.ResponseWriter,
 // dryRun панель показывает, что получится, ничего не создавая: список из
 // сотни кодов стоит сначала увидеть глазами.
 func (handlers adminHandlers) importProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 	if !ok {
 		return
 	}
@@ -485,7 +485,7 @@ type draftProductMerger interface {
 }
 
 func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 	if !ok {
 		return
 	}
@@ -667,7 +667,7 @@ func (handlers adminHandlers) updateCategory(response http.ResponseWriter, reque
 }
 
 func (handlers adminHandlers) deleteCategory(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionDelete)
 	if !ok {
 		return
 	}
@@ -758,7 +758,8 @@ func permissionsFor(role string) []string {
 		admin.PermissionOrdersEdit, admin.PermissionProductsRead, admin.PermissionProductsEdit,
 		admin.PermissionProductsSync, admin.PermissionProcurementRead,
 		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
-		admin.PermissionAnalyticsRead,
+		admin.PermissionAnalyticsRead, admin.PermissionProductsManage, admin.PermissionDelete,
+		admin.PermissionReturnsRead, admin.PermissionReturnsEdit, admin.PermissionReturnsReceipt,
 	}
 	result := make([]string, 0, len(all))
 	for _, permission := range all {

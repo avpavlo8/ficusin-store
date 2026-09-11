@@ -120,14 +120,14 @@ func procurementDependencies(service procurementService, role string) Dependenci
 	return dependencies
 }
 
-func TestProcurementDashboardAvailableToManager(t *testing.T) {
+func TestProcurementDashboardAvailableToOwner(t *testing.T) {
 	t.Parallel()
 	service := &procurementStub{dashboard: procurement.Dashboard{
 		Summary: procurement.Summary{OpenOrders: 2, UnresolvedAliases: 11},
 	}}
 	request := adminRequest(http.MethodGet, "/api/v1/admin/procurement", "")
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
@@ -141,7 +141,7 @@ func TestProcurementSupplierCreation(t *testing.T) {
 	service := &procurementStub{}
 	request := adminRequest(http.MethodPost, "/api/v1/admin/procurement/suppliers", `{"name":"ТК Ярославский","kind":"domestic","countryCode":"RU","defaultCurrency":"RUB"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusCreated, response.Body.String())
 	}
@@ -155,7 +155,7 @@ func TestProcurementSupplierDeletion(t *testing.T) {
 	service := &procurementStub{}
 	request := adminRequest(http.MethodDelete, "/api/v1/admin/procurement/suppliers/7", "")
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusNoContent, response.Body.String())
 	}
@@ -184,7 +184,7 @@ func TestProcurementDocumentImportAcceptsMultipartPDF(t *testing.T) {
 	request.ContentLength = int64(body.Len())
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusCreated, response.Body.String())
 	}
@@ -206,7 +206,7 @@ func TestProcurementRejectsUnknownRole(t *testing.T) {
 func TestProcurementNomenclatureSearchAndAliasResolution(t *testing.T) {
 	t.Parallel()
 	service := &procurementStub{}
-	router := NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager))
+	router := NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner))
 
 	search := adminRequest(http.MethodGet, "/api/v1/admin/procurement/nomenclature?q=Фикус", "")
 	searchResponse := httptest.NewRecorder()

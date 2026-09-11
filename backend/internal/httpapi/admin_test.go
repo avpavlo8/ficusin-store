@@ -190,7 +190,7 @@ func TestAdminOwnerCannotCreateAnotherOwner(t *testing.T) {
 	}
 }
 
-func TestAdminManagerCanBulkSync(t *testing.T) {
+func TestAdminManagerCannotBulkSync(t *testing.T) {
 	t.Parallel()
 
 	repository := &adminRepositoryStub{}
@@ -198,15 +198,15 @@ func TestAdminManagerCanBulkSync(t *testing.T) {
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusForbidden, response.Body.String())
 	}
-	if repository.syncCalls != 1 {
-		t.Fatalf("sync calls = %d, want 1", repository.syncCalls)
+	if repository.syncCalls != 0 {
+		t.Fatalf("sync calls = %d, want 0", repository.syncCalls)
 	}
 }
 
-func TestAdminManagerCanSyncOneProduct(t *testing.T) {
+func TestAdminManagerCannotSyncOneProduct(t *testing.T) {
 	t.Parallel()
 
 	repository := &adminRepositoryStub{}
@@ -214,11 +214,11 @@ func TestAdminManagerCanSyncOneProduct(t *testing.T) {
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusForbidden, response.Body.String())
 	}
-	if repository.syncCalls != 1 {
-		t.Fatalf("sync calls = %d, want 1", repository.syncCalls)
+	if repository.syncCalls != 0 {
+		t.Fatalf("sync calls = %d, want 0", repository.syncCalls)
 	}
 }
 

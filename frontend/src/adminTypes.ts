@@ -1,6 +1,6 @@
 export type Role = "owner" | "manager" | "";
 
-export type Section = "dashboard" | "analytics" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement";
+export type Section = "dashboard" | "analytics" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement" | "returns" | "finance" | "marketplaces";
 
 export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string; productsCount: number; childrenCount: number };
 

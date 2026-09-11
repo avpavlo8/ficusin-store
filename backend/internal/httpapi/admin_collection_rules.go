@@ -50,6 +50,7 @@ func collectionDefinitionHandler(adminAPI adminHandlers) http.HandlerFunc {
 		provider, ok := adminAPI.repository.(collectionDefinitionRepository)
 		if !ok { adminAPI.failed(response, "collection definitions unavailable", errors.New("collection definitions unavailable")); return }
 		if request.Method == http.MethodDelete {
+			if !admin.Can(actor.Role, admin.PermissionDelete) { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Удаление доступно владельцу"}); return }
 			err := provider.DeleteCollectionDefinition(request.Context(), actor, id)
 			if errors.Is(err, pgx.ErrNoRows) { writeJSON(response, http.StatusNotFound, errorResponse{Error: "Подборка не найдена"}); return }
 			if err != nil { adminAPI.failed(response, "delete collection definition", err); return }
