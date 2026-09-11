@@ -540,7 +540,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	type comparisonGroup struct {
 		ordered, invoiced       int
 		expected                *float64
-		priceMismatch, accepted bool
+		priceMismatch, accepted, hasInvoice bool
 		first                   int
 	}
 	groups := make(map[string]*comparisonGroup)
@@ -557,6 +557,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 		group.ordered += line.OrderedQuantity
 		if line.InvoicedQuantity != nil {
 			group.invoiced += *line.InvoicedQuantity
+			group.hasInvoice = true
 		}
 		if line.ExpectedUnitPrice != nil {
 			value := *line.ExpectedUnitPrice
@@ -573,7 +574,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 				}
 			}
 		}
-		mismatch := group.ordered > 0 && group.ordered != group.invoiced || group.priceMismatch
+		mismatch := group.hasInvoice && (group.ordered > 0 && group.ordered != group.invoiced || group.priceMismatch)
 		detail.Lines[group.first].ComparisonMismatch = mismatch
 		detail.Lines[group.first].ComparisonAccepted = group.accepted
 	}
@@ -619,7 +620,7 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		if line.MatchStatus != "confirmed" {
 			continue
 		}
-		if line.InvoicedQuantity == nil || line.Quantity <= 0 || line.UnitPrice <= 0 {
+		if documents > 0 && (line.InvoicedQuantity == nil || line.Quantity <= 0 || line.UnitPrice <= 0) {
 			result.InvalidLines++
 		}
 		if line.ComparisonMismatch && !line.ComparisonAccepted {
