@@ -152,7 +152,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
         <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
         <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
         <td>{item.lines} / {item.units}</td><td>{formatTotal(item)}</td>
-        <td>{item.unmatched ? <span className="procurement-warning">{item.unmatched} не сопоставлено</span> : <span className="procurement-ok">Готово</span>}</td>
+        <td>{item.unmatched ? <span className="procurement-warning">{item.unmatched} новых позиций<small>Связь с СБИС проверяется после загрузки инвойса</small></span> : <span className="procurement-ok">Готово</span>}</td>
       </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупок пока нет</h3><p>Создайте черновик вручную или загрузите PDF поставщика.</p></div>}
     </section>
 

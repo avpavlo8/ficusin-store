@@ -374,14 +374,41 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 		if quantity <= 0 { return OrderSummary{}, ErrInvalidInput }
 		loadUnit := strings.TrimSpace(source.LoadUnit)
 		if loadUnit == "" { loadUnit = "shelf" }
+		var aliasID int64
+		aliasStatus := "new_product"
+		if strings.TrimSpace(source.SabyID) != "" { aliasStatus = "confirmed" }
+		err = tx.QueryRow(ctx, `
+			INSERT INTO procurement_supplier_aliases (supplier_id,raw_name,normalized_name,supplier_article,
+				pot_diameter_cm,height_cm,matched_saby_id,match_status,availability_status,
+				supplier_category,expected_unit_price,units_per_package,occurrences,last_seen_at)
+			VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),$8,'unknown',$9,NULLIF($10,0),NULLIF($11,0),1,CURRENT_DATE)
+			ON CONFLICT DO NOTHING RETURNING id
+		`, input.SupplierID, strings.TrimSpace(source.RawName), normalizeAlias(source.RawName),
+			strings.TrimSpace(source.SupplierArticle), source.PotDiameterCM, source.HeightCM,
+			strings.TrimSpace(source.SabyID), aliasStatus, strings.TrimSpace(source.Category),
+			source.ExpectedUnitPrice, source.UnitsPerPackage).Scan(&aliasID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = tx.QueryRow(ctx, `UPDATE procurement_supplier_aliases SET
+				normalized_name=$3, matched_saby_id=COALESCE(NULLIF($7,''),matched_saby_id),
+				match_status=CASE WHEN $7<>'' THEN 'confirmed' ELSE match_status END,
+				supplier_category=$9,expected_unit_price=NULLIF($10,0),units_per_package=NULLIF($11,0),
+				occurrences=occurrences+1,last_seen_at=CURRENT_DATE,updated_at=CURRENT_TIMESTAMP
+				WHERE supplier_id=$1 AND LOWER(raw_name)=LOWER($2) AND COALESCE(supplier_article,'')=$4
+				AND COALESCE(pot_diameter_cm,-1)=COALESCE($5,-1) AND COALESCE(height_cm,-1)=COALESCE($6,-1)
+				RETURNING id`, input.SupplierID, strings.TrimSpace(source.RawName), normalizeAlias(source.RawName),
+				strings.TrimSpace(source.SupplierArticle), source.PotDiameterCM, source.HeightCM,
+				strings.TrimSpace(source.SabyID), aliasStatus, strings.TrimSpace(source.Category),
+				source.ExpectedUnitPrice, source.UnitsPerPackage).Scan(&aliasID)
+		}
+		if err != nil { return OrderSummary{}, fmt.Errorf("save procurement plan directory entry: %w", err) }
 		if strings.TrimSpace(source.SabyID) == "" {
 			rawName := strings.TrimSpace(source.RawName)
 			if rawName == "" { return OrderSummary{}, ErrInvalidInput }
 			_, err = tx.Exec(ctx, `
-				INSERT INTO procurement_order_lines (procurement_order_id, raw_name, supplier_article,
+				INSERT INTO procurement_order_lines (procurement_order_id, supplier_alias_id, raw_name, supplier_article,
 					ordered_qty, expected_unit_price, load_unit, pot_diameter_cm, height_cm, match_status)
-				VALUES ($1, $2, $3, $4, NULLIF($5, 0), $6, $7, $8, 'new_product')
-			`, orderID, rawName, strings.TrimSpace(source.SupplierArticle), quantity,
+				VALUES ($1, $2, $3, $4, $5, NULLIF($6, 0), $7, $8, $9, 'new_product')
+			`, orderID, aliasID, rawName, strings.TrimSpace(source.SupplierArticle), quantity,
 				source.ExpectedUnitPrice, loadUnit, source.PotDiameterCM, source.HeightCM)
 			if err != nil { return OrderSummary{}, fmt.Errorf("insert manual procurement plan line: %w", err) }
 			continue

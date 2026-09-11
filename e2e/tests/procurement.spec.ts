@@ -28,7 +28,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   };
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
-    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
+    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
     lines: [], batches: [],
   };
   const dashboard = {
@@ -64,6 +64,13 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/procurement/nomenclature") {
         return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "X616872557", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7, sabySales: 1, wbSales: 3, ozonSales: 2, siteSales: 1, supplierLinked: true }] });
       }
+      if (path === "/api/v1/admin/procurement/products") {
+        return json({ items: [{ variantId: 22, sabyId: "", sabyCode: "PLANT-22", sabyArticle: "", name: "Новый товар без кода СБИС", balance: 0, currentPriceRub: 0, supplierId: 1, supplierName: "Тестовый поставщик", supplierArticle: "NL-22", availabilityStatus: "unknown", checkAfter: "", hollandArticle: "", wbVendorCode: "WB-22", ozonOfferId: "OZON-22", wbArticles: ["WB-22"], wbLegacyArticles: [], ozonArticles: ["OZON-22"], ozonLegacyArticles: [], sabySales: 0, siteSales: 0, wbSales: 1, ozonSales: 2, minimumOrderQty: 1, orderMultiple: 6, aliases: [], aliasIds: [] }] });
+      }
+      if (path === "/api/v1/admin/procurement/documents" && init?.method === "POST") {
+        orderDetail.validation.blockers = ["Не сопоставлено строк: 2"];
+        return json({ duplicate: false, order: procurement.orders[0] });
+      }
       if (path === "/api/v1/admin/procurement/sales/nomenclature") {
         // Живой справочник иногда отдаёт одну запись дважды. Разбору продаж
         // выбирать между копиями нечего — он обязан их схлопнуть.
@@ -93,7 +100,7 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await expect(page.getByText("Российский счёт")).toBeVisible();
   await expect(page.getByText("Суммы сходятся")).toBeVisible();
   await expect(page.getByText("Тестовая строка D10")).toBeVisible();
-  await expect(page.getByText("2 не сопоставлено")).toBeVisible();
+  await expect(page.getByText("2 новых позиций")).toBeVisible();
   await page.getByRole("button", { name: "Сопоставить" }).click();
   await expect(page.getByRole("dialog", { name: "Сопоставить товар" })).toBeVisible();
   await expect(page.getByText("Тестовый товар D10")).toBeVisible();
@@ -168,7 +175,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
-  await expect(page.getByText("Расчёт заблокирован")).toBeVisible();
+  await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
   await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
 });
@@ -186,6 +193,27 @@ test("@desktop procurement opens an order with no validation blockers", async ({
   await delivery.click();
   await delivery.pressSequentially("14000");
   await expect(delivery).toHaveValue("14000");
+});
+
+test("@desktop procurement directory includes active products without a Saby code", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Товары", exact: true }).click();
+  await expect(page.getByText("Новый товар без кода СБИС")).toBeVisible();
+  await expect(page.getByText("WB-22")).toBeVisible();
+  await expect(page.getByText("OZON-22")).toBeVisible();
+});
+
+test("@desktop invoice can be attached from the saved order", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.locator(".procurement-orders").getByText("TEST-100").click();
+  await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
+  await expect(page.getByText(/Загрузите PDF-инвойс кнопкой выше/)).toBeVisible();
+  await page.getByLabel("Загрузить инвойс в эту закупку").setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+  await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
 });
 
 test("@desktop procurement shows one markup and clear rounding settings", async ({ page }) => {

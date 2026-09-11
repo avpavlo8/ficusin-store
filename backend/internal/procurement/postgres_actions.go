@@ -31,7 +31,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				AND saby_id IS NOT NULL
 			GROUP BY saby_id
 		)
-		SELECT directory.variant_id, directory.saby_id, directory.master_code,
+		SELECT directory.variant_id, directory.saby_id, COALESCE(NULLIF(directory.master_code,''), directory.display_sku),
 			COALESCE(n.article,''), directory.name, COALESCE(n.balance,0),
 			COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
 			s.id, s.name, COALESCE(sp.supplier_article,''), COALESCE(sp.availability_status,'unknown'),
@@ -49,7 +49,9 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				WHERE a.supplier_id = s.id AND (a.canonical_variant_id=directory.variant_id
 					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::BIGINT[]),
 			COALESCE(sales.saby_sales,0),COALESCE(sales.site_sales,0),
-			COALESCE(sales.wb_sales,0),COALESCE(sales.ozon_sales,0)
+			COALESCE(sales.wb_sales,0),COALESCE(sales.ozon_sales,0),
+			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
+			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package
 		FROM canonical_product_directory directory
 		JOIN procurement_suppliers s ON s.is_active AND ($1=0 OR s.id=$1)
 		LEFT JOIN procurement_supplier_products sp ON sp.supplier_id=s.id
@@ -58,7 +60,14 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 		LEFT JOIN saby_nomenclature n ON n.saby_id = directory.saby_id
 		LEFT JOIN procurement_product_channels pc ON pc.saby_id = directory.saby_id
 		LEFT JOIN sales ON sales.saby_id = directory.saby_id
-		WHERE directory.active AND directory.master_code <> ''
+		LEFT JOIN LATERAL (
+			SELECT l.supplier_category,l.expected_unit_price,l.pot_diameter_cm,l.height_cm,l.units_per_package
+			FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id
+			WHERE o.supplier_id=s.id AND o.status<>'cancelled' AND
+				(l.canonical_variant_id=directory.variant_id OR (l.canonical_variant_id IS NULL AND l.saby_id=directory.saby_id))
+			ORDER BY o.created_at DESC,l.id DESC LIMIT 1
+		) last_line ON TRUE
+		WHERE directory.active
 			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
 			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
 			OR directory.saby_id ILIKE '%' || $2 || '%' OR COALESCE(sp.supplier_article,'') ILIKE '%' || $2 || '%')
@@ -79,7 +88,8 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.OzonArticles,&item.OzonLegacyArticles,
 			&item.MinimumOrderQty, &item.OrderMultiple,
 			&item.Aliases, &item.AliasIDs, &item.SabySales, &item.SiteSales,
-			&item.WBSales, &item.OzonSales); err != nil {
+			&item.WBSales, &item.OzonSales, &item.SupplierCategory, &item.ExpectedUnitPrice,
+			&item.PotDiameterCM, &item.HeightCM, &item.UnitsPerPackage); err != nil {
 			return nil, fmt.Errorf("scan procurement product directory: %w", err)
 		}
 		items = append(items, item)
