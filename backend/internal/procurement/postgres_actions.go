@@ -53,7 +53,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
 			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package
 		FROM canonical_product_directory directory
-		JOIN procurement_suppliers s ON s.is_active AND ($1=0 OR s.id=$1)
+		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
 		LEFT JOIN procurement_supplier_products sp ON sp.supplier_id=s.id
 			AND (sp.canonical_variant_id=directory.variant_id
 				OR (sp.canonical_variant_id IS NULL AND sp.saby_id=directory.saby_id))
