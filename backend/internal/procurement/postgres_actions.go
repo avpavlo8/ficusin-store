@@ -71,7 +71,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
 			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
 			OR directory.saby_id ILIKE '%' || $2 || '%' OR COALESCE(sp.supplier_article,'') ILIKE '%' || $2 || '%')
-		ORDER BY s.name, directory.name LIMIT 500
+		ORDER BY s.name, directory.name LIMIT 2000
 	`, supplierID, query)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement product directory: %w", err)
