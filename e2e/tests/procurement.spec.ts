@@ -28,7 +28,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   };
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
-    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
+    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
     lines: [], batches: [],
   };
   const dashboard = {
@@ -100,7 +100,7 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await expect(page.getByText("Российский счёт")).toBeVisible();
   await expect(page.getByText("Суммы сходятся")).toBeVisible();
   await expect(page.getByText("Тестовая строка D10")).toBeVisible();
-  await expect(page.getByText("2 не сопоставлено")).toBeVisible();
+  await expect(page.getByText("2 новых позиций")).toBeVisible();
   await page.getByRole("button", { name: "Сопоставить" }).click();
   await expect(page.getByRole("dialog", { name: "Сопоставить товар" })).toBeVisible();
   await expect(page.getByText("Тестовый товар D10")).toBeVisible();
@@ -175,7 +175,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
-  await expect(page.getByText("Расчёт заблокирован")).toBeVisible();
+  await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
   await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
 });
@@ -211,7 +211,7 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
   await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
-  await expect(page.getByText("Загрузите PDF-инвойс кнопкой выше")).toBeVisible();
+  await expect(page.getByText(/Загрузите PDF-инвойс кнопкой выше/)).toBeVisible();
   await page.getByLabel("Загрузить инвойс в эту закупку").setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
 });
