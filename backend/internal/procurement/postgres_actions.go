@@ -58,6 +58,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
 			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package
 		FROM canonical_product_directory directory
+		JOIN products catalog_product ON catalog_product.id=directory.product_id
 		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
 		LEFT JOIN procurement_supplier_products sp ON sp.supplier_id=s.id
 			AND (sp.canonical_variant_id=directory.variant_id
@@ -72,11 +73,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				(l.canonical_variant_id=directory.variant_id OR (l.canonical_variant_id IS NULL AND l.saby_id=directory.saby_id))
 			ORDER BY o.created_at DESC,l.id DESC LIMIT 1
 		) last_line ON TRUE
-		WHERE directory.active
-			AND EXISTS (
-				SELECT 1 FROM UNNEST(n.section_path) part
-				WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы Marketplace'))
-			)
+		WHERE directory.active AND catalog_product.catalog_section='plants'
 			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
 			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
 			OR directory.saby_id ILIKE '%' || $2 || '%' OR COALESCE(sp.supplier_article,'') ILIKE '%' || $2 || '%')
