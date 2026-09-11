@@ -24,6 +24,11 @@ const (
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
 	PermissionProductsSync     = "products.sync"
+	PermissionProductsManage = "products.manage"
+	PermissionDelete = "catalog.delete"
+	PermissionReturnsRead = "returns.read"
+	PermissionReturnsEdit = "returns.edit"
+	PermissionReturnsReceipt = "returns.receipt.create"
 	PermissionProcurementRead  = "procurement.read"
 	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
@@ -46,12 +51,10 @@ func Can(role, permission string) bool {
 	switch role {
 	case RoleManager:
 		return permission == PermissionDashboard ||
-			permission == PermissionAnalyticsRead ||
 			permission == PermissionCustomersRead ||
 			permission == PermissionOrdersRead || permission == PermissionOrdersEdit ||
 			permission == PermissionProductsRead || permission == PermissionProductsEdit ||
-			permission == PermissionProductsSync ||
-			permission == PermissionProcurementRead || permission == PermissionProcurementEdit
+			permission == PermissionReturnsRead || permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt
 	default:
 		return false
 	}

@@ -26,7 +26,7 @@ test("@desktop @phone workspace preserves real navigation and filters recent ord
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(9);
-  await expect(page.getByRole("button", { name: "Маркетплейсы", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Склад", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "В работе", exact: true }).click();
   await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
@@ -68,7 +68,7 @@ test("@desktop restricted role has no inaccessible shortcuts or analytics reques
   page.on("request", request => { if (request.url().includes("/admin/analytics")) analyticsRequests++; });
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("button")).toHaveCount(4);
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Настройки", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Открыть заказы" })).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Настройки");

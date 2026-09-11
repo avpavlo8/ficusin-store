@@ -1,21 +1,15 @@
+import { sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
 import { roleLabel } from "./adminShared";
 
-const sections: Array<{ id: Section; label: string; permission?: string; owner?: boolean }> = [
-  { id: "dashboard", label: "Обзор" },
-  { id: "analytics", label: "Аналитика", permission: "analytics.read" },
-  { id: "products", label: "Товары", permission: "products.read" },
-  { id: "categories", label: "Категории", permission: "products.read" },
-  { id: "collections", label: "Подборки", permission: "products.read" },
-  { id: "orders", label: "Заказы", permission: "orders.read" },
-  { id: "procurement", label: "Закупки", permission: "procurement.read" },
-  { id: "customers", label: "Клиенты", permission: "customers.read" },
-  { id: "settings", label: "Настройки", owner: true },
-];
+
 
 export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
   const paths: Record<Section | "search" | "arrow", string> = {
+    returns: "M4 8h10a6 6 0 0 1 0 12H9M4 8l5-5M4 8l5 5",
+    finance: "M3 6h18v14H3ZM3 10h18M15 15h3",
+    marketplaces: "M8 16 16 8M9 5l2-2a5 5 0 0 1 7 7l-2 2M8 12l-2 2a5 5 0 0 0 7 7l2-2",
     dashboard: "M3 10 12 3l9 7v11h-6v-7H9v7H3Z",
     analytics: "M4 21V11m8 10V3m8 18V7",
     products: "M20 4C9 2 2 8 5 16s17 3 15-12ZM5 20 16 9",
@@ -33,10 +27,11 @@ export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
 
 export function WorkspaceSidebar({ data, section, onNavigate }: { data: AdminData; section: Section; onNavigate: (section: Section) => void }) {
   return <aside className="account-sidebar">
+    <a className="workspace-skip" href="#workspace-content">К содержимому</a>
     <a className="workspace-brand" href="/" aria-label="Фикусин — в магазин">Фикусин<span aria-hidden="true">✳</span></a>
     <p className="workspace-caption">Рабочее пространство</p>
-    <nav aria-label="Разделы управления">{sections.filter(item => (!item.permission || data.permissions.includes(item.permission)) && (!item.owner || data.role === "owner")).map(item =>
-      <button key={item.id} type="button" className={section === item.id ? "active" : ""} aria-current={section === item.id ? "page" : undefined} onClick={() => onNavigate(item.id)}>
+    <nav aria-label="Разделы управления">{sections.filter(item => !["categories", "collections"].includes(item.id)).filter(item => (!item.permission || data.permissions.includes(item.permission)) && (!item.owner || data.role === "owner")).map(item =>
+      <button key={item.id} type="button" className={(section === item.id || item.id === "products" && ["categories", "collections"].includes(section)) ? "active" : ""} aria-current={(section === item.id || item.id === "products" && ["categories", "collections"].includes(section)) ? "page" : undefined} onClick={() => onNavigate(item.id)}>
         <AdminIcon name={item.id} />{item.label}
       </button>
     )}</nav>

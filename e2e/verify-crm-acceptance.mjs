@@ -1,0 +1,65 @@
+// Real built app + PostgreSQL, with isolated synthetic CI rows; no API mocks.
+import { chromium, expect } from '@playwright/test';
+import { mkdir, writeFile } from 'node:fs/promises';
+const base = process.env.CRM_BASE_URL || 'http://127.0.0.1:8080';
+const out = process.env.CRM_ARTIFACT_DIR || 'crm-artifacts';
+await mkdir(out, {recursive:true});
+const browser = await chromium.launch({headless:true});
+const results = [];
+try {
+ for (const role of ['owner','manager']) {
+  const context = await browser.newContext({baseURL:base,serviceWorkers:'block'});
+  await context.addCookies([{name:'ficusin_session',value:`crm-acceptance-${role}`,url:base}]);
+  const page = await context.newPage();
+  const api = context.request;
+  const response = await api.get('/api/v1/admin/dashboard');
+  expect(response.status()).toBe(200);
+  const data = await response.json();expect(data.role).toBe(role);
+  const products = (await (await api.get('/api/v1/admin/products')).json()).products;
+  const product = products.find(p=>p.slug==='crm-acceptance-ficus');expect(product).toBeTruthy();
+  const variants=(await (await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants;
+  const variant=variants[0];expect(variant).toBeTruthy();
+  const beforeMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
+  expect(beforeMedia.length).toBe(2);
+  if(role==='manager') {
+   for(const path of ['/admin?section=procurement','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
+   for(const body of [{name:'Forbidden',priceMinor:1},{name:'Forbidden',stock:null},{name:'Forbidden',externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:body})).status()).toBe(403);
+   expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',priceMinor:1}})).status()).toBe(403);
+   expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',attributes:{external_price:1}}})).status()).toBe(403);
+   const ok=await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'D12 проверено',attributes:{package_weight_grams:1200}}});
+   expect(ok.status(),await ok.text()).toBe(200);
+   const saved=(await ok.json()).variant;expect(saved.price).toBe(variant.price);expect(saved.stock).toBe(variant.stock);expect(saved.externalIds).toEqual(variant.externalIds);
+   expect(saved.attributes.package_weight_grams).toBe(1200);
+  }
+  const edit=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{description:`Контент ${role}`,...(role==='owner'?{image:product.image}:{})}});
+  expect(edit.status(),await edit.text()).toBe(200);
+  const afterMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
+  expect(afterMedia).toEqual(beforeMedia);
+  for(const width of [1440,390]) {
+   await page.setViewportSize({width,height:1000});
+   await page.goto('/admin?section=orders');
+   await expect(page.getByRole('heading',{name:'Заказы',exact:true})).toBeVisible();
+   await expect(page.getByText('CRM-CHECK-01',{exact:true})).toBeVisible();
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+   await page.screenshot({path:`${out}/${role}-orders-${width}.png`,fullPage:true});
+   await page.goto('/admin?section=customers');
+   await expect(page.getByRole('heading',{name:'Клиенты',exact:true})).toBeVisible();
+   await page.getByRole('button',{name:role==='owner'?'Изменить':'Открыть',exact:true}).first().click();
+   await expect(page.getByRole('dialog')).toBeVisible();
+   if(role==='manager') await expect(page.getByRole('button',{name:'Сохранить',exact:true})).toHaveCount(0);
+   await page.screenshot({path:`${out}/${role}-customer-${width}.png`,fullPage:true});
+   await page.goto('/admin/categories');
+   await expect(page.getByRole('heading',{name:'Категории и атрибуты',exact:true})).toBeVisible();
+   await page.screenshot({path:`${out}/${role}-categories-${width}.png`,fullPage:true});
+   await page.reload();await expect(page.getByRole('heading',{name:'Категории и атрибуты',exact:true})).toBeVisible();
+   if(role==='manager') {
+    const denied=await page.goto('/admin?section=finance');expect(denied.status()).toBe(403);
+    await expect(page.getByRole('heading',{name:'Доступ к разделу ограничен'})).toBeVisible();
+    await page.screenshot({path:`${out}/manager-denied-${width}.png`,fullPage:true});
+   }
+  }
+  results.push({role,api:'passed',gallery:'preserved',viewports:[1440,390]});
+  await context.close();
+ }
+ await writeFile(`${out}/results.json`,JSON.stringify({sha:process.env.GITHUB_SHA,environment:'ephemeral CI PostgreSQL; synthetic rows; real HTTP API',results},null,2));
+} finally { await browser.close(); }

@@ -290,6 +290,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			analytics, dependencies.SiteURL,
 		)
 	}
+	handler = guardAdminPages(adminAPI, handler)
 	handler = canonicalHostRedirect(dependencies.SiteURL, handler)
 	return requestLogger(logger, invalidatePublicCacheAfterMutation(publicCache, invalidateDetails,
 		gzipResponses(securityHeaders(dependencies.CookieSecure, rejectCrossOriginMutations(dependencies.SiteURL, recoverPanics(logger, handler))))))

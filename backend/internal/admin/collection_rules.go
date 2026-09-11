@@ -134,7 +134,7 @@ func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Con
 }
 
 func (repository *PostgresRepository) DeleteCollectionDefinition(ctx context.Context, actor Actor, id int64) error {
-	if !Can(actor.Role, PermissionProductsEdit) { return ErrForbidden }
+	if !Can(actor.Role, PermissionDelete) { return ErrForbidden }
 	tag, err := repository.pool.Exec(ctx, `DELETE FROM collections WHERE id=$1`, id)
 	if err != nil { return fmt.Errorf("delete collection: %w", err) }
 	if tag.RowsAffected() != 1 { return pgx.ErrNoRows }
