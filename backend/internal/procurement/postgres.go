@@ -1037,16 +1037,17 @@ func (store *PostgresStore) ImportDocument(
 		if candidateCount == 1 {
 			err = tx.QueryRow(ctx, `
 				UPDATE procurement_order_lines SET procurement_document_id = $2,
-					supplier_alias_id = $3, invoice_raw_name = $5, invoice_supplier_article = $6,
+					supplier_alias_id = $3, saby_id=COALESCE(NULLIF($4,''),saby_id),
+					invoice_raw_name = $5, invoice_supplier_article = $6,
 					canonical_variant_id=(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3),
 					invoiced_qty = $7, unit_price = $8, line_total = $9,
-					match_status = $11, source_page = $12, source_line = $13,
+					match_status = $10, source_page = $11, source_line = $12,
 					reconciliation_status=CASE WHEN ordered_qty<>$7 OR
 						(expected_unit_price IS NOT NULL AND ABS(expected_unit_price-$8)>.005)
 						THEN 'changed' ELSE 'matched' END,updated_at = CURRENT_TIMESTAMP
-				WHERE id = $14 RETURNING id
+				WHERE id = $13 AND procurement_order_id=$1 RETURNING id
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
-				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
+				line.Quantity, line.UnitPrice, line.LineTotal, matchStatus,
 				line.SourcePage, line.SourceLine, reconciledID,
 			).Scan(&reconciledID)
 		}
