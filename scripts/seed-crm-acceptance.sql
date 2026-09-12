@@ -55,3 +55,26 @@ INSERT INTO sales_events(channel,source_event_id,source_document_id,source_line_
   event_at,external_product_id,units,gross_rub,effect,reconciliation_status,import_batch_id)
 VALUES('ozon','crm-pending-1','CRM-OZON-PENDING','line-1','sale','pending',CURRENT_TIMESTAMP,
   'unlinked-offer',1,1990,1,'excluded',gen_random_uuid());
+
+-- Stage 05 recommendation, partially allocatable customer demand, and manual
+-- supplier follow-up. These rows exist only in the ephemeral CI database.
+INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance) VALUES
+('crm-stage05-demand','CRM-S05-D','Монстера Stage 05',349000,0),
+('crm-stage05-wait','CRM-S05-W','Фикус ожидание Stage 05',299000,0),
+('crm-stage05-future','CRM-S05-F','Фикус будущая проверка',299000,0);
+INSERT INTO products(name,slug,status,category_id,saby_id)
+SELECT 'Монстера Stage 05','crm-stage05-demand','draft',id,'crm-stage05-demand' FROM categories WHERE slug='plants';
+INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active,saby_id)
+SELECT id,'99999102','D15',349000,0,'crm-stage05-demand' FROM products WHERE slug='crm-stage05-demand';
+INSERT INTO procurement_suppliers(name,kind,country_code,default_currency)
+VALUES('CRM Stage 05 Supplier','international','NL','EUR');
+INSERT INTO procurement_supplier_products(supplier_id,saby_id,supplier_article,availability_status,check_after,unavailable_since,minimum_order_qty,order_multiple,availability_reason,availability_comment,availability_last_action,availability_last_action_at)
+SELECT id,'crm-stage05-demand','S05-D','available',NULL,NULL,1,1,'','','marked_available',CURRENT_TIMESTAMP FROM procurement_suppliers WHERE name='CRM Stage 05 Supplier'
+UNION ALL SELECT id,'crm-stage05-wait','S05-W','temporarily_unavailable',CURRENT_DATE-1,CURRENT_DATE-7,1,1,'Нет в прайсе','Проверить с менеджером','scheduled_check',CURRENT_TIMESTAMP-INTERVAL '7 days' FROM procurement_suppliers WHERE name='CRM Stage 05 Supplier'
+UNION ALL SELECT id,'crm-stage05-future','S05-F','temporarily_unavailable',CURRENT_DATE+7,CURRENT_DATE,1,1,'Ожидаем поставку','Ответ поставщика сохранён','scheduled_check',CURRENT_TIMESTAMP FROM procurement_suppliers WHERE name='CRM Stage 05 Supplier';
+INSERT INTO sales_events(channel,source_event_id,source_document_id,source_line_id,event_type,event_status,event_at,external_product_id,saby_id,canonical_variant_id,units,gross_rub,effect,reconciliation_status,import_batch_id)
+SELECT 'saby','crm-stage05-demand-sale','CRM-S05-SALE','line-1','sale','confirmed',CURRENT_TIMESTAMP-INTERVAL '8 days','crm-stage05-demand','crm-stage05-demand',id,30,104700,1,'counted',gen_random_uuid()
+FROM product_variants WHERE saby_id='crm-stage05-demand';
+INSERT INTO procurement_requests(kind,saby_id,requested_name,quantity,customer_order_id,source,notes)
+SELECT 'customer_order','crm-stage05-demand','Монстера Stage 05',2,id,'site_order','Проверка частичного распределения'
+FROM orders WHERE order_number='CRM-CHECK-01';

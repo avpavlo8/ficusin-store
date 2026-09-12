@@ -476,8 +476,15 @@ func (service *Service) CreateRequest(ctx context.Context, actor Actor, input Re
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.RequestedName = strings.TrimSpace(input.RequestedName)
 	input.Notes = strings.TrimSpace(input.Notes)
+	input.Source = strings.TrimSpace(input.Source)
+	if input.Source == "" {
+		input.Source = "manual"
+	}
 	if !oneOf(input.Kind, "customer_order", "staff_recommendation") || input.RequestedName == "" || input.Quantity <= 0 {
 		return Request{}, ErrInvalidInput
+	}
+	if input.Kind != "customer_order" {
+		input.CustomerOrderID = nil
 	}
 	return service.store.CreateRequest(ctx, actor, input)
 }
@@ -526,6 +533,8 @@ func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, inp
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.Status = strings.TrimSpace(input.Status)
 	input.CheckAfter = strings.TrimSpace(input.CheckAfter)
+	input.Reason = strings.TrimSpace(input.Reason)
+	input.Comment = strings.TrimSpace(input.Comment)
 	if input.SupplierID <= 0 || input.SabyID == "" ||
 		!oneOf(input.Status, "available", "unknown", "check", "temporarily_unavailable", "discontinued") {
 		return AvailabilityItem{}, ErrInvalidInput

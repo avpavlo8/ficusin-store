@@ -247,6 +247,7 @@ test("@desktop @phone procurement fullscreen plan stays on screen and accepts ro
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
@@ -264,14 +265,14 @@ test("@desktop @phone procurement fullscreen plan stays on screen and accepts ro
   await expect(dialog.getByText("Заказ пока пуст", { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "+ Из рекомендаций", exact: true })).toHaveCount(0);
   await expect(dialog.getByPlaceholder("Категория")).toHaveCount(1);
-  await expect(dialog.getByText("0 позиции", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
   const addRow = dialog.getByRole("button", { name: "+ Новая строка", exact: true });
   await expect(addRow).toBeInViewport();
   await expect(dialog.getByPlaceholder("Категория")).toBeVisible();
   await dialog.getByLabel("Количество упаковок", { exact: true }).fill("2");
   await dialog.getByLabel("Штук в упаковке", { exact: true }).fill("12");
-  await expect(dialog.getByText("0 позиции", { exact: false })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Создать и рассчитать →", exact: true })).toBeDisabled();
+  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Создать и рассчитать →", exact: true })).toBeEnabled();
 });
 
 test("@desktop procurement recommendation keeps category and purchasing context in the order", async ({ page }) => {
@@ -279,6 +280,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
@@ -289,10 +291,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   expect(drawerBounds!.x + drawerBounds!.width).toBeGreaterThanOrEqual(viewport.width - 1);
   expect(drawerBounds!.y).toBe(0);
   expect(drawerBounds!.height).toBeGreaterThanOrEqual(viewport.height - 1);
-  await expect(drawer.getByText("Рекомендовано 12", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("Остаток 2", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("Продано 8", { exact: true })).toBeVisible();
-  await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
+  await expect(drawer.getByText("Все рекомендации добавлены", { exact: true })).toBeVisible();
 
   await expect(dialog.locator("tbody tr")).toHaveCount(1);
   await expect(dialog.locator('input[value="Цитрус"]')).toBeVisible();
@@ -312,6 +311,7 @@ test("@desktop procurement draft survives leaving and reopening the page", async
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
@@ -319,6 +319,7 @@ test("@desktop procurement draft survives leaving and reopening the page", async
   await dialog.getByPlaceholder("Артикул", { exact: true }).fill("NL-42");
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Категория")).toHaveValue("Цитрус");
@@ -330,6 +331,7 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
@@ -342,7 +344,7 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await expect(drawer.getByText("Продажи и рекомендация подтянутся после добавления товара.", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "+ Добавить", exact: true }).click();
 
-  await expect(dialog.locator("tbody tr")).toHaveCount(1);
+  await expect(dialog.locator("tbody tr")).toHaveCount(2);
   await expect(dialog.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("2 позиции", { exact: false })).toBeVisible();
 });

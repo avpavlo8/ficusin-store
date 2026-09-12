@@ -27,7 +27,7 @@ func (store *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
 		SELECT
 			(SELECT COUNT(*) FROM procurement_orders WHERE status NOT IN ('received', 'cancelled'))::INTEGER,
 			(SELECT COUNT(*) FROM procurement_supplier_aliases WHERE match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
-			(SELECT COUNT(*) FROM procurement_supplier_products WHERE availability_status = 'check' OR (check_after IS NOT NULL AND check_after <= CURRENT_DATE))::INTEGER,
+			(SELECT COUNT(*) FROM procurement_supplier_products WHERE availability_status IN ('check','temporarily_unavailable') AND (check_after IS NULL OR check_after <= CURRENT_DATE))::INTEGER,
 			(SELECT COUNT(*) FROM procurement_requests WHERE status = 'open')::INTEGER
 	`).Scan(
 		&result.Summary.OpenOrders,
@@ -444,7 +444,8 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 			}
 			continue
 		}
-		command, insertErr := tx.Exec(ctx, `
+		var lineID int64
+		insertErr := tx.QueryRow(ctx, `
 			INSERT INTO procurement_order_lines (procurement_order_id, supplier_alias_id, saby_id,
 				canonical_variant_id, raw_name, supplier_article, ordered_qty, expected_unit_price,
 				load_unit, pot_diameter_cm, height_cm, match_status, customer_request)
@@ -467,14 +468,18 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 				ORDER BY last_seen_at DESC NULLS LAST, id DESC LIMIT 1
 			) alias ON TRUE
 			WHERE nomenclature.missing_since IS NULL AND nomenclature.saby_id = $3
+			RETURNING procurement_order_lines.id
 		`, orderID, input.SupplierID, source.SabyID, quantity, source.ExpectedUnitPrice,
 			strings.TrimSpace(source.RawName), strings.TrimSpace(source.SupplierArticle), loadUnit,
-			source.PotDiameterCM, source.HeightCM)
+			source.PotDiameterCM, source.HeightCM).Scan(&lineID)
 		if insertErr != nil {
+			if errors.Is(insertErr, pgx.ErrNoRows) {
+				return OrderSummary{}, ErrNotFound
+			}
 			return OrderSummary{}, fmt.Errorf("insert procurement plan line: %w", insertErr)
 		}
-		if command.RowsAffected() == 0 {
-			return OrderSummary{}, ErrNotFound
+		if err := allocateRequests(ctx, tx, lineID, source.SabyID, quantity); err != nil {
+			return OrderSummary{}, err
 		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO procurement_supplier_products (supplier_id, saby_id, canonical_variant_id,
@@ -493,12 +498,6 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 		`, input.SupplierID, source.SabyID, strings.TrimSpace(source.SupplierArticle), actor.CustomerID); err != nil {
 			return OrderSummary{}, fmt.Errorf("link procurement plan product to supplier: %w", err)
 		}
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE procurement_requests SET status = 'included', updated_at = CURRENT_TIMESTAMP
-		WHERE status = 'open' AND saby_id = ANY($1::TEXT[])
-	`, planSabyIDs(input.Items)); err != nil {
-		return OrderSummary{}, fmt.Errorf("include procurement requests in plan: %w", err)
 	}
 	if input.Costs != nil {
 		if err := savePlanCalculation(ctx, tx, orderID, input, calculated, settings); err != nil {
@@ -1088,6 +1087,9 @@ func (store *PostgresStore) ImportDocument(
 		return ImportResult{}, fmt.Errorf("update procurement order status: %w", err)
 	}
 	document.ParseStatus = parseStatus
+	if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+		return ImportResult{}, fmt.Errorf("rebalance requests after invoice: %w", err)
+	}
 
 	order, err := loadOrderSummary(ctx, tx, orderID)
 	if err != nil {
