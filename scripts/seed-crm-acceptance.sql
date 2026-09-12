@@ -69,7 +69,7 @@ SELECT id,'crm-stage05-demand','S05-D','available',NULL,NULL,1,1,'','','marked_a
 UNION ALL SELECT id,'crm-stage05-wait','S05-W','temporarily_unavailable',CURRENT_DATE-1,CURRENT_DATE-7,1,1,'Нет в прайсе','Проверить с менеджером','scheduled_check',CURRENT_TIMESTAMP-INTERVAL '7 days' FROM procurement_suppliers WHERE name='CRM Stage 05 Supplier'
 UNION ALL SELECT id,'crm-stage05-future','S05-F','temporarily_unavailable',CURRENT_DATE+7,CURRENT_DATE,1,1,'Ожидаем поставку','Ответ поставщика сохранён','scheduled_check',CURRENT_TIMESTAMP FROM procurement_suppliers WHERE name='CRM Stage 05 Supplier';
 INSERT INTO sales_events(channel,source_event_id,source_document_id,source_line_id,event_type,event_status,event_at,external_product_id,saby_id,units,gross_rub,effect,reconciliation_status,import_batch_id)
-VALUES('saby','crm-stage05-demand-sale','CRM-S05-SALE','line-1','sale','confirmed',CURRENT_TIMESTAMP-INTERVAL '30 days','crm-stage05-demand','crm-stage05-demand',30,104700,1,'counted',gen_random_uuid());
+VALUES('saby','crm-stage05-demand-sale','CRM-S05-SALE','line-1','sale','confirmed',CURRENT_TIMESTAMP-INTERVAL '8 days','crm-stage05-demand','crm-stage05-demand',30,104700,1,'counted',gen_random_uuid());
 INSERT INTO procurement_requests(kind,saby_id,requested_name,quantity,customer_order_id,source,notes)
 SELECT 'customer_order','crm-stage05-demand','Монстера Stage 05',2,id,'site_order','Проверка частичного распределения'
 FROM orders WHERE order_number='CRM-CHECK-01';

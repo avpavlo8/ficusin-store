@@ -346,5 +346,5 @@ test("@desktop procurement can add a linked Saby product outside recommendations
 
   await expect(dialog.locator("tbody tr")).toHaveCount(2);
   await expect(dialog.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("2 позиции", { exact: false })).toBeVisible();
 });
