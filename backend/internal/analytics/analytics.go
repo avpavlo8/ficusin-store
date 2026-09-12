@@ -376,8 +376,8 @@ func (store *Store) Summary(ctx context.Context, days int, channel string) (Summ
 		result.Searches = append(result.Searches, item)
 	}
 	rows, err = store.pool.Query(ctx, `WITH dates AS (
-		SELECT generate_series($1 AT TIME ZONE 'Europe/Moscow',
-			($2-INTERVAL '1 day') AT TIME ZONE 'Europe/Moscow',INTERVAL '1 day')::DATE local_day
+		SELECT generate_series($1::TIMESTAMPTZ AT TIME ZONE 'Europe/Moscow',
+			($2::TIMESTAMPTZ-INTERVAL '1 day') AT TIME ZONE 'Europe/Moscow',INTERVAL '1 day')::DATE local_day
 	), traffic AS (
 		SELECT (occurred_at AT TIME ZONE 'Europe/Moscow')::DATE local_day,COUNT(DISTINCT session_id)::INT sessions
 		FROM analytics_events WHERE occurred_at >= $1 AND occurred_at < $2 GROUP BY 1

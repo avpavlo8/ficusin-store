@@ -16,7 +16,7 @@ func TestStage04SalesLedgerOnLiveDatabase(t *testing.T) {
 	store:=NewPostgresStore(pool);unique:=time.Now().UnixNano();sabyID:=fmt.Sprintf("stage04-saby-%d",unique);offer:=fmt.Sprintf("stage04-offer-%d",unique);wbID:=fmt.Sprintf("%d",unique%1000000000)
 	var productID,variantID int64
 	if err:=pool.QueryRow(ctx,`INSERT INTO products(saby_id,name,slug,status,catalog_section) VALUES($1,'Stage 04 plant',$2,'published','plants') RETURNING id`,sabyID,fmt.Sprintf("stage04-%d",unique)).Scan(&productID);err!=nil{t.Fatal(err)}
-	if err:=pool.QueryRow(ctx,`INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active) VALUES($1,$2,$3,'P12',10000,1) RETURNING id`,productID,sabyID,fmt.Sprintf("stage04-sku-%d",unique)).Scan(&variantID);err!=nil{t.Fatal(err)}
+	if err:=pool.QueryRow(ctx,`INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active) VALUES($1,$2,$3,'P12',10000,1) RETURNING id`,productID,sabyID,fmt.Sprintf("9%017d",unique%100000000000000000)).Scan(&variantID);err!=nil{t.Fatal(err)}
 	if _,err:=pool.Exec(ctx,`INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance) VALUES($1,$2,'Stage 04 plant',10000,5)`,sabyID,fmt.Sprintf("S04-%d",unique));err!=nil{t.Fatal(err)}
 	if _,err:=pool.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source) VALUES
 		($1,$2,'ozon','offer_id',$3,'active',TRUE,'manual'),($1,$2,'wildberries','sku',$4,'active',TRUE,'manual')`,productID,variantID,offer,wbID);err!=nil{t.Fatal(err)}
@@ -50,4 +50,8 @@ func TestStage04SalesLedgerOnLiveDatabase(t *testing.T) {
 	cancelled:=ozon;cancelled.SourceEventID="OZ-CANCELLED";cancelled.SourceDocumentID="OZ-CANCELLED";cancelled.CrossSourceKey="";cancelled.EventType="cancellation";cancelled.EventStatus="cancelled";cancelled.Units=0;cancelled.GrossRUB=0
 	if _,err:=store.ReplaceSales(ctx,"ozon",from,to.AddDate(0,0,1),[]SalesRecord{ozon,returnEvent,pending,unmatched,cancelled});err!=nil{t.Fatal(err)}
 	if err:=pool.QueryRow(ctx,`SELECT COUNT(*) FROM sales_events WHERE source_event_id='OZ-CANCELLED' AND reconciliation_status='excluded' AND effect=1`).Scan(&rows);err!=nil{t.Fatal(err)};if rows!=1{t.Fatal("cancellation became a negative sale")}
+	// An empty source window succeeds and is recorded as an empty import.
+	emptyRows,err:=store.ReplaceSales(ctx,"wb",from,to,nil);if err!=nil{t.Fatal(err)};if emptyRows!=0{t.Fatalf("empty source imported %d rows",emptyRows)}
+	var syncStatus string;var syncedRows int;if err:=pool.QueryRow(ctx,`SELECT status,rows_synced FROM procurement_sales_sync_state WHERE channel='wb'`).Scan(&syncStatus,&syncedRows);err!=nil{t.Fatal(err)}
+	if syncStatus!="ok"||syncedRows!=0{t.Fatalf("empty source status=%s rows=%d",syncStatus,syncedRows)}
 }

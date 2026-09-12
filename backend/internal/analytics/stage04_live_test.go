@@ -24,5 +24,8 @@ func TestStage04SalesSummaryOnLiveDatabase(t *testing.T){
 	if summary.DataQuality.Duplicates<1||summary.DataQuality.Ambiguous<1||summary.DataQuality.Pending<1{t.Fatalf("quality=%+v",summary.DataQuality)}
 	if len(summary.Daily)!=7||summary.Daily[5].Date!="2026-09-11"||summary.Daily[6].Date!="2026-09-12"{t.Fatalf("daily boundaries=%+v",summary.Daily)}
 	if len(summary.SalesChannels)!=5||summary.SalesChannels[4].Channel!="avito"||summary.SalesChannels[4].Availability!="no_data"{t.Fatalf("channels=%+v",summary.SalesChannels)}
+	if _,err:=pool.Exec(ctx,`UPDATE procurement_sales_sync_state SET status='error',last_error='stage 04 fixture' WHERE channel='wb'`);err!=nil{t.Fatal(err)}
+	unavailable,err:=store.Summary(ctx,7,"");if err!=nil{t.Fatal(err)};if unavailable.SalesChannels[1].Channel!="wb"||unavailable.SalesChannels[1].Availability!="unavailable"{t.Fatalf("unavailable channel=%+v",unavailable.SalesChannels[1])}
+	if _,err:=pool.Exec(ctx,`UPDATE procurement_sales_sync_state SET status='ok',last_error='' WHERE channel='wb'`);err!=nil{t.Fatal(err)}
 	filtered,err:=store.Summary(ctx,7,"ozon");if err!=nil{t.Fatal(err)};if filtered.Revenue!=1200||len(filtered.SalesChannels)!=1||filtered.SalesChannels[0].Channel!="ozon"{t.Fatalf("filtered=%+v",filtered)}
 }
