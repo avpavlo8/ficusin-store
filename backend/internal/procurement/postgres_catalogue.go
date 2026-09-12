@@ -372,19 +372,47 @@ func (store *PostgresStore) MarkSalesSync(ctx context.Context, channel, status s
 }
 
 func (store *PostgresStore) RefreshSiteSales(ctx context.Context, from, to time.Time) (int, error) {
-	return store.replaceSalesWithQuery(ctx, "site", from, to, `
-		INSERT INTO procurement_sales_daily (
-			channel, sale_date, external_product_id, saby_id, units, gross_rub
-		)
-		SELECT 'site', o.created_at::DATE, pv.saby_id, pv.saby_id,
-			SUM(oi.quantity)::INTEGER, SUM(oi.quantity * oi.unit_price)::NUMERIC
-		FROM orders o
-		JOIN order_items oi ON oi.order_id = o.id
-		JOIN product_variants pv ON pv.id = oi.variant_id
-		WHERE o.created_at::DATE BETWEEN $1 AND $2
-			AND o.status <> 'cancelled' AND pv.saby_id IS NOT NULL
-		GROUP BY o.created_at::DATE, pv.saby_id
-	`)
+	rows, err := store.pool.Query(ctx, `SELECT o.created_at,pv.saby_id,pv.saby_id,
+		oi.quantity,(oi.quantity*oi.unit_price)::DOUBLE PRECISION,o.order_number,oi.id::TEXT,
+		CASE WHEN o.status='cancelled' THEN 'cancellation' ELSE 'sale' END,
+		CASE WHEN o.status='cancelled' THEN 'cancelled'
+			WHEN o.payment_status='paid' OR o.status='completed' THEN 'confirmed' ELSE 'pending' END
+		FROM orders o JOIN order_items oi ON oi.order_id=o.id
+		JOIN product_variants pv ON pv.id=oi.variant_id
+		WHERE (o.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+			AND pv.saby_id IS NOT NULL
+		UNION ALL
+		SELECT o.created_at,'__delivery__','','0',o.delivery_fee::DOUBLE PRECISION,o.order_number,'delivery',
+			CASE WHEN o.status='cancelled' THEN 'cancellation' ELSE 'sale' END,
+			CASE WHEN o.status='cancelled' THEN 'cancelled'
+				WHEN o.payment_status='paid' OR o.status='completed' THEN 'confirmed' ELSE 'pending' END
+		FROM orders o WHERE o.delivery_fee<>0
+			AND (o.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+		UNION ALL
+		SELECT refund.created_at,'__adjustment__','','0',refund.amount::DOUBLE PRECISION,
+			refund.idempotence_key,'refund:'||refund.id::TEXT,'return',
+			CASE WHEN refund.status='succeeded' THEN 'confirmed' ELSE 'pending' END
+		FROM payment_refunds refund
+		WHERE (refund.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE`, from, to)
+	if err != nil {
+		return 0, fmt.Errorf("query site sales events: %w", err)
+	}
+	defer rows.Close()
+	records := make([]SalesRecord, 0)
+	for rows.Next() {
+		var record SalesRecord
+		if err := rows.Scan(&record.Date, &record.ExternalID, &record.SabyID, &record.Units,
+			&record.GrossRUB, &record.SourceEventID, &record.SourceLineID,
+			&record.EventType, &record.EventStatus); err != nil {
+			return 0, err
+		}
+		record.SourceDocumentID = record.SourceEventID
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return store.ReplaceSales(ctx, "site", from, to, records)
 }
 
 func (store *PostgresStore) replaceSalesWithQuery(
@@ -424,68 +452,14 @@ func (store *PostgresStore) ReplaceSales(
 	if !validSalesChannel(channel) || from.After(to) {
 		return 0, ErrInvalidInput
 	}
-	normalized, err := normalizeSalesRecords(records, day(from), day(to))
-	if err != nil {
-		return 0, err
-	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin replace sales: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `DELETE FROM procurement_sales_daily WHERE channel = $1 AND sale_date BETWEEN $2 AND $3`, channel, from, to); err != nil {
-		return 0, fmt.Errorf("clear sales window: %w", err)
-	}
-	inserted := 0
-	for _, record := range normalized {
-		command, err := tx.Exec(ctx, `
-			WITH resolved AS (
-				SELECT directory.variant_id, directory.saby_id,
-					external.id AS external_mapping_id, directory.product_id
-				FROM canonical_product_directory directory
-				LEFT JOIN LATERAL (
-					SELECT mapping.id
-					FROM product_external_ids mapping
-					WHERE mapping.variant_id = directory.variant_id
-						AND mapping.external_id = $3
-						AND mapping.status IN ('active','legacy')
-						AND (($1='saby' AND mapping.provider='saby'
-							AND mapping.id_type IN ('id','code','alias'))
-							OR ($1='wb' AND mapping.provider='wildberries'
-							AND mapping.id_type IN ('sku','nm_id'))
-							OR ($1='ozon' AND mapping.provider='ozon'
-							AND mapping.id_type='offer_id'))
-					ORDER BY (mapping.source='manual') DESC,
-						(mapping.status='active') DESC, mapping.updated_at DESC
-					LIMIT 1
-				) external ON TRUE
-				WHERE (($1='site' AND directory.saby_id = NULLIF($4,''))
-					OR ($1='saby' AND (directory.saby_id = NULLIF($4,'') OR external.id IS NOT NULL))
-					OR ($1 IN ('wb','ozon') AND external.id IS NOT NULL))
-				ORDER BY (external.id IS NOT NULL) DESC, directory.variant_id
-				LIMIT 1
-			)
-			INSERT INTO procurement_sales_daily (
-				channel, sale_date, external_product_id, saby_id,
-				canonical_variant_id, external_mapping_id, units, gross_rub
-			)
-			SELECT $1, $2, $3, resolved.saby_id, resolved.variant_id,
-				resolved.external_mapping_id, $5, $6
-			FROM (SELECT 1) seed LEFT JOIN resolved ON TRUE
-			WHERE $1 <> 'saby' OR EXISTS (
-				SELECT 1 FROM products WHERE products.id = resolved.product_id
-					AND products.catalog_section = 'plants'
-			)
-			ON CONFLICT (channel, sale_date, external_product_id) DO UPDATE SET
-				saby_id = EXCLUDED.saby_id,
-				canonical_variant_id = EXCLUDED.canonical_variant_id,
-				external_mapping_id = EXCLUDED.external_mapping_id, units = EXCLUDED.units,
-				gross_rub = EXCLUDED.gross_rub, synced_at = CURRENT_TIMESTAMP
-		`, channel, record.Date, record.ExternalID, record.SabyID, record.Units, record.GrossRUB)
-		if err != nil {
-			return 0, fmt.Errorf("insert sales record: %w", err)
-		}
-		inserted += int(command.RowsAffected())
+	inserted, err := replaceSalesEvents(ctx, tx, channel, from, to, records)
+	if err != nil {
+		return 0, err
 	}
 	if err := finishSalesSync(ctx, tx, channel, from, to, inserted); err != nil {
 		return 0, err

@@ -163,6 +163,9 @@ func (executor *MarketplaceExecutor) fetchWBOperationalSales(ctx context.Context
 		}
 		records = append(records, procurement.SalesRecord{
 			Date: date, ExternalID: strconv.FormatInt(row.NmID, 10), Units: sign, GrossRUB: float64(sign) * amount,
+			SourceEventID: strings.TrimSpace(row.SaleID), SourceDocumentID: strings.TrimSpace(row.SaleID),
+			SourceLineID: strconv.FormatInt(row.NmID, 10), CrossSourceKey: strings.TrimSpace(row.SaleID),
+			EventType: map[bool]string{true: "return", false: "sale"}[sign < 0], EventStatus: "confirmed",
 		})
 	}
 	return records, nil
@@ -187,7 +190,7 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 			}
 			return nil, err
 		}
-		for _, posting := range items {
+		for postingIndex, posting := range items {
 			if posting.Status != "delivered" {
 				continue
 			}
@@ -195,12 +198,19 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 			if err != nil {
 				continue
 			}
-			for _, product := range posting.Products {
+			for productIndex, product := range posting.Products {
 				price, _ := strconv.ParseFloat(product.Price, 64)
 				if strings.TrimSpace(product.OfferID) != "" && product.Quantity > 0 {
+					documentID := strings.TrimSpace(posting.PostingNumber)
+					if documentID == "" {
+						documentID = fmt.Sprintf("%s:%s:%d", path, date.Format(time.RFC3339), postingIndex)
+					}
 					records = append(records, procurement.SalesRecord{
 						Date: date, ExternalID: product.OfferID, Units: product.Quantity,
-						GrossRUB: price * float64(product.Quantity),
+						GrossRUB:      price * float64(product.Quantity),
+						SourceEventID: documentID, SourceDocumentID: documentID,
+						SourceLineID:   fmt.Sprintf("%s:%d", product.OfferID, productIndex),
+						CrossSourceKey: documentID, EventType: "sale", EventStatus: "confirmed",
 					})
 				}
 			}

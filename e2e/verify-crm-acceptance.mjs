@@ -77,7 +77,9 @@ try {
     await expect(page.getByText('Ноль новых строк означает только', {exact:false})).toBeVisible();
     expect(await page.locator('tbody tr').count()).toBe(6);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
-   await page.screenshot({path:`${out}/owner-marketplaces-${width}.png`,fullPage:true});
+    await page.screenshot({path:`${out}/owner-marketplaces-${width}.png`,fullPage:true});
+    const analyticsResponse=await api.get('/api/v1/admin/analytics?days=7&channel=all');expect(analyticsResponse.status()).toBe(200);const analytics=await analyticsResponse.json();expect(analytics.revenue).toBe(2490);expect(analytics.orders).toBe(1);expect(analytics.soldUnits).toBe(1);expect(analytics.returns).toBe(1);expect(analytics.dataQuality.duplicates).toBeGreaterThanOrEqual(1);expect(analytics.dataQuality.pending).toBeGreaterThanOrEqual(1);
+    await page.goto('/admin?section=analytics');await expect(page.getByRole('heading',{name:'Аналитика продаж',exact:true})).toBeVisible();await expect(page.getByText('1 продаж ожидают сверки',{exact:true})).toBeVisible();await expect(page.getByText('Нет данных',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Каналы',exact:true}).click();await expect(page.getByRole('cell',{name:'Avito',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/owner-analytics-${width}.png`,fullPage:true});
     expect(await page.evaluate(key=>localStorage.getItem(key),'ficusin:procurement-plan-draft:v1')).toBe(procurementDraft);
    }
    if(role==='manager') {
