@@ -45,18 +45,19 @@ type Summary struct {
 }
 
 type Dashboard struct {
-	Summary           Summary             `json:"summary"`
-	Integrations      IntegrationStatus   `json:"integrations"`
-	Settings          PricingSettings     `json:"settings"`
-	Suppliers         []Supplier          `json:"suppliers"`
-	Orders            []OrderSummary      `json:"orders"`
-	Documents         []DocumentSummary   `json:"documents"`
-	Review            []AliasReview       `json:"review"`
-	Requests          []Request           `json:"requests"`
-	Availability      []AvailabilityItem  `json:"availability"`
-	Recommendations   []Recommendation    `json:"recommendations"`
-	SalesSync         []SalesSyncStatus   `json:"salesSync"`
-	IntegrationHealth []IntegrationHealth `json:"integrationHealth"`
+	Summary           Summary                 `json:"summary"`
+	Integrations      IntegrationStatus       `json:"integrations"`
+	Settings          PricingSettings         `json:"settings"`
+	Suppliers         []Supplier              `json:"suppliers"`
+	Orders            []OrderSummary          `json:"orders"`
+	Documents         []DocumentSummary       `json:"documents"`
+	Review            []AliasReview           `json:"review"`
+	Requests          []Request               `json:"requests"`
+	Availability      []AvailabilityItem      `json:"availability"`
+	Recommendations   []Recommendation        `json:"recommendations"`
+	SalesSync         []SalesSyncStatus       `json:"salesSync"`
+	IntegrationHealth []IntegrationHealth     `json:"integrationHealth"`
+	IntegrationSync   []IntegrationSyncStatus `json:"integrationSync"`
 }
 
 type PricingSettings struct {
@@ -136,9 +137,9 @@ type OrderCreate struct {
 
 type PlanCreate struct {
 	Costs       *CalculationInput `json:"costs,omitempty"`
-	SupplierID  int64      `json:"supplierId"`
-	OrderNumber string     `json:"orderNumber"`
-	Items       []PlanItem `json:"items"`
+	SupplierID  int64             `json:"supplierId"`
+	OrderNumber string            `json:"orderNumber"`
+	Items       []PlanItem        `json:"items"`
 }
 
 type PlanItem struct {
@@ -306,10 +307,10 @@ type Recommendation struct {
 	SabyID           string     `json:"sabyId"`
 	Name             string     `json:"name"`
 	SupplierArticle  string     `json:"supplierArticle"`
-	DutchName       string     `json:"dutchName"`
-	PotDiameterCM   *float64   `json:"potDiameterCm,omitempty"`
-	HeightCM        *float64   `json:"heightCm,omitempty"`
-	LastUnitPrice   *float64   `json:"lastUnitPrice,omitempty"`
+	DutchName        string     `json:"dutchName"`
+	PotDiameterCM    *float64   `json:"potDiameterCm,omitempty"`
+	HeightCM         *float64   `json:"heightCm,omitempty"`
+	LastUnitPrice    *float64   `json:"lastUnitPrice,omitempty"`
 	Availability     string     `json:"availability"`
 	Balance          int        `json:"balance"`
 	Incoming         int        `json:"incoming"`
@@ -350,6 +351,39 @@ type SalesSyncStatus struct {
 	PeriodFrom    string     `json:"periodFrom"`
 	PeriodTo      string     `json:"periodTo"`
 	LatestSale    string     `json:"latestSale"`
+	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
+	NextDeepAt    *time.Time `json:"nextDeepAt,omitempty"`
+	Mode          string     `json:"mode,omitempty"`
+	Freshness     string     `json:"freshness"`
+}
+
+type IntegrationSyncStatus struct {
+	Channel             string     `json:"channel"`
+	Resource            string     `json:"resource"`
+	Status              string     `json:"status"`
+	Priority            string     `json:"priority"`
+	RequestedGeneration int64      `json:"requestedGeneration"`
+	ActiveGeneration    int64      `json:"activeGeneration"`
+	CompletedGeneration int64      `json:"completedGeneration"`
+	LastAttemptAt       *time.Time `json:"lastAttemptAt,omitempty"`
+	LastSuccessAt       *time.Time `json:"lastSuccessAt,omitempty"`
+	NextAttemptAt       *time.Time `json:"nextAttemptAt,omitempty"`
+	NextDeepAt          *time.Time `json:"nextDeepAt,omitempty"`
+	CooldownUntil       *time.Time `json:"cooldownUntil,omitempty"`
+	PeriodFrom          string     `json:"periodFrom"`
+	PeriodTo            string     `json:"periodTo"`
+	LatestEventAt       *time.Time `json:"latestEventAt,omitempty"`
+	RowsSynced          int        `json:"rowsSynced"`
+	LastError           string     `json:"lastError"`
+}
+
+type SyncClaim struct {
+	Channel    string
+	Resource   string
+	Mode       string
+	Owner      string
+	Token      int64
+	Generation int64
 }
 
 type ProductDirectoryItem struct {
@@ -431,6 +465,8 @@ type ActionItem struct {
 	PreviewLines        []ActionPreviewLine `json:"previewLines,omitempty"`
 	Payload             json.RawMessage     `json:"-"`
 	Attempts            int                 `json:"-"`
+	LockOwner           string              `json:"-"`
+	LockToken           int64               `json:"-"`
 }
 
 // ActionPreviewLine exposes every line of one aggregate Saby document.
@@ -462,14 +498,17 @@ type ChannelProduct struct {
 // с каждой стороны и как они выглядят. Примеры берутся из артикулов и
 // штрихкодов, то есть из того, что и так печатается на ценнике.
 type ChannelLinkResult struct {
-	Channel        string   `json:"channel"`
-	Fetched        int      `json:"fetched"`
-	Linked         int      `json:"linked"`
-	Unmatched      int      `json:"unmatched"`
-	ChannelKeys    int      `json:"channelKeys"`
-	CatalogKeys    int      `json:"catalogKeys"`
-	ChannelSamples []string `json:"channelSamples"`
-	CatalogSamples []string `json:"catalogSamples"`
+	Channel        string     `json:"channel"`
+	Fetched        int        `json:"fetched"`
+	Linked         int        `json:"linked"`
+	Unmatched      int        `json:"unmatched"`
+	ChannelKeys    int        `json:"channelKeys"`
+	CatalogKeys    int        `json:"catalogKeys"`
+	ChannelSamples []string   `json:"channelSamples"`
+	CatalogSamples []string   `json:"catalogSamples"`
+	Queued         bool       `json:"queued"`
+	QueueStatus    string     `json:"queueStatus,omitempty"`
+	NextAttemptAt  *time.Time `json:"nextAttemptAt,omitempty"`
 }
 
 type IntegrationStatus struct {
@@ -503,11 +542,11 @@ type AliasReview struct {
 }
 
 type NomenclatureCandidate struct {
-	VariantID  int64   `json:"variantId"`
-	SabyID     string  `json:"sabyId"`
-	Code       string  `json:"code"`
-	Article    string  `json:"article"`
-	Name       string  `json:"name"`
+	VariantID      int64   `json:"variantId"`
+	SabyID         string  `json:"sabyId"`
+	Code           string  `json:"code"`
+	Article        string  `json:"article"`
+	Name           string  `json:"name"`
 	Balance        int     `json:"balance"`
 	Price          float64 `json:"price"`
 	TotalSales     int     `json:"totalSales"`

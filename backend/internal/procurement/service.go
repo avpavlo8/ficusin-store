@@ -33,8 +33,8 @@ type Store interface {
 	UpdateProduct(context.Context, Actor, ProductDirectoryUpdate) (ProductDirectoryItem, error)
 	PrepareBatch(context.Context, Actor, int64, string, []string) (ActionBatch, error)
 	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
-	ClaimAction(context.Context) (*ActionItem, error)
-	FinishAction(context.Context, int64, ActionExecution, error) error
+	ClaimAction(context.Context, string) (*ActionItem, error)
+	FinishAction(context.Context, int64, string, int64, ActionExecution, error) (bool, error)
 	RetryBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ListIntegrationHealth(context.Context) ([]IntegrationHealth, error)
 	RecordIntegrationCheck(context.Context, string, bool, error) (IntegrationHealth, error)
@@ -50,7 +50,7 @@ type Executor interface {
 // one request; claiming them together avoids seller-wide rate limits while the
 // base Store/Executor interfaces stay compatible with lightweight test stubs.
 type ActionGroupStore interface {
-	ClaimActionGroup(context.Context) ([]ActionItem, error)
+	ClaimActionGroup(context.Context, string) ([]ActionItem, error)
 }
 
 type ActionOutcome struct {
@@ -194,8 +194,8 @@ func (service *Service) CheckIntegration(ctx context.Context, actor Actor, chann
 }
 
 // SyncChannelCatalog связывает артикулы WB или Ozon с номенклатурой СБИС по
-// точному совпадению кода, артикула или штрихкода. WB читается только из
-// часового локального зеркала; Ozon пока загружается по этому ручному действию.
+// точному совпадению кода, артикула или штрихкода. HTTP-обработчик не читает
+// внешние API: Ozon/СБИС ставятся в общую очередь, WB читается из зеркала.
 //
 // Совпадение по названию сознательно не используется: «Фикус Бенджамина 12»
 // и «Фикус Бенджамина 14» — разные растения с разной ценой, и ошибочная
@@ -203,19 +203,18 @@ func (service *Service) CheckIntegration(ctx context.Context, actor Actor, chann
 func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, channel string) (ChannelLinkResult, error) {
 	channel = strings.TrimSpace(channel)
 	if channel == "saby" {
-		refresher, ok := service.executor.(SabyCatalogRefresher)
-		if service.executor == nil || !ok {
-			return ChannelLinkResult{}, errors.New("обновление справочника СБИС не поддерживается")
-		}
-		if !service.executor.Configured("saby") {
+		if service.executor == nil || !service.executor.Configured("saby") {
 			return ChannelLinkResult{}, errors.New("ключи СБИС не настроены")
 		}
-		result, err := refresher.RefreshSabyCatalog(ctx)
+		coordinator, ok := service.store.(IntegrationSyncCoordinator)
+		if !ok {
+			return ChannelLinkResult{}, errors.New("очередь синхронизации не поддерживается")
+		}
+		queued, err := coordinator.RequestIntegrationSync(ctx, channel, "catalog")
 		if err != nil {
 			return ChannelLinkResult{}, err
 		}
-		_ = actor // actor remains at the service boundary for the audit extension.
-		return result, nil
+		return ChannelLinkResult{Channel: channel, Queued: true, QueueStatus: queued.Status, NextAttemptAt: queued.NextAttemptAt}, nil
 	}
 	if !oneOf(channel, "wb", "ozon") {
 		return ChannelLinkResult{}, ErrInvalidInput
@@ -232,14 +231,20 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 			return ChannelLinkResult{}, &UserFacingError{Message: "Wildberries: локальное зеркало ещё не загрузилось; фоновая синхронизация повторится автоматически"}
 		}
 	} else {
-		source, ok := service.executor.(ChannelCatalogSource)
-		if service.executor == nil || !ok {
-			return ChannelLinkResult{}, errors.New("чтение справочника канала не поддерживается")
-		}
-		if !service.executor.Configured(channel) {
+		if service.executor == nil || !service.executor.Configured(channel) {
 			return ChannelLinkResult{}, errors.New("ключи канала не настроены")
 		}
-		items, err = source.FetchCatalog(ctx, channel)
+		cache, ok := service.store.(ChannelCatalogCache)
+		if !ok {
+			return ChannelLinkResult{}, errors.New("локальное зеркало канала не поддерживается")
+		}
+		items, err = cache.CachedChannelProducts(ctx, channel)
+		if coordinator, ok := service.store.(IntegrationSyncCoordinator); ok {
+			_, queueErr := coordinator.RequestIntegrationSync(ctx, channel, "catalog")
+			if queueErr != nil {
+				return ChannelLinkResult{}, queueErr
+			}
+		}
 	}
 	if err != nil {
 		return ChannelLinkResult{}, err
@@ -254,6 +259,10 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 	// уже сделанное связывание артикулов.
 	if remember, able := service.store.(SalesLinkStore); able {
 		_ = remember.RememberChannelProducts(ctx, channel, items)
+	}
+	if channel == "ozon" {
+		result.Queued = true
+		result.QueueStatus = "queued"
 	}
 	return result, nil
 }
@@ -560,27 +569,27 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 	if kind == "prices" && len(selected) == 0 {
 		return ActionBatch{}, ErrInvalidInput
 	}
-	// Ozon пока обновляет старую цену перед снимком. Wildberries намеренно
-	// отсутствует: карточки и цены раз в час кладёт в PostgreSQL единственный
-	// WBMirrorWorker, а пользовательские операции читают только это зеркало.
+	// Price preview is a database snapshot. Ozon and WB catalogue workers own
+	// external reads; opening a batch must never create a competing export.
 	if kind == "prices" {
-		source, canRead := service.executor.(ChannelCatalogSource)
-		remember, canRemember := service.store.(interface {
-			RememberChannelProducts(context.Context, string, []ChannelProduct) error
-		})
+		_, coordinated := service.store.(IntegrationSyncCoordinator)
 		for _, channel := range selected {
-			if channel != "ozon" {
+			if !coordinated {
+				break
+			}
+			if channel != "ozon" && channel != "wb" {
 				continue
 			}
-			if service.executor == nil || !service.executor.Configured(channel) || !canRead || !canRemember {
-				return ActionBatch{}, &UserFacingError{Message: channelDisplayName(channel) + ": подключение не настроено, текущую цену получить нельзя"}
+			cache, ok := service.store.(ChannelCatalogCache)
+			if !ok {
+				return ActionBatch{}, errors.New("локальное зеркало цен не поддерживается")
 			}
-			items, err := source.FetchCatalog(ctx, channel)
+			items, err := cache.CachedChannelProducts(ctx, channel)
 			if err != nil {
-				return ActionBatch{}, &UserFacingError{Message: fmt.Sprintf("%s: не удалось получить карточки и текущие цены: %v", channelDisplayName(channel), err)}
+				return ActionBatch{}, err
 			}
-			if err := remember.RememberChannelProducts(ctx, channel, items); err != nil {
-				return ActionBatch{}, fmt.Errorf("%s: сохранить текущие цены: %w", channelDisplayName(channel), err)
+			if len(items) == 0 {
+				return ActionBatch{}, &UserFacingError{Message: channelDisplayName(channel) + ": локальное зеркало ещё не загружено; обновление уже выполняется общей очередью"}
 			}
 		}
 	}

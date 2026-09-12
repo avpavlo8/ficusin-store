@@ -311,14 +311,21 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 
 func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatus, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT state.channel, state.status, state.last_attempt_at, state.last_success_at,
+		SELECT state.channel, COALESCE(sync.status,state.status),
+			COALESCE(sync.last_attempt_at,state.last_attempt_at), COALESCE(sync.last_success_at,state.last_success_at),
 			state.last_error, state.rows_synced, COALESCE(state.period_from::TEXT, ''),
 			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, ''),
-			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER
+			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER,
+			sync.next_attempt_at,sync.next_deep_at,
+			CASE WHEN sync.next_deep_at<=CURRENT_TIMESTAMP THEN 'deep' ELSE 'current' END,
+			CASE WHEN COALESCE(sync.last_success_at,state.last_success_at) IS NULL OR MAX(sale.sale_date) IS NULL THEN 'unknown'
+				WHEN MAX(sale.sale_date)<CURRENT_DATE-INTERVAL '30 days' THEN 'stale' ELSE 'fresh' END
 		FROM procurement_sales_sync_state state
 		LEFT JOIN procurement_sales_daily sale ON sale.channel = state.channel
+		LEFT JOIN procurement_integration_sync_state sync ON sync.channel=state.channel AND sync.resource='sales'
 		GROUP BY state.channel, state.status, state.last_attempt_at, state.last_success_at,
-			state.last_error, state.rows_synced, state.period_from, state.period_to
+			state.last_error, state.rows_synced, state.period_from, state.period_to,
+			sync.status,sync.last_attempt_at,sync.last_success_at,sync.next_attempt_at,sync.next_deep_at
 		ORDER BY CASE state.channel WHEN 'saby' THEN 0 WHEN 'site' THEN 1 WHEN 'wb' THEN 2 ELSE 3 END
 	`)
 	if err != nil {
@@ -330,7 +337,7 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 		var item SalesSyncStatus
 		if err := rows.Scan(&item.Channel, &item.Status, &item.LastAttemptAt, &item.LastSuccessAt,
 			&item.LastError, &item.RowsSynced, &item.PeriodFrom, &item.PeriodTo, &item.LatestSale,
-			&item.RowsLinked); err != nil {
+			&item.RowsLinked, &item.NextAttemptAt, &item.NextDeepAt, &item.Mode, &item.Freshness); err != nil {
 			return nil, fmt.Errorf("scan sales synchronization state: %w", err)
 		}
 		items = append(items, item)
@@ -579,7 +586,7 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	if input.MatchStatus == "confirmed" {
 		if err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
-			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err,pgx.ErrNoRows) {
+			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
 		}
 		if canonicalVariantID == 0 {
