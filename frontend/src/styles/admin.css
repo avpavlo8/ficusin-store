@@ -304,6 +304,14 @@
 
 /* catalog-v2 collection rules and SKU media */
 .collection-editor-v2 { display: grid; gap: 18px; }
+.collection-create-card { margin: 0 0 18px; padding: 20px; display: grid; gap: 14px; border: 1px solid #d6c8b7; border-radius: 18px; background: #fffaf3; box-shadow: 0 12px 30px rgba(70,52,34,.07); }
+.collection-create-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.collection-create-card h3 { margin: 2px 0 0; color: #294326; font: 600 24px Georgia,serif; }
+.admin-collection-row { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: stretch; }
+.admin-collection[draggable="true"] { cursor: grab; }.admin-collection.dragging { opacity: .55; cursor: grabbing; }
+.collection-order-buttons { padding: 8px 0 8px 8px; display: grid; gap: 4px; }
+.collection-order-buttons button { width: 30px; border: 1px solid #d9cbb8; border-radius: 8px; background: #fffaf3; color: #294326; cursor: pointer; }
+.collection-order-buttons button:disabled { opacity: .32; cursor: default; }
 .collection-rules { display: grid; gap: 12px; }
 .collection-rule-row { display: grid; grid-template-columns: minmax(190px, 1.4fr) minmax(130px, .8fr) minmax(160px, 1fr) auto; gap: 8px; align-items: center; }
 .admin-collection-preview { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--line, #d9ddd6); border-radius: 12px; }
@@ -320,7 +328,18 @@
 .variant-media-grid article { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line, #d9ddd6); border-radius: 12px; }
 .variant-media-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
 .variant-media-grid article > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-@media (max-width: 760px) { .collection-rule-row, .collection-cover-editor { grid-template-columns: 1fr; } .admin-collection-thumb { width: 58px; height: 44px; } }
+.product-relationships { display: grid; gap: 16px; }
+.relationship-summary,.relationship-sales { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.relationship-summary article,.relationship-sales article { padding: 15px; display: grid; gap: 4px; border: 1px solid #dfd4c6; border-radius: 14px; background: #faf5ed; }
+.relationship-summary strong { color: #294326; font: 600 28px Georgia,serif; }
+.product-relationships>section { padding: 18px; border: 1px solid #e2d7c9; border-radius: 17px; background: #fff; }
+.product-relationships>section>header { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.product-relationships h4,.product-relationships p { margin: 0; }.product-relationships header p { margin-top: 4px; color: #817567; font-size: 12px; }
+.relationship-list { display: grid; gap: 7px; }.relationship-list article { padding: 10px; display: grid; grid-template-columns: 58px minmax(0,1fr) auto; align-items: center; gap: 10px; border-radius: 12px; background: #f8f6f1; }
+.relationship-list article>div { display: grid; gap: 2px; }.relationship-list small { color: #817567; }.relationship-list article>b { color: #42633d; font-size: 11px; }.relationship-list.legacy { margin-top: 10px; opacity: .7; }
+.channel-mark { padding: 6px; overflow: hidden; border-radius: 8px; background: #e4eadf; color: #294326; font-size: 10px; font-weight: 900; text-align: center; text-transform: uppercase; }.channel-mark.supplier { background: #f1dfc7; }
+.product-relationships details { margin-top: 12px; }.product-relationships summary { color: #6e655b; cursor: pointer; font-size: 12px; }
+@media (max-width: 760px) { .collection-rule-row, .collection-cover-editor,.relationship-summary,.relationship-sales { grid-template-columns: 1fr; } .admin-collection-thumb { width: 58px; height: 44px; } .collection-create-card { padding: 14px; } .relationship-list article { grid-template-columns: 48px minmax(0,1fr); }.relationship-list article>b { grid-column:2; } }
 
 /* PIM and collection editors must remain usable inside the narrow admin canvas. */
 .admin-pim, .pim-schema, .pim-filters, .collection-editor-v2 { min-width: 0; }

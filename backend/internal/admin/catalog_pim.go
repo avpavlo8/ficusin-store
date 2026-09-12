@@ -225,7 +225,7 @@ func (repository *PostgresRepository) UpdateAttributeDefinition(ctx context.Cont
 	if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM product_attribute_values WHERE attribute_id=$1 UNION ALL SELECT 1 FROM variant_attribute_values WHERE attribute_id=$1)`,id).Scan(&hasValues);err!=nil{return AttributeDefinition{},err}
 	usedByCollection:=false
 	if oldCode!=strings.ToLower(strings.TrimSpace(input.Code)) {
-		if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM collection_definitions WHERE rules @> jsonb_build_array(jsonb_build_object('attribute',$1)))`,oldCode).Scan(&usedByCollection);err!=nil{return AttributeDefinition{},err}
+		if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM collections WHERE rules @> jsonb_build_array(jsonb_build_object('attribute',$1)))`,oldCode).Scan(&usedByCollection);err!=nil{return AttributeDefinition{},err}
 	}
 	if err=validateAttributeDefinitionChange(oldCode,oldDataType,oldScope,input,hasValues,usedByCollection);err!=nil{return AttributeDefinition{},err}
 	// code, тип и уровень — контракт. Правила динамических подборок ссылаются
@@ -342,10 +342,13 @@ func (repository *PostgresRepository) ListProductVariants(ctx context.Context, p
 
 func validateVariantInput(input VariantInput) error { if strings.TrimSpace(input.Label)==""{return fmt.Errorf("%w: название варианта обязательно",ErrInvalidInput)};if input.PriceMinor<0||input.Stock<0||input.WholesaleMinQty<1{return fmt.Errorf("%w: неверная цена, остаток или минимальное количество",ErrInvalidInput)};return nil }
 
+func validatePackageMeasurement(code string,value any) error { if code!="package_length_cm"&&code!="package_width_cm"&&code!="package_height_cm"&&code!="package_weight_grams"{return nil};number,ok:=value.(float64);if !ok{if integer,integerOK:=value.(int);integerOK{number=float64(integer);ok=true}};if !ok||number<=0{return fmt.Errorf("%w: размеры и вес упаковки должны быть больше нуля",ErrInvalidInput)};return nil }
+
 func saveVariantPIMValues(ctx context.Context, tx pgx.Tx, productID,variantID int64, values map[string]any) error {
 	for code,value:=range values{
 		code=strings.TrimSpace(code);if code==""{continue};raw,err:=json.Marshal(value);if err!=nil{return err}
 		if string(raw)=="null"||string(raw)==`""`||string(raw)=="[]"{if _,err:=tx.Exec(ctx,`DELETE FROM variant_attribute_values v USING attribute_definitions d WHERE v.attribute_id=d.id AND v.variant_id=$1 AND d.code=$2`,variantID,code);err!=nil{return err};continue}
+		if err:=validatePackageMeasurement(code,value);err!=nil{return err}
 		tag,err:=tx.Exec(ctx,`
 			WITH RECURSIVE ancestors AS (
 				SELECT c.id,c.parent_id,0 depth FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=$1

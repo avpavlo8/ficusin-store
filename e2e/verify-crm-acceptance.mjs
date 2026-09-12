@@ -24,6 +24,8 @@ try {
   const product = products.find(p=>p.slug==='crm-acceptance-ficus');expect(product).toBeTruthy();
   const variants=(await (await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants;
   const variant=variants[0];expect(variant).toBeTruthy();
+  const relationshipsResponse=await api.get(`/api/v1/admin/products/${product.id}/relationships`);expect(relationshipsResponse.status()).toBe(200);
+  const relationships=(await relationshipsResponse.json()).relationships;expect(Array.isArray(relationships.mappings)).toBeTruthy();expect(Array.isArray(relationships.suppliers)).toBeTruthy();
   const beforeMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(beforeMedia.length).toBe(2);
   if(role==='manager') {
@@ -40,6 +42,17 @@ try {
   expect(edit.status(),await edit.text()).toBe(200);
   const afterMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(afterMedia).toEqual(beforeMedia);
+  const emptyCollection=await api.post('/api/v1/admin/collection-definitions',{data:{slug:`crm-empty-${role}`,title:'Пустая',coverUrl:'',mode:'manual',rules:[]}});expect(emptyCollection.status()).toBe(400);
+  await page.goto('/admin?section=collections');await expect(page.getByRole('heading',{name:'Подборки',exact:true})).toBeVisible();
+  const collectionCountBefore=((await (await api.get('/api/v1/admin/collection-definitions')).json()).collections||[]).length;
+  await page.getByRole('button',{name:'Новая подборка',exact:true}).click();
+  expect(((await (await api.get('/api/v1/admin/collection-definitions')).json()).collections||[]).length).toBe(collectionCountBefore);
+  const collectionTitle=`CRM подборка ${role}`;await page.getByLabel('Название',{exact:true}).fill(collectionTitle);await page.getByLabel('Slug',{exact:true}).fill(`crm-stage-03-${role}`);await page.getByLabel('Адрес изображения',{exact:true}).fill('/assets/hero-monstera.webp');await page.getByLabel('Показывать после создания',{exact:false}).check();await page.getByRole('button',{name:'Создать подборку',exact:true}).click();
+  await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();
+  const createdCollections=(await (await api.get('/api/v1/admin/collection-definitions')).json()).collections;const createdCollection=createdCollections.find(item=>item.slug===`crm-stage-03-${role}`);expect(createdCollection.coverUrl).toBe('/assets/hero-monstera.webp');
+  const memberResponse=await api.patch(`/api/v1/admin/collections/${createdCollection.id}`,{data:{products:[product.id]}});expect(memberResponse.status()).toBe(200);
+  await page.reload();await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();await page.screenshot({path:`${out}/${role}-collections-1440.png`,fullPage:true});
+  await page.goto('/');await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();
   for(const width of [1440,390]) {
    await page.setViewportSize({width,height:1000});
    await page.goto('/admin?section=orders');
