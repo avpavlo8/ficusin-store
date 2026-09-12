@@ -16,6 +16,13 @@ type collectionDefinitionRepository interface {
 	DeleteCollectionDefinition(context.Context, admin.Actor, int64) error
 }
 
+type collectionOrderRepository interface { ReorderCollectionDefinitions(context.Context,admin.Actor,[]int64)([]admin.CollectionDefinition,error) }
+type collectionOrderInput struct { IDs []int64 `json:"ids"` }
+
+func collectionDefinitionsOrderHandler(adminAPI adminHandlers) http.HandlerFunc { return func(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=adminAPI.authorize(response,request,admin.PermissionProductsEdit);if !ok{return};provider,ok:=adminAPI.repository.(collectionOrderRepository);if !ok{adminAPI.failed(response,"collection definitions unavailable",errors.New("collection definitions unavailable"));return};var input collectionOrderInput;if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный порядок"});return};items,err:=provider.ReorderCollectionDefinitions(request.Context(),actor,input.IDs);if errors.Is(err,admin.ErrInvalidInput){writeJSON(response,http.StatusBadRequest,errorResponse{Error:err.Error()});return};if err!=nil{adminAPI.failed(response,"reorder collection definitions",err);return};writeJSON(response,http.StatusOK,map[string]any{"collections":items})
+} }
+
 func collectionDefinitionsHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)

@@ -12,7 +12,7 @@ INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_m
 SELECT 'CRM-CHECK-01',id,'Клиент проверки','+70000000901','crm-owner@example.invalid','pickup',0,2490,2490,'new'
 FROM customers WHERE email='crm-owner@example.invalid';
 INSERT INTO products(name,slug,status,category_id)
-SELECT 'Фикус для проверки CRM','crm-acceptance-ficus','draft',id FROM categories WHERE slug='plants';
+SELECT 'Фикус для проверки CRM','crm-acceptance-ficus','published',id FROM categories WHERE slug='plants';
 INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active)
 SELECT id,'99999101','D12',249000,0 FROM products WHERE slug='crm-acceptance-ficus';
 INSERT INTO product_media(product_id,object_key,sort_order,is_primary)

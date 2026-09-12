@@ -25,13 +25,15 @@ export function AttributeFields({ schema, values, onChange, onGenerate, busy }: 
     }
     return <label className="attribute-control" key={attribute.code}><span>{title}{ai}</span><input aria-label={title} type={attribute.dataType === "number" ? "number" : "text"} min={attribute.dataType === "number" ? 0 : undefined} required={attribute.required} value={value == null ? "" : String(value)} onChange={(event) => onChange(attribute.code, event.target.value === "" ? null : attribute.dataType === "number" ? Number(event.target.value) : event.target.value)} /></label>;
   };
-  const simple = schema.filter((item) => item.dataType !== "boolean" && item.dataType !== "multi_enum");
-  const choices = schema.filter((item) => item.dataType === "multi_enum");
-  const toggles = schema.filter((item) => item.dataType === "boolean");
+  const group = (attribute: CategoryAttribute) => {
+    if (/^(package_|shipping_)/.test(attribute.code)) return "Упаковка и логистика";
+    if (/(height|width|length|diameter|pot|size)/.test(attribute.code)) return "Размеры растения";
+    if (/(light|water|care|humidity|temperature|soil|pet|toxic|growth)/.test(attribute.code)) return "Уход";
+    return "Характеристики";
+  };
+  const groups = ["Уход", "Размеры растения", "Упаковка и логистика", "Характеристики"].map((title) => ({ title, items: schema.filter((item) => group(item) === title) })).filter((item) => item.items.length > 0);
   return <div className="attribute-groups">
-    {simple.length > 0 && <div className="attribute-group"><h4>Значения</h4><div className="attribute-control-grid">{simple.map(field)}</div></div>}
-    {choices.length > 0 && <div className="attribute-group"><h4>Подходящие варианты</h4>{choices.map(field)}</div>}
-    {toggles.length > 0 && <div className="attribute-group"><h4>Особенности</h4><div className="attribute-toggle-grid">{toggles.map(field)}</div></div>}
+    {groups.map(({ title, items }) => <div className="attribute-group" key={title}><h4>{title}</h4><div className="attribute-control-grid">{items.map(field)}</div></div>)}
   </div>;
 }
 
@@ -65,7 +67,21 @@ function missingRequired(schema: CategoryAttribute[], values: Record<string, unk
   return schema.filter((item) => item.required && (values[item.code] == null || values[item.code] === "" || (Array.isArray(values[item.code]) && (values[item.code] as unknown[]).length === 0))).map((item) => item.name);
 }
 
-type ProductEditorSection = "main" | "attributes" | "care" | "variants" | "photos" | "sync";
+type ProductEditorSection = "main" | "attributes" | "care" | "variants" | "relationships" | "photos" | "sync";
+type ProductRelationships = { mappings:Array<{variantId:number;sku:string;provider:string;type:string;externalId:string;status:string}>;suppliers:Array<{id:number;name:string;article:string;availability:string}>;sales:Array<{channel:string;units:number;gross:number}> };
+
+function ProductRelationshipsPanel({ productId, owner, onEdit, onError }: { productId:number;owner:boolean;onEdit:()=>void;onError:(value:string)=>void }) {
+  const [data,setData]=useState<ProductRelationships|null>(null);
+  useEffect(()=>{let active=true;api<{relationships:ProductRelationships}>(`/api/v1/admin/products/${productId}/relationships`).then((result)=>{if(active)setData(result.relationships)}).catch((error)=>onError(error.message));return()=>{active=false};},[productId,onError]);
+  if(!data)return <p className="editor-empty">Загружаем связи…</p>;
+  const activeMappings=data.mappings.filter((item)=>item.status==="active"),legacyMappings=data.mappings.filter((item)=>item.status!=="active");
+  return <div className="product-relationships">
+    <div className="relationship-summary"><article><small>Активные карточки</small><strong>{activeMappings.length}</strong></article><article><small>Поставщики</small><strong>{data.suppliers.length}</strong></article><article><small>Продажи за 60 дней</small><strong>{data.sales.reduce((sum,item)=>sum+item.units,0)}</strong></article></div>
+    <section><header><div><h4>СБИС и каналы продаж</h4><p>Каждая строка привязана к конкретному SKU. Отсутствующий необязательный канал не считается ошибкой.</p></div>{owner&&<button type="button" className="admin-action" onClick={onEdit}>Изменить связи SKU</button>}</header>{activeMappings.length?<div className="relationship-list">{activeMappings.map((item)=><article key={`${item.variantId}:${item.provider}:${item.type}:${item.externalId}`}><span className={`channel-mark ${item.provider}`}>{item.provider}</span><div><strong>{item.externalId}</strong><small>SKU {item.sku} · {item.type}</small></div><b>Связано</b></article>)}</div>:<p className="admin-hint">Активных внешних карточек пока нет.</p>}{legacyMappings.length>0&&<details><summary>История прежних связей ({legacyMappings.length})</summary><div className="relationship-list legacy">{legacyMappings.map((item)=><article key={`${item.variantId}:${item.provider}:${item.type}:${item.externalId}`}><span className="channel-mark">{item.provider}</span><div><strong>{item.externalId}</strong><small>SKU {item.sku} · сохранено для истории</small></div></article>)}</div></details>}</section>
+    <section><header><div><h4>Поставщики</h4><p>У одного товара может быть несколько поставщиков и отдельные предложения для разных горшков.</p></div></header>{data.suppliers.length?<div className="relationship-list">{data.suppliers.map((item)=><article key={`${item.id}:${item.article}`}><span className="channel-mark supplier">П</span><div><strong>{item.name}</strong><small>{item.article||"Артикул поставщика не указан"}</small></div><b>{item.availability}</b></article>)}</div>:<p className="admin-hint">Связанные предложения поставщиков ещё не подтверждены.</p>}</section>
+    <section><header><div><h4>Продажи по каналам</h4><p>Сводка за последние 60 дней; непривязанные продажи остаются в очереди сверки.</p></div></header>{data.sales.length?<div className="relationship-sales">{data.sales.map((item)=><article key={item.channel}><b>{item.channel}</b><strong>{item.units} шт.</strong><span>{money.format(item.gross)}</span></article>)}</div>:<p className="admin-hint">За период связанных продаж нет.</p>}</section>
+  </div>;
+}
 type ProductAIMode = "description" | "attributes" | "care";
 type AIDraft = { name?:string; latinName?:string; shortDescription?:string; description?:string; careInstructions?:string; attributes?:Record<string,unknown>; passport?:Product["passport"]; warnings?:string[] };
 const passportFields = [
@@ -118,7 +134,7 @@ export function ProductDialog({ owner = false, product, onClose, onSaved, onErro
   const generateCover=async()=>{if(!owner||!plant||aiCoverBusy)return;const identity=[form.name,form.latinName].filter(Boolean).join(" / ");const prompt=`Photorealistic premium e-commerce product photo of one botanically accurate ${identity}. The complete plant and pot are fully visible and centered, with generous margins. Simple matte warm ivory or light beige ceramic pot, no logo. Seamless warm creamy beige studio background (#F4EBDD), soft diffused daylight from upper left, subtle natural floor shadow. Clean quiet Ficusin catalogue style, realistic leaf texture and true cultivar colors. No room interior, no furniture, no props, no text, no label, no badge, no hands, no people, no extra plants, no decorative stones. Square 1:1 composition.`;setAICoverBusy(true);try{const result=await api<{url:string}>(`/api/v1/admin/products/${product.id}/ai-cover`,{method:"POST",body:JSON.stringify({prompt})});showProposal({image:result.url});}catch(error){onError((error as Error).message);}finally{setAICoverBusy(false);}};
   const sections: Array<{id:ProductEditorSection;label:string}> = [
     {id:"main",label:"Основное"},{id:"attributes",label:"Характеристики"},...(plant?[{id:"care" as ProductEditorSection,label:"Уход и FAQ"}]:[]),
-    {id:"variants",label:"Варианты"},{id:"photos",label:"Фотографии"},{id:"sync",label:"SEO / публикация"},
+    {id:"variants",label:"Варианты"},{id:"relationships",label:"Связи и продажи"},{id:"photos",label:"Фотографии"},{id:"sync",label:"SEO / публикация"},
   ];
   const changeCategory = async (categoryId?: number) => { if (categoryId === form.categoryId) return; let nextSchema: CategoryAttribute[] = []; if (categoryId) { try { nextSchema = (await api<{attributes:CategoryAttribute[]}>(`/api/v1/admin/categories/${categoryId}/attributes`)).attributes || []; } catch (error) { onError((error as Error).message); return; } } const visible = new Set(nextSchema.map((item)=>item.code)); const hidden = schema.filter((item)=>!visible.has(item.code)&&!valueMissing(form.attributes?.[item.code])).map((item)=>item.name); if (hidden.length && !window.confirm(`После смены категории перестанут отображаться: ${hidden.join(", ")}. Значения не удалятся. Продолжить?`)) return; const rootSlug = (()=>{let c=categories.find((item)=>item.id===categoryId);while(c?.parentId)c=categories.find((item)=>item.id===c?.parentId);return c?.slug;})(); setSchema(nextSchema); setForm({...form,categoryId,catalogSection:rootSlug||form.catalogSection}); if(rootSlug!=="plants"&&section==="care")setSection("attributes"); };
   const applyPreview = () => { if (!aiPreview) return; const conflicts = aiPreview.candidates.filter((item)=>item.conflict&&aiPreview.selected.has(item.path)); if (conflicts.length && !window.confirm(`Заменить вручную заполненные поля: ${conflicts.map((item)=>item.label).join(", ")}?`)) return; setForm(applyAICandidates(form,aiPreview.candidates,aiPreview.selected)); setAIPreview(null); };
@@ -149,6 +165,7 @@ export function ProductDialog({ owner = false, product, onClose, onSaved, onErro
           <label className="wide"><span>Важные предупреждения {aiField("care","warnings")}</span><small>До четырёх, каждое с новой строки</small><textarea rows={4} value={(form.importantWarnings||[]).join("\n")} onChange={(event)=>setForm({...form,importantWarnings:event.target.value.split("\n").map((item)=>item.trim()).filter(Boolean).slice(0,4)})}/></label>
         </div></section>}
         {section==="variants"&&<section className="editor-section"><header><div><p>Продажа</p><h3>Размеры и SKU</h3></div><span>Цена, остаток и габариты каждого варианта</span></header><VariantsEditor owner={owner} productId={product.id} categoryId={form.categoryId} onError={onError}/></section>}
+        {section==="relationships"&&<section className="editor-section"><header><div><p>Единая карточка</p><h3>Связи и продажи</h3></div><span>СБИС, маркетплейсы и поставщики по каждому SKU</span></header><ProductRelationshipsPanel productId={product.id} owner={owner} onEdit={()=>setSection("variants")} onError={onError}/></section>}
         {section==="photos"&&<section className="editor-section"><header><div><p>Медиа</p><h3>Фотографии товара</h3></div><span>Общая галерея PRODUCT; фото SKU остаются внутри варианта</span></header><ProductMediaManager canDelete={owner} productId={product.id} onError={onError}/></section>}
         {section==="sync"&&<section className="editor-section"><header><div><p>Управление</p><h3>Публикация и синхронизация</h3></div><span>Что показываем и что разрешаем менять СБИС</span></header><div className="admin-form-grid product-form">
           <label>Статус<select value={form.status} onChange={(event)=>setForm({...form,status:event.target.value})}><option value="draft">Черновик</option><option value="published">Опубликован</option>{owner && <option value="archived">Архив</option>}</select></label>

@@ -103,6 +103,7 @@ func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Cont
 func (repository *PostgresRepository) CreateCollectionDefinition(ctx context.Context, actor Actor, input CollectionDefinitionInput) (CollectionDefinition, error) {
 	if !Can(actor.Role, PermissionProductsEdit) { return CollectionDefinition{}, ErrForbidden }
 	if err := validateCollectionDefinition(&input); err != nil { return CollectionDefinition{}, err }
+	if input.CoverURL == "" { return CollectionDefinition{}, fmt.Errorf("%w: добавьте обложку подборки", ErrInvalidInput) }
 	raw, _ := json.Marshal(input.Rules)
 	var id int64
 	if err := repository.pool.QueryRow(ctx, `
@@ -115,6 +116,15 @@ func (repository *PostgresRepository) CreateCollectionDefinition(ctx context.Con
 	if err != nil { return CollectionDefinition{}, err }
 	for _, item := range items { if item.ID == id { return item, nil } }
 	return CollectionDefinition{}, pgx.ErrNoRows
+}
+
+// ReorderCollectionDefinitions saves the complete visible order atomically.
+func (repository *PostgresRepository) ReorderCollectionDefinitions(ctx context.Context, actor Actor, ids []int64) ([]CollectionDefinition, error) {
+	if !Can(actor.Role, PermissionProductsEdit) { return nil, ErrForbidden }
+	if len(ids)==0 { return nil,fmt.Errorf("%w: порядок подборок пуст",ErrInvalidInput) };seen:=map[int64]bool{};for _,id:=range ids{if id<=0||seen[id]{return nil,fmt.Errorf("%w: некорректный порядок подборок",ErrInvalidInput)};seen[id]=true}
+	tx,err:=repository.pool.Begin(ctx);if err!=nil{return nil,err};defer func(){_ = tx.Rollback(ctx)}();var total int;if err=tx.QueryRow(ctx,`SELECT COUNT(*) FROM collections`).Scan(&total);err!=nil{return nil,err};if total!=len(ids){return nil,fmt.Errorf("%w: передайте все подборки",ErrInvalidInput)}
+	for index,id:=range ids{tag,updateErr:=tx.Exec(ctx,`UPDATE collections SET sort_order=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,(index+1)*10);if updateErr!=nil{return nil,fmt.Errorf("reorder collections: %w",updateErr)};if tag.RowsAffected()!=1{return nil,fmt.Errorf("%w: подборка не найдена",ErrInvalidInput)}}
+	if err=tx.Commit(ctx);err!=nil{return nil,err};return repository.ListCollectionDefinitions(ctx)
 }
 
 func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Context, actor Actor, id int64, input CollectionDefinitionInput) (CollectionDefinition, error) {
