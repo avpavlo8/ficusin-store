@@ -55,7 +55,7 @@ func TestStage06PlanAndInvoiceRevisionsOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO procurement_supplier_aliases(supplier_id,raw_name,normalized_name,supplier_article,
-		matched_saby_id,match_status,pot_diameter_cm,height_cm) VALUES($1,'Ficus invoice','ficus invoice','',$2,'confirmed',12,35)`, supplierID, ficusID); err != nil {
+		matched_saby_id,match_status) VALUES($1,'Ficus invoice','ficus invoice','',$2,'confirmed')`, supplierID, ficusID); err != nil {
 		t.Fatal(err)
 	}
 
