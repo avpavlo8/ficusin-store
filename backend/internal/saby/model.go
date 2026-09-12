@@ -35,12 +35,18 @@ type CatalogBarcode struct {
 }
 
 type SalesItem struct {
-	Date     string  `json:"date"`
-	SabyID   string  `json:"sabyId"`
-	Article  string  `json:"article"`
-	Name     string  `json:"name"`
-	Units    int     `json:"units"`
-	GrossRUB float64 `json:"grossRub"`
+	Date             string  `json:"date"`
+	SabyID           string  `json:"sabyId"`
+	Article          string  `json:"article"`
+	Name             string  `json:"name"`
+	Units            int     `json:"units"`
+	GrossRUB         float64 `json:"grossRub"`
+	SourceEventID    string  `json:"sourceEventId"`
+	SourceDocumentID string  `json:"sourceDocumentId"`
+	SourceLineID     string  `json:"sourceLineId"`
+	CrossSourceKey   string  `json:"crossSourceKey"`
+	EventType        string  `json:"eventType"`
+	EventStatus      string  `json:"eventStatus"`
 }
 
 type SalesUpload struct {

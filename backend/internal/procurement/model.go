@@ -333,11 +333,17 @@ type Recommendation struct {
 }
 
 type SalesRecord struct {
-	Date       time.Time
-	ExternalID string
-	SabyID     string
-	Units      int
-	GrossRUB   float64
+	Date             time.Time
+	ExternalID       string
+	SabyID           string
+	Units            int
+	GrossRUB         float64
+	SourceEventID    string
+	SourceDocumentID string
+	SourceLineID     string
+	CrossSourceKey   string
+	EventType        string
+	EventStatus      string
 }
 
 type SalesSyncStatus struct {
