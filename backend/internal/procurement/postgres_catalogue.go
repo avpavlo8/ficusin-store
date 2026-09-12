@@ -758,7 +758,7 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			invoice_excluded = CASE WHEN $14 THEN $15 ELSE invoice_excluded END,
 			invoice_exclusion_reason = CASE WHEN $14 THEN CASE WHEN $15 THEN $16 ELSE '' END ELSE invoice_exclusion_reason END,
 			invoice_excluded_at = CASE WHEN $14 THEN CASE WHEN $15 THEN CURRENT_TIMESTAMP ELSE NULL END ELSE invoice_excluded_at END,
-			invoice_excluded_by = CASE WHEN $14 THEN CASE WHEN $15 THEN $17 ELSE NULL END ELSE invoice_excluded_by END,
+			invoice_excluded_by = CASE WHEN $14 THEN CASE WHEN $15 THEN $17::BIGINT ELSE NULL END ELSE invoice_excluded_by END,
 			reconciliation_status = CASE WHEN $14 THEN CASE WHEN $15 THEN 'excluded'
 				WHEN procurement_document_id IS NULL THEN 'missing'
 				WHEN ordered_qty=0 THEN 'added'
