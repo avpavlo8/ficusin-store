@@ -22,9 +22,10 @@ const (
 
 type recommendationInput struct {
 	Recommendation
-	AvailabilityStatus string
-	Excluded           bool
-	ExclusionReason    string
+	AvailabilityStatus   string
+	Excluded             bool
+	ExclusionReason      string
+	BalanceStateProvided bool
 }
 
 // calculateRecommendation считает потребность и раскладывает товар по
@@ -41,6 +42,9 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 	item.WBSales = max(0, item.WBSales)
 	item.OzonSales = max(0, item.OzonSales)
 	item.TotalSales = item.SiteSales + item.SabySales + item.WBSales + item.OzonSales
+	if item.GrossSales == 0 && item.Returns == 0 {
+		item.GrossSales = item.TotalSales
+	}
 	item.OpenRequests = item.CustomerRequests + item.StaffRequests
 	if historyDays <= 0 {
 		return Recommendation{}, false
@@ -67,15 +71,18 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 	// арифметике дают 9.999999999999998, и округление вверх молча
 	// превращается то в 10, то в 11.
 	demand := (item.TotalSales*coverDays+historyDays-1)/historyDays + item.OpenRequests
+	item.DemandQty = demand
 	needBeforeIncoming := max(0, demand-max(0, item.Balance))
+	item.NeedBeforeIncoming = needBeforeIncoming
 
 	// Нулевой остаток без продаж и без заявок — это не рассчитанная
-	// потребность, а напоминание: растения нет ни на складе, ни в продаже.
-	// Просим минимальную партию.
-	if needBeforeIncoming == 0 && item.Balance <= 0 && item.TotalSales == 0 && item.OpenRequests == 0 {
+	// потребность, а напоминание. Количество должен задать закупщик: статистика
+	// объясняет отсутствие товара, но не позволяет честно вывести точную цифру.
+	manualQuantity := needBeforeIncoming == 0 && item.Balance <= 0 && item.TotalSales == 0 && item.OpenRequests == 0 && item.AllocatedRequests == 0
+	if manualQuantity {
 		needBeforeIncoming = 1
 	}
-	if needBeforeIncoming == 0 {
+	if needBeforeIncoming == 0 && item.AllocatedRequests == 0 {
 		return Recommendation{}, false
 	}
 
@@ -93,14 +100,32 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 		item.Reason = "Поставщик снял с продажи"
 		return item, true
 	}
+	if input.BalanceStateProvided && !item.BalanceKnown {
+		item.Status = RecommendationReady
+		item.QuantityKnown = false
+		item.Reason = "Остаток СБИС неизвестен; обновите справочник или задайте количество вручную"
+		return item, true
+	}
+	if needBeforeIncoming == 0 && item.Incoming > 0 && item.AllocatedRequests > 0 {
+		item.Status = RecommendationIncoming
+		item.Reason = fmt.Sprintf("В закупке распределено %d шт.; остатка заявки нет", item.AllocatedRequests)
+		return item, true
+	}
+	if manualQuantity {
+		item.Status = RecommendationReady
+		item.QuantityKnown = false
+		item.Reason = "Нет остатка и продаж за выбранный период; количество задайте вручную"
+		return item, true
+	}
 
 	// Заказанное и ещё не приехавшее закрывает потребность, иначе одно и то
 	// же растение уедет в заказ дважды.
-	rawQuantity := max(0, needBeforeIncoming-max(0, item.Incoming))
-	// Новая заявка клиента не должна исчезнуть только потому, что в пути
-	// есть старый заказ, которого на этого клиента не хватает.
-	uncoveredCustomer := max(0, item.CustomerRequests-max(0, item.Balance)-max(0, item.Incoming))
-	if item.Incoming > 0 && uncoveredCustomer == 0 {
+	// Зарезервированная под заявки часть входящей поставки уже вычтена из
+	// RemainingQuantity заявки и не должна второй раз уменьшать прогноз.
+	freeIncoming := max(0, item.Incoming-item.AllocatedRequests)
+	rawQuantity := max(0, needBeforeIncoming-freeIncoming)
+	item.UncoveredQty = rawQuantity
+	if rawQuantity == 0 && item.Incoming > 0 {
 		item.Status = RecommendationIncoming
 		item.Reason = fmt.Sprintf("Уже заказано %d шт.; повторная закупка исключена", item.Incoming)
 		return item, true
@@ -110,6 +135,13 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 	}
 
 	item.SuggestedQty = roundOrderQuantity(rawQuantity, item.MinimumOrderQty, item.OrderMultiple)
+	item.QuantityKnown = true
+	if item.SuggestedQty != rawQuantity {
+		item.RoundingExplanation = fmt.Sprintf("Потребность %d шт. округлена до %d: минимум %d, кратность %d",
+			rawQuantity, item.SuggestedQty, max(1, item.MinimumOrderQty), max(1, item.OrderMultiple))
+	} else {
+		item.RoundingExplanation = fmt.Sprintf("Без округления: потребность %d шт.", rawQuantity)
+	}
 	item.Status = RecommendationReady
 	switch {
 	case item.CustomerRequests > 0:

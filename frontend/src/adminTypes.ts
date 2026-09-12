@@ -116,13 +116,14 @@ export type SalesLinkResult = {
   linkedRows: number; linkedUnits: number; takenFrom: string; remaining: number;
 };
 
-export type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
+export type ProcurementRequestAllocation = { procurementOrderId: number; orderNumber: string; quantity: number; status: string };
+export type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string; customerOrderId?: number; customerName: string; source: string; allocatedQuantity: number; remainingQuantity: number; allocations: ProcurementRequestAllocation[] };
 
-export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
+export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; balanceKnown: boolean; balanceAsOf?: string; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; grossSales: number; returns: number; customerRequests: number; staffRequests: number; openRequests: number; allocatedRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; demandQty: number; needBeforeIncoming: number; uncoveredQty: number; quantityKnown: boolean; roundingExplanation: string; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
 
 export type RecommendationStatus = "recommended" | "already_ordered" | "check_availability" | "supplier_unavailable" | "excluded";
 
-export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string };
+export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string; reason: string; comment: string; lastAction: string; lastActionAt?: string; due: boolean };
 
 export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string; nextAttemptAt?: string; nextDeepAt?: string; mode?: string; freshness: "fresh" | "stale" | "unknown" };
 

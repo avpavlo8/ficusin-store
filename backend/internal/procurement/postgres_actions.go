@@ -180,12 +180,14 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 		return AvailabilityItem{}, fmt.Errorf("begin update procurement availability: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	action := map[string]string{"available": "marked_available", "temporarily_unavailable": "marked_unavailable", "check": "scheduled_check", "discontinued": "discontinued"}[input.Status]
 	command, err := tx.Exec(ctx, `
 		INSERT INTO procurement_supplier_products (
-			supplier_id, saby_id, canonical_variant_id,availability_status, check_after, unavailable_since, updated_by
+			supplier_id, saby_id, canonical_variant_id,availability_status, check_after, unavailable_since, updated_by,
+			availability_reason,availability_comment,availability_last_action,availability_last_action_at
 		)
 		SELECT $1, $2,directory.variant_id,$3, NULLIF($4, '')::DATE,
-			CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5
+			CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5,$6,$7,$8,CURRENT_TIMESTAMP
 		FROM canonical_product_directory directory
 		WHERE directory.saby_id=$2 AND directory.active
 			AND EXISTS (SELECT 1 FROM procurement_suppliers WHERE id = $1)
@@ -193,10 +195,12 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 			canonical_variant_id=EXCLUDED.canonical_variant_id,
 			availability_status = EXCLUDED.availability_status,
 			check_after = EXCLUDED.check_after,
-			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
-				THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
-			updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter, actor.CustomerID)
+				unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
+					THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
+				availability_reason=EXCLUDED.availability_reason,availability_comment=EXCLUDED.availability_comment,
+				availability_last_action=EXCLUDED.availability_last_action,availability_last_action_at=CURRENT_TIMESTAMP,
+				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter, actor.CustomerID, input.Reason, input.Comment, action)
 	if err != nil {
 		return AvailabilityItem{}, fmt.Errorf("update procurement availability: %w", err)
 	}
@@ -213,19 +217,26 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter); err != nil {
 		return AvailabilityItem{}, fmt.Errorf("sync procurement alias availability: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO procurement_supplier_availability_events(supplier_id,saby_id,status,reason,comment,check_after,created_by)
+		VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::DATE,$7)`, input.SupplierID, input.SabyID, input.Status, input.Reason, input.Comment, input.CheckAfter, actor.CustomerID); err != nil {
+		return AvailabilityItem{}, fmt.Errorf("record procurement availability action: %w", err)
+	}
 	var item AvailabilityItem
 	if err := tx.QueryRow(ctx, `
 		SELECT sp.supplier_id, s.name, sp.saby_id, COALESCE(n.name, ''),
 			COALESCE(sp.supplier_article, ''), sp.availability_status,
 			COALESCE(sp.check_after::TEXT, ''), COALESCE(sp.unavailable_since::TEXT, ''),
-			COALESCE(n.balance, 0)
+				COALESCE(n.balance, 0),sp.availability_reason,sp.availability_comment,
+				sp.availability_last_action,sp.availability_last_action_at,
+				(sp.availability_status IN('check','temporarily_unavailable') AND (sp.check_after IS NULL OR sp.check_after<=CURRENT_DATE))
 		FROM procurement_supplier_products sp
 		JOIN procurement_suppliers s ON s.id = sp.supplier_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
 		WHERE sp.supplier_id = $1 AND sp.saby_id = $2
 	`, input.SupplierID, input.SabyID).Scan(&item.SupplierID, &item.SupplierName, &item.SabyID,
 		&item.Name, &item.SupplierArticle, &item.Status, &item.CheckAfter,
-		&item.UnavailableSince, &item.Balance); errors.Is(err, pgx.ErrNoRows) {
+		&item.UnavailableSince, &item.Balance, &item.Reason, &item.Comment, &item.LastAction,
+		&item.LastActionAt, &item.Due); errors.Is(err, pgx.ErrNoRows) {
 		return AvailabilityItem{}, ErrNotFound
 	} else if err != nil {
 		return AvailabilityItem{}, fmt.Errorf("load procurement availability: %w", err)
