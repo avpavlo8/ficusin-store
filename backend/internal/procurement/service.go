@@ -513,8 +513,6 @@ func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input Pr
 	input.SupplierArticle = strings.TrimSpace(input.SupplierArticle)
 	input.AvailabilityStatus = strings.TrimSpace(input.AvailabilityStatus)
 	input.CheckAfter = strings.TrimSpace(input.CheckAfter)
-	input.Reason = strings.TrimSpace(input.Reason)
-	input.Comment = strings.TrimSpace(input.Comment)
 	input.HollandArticle = strings.TrimSpace(input.HollandArticle)
 	input.WBVendorCode = strings.TrimSpace(input.WBVendorCode)
 	input.OzonOfferID = strings.TrimSpace(input.OzonOfferID)
@@ -535,6 +533,8 @@ func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, inp
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.Status = strings.TrimSpace(input.Status)
 	input.CheckAfter = strings.TrimSpace(input.CheckAfter)
+	input.Reason = strings.TrimSpace(input.Reason)
+	input.Comment = strings.TrimSpace(input.Comment)
 	if input.SupplierID <= 0 || input.SabyID == "" ||
 		!oneOf(input.Status, "available", "unknown", "check", "temporarily_unavailable", "discontinued") {
 		return AvailabilityItem{}, ErrInvalidInput
