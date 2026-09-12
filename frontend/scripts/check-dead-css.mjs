@@ -13,7 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const stylesheetDir = join(root, "frontend", "src", "styles");
 
 // Префиксы классов, которые склеиваются из переменных.
-const dynamicPrefixes = ["sales-sync-", "admin-pill", "procurement-"];
+const dynamicPrefixes = ["sales-sync-", "sync-", "admin-pill", "procurement-"];
 
 const sources = [];
 const walk = (directory, extensions) => {

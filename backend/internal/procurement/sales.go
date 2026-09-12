@@ -2,6 +2,8 @@ package procurement
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -62,13 +64,16 @@ type SalesWorker struct {
 	// deepAt — когда в последний раз переспросили год целиком.
 	deepAt map[string]time.Time
 	now    func() time.Time
+	owner  string
+	siteAt time.Time
 }
 
 func NewSalesWorker(store SalesStore, source SalesSource, logger *slog.Logger) *SalesWorker {
 	return &SalesWorker{
 		store: store, source: source, logger: logger,
-		interval: 6 * time.Hour, externalEvery: 6 * time.Hour,
+		interval: time.Minute, externalEvery: 6 * time.Hour,
 		externalAt: map[string]time.Time{}, deepAt: map[string]time.Time{}, now: time.Now,
+		owner: fmt.Sprintf("sales-%d", time.Now().UnixNano()),
 	}
 }
 
@@ -89,13 +94,23 @@ func (worker *SalesWorker) Run(ctx context.Context) {
 func (worker *SalesWorker) run(ctx context.Context) {
 	to := day(worker.now().UTC())
 	from := to.AddDate(0, 0, -(salesHistoryDays - 1))
-	// Сайт считается из своей же базы, никаких чужих лимитов не занимает,
-	// поэтому пересчитывается на каждом такте и за весь год.
-	if err := worker.store.MarkSalesSync(ctx, "site", "running", nil); err == nil {
-		if _, refreshErr := worker.store.RefreshSiteSales(ctx, from, to); refreshErr != nil {
-			_ = worker.store.MarkSalesSync(ctx, "site", "error", refreshErr)
-			worker.logger.Error("site sales synchronization failed", "error", refreshErr)
+	// Local sales do not consume an external limit, but a full-year aggregate
+	// still should not run every minute while workers poll for due lanes.
+	if worker.siteAt.IsZero() || worker.now().UTC().Sub(worker.siteAt) >= integrationCurrentEvery {
+		if err := worker.store.MarkSalesSync(ctx, "site", "running", nil); err == nil {
+			if _, refreshErr := worker.store.RefreshSiteSales(ctx, from, to); refreshErr != nil {
+				_ = worker.store.MarkSalesSync(ctx, "site", "error", refreshErr)
+				worker.logger.Error("site sales synchronization failed", "error", refreshErr)
+			} else {
+				worker.siteAt = worker.now().UTC()
+			}
 		}
+	}
+	if coordinator, ok := worker.store.(IntegrationSyncCoordinator); ok {
+		for _, channel := range []string{"saby", "ozon"} {
+			worker.runCoordinated(ctx, coordinator, channel, from, to)
+		}
+		return
 	}
 	for _, channel := range []string{"saby", "ozon"} {
 		if !worker.externalDue(channel) {
@@ -113,6 +128,75 @@ func (worker *SalesWorker) run(ctx context.Context) {
 			worker.deepAt[channel] = worker.now().UTC()
 		}
 	}
+}
+
+func (worker *SalesWorker) runCoordinated(ctx context.Context, coordinator IntegrationSyncCoordinator, channel string, deepFrom, to time.Time) {
+	if worker.source == nil || !worker.source.Configured(channel) {
+		_ = worker.store.MarkSalesSync(ctx, channel, "disabled", nil)
+		return
+	}
+	claim, err := coordinator.ClaimIntegrationSync(ctx, channel, "sales", worker.owner, 20*time.Minute)
+	if err != nil {
+		worker.logger.Error("claim marketplace sales synchronization failed", "channel", channel, "error", err)
+		return
+	}
+	if claim == nil {
+		return
+	}
+	from := to.AddDate(0, 0, -(salesRefreshDays - 1))
+	if claim.Mode == "deep" {
+		from = deepFrom
+	}
+	_ = worker.store.MarkSalesSync(ctx, channel, "running", nil)
+	records, syncErr := worker.source.FetchSales(ctx, channel, from, to)
+	if syncErr != nil {
+		if reporter, able := worker.source.(SalesDiagnostics); able {
+			if detailed := reporter.DescribeSalesFailure(ctx, channel, from, to, syncErr); detailed != nil {
+				syncErr = detailed
+			}
+		}
+	} else {
+		_, syncErr = worker.store.ReplaceSales(ctx, channel, from, to, records)
+	}
+	latest := latestSalesEvent(records)
+	retry := retryDelay(syncErr)
+	applied, finishErr := coordinator.FinishIntegrationSync(ctx, *claim, len(records), from, to, latest, retry, syncErr)
+	if finishErr != nil {
+		worker.logger.Error("finish marketplace sales synchronization failed", "channel", channel, "error", finishErr)
+		return
+	}
+	if !applied {
+		worker.logger.Warn("ignored stale marketplace sales finisher", "channel", channel, "lease_token", claim.Token)
+		return
+	}
+	if syncErr != nil {
+		_ = worker.store.MarkSalesSync(ctx, channel, "error", syncErr)
+		worker.logger.Warn("marketplace sales synchronization failed", "channel", channel, "error", syncErr)
+	}
+}
+
+func latestSalesEvent(records []SalesRecord) *time.Time {
+	var latest time.Time
+	for _, record := range records {
+		if record.Date.After(latest) {
+			latest = record.Date
+		}
+	}
+	if latest.IsZero() {
+		return nil
+	}
+	return &latest
+}
+
+func retryDelay(err error) time.Duration {
+	if err == nil {
+		return 0
+	}
+	var retryable interface{ RetryDelay() time.Duration }
+	if errors.As(err, &retryable) {
+		return retryable.RetryDelay()
+	}
+	return 0
 }
 
 // externalDue отвечает, пора ли снова беспокоить площадку.

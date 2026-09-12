@@ -12,6 +12,11 @@ try {
   await context.addCookies([{name:'ficusin_session',value:`crm-acceptance-${role}`,url:base}]);
   const page = await context.newPage();
   const api = context.request;
+  const procurementDraft = JSON.stringify({supplierId:77,exchangeRate:"91.25",items:[{sabyId:"unsaved-ci",quantity:3}]});
+  if(role==='owner') {
+   await page.goto('/admin');
+   await page.evaluate(([key,value])=>localStorage.setItem(key,value),['ficusin:procurement-plan-draft:v1',procurementDraft]);
+  }
   const response = await api.get('/api/v1/admin/dashboard');
   expect(response.status()).toBe(200);
   const data = await response.json();expect(data.role).toBe(role);
@@ -22,7 +27,7 @@ try {
   const beforeMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(beforeMedia.length).toBe(2);
   if(role==='manager') {
-   for(const path of ['/admin?section=procurement','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
+   for(const path of ['/admin?section=procurement','/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
    for(const body of [{name:'Forbidden',priceMinor:1},{name:'Forbidden',stock:null},{name:'Forbidden',externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:body})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',priceMinor:1}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',attributes:{external_price:1}}})).status()).toBe(403);
@@ -52,6 +57,16 @@ try {
    await expect(page.getByRole('heading',{name:'Категории и атрибуты',exact:true})).toBeVisible();
    await page.screenshot({path:`${out}/${role}-categories-${width}.png`,fullPage:true});
    await page.reload();await expect(page.getByRole('heading',{name:'Категории и атрибуты',exact:true})).toBeVisible();
+   if(role==='owner') {
+    await page.goto('/admin?section=marketplaces');
+    await expect(page.getByRole('heading',{name:'Маркетплейсы',exact:true})).toBeVisible();
+    await expect(page.getByRole('heading',{name:'История обмена',exact:true})).toBeVisible();
+    await expect(page.getByText('Ноль новых строк означает только', {exact:false})).toBeVisible();
+    expect(await page.locator('tbody tr').count()).toBe(6);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+   await page.screenshot({path:`${out}/owner-marketplaces-${width}.png`,fullPage:true});
+    expect(await page.evaluate(key=>localStorage.getItem(key),'ficusin:procurement-plan-draft:v1')).toBe(procurementDraft);
+   }
    if(role==='manager') {
     const denied=await page.goto('/admin?section=finance');expect(denied.status()).toBe(403);
     await expect(page.getByRole('heading',{name:'Доступ к разделу ограничен'})).toBeVisible();

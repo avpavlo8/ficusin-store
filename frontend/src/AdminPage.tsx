@@ -11,6 +11,7 @@ import { Settings } from "./AdminSettings";
 import { api, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { Analytics } from "./AdminAnalytics";
+import { AdminMarketplaces } from "./AdminMarketplaces";
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
@@ -58,7 +59,7 @@ export default function AdminPage() {
           {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
           {section === "returns" && <WorkspaceState kind="empty" title="Журнал возвратов ещё не подключён" detail="Физические возвраты растений будут доступны после настройки журнала и связи с документами СБИС." />}
           {section === "finance" && <WorkspaceState kind="unknown" title="Финансовый учёт ещё не подключён" detail="Для отчёта нужны банковские операции, подтверждённая себестоимость и удержания каналов." />}
-          {section === "marketplaces" && <WorkspaceState kind="unknown" title="Обмен с маркетплейсами" detail="Текущие операции обмена и цены доступны в существующем разделе закупок." action={<button onClick={() => go("procurement")}>Открыть обмен и цены</button>} />}
+          {section === "marketplaces" && <AdminMarketplaces onError={setError} />}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
           {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}

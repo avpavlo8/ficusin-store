@@ -12,27 +12,29 @@ import (
 // ClaimWBSync acquires one persistent mirror lane. The state lives in
 // PostgreSQL, so a deployment or a second application instance cannot start
 // another full WB export while the first one is still running.
-func (store *PostgresStore) ClaimWBSync(ctx context.Context, resource string, lease time.Duration) (bool, error) {
-	if !validWBResource(resource) || lease <= 0 {
-		return false, ErrInvalidInput
+func (store *PostgresStore) ClaimWBSync(ctx context.Context, resource, owner string, lease time.Duration) (*SyncClaim, error) {
+	if !validWBResource(resource) || owner == "" || lease <= 0 {
+		return nil, ErrInvalidInput
 	}
-	var claimed bool
+	var claim SyncClaim
 	err := store.pool.QueryRow(ctx, `
 		UPDATE procurement_wb_sync_state SET
 			status = 'running', last_attempt_at = CURRENT_TIMESTAMP,
 			locked_until = CURRENT_TIMESTAMP + make_interval(secs => $2::DOUBLE PRECISION),
-			last_error = '', updated_at = CURRENT_TIMESTAMP
+			lease_owner=$3,lease_token=lease_token+1,last_error = '', updated_at = CURRENT_TIMESTAMP
 		WHERE resource = $1 AND next_attempt_at <= CURRENT_TIMESTAMP
 			AND (status <> 'running' OR locked_until IS NULL OR locked_until < CURRENT_TIMESTAMP)
-		RETURNING TRUE
-	`, resource, lease.Seconds()).Scan(&claimed)
+		RETURNING resource,lease_owner,lease_token
+	`, resource, lease.Seconds(), owner).Scan(&claim.Resource, &claim.Owner, &claim.Token)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("claim Wildberries %s synchronization: %w", resource, err)
+		return nil, fmt.Errorf("claim Wildberries %s synchronization: %w", resource, err)
 	}
-	return claimed, nil
+	claim.Channel, claim.Mode = "wb", "current"
+	_, _ = store.pool.Exec(ctx, `UPDATE procurement_integration_sync_state SET status='running',last_attempt_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE channel='wb' AND resource=$1`, resource)
+	return &claim, nil
 }
 
 // FinishWBSync releases a mirror lane. A successful lane is due in one hour;
@@ -40,29 +42,44 @@ func (store *PostgresStore) ClaimWBSync(ctx context.Context, resource string, le
 // loop. Other failures are retried after a quiet fifteen-minute window.
 func (store *PostgresStore) FinishWBSync(
 	ctx context.Context,
-	resource string,
+	claim SyncClaim,
 	rows int,
 	next time.Duration,
 	syncErr error,
-) error {
-	if !validWBResource(resource) || rows < 0 || next <= 0 {
-		return ErrInvalidInput
+) (bool, error) {
+	if claim.Channel != "wb" || !validWBResource(claim.Resource) || claim.Owner == "" || claim.Token <= 0 || rows < 0 || next <= 0 {
+		return false, ErrInvalidInput
 	}
 	status, message := "ok", ""
 	if syncErr != nil {
 		status, message = "error", safeError(syncErr.Error())
 	}
-	_, err := store.pool.Exec(ctx, `
+	var applied bool
+	err := store.pool.QueryRow(ctx, `
 		UPDATE procurement_wb_sync_state SET status = $2,
 			last_success_at = CASE WHEN $2 = 'ok' THEN CURRENT_TIMESTAMP ELSE last_success_at END,
 			next_attempt_at = CURRENT_TIMESTAMP + make_interval(secs => $3::DOUBLE PRECISION),
-			locked_until = NULL,
+			locked_until = NULL, lease_owner='',
 			rows_synced = CASE WHEN $2 = 'ok' THEN $4 ELSE rows_synced END,
 			last_error = $5, updated_at = CURRENT_TIMESTAMP
-		WHERE resource = $1
-	`, resource, status, next.Seconds(), rows, message)
+		WHERE resource = $1 AND lease_owner=$6 AND lease_token=$7
+		RETURNING TRUE
+	`, claim.Resource, status, next.Seconds(), rows, message, claim.Owner, claim.Token).Scan(&applied)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
-		return fmt.Errorf("finish Wildberries %s synchronization: %w", resource, err)
+		return false, fmt.Errorf("finish Wildberries %s synchronization: %w", claim.Resource, err)
+	}
+	_, err = store.pool.Exec(ctx, `
+		UPDATE procurement_integration_sync_state SET status=$2,last_success_at=CASE WHEN $2='ok' THEN CURRENT_TIMESTAMP ELSE last_success_at END,
+			next_attempt_at=CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION),
+			cooldown_until=CASE WHEN $2='error' THEN CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION) ELSE NULL END,
+			rows_synced=CASE WHEN $2='ok' THEN $4 ELSE rows_synced END,last_error=$5,updated_at=CURRENT_TIMESTAMP
+		WHERE channel='wb' AND resource=$1
+	`, claim.Resource, status, next.Seconds(), rows, message)
+	if err != nil {
+		return false, fmt.Errorf("record Wildberries coordinated state: %w", err)
 	}
 	// The integrations card reflects the real mirror, not only a lightweight
 	// /ping. Since catalogue runs before sales, the final state of an hourly
@@ -79,9 +96,9 @@ func (store *PostgresStore) FinishWBSync(
 			last_error = $2
 	`, status, message)
 	if err != nil {
-		return fmt.Errorf("record Wildberries mirror health: %w", err)
+		return false, fmt.Errorf("record Wildberries mirror health: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 func validWBResource(value string) bool {
@@ -129,14 +146,18 @@ func (store *PostgresStore) ReserveWBRequest(ctx context.Context, bucket string,
 // It is called immediately before HTTP I/O, after the original reservation
 // wait, so a 429 received by a different bucket also pauses queued requests.
 func (store *PostgresStore) WBRequestDelay(ctx context.Context, bucket string) (time.Duration, error) {
-	if bucket == "" { return 0, ErrInvalidInput }
+	if bucket == "" {
+		return 0, ErrInvalidInput
+	}
 	var seconds float64
 	err := store.pool.QueryRow(ctx, `
 		SELECT GREATEST(COALESCE(EXTRACT(EPOCH FROM
 			(MAX(next_request_at) - CURRENT_TIMESTAMP)), 0), 0)
 		FROM procurement_wb_rate_limits WHERE bucket='__global__'
 	`).Scan(&seconds)
-	if err != nil { return 0, fmt.Errorf("read Wildberries request pause: %w", err) }
+	if err != nil {
+		return 0, fmt.Errorf("read Wildberries request pause: %w", err)
+	}
 	return time.Duration(seconds * float64(time.Second)), nil
 }
 

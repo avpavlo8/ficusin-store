@@ -104,8 +104,10 @@ func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind st
 func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
 }
-func (stub *storeStub) ClaimAction(context.Context) (*ActionItem, error)                  { return nil, nil }
-func (stub *storeStub) FinishAction(context.Context, int64, ActionExecution, error) error { return nil }
+func (stub *storeStub) ClaimAction(context.Context, string) (*ActionItem, error) { return nil, nil }
+func (stub *storeStub) FinishAction(context.Context, int64, string, int64, ActionExecution, error) (bool, error) {
+	return true, nil
+}
 func (stub *storeStub) RetryBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
 }

@@ -124,9 +124,10 @@ export type RecommendationStatus = "recommended" | "already_ordered" | "check_av
 
 export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string };
 
-export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string };
+export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string; nextAttemptAt?: string; nextDeepAt?: string; mode?: string; freshness: "fresh" | "stale" | "unknown" };
 
 export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
+export type IntegrationSyncStatus = { channel: "saby" | "wb" | "ozon"; resource: "catalog" | "sales"; status: string; priority: "background" | "interactive"; requestedGeneration: number; activeGeneration: number; completedGeneration: number; lastAttemptAt?: string; lastSuccessAt?: string; nextAttemptAt?: string; nextDeepAt?: string; cooldownUntil?: string; periodFrom: string; periodTo: string; latestEventAt?: string; rowsSynced: number; lastError: string };
 
 export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: string; sabyArticle: string; name: string; sabySection: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; wbArticles: string[]; wbLegacyArticles: string[]; ozonArticles: string[]; ozonLegacyArticles: string[]; sabySales: number; siteSales: number; wbSales: number; ozonSales: number; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[]; supplierCategory: string; expectedUnitPrice?: number; potDiameterCm?: number; heightCm?: number; unitsPerPackage?: number };
 
@@ -156,6 +157,7 @@ export type ProcurementData = {
   documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
   availability: ProcurementAvailability[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
   integrationHealth: IntegrationHealth[];
+  integrationSync: IntegrationSyncStatus[];
 };
 
 export type AdminCollection = { id: number; slug: string; title: string; note: string; active: boolean; products: number[] };

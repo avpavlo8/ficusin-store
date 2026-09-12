@@ -3,6 +3,7 @@ package procurement
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -17,8 +18,8 @@ const (
 // WBMirrorStore is deliberately narrower than Store: it describes the local
 // Wildberries mirror and keeps the remote API out of request handlers.
 type WBMirrorStore interface {
-	ClaimWBSync(context.Context, string, time.Duration) (bool, error)
-	FinishWBSync(context.Context, string, int, time.Duration, error) error
+	ClaimWBSync(context.Context, string, string, time.Duration) (*SyncClaim, error)
+	FinishWBSync(context.Context, SyncClaim, int, time.Duration, error) (bool, error)
 	RememberChannelProducts(context.Context, string, []ChannelProduct) error
 	ReplaceSales(context.Context, string, time.Time, time.Time, []SalesRecord) (int, error)
 	MarkSalesSync(context.Context, string, string, error) error
@@ -39,10 +40,12 @@ type WBMirrorWorker struct {
 	logger *slog.Logger
 	now    func() time.Time
 	poll   time.Duration
+	owner  string
 }
 
 func NewWBMirrorWorker(store WBMirrorStore, source WBMirrorSource, logger *slog.Logger) *WBMirrorWorker {
-	return &WBMirrorWorker{store: store, source: source, logger: logger, now: time.Now, poll: wbMirrorPoll}
+	return &WBMirrorWorker{store: store, source: source, logger: logger, now: time.Now, poll: wbMirrorPoll,
+		owner: fmt.Sprintf("wb-%d", time.Now().UnixNano())}
 }
 
 func (worker *WBMirrorWorker) Run(ctx context.Context) {
@@ -72,28 +75,28 @@ func (worker *WBMirrorWorker) run(ctx context.Context) {
 }
 
 func (worker *WBMirrorWorker) syncCatalog(ctx context.Context) {
-	claimed, err := worker.store.ClaimWBSync(ctx, "catalog", wbMirrorLease)
+	claim, err := worker.store.ClaimWBSync(ctx, "catalog", worker.owner, wbMirrorLease)
 	if err != nil {
 		worker.logger.Error("claim Wildberries catalogue mirror failed", "error", err)
 		return
 	}
-	if !claimed {
+	if claim == nil {
 		return
 	}
 	items, syncErr := worker.source.FetchCatalog(ctx, "wb")
 	if syncErr == nil {
 		syncErr = worker.store.RememberChannelProducts(ctx, "wb", items)
 	}
-	worker.finish(ctx, "catalog", len(items), syncErr)
+	worker.finish(ctx, *claim, len(items), syncErr)
 }
 
 func (worker *WBMirrorWorker) syncSales(ctx context.Context) {
-	claimed, err := worker.store.ClaimWBSync(ctx, "sales", wbMirrorLease)
+	claim, err := worker.store.ClaimWBSync(ctx, "sales", worker.owner, wbMirrorLease)
 	if err != nil {
 		worker.logger.Error("claim Wildberries sales mirror failed", "error", err)
 		return
 	}
-	if !claimed {
+	if claim == nil {
 		return
 	}
 	to := day(worker.now().UTC())
@@ -107,10 +110,10 @@ func (worker *WBMirrorWorker) syncSales(ctx context.Context) {
 	if syncErr != nil {
 		_ = worker.store.MarkSalesSync(ctx, "wb", "error", syncErr)
 	}
-	worker.finish(ctx, "sales", rows, syncErr)
+	worker.finish(ctx, *claim, rows, syncErr)
 }
 
-func (worker *WBMirrorWorker) finish(ctx context.Context, resource string, rows int, syncErr error) {
+func (worker *WBMirrorWorker) finish(ctx context.Context, claim SyncClaim, rows int, syncErr error) {
 	next := wbMirrorEvery
 	if syncErr != nil {
 		next = 15 * time.Minute
@@ -118,9 +121,12 @@ func (worker *WBMirrorWorker) finish(ctx context.Context, resource string, rows 
 		if errors.As(syncErr, &retryable) && retryable.RetryDelay() > 0 {
 			next = retryable.RetryDelay()
 		}
-		worker.logger.Warn("Wildberries mirror failed", "resource", resource, "retry_after", next, "error", syncErr)
+		worker.logger.Warn("Wildberries mirror failed", "resource", claim.Resource, "retry_after", next, "error", syncErr)
 	}
-	if err := worker.store.FinishWBSync(ctx, resource, rows, next, syncErr); err != nil {
-		worker.logger.Error("finish Wildberries mirror failed", "resource", resource, "error", err)
+	applied, err := worker.store.FinishWBSync(ctx, claim, rows, next, syncErr)
+	if err != nil {
+		worker.logger.Error("finish Wildberries mirror failed", "resource", claim.Resource, "error", err)
+	} else if !applied {
+		worker.logger.Warn("ignored stale Wildberries mirror finisher", "resource", claim.Resource, "lease_token", claim.Token)
 	}
 }

@@ -50,8 +50,13 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   const syncCatalog = async (channel: string) => {
     setSyncingCatalog(channel);
     try {
-      const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[] } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
+      const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[]; queued?: boolean; queueStatus?: string; nextAttemptAt?: string } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
       const link = result.link;
+	  if (link.queued) {
+		setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Обновление справочника СБИС добавлено в общую очередь." : `Текущее зеркало сопоставлено; обновление ${integrationChannelLabel(channel)} добавлено в общую очередь.` });
+		await load();
+		return;
+	  }
 	  if (channel === "saby") {
 		setIntegrationNotice({ channel, ok: true, text: `Справочник СБИС обновлён: ${link.fetched} позиций. Новые карточки уже доступны для сопоставления.` });
 		await load();
@@ -207,7 +212,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       </article>)}</div>
       <p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Что не совпало, разбирается руками на вкладке «Продажи без товара».</p>
       <p className="admin-hint procurement-note">Wildberries раз в час фоново сохраняет карточки, артикулы, цены и продажи в локальное зеркало. Разделы сайта и кнопка сопоставления читают только базу и не создают дополнительных запросов к WB. Токену нужны категории «Цены и скидки», «Статистика» и «Контент».</p>
-	  <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления сразу читает полный каталог и прайс-лист — ждать фоновой синхронизации больше не нужно.</p>
+	  <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления ставит один приоритетный проход в общую очередь; состояние и следующий запуск видны в разделе «Маркетплейсы».</p>
     </section>}
 
     {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}

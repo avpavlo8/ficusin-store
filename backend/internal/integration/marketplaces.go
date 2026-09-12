@@ -31,15 +31,16 @@ const (
 )
 
 type MarketplaceExecutor struct {
-	client       *http.Client
-	wbLimiter    WBRequestLimiter
-	wbToken      string
-	ozonClientID string
-	ozonAPIKey   string
-	wbBase        string
-	wbReportsBase string
-	wbContentBase string
-	ozonBase      string
+	client         *http.Client
+	wbLimiter      WBRequestLimiter
+	requestLimiter IntegrationRequestLimiter
+	wbToken        string
+	ozonClientID   string
+	ozonAPIKey     string
+	wbBase         string
+	wbReportsBase  string
+	wbContentBase  string
+	ozonBase       string
 }
 
 // WBRequestLimiter coordinates seller-token limits across deployments and
@@ -50,6 +51,12 @@ type WBRequestLimiter interface {
 	ReserveWBRequest(context.Context, string, time.Duration) (time.Duration, error)
 	WBRequestDelay(context.Context, string) (time.Duration, error)
 	DeferWBRequests(context.Context, string, time.Duration) error
+}
+
+type IntegrationRequestLimiter interface {
+	ReserveIntegrationRequest(context.Context, string, string, time.Duration) (time.Duration, error)
+	IntegrationRequestDelay(context.Context, string, string) (time.Duration, error)
+	DeferIntegrationRequests(context.Context, string, string, time.Duration) error
 }
 
 type marketplaceNumber float64
@@ -71,8 +78,8 @@ func (value *marketplaceNumber) UnmarshalJSON(data []byte) error {
 func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *MarketplaceExecutor {
 	return &MarketplaceExecutor{
 		// Транспорт с паузой: площадки считают не только объём, но и частоту.
-		client: &http.Client{Timeout: 90 * time.Second, Transport: newPacedTransport(nil)},
-		wbToken: strings.TrimSpace(wbToken),
+		client:       &http.Client{Timeout: 90 * time.Second, Transport: newPacedTransport(nil)},
+		wbToken:      strings.TrimSpace(wbToken),
 		ozonClientID: strings.TrimSpace(ozonClientID), ozonAPIKey: strings.TrimSpace(ozonAPIKey),
 		wbBase: defaultWBBase, wbReportsBase: defaultWBReports,
 		wbContentBase: defaultWBContent, ozonBase: defaultOzonBase,
@@ -81,6 +88,11 @@ func NewMarketplaceExecutor(wbToken, ozonClientID, ozonAPIKey string) *Marketpla
 
 func (executor *MarketplaceExecutor) WithWBRequestLimiter(limiter WBRequestLimiter) *MarketplaceExecutor {
 	executor.wbLimiter = limiter
+	return executor
+}
+
+func (executor *MarketplaceExecutor) WithIntegrationRequestLimiter(limiter IntegrationRequestLimiter) *MarketplaceExecutor {
+	executor.requestLimiter = limiter
 	return executor
 }
 
@@ -409,11 +421,11 @@ func (executor *MarketplaceExecutor) executeWBGroup(ctx context.Context, items [
 				return sameOutcome(items, procurement.ActionExecution{}, errors.New("для Wildberries нужен числовой nmID, а не артикул продавца"))
 			}
 			price := int64(item.NewValue)
-		discount := int64(0)
-		if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
-			price = int64(*item.CompareAtValue)
-			discount = int64((1 - item.NewValue/float64(price)) * 100)
-		}
+			discount := int64(0)
+			if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
+				price = int64(*item.CompareAtValue)
+				discount = int64((1 - item.NewValue/float64(price)) * 100)
+			}
 			data = append(data, map[string]any{"nmID": nmID, "price": price, "discount": discount})
 		}
 		payload := map[string]any{"data": data}
@@ -522,7 +534,10 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 		if len(item.Errors) > 0 {
 			message = safeRemoteMessage(item.Errors[0].Message)
 		}
-		byOffer[item.OfferID] = struct { updated bool; message string }{item.Updated, message}
+		byOffer[item.OfferID] = struct {
+			updated bool
+			message string
+		}{item.Updated, message}
 	}
 	outcomes := make([]procurement.ActionOutcome, 0, len(items))
 	for _, item := range items {
@@ -599,6 +614,22 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
+	if channel, bucket := integrationRequestLane(endpoint); channel != "" && executor.requestLimiter != nil {
+		wait, err := executor.requestLimiter.ReserveIntegrationRequest(ctx, channel, bucket, marketplacePace(request.URL.Hostname()))
+		if err != nil {
+			return fmt.Errorf("reserve %s API request: %w", channel, err)
+		}
+		if err := waitForContext(ctx, wait); err != nil {
+			return err
+		}
+		wait, err = executor.requestLimiter.IntegrationRequestDelay(ctx, channel, bucket)
+		if err != nil {
+			return fmt.Errorf("check %s API pause: %w", channel, err)
+		}
+		if err := waitForContext(ctx, wait); err != nil {
+			return err
+		}
+	}
 	if bucket := wbRequestBucket(endpoint); bucket != "" && executor.wbLimiter != nil {
 		wait, err := executor.wbLimiter.ReserveWBRequest(ctx, bucket, marketplacePace(request.URL.Hostname()))
 		if err != nil {
@@ -640,6 +671,15 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		remote := &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response)}
+		if remote.Status == http.StatusTooManyRequests && executor.requestLimiter != nil {
+			if channel, bucket := integrationRequestLane(endpoint); channel != "" {
+				delay := remote.RetryAfter
+				if delay <= 0 {
+					delay = 5 * time.Second
+				}
+				_ = executor.requestLimiter.DeferIntegrationRequests(ctx, channel, bucket, delay)
+			}
+		}
 		if remote.Status == http.StatusTooManyRequests && executor.wbLimiter != nil {
 			delay := remote.RetryAfter
 			if delay <= 0 {
@@ -688,8 +728,11 @@ func (executor *MarketplaceExecutor) requestRead(ctx context.Context, method, en
 		// A 429 has already published its X-RateLimit-Retry window through the
 		// shared gate. Return it to the durable worker instead of sleeping and
 		// spending two more requests from the same user operation.
-		if errors.As(lastErr, &remote) && remote.Status == http.StatusTooManyRequests && wbRequestBucket(endpoint) != "" {
-			return lastErr
+		if errors.As(lastErr, &remote) && remote.Status == http.StatusTooManyRequests {
+			channel, _ := integrationRequestLane(endpoint)
+			if wbRequestBucket(endpoint) != "" || channel != "" {
+				return lastErr
+			}
 		}
 		retry := remote != nil && (remote.Status == http.StatusTooManyRequests || remote.Status >= 500)
 		if !retry && !errors.As(lastErr, &empty) {
@@ -736,6 +779,18 @@ func wbRequestBucket(endpoint string) string {
 	default:
 		return ""
 	}
+}
+
+func integrationRequestLane(endpoint string) (string, string) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if strings.HasSuffix(host, "ozon.ru") {
+		return "ozon", strings.Trim(parsed.Path, "/")
+	}
+	return "", ""
 }
 
 func marketplaceRetryAfter(response *http.Response) time.Duration {
@@ -1030,7 +1085,7 @@ func (executor *MarketplaceExecutor) fetchOzonPrices(ctx context.Context) (map[s
 		var response struct {
 			Items []struct {
 				OfferID string `json:"offer_id"`
-				Price struct {
+				Price   struct {
 					MarketingSellerPrice marketplaceNumber `json:"marketing_seller_price"`
 					MarketingPrice       marketplaceNumber `json:"marketing_price"`
 					RetailPrice          marketplaceNumber `json:"retail_price"`

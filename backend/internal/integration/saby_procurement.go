@@ -32,19 +32,20 @@ const (
 // SabyClient caches one service session. Saby allows only five active
 // sessions per application, so authenticating for every request is unsafe.
 type SabyClient struct {
-	client       *http.Client
-	appClientID  string
-	appSecret    string
-	secretKey    string
-	pointID      int64
-	priceListID  int64
-	authURL      string
-	apiBase      string
-	serviceURL   string
-	mu           sync.Mutex
-	catalogMu    sync.Mutex
-	token        string
-	tokenUntil   time.Time
+	client         *http.Client
+	requestLimiter IntegrationRequestLimiter
+	appClientID    string
+	appSecret      string
+	secretKey      string
+	pointID        int64
+	priceListID    int64
+	authURL        string
+	apiBase        string
+	serviceURL     string
+	mu             sync.Mutex
+	catalogMu      sync.Mutex
+	token          string
+	tokenUntil     time.Time
 }
 
 type sabyCatalogRows []map[string]any
@@ -127,7 +128,7 @@ func (client *SabyClient) FetchCatalog(ctx context.Context) ([]sabydomain.Catalo
 	defer client.catalogMu.Unlock()
 
 	base := url.Values{
-		"pointId": {strconv.FormatInt(client.pointID, 10)},
+		"pointId":     {strconv.FormatInt(client.pointID, 10)},
 		"withBalance": {"true"}, "withBarcode": {"true"}, "pageSize": {"1000"},
 	}
 	complete, err := client.fetchCatalogTree(ctx, base)
@@ -313,11 +314,16 @@ func emptySabyValue(value any) bool {
 
 func NewSabyClient(appClientID, appSecret, secretKey string, pointID, priceListID int64) *SabyClient {
 	return &SabyClient{
-		client: &http.Client{Timeout: 20 * time.Second},
+		client:      &http.Client{Timeout: 20 * time.Second},
 		appClientID: strings.TrimSpace(appClientID), appSecret: strings.TrimSpace(appSecret),
 		secretKey: strings.TrimSpace(secretKey), pointID: pointID, priceListID: priceListID,
 		authURL: defaultSabyAuth, apiBase: defaultSabyAPI, serviceURL: defaultSabyService,
 	}
+}
+
+func (client *SabyClient) WithIntegrationRequestLimiter(limiter IntegrationRequestLimiter) *SabyClient {
+	client.requestLimiter = limiter
+	return client
 }
 
 type sabyDraftPayload struct {
@@ -780,9 +786,15 @@ func (client *SabyClient) receiptContext(ctx context.Context) (map[string]any, m
 	if len(inn) == 12 {
 		parts := strings.Fields(strings.TrimPrefix(strings.TrimSpace(orgName), "ИП "))
 		person := map[string]any{"ИНН": inn}
-		if len(parts) > 0 { person["Фамилия"] = parts[0] }
-		if len(parts) > 1 { person["Имя"] = parts[1] }
-		if len(parts) > 2 { person["Отчество"] = parts[2] }
+		if len(parts) > 0 {
+			person["Фамилия"] = parts[0]
+		}
+		if len(parts) > 1 {
+			person["Имя"] = parts[1]
+		}
+		if len(parts) > 2 {
+			person["Отчество"] = parts[2]
+		}
 		organization["СвФЛ"] = person
 	} else {
 		organization["СвЮЛ"] = map[string]any{"ИНН": inn, "КПП": kpp, "Название": orgName}
@@ -798,9 +810,13 @@ func collectMaps(value any) []map[string]any {
 		switch typed := current.(type) {
 		case map[string]any:
 			result = append(result, typed)
-			for _, child := range typed { walk(child) }
+			for _, child := range typed {
+				walk(child)
+			}
 		case []any:
-			for _, child := range typed { walk(child) }
+			for _, child := range typed {
+				walk(child)
+			}
 		}
 	}
 	walk(value)
@@ -819,11 +835,15 @@ func nestedString(value any, path ...string) string {
 			}
 		}
 		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" { return found }
+			if found := nestedString(child, path...); found != "" {
+				return found
+			}
 		}
 	case []any:
 		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" { return found }
+			if found := nestedString(child, path...); found != "" {
+				return found
+			}
 		}
 	}
 	return ""
@@ -883,7 +903,9 @@ func (client *SabyClient) accessToken(ctx context.Context, force bool) (string, 
 	payload := map[string]string{
 		"app_client_id": client.appClientID, "app_secret": client.appSecret, "secret_key": client.secretKey,
 	}
-	var response struct { Token string `json:"token"` }
+	var response struct {
+		Token string `json:"token"`
+	}
 	if _, err := client.requestJSON(ctx, http.MethodPost, client.authURL, payload, "", &response); err != nil {
 		return "", fmt.Errorf("авторизация Saby: %w", err)
 	}
@@ -901,11 +923,15 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 	var body io.Reader
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
-		if err != nil { return 0, fmt.Errorf("encode Saby request: %w", err) }
+		if err != nil {
+			return 0, fmt.Errorf("encode Saby request: %w", err)
+		}
 		body = bytes.NewReader(encoded)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
-	if err != nil { return 0, fmt.Errorf("create Saby request: %w", err) }
+	if err != nil {
+		return 0, fmt.Errorf("create Saby request: %w", err)
+	}
 	request.Header.Set("Accept", "application/json")
 	if payload != nil {
 		contentType := "application/json"
@@ -914,18 +940,52 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 		}
 		request.Header.Set("Content-Type", contentType)
 	}
-	if token != "" { request.Header.Set("X-SBISAccessToken", token) }
+	if token != "" {
+		request.Header.Set("X-SBISAccessToken", token)
+	}
+	bucket := strings.Trim(request.URL.Path, "/")
+	if bucket == "" {
+		bucket = "root"
+	}
+	if client.requestLimiter != nil {
+		wait, reserveErr := client.requestLimiter.ReserveIntegrationRequest(ctx, "saby", bucket, marketplacePace(request.URL.Hostname()))
+		if reserveErr != nil {
+			return 0, fmt.Errorf("reserve Saby API request: %w", reserveErr)
+		}
+		if waitErr := waitForContext(ctx, wait); waitErr != nil {
+			return 0, waitErr
+		}
+		wait, reserveErr = client.requestLimiter.IntegrationRequestDelay(ctx, "saby", bucket)
+		if reserveErr != nil {
+			return 0, fmt.Errorf("check Saby API pause: %w", reserveErr)
+		}
+		if waitErr := waitForContext(ctx, wait); waitErr != nil {
+			return 0, waitErr
+		}
+	}
 	response, err := client.client.Do(request)
-	if err != nil { return 0, fmt.Errorf("Saby request failed: %w", err) }
+	if err != nil {
+		return 0, fmt.Errorf("Saby request failed: %w", err)
+	}
 	defer response.Body.Close() //nolint:errcheck
 	limit := int64(maxSabyResponse)
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		limit = 64 << 10
 	}
 	content, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil { return response.StatusCode, fmt.Errorf("read Saby response: %w", err) }
+	if err != nil {
+		return response.StatusCode, fmt.Errorf("read Saby response: %w", err)
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response.StatusCode, &remoteError{Status: response.StatusCode, Message: sabyErrorMessage(content)}
+		remote := &remoteError{Status: response.StatusCode, Message: sabyErrorMessage(content), RetryAfter: marketplaceRetryAfter(response)}
+		if response.StatusCode == http.StatusTooManyRequests && client.requestLimiter != nil {
+			delay := remote.RetryAfter
+			if delay <= 0 {
+				delay = 5 * time.Second
+			}
+			_ = client.requestLimiter.DeferIntegrationRequests(ctx, "saby", bucket, delay)
+		}
+		return response.StatusCode, remote
 	}
 	if int64(len(content)) > limit {
 		return response.StatusCode, fmt.Errorf("Saby ответил %d, но ответ длиннее %d МБ", response.StatusCode, maxSabyResponse>>20)
@@ -943,8 +1003,12 @@ func sabyErrorMessage(content []byte) string {
 	var response sabyRPCResponse
 	if json.Unmarshal(content, &response) == nil && response.Error != nil {
 		message := strings.TrimSpace(response.Error.Details)
-		if message == "" { message = strings.TrimSpace(response.Error.Message) }
-		if message != "" { return safeRemoteMessage(message) }
+		if message == "" {
+			message = strings.TrimSpace(response.Error.Message)
+		}
+		if message != "" {
+			return safeRemoteMessage(message)
+		}
 	}
 	return safeRemoteMessage(string(content))
 }
