@@ -50,7 +50,9 @@ func allocateRequests(ctx context.Context, tx pgx.Tx, lineID int64, sabyID strin
 			continue
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO procurement_request_allocations(request_id,procurement_order_line_id,quantity,active_quantity)
-			VALUES($1,$2,$3,$3) ON CONFLICT(request_id,procurement_order_line_id) DO NOTHING`, request.id, lineID, quantity); err != nil {
+			VALUES($1,$2,$3,$3) ON CONFLICT(request_id,procurement_order_line_id) DO UPDATE SET
+				quantity=EXCLUDED.quantity,active_quantity=EXCLUDED.active_quantity,status='active',release_reason='',updated_at=CURRENT_TIMESTAMP
+				WHERE procurement_request_allocations.status='released'`, request.id, lineID, quantity); err != nil {
 			return fmt.Errorf("allocate procurement request: %w", err)
 		}
 		capacity -= quantity
@@ -93,18 +95,19 @@ func fulfilOrderAllocations(ctx context.Context, tx pgx.Tx, orderID int64) error
 // Releasing allocations above the invoiced quantity restores the missing part
 // to recommendations. A line absent from an invoice has capacity zero.
 func rebalanceInvoiceAllocations(ctx context.Context, tx pgx.Tx, orderID int64) error {
-	rows, err := tx.Query(ctx, `SELECT id,COALESCE(invoiced_qty,0) FROM procurement_order_lines WHERE procurement_order_id=$1 ORDER BY id FOR UPDATE`, orderID)
+	rows, err := tx.Query(ctx, `SELECT id,COALESCE(saby_id,''),CASE WHEN invoice_excluded THEN 0 ELSE COALESCE(invoiced_qty,0) END FROM procurement_order_lines WHERE procurement_order_id=$1 AND reconciliation_status<>'superseded' ORDER BY id FOR UPDATE`, orderID)
 	if err != nil {
 		return err
 	}
 	type invoiceLine struct {
 		id       int64
+		sabyID   string
 		capacity int
 	}
 	lines := make([]invoiceLine, 0)
 	for rows.Next() {
 		var line invoiceLine
-		if err := rows.Scan(&line.id, &line.capacity); err != nil {
+		if err := rows.Scan(&line.id, &line.sabyID, &line.capacity); err != nil {
 			rows.Close()
 			return err
 		}
@@ -150,6 +153,15 @@ func rebalanceInvoiceAllocations(ctx context.Context, tx pgx.Tx, orderID int64) 
 				if _, err := tx.Exec(ctx, `UPDATE procurement_request_allocations SET active_quantity=$2,status=$3,release_reason='invoice_shortage',updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, keep, status); err != nil {
 					return err
 				}
+			}
+		}
+		var active int
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(active_quantity),0)::INTEGER FROM procurement_request_allocations WHERE procurement_order_line_id=$1 AND status='active'`, lineID).Scan(&active); err != nil {
+			return err
+		}
+		if line.sabyID != "" && line.capacity > active {
+			if err := allocateRequests(ctx, tx, lineID, line.sabyID, line.capacity-active); err != nil {
+				return err
 			}
 		}
 	}

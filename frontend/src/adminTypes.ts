@@ -90,7 +90,7 @@ export type ProcurementDocument = {
   id: number; supplierId: number; supplierName: string; orderId: number; fileName: string;
   parserKind: string; parseStatus: string; arithmeticStatus: string; documentNumber: string;
   documentDate?: string; currency: string; lines: number; units: number; productSubtotal: number;
-  packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; createdAt: string;
+  packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; revisionNo: number; superseded: boolean; createdAt: string;
 };
 
 export type NomenclatureCandidate = {
@@ -139,6 +139,9 @@ export type ProcurementActionBatch = { id: number; kind: string; status: string;
 
 export type ProcurementOrderLine = {
   id: number; sabyId: string; sabyCode: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
+  supplierCategory: string; packageCount?: number; unitsPerPackage?: number;
+  invoiceRawName: string; invoiceSupplierArticle: string; reconciliationStatus: string;
+  invoiceExcluded: boolean; invoiceExclusionReason: string;
   unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;

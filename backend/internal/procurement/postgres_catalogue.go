@@ -49,6 +49,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
+			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
 		GROUP BY o.id, s.name
 		ORDER BY o.created_at DESC
 		LIMIT 100
@@ -81,7 +82,7 @@ func (store *PostgresStore) listDocuments(ctx context.Context) ([]DocumentSummar
 			COALESCE(d.package_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.document_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.calculated_total, 0)::DOUBLE PRECISION,
-			d.parse_error, d.created_at
+			d.parse_error, d.created_at,d.revision_no,(d.superseded_at IS NOT NULL)
 		FROM procurement_documents d
 		JOIN procurement_suppliers s ON s.id = d.supplier_id
 		ORDER BY d.created_at DESC
@@ -754,6 +755,16 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			load_unit = CASE WHEN $8 THEN $9 ELSE load_unit END,
 			comparison_accepted = CASE WHEN $10 THEN $11 ELSE comparison_accepted END,
 			comparison_note = CASE WHEN $12 THEN $13 ELSE comparison_note END,
+			invoice_excluded = CASE WHEN $14 THEN $15 ELSE invoice_excluded END,
+			invoice_exclusion_reason = CASE WHEN $14 THEN CASE WHEN $15 THEN $16 ELSE '' END ELSE invoice_exclusion_reason END,
+			invoice_excluded_at = CASE WHEN $14 THEN CASE WHEN $15 THEN CURRENT_TIMESTAMP ELSE NULL END ELSE invoice_excluded_at END,
+			invoice_excluded_by = CASE WHEN $14 THEN CASE WHEN $15 THEN $17::BIGINT ELSE NULL END ELSE invoice_excluded_by END,
+			reconciliation_status = CASE WHEN $14 THEN CASE WHEN $15 THEN 'excluded'
+				WHEN procurement_document_id IS NULL THEN 'missing'
+				WHEN ordered_qty=0 THEN 'added'
+				WHEN invoiced_qty IS DISTINCT FROM ordered_qty OR
+					(expected_unit_price IS NOT NULL AND ABS(expected_unit_price-unit_price)>.005) THEN 'changed'
+				ELSE 'matched' END ELSE reconciliation_status END,
 			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
@@ -765,9 +776,15 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 		input.HeightCM != nil, input.HeightCM,
 		input.LoadUnit != nil, input.LoadUnit,
 		input.AcceptComparison != nil, input.AcceptComparison,
-		input.ComparisonNote != nil, input.ComparisonNote)
+		input.ComparisonNote != nil, input.ComparisonNote,
+		input.InvoiceExcluded != nil, input.InvoiceExcluded, input.ExclusionReason, actor.CustomerID)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("update procurement line: %w", err)
+	}
+	if input.InvoiceExcluded != nil {
+		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("rebalance excluded procurement line: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP

@@ -301,8 +301,8 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(dialog.getByLabel("Горшок, см", { exact: true })).toHaveValue("12");
   await expect(dialog.getByLabel("Высота, см", { exact: true })).toHaveValue("35");
   await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
-  await expect(dialog.getByLabel("Цена в евро", { exact: true })).toHaveValue("5.3");
-  await expect(dialog.getByText("31,80 €", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Цена в рублях", { exact: true })).toHaveValue("5.3");
+  await expect(dialog.getByText("31,80 ₽", { exact: true })).toBeVisible();
   expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
 });
 

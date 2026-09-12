@@ -404,7 +404,7 @@ func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID in
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
-	if lineID <= 0 || (input.ExpectedUnitPrice == nil && input.PotDiameterCM == nil && input.HeightCM == nil && input.LoadUnit == nil && input.AcceptComparison == nil && input.ComparisonNote == nil) {
+	if lineID <= 0 || (input.ExpectedUnitPrice == nil && input.PotDiameterCM == nil && input.HeightCM == nil && input.LoadUnit == nil && input.AcceptComparison == nil && input.ComparisonNote == nil && input.InvoiceExcluded == nil) {
 		return OrderDetail{}, ErrInvalidInput
 	}
 	if input.ExpectedUnitPrice != nil && *input.ExpectedUnitPrice < 0 || input.PotDiameterCM != nil && *input.PotDiameterCM <= 0 || input.HeightCM != nil && *input.HeightCM <= 0 {
@@ -417,6 +417,13 @@ func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID
 	if input.ComparisonNote != nil {
 		value := strings.TrimSpace(*input.ComparisonNote)
 		input.ComparisonNote = &value
+	}
+	if input.ExclusionReason != nil {
+		value := strings.TrimSpace(*input.ExclusionReason)
+		input.ExclusionReason = &value
+	}
+	if input.InvoiceExcluded != nil && *input.InvoiceExcluded && (input.ExclusionReason == nil || *input.ExclusionReason == "") {
+		return OrderDetail{}, ErrInvalidInput
 	}
 	if input.AcceptComparison != nil && *input.AcceptComparison && (input.ComparisonNote == nil || *input.ComparisonNote == "") {
 		return OrderDetail{}, ErrInvalidInput
