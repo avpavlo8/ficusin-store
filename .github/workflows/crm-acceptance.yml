@@ -23,6 +23,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
       DATABASE_SSL_VERIFY: 'false'
       AUTH_COOKIE_SECURE: 'false'
+      SITE_URL: http://127.0.0.1:8080
       TELEGRAM_BOT_TOKEN: ci-dummy-token
       TELEGRAM_ORDER_CHAT_ID: '-100000000001'
       PGPASSWORD: postgres
