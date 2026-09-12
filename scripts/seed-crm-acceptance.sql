@@ -65,7 +65,7 @@ INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance) VALUES
 INSERT INTO products(name,slug,status,category_id,saby_id)
 SELECT 'Монстера Stage 05','crm-stage05-demand','draft',id,'crm-stage05-demand' FROM categories WHERE slug='plants';
 INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active,saby_id)
-SELECT id,'CRM-S05-D','D15',349000,0,'crm-stage05-demand' FROM products WHERE slug='crm-stage05-demand';
+SELECT id,'99999102','D15',349000,0,'crm-stage05-demand' FROM products WHERE slug='crm-stage05-demand';
 INSERT INTO procurement_suppliers(name,kind,country_code,default_currency)
 VALUES('CRM Stage 05 Supplier','international','NL','EUR');
 INSERT INTO procurement_supplier_products(supplier_id,saby_id,supplier_article,availability_status,check_after,unavailable_since,minimum_order_qty,order_multiple,availability_reason,availability_comment,availability_last_action,availability_last_action_at)
