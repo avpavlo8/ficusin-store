@@ -42,3 +42,10 @@
 @media(max-width:900px){.admin-page .admin-dialog.procurement-plan-fullscreen{padding-right:320px}.admin-page .procurement-recommendation-drawer{width:320px}}
 @media(max-width:760px){.admin-page .admin-dialog.procurement-plan-fullscreen{padding-right:42vw}.admin-page .procurement-recommendation-drawer{width:42vw}.admin-page .procurement-plan-fullscreen>header,.admin-page .procurement-plan-settings,.admin-page .procurement-plan-tools,.admin-page .procurement-plan-footer{padding-inline:14px}.admin-page .procurement-plan-settings{grid-template-columns:1fr}.admin-page .procurement-plan-table-wrap,.admin-page .procurement-plan-fullscreen>.admin-hint{margin-inline:14px}}
 @media(prefers-reduced-motion:reduce){.procurement-plan-fullscreen *{scroll-behavior:auto!important;transition:none!important}}
+.procurement-reconciliation { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; white-space: nowrap; }
+.procurement-reconciliation::before { width: 7px; height: 7px; border-radius: 50%; background: #8b8a80; content: ""; flex: 0 0 auto; }
+.procurement-reconciliation-matched::before { background: #2d7654; }
+.procurement-reconciliation-changed::before,
+.procurement-reconciliation-missing::before,
+.procurement-reconciliation-added::before { background: #b9472e; }
+.procurement-reconciliation-excluded::before { background: #77746b; }

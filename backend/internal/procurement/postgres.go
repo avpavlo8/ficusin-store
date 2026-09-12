@@ -540,7 +540,9 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	}
 	rows, err := store.pool.Query(ctx, `
 		SELECT l.id, COALESCE(l.saby_id, ''), COALESCE(n.code, ''), COALESCE(n.name, ''), l.raw_name,
-			l.supplier_article, COALESCE(l.invoiced_qty, l.ordered_qty),
+			l.supplier_article, l.supplier_category, l.package_count, l.units_per_package,
+			l.invoice_raw_name, l.invoice_supplier_article, l.reconciliation_status,
+			l.invoice_excluded, l.invoice_exclusion_reason, COALESCE(l.invoiced_qty, l.ordered_qty),
 			l.ordered_qty, l.invoiced_qty,
 			COALESCE(l.unit_price, l.expected_unit_price, 0)::DOUBLE PRECISION,
 			l.expected_unit_price::DOUBLE PRECISION, l.load_unit,
@@ -553,7 +555,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			l.comparison_accepted, l.comparison_note
 		FROM procurement_order_lines l
 		LEFT JOIN saby_nomenclature n ON n.saby_id = l.saby_id
-		WHERE l.procurement_order_id = $1
+		WHERE l.procurement_order_id = $1 AND l.reconciliation_status <> 'superseded'
 		ORDER BY l.load_unit, l.id
 	`, orderID)
 	if err != nil {
@@ -564,7 +566,10 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	for rows.Next() {
 		var line OrderLine
 		if err := rows.Scan(&line.ID, &line.SabyID, &line.SabyCode, &line.SabyName, &line.RawName,
-			&line.SupplierArticle, &line.Quantity, &line.OrderedQuantity, &line.InvoicedQuantity,
+			&line.SupplierArticle, &line.SupplierCategory, &line.PackageCount, &line.UnitsPerPackage,
+			&line.InvoiceRawName, &line.InvoiceSupplierArticle, &line.ReconciliationStatus,
+			&line.InvoiceExcluded, &line.InvoiceExclusionReason,
+			&line.Quantity, &line.OrderedQuantity, &line.InvoicedQuantity,
 			&line.UnitPrice, &line.ExpectedUnitPrice, &line.LoadUnit,
 			&line.PotDiameterCM, &line.HeightCM, &line.MatchStatus,
 			&line.PurchaseUnitRUB, &line.TrolleyDeliveryUnitRUB, &line.RyazanDeliveryUnitRUB,
@@ -581,46 +586,9 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	if err := rows.Err(); err != nil {
 		return OrderDetail{}, err
 	}
-	type comparisonGroup struct {
-		ordered, invoiced                   int
-		expected                            *float64
-		priceMismatch, accepted, hasInvoice bool
-		first                               int
-	}
-	groups := make(map[string]*comparisonGroup)
 	for index := range detail.Lines {
 		line := &detail.Lines[index]
-		if line.MatchStatus != "confirmed" || line.SabyID == "" {
-			continue
-		}
-		group := groups[line.SabyID]
-		if group == nil {
-			group = &comparisonGroup{first: index}
-			groups[line.SabyID] = group
-		}
-		group.ordered += line.OrderedQuantity
-		if line.InvoicedQuantity != nil {
-			group.invoiced += *line.InvoicedQuantity
-			group.hasInvoice = true
-		}
-		if line.ExpectedUnitPrice != nil {
-			value := *line.ExpectedUnitPrice
-			group.expected = &value
-		}
-		group.accepted = group.accepted || line.ComparisonAccepted
-	}
-	for sabyID, group := range groups {
-		if group.expected != nil {
-			for index := range detail.Lines {
-				line := detail.Lines[index]
-				if line.SabyID == sabyID && line.InvoicedQuantity != nil && math.Abs(line.UnitPrice-*group.expected) > .005 {
-					group.priceMismatch = true
-				}
-			}
-		}
-		mismatch := group.hasInvoice && (group.ordered > 0 && group.ordered != group.invoiced || group.priceMismatch)
-		detail.Lines[group.first].ComparisonMismatch = mismatch
-		detail.Lines[group.first].ComparisonAccepted = group.accepted
+		line.ComparisonMismatch = !line.InvoiceExcluded && (line.ReconciliationStatus == "changed" || line.ReconciliationStatus == "missing" || line.ReconciliationStatus == "added")
 	}
 	detail.Batches, err = store.listBatches(ctx, orderID)
 	if err != nil {
@@ -639,8 +607,8 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 	var documents int
 	if err := store.pool.QueryRow(ctx, `
 		SELECT s.kind, o.status,
-			COUNT(d.id)::INTEGER,
-			COUNT(d.id) FILTER (WHERE d.arithmetic_status <> 'ok')::INTEGER,
+			COUNT(d.id) FILTER (WHERE d.superseded_at IS NULL)::INTEGER,
+			COUNT(d.id) FILTER (WHERE d.superseded_at IS NULL AND d.arithmetic_status <> 'ok')::INTEGER,
 			COUNT(DISTINCT NULLIF(l.load_unit, '')) FILTER (WHERE l.match_status = 'confirmed')::INTEGER
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
@@ -653,11 +621,14 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 	// The joins above multiply documents by lines; use an exact document count.
 	if err := store.pool.QueryRow(ctx, `
 		SELECT COUNT(*)::INTEGER, COUNT(*) FILTER (WHERE arithmetic_status <> 'ok')::INTEGER
-		FROM procurement_documents WHERE procurement_order_id = $1
+		FROM procurement_documents WHERE procurement_order_id = $1 AND superseded_at IS NULL
 	`, orderID).Scan(&documents, &result.ArithmeticMismatch); err != nil {
 		return OrderValidation{}, fmt.Errorf("validate procurement documents: %w", err)
 	}
 	for _, line := range detail.Lines {
+		if line.InvoiceExcluded {
+			continue
+		}
 		if line.MatchStatus != "confirmed" && line.MatchStatus != "ignored" {
 			result.Unmatched++
 		}
@@ -757,6 +728,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		expectedPrice                 *float64
 		invoicedQty                   *int
 		matchStatus, loadUnit, sabyID string
+		reconciliationStatus          string
 		comparisonAccepted            bool
 	}
 	rows, err := tx.Query(ctx, `
@@ -764,8 +736,9 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			COALESCE(pot_diameter_cm, 0)::DOUBLE PRECISION,
 			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status, load_unit,
 			expected_unit_price::DOUBLE PRECISION, invoiced_qty, comparison_accepted, ordered_qty,
-			COALESCE(saby_id, '')
-		FROM procurement_order_lines WHERE procurement_order_id = $1 FOR UPDATE
+			COALESCE(saby_id, ''),reconciliation_status
+		FROM procurement_order_lines WHERE procurement_order_id = $1
+			AND reconciliation_status<>'superseded' AND NOT invoice_excluded FOR UPDATE
 	`, orderID)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement lines: %w", err)
@@ -776,7 +749,8 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	for rows.Next() {
 		var line sourceLine
 		if err := rows.Scan(&line.id, &line.quantity, &line.unitPrice, &line.pot, &line.height, &line.matchStatus,
-			&line.loadUnit, &line.expectedPrice, &line.invoicedQty, &line.comparisonAccepted, &line.orderedQty, &line.sabyID); err != nil {
+			&line.loadUnit, &line.expectedPrice, &line.invoicedQty, &line.comparisonAccepted, &line.orderedQty, &line.sabyID,
+			&line.reconciliationStatus); err != nil {
 			rows.Close()
 			return OrderDetail{}, fmt.Errorf("scan procurement calculation line: %w", err)
 		}
@@ -799,60 +773,26 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 				loadVolumes[line.loadUnit] += volume * float64(line.quantity)
 			}
 		}
+		if (line.reconciliationStatus == "changed" || line.reconciliationStatus == "missing" || line.reconciliationStatus == "added") && !line.comparisonAccepted {
+			rows.Close()
+			return OrderDetail{}, ErrInvalidInput
+		}
 		lines = append(lines, line)
 	}
 	rows.Close()
 	if len(lines) == 0 {
 		return OrderDetail{}, ErrInvalidInput
 	}
-	type calculationComparison struct {
-		ordered, invoiced int
-		expected          *float64
-		prices            []float64
-		accepted          bool
-	}
-	comparisons := make(map[string]*calculationComparison)
 	deliveryToMoscowRUB := input.DeliveryToMoscowRUB
 	if deliveryToMoscowRUB == 0 && input.TrolleyCostRUB > 0 {
 		deliveryToMoscowRUB = input.TrolleyCostRUB * float64(len(loadVolumes))
 	}
 	perTrolleyRUB := 0.0
 	perTrolleyRUB = deliveryPerTrolley(deliveryToMoscowRUB, len(loadVolumes))
-	for _, line := range lines {
-		if line.matchStatus != "confirmed" || line.sabyID == "" {
-			continue
-		}
-		group := comparisons[line.sabyID]
-		if group == nil {
-			group = &calculationComparison{}
-			comparisons[line.sabyID] = group
-		}
-		group.ordered += line.orderedQty
-		if line.invoicedQty != nil {
-			group.invoiced += *line.invoicedQty
-		}
-		if line.expectedPrice != nil {
-			value := *line.expectedPrice
-			group.expected = &value
-		}
-		group.prices = append(group.prices, line.unitPrice)
-		group.accepted = group.accepted || line.comparisonAccepted
-	}
-	for _, group := range comparisons {
-		mismatch := group.ordered > 0 && group.ordered != group.invoiced
-		if group.expected != nil {
-			for _, price := range group.prices {
-				mismatch = mismatch || math.Abs(price-*group.expected) > .005
-			}
-		}
-		if mismatch && !group.accepted {
-			return OrderDetail{}, ErrInvalidInput
-		}
-	}
 	var documentCount, arithmeticMismatch int
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(*)::INTEGER, COUNT(*) FILTER (WHERE arithmetic_status <> 'ok')::INTEGER
-		FROM procurement_documents WHERE procurement_order_id = $1
+		FROM procurement_documents WHERE procurement_order_id = $1 AND superseded_at IS NULL
 	`, orderID).Scan(&documentCount, &arithmeticMismatch); err != nil {
 		return OrderDetail{}, fmt.Errorf("validate documents before calculation: %w", err)
 	}
@@ -946,6 +886,9 @@ func (store *PostgresStore) ImportDocument(
 	if existing, order, found, err := loadDocumentByHash(ctx, tx, input.SupplierID, hash); err != nil {
 		return ImportResult{}, err
 	} else if found {
+		if input.OrderID > 0 && order.ID > 0 && order.ID != input.OrderID {
+			return ImportResult{}, &UserFacingError{Message: fmt.Sprintf("Этот файл уже связан с закупкой №%d. Откройте её и явно разрешите конфликт перед переносом.", order.ID)}
+		}
 		return ImportResult{Document: existing, Order: order, Duplicate: true}, nil
 	}
 
@@ -977,6 +920,26 @@ func (store *PostgresStore) ImportDocument(
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("create or attach procurement order: %w", err)
 	}
+	if parsed.DocumentNumber != "" {
+		var conflictOrderID int64
+		err = tx.QueryRow(ctx, `SELECT procurement_order_id FROM procurement_documents
+			WHERE supplier_id=$1 AND document_number=$2 AND procurement_order_id<>$3
+				AND superseded_at IS NULL AND procurement_order_id IS NOT NULL
+			ORDER BY created_at DESC LIMIT 1`, input.SupplierID, parsed.DocumentNumber, orderID).Scan(&conflictOrderID)
+		if err == nil {
+			return ImportResult{}, &UserFacingError{Message: fmt.Sprintf("Инвойс %s уже связан с закупкой №%d. Откройте её и явно разрешите конфликт перед переносом.", parsed.DocumentNumber, conflictOrderID)}
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return ImportResult{}, fmt.Errorf("check procurement document conflict: %w", err)
+		}
+	}
+	var previousDocumentID int64
+	var revisionNo = 1
+	err = tx.QueryRow(ctx, `SELECT id,revision_no+1 FROM procurement_documents
+		WHERE procurement_order_id=$1 AND superseded_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`, orderID).Scan(&previousDocumentID, &revisionNo)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return ImportResult{}, fmt.Errorf("load active procurement document: %w", err)
+	}
 
 	arithmeticStatus := "mismatch"
 	if parsed.ArithmeticOK {
@@ -989,28 +952,30 @@ func (store *PostgresStore) ImportDocument(
 			sha256, content, parser_kind, parser_version, parse_status,
 			arithmetic_status, document_number, document_date, currency,
 			line_count, unit_count, product_subtotal, package_total,
-			document_total, calculated_total, extracted_text, created_by
+			document_total, calculated_total, extracted_text, created_by,
+			supersedes_document_id, revision_no
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, 'review', $10, $11, $12,
-			$13, $14, $15, $16, $17, $18, $19, $20, $21
+			$13, $14, $15, $16, $17, $18, $19, $20, $21, NULLIF($22,0), $23
 		)
 		RETURNING id, supplier_id, procurement_order_id, file_name, parser_kind,
 			parse_status, arithmetic_status, document_number, document_date, currency,
 			line_count, unit_count, product_subtotal::DOUBLE PRECISION,
 			package_total::DOUBLE PRECISION, document_total::DOUBLE PRECISION,
-			calculated_total::DOUBLE PRECISION, parse_error, created_at
+			calculated_total::DOUBLE PRECISION, parse_error, created_at,revision_no,FALSE
 	`, input.SupplierID, orderID, input.FileName, input.ContentType, len(input.Content),
 		hash, input.Content, parsed.ParserKind, parserVersion, arithmeticStatus,
 		parsed.DocumentNumber, parsed.DocumentDate, parsed.Currency, len(parsed.Lines),
 		countUnits(parsed.Lines), parsed.ProductSubtotal, parsed.PackageTotal,
 		parsed.DocumentTotal, parsed.CalculatedTotal, parsed.ExtractedText, actor.CustomerID,
+		previousDocumentID, revisionNo,
 	).Scan(
 		&document.ID, &document.SupplierID, &document.OrderID, &document.FileName,
 		&document.ParserKind, &document.ParseStatus, &document.ArithmeticStatus,
 		&document.DocumentNumber, &document.DocumentDate, &document.Currency,
 		&document.Lines, &document.Units, &document.ProductSubtotal,
 		&document.PackageTotal, &document.DocumentTotal, &document.CalculatedTotal,
-		&document.ParseError, &document.CreatedAt,
+		&document.ParseError, &document.CreatedAt, &document.RevisionNo, &document.Superseded,
 	)
 	if err != nil {
 		if uniqueViolation(err) {
@@ -1019,6 +984,32 @@ func (store *PostgresStore) ImportDocument(
 		return ImportResult{}, fmt.Errorf("insert procurement document: %w", err)
 	}
 	document.SupplierName = supplierName
+	if previousDocumentID > 0 {
+		if _, err := tx.Exec(ctx, `INSERT INTO procurement_invoice_line_history(
+			procurement_order_line_id,procurement_document_id,invoice_raw_name,invoice_supplier_article,
+			invoiced_qty,unit_price,line_total,reconciliation_status,invoice_excluded,invoice_exclusion_reason)
+			SELECT id,procurement_document_id,invoice_raw_name,invoice_supplier_article,invoiced_qty,
+				unit_price,line_total,reconciliation_status,invoice_excluded,invoice_exclusion_reason
+			FROM procurement_order_lines WHERE procurement_order_id=$1 AND reconciliation_status<>'superseded'`, orderID); err != nil {
+			return ImportResult{}, fmt.Errorf("archive procurement invoice lines: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procurement_documents SET superseded_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+			WHERE procurement_order_id=$1 AND superseded_at IS NULL AND id<>$2`, orderID, document.ID); err != nil {
+			return ImportResult{}, fmt.Errorf("supersede procurement document: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
+			procurement_document_id=NULL,invoiced_qty=NULL,unit_price=NULL,line_total=NULL,
+			invoice_raw_name='',invoice_supplier_article='',invoice_excluded=FALSE,
+			invoice_exclusion_reason='',invoice_excluded_at=NULL,invoice_excluded_by=NULL,
+			comparison_accepted=FALSE,comparison_note='',reconciliation_status='planned',updated_at=CURRENT_TIMESTAMP
+			WHERE procurement_order_id=$1 AND ordered_qty>0 AND reconciliation_status<>'superseded'`, orderID); err != nil {
+			return ImportResult{}, fmt.Errorf("reset procurement plan comparison: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET reconciliation_status='superseded',updated_at=CURRENT_TIMESTAMP
+			WHERE procurement_order_id=$1 AND ordered_qty=0 AND reconciliation_status<>'superseded'`, orderID); err != nil {
+			return ImportResult{}, fmt.Errorf("archive added procurement lines: %w", err)
+		}
+	}
 
 	unmatched := 0
 	for _, line := range parsed.Lines {
@@ -1030,31 +1021,43 @@ func (store *PostgresStore) ImportDocument(
 			unmatched++
 		}
 		var reconciledID int64
-		if sabyID != "" {
+		var candidateCount int
+		if line.SupplierArticle != "" {
+			err = tx.QueryRow(ctx, `SELECT COUNT(*)::INTEGER,COALESCE(MIN(id),0) FROM procurement_order_lines
+				WHERE procurement_order_id=$1 AND ordered_qty>0 AND procurement_document_id IS NULL
+					AND reconciliation_status='planned' AND LOWER(supplier_article)=LOWER($2)`, orderID, line.SupplierArticle).Scan(&candidateCount, &reconciledID)
+		} else if sabyID != "" {
+			err = tx.QueryRow(ctx, `SELECT COUNT(*)::INTEGER,COALESCE(MIN(id),0) FROM procurement_order_lines
+				WHERE procurement_order_id=$1 AND ordered_qty>0 AND procurement_document_id IS NULL
+					AND reconciliation_status='planned' AND saby_id=$2`, orderID, sabyID).Scan(&candidateCount, &reconciledID)
+		}
+		if err != nil {
+			return ImportResult{}, fmt.Errorf("find procurement plan line: %w", err)
+		}
+		if candidateCount == 1 {
 			err = tx.QueryRow(ctx, `
 				UPDATE procurement_order_lines SET procurement_document_id = $2,
-					supplier_alias_id = $3, raw_name = $5, supplier_article = $6,
+					supplier_alias_id = $3, invoice_raw_name = $5, invoice_supplier_article = $6,
 					canonical_variant_id=(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3),
-					invoiced_qty = $7, unit_price = $8, line_total = $9, load_unit = $10,
+					invoiced_qty = $7, unit_price = $8, line_total = $9,
 					match_status = $11, source_page = $12, source_line = $13,
-					pot_diameter_cm = $14, height_cm = $15, updated_at = CURRENT_TIMESTAMP
-				WHERE id = (
-					SELECT id FROM procurement_order_lines WHERE procurement_order_id = $1
-						AND saby_id = $4 AND procurement_document_id IS NULL
-					ORDER BY id LIMIT 1 FOR UPDATE
-				) RETURNING id
+					reconciliation_status=CASE WHEN ordered_qty<>$7 OR
+						(expected_unit_price IS NOT NULL AND ABS(expected_unit_price-$8)>.005)
+						THEN 'changed' ELSE 'matched' END,updated_at = CURRENT_TIMESTAMP
+				WHERE id = $14 RETURNING id
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
 				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
-				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM,
+				line.SourcePage, line.SourceLine, reconciledID,
 			).Scan(&reconciledID)
 		}
-		if sabyID == "" || errors.Is(err, pgx.ErrNoRows) {
+		if candidateCount != 1 || errors.Is(err, pgx.ErrNoRows) {
 			_, err = tx.Exec(ctx, `
 				INSERT INTO procurement_order_lines (
 					procurement_order_id, procurement_document_id, supplier_alias_id, saby_id,canonical_variant_id,
-					raw_name, supplier_article, invoiced_qty, unit_price, line_total,
-					load_unit, match_status, source_page, source_line, pot_diameter_cm, height_cm
-				) VALUES ($1, $2, $3, NULLIF($4, ''),(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+					raw_name, supplier_article, invoice_raw_name, invoice_supplier_article,
+					invoiced_qty, unit_price, line_total,load_unit, match_status, source_page, source_line,
+					pot_diameter_cm, height_cm,reconciliation_status
+				) VALUES ($1, $2, $3, NULLIF($4, ''),(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3), $5, $6, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,'added')
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
 				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
 				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM,
@@ -1064,17 +1067,19 @@ func (store *PostgresStore) ImportDocument(
 			return ImportResult{}, fmt.Errorf("reconcile procurement document line: %w", err)
 		}
 	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET reconciliation_status='missing',updated_at=CURRENT_TIMESTAMP
+		WHERE procurement_order_id=$1 AND ordered_qty>0 AND procurement_document_id IS NULL
+			AND reconciliation_status='planned'`, orderID); err != nil {
+		return ImportResult{}, fmt.Errorf("mark missing procurement plan lines: %w", err)
+	}
 
 	parseStatus, orderStatus := "parsed", "invoice_received"
 	var comparisonMismatches int
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(*)::INTEGER FROM procurement_order_lines
-		WHERE procurement_order_id = $1 AND procurement_document_id = $2
-			AND ordered_qty > 0 AND (
-				invoiced_qty IS DISTINCT FROM ordered_qty OR
-				(expected_unit_price IS NOT NULL AND unit_price IS DISTINCT FROM expected_unit_price)
-			)
-	`, orderID, document.ID).Scan(&comparisonMismatches); err != nil {
+		WHERE procurement_order_id = $1 AND reconciliation_status IN ('changed','missing','added')
+			AND NOT invoice_excluded
+	`, orderID).Scan(&comparisonMismatches); err != nil {
 		return ImportResult{}, fmt.Errorf("compare procurement plan with invoice: %w", err)
 	}
 	if unmatched > 0 || comparisonMismatches > 0 || !parsed.ArithmeticOK {

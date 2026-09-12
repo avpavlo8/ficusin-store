@@ -844,6 +844,7 @@ func scanDocument(row rowScanner, item *DocumentSummary) error {
 		&item.DocumentNumber, &item.DocumentDate, &item.Currency, &item.Lines,
 		&item.Units, &item.ProductSubtotal, &item.PackageTotal, &item.DocumentTotal,
 		&item.CalculatedTotal, &item.ParseError, &item.CreatedAt,
+		&item.RevisionNo, &item.Superseded,
 	)
 }
 
@@ -889,7 +890,7 @@ func loadDocumentByHash(
 			COALESCE(d.package_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.document_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.calculated_total, 0)::DOUBLE PRECISION,
-			d.parse_error, d.created_at
+			d.parse_error, d.created_at,d.revision_no,(d.superseded_at IS NOT NULL)
 		FROM procurement_documents d
 		JOIN procurement_suppliers s ON s.id = d.supplier_id
 		WHERE d.supplier_id = $1 AND d.sha256 = $2
@@ -923,6 +924,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
+			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
 		WHERE o.id = $1
 		GROUP BY o.id, s.name
 	`, orderID).Scan(

@@ -10,7 +10,7 @@ export function normalizeProcurementOrderDetail(item: ProcurementOrderDetail): P
   return {
     ...item,
     validation: { ...item.validation, blockers: item.validation.blockers ?? [] },
-    lines: item.lines ?? [],
+    lines: (item.lines ?? []).map((line) => ({ ...line, supplierCategory: line.supplierCategory || "", invoiceRawName: line.invoiceRawName || "", invoiceSupplierArticle: line.invoiceSupplierArticle || "", reconciliationStatus: line.reconciliationStatus || (line.invoicedQuantity == null ? "planned" : "matched"), invoiceExcluded: line.invoiceExcluded || false, invoiceExclusionReason: line.invoiceExclusionReason || "" })),
     batches: (item.batches ?? []).map((batch) => ({ ...batch, items: batch.items ?? [] })),
   };
 }
@@ -152,7 +152,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
         <th>Документ</th><th>Поставщик</th><th>Формат</th><th>Строк / шт.</th><th>Растения</th><th>Упаковка</th><th>Проверка</th>
       </tr></thead><tbody>{data.documents.map((item) => <tr key={item.id}>
-        <td><strong>{item.documentNumber || item.fileName}</strong><small>{item.documentDate ? new Date(item.documentDate).toLocaleDateString("ru-RU") : item.fileName}</small></td>
+        <td><strong>{item.documentNumber || item.fileName}</strong><small>{item.documentDate ? new Date(item.documentDate).toLocaleDateString("ru-RU") : item.fileName}</small><small>Версия {item.revisionNo || 1}{item.superseded ? " · заменена" : " · действующая"}</small></td>
         <td>{item.supplierName}</td><td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
         <td>{item.lines} / {item.units}</td><td>{formatMoney(item.productSubtotal, item.currency)}</td><td>{formatMoney(item.packageTotal, item.currency)}</td>
         <td>{item.arithmeticStatus === "ok" ? <span className="procurement-ok">Суммы сходятся</span> : <span className="procurement-warning">Проверить суммы</span>}<small>{item.parseStatus === "review" ? "Есть несопоставленные строки" : "Разобрано"}</small></td>

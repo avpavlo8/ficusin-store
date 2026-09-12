@@ -196,6 +196,14 @@ type OrderLine struct {
 	SabyName                     string   `json:"sabyName"`
 	RawName                      string   `json:"rawName"`
 	SupplierArticle              string   `json:"supplierArticle"`
+	SupplierCategory             string   `json:"supplierCategory"`
+	PackageCount                 *int     `json:"packageCount,omitempty"`
+	UnitsPerPackage              *int     `json:"unitsPerPackage,omitempty"`
+	InvoiceRawName               string   `json:"invoiceRawName"`
+	InvoiceSupplierArticle       string   `json:"invoiceSupplierArticle"`
+	ReconciliationStatus         string   `json:"reconciliationStatus"`
+	InvoiceExcluded              bool     `json:"invoiceExcluded"`
+	InvoiceExclusionReason       string   `json:"invoiceExclusionReason"`
 	Quantity                     int      `json:"quantity"`
 	OrderedQuantity              int      `json:"orderedQuantity"`
 	InvoicedQuantity             *int     `json:"invoicedQuantity,omitempty"`
@@ -282,6 +290,8 @@ type OrderLineUpdate struct {
 	LoadUnit          *string  `json:"loadUnit"`
 	AcceptComparison  *bool    `json:"acceptComparison"`
 	ComparisonNote    *string  `json:"comparisonNote"`
+	InvoiceExcluded   *bool    `json:"invoiceExcluded"`
+	ExclusionReason   *string  `json:"exclusionReason"`
 }
 
 // AvailabilityUpdate — наличие у поставщика. Ключ — пара поставщик+товар,
@@ -619,6 +629,8 @@ type DocumentSummary struct {
 	DocumentTotal    float64    `json:"documentTotal"`
 	CalculatedTotal  float64    `json:"calculatedTotal"`
 	ParseError       string     `json:"parseError"`
+	RevisionNo       int        `json:"revisionNo"`
+	Superseded       bool       `json:"superseded"`
 	CreatedAt        time.Time  `json:"createdAt"`
 }
 

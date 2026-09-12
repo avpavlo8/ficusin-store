@@ -78,3 +78,26 @@ FROM product_variants WHERE saby_id='crm-stage05-demand';
 INSERT INTO procurement_requests(kind,saby_id,requested_name,quantity,customer_order_id,source,notes)
 SELECT 'customer_order','crm-stage05-demand','Монстера Stage 05',2,id,'site_order','Проверка частичного распределения'
 FROM orders WHERE order_number='CRM-CHECK-01';
+
+-- Stage 06 invoice reconciliation: the plan remains visible beside the
+-- current invoice facts. The source PDF is synthetic and contains no PII.
+INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance) VALUES
+('crm-stage06-match','CRM-S06-M','Монстера план Stage 06',53000,0),
+('crm-stage06-change','CRM-S06-C','Фикус изменён Stage 06',42000,0),
+('crm-stage06-missing','CRM-S06-X','Мухоловка Stage 06',39000,0);
+INSERT INTO procurement_suppliers(name,kind,country_code,default_currency)
+VALUES('CRM Stage 06 Supplier','international','NL','EUR');
+INSERT INTO procurement_orders(supplier_id,order_number,document_number,document_date,source_kind,currency,status,created_by)
+SELECT supplier.id,'CRM-STAGE-06','INV-STAGE-06',CURRENT_DATE,'invoice','EUR','review',customer.id
+FROM procurement_suppliers supplier,customers customer
+WHERE supplier.name='CRM Stage 06 Supplier' AND customer.email='crm-owner@example.invalid';
+INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,document_date,currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
+SELECT supplier.id,orders.id,'crm-stage06.pdf','application/pdf',9,repeat('6',64),decode('255044462d5330360a','hex'),'holland_packing_list',2,'review','ok','INV-STAGE-06',CURRENT_DATE,'EUR',3,19,90.80,90.80,90.80,'Synthetic Stage 06 acceptance document',customer.id,1
+FROM procurement_suppliers supplier,procurement_orders orders,customers customer
+WHERE supplier.name='CRM Stage 06 Supplier' AND orders.order_number='CRM-STAGE-06' AND customer.email='crm-owner@example.invalid';
+INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,saby_id,raw_name,supplier_article,supplier_category,ordered_qty,invoiced_qty,expected_unit_price,unit_price,line_total,load_unit,pot_diameter_cm,height_cm,match_status,package_count,units_per_package,invoice_raw_name,invoice_supplier_article,reconciliation_status)
+SELECT orders.id,documents.id,'crm-stage06-match','Monstera plan','NL-M-12','Monstera',12,12,5.30,5.30,63.60,'1',12,35,'confirmed',1,12,'Monstera invoice','NL-M-12','matched'
+FROM procurement_orders orders,procurement_documents documents WHERE orders.order_number='CRM-STAGE-06' AND documents.document_number='INV-STAGE-06'
+UNION ALL SELECT orders.id,documents.id,'crm-stage06-change','Ficus plan','NL-F-10','Ficus',6,4,4.20,4.80,19.20,'1',10,30,'confirmed',1,6,'Ficus invoice','NL-F-10','changed' FROM procurement_orders orders,procurement_documents documents WHERE orders.order_number='CRM-STAGE-06' AND documents.document_number='INV-STAGE-06'
+UNION ALL SELECT orders.id,NULL,'crm-stage06-missing','Venus flytrap','NL-V-09','Carnivorous',8,NULL,3.90,NULL,NULL,'1',9,15,'confirmed',1,8,'','','missing' FROM procurement_orders orders WHERE orders.order_number='CRM-STAGE-06'
+UNION ALL SELECT orders.id,documents.id,NULL,'Calathea supplier addition','NL-NEW-1','Calathea',0,3,NULL,2.67,8.00,'1',12,30,'new_product',NULL,NULL,'Calathea supplier addition','NL-NEW-1','added' FROM procurement_orders orders,procurement_documents documents WHERE orders.order_number='CRM-STAGE-06' AND documents.document_number='INV-STAGE-06';
