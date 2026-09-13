@@ -21,8 +21,13 @@ type Adjustment = {
   deliveryFeePending: boolean;
   hasPreorder: boolean;
   status: string;
-  items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
+  deliveryMethod: string;
+  cdekTariffCode?: number;
+  items: Array<{ id: number; productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number; packageLengthCm: number; packageWidthCm: number; packageHeightCm: number; packageWeightGrams: number }>;
+  shipmentOffers: ShipmentOffer[];
 };
+
+type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
 
 const emptyPayment: PaymentBalance = {
   total: 0, paid: 0, refunded: 0, netPaid: 0, due: 0, overpaid: 0,
@@ -43,6 +48,10 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const [refundAmount, setRefundAmount] = useState("");
   const [paymentLink, setPaymentLink] = useState("");
   const [busy, setBusy] = useState(false);
+  const [offerQuantities, setOfferQuantities] = useState<Record<number, number>>({});
+  const [offerDeliveryFee, setOfferDeliveryFee] = useState(0);
+
+  const sendOffer = async (id:number) => { setBusy(true);try{await api(`/api/v1/admin/shipment-offers/${id}/send`,{method:"POST"});await load();}catch(error){onError((error as Error).message);}finally{setBusy(false);} };
 
   const load = async () => {
     try {
@@ -55,9 +64,37 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       setLines(state.order.items);
       setDeliveryFee(state.order.deliveryFee);
       setProducts(catalog.products.filter((product) => product.status === "published"));
+      setOfferQuantities(Object.fromEntries(state.order.items.map((item) => [item.id, 0])));
+      setOfferDeliveryFee(state.order.deliveryFee);
     } catch (error) {
       onError((error as Error).message);
     }
+  };
+
+  const createShipmentOffer = async () => {
+    if (!adjustment) return;
+    const items = adjustment.items.flatMap((item) => {
+      const quantity = Math.max(0, Math.min(item.quantity, offerQuantities[item.id] ?? 0));
+      return quantity > 0 ? [{ orderItemId: item.id, quantity }] : [];
+    });
+    if (!items.length) { onError("Выберите растения для этой отправки"); return; }
+    const boxes = items.flatMap((selected) => {
+      const item = adjustment.items.find((line) => line.id === selected.orderItemId)!;
+      return Array.from({ length: selected.quantity }, () => ({
+        lengthCm: item.packageLengthCm, widthCm: item.packageWidthCm,
+        heightCm: item.packageHeightCm, weightGrams: item.packageWeightGrams,
+        contents: [{ orderItemId: item.id, quantity: 1 }],
+      }));
+    });
+    setBusy(true);
+    try {
+      await api(`/api/v1/admin/orders/${order.id}/shipment-offers`, {
+        method: "POST", body: JSON.stringify({ items, boxes, deliveryFee: offerDeliveryFee,
+          cdekTariffCode: adjustment.deliveryMethod === "cdek" ? adjustment.cdekTariffCode : undefined }),
+      });
+      await load();
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
   };
 
   useEffect(() => { void load(); }, [order.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -107,12 +144,17 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     const product = products.find((item) => item.sku === addProduct);
     if (!product) return;
     setLines((current) => [...current, {
+      id: 0,
       productId: product.id,
       sku: product.sku,
       variantLabel: product.variantLabel,
       productName: product.name,
       unitPrice: product.price,
       quantity: 1,
+      packageLengthCm: product.packageLengthCm ?? 0,
+      packageWidthCm: product.packageWidthCm ?? 0,
+      packageHeightCm: product.packageHeightCm ?? 0,
+      packageWeightGrams: product.packageWeightGrams ?? 0,
     }]);
     setAddProduct("");
     compositionChanged();
@@ -241,6 +283,25 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
         <button type="button" className="admin-action" disabled={busy} onClick={() => refund(Number(refundAmount))}>Вернуть часть</button>
         <button type="button" className="admin-action" disabled={busy} onClick={() => refund(payment.netPaid)}>Вернуть всё</button>
       </div>}
+    </section>
+
+    <section className="admin-block admin-shipment-offers">
+      <div className="admin-block-heading"><div><strong>Частичные отправки</strong><small>Каждая отправка хранит свой состав, цену, коробки и срок оплаты</small></div></div>
+      {!adjustment.shipmentOffers?.some((offer)=>["draft","packaging_required","notifying","offered","payment_pending"].includes(offer.status))&&<div className="admin-shipment-builder">
+        <p>Выберите только те растения, которые уже приехали. Для каждой единицы создаётся отдельная коробка по габаритам карточки товара.</p>
+        {adjustment.items.map((item)=><label key={item.id}><span>{item.productName}<small>{money.format(item.unitPrice)} · в заказе {item.quantity} шт.</small></span><input aria-label={`В отправку ${item.productName}`} type="number" min="0" max={item.quantity} value={offerQuantities[item.id]??0} onChange={(event)=>setOfferQuantities((current)=>({...current,[item.id]:Math.max(0,Math.min(item.quantity,Number(event.target.value)||0))}))}/></label>)}
+        <label><span>Доставка этой отправки<small>После отправки предложения сумма фиксируется</small></span><input aria-label="Доставка частичной отправки" type="number" min="0" step="1" value={offerDeliveryFee} onChange={(event)=>setOfferDeliveryFee(Math.max(0,Number(event.target.value)||0))}/></label>
+        <button type="button" className="admin-action" disabled={busy} onClick={()=>void createShipmentOffer()}>Подготовить отправку</button>
+      </div>}
+      {!adjustment.shipmentOffers?.length && <p>Предложений отправки пока нет.</p>}
+      {adjustment.shipmentOffers?.map((offer)=><article className="admin-shipment-offer" key={offer.id}>
+        <div><strong>Отправка №{offer.id}</strong><small>{({draft:"Черновик",packaging_required:"Нужно распределить коробки",notifying:"Уведомление отправляется",offered:"Ожидает оплаты",payment_pending:"Платёж проверяется",paid:"Оплачено",shipping:"Передаём в СДЭК",shipped:"Передано в СДЭК",ready:"Готово к выдаче",completed:"Получено",expired:"Срок истёк",stale:"Устарело",cancelled:"Отменено"} as Record<string,string>)[offer.status]||offer.status}</small></div>
+        <div>{offer.items.map(item=><span key={item.orderItemId}>{item.productName} · {item.quantity} шт.</span>)}</div>
+        <div><span>{offer.boxes.length} кор. · доставка {money.format(offer.deliveryFee)}</span><strong>{money.format(offer.total)}</strong></div>
+        {offer.expiresAt&&<small>Оплатить до {new Date(offer.expiresAt).toLocaleString("ru-RU")}</small>}
+        {offer.status==="draft"&&<button type="button" className="admin-action" disabled={busy} onClick={()=>void sendOffer(offer.id)}>Уведомить клиента</button>}
+      </article>)}
+      <small>Повторная отправка уведомления не продлевает 48 часов. Истечение частичной отправки не отменяет остальные позиции заказа.</small>
     </section>
   </div>;
 }

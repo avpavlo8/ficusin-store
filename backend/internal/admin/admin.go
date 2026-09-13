@@ -147,12 +147,17 @@ type Order struct {
 }
 
 type OrderItem struct {
+	ID           int64   `json:"id"`
 	ProductID    int64   `json:"productId"`
 	SKU          string  `json:"sku"`
 	VariantLabel string  `json:"variantLabel"`
 	ProductName  string  `json:"productName"`
 	UnitPrice    float64 `json:"unitPrice"`
 	Quantity     int     `json:"quantity"`
+	PackageLengthCM int `json:"packageLengthCm"`
+	PackageWidthCM int `json:"packageWidthCm"`
+	PackageHeightCM int `json:"packageHeightCm"`
+	PackageWeightGrams int `json:"packageWeightGrams"`
 }
 
 type Product struct {

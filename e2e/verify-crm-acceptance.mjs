@@ -60,6 +60,8 @@ try {
    await expect(page.getByText('CRM-CHECK-01',{exact:true})).toBeVisible();
    expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
    await page.screenshot({path:`${out}/${role}-orders-${width}.png`,fullPage:true});
+   await page.getByText('CRM-STAGE-08',{exact:true}).click();await expect(page.getByText('Частичные отправки',{exact:true})).toBeVisible();await expect(page.getByText('Ожидает оплаты',{exact:true}).last()).toBeVisible();await expect(page.getByText('Антуриум Stage 07 · 1 шт.',{exact:true})).toBeVisible();await page.screenshot({path:`${out}/${role}-stage08-partial-shipment-${width}.png`,fullPage:true});
+   if(role==='owner'){await page.goto('/account/orders/CRM-STAGE-08');await expect(page.getByRole('heading',{name:'Готовы к отправке',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Оплатить отправку 4 760 ₽',exact:true})).toBeVisible();await expect(page.getByText('Ожидаем поступления остальных растений.',{exact:false})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/owner-stage08-customer-payment-${width}.png`,fullPage:true});}
    await page.goto('/admin?section=customers');
    await expect(page.getByRole('heading',{name:'Клиенты',exact:true})).toBeVisible();
    await page.getByRole('button',{name:role==='owner'?'Изменить':'Открыть',exact:true}).first().click();

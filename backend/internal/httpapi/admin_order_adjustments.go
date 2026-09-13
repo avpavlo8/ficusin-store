@@ -14,6 +14,11 @@ type adminOrderAdjustmentRepository interface {
 	OrderAdjustment(context.Context, int64) (admin.OrderAdjustmentState, error)
 }
 
+type adminShipmentOfferRepository interface {
+	CreateShipmentOffer(context.Context, admin.Actor, int64, admin.ShipmentOfferInput) (admin.ShipmentOffer, error)
+	SendShipmentOffer(context.Context, admin.Actor, int64) (admin.ShipmentOffer, error)
+}
+
 type adminOrderPaymentService interface {
 	SupersedePending(context.Context, int64) error
 	BalanceForOrder(context.Context, int64) (payment.Balance, error)
@@ -163,4 +168,21 @@ func (handlers adminHandlers) createOrderPaymentLink(response http.ResponseWrite
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
+}
+
+func (handlers adminHandlers) createShipmentOffer(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionOrdersEdit);if !ok{return}
+	id,ok:=pathID(response,request);if !ok{return}
+	repository,ok:=handlers.repository.(adminShipmentOfferRepository);if !ok{handlers.failed(response,"shipment offer unavailable",errors.New("shipment offer unavailable"));return}
+	var input admin.ShipmentOfferInput;if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный состав отправки"});return}
+	offer,err:=repository.CreateShipmentOffer(request.Context(),actor,id,input);if err!=nil{writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return}
+	writeJSON(response,http.StatusCreated,map[string]any{"offer":offer})
+}
+
+func (handlers adminHandlers) sendShipmentOffer(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionOrdersEdit);if !ok{return}
+	id,ok:=pathID(response,request);if !ok{return}
+	repository,ok:=handlers.repository.(adminShipmentOfferRepository);if !ok{handlers.failed(response,"shipment offer unavailable",errors.New("shipment offer unavailable"));return}
+	offer,err:=repository.SendShipmentOffer(request.Context(),actor,id);if err!=nil{writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return}
+	writeJSON(response,http.StatusOK,map[string]any{"offer":offer})
 }

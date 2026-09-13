@@ -32,6 +32,10 @@ func (worker *ReconcileWorker) Run(ctx context.Context) {
 }
 
 func (worker *ReconcileWorker) process(ctx context.Context) {
+	// Offers without a started payment can expire directly. If a payment is
+	// pending or its outcome is unknown, it stays open until the provider is
+	// queried below; expiry never guesses that money did not move.
+	if _,err:=worker.service.pool.Exec(ctx,`UPDATE shipment_offers SET status='expired',updated_at=CURRENT_TIMESTAMP WHERE status='offered' AND expires_at<=CURRENT_TIMESTAMP`);err!=nil{worker.logger.Error("expire idle shipment offers failed","error",err)}
 	rows, err := worker.service.pool.Query(ctx, `
 		SELECT p.provider_payment_id
 		FROM payments p JOIN orders o ON o.id=p.order_id

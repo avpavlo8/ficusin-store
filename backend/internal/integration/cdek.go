@@ -334,6 +334,10 @@ type ShipmentRequest struct {
 	CityCode      int
 	Box           Parcel
 	Items         []ShipmentItem
+	// Packages is the measured packing accepted by the customer. When it is
+	// present, CDEK receives these exact places. Box and Items remain as the
+	// backwards-compatible path for ordinary orders.
+	Packages      []ShipmentPackage
 	SenderName    string
 	SenderPhone   string
 	SenderAddress string
@@ -345,6 +349,12 @@ type ShipmentRequest struct {
 	// PaymentOnDelivery is money CDEK collects at the counter. Zero for an
 	// order already paid on the site.
 	PaymentOnDelivery float64
+}
+
+type ShipmentPackage struct {
+	Number string
+	Box    Parcel
+	Items  []ShipmentItem
 }
 
 type ShipmentItem struct {
@@ -367,14 +377,22 @@ func (client *CDEKClient) CreateOrder(
 	if request.OfficeCode == "" || request.TariffCode <= 0 {
 		return Shipment{}, errors.New("не хватает пункта выдачи или тарифа")
 	}
-	packages := []map[string]any{{
-		"number": request.OrderNumber,
-		"weight": max(1, request.Box.WeightGrams),
-		"length": max(1, request.Box.LengthCM),
-		"width":  max(1, request.Box.WidthCM),
-		"height": max(1, request.Box.HeightCM),
-		"items":  shipmentItems(request.Items),
-	}}
+	packages := make([]map[string]any, 0, max(1, len(request.Packages)))
+	if len(request.Packages) == 0 {
+		request.Packages = []ShipmentPackage{{Number: request.OrderNumber, Box: request.Box, Items: request.Items}}
+	}
+	for _, current := range request.Packages {
+		number := current.Number
+		if number == "" { number = request.OrderNumber }
+		packages = append(packages, map[string]any{
+			"number": number,
+			"weight": max(1, current.Box.WeightGrams),
+			"length": max(1, current.Box.LengthCM),
+			"width":  max(1, current.Box.WidthCM),
+			"height": max(1, current.Box.HeightCM),
+			"items":  shipmentItems(current.Items),
+		})
+	}
 	body := map[string]any{
 		"type":            1,
 		"number":          request.OrderNumber,

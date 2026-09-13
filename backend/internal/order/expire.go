@@ -78,6 +78,7 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 			-- отменялся сам, пока менеджер до него не дошёл: покупатель
 			-- ничего не бросал, а заказ исчезал вместе с резервом.
 			AND payment_method = 'online'
+			AND has_preorder = 0
 			AND status NOT IN ('cancelled', 'completed')
 			AND created_at < CURRENT_TIMESTAMP - make_interval(hours => $1)
 		ORDER BY id
@@ -129,7 +130,8 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 	defer func() { _ = transaction.Rollback(ctx) }()
 	if _, err := transaction.Exec(ctx, `
 		UPDATE orders
-		SET status = 'cancelled', payment_status = 'cancelled'
+		SET status = 'cancelled', payment_status = 'cancelled',
+			cancellation_reason = 'Срок оплаты заказа истёк'
 		WHERE id = $1 AND status <> 'cancelled'
 	`, orderID); err != nil {
 		return err
