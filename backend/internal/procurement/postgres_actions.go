@@ -342,7 +342,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				JOIN procurement_suppliers supplier ON supplier.id = o.supplier_id
 				JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 				WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
-					AND l.saby_id IS NOT NULL
+					AND l.saby_id IS NOT NULL AND NOT l.invoice_excluded
+					AND l.reconciliation_status<>'superseded'
 				GROUP BY o.id, o.order_number, supplier.name, supplier.tax_id, supplier.kpp,
 					l.saby_id, n.code, n.name, n.balance
 			)
@@ -374,6 +375,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					MAX(proposed_marketplace_strike_rub) AS strike
 				FROM procurement_order_lines
 				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
+					AND NOT invoice_excluded AND reconciliation_status<>'superseded'
 					AND canonical_variant_id IS NOT NULL AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
 				GROUP BY canonical_variant_id,saby_id
 			)
@@ -414,6 +416,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					FROM procurement_order_lines l
 					JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 					WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
+						AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
 						AND l.saby_id IS NOT NULL AND l.proposed_retail_rub IS NOT NULL
 					GROUP BY l.saby_id, n.code, n.name, n.price_minor
 				)
@@ -765,6 +768,41 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 				AND product.channel = 'wb' AND product.external_id = item.external_article
 		`, actionID); err != nil {
 			return false, fmt.Errorf("update confirmed Wildberries mirror price: %w", err)
+		}
+		if channel == "saby_receipt" {
+			// The Saby adapter reports Completed only after it has read the same
+			// document back as posted with the exact expected quantities. Record
+			// the resulting cost once; a retry cannot create a second effective
+			// cost or rewrite a historical sale snapshot.
+			if _, err := tx.Exec(ctx, `UPDATE procurement_action_items
+				SET receipt_verified_at=CURRENT_TIMESTAMP WHERE id=$1`, actionID); err != nil {
+				return false, fmt.Errorf("mark Saby receipt verified: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `
+				WITH source AS (
+					SELECT batch.procurement_order_id,line.canonical_variant_id,line.saby_id,
+						MIN(line.id) AS line_id,MAX(line.unit_cost_rub) AS unit_cost
+					FROM procurement_action_items item
+					JOIN procurement_action_batches batch ON batch.id=item.batch_id
+					JOIN procurement_order_lines line ON line.procurement_order_id=batch.procurement_order_id
+					WHERE item.id=$1 AND line.match_status='confirmed' AND NOT line.invoice_excluded
+						AND line.reconciliation_status<>'superseded' AND line.canonical_variant_id IS NOT NULL
+						AND line.saby_id IS NOT NULL AND line.unit_cost_rub IS NOT NULL
+					GROUP BY batch.procurement_order_id,line.canonical_variant_id,line.saby_id
+				), inserted AS (
+					INSERT INTO procurement_cost_history(canonical_variant_id,saby_id,procurement_order_id,
+						procurement_order_line_id,unit_cost_rub,cost_kind,source,effective_at)
+					SELECT canonical_variant_id,saby_id,procurement_order_id,line_id,unit_cost,
+						'actual','saby_posted_receipt',CURRENT_TIMESTAMP FROM source
+					ON CONFLICT DO NOTHING RETURNING canonical_variant_id,unit_cost_rub,effective_at
+				)
+				UPDATE product_variants variant SET current_unit_cost_rub=inserted.unit_cost_rub,
+					current_unit_cost_kind='actual',current_unit_cost_effective_at=inserted.effective_at,
+					updated_at=CURRENT_TIMESTAMP
+				FROM inserted WHERE variant.id=inserted.canonical_variant_id
+			`, actionID); err != nil {
+				return false, fmt.Errorf("apply verified receipt costs: %w", err)
+			}
 		}
 	}
 	if _, err := tx.Exec(ctx, `

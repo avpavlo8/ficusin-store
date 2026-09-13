@@ -158,6 +158,7 @@ type PlanItem struct {
 
 type OrderCosts struct {
 	ExchangeRate        float64 `json:"exchangeRate"`
+	CurrentDefaultExchangeRate float64 `json:"currentDefaultExchangeRate"`
 	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
 	TrolleyCostRUB      float64 `json:"trolleyCostRub"`
 	DeliveryToMoscowRUB float64 `json:"deliveryToMoscowRub"`
@@ -217,6 +218,9 @@ type OrderLine struct {
 	TrolleyDeliveryUnitRUB       *float64 `json:"trolleyDeliveryUnitRub,omitempty"`
 	RyazanDeliveryUnitRUB        *float64 `json:"ryazanDeliveryUnitRub,omitempty"`
 	UnitCostRUB                  *float64 `json:"unitCostRub,omitempty"`
+	CurrentUnitCostRUB           *float64 `json:"currentUnitCostRub,omitempty"`
+	CurrentUnitCostKind          string   `json:"currentUnitCostKind"`
+	CurrentUnitCostEffectiveAt   *time.Time `json:"currentUnitCostEffectiveAt,omitempty"`
 	CurrentRetailRUB             float64  `json:"currentRetailRub"`
 	ProposedRetailRUB            *int64   `json:"proposedRetailRub,omitempty"`
 	ProposedMarketplaceRUB       *int64   `json:"proposedMarketplaceRub,omitempty"`

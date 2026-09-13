@@ -78,6 +78,11 @@ jobs:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
         run: go test ./internal/procurement -run TestStage06 -count=1
         working-directory: backend
+      - name: Verify stage 07 posted receipt and dated costs on PostgreSQL
+        env:
+          CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
+        run: go test ./internal/procurement -run TestStage07 -count=1
+        working-directory: backend
       - name: Verify real API and desktop/mobile UI
         run: >-
           docker run --rm --network host --ipc=host
@@ -88,7 +93,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: crm-stage-06-acceptance
+          name: crm-stage-07-acceptance
           path: |
             crm-artifacts/
             crm-api.log

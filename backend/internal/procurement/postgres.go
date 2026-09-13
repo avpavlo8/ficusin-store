@@ -528,6 +528,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	}
 	var detail OrderDetail
 	detail.Order = order
+	detail.Costs.CurrentDefaultExchangeRate = settings.DefaultExchangeRate
 	err = store.pool.QueryRow(ctx, `
 		SELECT COALESCE(exchange_rate, 0)::DOUBLE PRECISION,
 			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION,
@@ -549,12 +550,14 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			l.pot_diameter_cm::DOUBLE PRECISION, l.height_cm::DOUBLE PRECISION, l.match_status,
 			l.purchase_unit_rub::DOUBLE PRECISION, l.trolley_delivery_unit_rub::DOUBLE PRECISION,
 			l.ryazan_delivery_unit_rub::DOUBLE PRECISION, l.unit_cost_rub::DOUBLE PRECISION,
+			pv.current_unit_cost_rub::DOUBLE PRECISION,COALESCE(pv.current_unit_cost_kind,''),pv.current_unit_cost_effective_at,
 			COALESCE(n.price_minor, 0)::DOUBLE PRECISION / 100,
 			l.proposed_retail_rub, l.proposed_marketplace_rub,
 			l.proposed_marketplace_strike_rub, l.customer_request,
 			l.comparison_accepted, l.comparison_note
 		FROM procurement_order_lines l
 		LEFT JOIN saby_nomenclature n ON n.saby_id = l.saby_id
+		LEFT JOIN product_variants pv ON pv.id=l.canonical_variant_id
 		WHERE l.procurement_order_id = $1 AND l.reconciliation_status <> 'superseded'
 		ORDER BY l.load_unit, l.id
 	`, orderID)
@@ -573,7 +576,8 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitPrice, &line.ExpectedUnitPrice, &line.LoadUnit,
 			&line.PotDiameterCM, &line.HeightCM, &line.MatchStatus,
 			&line.PurchaseUnitRUB, &line.TrolleyDeliveryUnitRUB, &line.RyazanDeliveryUnitRUB,
-			&line.UnitCostRUB, &line.CurrentRetailRUB, &line.ProposedRetailRUB,
+			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
+			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
 			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
@@ -799,22 +803,31 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	if documentCount == 0 || arithmeticMismatch > 0 || (input.DeliveryToRyazanRUB > 0 && totalHeightUnits <= 0) {
 		return OrderDetail{}, ErrInvalidInput
 	}
+	moscowWeights := make([]allocationWeight, 0, len(lines))
+	ryazanWeights := make([]allocationWeight, 0, len(lines))
+	for _, line := range lines {
+		if line.matchStatus != "confirmed" {
+			continue
+		}
+		if kind == KindInternational && loadVolumes[line.loadUnit] > 0 && len(loadVolumes) > 0 {
+			unitVolume := math.Pi * math.Pow(line.pot/2, 2) * line.height
+			moscowWeights = append(moscowWeights, allocationWeight{ID: line.id,
+				Weight: unitVolume * float64(line.quantity) / loadVolumes[line.loadUnit] / float64(len(loadVolumes)), Quantity: line.quantity})
+		}
+		if totalHeightUnits > 0 {
+			ryazanWeights = append(ryazanWeights, allocationWeight{ID: line.id,
+				Weight: line.height * float64(line.quantity), Quantity: line.quantity})
+		}
+	}
+	moscowPerUnit := allocateMoneyPerUnit(deliveryToMoscowRUB, moscowWeights)
+	ryazanPerUnit := allocateMoneyPerUnit(input.DeliveryToRyazanRUB, ryazanWeights)
 	for _, line := range lines {
 		if line.matchStatus == "ignored" {
 			continue
 		}
-		trolleyPerUnit := 0.0
-		if kind == KindInternational && loadVolumes[line.loadUnit] > 0 {
-			unitVolume := math.Pi * math.Pow(line.pot/2, 2) * line.height
-			trolleyPerUnit = perTrolleyRUB * unitVolume / loadVolumes[line.loadUnit]
-		}
-		ryazanPerUnit := 0.0
-		if totalHeightUnits > 0 {
-			ryazanPerUnit = input.DeliveryToRyazanRUB * line.height / totalHeightUnits
-		}
 		calculated := calculateAllocatedLine(
 			settings, kind, line.unitPrice, input.ExchangeRate,
-			trolleyPerUnit, ryazanPerUnit, line.height,
+			moscowPerUnit[line.id], ryazanPerUnit[line.id], line.height,
 		)
 		if _, err := tx.Exec(ctx, `
 			UPDATE procurement_order_lines SET purchase_unit_rub = $2,

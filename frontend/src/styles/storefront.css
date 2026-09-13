@@ -88,6 +88,7 @@
 
 @media (max-width: 620px) {
 	.procurement-settings-grid, .procurement-costs { grid-template-columns: 1fr; }
+	.procurement-rate-comparison { align-items: stretch; flex-direction: column; }
 	.procurement-order-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
 }
 

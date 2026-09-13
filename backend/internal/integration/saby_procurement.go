@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -442,15 +443,46 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 			return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
 		}
 	}
-	_, finalLineCount, err := client.readReceipt(ctx, internalID)
+	finalDocument, finalLineCount, err := client.readReceipt(ctx, internalID)
 	if err != nil {
 		return execution, fmt.Errorf("проверить поступление Saby %s: %w", execution.ExternalURL, err)
 	}
 	if finalLineCount != len(quantities) {
 		return execution, fmt.Errorf("Saby сохранил %d товарных строк из %d; документ: %s", finalLineCount, len(quantities), link)
 	}
+	actual := sabyLineQuantities(finalDocument)
+	for sabyID, expected := range quantities {
+		quantity, exists := actual[sabyID]
+		if !exists || math.Abs(quantity-expected) > .000001 {
+			return execution, fmt.Errorf("Saby сохранил количество %.3f вместо %.3f для товара %d; документ: %s", quantity, expected, sabyID, link)
+		}
+	}
+	if len(actual) != len(quantities) {
+		return execution, fmt.Errorf("состав поступления Saby отличается от подтверждённого: %d позиций вместо %d; документ: %s", len(actual), len(quantities), link)
+	}
+	if !sabyReceiptPosted(finalDocument) {
+		execution.RetryAfter = 30 * time.Second
+		return execution, nil
+	}
 	execution.Completed = true
 	return execution, nil
+}
+
+func sabyReceiptPosted(document map[string]any) bool {
+	for _, name := range []string{"Проведен", "Проведён", "Проведено"} {
+		if value, ok := sabyNamedValue(document, name); ok {
+			return sabyBool(value)
+		}
+	}
+	for _, name := range []string{"Состояние", "Статус"} {
+		if value, ok := sabyNamedValue(document, name); ok {
+			status := strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
+			if strings.Contains(status, "проведен") || strings.Contains(status, "проведён") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (client *SabyClient) readReceipt(ctx context.Context, internalID int64) (map[string]any, int, error) {

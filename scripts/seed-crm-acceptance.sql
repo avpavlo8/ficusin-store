@@ -101,3 +101,39 @@ FROM procurement_orders orders,procurement_documents documents WHERE orders.orde
 UNION ALL SELECT orders.id,documents.id,'crm-stage06-change','Ficus plan','NL-F-10','Ficus',6,4,4.20,4.80,19.20,'1',10,30,'confirmed',1,6,'Ficus invoice','NL-F-10','changed' FROM procurement_orders orders,procurement_documents documents WHERE orders.order_number='CRM-STAGE-06' AND documents.document_number='INV-STAGE-06'
 UNION ALL SELECT orders.id,NULL,'crm-stage06-missing','Venus flytrap','NL-V-09','Carnivorous',8,NULL,3.90,NULL,NULL,'1',9,15,'confirmed',1,8,'','','missing' FROM procurement_orders orders WHERE orders.order_number='CRM-STAGE-06'
 UNION ALL SELECT orders.id,documents.id,NULL,'Calathea supplier addition','NL-NEW-1','Calathea',0,3,NULL,2.67,8.00,'1',12,30,'new_product',NULL,NULL,'Calathea supplier addition','NL-NEW-1','added' FROM procurement_orders orders,procurement_documents documents WHERE orders.order_number='CRM-STAGE-06' AND documents.document_number='INV-STAGE-06';
+
+-- Stage 07 calculation and external-action states. The receipt is a synthetic
+-- draft waiting for manual posting; no external call is made in CI.
+INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance) VALUES
+('crm-stage07-a','CRM-S07-A','Антуриум Stage 07',189000,5),
+('crm-stage07-b','CRM-S07-B','Фикус Stage 07',179000,7);
+INSERT INTO products(name,slug,status,category_id,saby_id)
+SELECT 'Антуриум Stage 07','crm-stage07-a','draft',id,'crm-stage07-a' FROM categories WHERE slug='plants'
+UNION ALL SELECT 'Фикус Stage 07','crm-stage07-b','draft',id,'crm-stage07-b' FROM categories WHERE slug='plants';
+INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active,saby_id,current_unit_cost_rub,current_unit_cost_kind,current_unit_cost_effective_at)
+SELECT id,'99999107','D17',189000,0,'crm-stage07-a',945,'estimated',CURRENT_TIMESTAMP FROM products WHERE slug='crm-stage07-a'
+UNION ALL SELECT id,'99999108','D12',179000,0,'crm-stage07-b',895,'estimated',CURRENT_TIMESTAMP FROM products WHERE slug='crm-stage07-b';
+INSERT INTO procurement_cost_history(canonical_variant_id,saby_id,unit_cost_rub,cost_kind,source,effective_at)
+SELECT id,saby_id,current_unit_cost_rub,'estimated','saby_retail_half_initial',CURRENT_TIMESTAMP FROM product_variants WHERE saby_id IN ('crm-stage07-a','crm-stage07-b');
+INSERT INTO procurement_suppliers(name,kind,country_code,default_currency)
+VALUES('CRM Stage 07 Supplier','international','NL','EUR');
+INSERT INTO procurement_orders(supplier_id,order_number,document_number,document_date,source_kind,currency,status,
+  exchange_rate,delivery_to_moscow_rub,delivery_to_ryazan_rub,trolley_cost_rub,calculation_version,calculation_settings,calculated_at,created_by)
+SELECT supplier.id,'CRM-STAGE-07','INV-STAGE-07',CURRENT_DATE,'invoice','EUR','ready_to_receive',115,12000,1700,12000,1,'{}',CURRENT_TIMESTAMP,customer.id
+FROM procurement_suppliers supplier,customers customer WHERE supplier.name='CRM Stage 07 Supplier' AND customer.email='crm-owner@example.invalid';
+INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,document_date,currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
+SELECT supplier.id,orders.id,'crm-stage07.pdf','application/pdf',9,repeat('7',64),decode('255044462d5330370a','hex'),'holland_packing_list',2,'parsed','ok','INV-STAGE-07',CURRENT_DATE,'EUR',2,18,91.80,91.80,91.80,'Synthetic Stage 07 acceptance document',customer.id,1
+FROM procurement_suppliers supplier,procurement_orders orders,customers customer WHERE supplier.name='CRM Stage 07 Supplier' AND orders.order_number='CRM-STAGE-07' AND customer.email='crm-owner@example.invalid';
+INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,saby_id,canonical_variant_id,raw_name,supplier_article,supplier_category,ordered_qty,invoiced_qty,expected_unit_price,unit_price,line_total,load_unit,pot_diameter_cm,height_cm,match_status,package_count,units_per_package,invoice_raw_name,invoice_supplier_article,reconciliation_status,purchase_unit_rub,trolley_delivery_unit_rub,ryazan_delivery_unit_rub,unit_cost_rub,proposed_retail_rub,proposed_marketplace_rub,proposed_marketplace_strike_rub)
+SELECT orders.id,documents.id,'crm-stage07-a',variant.id,'Anthurium','S07-A','Anthurium',6,6,5.30,5.30,31.80,'1',17,60,'confirmed',1,6,'Anthurium','S07-A','matched',609.5,600,100,1309.5,2790,4890,6357
+FROM procurement_orders orders,procurement_documents documents,product_variants variant WHERE orders.order_number='CRM-STAGE-07' AND documents.document_number='INV-STAGE-07' AND variant.saby_id='crm-stage07-a'
+UNION ALL SELECT orders.id,documents.id,'crm-stage07-b',variant.id,'Ficus','S07-B','Ficus',12,12,5.00,5.00,60.00,'1',12,40,'confirmed',2,6,'Ficus','S07-B','matched',575,700,91.666667,1366.666667,2790,4690,6097
+FROM procurement_orders orders,procurement_documents documents,product_variants variant WHERE orders.order_number='CRM-STAGE-07' AND documents.document_number='INV-STAGE-07' AND variant.saby_id='crm-stage07-b';
+INSERT INTO procurement_action_batches(procurement_order_id,kind,status,created_by,calculation_version,calculated_at)
+SELECT id,'receipt','processing',created_by,calculation_version,calculated_at FROM procurement_orders WHERE order_number='CRM-STAGE-07';
+INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,new_value,quantity,status,external_operation_id,external_url,locked_until,payload)
+SELECT batch.id,MIN(line.id),'saby_receipt',orders.id::TEXT,0,SUM(line.invoiced_qty),'processing','7707','https://ret.saby.ru/opendoc.html?guid=crm-stage-07',CURRENT_TIMESTAMP+INTERVAL '1 day',
+  jsonb_build_object('lines',jsonb_agg(jsonb_build_object('sabyId',line.saby_id,'code',n.code,'name',n.name,'quantity',line.invoiced_qty,'unitCost',line.unit_cost_rub,'oldBalance',n.balance,'newBalance',n.balance+line.invoiced_qty) ORDER BY line.id))
+FROM procurement_action_batches batch JOIN procurement_orders orders ON orders.id=batch.procurement_order_id
+JOIN procurement_order_lines line ON line.procurement_order_id=orders.id JOIN saby_nomenclature n ON n.saby_id=line.saby_id
+WHERE orders.order_number='CRM-STAGE-07' AND batch.kind='receipt' GROUP BY batch.id,orders.id;

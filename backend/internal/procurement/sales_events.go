@@ -134,6 +134,28 @@ func replaceSalesEvents(ctx context.Context, tx pgx.Tx, channel string, from, to
 			AND import_batch_id<>$4::UUID`, channel, from, to, batchID); err != nil {
 		return 0, err
 	}
+	// Assign cost by the business event timestamp. Existing snapshots are
+	// immutable: a later receipt or a repeated import cannot rewrite the cost
+	// that a historical sale already carried.
+	if _, err := tx.Exec(ctx, `
+		WITH chosen AS (
+			SELECT event.id AS event_id,cost.id,cost.unit_cost_rub,cost.cost_kind
+			FROM sales_events event
+			JOIN LATERAL (
+			SELECT history.id,history.unit_cost_rub,history.cost_kind
+			FROM procurement_cost_history history
+			WHERE history.canonical_variant_id=event.canonical_variant_id
+				AND history.effective_at<=event.event_at
+			ORDER BY history.effective_at DESC,history.id DESC LIMIT 1
+			) cost ON TRUE
+			WHERE event.import_batch_id=$1::UUID AND event.unit_cost_rub_snapshot IS NULL
+		)
+		UPDATE sales_events event SET unit_cost_rub_snapshot=chosen.unit_cost_rub,
+			cost_quality=chosen.cost_kind,cost_history_id=chosen.id
+		FROM chosen WHERE event.id=chosen.event_id
+	`, batchID); err != nil {
+		return 0, fmt.Errorf("snapshot sales cost: %w", err)
+	}
 	if err := reconcileSalesEvents(ctx, tx); err != nil {
 		return 0, err
 	}
