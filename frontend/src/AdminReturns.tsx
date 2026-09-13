@@ -4,10 +4,10 @@ import type { MarketplaceReturn, ReturnProduct } from "./adminTypes";
 import "./styles/admin-returns.css";
 
 const conditions = {
-  inspection: { label: "На осмотре", note: "Нужно оценить состояние", icon: "◌" },
-  ready: { label: "Готово к продаже", note: "Можно вернуть в учёт СБИС", icon: "✓" },
-  restoring: { label: "На восстановлении", note: "Вернуться к оценке позже", icon: "↻" },
-  dead: { label: "Списано", note: "Себестоимость зафиксирована как потеря", icon: "×" },
+  inspection: { label: "На осмотре", note: "Нужно оценить состояние", icon: "◌", className: "state-inspection" },
+  ready: { label: "Готово к продаже", note: "Можно вернуть в учёт СБИС", icon: "✓", className: "state-ready" },
+  restoring: { label: "На восстановлении", note: "Вернуться к оценке позже", icon: "↻", className: "state-restoring" },
+  dead: { label: "Списано", note: "Себестоимость зафиксирована как потеря", icon: "×", className: "state-dead" },
 } as const;
 const channels: Record<string, string> = { wb: "Wildberries", ozon: "Ozon", avito: "Avito", saby: "Розница СБИС" };
 const receiptLabels: Record<string, string> = { none: "Документ не создан", queued: "Создание поставлено в очередь", checking: "Проверяем СБИС", draft_created: "Черновик создан в СБИС", posted: "Поступление проведено", failed: "Не удалось создать документ", correction_required: "Нужна корректировка" };
@@ -37,7 +37,7 @@ export function AdminReturns({ can, onError }: { can: (permission: string) => bo
       <section className="returns-list" aria-label="Список возвратов">
         {loading && <p className="returns-empty">Загружаем журнал…</p>}
         {!loading && visible.map((item) => <button key={item.id} className={selected?.id === item.id ? "selected" : ""} onClick={() => setSelectedID(item.id)}>
-          <span className={`return-state state-${item.condition}`}>{conditions[item.condition].icon}</span><span className="return-card-main"><strong>{item.productName}</strong><small>{item.sku} · {channels[item.channel]}</small><small>{item.sourceShipmentId || `Возврат ${item.sourceReturnId}`}</small></span><span className="return-card-tail"><time>{new Date(`${item.returnedAt}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</time><em>{conditions[item.condition].label}</em></span>
+          <span className={`return-state ${conditions[item.condition].className}`}>{conditions[item.condition].icon}</span><span className="return-card-main"><strong>{item.productName}</strong><small>{item.sku} · {channels[item.channel]}</small><small>{item.sourceShipmentId || `Возврат ${item.sourceReturnId}`}</small></span><span className="return-card-tail"><time>{new Date(`${item.returnedAt}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</time><em>{conditions[item.condition].label}</em></span>
         </button>)}
         {!loading && !visible.length && <p className="returns-empty">В этой группе возвратов нет.</p>}
       </section>
@@ -54,7 +54,7 @@ function ReturnDetails({ item, canEdit, canReceipt, onSaved, onError }: { item?:
   const receipt = async () => { setBusy(true); try { const result = await api<{ item: MarketplaceReturn }>(`/api/v1/admin/returns/${item.id}/receipt`, { method: "POST" }); onSaved(result.item); } catch (error) { onError(error instanceof Error ? error.message : "Не удалось создать поступление"); } finally { setBusy(false); } };
   const photo = async (file?: File) => { if (!file) return; setBusy(true); try { const data = await fileBase64(file); const result = await api<{ item: MarketplaceReturn }>(`/api/v1/admin/returns/${item.id}/photos`, { method: "POST", body: JSON.stringify({ contentType: file.type, data }) }); onSaved(result.item); } catch (error) { onError(error instanceof Error ? error.message : "Не удалось добавить фото"); } finally { setBusy(false); } };
   return <aside className="return-detail">
-    <header><div><span className={`return-state state-${item.condition}`}>{conditions[item.condition].icon}</span><p>Возврат №{item.id}</p><h2>{item.productName}</h2><small>{item.sku} · растение {item.sourceUnitIndex}</small></div><span className={`return-finance ${item.financialStatus}`}>{item.financialStatus === "linked" ? "Продажа связана" : "Нужна финансовая сверка"}</span></header>
+    <header><div><span className={`return-state ${conditions[item.condition].className}`}>{conditions[item.condition].icon}</span><p>Возврат №{item.id}</p><h2>{item.productName}</h2><small>{item.sku} · растение {item.sourceUnitIndex}</small></div><span className={`return-finance ${item.financialStatus}`}>{item.financialStatus === "linked" ? "Продажа связана" : "Нужна финансовая сверка"}</span></header>
     <dl><div><dt>Канал</dt><dd>{channels[item.channel]}</dd></div><div><dt>Получено</dt><dd>{new Date(`${item.returnedAt}T00:00:00`).toLocaleDateString("ru-RU")}</dd></div><div><dt>Исходное отправление</dt><dd>{item.sourceShipmentId || "Не указано"}</dd></div><div><dt>Себестоимость</dt><dd>{item.unitCost == null ? "Неизвестна" : `${item.unitCost.toLocaleString("ru-RU")} ₽`}</dd></div></dl>
     <section><h3>Оценка растения</h3><div className="return-condition-grid">{(Object.entries(conditions) as Array<[MarketplaceReturn["condition"], typeof conditions.inspection]>).map(([value, meta]) => <button key={value} disabled={!canEdit || busy || (item.condition !== "inspection" && item.condition !== "restoring" && item.condition !== value) || (item.receiptStatus === "posted" && item.condition !== value)} className={item.condition === value ? "active" : ""} onClick={() => void save(value)}><b>{meta.icon}</b><span><strong>{meta.label}</strong><small>{meta.note}</small></span></button>)}</div></section>
     <section><h3>Фото осмотра <small>{item.photoIds.length}/6</small></h3><div className="return-photos">{item.photoIds.map((id) => <img key={id} src={`/api/v1/admin/return-photos/${id}`} alt="Фото возвращённого растения" />)}{canEdit && item.photoIds.length < 6 && <label><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void photo(event.target.files?.[0])} disabled={busy} /><b>＋</b><span>Добавить фото</span></label>}</div></section>
