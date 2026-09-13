@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
@@ -12,6 +12,8 @@ import { api, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { Analytics } from "./AdminAnalytics";
 import { AdminMarketplaces } from "./AdminMarketplaces";
+
+const AdminReturns = lazy(() => import("./AdminReturns").then((module) => ({ default: module.AdminReturns })));
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
@@ -57,7 +59,7 @@ export default function AdminPage() {
           {allowed && <>
           {["products", "categories", "collections"].includes(section) && <nav className="workspace-catalog-nav" aria-label="Каталог">{([{id:"products",label:"Товары"},{id:"categories",label:"Категории"},{id:"collections",label:"Подборки"}] as const).map(item => <a key={item.id} href={`/admin?section=${item.id}`} aria-current={section === item.id ? "page" : undefined} onClick={event => { event.preventDefault(); go(item.id); }}>{item.label}</a>)}</nav>}
           {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
-          {section === "returns" && <WorkspaceState kind="empty" title="Журнал возвратов ещё не подключён" detail="Физические возвраты растений будут доступны после настройки журнала и связи с документами СБИС." />}
+          {section === "returns" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем возвраты…" />}><AdminReturns can={can} onError={setError} /></Suspense>}
           {section === "finance" && <WorkspaceState kind="unknown" title="Финансовый учёт ещё не подключён" detail="Для отчёта нужны банковские операции, подтверждённая себестоимость и удержания каналов." />}
           {section === "marketplaces" && <AdminMarketplaces onError={setError} />}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}

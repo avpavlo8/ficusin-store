@@ -625,7 +625,7 @@ func (store *PostgresStore) ClaimAction(ctx context.Context, owner string) (*Act
 			last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '2 minutes',
 			lock_owner=$1,lock_token=lock_token+1,updated_at = CURRENT_TIMESTAMP
 		FROM candidate WHERE item.id = candidate.id
-		RETURNING item.id, item.procurement_order_line_id, item.channel, item.external_article,
+		RETURNING item.id, COALESCE(item.procurement_order_line_id,0), item.channel, item.external_article,
 			item.old_value::DOUBLE PRECISION, item.new_value::DOUBLE PRECISION,
 			item.compare_at_value::DOUBLE PRECISION, item.quantity, item.external_operation_id,
 			item.external_url, item.payload, item.attempts,item.lock_owner,item.lock_token
@@ -670,7 +670,7 @@ func (store *PostgresStore) ClaimActionGroup(ctx context.Context, owner string) 
 			FROM candidates WHERE item.id = candidates.id
 			RETURNING item.*
 		)
-		SELECT id, procurement_order_line_id, channel, external_article,
+		SELECT id, COALESCE(procurement_order_line_id,0), channel, external_article,
 			old_value::DOUBLE PRECISION, new_value::DOUBLE PRECISION,
 			compare_at_value::DOUBLE PRECISION, quantity, external_operation_id,
 			external_url, payload, attempts,lock_owner,lock_token FROM claimed ORDER BY id
@@ -711,10 +711,11 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 		return false, fmt.Errorf("begin finish procurement action: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var batchID int64
+	var batchID *int64
+	var returnID *int64
 	var attempts int
 	var channel string
-	if err := tx.QueryRow(ctx, `SELECT batch_id, attempts,channel FROM procurement_action_items WHERE id=$1 AND lock_owner=$2 AND lock_token=$3 FOR UPDATE`, actionID, owner, token).Scan(&batchID, &attempts, &channel); errors.Is(err, pgx.ErrNoRows) {
+	if err := tx.QueryRow(ctx, `SELECT batch_id,marketplace_return_id,attempts,channel FROM procurement_action_items WHERE id=$1 AND lock_owner=$2 AND lock_token=$3 FOR UPDATE`, actionID, owner, token).Scan(&batchID, &returnID, &attempts, &channel); errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	} else if err != nil {
 		return false, fmt.Errorf("lock finished procurement action: %w", err)
@@ -769,7 +770,7 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 		`, actionID); err != nil {
 			return false, fmt.Errorf("update confirmed Wildberries mirror price: %w", err)
 		}
-		if channel == "saby_receipt" {
+		if channel == "saby_receipt" && returnID == nil {
 			// The Saby adapter reports Completed only after it has read the same
 			// document back as posted with the exact expected quantities. Record
 			// the resulting cost once; a retry cannot create a second effective
@@ -805,13 +806,20 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 			}
 		}
 	}
-	if _, err := tx.Exec(ctx, `
+	if returnID != nil {
+		if _, err := tx.Exec(ctx, `UPDATE marketplace_returns SET receipt_status=CASE WHEN $2='completed' THEN 'posted' WHEN $3<>'' THEN 'draft_created' WHEN $2='failed' THEN 'failed' ELSE 'checking' END,receipt_external_id=CASE WHEN $3='' THEN receipt_external_id ELSE $3 END,receipt_external_url=CASE WHEN $4='' THEN receipt_external_url ELSE $4 END,receipt_posted_at=CASE WHEN $2='completed' THEN CURRENT_TIMESTAMP ELSE receipt_posted_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *returnID, status, result.ExternalOperationID, result.ExternalURL); err != nil {
+			return false, fmt.Errorf("update marketplace return receipt: %w", err)
+		}
+	}
+	if batchID != nil {
+		if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches SET status = CASE
 			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('queued', 'processing')) THEN 'processing'
 			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('failed', 'not_configured', 'skipped')) THEN 'partially_completed'
 			ELSE 'completed' END, updated_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, batchID); err != nil {
-		return false, fmt.Errorf("update procurement batch result: %w", err)
+	`, *batchID); err != nil {
+			return false, fmt.Errorf("update procurement batch result: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit procurement action result: %w", err)
