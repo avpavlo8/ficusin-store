@@ -28,7 +28,7 @@ type Adjustment = {
 };
 
 type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
-const ShipmentOfferBuilder=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOfferBuilder})));
+const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOffers})));
 
 const emptyPayment: PaymentBalance = {
   total: 0, paid: 0, refunded: 0, netPaid: 0, due: 0, overpaid: 0,
@@ -49,8 +49,6 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const [refundAmount, setRefundAmount] = useState("");
   const [paymentLink, setPaymentLink] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const sendOffer = async (id:number) => { setBusy(true);try{await api(`/api/v1/admin/shipment-offers/${id}/send`,{method:"POST"});await load();}catch(error){onError((error as Error).message);}finally{setBusy(false);} };
 
   const load = async () => {
     try {
@@ -256,18 +254,6 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       </div>}
     </section>
 
-    <section className="admin-block admin-shipment-offers">
-      <div className="admin-block-heading"><div><strong>Частичные отправки</strong><small>Каждая отправка хранит свой состав, цену, коробки и срок оплаты</small></div></div>
-      {!adjustment.shipmentOffers?.some((offer)=>["draft","packaging_required","notifying","offered","payment_pending"].includes(offer.status))&&<Suspense fallback={<p>Готовим форму отправки…</p>}><ShipmentOfferBuilder orderId={order.id} items={adjustment.items} deliveryMethod={adjustment.deliveryMethod} deliveryFee={adjustment.deliveryFee} cdekTariffCode={adjustment.cdekTariffCode} busy={busy} setBusy={setBusy} onCreated={load} onError={onError}/></Suspense>}
-      {!adjustment.shipmentOffers?.length && <p>Предложений отправки пока нет.</p>}
-      {adjustment.shipmentOffers?.map((offer)=><article className="admin-shipment-offer" key={offer.id}>
-        <div><strong>Отправка №{offer.id}</strong><small>{({draft:"Черновик",packaging_required:"Нужно распределить коробки",notifying:"Уведомление отправляется",offered:"Ожидает оплаты",payment_pending:"Платёж проверяется",paid:"Оплачено",shipping:"Передаём в СДЭК",shipped:"Передано в СДЭК",ready:"Готово к выдаче",completed:"Получено",expired:"Срок истёк",stale:"Устарело",cancelled:"Отменено"} as Record<string,string>)[offer.status]||offer.status}</small></div>
-        <div>{offer.items.map(item=><span key={item.orderItemId}>{item.productName} · {item.quantity} шт.</span>)}</div>
-        <div><span>{offer.boxes.length} кор. · доставка {money.format(offer.deliveryFee)}</span><strong>{money.format(offer.total)}</strong></div>
-        {offer.expiresAt&&<small>Оплатить до {new Date(offer.expiresAt).toLocaleString("ru-RU")}</small>}
-        {offer.status==="draft"&&<button type="button" className="admin-action" disabled={busy} onClick={()=>void sendOffer(offer.id)}>Уведомить клиента</button>}
-      </article>)}
-      <small>Повторная отправка уведомления не продлевает 48 часов. Истечение частичной отправки не отменяет остальные позиции заказа.</small>
-    </section>
+    <Suspense fallback={<p>Готовим частичные отправки…</p>}><ShipmentOffers orderId={order.id} items={adjustment.items} offers={adjustment.shipmentOffers??[]} deliveryMethod={adjustment.deliveryMethod} deliveryFee={adjustment.deliveryFee} cdekTariffCode={adjustment.cdekTariffCode} busy={busy} setBusy={setBusy} onCreated={load} onError={onError}/></Suspense>
   </div>;
 }
