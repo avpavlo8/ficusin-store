@@ -197,8 +197,8 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 		out.NetProfit = &net
 	}
 	rows, err := repository.pool.Query(ctx, `SELECT event.channel,
-		COALESCE(SUM(gross_rub*effect),0)::DOUBLE PRECISION,
-		COALESCE(SUM(unit_cost_rub_snapshot*units) FILTER(WHERE event_type='sale'),0)::DOUBLE PRECISION,
+		COALESCE(SUM(event.gross_rub*event.effect),0)::DOUBLE PRECISION,
+		COALESCE(SUM(event.unit_cost_rub_snapshot*event.units) FILTER(WHERE event.event_type='sale'),0)::DOUBLE PRECISION,
 		COALESCE(SUM(pack.amount_rub),0)::DOUBLE PRECISION
 		FROM sales_events event LEFT JOIN finance_packaging_snapshots pack ON pack.sales_event_id=event.id WHERE `+strings.ReplaceAll(base, "event_", "event.event_")+` GROUP BY event.channel ORDER BY event.channel`, from, toExclusive)
 	if err != nil {
