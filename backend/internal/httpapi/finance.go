@@ -18,14 +18,162 @@ type financeRepository interface {
 	CreateFinanceCash(context.Context, admin.Actor, admin.FinanceCashInput) (admin.FinanceCashEntry, error)
 	ReconcileFinanceCash(context.Context, admin.Actor, admin.FinanceReconciliation) error
 }
-func(handlers adminHandlers) financeRepository()(financeRepository,bool){repository,ok:=handlers.repository.(financeRepository);return repository,ok}
 
-func (handlers adminHandlers) financeOverview(w http.ResponseWriter,r *http.Request){if _,_,ok:=handlers.authorize(w,r,admin.PermissionFinanceRead);!ok{return};repository,ok:=handlers.financeRepository();if !ok{writeJSON(w,http.StatusServiceUnavailable,errorResponse{Error:"Финансовый учёт не подключён"});return};result,err:=repository.FinanceOverview(r.Context());if err!=nil{handlers.failed(w,"finance overview",err);return};writeJSON(w,http.StatusOK,result)}
+func (handlers adminHandlers) financeRepository() (financeRepository, bool) {
+	repository, ok := handlers.repository.(financeRepository)
+	return repository, ok
+}
 
-func (handlers adminHandlers) previewFinanceImport(w http.ResponseWriter,r *http.Request){_,actor,ok:=handlers.authorize(w,r,admin.PermissionFinanceEdit);if !ok{return};repository,ok:=handlers.financeRepository();if !ok{writeJSON(w,http.StatusServiceUnavailable,errorResponse{Error:"Финансовый учёт не подключён"});return};r.Body=http.MaxBytesReader(w,r.Body,26<<20);if err:=r.ParseMultipartForm(26<<20);err!=nil{writeJSON(w,http.StatusBadRequest,errorResponse{Error:"Файл больше 25 МБ или повреждён"});return};file,header,err:=r.FormFile("file");if err!=nil{writeJSON(w,http.StatusBadRequest,errorResponse{Error:"Выберите выписку"});return};defer file.Close();content,err:=io.ReadAll(io.LimitReader(file,(25<<20)+1));if err!=nil||len(content)>25<<20{writeJSON(w,http.StatusBadRequest,errorResponse{Error:"Не удалось прочитать файл"});return};item,err:=repository.PreviewFinanceImport(r.Context(),actor,r.FormValue("bank"),r.FormValue("accountNumber"),header.Filename,content);if err!=nil{handlers.financeError(w,"finance preview",err);return};writeJSON(w,http.StatusOK,map[string]any{"import":item})}
+func (handlers adminHandlers) financeOverview(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := handlers.authorize(w, r, admin.PermissionFinanceRead); !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	result, err := repository.FinanceOverview(r.Context())
+	if err != nil {
+		handlers.failed(w, "finance overview", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
 
-func(handlers adminHandlers) confirmFinanceImport(w http.ResponseWriter,r *http.Request){_,actor,ok:=handlers.authorize(w,r,admin.PermissionFinanceEdit);if !ok{return};repository,ok:=handlers.financeRepository();if !ok{writeJSON(w,http.StatusServiceUnavailable,errorResponse{Error:"Финансовый учёт не подключён"});return};id,ok:=pathID(w,r);if !ok{return};item,err:=repository.ConfirmFinanceImport(r.Context(),actor,id);if err!=nil{handlers.financeError(w,"finance confirm",err);return};writeJSON(w,http.StatusOK,map[string]any{"import":item})}
-func(handlers adminHandlers) classifyFinanceTransaction(w http.ResponseWriter,r *http.Request){_,actor,ok:=handlers.authorize(w,r,admin.PermissionFinanceEdit);if !ok{return};repository,ok:=handlers.financeRepository();if !ok{writeJSON(w,http.StatusServiceUnavailable,errorResponse{Error:"Финансовый учёт не подключён"});return};id,ok:=pathID(w,r);if !ok{return};var body admin.FinanceClassification;if decodeJSON(r,&body)!=nil{writeJSON(w,http.StatusBadRequest,errorResponse{Error:"Проверьте статью"});return};item,err:=repository.ClassifyFinanceTransaction(r.Context(),actor,id,body);if err!=nil{handlers.financeError(w,"finance classify",err);return};writeJSON(w,http.StatusOK,map[string]any{"transaction":item})}
-func(handlers adminHandlers) createFinanceCash(w http.ResponseWriter,r *http.Request){_,actor,ok:=handlers.authorize(w,r,admin.PermissionFinanceEdit);if !ok{return};repository,ok:=handlers.financeRepository();if !ok{writeJSON(w,http.StatusServiceUnavailable,errorResponse{Error:"Финансовый учёт не подключён"});return};var body admin.FinanceCashInput;if decodeJSON(r,&body)!=nil{writeJSON(w,http.StatusBadRequest,errorResponse{Error:"Проверьте операцию"});return};item,err:=repository.CreateFinanceCash(r.Context(),actor,body);if err!=nil{handlers.financeError(w,"finance cash",err);return};writeJSON(w,http.StatusCreated,map[string]any{"entry":item})}
-func(handlers adminHandlers) reconcileFinanceCash(w http.ResponseWriter,r *http.Request){_,actor,ok:=handlers.authorize(w,r,admin.PermissionFinanceEdit);if !ok{return};repository,ok:=handlers.financeRepository();if !ok{writeJSON(w,http.StatusServiceUnavailable,errorResponse{Error:"Финансовый учёт не подключён"});return};var body admin.FinanceReconciliation;if decodeJSON(r,&body)!=nil{writeJSON(w,http.StatusBadRequest,errorResponse{Error:"Проверьте сверку"});return};if err:=repository.ReconcileFinanceCash(r.Context(),actor,body);err!=nil{handlers.financeError(w,"finance cash reconcile",err);return};writeJSON(w,http.StatusCreated,map[string]bool{"ok":true})}
-func(handlers adminHandlers) financeError(w http.ResponseWriter,operation string,err error){if errors.Is(err,admin.ErrForbidden){writeJSON(w,http.StatusForbidden,errorResponse{Error:"Раздел доступен владельцу"});return};handlers.logger.Warn(operation,"error",err);message:=strings.TrimSpace(err.Error());if message==""{message="Не удалось выполнить операцию"};writeJSON(w,http.StatusBadRequest,errorResponse{Error:message})}
+func (handlers adminHandlers) previewFinanceImport(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 26<<20)
+	if err := r.ParseMultipartForm(26 << 20); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Файл больше 25 МБ или повреждён"})
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Выберите выписку"})
+		return
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, (25<<20)+1))
+	if err != nil || len(content) > 25<<20 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Не удалось прочитать файл"})
+		return
+	}
+	item, err := repository.PreviewFinanceImport(r.Context(), actor, r.FormValue("bank"), r.FormValue("accountNumber"), header.Filename, content)
+	if err != nil {
+		handlers.financeError(w, "finance preview", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"import": item})
+}
+
+func (handlers adminHandlers) confirmFinanceImport(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	item, err := repository.ConfirmFinanceImport(r.Context(), actor, id)
+	if err != nil {
+		handlers.financeError(w, "finance confirm", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"import": item})
+}
+func (handlers adminHandlers) classifyFinanceTransaction(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body admin.FinanceClassification
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте статью"})
+		return
+	}
+	item, err := repository.ClassifyFinanceTransaction(r.Context(), actor, id, body)
+	if err != nil {
+		handlers.financeError(w, "finance classify", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"transaction": item})
+}
+func (handlers adminHandlers) createFinanceCash(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	var body admin.FinanceCashInput
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте операцию"})
+		return
+	}
+	item, err := repository.CreateFinanceCash(r.Context(), actor, body)
+	if err != nil {
+		handlers.financeError(w, "finance cash", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"entry": item})
+}
+func (handlers adminHandlers) reconcileFinanceCash(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	var body admin.FinanceReconciliation
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте сверку"})
+		return
+	}
+	if err := repository.ReconcileFinanceCash(r.Context(), actor, body); err != nil {
+		handlers.financeError(w, "finance cash reconcile", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+func (handlers adminHandlers) financeError(w http.ResponseWriter, operation string, err error) {
+	if errors.Is(err, admin.ErrForbidden) {
+		writeJSON(w, http.StatusForbidden, errorResponse{Error: "Раздел доступен владельцу"})
+		return
+	}
+	handlers.logger.Warn(operation, "error", err)
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		message = "Не удалось выполнить операцию"
+	}
+	writeJSON(w, http.StatusBadRequest, errorResponse{Error: message})
+}

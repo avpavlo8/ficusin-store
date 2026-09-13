@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS finance_cash_entries (
   created_by BIGINT REFERENCES customers(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS finance_cash_entries_linked_transaction_idx
+  ON finance_cash_entries(linked_transaction_id) WHERE linked_transaction_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS finance_cash_reconciliations (
   id BIGSERIAL PRIMARY KEY,
   reconciliation_date DATE NOT NULL,
