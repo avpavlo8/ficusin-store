@@ -309,7 +309,7 @@ func (repository *PostgresRepository) MarketplaceReturns(ctx context.Context, st
 }
 
 func (repository *PostgresRepository) MarketplaceReturn(ctx context.Context, id int64) (MarketplaceReturn, error) {
-	var item MarketplaceReturn
+	item := MarketplaceReturn{PhotoIDs: []int64{}, History: []ReturnHistory{}}
 	var unitCost sql.NullFloat64
 	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,v.sku,r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1`, id).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL)
 	if err != nil {
