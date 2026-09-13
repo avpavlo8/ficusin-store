@@ -41,7 +41,7 @@ export function AdminReturns({ can, onError }: { can: (permission: string) => bo
         </button>)}
         {!loading && !visible.length && <p className="returns-empty">В этой группе возвратов нет.</p>}
       </section>
-      <ReturnDetails key={selected?.id} item={selected} canEdit={can("returns.edit")} canReceipt={can("returns.receipt")} onSaved={(item) => { setItems((current) => current.map((old) => old.id === item.id ? item : old)); setSelectedID(item.id); }} onError={onError} />
+      <ReturnDetails key={selected?.id} item={selected} canEdit={can("returns.edit")} canReceipt={can("returns.receipt.create")} onSaved={(item) => { setItems((current) => current.map((old) => old.id === item.id ? item : old)); setSelectedID(item.id); }} onError={onError} />
     </div>
     {creating && <CreateReturn onClose={() => setCreating(false)} onCreated={(created) => { setCreating(false); setItems((current) => [...created, ...current]); setSelectedID(created[0]?.id); setTab("all"); }} onError={onError} />}
   </div>;
