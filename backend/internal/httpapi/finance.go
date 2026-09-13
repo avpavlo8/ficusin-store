@@ -17,6 +17,12 @@ type financeRepository interface {
 	ClassifyFinanceTransaction(context.Context, admin.Actor, int64, admin.FinanceClassification) (admin.FinanceTransaction, error)
 	CreateFinanceCash(context.Context, admin.Actor, admin.FinanceCashInput) (admin.FinanceCashEntry, error)
 	ReconcileFinanceCash(context.Context, admin.Actor, admin.FinanceReconciliation) error
+	FinancePnL(context.Context, string, string) (admin.PnLReport, error)
+	SaveFinanceTax(context.Context, admin.Actor, admin.TaxPeriodInput) error
+	CreateMarketplaceAdjustment(context.Context, admin.Actor, admin.MarketplaceAdjustmentInput) error
+	SupplierAccount(context.Context) (admin.SupplierAccountOverview, error)
+	CreateSupplierAccountOperation(context.Context, admin.Actor, admin.SupplierAccountInput) (admin.SupplierAccountOperation, error)
+	ReconcileSupplierAccount(context.Context, admin.Actor, admin.SupplierReconciliationInput) error
 }
 
 func (handlers adminHandlers) financeRepository() (financeRepository, bool) {
@@ -39,6 +45,125 @@ func (handlers adminHandlers) financeOverview(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (handlers adminHandlers) financePnL(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := handlers.authorize(w, r, admin.PermissionFinanceRead); !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	result, err := repository.FinancePnL(r.Context(), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	if err != nil {
+		handlers.financeError(w, "finance pnl", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (handlers adminHandlers) saveFinanceTax(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	var body admin.TaxPeriodInput
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте налог"})
+		return
+	}
+	if err := repository.SaveFinanceTax(r.Context(), actor, body); err != nil {
+		handlers.financeError(w, "finance tax", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+func (handlers adminHandlers) createMarketplaceAdjustment(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	var body admin.MarketplaceAdjustmentInput
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте строку отчёта"})
+		return
+	}
+	if err := repository.CreateMarketplaceAdjustment(r.Context(), actor, body); err != nil {
+		handlers.financeError(w, "finance marketplace adjustment", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+func (handlers adminHandlers) supplierAccount(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := handlers.authorize(w, r, admin.PermissionFinanceRead); !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	result, err := repository.SupplierAccount(r.Context())
+	if err != nil {
+		handlers.financeError(w, "supplier account", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+func (handlers adminHandlers) createSupplierAccountOperation(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	var body admin.SupplierAccountInput
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте операцию"})
+		return
+	}
+	item, err := repository.CreateSupplierAccountOperation(r.Context(), actor, body)
+	if err != nil {
+		handlers.financeError(w, "supplier operation", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"operation": item})
+}
+func (handlers adminHandlers) reconcileSupplierAccount(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionFinanceEdit)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.financeRepository()
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errorResponse{Error: "Финансовый учёт не подключён"})
+		return
+	}
+	var body admin.SupplierReconciliationInput
+	if decodeJSON(r, &body) != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте сверку"})
+		return
+	}
+	if err := repository.ReconcileSupplierAccount(r.Context(), actor, body); err != nil {
+		handlers.financeError(w, "supplier reconciliation", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
 }
 
 func (handlers adminHandlers) previewFinanceImport(w http.ResponseWriter, r *http.Request) {

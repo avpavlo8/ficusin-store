@@ -55,6 +55,10 @@ func TestFinanceClassificationKeepsTransfersOutOfPnL(t *testing.T) {
 	if class != "commission" || effect != "expense" {
 		t.Fatalf("got %s/%s", class, effect)
 	}
+	class, effect, _ = classifyFinance(FinanceSourceRow{Counterparty: "Упаковка Про", Purpose: "Коробки для отправлений", Debit: 3000})
+	if class != "packaging_material" || effect != "none" {
+		t.Fatalf("packaging purchase got %s/%s", class, effect)
+	}
 }
 
 func TestShortSberPDFNeedsReview(t *testing.T) {

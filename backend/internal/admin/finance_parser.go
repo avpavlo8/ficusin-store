@@ -252,6 +252,8 @@ func classifyFinance(row FinanceSourceRow) (string, string, string) {
 	switch {
 	case strings.Contains(v, "комисси"):
 		return "commission", "expense", ""
+	case strings.Contains(v, "упаковочн") || strings.Contains(v, "короб"):
+		return "packaging_material", "none", "Норматив упаковки уже начисляется при отправке; покупка материалов сверяется отдельно"
 	case strings.Contains(v, "эквайринг"):
 		return "acquiring", "income", ""
 	case strings.Contains(v, "рвб") || strings.Contains(v, "вайлдбер") || strings.Contains(v, "озон инвест"):
