@@ -21,6 +21,17 @@ type adjustablePaymentService interface {
 	SyncOutstanding(ctx context.Context, providerPaymentID string) error
 }
 
+type shipmentOfferPaymentService interface { StartShipmentOffer(context.Context,string,int64)(string,error) }
+
+func startShipmentOfferPaymentHandler(logger *slog.Logger,authentication authService,payments paymentService) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter,request *http.Request){
+		cookie,err:=request.Cookie(auth.CookieName);if err!=nil{writeJSON(response,http.StatusUnauthorized,errorResponse{Error:"Требуется авторизация"});return}
+		user,err:=authentication.UserByToken(request.Context(),cookie.Value);if err!=nil||user==nil{writeJSON(response,http.StatusUnauthorized,errorResponse{Error:"Требуется авторизация"});return}
+		service,ok:=payments.(shipmentOfferPaymentService);if !ok||!available(payments){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой временно недоступна"});return}
+		url,err:=service.StartShipmentOffer(request.Context(),request.PathValue("token"),user.ID);if err!=nil{logger.Info("shipment offer payment not started","error",err);writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return};writeJSON(response,http.StatusOK,map[string]string{"confirmationUrl":url})
+	})
+}
+
 // paymentMethodsHandler tells the checkout which options to draw. The list
 // depends on who is asking and how they collect, so it is built here rather
 // than hardcoded in the browser.

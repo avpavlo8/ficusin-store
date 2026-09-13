@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 import type { Order, Product } from "./adminTypes";
 
@@ -21,8 +21,14 @@ type Adjustment = {
   deliveryFeePending: boolean;
   hasPreorder: boolean;
   status: string;
-  items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
+  deliveryMethod: string;
+  cdekTariffCode?: number;
+  items: Array<{ id: number; productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number; packageLengthCm: number; packageWidthCm: number; packageHeightCm: number; packageWeightGrams: number }>;
+  shipmentOffers: ShipmentOffer[];
 };
+
+type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
+const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOffers})));
 
 const emptyPayment: PaymentBalance = {
   total: 0, paid: 0, refunded: 0, netPaid: 0, due: 0, overpaid: 0,
@@ -107,12 +113,17 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     const product = products.find((item) => item.sku === addProduct);
     if (!product) return;
     setLines((current) => [...current, {
+      id: 0,
       productId: product.id,
       sku: product.sku,
       variantLabel: product.variantLabel,
       productName: product.name,
       unitPrice: product.price,
       quantity: 1,
+      packageLengthCm: product.packageLengthCm ?? 0,
+      packageWidthCm: product.packageWidthCm ?? 0,
+      packageHeightCm: product.packageHeightCm ?? 0,
+      packageWeightGrams: product.packageWeightGrams ?? 0,
     }]);
     setAddProduct("");
     compositionChanged();
@@ -242,5 +253,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
         <button type="button" className="admin-action" disabled={busy} onClick={() => refund(payment.netPaid)}>Вернуть всё</button>
       </div>}
     </section>
+
+    <Suspense fallback={<p>Готовим частичные отправки…</p>}><ShipmentOffers orderId={order.id} items={adjustment.items} offers={adjustment.shipmentOffers??[]} deliveryMethod={adjustment.deliveryMethod} deliveryFee={adjustment.deliveryFee} cdekTariffCode={adjustment.cdekTariffCode} busy={busy} setBusy={setBusy} onCreated={load} onError={onError}/></Suspense>
   </div>;
 }

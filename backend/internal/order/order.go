@@ -22,6 +22,7 @@ type Detail struct {
 	DeliveryMethod string    `json:"deliveryMethod"`
 	Address        string    `json:"address"`
 	Comment        string    `json:"comment"`
+	CancellationReason string `json:"cancellationReason"`
 	CustomerName   string    `json:"customerName"`
 	Phone          string    `json:"phone"`
 	Email          string    `json:"email"`
@@ -41,12 +42,26 @@ type Detail struct {
 	PaymentReady   bool      `json:"paymentReady"`
 	CreatedAt      time.Time `json:"createdAt"`
 	Items          []Item    `json:"items"`
+	ShipmentOffers []ShipmentOffer `json:"shipmentOffers"`
 }
 
 type Item struct {
 	ProductName string  `json:"productName"`
 	UnitPrice   float64 `json:"unitPrice"`
 	Quantity    int     `json:"quantity"`
+}
+
+type ShipmentOffer struct {
+	ID int64 `json:"id"`
+	PaymentToken string `json:"paymentToken,omitempty"`
+	Status string `json:"status"`
+	DeliveryFee float64 `json:"deliveryFee"`
+	Subtotal float64 `json:"subtotal"`
+	Total float64 `json:"total"`
+	NotifiedAt *time.Time `json:"notifiedAt,omitempty"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Items []Item `json:"items"`
+	Boxes int `json:"boxes"`
 }
 
 type Repository interface {

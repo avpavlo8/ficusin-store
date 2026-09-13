@@ -55,6 +55,9 @@ func TestExpiryCancelsOnlyAbandonedOnlinePayments(t *testing.T) {
 	if !strings.Contains(sql, "payment_method = 'online'") {
 		t.Error("автоотмена снова ловит все pending-заказы, включая ожидающие менеджера")
 	}
+	if !strings.Contains(sql, "has_preorder = 0") {
+		t.Error("предзаказ без резерва не должен истекать как брошенная корз обычная оплата")
+	}
 	if !strings.Contains(sql, "status NOT IN ('cancelled', 'completed')") {
 		t.Error("автоотмена потеряла защиту от повторной отмены")
 	}

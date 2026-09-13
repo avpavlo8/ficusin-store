@@ -16,6 +16,7 @@ var orderStatusWording = map[string]string{
 	// Not a status of the order but news the customer is waiting on: the
 	// delivery they were told a person would price has now been priced.
 	"delivery_priced": "Доставка по заказу %s рассчитана — можно оплатить",
+	"shipment_offer": "Товар по заказу %s поступил — предложение отправки готово",
 }
 
 func (service *Service) NotifyOrderStatus(

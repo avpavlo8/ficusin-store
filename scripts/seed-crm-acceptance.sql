@@ -137,3 +137,18 @@ SELECT batch.id,MIN(line.id),'saby_receipt',orders.id::TEXT,0,SUM(line.invoiced_
 FROM procurement_action_batches batch JOIN procurement_orders orders ON orders.id=batch.procurement_order_id
 JOIN procurement_order_lines line ON line.procurement_order_id=orders.id JOIN saby_nomenclature n ON n.saby_id=line.saby_id
 WHERE orders.order_number='CRM-STAGE-07' AND batch.kind='receipt' GROUP BY batch.id,orders.id;
+
+-- Stage 08 partial shipment. The original order keeps one future unit while
+-- the customer can pay the two units in this immutable offer.
+INSERT INTO orders(order_number,customer_id,customer_name,phone,email,address,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status,has_preorder,cdek_city_code,cdek_city_name,cdek_office_code,cdek_tariff_code)
+SELECT 'CRM-STAGE-08',id,'Владелец проверки','+70000000901','crm-owner@example.invalid','Рязань, пункт выдачи CRM','cdek',680,5870,6550,'online','pending','confirmed',1,44,'Рязань','CRM-PVZ',136 FROM customers WHERE email='crm-owner@example.invalid';
+INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
+SELECT orders.id,product.id,variant.id,variant.sku,'Антуриум Stage 07',variant.label,'{}'::jsonb,2290,1,0,1 FROM orders,products product JOIN product_variants variant ON variant.product_id=product.id WHERE orders.order_number='CRM-STAGE-08' AND product.slug='crm-stage07-a'
+UNION ALL SELECT orders.id,product.id,variant.id,variant.sku,'Фикус Stage 07',variant.label,'{}'::jsonb,1790,2,1,0 FROM orders,products product JOIN product_variants variant ON variant.product_id=product.id WHERE orders.order_number='CRM-STAGE-08' AND product.slug='crm-stage07-b';
+INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,subtotal,total,cdek_tariff_code,cdek_tariff_name,quote_fingerprint,manager_note,notified_at,expires_at,created_by)
+SELECT orders.id,'crm-stage08-payment-token','1','offered','cdek',orders.address,680,4080,4760,136,'СДЭК до пункта выдачи','crm-stage08-fingerprint','Две отдельные измеренные коробки',CURRENT_TIMESTAMP-INTERVAL '1 hour',CURRENT_TIMESTAMP+INTERVAL '47 hours',customer.id FROM orders,customers customer WHERE orders.order_number='CRM-STAGE-08' AND customer.email='crm-owner@example.invalid';
+INSERT INTO shipment_offer_items(shipment_offer_id,order_item_id,variant_id,sku,product_name,unit_price,quantity)
+SELECT offer.id,item.id,item.variant_id,item.sku,item.product_name,item.unit_price,1 FROM shipment_offers offer JOIN orders ON orders.id=offer.order_id JOIN order_items item ON item.order_id=orders.id WHERE orders.order_number='CRM-STAGE-08';
+INSERT INTO shipment_offer_boxes(shipment_offer_id,box_no,length_cm,width_cm,height_cm,weight_grams,contents)
+SELECT offer.id,1,50,20,20,1200,jsonb_build_array(jsonb_build_object('orderItemId',MIN(item.id),'quantity',1)) FROM shipment_offers offer JOIN orders ON orders.id=offer.order_id JOIN order_items item ON item.order_id=orders.id WHERE orders.order_number='CRM-STAGE-08' GROUP BY offer.id
+UNION ALL SELECT offer.id,2,50,20,20,1500,jsonb_build_array(jsonb_build_object('orderItemId',MAX(item.id),'quantity',1)) FROM shipment_offers offer JOIN orders ON orders.id=offer.order_id JOIN order_items item ON item.order_id=orders.id WHERE orders.order_number='CRM-STAGE-08' GROUP BY offer.id;
