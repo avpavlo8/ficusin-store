@@ -187,6 +187,8 @@
 .admin-page .admin-dialog.procurement-order-dialog { inset: 8px; width: auto; max-width: none; height: auto; max-height: none; overflow: hidden; display: flex; flex-direction: column; transform: none; }
 .procurement-order-body { min-height: 0; overflow: auto; padding-right: 3px; scrollbar-gutter: stable; }
 .procurement-costs { margin-bottom: 16px; padding: 14px; display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)) auto; gap: 12px; align-items: end; border-radius: 12px; background: var(--cream); }
+.procurement-rate-comparison { margin: -6px 0 16px; padding: 10px 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; border: 1px solid #dbcaa9; border-radius: 10px; background: #fff9eb; color: #665831; font-size: 13px; }
+.procurement-rate-comparison button { flex: 0 0 auto; }
 .procurement-lines { min-width: 1120px; }
 .procurement-price-change { color: #9b522f; font-weight: 800; background: #fff4ed; }
 .procurement-batch-buttons { margin: 18px 0; display: flex; justify-content: flex-end; gap: 9px; }

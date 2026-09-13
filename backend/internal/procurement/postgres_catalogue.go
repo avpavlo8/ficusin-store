@@ -829,10 +829,13 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if input.Status == "received" {
 		var prepared bool
 		if err := tx.QueryRow(ctx, `
-			SELECT EXISTS (SELECT 1 FROM procurement_action_batches
-				WHERE procurement_order_id = $1 AND kind = 'receipt' AND status NOT IN ('draft', 'cancelled'))
+			SELECT EXISTS (SELECT 1 FROM procurement_action_batches batch
+				JOIN procurement_action_items item ON item.batch_id=batch.id
+				WHERE batch.procurement_order_id = $1 AND batch.kind = 'receipt'
+					AND item.channel='saby_receipt' AND item.status='completed'
+					AND item.receipt_verified_at IS NOT NULL)
 		`, orderID).Scan(&prepared); err != nil || !prepared {
-			return OrderDetail{}, ErrInvalidInput
+			return OrderDetail{}, &UserFacingError{Message: "Сначала проведите поступление в СБИС и дождитесь проверки строк и количества в CRM"}
 		}
 	}
 	if _, err := tx.Exec(ctx, `

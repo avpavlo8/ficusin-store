@@ -145,6 +145,7 @@ export type ProcurementOrderLine = {
   unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
+  currentUnitCostRub?: number; currentUnitCostKind: string; currentUnitCostEffectiveAt?: string;
   currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
   proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
@@ -152,7 +153,7 @@ export type ProcurementOrderLine = {
 
 export type ProcurementValidation = { canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
 
-export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
+export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 
 export type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };

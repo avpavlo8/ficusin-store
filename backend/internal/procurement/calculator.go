@@ -12,6 +12,49 @@ type calculatedLine struct {
 	ProposedMarketplaceStrikeRUB int64
 }
 
+type allocationWeight struct {
+	ID       int64
+	Weight   float64
+	Quantity int
+}
+
+// allocateMoneyPerUnit distributes an order-level expense in integer kopecks.
+// Every row except the last receives a rounded share; the last receives the
+// remainder. Multiplying the returned values by quantities therefore always
+// reconstructs the exact order expense without losing a kopeck.
+func allocateMoneyPerUnit(total float64, weights []allocationWeight) map[int64]float64 {
+	result := make(map[int64]float64, len(weights))
+	totalCents := int64(math.Round(total * 100))
+	if totalCents <= 0 || len(weights) == 0 {
+		return result
+	}
+	weightTotal := 0.0
+	for _, item := range weights {
+		if item.Weight > 0 && item.Quantity > 0 {
+			weightTotal += item.Weight
+		}
+	}
+	if weightTotal <= 0 {
+		return result
+	}
+	remaining := totalCents
+	eligible := make([]allocationWeight, 0, len(weights))
+	for _, item := range weights {
+		if item.Weight > 0 && item.Quantity > 0 {
+			eligible = append(eligible, item)
+		}
+	}
+	for index, item := range eligible {
+		share := remaining
+		if index < len(eligible)-1 {
+			share = int64(math.Round(float64(totalCents) * item.Weight / weightTotal))
+			remaining -= share
+		}
+		result[item.ID] = float64(share) / 100 / float64(item.Quantity)
+	}
+	return result
+}
+
 // calculateAllocatedLine applies the pricing formula after logistics has been
 // reconciled at order level. This keeps every trolley and the Ryazan delivery
 // exact instead of letting each row independently approximate its share.
