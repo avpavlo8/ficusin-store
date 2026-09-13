@@ -165,7 +165,7 @@ func (repository *PostgresRepository) ClassifyFinanceTransaction(ctx context.Con
 	if actor.Role != RoleOwner {
 		return FinanceTransaction{}, ErrForbidden
 	}
-	valid := map[string]bool{"sale": true, "marketplace_payout": true, "acquiring": true, "commission": true, "supplier": true, "tax": true, "own_transfer": true, "loan_principal": true, "loan_interest": true, "owner_contribution": true, "owner_withdrawal": true, "other": true, "review": true}
+	valid := map[string]bool{"sale": true, "marketplace_payout": true, "acquiring": true, "commission": true, "supplier": true, "tax": true, "own_transfer": true, "loan_principal": true, "loan_interest": true, "owner_contribution": true, "owner_withdrawal": true, "packaging_material": true, "other": true, "review": true}
 	if !valid[input.Classification] || (input.PnlEffect != "income" && input.PnlEffect != "expense" && input.PnlEffect != "none" && input.PnlEffect != "review") {
 		return FinanceTransaction{}, errors.New("неизвестная статья")
 	}
