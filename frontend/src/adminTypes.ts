@@ -22,6 +22,18 @@ export type AdminData = {
   };
 };
 
+export type MarketplaceReturn = {
+  id: number; channel: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
+  salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
+  condition: "inspection" | "ready" | "restoring" | "dead"; comment: string; unitCost?: number;
+  costOutcome: "unknown" | "restored" | "lost"; financialStatus: "linked" | "incomplete";
+  receiptStatus: "none" | "queued" | "checking" | "draft_created" | "posted" | "failed" | "correction_required";
+  receiptExternalUrl?: string; photoIds: number[];
+  history: Array<{ from: string; to: string; comment: string; createdAt: string }>;
+};
+
+export type ReturnProduct = { variantId: number; name: string; sku: string };
+
 export type Customer = {
   id: number; email: string; phone: string; fullName: string; lastName: string;
   patronymic: string; deliveryAddress: string; accountType: string;

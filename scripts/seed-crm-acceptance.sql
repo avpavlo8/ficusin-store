@@ -152,3 +152,24 @@ SELECT offer.id,item.id,item.variant_id,item.sku,item.product_name,item.unit_pri
 INSERT INTO shipment_offer_boxes(shipment_offer_id,box_no,length_cm,width_cm,height_cm,weight_grams,contents)
 SELECT offer.id,1,50,20,20,1200,jsonb_build_array(jsonb_build_object('orderItemId',MIN(item.id),'quantity',1)) FROM shipment_offers offer JOIN orders ON orders.id=offer.order_id JOIN order_items item ON item.order_id=orders.id WHERE orders.order_number='CRM-STAGE-08' GROUP BY offer.id
 UNION ALL SELECT offer.id,2,50,20,20,1500,jsonb_build_array(jsonb_build_object('orderItemId',MAX(item.id),'quantity',1)) FROM shipment_offers offer JOIN orders ON orders.id=offer.order_id JOIN order_items item ON item.order_id=orders.id WHERE orders.order_number='CRM-STAGE-08' GROUP BY offer.id;
+
+-- Stage 09 physical return journal. Three rows share one original shipment,
+-- while every plant retains its own inspection outcome.
+INSERT INTO marketplace_returns(channel,source_return_id,source_shipment_id,source_unit_index,sales_event_id,canonical_variant_id,returned_at,condition,comment,unit_cost_rub_snapshot,cost_outcome,financial_status,created_by,updated_by)
+SELECT 'ozon','CRM-RETURN-09','CRM-OZON-001',unit_no,sale.id,variant.id,CURRENT_DATE-1,condition,
+  CASE condition WHEN 'ready' THEN 'Листья и корни в порядке' WHEN 'restoring' THEN 'Нужны полив и повторная оценка' ELSE 'Повреждено холодом' END,
+  variant.current_unit_cost_rub,CASE condition WHEN 'ready' THEN 'restored' WHEN 'dead' THEN 'lost' ELSE 'unknown' END,'linked',customer.id,customer.id
+FROM product_variants variant
+JOIN products product ON product.id=variant.product_id AND product.slug='crm-acceptance-ficus'
+JOIN sales_events sale ON sale.source_event_id='crm-sale-1'
+CROSS JOIN customers customer
+CROSS JOIN (VALUES(1,'ready'),(2,'restoring'),(3,'dead')) AS units(unit_no,condition)
+WHERE customer.email='crm-manager@example.invalid';
+INSERT INTO marketplace_return_history(marketplace_return_id,to_condition,comment,created_by)
+SELECT item.id,item.condition,item.comment,item.created_by FROM marketplace_returns item WHERE item.source_return_id='CRM-RETURN-09';
+INSERT INTO marketplace_returns(channel,source_return_id,source_shipment_id,source_unit_index,canonical_variant_id,returned_at,condition,comment,unit_cost_rub_snapshot,cost_outcome,financial_status,created_by,updated_by)
+SELECT 'wb','CRM-RETURN-09-UNKNOWN','WB-UNKNOWN-SHIPMENT',1,variant.id,CURRENT_DATE,'inspection','Продажа не найдена, физический факт принят',variant.current_unit_cost_rub,'unknown','incomplete',customer.id,customer.id
+FROM product_variants variant JOIN products product ON product.id=variant.product_id AND product.slug='crm-stage07-a',customers customer
+WHERE customer.email='crm-manager@example.invalid';
+INSERT INTO marketplace_return_history(marketplace_return_id,to_condition,comment,created_by)
+SELECT item.id,item.condition,item.comment,item.created_by FROM marketplace_returns item WHERE item.source_return_id='CRM-RETURN-09-UNKNOWN';

@@ -177,7 +177,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"POST /api/v1/payments/orders/{orderNumber}",
 		startPaymentHandler(logger, dependencies.Payments),
 	)
-	mux.Handle("POST /api/v1/payments/shipment-offers/{token}",startShipmentOfferPaymentHandler(logger,dependencies.Auth,dependencies.Payments))
+	mux.Handle("POST /api/v1/payments/shipment-offers/{token}", startShipmentOfferPaymentHandler(logger, dependencies.Auth, dependencies.Payments))
 	mux.Handle(
 		"POST /api/v1/payments/yookassa/webhook",
 		yooKassaWebhookHandler(logger, dependencies.Payments),
@@ -222,6 +222,13 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/shipment-offers", adminAPI.createShipmentOffer)
 	mux.HandleFunc("POST /api/v1/admin/shipment-offers/{id}/send", adminAPI.sendShipmentOffer)
+	mux.HandleFunc("GET /api/v1/admin/returns", adminAPI.marketplaceReturns)
+	mux.HandleFunc("GET /api/v1/admin/returns/products", adminAPI.returnProducts)
+	mux.HandleFunc("POST /api/v1/admin/returns", adminAPI.createMarketplaceReturns)
+	mux.HandleFunc("PATCH /api/v1/admin/returns/{id}", adminAPI.updateMarketplaceReturn)
+	mux.HandleFunc("POST /api/v1/admin/returns/{id}/receipt", adminAPI.createReturnReceipt)
+	mux.HandleFunc("POST /api/v1/admin/returns/{id}/photos", adminAPI.addReturnPhoto)
+	mux.HandleFunc("GET /api/v1/admin/return-photos/{id}", adminAPI.returnPhoto)
 	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
 	mux.HandleFunc("DELETE /api/v1/admin/products", adminAPI.deleteDraftProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/publish", adminAPI.publishDraftProducts)

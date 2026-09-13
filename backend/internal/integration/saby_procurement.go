@@ -329,6 +329,7 @@ func (client *SabyClient) WithIntegrationRequestLimiter(limiter IntegrationReque
 
 type sabyDraftPayload struct {
 	OrderID     int64  `json:"orderId"`
+	ReturnID    int64  `json:"returnId"`
 	OrderNumber string `json:"orderNumber"`
 	Supplier    struct {
 		Name  string `json:"name"`
@@ -362,7 +363,7 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		return procurement.ActionExecution{}, errors.New("ключи Saby не настроены")
 	}
 	var payload sabyDraftPayload
-	if err := json.Unmarshal(item.Payload, &payload); err != nil || payload.OrderID <= 0 || len(payload.Lines) == 0 {
+	if err := json.Unmarshal(item.Payload, &payload); err != nil || (payload.OrderID <= 0 && payload.ReturnID <= 0) || len(payload.Lines) == 0 {
 		return procurement.ActionExecution{}, errors.New("некорректный состав документа Saby")
 	}
 	if item.Channel == "saby_price" {
@@ -422,7 +423,11 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		link = "https://ret.saby.ru/opendoc.html?guid=" + url.QueryEscape(guid) + "&f3=259&client=43033516"
 	}
 	execution := procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(internalID, 10), ExternalURL: link}
-	setSabyRecordField(document, "Примечание", fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID))
+	note := fmt.Sprintf("Ficusin Store, закупка №%d", payload.OrderID)
+	if payload.ReturnID > 0 {
+		note = fmt.Sprintf("Ficusin Store, возврат растения №%d", payload.ReturnID)
+	}
+	setSabyRecordField(document, "Примечание", note)
 	if savedLineCount == 0 {
 		fields := []any{
 			map[string]any{"n": "Номенклатура", "t": "Число целое"},
