@@ -33,6 +33,10 @@ export type MarketplaceReturn = {
 };
 
 export type ReturnProduct = { variantId: number; name: string; sku: string };
+export type FinanceImport = { id:number; bank:string; accountNumber:string; fileName:string; status:"preview"|"confirmed"|"failed"; rowsTotal:number; rowsNew:number; rowsDuplicate:number; rowsReview:number; createdAt:string };
+export type FinanceTransaction = { id:number; importId:number; bank:string; operationDate:string; documentNumber:string; counterparty:string; purpose:string; currency:string; debit:number; credit:number; classification:string; pnlEffect:string; reviewReason:string; confirmed:boolean };
+export type FinanceCashEntry = { id:number; operationDate:string; kind:string; direction:"in"|"out"; amount:number; purpose:string; linkedTransactionId?:number };
+export type FinanceOverview = { imports:FinanceImport[]|null; transactions:FinanceTransaction[]|null; cash:FinanceCashEntry[]|null; income:number; expense:number; cashBalance:number; reviewCount:number };
 
 export type Customer = {
   id: number; email: string; phone: string; fullName: string; lastName: string;
