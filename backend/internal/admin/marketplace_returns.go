@@ -106,9 +106,14 @@ func (repository *PostgresRepository) CreateMarketplaceReturns(ctx context.Conte
 	if input.SalesEventID != nil {
 		var eventVariant *int64
 		var eventType string
-		if err := tx.QueryRow(ctx, `SELECT canonical_variant_id,event_type FROM sales_events WHERE id=$1 AND channel=$2`, *input.SalesEventID, input.Channel).Scan(&eventVariant, &eventType); err != nil || eventVariant == nil || *eventVariant != input.VariantID || eventType != "sale" {
+		var saleCost sql.NullFloat64
+		if err := tx.QueryRow(ctx, `SELECT canonical_variant_id,event_type,unit_cost_rub_snapshot::DOUBLE PRECISION FROM sales_events WHERE id=$1 AND channel=$2`, *input.SalesEventID, input.Channel).Scan(&eventVariant, &eventType, &saleCost); err != nil || eventVariant == nil || *eventVariant != input.VariantID || eventType != "sale" {
 			return nil, errors.New("исходная продажа не соответствует возврату")
 		}
+		// A linked return must restore or lose the cost recognized by the
+		// original sale. The current product cost may already belong to a
+		// later receipt and must never rewrite this historical outcome.
+		cost = saleCost
 		financial = "linked"
 	}
 	if input.SourceReturnID == "" {
@@ -214,6 +219,9 @@ func (repository *PostgresRepository) CreateReturnReceipt(ctx context.Context, a
 		}
 		return repository.MarketplaceReturn(ctx, id)
 	}
+	if status == "correction_required" {
+		return MarketplaceReturn{}, errors.New("для проведённого поступления нужна корректирующая операция в СБИС")
+	}
 	if sabyID == "" {
 		return MarketplaceReturn{}, errors.New("у товара нет связи с СБИС")
 	}
@@ -228,7 +236,8 @@ func (repository *PostgresRepository) CreateReturnReceipt(ctx context.Context, a
 		INSERT INTO procurement_action_items(marketplace_return_id,channel,external_article,new_value,quantity,status,payload,priority,next_attempt_at)
 		VALUES($1,'saby_receipt',$2,0,1,'queued',$3::jsonb,'interactive',CURRENT_TIMESTAMP)
 		ON CONFLICT(marketplace_return_id) WHERE marketplace_return_id IS NOT NULL AND channel='saby_receipt'
-		DO UPDATE SET updated_at=procurement_action_items.updated_at
+		DO UPDATE SET status='queued',error_message='',attempts=0,next_attempt_at=CURRENT_TIMESTAMP,
+			locked_until=NULL,lock_owner='',updated_at=CURRENT_TIMESTAMP
 	`, id, sabyID, payload); err != nil {
 		return MarketplaceReturn{}, err
 	}
