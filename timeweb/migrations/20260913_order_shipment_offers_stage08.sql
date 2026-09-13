@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS shipment_offers_expiry_idx ON shipment_offers(expires
 CREATE TABLE IF NOT EXISTS shipment_offer_items (
   id BIGSERIAL PRIMARY KEY,
   shipment_offer_id BIGINT NOT NULL REFERENCES shipment_offers(id) ON DELETE CASCADE,
-  order_item_id BIGINT NOT NULL REFERENCES order_items(id) ON DELETE RESTRICT,
+  order_item_id BIGINT NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
   variant_id BIGINT REFERENCES product_variants(id) ON DELETE RESTRICT,
   sku TEXT NOT NULL DEFAULT '',
   product_name TEXT NOT NULL,
