@@ -15,8 +15,18 @@ type adminOrderAdjustmentRepository interface {
 }
 
 type adminShipmentOfferRepository interface {
+	QuoteShipmentOffer(context.Context, admin.Actor, int64, admin.ShipmentOfferInput) (admin.ShipmentOfferQuote, error)
 	CreateShipmentOffer(context.Context, admin.Actor, int64, admin.ShipmentOfferInput) (admin.ShipmentOffer, error)
 	SendShipmentOffer(context.Context, admin.Actor, int64) (admin.ShipmentOffer, error)
+}
+
+func (handlers adminHandlers) quoteShipmentOffer(response http.ResponseWriter,request *http.Request){
+	_,actor,ok:=handlers.authorize(response,request,admin.PermissionOrdersEdit);if !ok{return}
+	id,ok:=pathID(response,request);if !ok{return}
+	repository,ok:=handlers.repository.(adminShipmentOfferRepository);if !ok{handlers.failed(response,"shipment quote unavailable",errors.New("shipment quote unavailable"));return}
+	var input admin.ShipmentOfferInput;if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный состав отправки"});return}
+	quote,err:=repository.QuoteShipmentOffer(request.Context(),actor,id,input);if err!=nil{writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return}
+	writeJSON(response,http.StatusOK,quote)
 }
 
 type adminOrderPaymentService interface {

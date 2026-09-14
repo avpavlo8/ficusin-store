@@ -181,7 +181,7 @@ func main() {
 	if !yandexDeliveryClient.Configured() {
 		logger.Warn("Yandex Delivery is off; set YANDEX_DELIVERY_TOKEN, YANDEX_GEOCODER_API_KEY and sender point coordinates")
 	}
-	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
+	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient)
 	paymentService := payment.NewService(
 		pool,
 		integration.NewYooKassaClient(

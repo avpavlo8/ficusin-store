@@ -174,6 +174,35 @@ func (client *CDEKClient) CalculatePVZ(
 	cityCode int,
 	box Parcel,
 ) ([]CDEKQuote, error) {
+	return client.CalculatePVZPackages(ctx, cityCode, []Parcel{box})
+}
+
+// CalculatePVZPackages quotes the exact set of physical boxes. This is used
+// by the manager's partial-shipment editor: merging two plants into one box
+// and sending two separate boxes are deliberately different quotes.
+func (client *CDEKClient) CalculatePVZPackages(
+	ctx context.Context,
+	cityCode int,
+	boxes []Parcel,
+) ([]CDEKQuote, error) {
+	if cityCode <= 0 {
+		return nil, errors.New("не указан город СДЭК")
+	}
+	if len(boxes) == 0 {
+		return nil, errors.New("не указаны коробки")
+	}
+	packages := make([]map[string]int, 0, len(boxes))
+	for _, box := range boxes {
+		if !box.Measured() {
+			return nil, errors.New("у каждой коробки должны быть указаны размеры и вес")
+		}
+		packages = append(packages, map[string]int{
+			"weight": box.WeightGrams,
+			"length": box.LengthCM,
+			"width": box.WidthCM,
+			"height": box.HeightCM,
+		})
+	}
 	type tariff struct {
 		Code         int     `json:"tariff_code"`
 		Name         string  `json:"tariff_name"`
@@ -187,12 +216,7 @@ func (client *CDEKClient) CalculatePVZ(
 		"currency":      1,
 		"from_location": map[string]int{"code": cdekFromCityCode},
 		"to_location":   map[string]int{"code": cityCode},
-		"packages": []map[string]int{{
-			"weight": max(1, box.WeightGrams),
-			"length": max(1, box.LengthCM),
-			"width":  max(1, box.WidthCM),
-			"height": max(1, box.HeightCM),
-		}},
+		"packages":      packages,
 	}
 	var result struct {
 		Tariffs []tariff `json:"tariff_codes"`

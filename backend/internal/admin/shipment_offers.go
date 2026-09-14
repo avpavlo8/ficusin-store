@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -36,6 +37,10 @@ type ShipmentOfferInput struct {
 	CDEKTariffName string `json:"cdekTariffName"`
 	ManagerNote string `json:"managerNote"`
 	PackagingRequired bool `json:"packagingRequired"`
+}
+
+type ShipmentOfferQuote struct {
+	Quotes []integration.CDEKQuote `json:"quotes"`
 }
 
 type ShipmentOfferItem struct {
@@ -80,6 +85,56 @@ func validateShipmentBoxes(boxes []ShipmentBoxInput) error {
 	return nil
 }
 
+func shipmentSelection(items []ShipmentOfferLineInput, boxes []ShipmentBoxInput) (map[int64]int, error) {
+	selected := make(map[int64]int, len(items))
+	for _, item := range items {
+		if item.OrderItemID <= 0 || item.Quantity <= 0 || selected[item.OrderItemID] != 0 {
+			return nil, errors.New("некорректный состав предложения")
+		}
+		selected[item.OrderItemID] = item.Quantity
+	}
+	packed := make(map[int64]int, len(selected))
+	for index, box := range boxes {
+		for _, content := range box.Contents {
+			if selected[content.OrderItemID] == 0 || content.Quantity <= 0 {
+				return nil, fmt.Errorf("некорректный состав коробки %d", index+1)
+			}
+			packed[content.OrderItemID] += content.Quantity
+		}
+	}
+	for id, quantity := range selected {
+		if packed[id] != quantity {
+			return nil, errors.New("распределите по коробкам каждую выбранную единицу товара")
+		}
+	}
+	return selected, nil
+}
+
+func shipmentParcels(boxes []ShipmentBoxInput) []integration.Parcel {
+	result := make([]integration.Parcel, 0, len(boxes))
+	for _, box := range boxes {
+		result = append(result, integration.Parcel{LengthCM: box.LengthCM, WidthCM: box.WidthCM, HeightCM: box.HeightCM, WeightGrams: box.WeightGrams})
+	}
+	return result
+}
+
+func (repository *PostgresRepository) QuoteShipmentOffer(ctx context.Context, actor Actor, orderID int64, input ShipmentOfferInput) (ShipmentOfferQuote, error) {
+	if !Can(actor.Role, PermissionOrdersEdit) { return ShipmentOfferQuote{}, ErrForbidden }
+	if len(input.Items) == 0 { return ShipmentOfferQuote{}, errors.New("выберите хотя бы одну позицию") }
+	if err := validateShipmentBoxes(input.Boxes); err != nil { return ShipmentOfferQuote{}, err }
+	if _, err := shipmentSelection(input.Items, input.Boxes); err != nil { return ShipmentOfferQuote{}, err }
+	var delivery, status string
+	var cityCode int
+	if err := repository.pool.QueryRow(ctx, `SELECT delivery_method,COALESCE(cdek_city_code,0),status FROM orders WHERE id=$1`, orderID).Scan(&delivery, &cityCode, &status); err != nil { return ShipmentOfferQuote{}, err }
+	if delivery != "cdek" { return ShipmentOfferQuote{}, errors.New("тариф СДЭК нужен только для доставки СДЭК") }
+	if status == "cancelled" || status == "completed" || status == "shipped" { return ShipmentOfferQuote{}, errors.New("для закрытого или отправленного заказа нельзя рассчитать отправку") }
+	if cityCode <= 0 { return ShipmentOfferQuote{}, errors.New("в заказе не указан город СДЭК") }
+	if repository.shipmentQuotes == nil || !repository.shipmentQuotes.Configured() { return ShipmentOfferQuote{}, errors.New("СДЭК не настроен") }
+	quotes, err := repository.shipmentQuotes.CalculatePVZPackages(ctx, cityCode, shipmentParcels(input.Boxes))
+	if err != nil { return ShipmentOfferQuote{}, fmt.Errorf("не удалось пересчитать доставку СДЭК: %w", err) }
+	return ShipmentOfferQuote{Quotes: quotes}, nil
+}
+
 func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,actor Actor,orderID int64,input ShipmentOfferInput)(ShipmentOffer,error){
 	if !Can(actor.Role,PermissionOrdersEdit){return ShipmentOffer{},ErrForbidden}
 	if len(input.Items)==0{return ShipmentOffer{},errors.New("выберите хотя бы одну позицию")}
@@ -87,11 +142,11 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 	if !input.PackagingRequired { if err:=validateShipmentBoxes(input.Boxes);err!=nil{return ShipmentOffer{},err} }
 	token,err:=shipmentToken();if err!=nil{return ShipmentOffer{},err}
 	tx,err:=repository.pool.BeginTx(ctx,pgx.TxOptions{});if err!=nil{return ShipmentOffer{},err};defer func(){_ = tx.Rollback(ctx)}()
-	var revision int;var status,delivery,address,email string;var customerID *int64
-	if err:=tx.QueryRow(ctx,`SELECT shipment_revision,status,delivery_method,address,COALESCE(email,''),customer_id FROM orders WHERE id=$1 FOR UPDATE`,orderID).Scan(&revision,&status,&delivery,&address,&email,&customerID);err!=nil{return ShipmentOffer{},err}
+	var revision int;var status,delivery,address,email string;var customerID *int64;var cdekCityCode int
+	if err:=tx.QueryRow(ctx,`SELECT shipment_revision,status,delivery_method,address,COALESCE(email,''),customer_id,COALESCE(cdek_city_code,0) FROM orders WHERE id=$1 FOR UPDATE`,orderID).Scan(&revision,&status,&delivery,&address,&email,&customerID,&cdekCityCode);err!=nil{return ShipmentOffer{},err}
 	if status=="cancelled"||status=="completed"||status=="shipped"{return ShipmentOffer{},errors.New("для закрытого или отправленного заказа нельзя создать предложение")}
 	discountBPS:=0;if customerID!=nil{_ = tx.QueryRow(ctx,`SELECT COALESCE(retail_discount_bps,0) FROM customers WHERE id=$1`,*customerID).Scan(&discountBPS)};if discountBPS<0{discountBPS=0};if discountBPS>9000{discountBPS=9000}
-	if delivery=="cdek"&&!input.PackagingRequired&&input.CDEKTariffCode==nil{return ShipmentOffer{},errors.New("пересчитайте тариф СДЭК для этого состава коробок")}
+	if delivery=="cdek"&&!input.PackagingRequired&&input.CDEKTariffCode==nil{return ShipmentOffer{},errors.New("выберите пересчитанный тариф СДЭК для этого состава коробок")}
 	var offerID int64;offerStatus:="draft";if input.PackagingRequired{offerStatus="packaging_required"}
 	if err:=tx.QueryRow(ctx,`INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,cdek_tariff_code,cdek_tariff_name,manager_note,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,orderID,token,revision,offerStatus,delivery,address,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),strings.TrimSpace(input.ManagerNote),actor.CustomerID).Scan(&offerID);err!=nil{return ShipmentOffer{},fmt.Errorf("create shipment offer: %w",err)}
 	seen:=map[int64]bool{};selected:=map[int64]int{};subtotal:=0.0
@@ -106,8 +161,15 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 	packed:=map[int64]int{}
 	for index,box:=range input.Boxes{for _,content:=range box.Contents{if selected[content.OrderItemID]==0||content.Quantity<=0{return ShipmentOffer{},fmt.Errorf("некорректный состав коробки %d",index+1)};packed[content.OrderItemID]+=content.Quantity};contents,_:=json.Marshal(box.Contents);if _,err:=tx.Exec(ctx,`INSERT INTO shipment_offer_boxes(shipment_offer_id,box_no,length_cm,width_cm,height_cm,weight_grams,contents) VALUES($1,$2,$3,$4,$5,$6,$7)`,offerID,index+1,box.LengthCM,box.WidthCM,box.HeightCM,box.WeightGrams,contents);err!=nil{return ShipmentOffer{},err}}
 	if !input.PackagingRequired{for id,quantity:=range selected{if packed[id]!=quantity{return ShipmentOffer{},errors.New("распределите по коробкам каждую выбранную единицу товара")}}}
+	if delivery=="cdek"&&!input.PackagingRequired{
+		if cdekCityCode<=0{return ShipmentOffer{},errors.New("в заказе не указан город СДЭК")}
+		if repository.shipmentQuotes==nil||!repository.shipmentQuotes.Configured(){return ShipmentOffer{},errors.New("СДЭК не настроен")}
+		quotes,quoteErr:=repository.shipmentQuotes.CalculatePVZPackages(ctx,cdekCityCode,shipmentParcels(input.Boxes));if quoteErr!=nil{return ShipmentOffer{},fmt.Errorf("не удалось подтвердить тариф СДЭК: %w",quoteErr)}
+		matched:=false;for _,quote:=range quotes{if input.CDEKTariffCode!=nil&&quote.TariffCode==*input.CDEKTariffCode{input.DeliveryFee=float64(quote.Price);input.CDEKTariffName=quote.TariffName;matched=true;break}}
+		if !matched{return ShipmentOffer{},errors.New("выбранный тариф СДЭК больше недоступен — пересчитайте доставку")}
+	}
 	fingerprint,_:=json.Marshal(struct{Address string;Revision int;Items []ShipmentOfferLineInput;Boxes []ShipmentBoxInput}{address,revision,input.Items,input.Boxes})
-	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,total=$2+delivery_fee,quote_fingerprint=md5($3),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,string(fingerprint));err!=nil{return ShipmentOffer{},err}
+	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=$2+$3,cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
 	if err:=insertAudit(ctx,tx,actor,"order.shipment_offer.create","shipment_offer",fmt.Sprint(offerID),nil,map[string]any{"orderId":orderID,"status":offerStatus,"subtotal":subtotal,"deliveryFee":input.DeliveryFee});err!=nil{return ShipmentOffer{},err}
 	if err:=tx.Commit(ctx);err!=nil{return ShipmentOffer{},err};return repository.ShipmentOffer(ctx,offerID)
 }

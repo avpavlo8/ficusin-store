@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -15,9 +16,20 @@ type OrderNotifier interface {
 	NotifyOrderStatus(ctx context.Context, customerID int64, orderNumber, status string) error
 }
 
+type ShipmentQuoteService interface {
+	Configured() bool
+	CalculatePVZPackages(context.Context, int, []integration.Parcel) ([]integration.CDEKQuote, error)
+}
+
 type PostgresRepository struct {
 	pool     *pgxpool.Pool
 	notifier OrderNotifier
+	shipmentQuotes ShipmentQuoteService
+}
+
+func (repository *PostgresRepository) WithShipmentQuotes(service ShipmentQuoteService) *PostgresRepository {
+	repository.shipmentQuotes = service
+	return repository
 }
 
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
