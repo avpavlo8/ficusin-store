@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { api, money } from "./adminShared";
 
-type RevenueSummary = { revenue: number; orders: number; daily: Array<{ date: string; revenue: number; orders: number }>; salesChannels?: Array<{ availability: string }> };
+type RevenueSummary = { revenue: number; orders: number; daily: Array<{ date: string; revenue: number; orders: number }> };
 
 export function AdminRevenue({ onOpen }: { onOpen: () => void }) {
   const [days, setDays] = useState(7);
@@ -27,7 +27,7 @@ export function AdminRevenue({ onOpen }: { onOpen: () => void }) {
     <div className="workspace-revenue-body" aria-live="polite">
       {!loaded && <p className="workspace-empty">Загружаем продажи…</p>}
       {loaded && result?.error && <div className="workspace-empty"><strong>Аналитика временно недоступна</strong><p>Заказы и остальные разделы доступны. Попробуйте обновить данные.</p><button type="button" className="workspace-text-button" onClick={() => setRetry(value => value + 1)}>Попробовать снова ↻</button></div>}
-      {data && <>{data.salesChannels?.some((item) => item.availability === "unavailable") && <p className="admin-hint procurement-note">Часть источников сейчас недоступна; итог включает уже сохранённые продажи.</p>}<div className="workspace-revenue-total"><strong>{money.format(data.revenue)}</strong><span>{data.orders} оплаченных или выполненных заказов<br />за {days} дней · все каналы</span></div>
+      {data && <><div className="workspace-revenue-total"><strong>{money.format(data.revenue)}</strong><span>{data.orders} оплаченных или выполненных заказов<br />за {days} дней · все каналы</span></div>
         {rows.length > 0 ? <><svg className="workspace-chart" viewBox="0 0 680 176" role="img" aria-label={`Выручка всех каналов за ${days} дней: ${money.format(data.revenue)}`}>
           <defs><linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#648361" stopOpacity=".24" /><stop offset="100%" stopColor="#648361" stopOpacity=".02" /></linearGradient></defs>
           {[32, 90, 148].map(y => <line key={y} x1="36" x2="656" y1={y} y2={y} stroke="#e7e1d6" strokeDasharray="3 4" />)}
