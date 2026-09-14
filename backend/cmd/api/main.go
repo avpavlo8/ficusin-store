@@ -204,6 +204,7 @@ func main() {
 	).WithIntegrationRequestLimiter(procurementStore)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient).
 		WithSabyCatalogSync(sabyService)
+	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
@@ -282,7 +283,7 @@ func main() {
 	go procurement.NewActionWorker(procurementStore, procurementExecutor, logger).Run(ctx)
 	go procurement.NewWBMirrorWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
 	go procurement.NewCatalogWorker(procurementStore, procurementExecutor, logger).Run(ctx)
-	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
+	go procurement.NewSalesWorker(procurementStore, salesExecutor, logger).Run(ctx)
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
 	go operationsProbe.Run(ctx, logger)
 

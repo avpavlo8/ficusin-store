@@ -30,6 +30,8 @@ const salesRefreshDays = 30
 // пустым навсегда.
 const salesDeepEvery = 7 * 24 * time.Hour
 
+var salesMoscow = time.FixedZone("Europe/Moscow", 3*60*60)
+
 type SalesStore interface {
 	RefreshSiteSales(context.Context, time.Time, time.Time) (int, error)
 	ReplaceSales(context.Context, string, time.Time, time.Time, []SalesRecord) (int, error)
@@ -92,7 +94,7 @@ func (worker *SalesWorker) Run(ctx context.Context) {
 }
 
 func (worker *SalesWorker) run(ctx context.Context) {
-	to := day(worker.now().UTC())
+	to := day(worker.now().In(salesMoscow))
 	from := to.AddDate(0, 0, -(salesHistoryDays - 1))
 	// Local sales do not consume an external limit, but a full-year aggregate
 	// still should not run every minute while workers poll for due lanes.
