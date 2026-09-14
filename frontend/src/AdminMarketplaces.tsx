@@ -6,7 +6,7 @@ import type { IntegrationSyncStatus, ProcurementData } from "./adminTypes";
 const channelName = (value: string) => ({ saby: "СБИС", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 const resourceName = (value: string) => value === "catalog" ? "Карточки и цены" : "Продажи";
 const statusName = (value: string) => ({ pending: "Ожидает первой загрузки", queued: "В очереди", running: "Обновляется", ok: "Завершено", error: "Нужен повтор", disabled: "Не подключено" }[value] || value);
-const when = (value?: string) => value ? new Date(value).toLocaleString("ru-RU") : "не было";
+const when = (value?: string) => value ? new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }) : "не было";
 
 export function AdminMarketplaces({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
@@ -26,17 +26,20 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
     <div className="integration-channel-grid">{(["ozon", "wb", "saby"] as const).map((channel) => {
       const health = data.integrationHealth.find((item) => item.channel === channel);
       const channelLanes = lanes.filter((item) => item.channel === channel);
-      const running = channelLanes.some((item) => item.status === "running");
-      const successes = channelLanes.map((item) => item.lastSuccessAt).filter((item): item is string => Boolean(item)).sort();
-      const retries = channelLanes.map((item) => item.cooldownUntil || item.nextAttemptAt).filter((item): item is string => Boolean(item)).sort();
-      return <article key={channel} className={health?.lastError ? "attention" : health?.configured ? "connected" : ""}>
-        <div><strong>{channelName(channel)}</strong><span>{!health?.configured ? "Не подключён" : running ? "Обновляется" : health.lastError ? "Есть ошибка" : "Подключён"}</span></div>
+      const enabledLanes = channelLanes.filter((item) => item.status !== "disabled");
+      const running = enabledLanes.some((item) => item.status === "running");
+      const hasError = Boolean(health?.lastError || enabledLanes.some((item) => item.status === "error"));
+      const partial = Boolean(health?.configured && (channelLanes.length < 2 || channelLanes.some((item) => ["disabled", "pending"].includes(item.status))));
+      const successes = enabledLanes.map((item) => item.lastSuccessAt).filter((item): item is string => Boolean(item)).sort();
+      const retries = enabledLanes.map((item) => item.cooldownUntil || item.nextAttemptAt).filter((item): item is string => Boolean(item)).sort();
+      return <article key={channel} className={hasError ? "attention" : health?.configured ? partial ? "partial" : "connected" : ""}>
+        <div><strong>{channelName(channel)}</strong><span>{!health?.configured ? "Не подключён" : running ? "Обновляется" : hasError ? "Есть ошибка" : partial ? "Подключён частично" : "Подключён"}</span></div>
         <small>Последний успешный обмен: {when(successes.at(-1))}</small>
         {retries[0] && <small>Следующая попытка: {when(retries[0])}</small>}
         <button className="secondary-button" disabled={!health?.configured || queued.includes(channel)} onClick={() => void request(channel)}>{queued.includes(channel) ? "Добавляем в очередь…" : channel === "wb" ? "Сопоставить из зеркала" : "Обновить данные"}</button>
       </article>;
     })}</div>
-    <section className="admin-block marketplace-queue"><div className="admin-block-heading"><div><p className="eyebrow">Единая очередь</p><h2>История обмена</h2></div></div>
+    <section className="admin-block marketplace-queue"><div className="admin-block-heading"><div><p className="eyebrow">Единая очередь · время Москвы</p><h2>История обмена</h2></div></div>
       {lanes.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Задача</th><th>Состояние</th><th>Попытка / успех</th><th>Границы данных</th><th>Следующий запуск</th></tr></thead><tbody>{lanes.map((item: IntegrationSyncStatus) => <tr key={`${item.channel}-${item.resource}`}>
         <td><strong>{resourceName(item.resource)}</strong><small>{channelName(item.channel)} · {item.priority === "interactive" ? "ручной приоритет" : "фоновая"}</small></td>
         <td><span className={`sync-status sync-${item.status}`}>{statusName(item.status)}</span>{item.lastError && <small className="sync-error">{item.lastError}</small>}</td>

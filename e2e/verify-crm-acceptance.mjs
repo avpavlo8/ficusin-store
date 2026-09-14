@@ -55,6 +55,7 @@ try {
   await page.goto('/');await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();
   for(const width of [1440,390]) {
    await page.setViewportSize({width,height:1000});
+   if(role==='owner'){await page.goto('/admin');await expect(page.getByRole('region',{name:'Продажи по всем каналам',exact:true})).toBeVisible();await expect(page.getByText('только сайт',{exact:false})).toHaveCount(0);}
    await page.goto('/admin?section=orders');
    await expect(page.getByRole('heading',{name:'Заказы',exact:true})).toBeVisible();
    await expect(page.getByText('CRM-CHECK-01',{exact:true})).toBeVisible();

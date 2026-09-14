@@ -49,6 +49,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const [refundAmount, setRefundAmount] = useState("");
   const [paymentLink, setPaymentLink] = useState("");
   const [busy, setBusy] = useState(false);
+  const readOnly = ["canceled", "completed", "shipped"].includes(order.status);
 
   const load = async () => {
     try {
@@ -197,23 +198,24 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   if (!adjustment) return <p>Загружаем заказ…</p>;
 
   return <div className="admin-order-editor">
+    {readOnly && <p className="admin-hint procurement-note">Заказ закрыт. Состав, доставка и новые ссылки на оплату доступны только для просмотра.</p>}
     <section className="admin-block">
       <div className="admin-block-heading"><div><strong>Состав заказа</strong><small>Менеджер может изменить заказ до отправки</small></div></div>
       {lines.map((line, index) => <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
         <span><strong>{line.productName}</strong><small>{money.format(line.unitPrice)} / шт.</small></span>
-        <input aria-label={`Количество ${line.productName}`} type="number" min="1" max="100" value={line.quantity}
+        <input aria-label={`Количество ${line.productName}`} type="number" min="1" max="100" value={line.quantity} disabled={readOnly}
           onChange={(event) => changeQuantity(index, Number(event.target.value))} />
         <strong>{money.format(line.unitPrice * line.quantity)}</strong>
-        <button type="button" className="admin-action" onClick={() => removeLine(index)}>Удалить</button>
+        <button type="button" className="admin-action" disabled={readOnly} onClick={() => removeLine(index)}>Удалить</button>
       </div>)}
       <div className="admin-order-add-line">
-        <select value={addProduct} onChange={(event) => setAddProduct(event.target.value)}>
+        <select value={addProduct} disabled={readOnly} onChange={(event) => setAddProduct(event.target.value)}>
           <option value="">Добавить товар…</option>
           {availableProducts.map((product) => <option value={product.sku} key={product.id}>
             {product.name} · {money.format(product.price)} · остаток {product.stock}
           </option>)}
         </select>
-        <button type="button" className="admin-action" disabled={!addProduct} onClick={appendProduct}>Добавить</button>
+        <button type="button" className="admin-action" disabled={readOnly || !addProduct} onClick={appendProduct}>Добавить</button>
       </div>
       <div className="admin-order-draft-total">
         <small>После сохранения эта сумма станет итогом заказа</small>
@@ -225,14 +227,14 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     {order.deliveryMethod !== "pickup" && <section className="admin-block">
       <strong>Доставка</strong>
       <div className="admin-form-grid">
-        <label>Стоимость доставки, ₽<input type="number" min="0" step="1" value={deliveryFee}
+        <label>Стоимость доставки, ₽<input type="number" min="0" step="1" value={deliveryFee} disabled={readOnly}
           onChange={(event) => { setDeliveryFee(Math.max(0, Number(event.target.value))); setPaymentLink(""); }} /></label>
       </div>
       <small>Нажатие «Сохранить изменения» подтверждает эту стоимость для клиента.</small>
     </section>}
 
     <div className="dialog-actions">
-      <button type="button" className="primary" disabled={busy} onClick={save}>Сохранить изменения</button>
+      <button type="button" className="primary" disabled={busy || readOnly} onClick={save}>Сохранить изменения</button>
     </div>
 
     <section className="admin-block admin-order-payment-block">
@@ -242,7 +244,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       {shownOverpaid > 0 && <p className="admin-flag">Переплата: <b>{money.format(shownOverpaid)}</b></p>}
       {hasUnsavedChanges && shownDue > 0 && <p>Сначала сохраните изменения — старая ссылка больше не используется.</p>}
       {!hasUnsavedChanges && !payment.ready && payment.due > 0 && <p>Оплата закрыта: в заказе есть товар без подтверждённого наличия.</p>}
-      {!hasUnsavedChanges && payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>
+      {!readOnly && !hasUnsavedChanges && payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>
         {payment.netPaid > 0 ? "Создать ссылку на доплату" : "Создать ссылку на оплату"}
       </button>}
       {paymentLink && <p><a href={paymentLink} target="_blank" rel="noreferrer">Ссылка на оплату</a> <small>скопирована в буфер, если браузер разрешил</small></p>}
@@ -254,6 +256,6 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       </div>}
     </section>
 
-    <Suspense fallback={<p>Готовим частичные отправки…</p>}><ShipmentOffers orderId={order.id} items={adjustment.items} offers={adjustment.shipmentOffers??[]} deliveryMethod={adjustment.deliveryMethod} deliveryFee={adjustment.deliveryFee} cdekTariffCode={adjustment.cdekTariffCode} busy={busy} setBusy={setBusy} onCreated={load} onError={onError}/></Suspense>
+    <Suspense fallback={<p>Готовим частичные отправки…</p>}><ShipmentOffers orderId={order.id} items={adjustment.items} offers={adjustment.shipmentOffers??[]} deliveryMethod={adjustment.deliveryMethod} deliveryFee={adjustment.deliveryFee} cdekTariffCode={adjustment.cdekTariffCode} busy={busy} readOnly={readOnly} setBusy={setBusy} onCreated={load} onError={onError}/></Suspense>
   </div>;
 }
