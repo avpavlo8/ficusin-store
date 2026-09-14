@@ -137,7 +137,7 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 	}
 	out := PnLReport{From: fromText, To: toText, TaxRegime: "АУСН · доходы", TaxRate: .08}
 	toExclusive := to.AddDate(0, 0, 1)
-	base := `event_status='confirmed' AND reconciliation_status='counted' AND event_at >= $1 AND event_at < $2`
+	base := `event_status='confirmed' AND reconciliation_status='counted' AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE >= $1::DATE AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE < $2::DATE`
 	err = repository.pool.QueryRow(ctx, `SELECT
 		COALESCE(SUM(gross_rub*effect),0)::DOUBLE PRECISION,
 		COALESCE(SUM(unit_cost_rub_snapshot*units) FILTER(WHERE event_type='sale'),0)::DOUBLE PRECISION,
@@ -154,14 +154,14 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 	err = repository.pool.QueryRow(ctx, `SELECT
 		COALESCE(SUM(unit_cost_rub_snapshot) FILTER(WHERE condition='ready'),0)::DOUBLE PRECISION,
 		COALESCE(SUM(unit_cost_rub_snapshot) FILTER(WHERE condition='dead'),0)::DOUBLE PRECISION
-		FROM marketplace_returns WHERE returned_at >= $1 AND returned_at <= $2`, from, to).Scan(&restored, &out.ReturnLoss)
+		FROM marketplace_returns r WHERE EXISTS (SELECT 1 FROM sales_events s WHERE s.id=r.sales_event_id AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted') AND returned_at >= $1 AND returned_at <= $2`, from, to).Scan(&restored, &out.ReturnLoss)
 	if err != nil {
 		return out, err
 	}
 	out.COGS -= restored
 	err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(pack.amount_rub),0)::DOUBLE PRECISION
 		FROM finance_packaging_snapshots pack JOIN sales_events event ON event.id=pack.sales_event_id
-		WHERE event.event_at >= $1 AND event.event_at < $2`, from, toExclusive).Scan(&out.Packaging)
+		WHERE (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE >= $1::DATE AND (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE < $2::DATE`, from, toExclusive).Scan(&out.Packaging)
 	if err != nil {
 		return out, err
 	}
@@ -173,7 +173,7 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 	}
 	out.MarketplaceCosts = -marketplaceNet
 	err = repository.pool.QueryRow(ctx, `SELECT
-		COALESCE((SELECT SUM(debit_rub-credit_rub) FROM finance_transactions WHERE confirmed AND pnl_effect='expense' AND classification<>'tax' AND operation_date >= $1 AND operation_date <= $2),0)::DOUBLE PRECISION
+		COALESCE((SELECT SUM(debit_rub-credit_rub) FROM finance_transactions WHERE confirmed AND pnl_effect='expense' AND classification NOT IN ('tax','supplier','packaging_material','own_transfer','loan_principal','owner_contribution','owner_withdrawal') AND operation_date >= $1 AND operation_date <= $2),0)::DOUBLE PRECISION
 		+ COALESCE((SELECT SUM(CASE direction WHEN 'out' THEN amount_rub ELSE -amount_rub END) FROM finance_cash_entries WHERE kind IN ('expense','adjustment') AND operation_date >= $1 AND operation_date <= $2),0)::DOUBLE PRECISION`, from, to).Scan(&out.OperatingExpenses)
 	if err != nil {
 		return out, err
@@ -211,7 +211,7 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 			return out, err
 		}
 		var restored, adjustmentNet float64
-		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(r.unit_cost_rub_snapshot),0)::DOUBLE PRECISION FROM marketplace_returns r JOIN sales_events s ON s.id=r.sales_event_id WHERE r.condition='ready' AND r.returned_at >= $1 AND r.returned_at <= $2 AND s.channel=$3`, from, to, line.Channel).Scan(&restored); err != nil {
+		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(r.unit_cost_rub_snapshot),0)::DOUBLE PRECISION FROM marketplace_returns r JOIN sales_events s ON s.id=r.sales_event_id WHERE r.condition='ready' AND r.returned_at >= $1 AND r.returned_at <= $2 AND s.channel=$3 AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted'`, from, to, line.Channel).Scan(&restored); err != nil {
 			return out, err
 		}
 		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_rub*effect),0)::DOUBLE PRECISION FROM finance_marketplace_adjustments WHERE status='confirmed' AND operation_date >= $1 AND operation_date <= $2 AND channel=$3`, from, to, line.Channel).Scan(&adjustmentNet); err != nil {
@@ -223,13 +223,14 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 		out.Channels = append(out.Channels, line)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil { return out, err }
 	rows, err = repository.pool.Query(ctx, `SELECT event.canonical_variant_id,p.name,v.sku,
 		COALESCE(SUM(event.units*event.effect),0)::INTEGER,COALESCE(SUM(event.gross_rub*event.effect),0)::DOUBLE PRECISION,
 		COALESCE(SUM(event.unit_cost_rub_snapshot*event.units) FILTER(WHERE event.event_type='sale'),0)::DOUBLE PRECISION,
 		COALESCE(SUM(pack.amount_rub),0)::DOUBLE PRECISION,
 		CASE WHEN BOOL_OR(event.unit_cost_rub_snapshot IS NULL) THEN 'Не определён' WHEN BOOL_OR(event.cost_quality='estimated') THEN 'Оценка' ELSE 'Закупка' END,
 		COALESCE(BOOL_OR(event.cost_quality='estimated'),FALSE),COALESCE(SUM(event.units) FILTER(WHERE event.event_type='sale' AND event.unit_cost_rub_snapshot IS NULL),0)::INTEGER,
-		COALESCE((SELECT SUM(r.unit_cost_rub_snapshot) FROM marketplace_returns r WHERE r.canonical_variant_id=event.canonical_variant_id AND r.condition='ready' AND r.returned_at >= $1 AND r.returned_at < $2),0)::DOUBLE PRECISION
+		COALESCE((SELECT SUM(r.unit_cost_rub_snapshot) FROM marketplace_returns r WHERE r.canonical_variant_id=event.canonical_variant_id AND r.condition='ready' AND EXISTS (SELECT 1 FROM sales_events original WHERE original.id=r.sales_event_id AND original.event_type='sale' AND original.event_status='confirmed' AND original.reconciliation_status='counted') AND r.returned_at >= $1 AND r.returned_at < $2),0)::DOUBLE PRECISION
 		FROM sales_events event JOIN product_variants v ON v.id=event.canonical_variant_id JOIN products p ON p.id=v.product_id
 		LEFT JOIN finance_packaging_snapshots pack ON pack.sales_event_id=event.id
 		WHERE `+strings.ReplaceAll(base, "event_", "event.event_")+` GROUP BY event.canonical_variant_id,p.name,v.sku ORDER BY SUM(event.gross_rub*event.effect) DESC LIMIT 100`, from, toExclusive)
@@ -247,17 +248,21 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 		out.Products = append(out.Products, item)
 	}
 	rows.Close()
-	var confirmedAdjustments, marketplaceSales int
-	_ = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM finance_marketplace_adjustments WHERE status='confirmed' AND operation_date >= $1 AND operation_date <= $2`, from, to).Scan(&confirmedAdjustments)
-	_ = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM sales_events WHERE event_type='sale' AND event_status='confirmed' AND reconciliation_status='counted' AND channel IN ('ozon','wb') AND event_at >= $1 AND event_at < $2`, from, toExclusive).Scan(&marketplaceSales)
+	if err = rows.Err(); err != nil { return out, err }
+	var marketplaceSales, unlinkedReturns, unclassified int
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM sales_events WHERE event_type='sale' AND event_status='confirmed' AND reconciliation_status='counted' AND channel IN ('ozon','wb') AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE >= $1::DATE AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE < $2::DATE`, from, toExclusive).Scan(&marketplaceSales); err != nil { return out, err }
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM marketplace_returns r WHERE returned_at >= $1 AND returned_at <= $2 AND NOT EXISTS (SELECT 1 FROM sales_events s WHERE s.id=r.sales_event_id AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted')`, from, to).Scan(&unlinkedReturns); err != nil { return out, err }
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM finance_transactions WHERE confirmed AND (classification='review' OR pnl_effect='review') AND operation_date >= $1 AND operation_date <= $2`, from, to).Scan(&unclassified); err != nil { return out, err }
+	if unlinkedReturns > 0 { out.Warnings = append(out.Warnings, "Есть возвраты без подтверждённой исходной продажи; себестоимость по ним не восстановлена") }
+	if unclassified > 0 { out.Warnings = append(out.Warnings, "Есть неразобранные банковские операции") }
 	if out.UnknownCostUnits > 0 {
 		out.Warnings = append(out.Warnings, "Есть продажи без себестоимости")
 	}
 	if out.EstimatedCostUnits > 0 {
 		out.Warnings = append(out.Warnings, "Часть себестоимости оценочная")
 	}
-	if marketplaceSales > 0 && confirmedAdjustments == 0 {
-		out.Warnings = append(out.Warnings, "Нет подтверждённых отчётов комиссий и логистики маркетплейсов")
+	if marketplaceSales > 0 {
+		out.Warnings = append(out.Warnings, "Полнота комиссий и логистики маркетплейсов за период не подтверждена; отдельные строки отчёта не закрывают весь период")
 	}
 	if out.ActualTax == nil {
 		out.Warnings = append(out.Warnings, "Фактический налог АУСН не сверен")

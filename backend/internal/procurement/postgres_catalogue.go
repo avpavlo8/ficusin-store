@@ -432,14 +432,31 @@ func (store *PostgresStore) RefreshSiteSales(ctx context.Context, from, to time.
 		FROM orders o JOIN order_items oi ON oi.order_id=o.id
 		JOIN product_variants pv ON pv.id=oi.variant_id
 		WHERE (o.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
-			AND pv.saby_id IS NOT NULL
+			AND pv.saby_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id)
 		UNION ALL
 		SELECT o.created_at,'__delivery__','','0',o.delivery_fee::DOUBLE PRECISION,o.order_number,'delivery',
 			CASE WHEN o.status='cancelled' THEN 'cancellation' ELSE 'sale' END,
 			CASE WHEN o.status='cancelled' THEN 'cancelled'
 				WHEN o.payment_status='paid' OR o.status='completed' THEN 'confirmed' ELSE 'pending' END
-		FROM orders o WHERE o.delivery_fee<>0
+		FROM orders o WHERE o.delivery_fee<>0 AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id)
 			AND (o.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+		UNION ALL
+		SELECT payment.paid_at,pv.saby_id,pv.saby_id,SUM(soi.quantity)::INTEGER,
+			SUM(soi.quantity*soi.unit_price)::DOUBLE PRECISION,o.order_number,
+			'offer:'||so.id::TEXT||':'||pv.saby_id,'sale','confirmed'
+		FROM shipment_offers so JOIN orders o ON o.id=so.order_id
+		JOIN shipment_offer_items soi ON soi.shipment_offer_id=so.id
+		JOIN product_variants pv ON pv.id=soi.variant_id
+		JOIN LATERAL (SELECT MIN(p.paid_at) paid_at FROM payments p WHERE p.shipment_offer_id=so.id AND p.status='paid') payment ON payment.paid_at IS NOT NULL
+		WHERE (payment.paid_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+			AND pv.saby_id IS NOT NULL
+		GROUP BY so.id,o.order_number,pv.saby_id,payment.paid_at
+		UNION ALL
+		SELECT payment.paid_at,'__delivery__','','0',so.delivery_fee::DOUBLE PRECISION,
+			o.order_number,'offer:'||so.id::TEXT||':delivery','sale','confirmed'
+		FROM shipment_offers so JOIN orders o ON o.id=so.order_id
+		JOIN LATERAL (SELECT MIN(p.paid_at) paid_at FROM payments p WHERE p.shipment_offer_id=so.id AND p.status='paid') payment ON payment.paid_at IS NOT NULL
+		WHERE so.delivery_fee<>0 AND (payment.paid_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
 		UNION ALL
 		SELECT refund.created_at,'__adjustment__','','0',refund.amount::DOUBLE PRECISION,
 			refund.idempotence_key,'refund:'||refund.id::TEXT,'return',

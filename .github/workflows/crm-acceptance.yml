@@ -101,6 +101,11 @@ jobs:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
         run: go test ./internal/admin -run TestStage11 -count=1
         working-directory: backend
+      - name: Verify stage 13 cross-stage regressions
+        env:
+          CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
+        run: go test ./internal/admin ./internal/procurement -run TestStage13 -count=1
+        working-directory: backend
       - name: Verify real API and desktop/mobile UI
         run: >-
           docker run --rm --network host --ipc=host
@@ -111,7 +116,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: crm-stage-11-acceptance
+          name: crm-stage-13-acceptance
           path: |
             crm-artifacts/
             crm-api.log

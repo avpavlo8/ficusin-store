@@ -79,6 +79,8 @@ func TestStage11PnLAndSupplierAccountOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = pool.Exec(ctx, `INSERT INTO marketplace_returns(channel,source_return_id,source_unit_index,canonical_variant_id,returned_at,condition,unit_cost_rub_snapshot,cost_outcome) VALUES('ozon',$1,1,$2,'2036-09-10','ready',900,'restored')`, prefix+"-unlinked", variantID); err != nil { t.Fatal(err) }
+	if _, err = pool.Exec(ctx, `INSERT INTO finance_transactions(import_id,bank,account_number,source_row,operation_date,dedupe_key,debit_rub,credit_rub,classification,pnl_effect,confirmed) VALUES($1,'tochka','stage11',5,'2036-09-10',$2,900,0,'supplier','expense',TRUE)`, importID, prefix+"-supplier"); err != nil { t.Fatal(err) }
 	report, err := repository.FinancePnL(ctx, "2036-09-01", "2036-09-30")
 	if err != nil {
 		t.Fatal(err)
@@ -91,12 +93,12 @@ func TestStage11PnLAndSupplierAccountOnLiveDatabase(t *testing.T) {
 	}
 	assertNear("revenue", report.Revenue, 1800)
 	assertNear("cogs", report.COGS, 550)
-	assertNear("packaging", report.Packaging, 450)
+	assertNear("packaging", report.Packaging, 300)
 	assertNear("marketplace costs", report.MarketplaceCosts, 100)
 	assertNear("operating expenses", report.OperatingExpenses, 50)
-	assertNear("profit before tax", report.ProfitBeforeTax, 650)
+	assertNear("profit before tax", report.ProfitBeforeTax, 800)
 	assertNear("return loss", report.ReturnLoss, 100)
-	assertNear("cash flow", report.CashFlow, 750)
+	assertNear("cash flow", report.CashFlow, -150)
 	if report.NetProfit != nil || !report.Preliminary || report.ActualCostUnits != 2 || report.EstimatedCostUnits != 1 || report.UnknownCostUnits != 1 {
 		t.Fatalf("unexpected completeness: %+v", report)
 	}
@@ -107,7 +109,7 @@ func TestStage11PnLAndSupplierAccountOnLiveDatabase(t *testing.T) {
 	if err != nil || report.NetProfit == nil {
 		t.Fatalf("tax was not applied: %+v err=%v", report, err)
 	}
-	assertNear("net profit", *report.NetProfit, 570)
+	assertNear("net profit", *report.NetProfit, 720)
 	opening, err := repository.CreateSupplierAccountOperation(ctx, actor, SupplierAccountInput{OperationDate: "2036-09-01", Kind: "opening", OriginalAmountEUR: -240.84, SourceReference: prefix + "-opening"})
 	if err != nil || opening.NormalizedAmountEUR != 240.84 {
 		t.Fatalf("opening sign: %+v %v", opening, err)

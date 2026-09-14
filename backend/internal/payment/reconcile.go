@@ -40,7 +40,7 @@ func (worker *ReconcileWorker) process(ctx context.Context) {
 		SELECT p.provider_payment_id
 		FROM payments p JOIN orders o ON o.id=p.order_id
 		WHERE p.status=$1 AND p.provider_payment_id<>''
-			AND p.created_at>CURRENT_TIMESTAMP-$2::INTERVAL
+			AND (p.shipment_offer_id IS NOT NULL OR p.created_at>CURRENT_TIMESTAMP-$2::INTERVAL)
 			AND o.status<>'cancelled'
 		ORDER BY p.id LIMIT 50
 	`, StatusPending, reconcileWindow.String())
