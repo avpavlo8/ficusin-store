@@ -29,11 +29,11 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
       const enabledLanes = channelLanes.filter((item) => item.status !== "disabled");
       const running = enabledLanes.some((item) => item.status === "running");
       const hasError = Boolean(health?.lastError || enabledLanes.some((item) => item.status === "error"));
-      const partial = Boolean(health?.configured && (channelLanes.length < 2 || channelLanes.some((item) => ["disabled", "pending"].includes(item.status))));
+      const partial = Boolean(health?.configured && (channelLanes.length < 2 || channelLanes.some((item) => item.status === "disabled")));
       const successes = enabledLanes.map((item) => item.lastSuccessAt).filter((item): item is string => Boolean(item)).sort();
       const retries = enabledLanes.map((item) => item.cooldownUntil || item.nextAttemptAt).filter((item): item is string => Boolean(item)).sort();
-      return <article key={channel} className={hasError ? "attention" : health?.configured ? partial ? "partial" : "connected" : ""}>
-        <div><strong>{channelName(channel)}</strong><span>{!health?.configured ? "Не подключён" : running ? "Обновляется" : hasError ? "Есть ошибка" : partial ? "Подключён частично" : "Подключён"}</span></div>
+      return <article key={channel} className={hasError ? "attention" : health?.configured ? "connected" : ""}>
+        <div><strong>{channelName(channel)}</strong><span>{!health?.configured ? "Не подключён" : running ? "Обновляется" : hasError ? "Есть ошибка" : partial ? "Частично" : "Подключён"}</span></div>
         <small>Последний успешный обмен: {when(successes.at(-1))}</small>
         {retries[0] && <small>Следующая попытка: {when(retries[0])}</small>}
         <button className="secondary-button" disabled={!health?.configured || queued.includes(channel)} onClick={() => void request(channel)}>{queued.includes(channel) ? "Добавляем в очередь…" : channel === "wb" ? "Сопоставить из зеркала" : "Обновить данные"}</button>

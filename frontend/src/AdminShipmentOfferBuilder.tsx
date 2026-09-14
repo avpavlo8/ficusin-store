@@ -4,8 +4,8 @@ import { api, money } from "./adminShared";
 type Item = { id:number;productName:string;unitPrice:number;quantity:number;packageLengthCm:number;packageWidthCm:number;packageHeightCm:number;packageWeightGrams:number };
 type Offer = {id:number;status:string;deliveryFee:number;total:number;expiresAt?:string;items:Array<{orderItemId:number;productName:string;quantity:number}>;boxes:Array<unknown>};
 
-export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliveryFee,cdekTariffCode,busy,readOnly=false,setBusy,onCreated,onError}:{
-  orderId:number;items:Item[];offers:Offer[];deliveryMethod:string;deliveryFee:number;cdekTariffCode?:number;busy:boolean;readOnly?:boolean;
+export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliveryFee,cdekTariffCode,busy,readOnly,setBusy,onCreated,onError}:{
+  orderId:number;items:Item[];offers:Offer[];deliveryMethod:string;deliveryFee:number;cdekTariffCode?:number;busy:boolean;readOnly:boolean;
   setBusy:(value:boolean)=>void;onCreated:()=>Promise<void>;onError:(message:string)=>void;
 }) {
   const [quantities,setQuantities]=useState<Record<number,number>>(()=>Object.fromEntries(items.map((item)=>[item.id,0])));
