@@ -47,7 +47,7 @@ test("@desktop @phone analytics failure does not trap the dashboard and can be r
   await expect(page.getByText("Аналитика временно недоступна")).toBeVisible();
   await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Попробовать снова" }).click();
-  await expect(page.getByRole("img", { name: /Выручка сайта за 7 дней/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Выручка всех каналов за 7 дней/ })).toBeVisible();
   await expect(page.getByText("Аналитика временно недоступна")).toHaveCount(0);
 });
 
