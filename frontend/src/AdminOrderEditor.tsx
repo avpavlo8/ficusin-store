@@ -198,7 +198,6 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   if (!adjustment) return <p>Загружаем заказ…</p>;
 
   return <div className="admin-order-editor">
-    {readOnly && <p className="admin-hint procurement-note">Заказ закрыт: редактирование недоступно.</p>}
     <section className="admin-block">
       <div className="admin-block-heading"><div><strong>Состав заказа</strong><small>Менеджер может изменить заказ до отправки</small></div></div>
       {lines.map((line, index) => <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
