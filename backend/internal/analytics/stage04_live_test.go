@@ -23,6 +23,7 @@ func TestStage04SalesSummaryOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	prefix := fmt.Sprintf("analytics-stage04-%d", unique)
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM sales_events WHERE source_event_id LIKE $1`, prefix+"%") }()
 	var variantID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM product_variants ORDER BY id LIMIT 1`).Scan(&variantID); err != nil {
 		t.Fatal(err)
