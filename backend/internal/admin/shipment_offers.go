@@ -169,7 +169,7 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 		if !matched{return ShipmentOffer{},errors.New("выбранный тариф СДЭК больше недоступен — пересчитайте доставку")}
 	}
 	fingerprint,_:=json.Marshal(struct{Address string;Revision int;Items []ShipmentOfferLineInput;Boxes []ShipmentBoxInput}{address,revision,input.Items,input.Boxes})
-	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=$2+$3,cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
+	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=CAST($2 AS NUMERIC)+CAST($3 AS NUMERIC),cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
 	if err:=insertAudit(ctx,tx,actor,"order.shipment_offer.create","shipment_offer",fmt.Sprint(offerID),nil,map[string]any{"orderId":orderID,"status":offerStatus,"subtotal":subtotal,"deliveryFee":input.DeliveryFee});err!=nil{return ShipmentOffer{},err}
 	if err:=tx.Commit(ctx);err!=nil{return ShipmentOffer{},err};return repository.ShipmentOffer(ctx,offerID)
 }
