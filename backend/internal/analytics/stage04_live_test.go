@@ -23,9 +23,13 @@ func TestStage04SalesSummaryOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	prefix := fmt.Sprintf("analytics-stage04-%d", unique)
+	var variantID int64
+	if err := pool.QueryRow(ctx, `SELECT id FROM product_variants ORDER BY id LIMIT 1`).Scan(&variantID); err != nil {
+		t.Fatal(err)
+	}
 	insert := func(channel, eventID, document, eventType, status string, eventAt time.Time, units int, gross float64, effect int, reconciliation string) {
 		t.Helper()
-		_, err := pool.Exec(ctx, `INSERT INTO sales_events(channel,source_event_id,source_document_id,source_line_id,event_type,event_status,event_at,external_product_id,units,gross_rub,effect,reconciliation_status,import_batch_id) VALUES($1,$2,$3,$2,$4,$5,$6,'__adjustment__',$7,$8,$9,$10,gen_random_uuid())`, channel, prefix+eventID, prefix+document, eventType, status, eventAt, units, gross, effect, reconciliation)
+		_, err := pool.Exec(ctx, `INSERT INTO sales_events(channel,source_event_id,source_document_id,source_line_id,event_type,event_status,event_at,external_product_id,canonical_variant_id,units,gross_rub,effect,reconciliation_status,import_batch_id) VALUES($1,$2,$3,$2,$4,$5,$6,'__adjustment__',$7,$8,$9,$10,$11,gen_random_uuid())`, channel, prefix+eventID, prefix+document, eventType, status, eventAt, variantID, units, gross, effect, reconciliation)
 		if err != nil {
 			t.Fatal(err)
 		}
