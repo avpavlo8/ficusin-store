@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, money } from "./adminShared";
 
 type Item = { id:number;productName:string;unitPrice:number;quantity:number;packageLengthCm:number;packageWidthCm:number;packageHeightCm:number;packageWeightGrams:number };
-type Offer = {id:number;status:string;deliveryFee:number;total:number;expiresAt?:string;items:Array<{orderItemId:number;productName:string;quantity:number}>;boxes:Array<unknown>};
+type Offer = {id:number;status:string;deliveryFee:number;total:number;expiresAt?:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<unknown>};
 
 export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliveryFee,cdekTariffCode,busy,readOnly,setBusy,onCreated,onError}:{
   orderId:number;items:Item[];offers:Offer[];deliveryMethod:string;deliveryFee:number;cdekTariffCode?:number;busy:boolean;readOnly:boolean;
@@ -30,7 +30,7 @@ export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliver
     {!offers.length&&<p>Предложений отправки пока нет.</p>}
     {offers.map((offer)=><article className="admin-shipment-offer" key={offer.id}>
       <div><strong>Отправка №{offer.id}</strong><small>{labels[offer.status]||offer.status}</small></div>
-      <div>{offer.items.map(item=><span key={item.orderItemId}>{item.productName} · {item.quantity} шт.</span>)}</div>
+      <div>{offer.items.map(item=><span key={item.orderItemId}>{item.productName} · {item.quantity} шт. · {money.format(item.unitPrice)}{item.originalUnitPrice!==item.unitPrice&&<small>При оформлении {money.format(item.originalUnitPrice)}</small>}</span>)}</div>
       <div><span>{offer.boxes.length} кор. · доставка {money.format(offer.deliveryFee)}</span><strong>{money.format(offer.total)}</strong></div>
       {offer.expiresAt&&<small>Оплатить до {new Date(offer.expiresAt).toLocaleString("ru-RU")}</small>}
       {offer.status==="draft"&&!readOnly&&<button type="button" className="admin-action" disabled={busy} onClick={()=>void send(offer.id)}>Уведомить клиента</button>}

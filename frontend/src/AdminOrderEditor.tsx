@@ -27,7 +27,7 @@ type Adjustment = {
   shipmentOffers: ShipmentOffer[];
 };
 
-type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
+type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
 const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOffers})));
 
 const emptyPayment: PaymentBalance = {

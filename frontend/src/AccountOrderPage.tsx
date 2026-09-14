@@ -36,7 +36,7 @@ type OrderDetail = {
   shipmentOffers: ShipmentOffer[];
 };
 
-type ShipmentOffer = { id:number;paymentToken?:string;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;boxes:number;items:Array<{productName:string;unitPrice:number;quantity:number}> };
+type ShipmentOffer = { id:number;paymentToken?:string;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;boxes:number;items:Array<{productName:string;unitPrice:number;originalUnitPrice?:number;quantity:number}> };
 
 const money = new Intl.NumberFormat("ru-RU", {
   style: "currency",
@@ -211,7 +211,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
           {!!order.shipmentOffers?.length&&<section className="account-shipment-offers">
             <div><p className="eyebrow">Частичная отправка</p><h3>Готовы к отправке</h3></div>
             {order.shipmentOffers.map(offer=><article className={`account-shipment-offer account-shipment-offer-${offer.status}`} key={offer.id}>
-              <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span></p>)}</div>
+              <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span>{item.originalUnitPrice!=null&&item.originalUnitPrice!==item.unitPrice&&<small>При оформлении: {money.format(item.originalUnitPrice)} · цена обновлена при поступлении</small>}</p>)}</div>
               <div><span>Товары</span><strong>{money.format(offer.subtotal)}</strong><span>Доставка · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>К оплате</span><strong>{money.format(offer.total)}</strong></div>
               {offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`Оплатить отправку ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
               {offer.status==="payment_pending"&&<p className="order-note">Платёж проверяется. Повторная ссылка не создаётся.</p>}

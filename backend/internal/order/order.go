@@ -48,6 +48,7 @@ type Detail struct {
 type Item struct {
 	ProductName string  `json:"productName"`
 	UnitPrice   float64 `json:"unitPrice"`
+	OriginalUnitPrice float64 `json:"originalUnitPrice,omitempty"`
 	Quantity    int     `json:"quantity"`
 }
 
