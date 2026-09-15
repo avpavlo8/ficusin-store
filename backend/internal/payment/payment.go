@@ -223,7 +223,7 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		return "", fmt.Errorf("insert or load payment: %w", err)
 	}
 
-	created, err := service.provider.CreatePayment(ctx, integration.PaymentRequest{
+	created, err := service.attemptPaymentCreation(ctx, paymentID, integration.PaymentRequest{
 		IdempotenceKey: key,
 		Amount:         amount,
 		Description:    "Заказ " + orderNumber + " — Фикусин",
@@ -236,21 +236,7 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		Items:     items,
 	})
 	if err != nil {
-		if _, failed := service.pool.Exec(ctx, `
-			UPDATE payments SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-			WHERE id = $1
-		`, paymentID); failed != nil {
-			service.logger.Error("mark payment failed", "error", failed)
-		}
 		return "", err
-	}
-	if _, err := service.pool.Exec(ctx, `
-		UPDATE payments
-		SET provider_payment_id = $2, status = $3, confirmation_url = $4,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $1
-	`, paymentID, created.ID, created.Status, created.ConfirmationURL); err != nil {
-		return "", fmt.Errorf("update payment: %w", err)
 	}
 	return created.ConfirmationURL, nil
 }

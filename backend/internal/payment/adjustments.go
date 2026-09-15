@@ -24,6 +24,7 @@ type Balance struct {
 	Overpaid      float64 `json:"overpaid"`
 	Ready         bool    `json:"ready"`
 	PaymentStatus string  `json:"paymentStatus"`
+	Issues        []Issue `json:"issues"`
 }
 
 type orderMoneyState struct {
@@ -129,13 +130,18 @@ func (service *Service) Reconcile(ctx context.Context, orderID int64) (Balance, 
 	if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_status=$2 WHERE id=$1`, orderID, balance.PaymentStatus); err != nil {
 		return Balance{}, fmt.Errorf("reconcile order payment status: %w", err)
 	}
+	balance.Issues, err = service.paymentIssues(ctx, orderID)
+	if err != nil { return Balance{}, fmt.Errorf("load payment issues: %w", err) }
 	return balance, nil
 }
 
 func (service *Service) BalanceForOrder(ctx context.Context, orderID int64) (Balance, error) {
 	state, err := service.moneyStateByOrderID(ctx, orderID)
 	if err != nil { return Balance{}, err }
-	return balanceFromState(state), nil
+	balance := balanceFromState(state)
+	balance.Issues, err = service.paymentIssues(ctx, orderID)
+	if err != nil { return Balance{}, fmt.Errorf("load payment issues: %w", err) }
+	return balance, nil
 }
 
 // StartOutstanding starts exactly the amount still owed, never the whole
@@ -162,7 +168,11 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 		WHERE order_id=$1 AND status='pending' ORDER BY id DESC LIMIT 1
 	`, state.id).Scan(&pendingID, &pendingAmount, &pendingURL)
 	if err == nil {
-		if cents(pendingAmount) == cents(balance.Due) && pendingURL != "" { return pendingURL, balance, nil }
+		if cents(pendingAmount) == cents(balance.Due) {
+			if pendingURL != "" { return pendingURL, balance, nil }
+			recoveredURL, recoverErr := service.RecoverUnknown(ctx, pendingID)
+			return recoveredURL, balance, recoverErr
+		}
 		if cancelErr := service.CancelPending(ctx, state.id); cancelErr != nil {
 			return "", balance, fmt.Errorf("не удалось закрыть прежнюю ссылку на оплату: %w", cancelErr)
 		}
@@ -179,7 +189,7 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 	`, state.id, key, balance.Due).Scan(&paymentID); err != nil {
 		return "", balance, fmt.Errorf("create outstanding payment: %w", err)
 	}
-	created, err := service.provider.CreatePayment(ctx, integration.PaymentRequest{
+	created, err := service.attemptPaymentCreation(ctx, paymentID, integration.PaymentRequest{
 		IdempotenceKey: key,
 		Amount: balance.Due,
 		Description: "Оплата заказа " + state.number + " — Фикусин",
@@ -190,14 +200,7 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 		Items: []integration.PaymentItem{{Name: "Доплата по заказу " + state.number, Price: balance.Due, Quantity: 1}},
 	})
 	if err != nil {
-		_, _ = service.pool.Exec(ctx, `UPDATE payments SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentID)
 		return "", balance, err
-	}
-	if _, err := service.pool.Exec(ctx, `
-		UPDATE payments SET provider_payment_id=$2,status=$3,confirmation_url=$4,updated_at=CURRENT_TIMESTAMP
-		WHERE id=$1
-	`, paymentID, created.ID, created.Status, created.ConfirmationURL); err != nil {
-		return "", balance, fmt.Errorf("save outstanding payment: %w", err)
 	}
 	return created.ConfirmationURL, balance, nil
 }
@@ -224,8 +227,7 @@ func (service *Service) StartShipmentOffer(ctx context.Context,token string,cust
 	if err==nil{if cents(existingAmount)!=cents(amount){return "",errors.New("сумма предложения изменилась при открытой оплате")};if existingURL!=""{return existingURL,nil}}else if !errors.Is(err,pgx.ErrNoRows){return "",err}
 	items:=[]integration.PaymentItem{};rows,err:=service.pool.Query(ctx,`SELECT product_name,unit_price::DOUBLE PRECISION,quantity FROM shipment_offer_items WHERE shipment_offer_id=$1 ORDER BY id`,offerID);if err!=nil{return "",err};for rows.Next(){var item integration.PaymentItem;if err:=rows.Scan(&item.Name,&item.Price,&item.Quantity);err!=nil{rows.Close();return "",err};items=append(items,item)};rows.Close();var delivery float64;_ = service.pool.QueryRow(ctx,`SELECT delivery_fee::DOUBLE PRECISION FROM shipment_offers WHERE id=$1`,offerID).Scan(&delivery);if delivery>0{items=append(items,integration.PaymentItem{Name:"Доставка",Price:delivery,Quantity:1})}
 	if paymentID==0{key,err=idempotenceKey();if err!=nil{return "",err};paymentID,err=service.reserveOfferAndCreatePayment(ctx,offerID,orderID,key,amount);if err!=nil{return "",err}}
-	created,err:=service.provider.CreatePayment(ctx,integration.PaymentRequest{IdempotenceKey:key,Amount:amount,Description:"Оплата отправки по заказу "+number+" — Фикусин",ReturnURL:service.returnURL+"/account/orders/"+number,Email:email,Phone:phone,Items:items});if err!=nil{return "",fmt.Errorf("результат создания оплаты не подтверждён; повтор использует тот же ключ: %w",err)}
-	if _,err:=service.pool.Exec(ctx,`UPDATE payments SET provider_payment_id=$2,status=$3,confirmation_url=$4,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,paymentID,created.ID,created.Status,created.ConfirmationURL);err!=nil{return "",err};return created.ConfirmationURL,nil
+	created,err:=service.attemptPaymentCreation(ctx,paymentID,integration.PaymentRequest{IdempotenceKey:key,Amount:amount,Description:"Оплата отправки по заказу "+number+" — Фикусин",ReturnURL:service.returnURL+"/account/orders/"+number,Email:email,Phone:phone,Items:items});if err!=nil{return "",err};return created.ConfirmationURL,nil
 }
 
 func (service *Service) reserveOfferAndCreatePayment(ctx context.Context,offerID,orderID int64,key string,amount float64)(int64,error){
@@ -253,10 +255,13 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		SELECT id,order_id,shipment_offer_id,amount::DOUBLE PRECISION FROM payments WHERE provider_payment_id=$1
 	`, providerPaymentID).Scan(&paymentRowID, &orderID,&shipmentOfferID, &expected); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			service.logger.Warn("unknown payment notified", "payment_id", providerPaymentID)
-			return nil
+			var adopted bool
+			paymentRowID,orderID,shipmentOfferID,expected,adopted,err=service.adoptUnknownFromMetadata(ctx,payment)
+			if err!=nil{return fmt.Errorf("adopt unknown payment: %w",err)}
+			if !adopted{service.logger.Warn("unknown payment notified", "payment_id", providerPaymentID);return nil}
+		} else {
+			return fmt.Errorf("load payment: %w", err)
 		}
-		return fmt.Errorf("load payment: %w", err)
 	}
 	paid := payment.Paid && payment.Status == "succeeded" && cents(payment.Amount) >= cents(expected)
 	status := payment.Status

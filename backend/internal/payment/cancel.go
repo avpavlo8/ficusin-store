@@ -62,10 +62,11 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 	}
 
 	for _, current := range attempts {
-		// Платёж без номера у провайдера туда так и не доехал: гасить его
-		// негде, достаточно закрыть у себя.
+		// No provider id after a timeout does not prove that the request failed:
+		// YooKassa may have accepted it and lost only our response. Cancelling the
+		// order here could release stock while the buyer is paying.
 		if current.providerID == "" {
-			continue
+			return ErrPaymentNeedsReview
 		}
 		key, err := idempotenceKey()
 		if err != nil {

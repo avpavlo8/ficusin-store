@@ -11,6 +11,16 @@ type PaymentBalance = {
   overpaid: number;
   ready: boolean;
   paymentStatus: string;
+  issues: Array<{
+    id: number;
+    amount: number;
+    createdAt: string;
+    recoveryDeadline: string;
+    attempts: number;
+    lastAttemptAt?: string;
+    lastError: string;
+    needsReview: boolean;
+  }>;
 };
 
 type Adjustment = {
@@ -33,6 +43,7 @@ const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module
 const emptyPayment: PaymentBalance = {
   total: 0, paid: 0, refunded: 0, netPaid: 0, due: 0, overpaid: 0,
   ready: false, paymentStatus: "pending",
+  issues: [],
 };
 
 export function AdminOrderEditor({ order, onSaved, onError }: {
@@ -48,6 +59,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const [addProduct, setAddProduct] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [paymentLink, setPaymentLink] = useState("");
+  const [providerPaymentIds, setProviderPaymentIds] = useState<Record<number,string>>({});
   const [busy, setBusy] = useState(false);
   const readOnly = ["canceled", "completed", "shipped"].includes(order.status);
 
@@ -93,6 +105,46 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const shownOverpaid = Math.max(0, payment.netPaid - shownTotal);
 
   const compositionChanged = () => setPaymentLink("");
+
+  const recoverPayment = async (paymentId: number) => {
+    setBusy(true);
+    try {
+      const result = await api<{ confirmationUrl?: string; payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/recover`, { method: "POST" },
+      );
+      setPayment(result.payment);
+      if (result.confirmationUrl) setPaymentLink(result.confirmationUrl);
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const resolvePayment = async (paymentId: number) => {
+    const providerPaymentId = (providerPaymentIds[paymentId] ?? "").trim();
+    if (!providerPaymentId) { onError("Укажите ID платежа из ЮKassa"); return; }
+    setBusy(true);
+    try {
+      const result = await api<{ payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/resolve`,
+        { method: "POST", body: JSON.stringify({ providerPaymentId }) },
+      );
+      setPayment(result.payment);
+      setProviderPaymentIds((current) => ({ ...current, [paymentId]: "" }));
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const dismissPayment = async (paymentId: number) => {
+    if (!window.confirm("Вы проверили кабинет ЮKassa и уверены, что такого платежа нет?")) return;
+    setBusy(true);
+    try {
+      const result = await api<{ payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/dismiss`,
+        { method: "POST", body: JSON.stringify({ confirmed: true }) },
+      );
+      setPayment(result.payment);
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
 
   const changeQuantity = (index: number, quantity: number) => {
     setLines((current) => current.map((line, position) => position === index
@@ -171,6 +223,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       try { await navigator.clipboard.writeText(result.confirmationUrl); } catch { /* link stays visible */ }
     } catch (error) {
       onError((error as Error).message);
+      await load();
     } finally { setBusy(false); }
   };
 
@@ -247,6 +300,20 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
         {payment.netPaid > 0 ? "Создать ссылку на доплату" : "Создать ссылку на оплату"}
       </button>}
       {paymentLink && <p><a href={paymentLink} target="_blank" rel="noreferrer">Ссылка на оплату</a> <small>скопирована в буфер, если браузер разрешил</small></p>}
+      {(payment.issues ?? []).map((issue) => <div className="admin-payment-issue" key={issue.id}>
+        <div><strong>Результат оплаты {money.format(issue.amount)} уточняется</strong>
+          <small>{issue.needsReview
+            ? "Автопроверка остановлена: безопасное окно повтора закончилось. Заказ и резерв не отменяются."
+            : `ЮKassa не ответила. Система повторяет тот же запрос; попыток: ${issue.attempts}.`}</small>
+          {issue.lastError && <small>{issue.lastError}</small>}
+        </div>
+        {!issue.needsReview && <button type="button" className="admin-action" disabled={busy} onClick={() => void recoverPayment(issue.id)}>Проверить сейчас</button>}
+        {issue.needsReview && <div className="admin-payment-resolve">
+          <input value={providerPaymentIds[issue.id] ?? ""} onChange={(event) => setProviderPaymentIds((current) => ({ ...current, [issue.id]: event.target.value }))} placeholder="ID платежа из ЮKassa" />
+          <button type="button" className="admin-action" disabled={busy} onClick={() => void resolvePayment(issue.id)}>Сверить</button>
+          <button type="button" className="admin-action" disabled={busy} onClick={() => void dismissPayment(issue.id)}>Платежа нет</button>
+        </div>}
+      </div>)}
       {payment.netPaid > 0 && <div className="admin-refund admin-order-refund-form">
         <input type="number" min="1" max={payment.netPaid} step="1" placeholder="Сумма возврата"
           value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} />

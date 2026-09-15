@@ -34,6 +34,6 @@ func TestStage08ShipmentPaymentIsIdempotentAndHasExactReceipt(t *testing.T){
 type stage13TimeoutProvider struct { livePaymentProvider }
 func (provider *stage13TimeoutProvider) CreatePayment(ctx context.Context, request integration.PaymentRequest) (integration.Payment,error) {
 	result,err:=provider.livePaymentProvider.CreatePayment(ctx,request)
-	if provider.creates==1{return integration.Payment{},fmt.Errorf("simulated response timeout after provider acceptance")}
+	if provider.creates==1{return integration.Payment{},fmt.Errorf("%w: simulated response timeout after provider acceptance",integration.ErrPaymentOutcomeUnknown)}
 	return result,err
 }

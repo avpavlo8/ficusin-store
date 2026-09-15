@@ -14,6 +14,11 @@ import (
 
 const yooKassaBaseURL = "https://api.yookassa.ru/v3"
 
+// ErrPaymentOutcomeUnknown means the request may have reached YooKassa even
+// though its result did not reach us. Callers must retry only with the same
+// idempotence key.
+var ErrPaymentOutcomeUnknown = errors.New("результат операции ЮKassa неизвестен")
+
 // YooKassaClient takes card payments. Like every other integration here it
 // is switched off by an empty key rather than by a flag: a shop with no
 // credentials simply does not offer online payment.
@@ -63,6 +68,9 @@ type PaymentRequest struct {
 	Email string
 	Phone string
 	Items []PaymentItem
+	// Metadata ties an otherwise ambiguous provider object back to the exact
+	// durable attempt in our database. It contains no customer data.
+	Metadata map[string]string
 }
 
 type Payment struct {
@@ -71,6 +79,8 @@ type Payment struct {
 	Paid            bool
 	Amount          float64
 	ConfirmationURL string
+	Description     string
+	Metadata        map[string]string
 }
 
 // CreatePayment starts a payment and returns the page to send the customer
@@ -101,6 +111,9 @@ func (client *YooKassaClient) CreatePayment(
 	}
 	if client.sendReceipt {
 		body["receipt"] = client.receipt(request)
+	}
+	if len(request.Metadata) > 0 {
+		body["metadata"] = request.Metadata
 	}
 	var response yooKassaPayment
 	if err := client.send(
@@ -191,7 +204,7 @@ func (client *YooKassaClient) send(
 	}
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("оплата временно недоступна: %w", err)
+		return fmt.Errorf("%w: оплата временно недоступна: %v", ErrPaymentOutcomeUnknown, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
@@ -200,18 +213,26 @@ func (client *YooKassaClient) send(
 			Parameter   string `json:"parameter"`
 		}
 		_ = json.NewDecoder(response.Body).Decode(&failure)
+		if response.StatusCode >= http.StatusInternalServerError {
+			return fmt.Errorf("%w: ЮKassa временно недоступна (%d)", ErrPaymentOutcomeUnknown, response.StatusCode)
+		}
 		if failure.Description != "" {
 			return fmt.Errorf("ЮKassa отказала: %s", failure.Description)
 		}
 		return fmt.Errorf("оплата временно недоступна (%d)", response.StatusCode)
 	}
-	return json.NewDecoder(response.Body).Decode(destination)
+	if err := json.NewDecoder(response.Body).Decode(destination); err != nil {
+		return fmt.Errorf("%w: ответ ЮKassa не разобран: %v", ErrPaymentOutcomeUnknown, err)
+	}
+	return nil
 }
 
 type yooKassaPayment struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
 	Paid   bool   `json:"paid"`
+	Description string `json:"description"`
+	Metadata map[string]string `json:"metadata"`
 	Amount struct {
 		Value string `json:"value"`
 	} `json:"amount"`
@@ -228,6 +249,8 @@ func (payment yooKassaPayment) toPayment() Payment {
 		Paid:            payment.Paid,
 		Amount:          amount,
 		ConfirmationURL: payment.Confirmation.ConfirmationURL,
+		Description:     payment.Description,
+		Metadata:        payment.Metadata,
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
@@ -36,6 +38,60 @@ type adminOrderPaymentService interface {
 	RefundAmount(context.Context, int64, float64, string) (payment.Balance, error)
 	RefundExcess(context.Context, int64, string) (payment.Balance, error)
 	StartOutstandingForOrderID(context.Context, int64) (string, payment.Balance, error)
+	RecoverUnknownForOrder(context.Context, int64, int64) (string, error)
+	ResolveUnknown(context.Context, int64, int64, string) (payment.Balance, error)
+	DismissUnknown(context.Context, int64, int64) (payment.Balance, error)
+}
+
+func paymentPathID(response http.ResponseWriter, request *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(strings.TrimSpace(request.PathValue("paymentID")), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный номер попытки оплаты"})
+		return 0, false
+	}
+	return id, true
+}
+
+func (handlers adminHandlers) recoverUnknownPayment(response http.ResponseWriter, request *http.Request) {
+	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok { return }
+	orderID, ok := pathID(response, request); if !ok { return }
+	paymentID, ok := paymentPathID(response, request); if !ok { return }
+	payments, able := handlers.payments.(adminOrderPaymentService)
+	if !able { writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой не настроена"}); return }
+	url, err := payments.RecoverUnknownForOrder(request.Context(), orderID, paymentID)
+	if err != nil { writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()}); return }
+	balance, err := payments.BalanceForOrder(request.Context(), orderID)
+	if err != nil { handlers.failed(response,"load recovered payment",err); return }
+	writeJSON(response,http.StatusOK,map[string]any{"confirmationUrl":url,"payment":balance})
+}
+
+func (handlers adminHandlers) resolveUnknownPayment(response http.ResponseWriter, request *http.Request) {
+	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok { return }
+	orderID, ok := pathID(response, request); if !ok { return }
+	paymentID, ok := paymentPathID(response, request); if !ok { return }
+	var body struct { ProviderPaymentID string `json:"providerPaymentId"` }
+	if decodeJSON(request,&body)!=nil { writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Укажите ID платежа из ЮKassa"}); return }
+	payments, able := handlers.payments.(adminOrderPaymentService)
+	if !able { writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой не настроена"}); return }
+	balance, err := payments.ResolveUnknown(request.Context(),orderID,paymentID,body.ProviderPaymentID)
+	if err != nil { writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()}); return }
+	writeJSON(response,http.StatusOK,map[string]any{"payment":balance})
+}
+
+func (handlers adminHandlers) dismissUnknownPayment(response http.ResponseWriter, request *http.Request) {
+	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok { return }
+	orderID, ok := pathID(response, request); if !ok { return }
+	paymentID, ok := paymentPathID(response, request); if !ok { return }
+	var body struct { Confirmed bool `json:"confirmed"` }
+	if decodeJSON(request,&body)!=nil||!body.Confirmed { writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Подтвердите, что платежа нет в кабинете ЮKassa"}); return }
+	payments, able := handlers.payments.(adminOrderPaymentService)
+	if !able { writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой не настроена"}); return }
+	balance,err:=payments.DismissUnknown(request.Context(),orderID,paymentID)
+	if err!=nil { writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()}); return }
+	writeJSON(response,http.StatusOK,map[string]any{"payment":balance})
 }
 
 func (handlers adminHandlers) orderAdjustmentState(response http.ResponseWriter, request *http.Request) {
