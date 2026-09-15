@@ -842,6 +842,37 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			return OrderDetail{}, fmt.Errorf("save procurement calculation line: %w", err)
 		}
 	}
+	// The approved invoice and its final logistics are the moment when the
+	// owner knows the landed cost. Make that cost effective now, rather than a
+	// week later when the Saby receipt is posted. Historical sales already
+	// carry their own snapshot and are therefore never rewritten.
+	if _, err := tx.Exec(ctx, `
+		WITH source AS (
+			SELECT canonical_variant_id,saby_id,$1::BIGINT AS procurement_order_id,
+				MIN(id) AS line_id,MAX(unit_cost_rub) AS unit_cost
+			FROM procurement_order_lines
+			WHERE procurement_order_id=$1 AND match_status='confirmed' AND NOT invoice_excluded
+				AND reconciliation_status<>'superseded' AND canonical_variant_id IS NOT NULL
+				AND saby_id IS NOT NULL AND unit_cost_rub IS NOT NULL
+			GROUP BY canonical_variant_id,saby_id
+		), saved AS (
+			INSERT INTO procurement_cost_history(canonical_variant_id,saby_id,procurement_order_id,
+				procurement_order_line_id,unit_cost_rub,cost_kind,source,effective_at)
+			SELECT canonical_variant_id,saby_id,procurement_order_id,line_id,unit_cost,
+				'actual','final_invoice_calculation',CURRENT_TIMESTAMP FROM source
+			ON CONFLICT (procurement_order_id,canonical_variant_id) WHERE cost_kind='actual'
+			DO UPDATE SET procurement_order_line_id=EXCLUDED.procurement_order_line_id,
+				unit_cost_rub=EXCLUDED.unit_cost_rub,source=EXCLUDED.source,
+				effective_at=EXCLUDED.effective_at,recorded_at=CURRENT_TIMESTAMP
+			RETURNING canonical_variant_id,unit_cost_rub,effective_at
+		)
+		UPDATE product_variants variant SET current_unit_cost_rub=saved.unit_cost_rub,
+			current_unit_cost_kind='actual',current_unit_cost_effective_at=saved.effective_at,
+			updated_at=CURRENT_TIMESTAMP
+		FROM saved WHERE variant.id=saved.canonical_variant_id
+	`, orderID); err != nil {
+		return OrderDetail{}, fmt.Errorf("apply final invoice costs: %w", err)
+	}
 	snapshot, err := json.Marshal(settings)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("encode procurement calculation settings: %w", err)
