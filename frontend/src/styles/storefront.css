@@ -88,6 +88,7 @@
 
 @media (max-width: 620px) {
 	.procurement-settings-grid, .procurement-costs { grid-template-columns: 1fr; }
+	.procurement-rate-comparison { align-items: stretch; flex-direction: column; }
 	.procurement-order-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
 }
 
@@ -445,3 +446,5 @@
   .home-filter-panel { margin-top:-8px; align-items:flex-start; flex-direction:column; gap:12px; }.home-filter-panel > button { margin-left:0; }
   .storefront-grid.list-view .storefront-buy button { min-width:130px; }
 }
+.account-shipment-offers{display:grid;gap:16px;padding:24px;border:1px solid var(--line);border-radius:18px;background:var(--paper)}.account-shipment-offers h3{margin:4px 0 0;font-family:var(--serif);font-size:32px;color:var(--green)}.account-shipment-offer{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr);gap:18px;padding:18px;border:1px solid var(--line);border-radius:14px}.account-shipment-offer>div{display:grid;grid-template-columns:1fr auto;gap:8px 16px}.account-shipment-offer p{display:flex;justify-content:space-between;gap:16px;margin:0}.account-shipment-offer .primary-button,.account-shipment-offer>.order-note,.account-shipment-offer>small{grid-column:1/-1}.account-shipment-offer-expired,.account-shipment-offer-stale{opacity:.78}
+@media(max-width:700px){.account-shipment-offers{padding:16px}.account-shipment-offer{grid-template-columns:1fr}.account-shipment-offer p{align-items:flex-start;flex-direction:column;gap:2px}}

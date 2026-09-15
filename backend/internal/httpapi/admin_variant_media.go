@@ -86,7 +86,7 @@ func uploadVariantMediaHandler(adminAPI adminHandlers, storage productPhotoStora
 
 func deleteVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionDelete)
 		if !ok { return }
 		variantID, ok := pathID(response, request)
 		if !ok { return }

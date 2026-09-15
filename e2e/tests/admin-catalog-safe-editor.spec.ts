@@ -30,7 +30,7 @@ async function mockCatalog(page: import("@playwright/test").Page, options: { aiE
     const original=window.fetch.bind(window);
     window.fetch=async(input,init)=>{const raw=typeof input==="string"?input:input instanceof Request?input.url:input.toString();const path=new URL(raw,location.origin).pathname;
       if(path==="/api/v1/auth/me")return json({user});
-      if(path==="/api/v1/admin/dashboard")return json({user:{fullName:"Владелец"},role:"owner",permissions:["dashboard.read","products.read","products.edit","products.sync"],dashboard:{products:products.length,variants:products.length,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
+      if(path==="/api/v1/admin/dashboard")return json({user:{fullName:"Владелец"},role:"owner",permissions:["dashboard.read","products.read","products.edit","products.sync","products.manage","catalog.delete"],dashboard:{products:products.length,variants:products.length,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
       if(path==="/api/v1/admin/products"&&(!init?.method||init.method==="GET"))return json({products});
       if(path==="/api/v1/admin/categories")return json({categories});
       const schema=path.match(/^\/api\/v1\/admin\/categories\/(\d+)\/attributes$/);if(schema)return json({attributes:schemas[Number(schema[1])]||[]});
@@ -45,7 +45,7 @@ async function mockCatalog(page: import("@playwright/test").Page, options: { aiE
   },{user:{...owner.user,adminRole:"owner"},categories,products:structuredClone(products),schemas,options});
 }
 
-async function openProducts(page: import("@playwright/test").Page) { await page.goto("/admin");await page.getByRole("button",{name:"Товары",exact:true}).click(); }
+async function openProducts(page: import("@playwright/test").Page) { await page.goto("/admin");await page.getByRole("button",{name:"Каталог",exact:true}).click(); }
 
 test("@desktop уход и plant AI доступны только растениям",async({page})=>{await mockCatalog(page);await openProducts(page);await page.getByText("Фикус ручной",{exact:true}).click();let dialog=page.getByRole("dialog");await expect(dialog.getByRole("button",{name:"Уход и FAQ"})).toBeVisible();await expect(dialog.getByRole("button",{name:"✦ Предложить AI-обложку"})).toBeVisible();await dialog.locator(".product-editor-footer").getByRole("button",{name:"Закрыть"}).click();for(const name of ["Кашпо Oslo","Грунт универсальный","Удобрение","Лопатка"]){await page.getByText(name,{exact:true}).click();dialog=page.getByRole("dialog");await expect(dialog.getByRole("button",{name:"Уход и FAQ"})).toHaveCount(0);await expect(dialog.getByRole("button",{name:"✦ Предложить AI-обложку"})).toHaveCount(0);await dialog.locator(".product-editor-footer").getByRole("button",{name:"Закрыть"}).click();}});
 

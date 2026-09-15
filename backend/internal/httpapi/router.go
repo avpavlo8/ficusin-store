@@ -177,6 +177,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"POST /api/v1/payments/orders/{orderNumber}",
 		startPaymentHandler(logger, dependencies.Payments),
 	)
+	mux.Handle("POST /api/v1/payments/shipment-offers/{token}", startShipmentOfferPaymentHandler(logger, dependencies.Auth, dependencies.Payments))
 	mux.Handle(
 		"POST /api/v1/payments/yookassa/webhook",
 		yooKassaWebhookHandler(logger, dependencies.Payments),
@@ -219,6 +220,31 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/admin/orders/{id}/contents", adminAPI.editOrderContents)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refund", adminAPI.refundOrderAmount)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/recover", adminAPI.recoverUnknownPayment)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/resolve", adminAPI.resolveUnknownPayment)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/dismiss", adminAPI.dismissUnknownPayment)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/shipment-offers", adminAPI.createShipmentOffer)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/shipment-offers/quote", adminAPI.quoteShipmentOffer)
+	mux.HandleFunc("POST /api/v1/admin/shipment-offers/{id}/send", adminAPI.sendShipmentOffer)
+	mux.HandleFunc("GET /api/v1/admin/returns", adminAPI.marketplaceReturns)
+	mux.HandleFunc("GET /api/v1/admin/finance", adminAPI.financeOverview)
+	mux.HandleFunc("POST /api/v1/admin/finance/imports/preview", adminAPI.previewFinanceImport)
+	mux.HandleFunc("POST /api/v1/admin/finance/imports/{id}/confirm", adminAPI.confirmFinanceImport)
+	mux.HandleFunc("PATCH /api/v1/admin/finance/transactions/{id}", adminAPI.classifyFinanceTransaction)
+	mux.HandleFunc("POST /api/v1/admin/finance/cash", adminAPI.createFinanceCash)
+	mux.HandleFunc("POST /api/v1/admin/finance/cash/reconcile", adminAPI.reconcileFinanceCash)
+	mux.HandleFunc("GET /api/v1/admin/finance/pnl", adminAPI.financePnL)
+	mux.HandleFunc("PUT /api/v1/admin/finance/tax", adminAPI.saveFinanceTax)
+	mux.HandleFunc("POST /api/v1/admin/finance/marketplace-adjustments", adminAPI.createMarketplaceAdjustment)
+	mux.HandleFunc("GET /api/v1/admin/finance/supplier-account", adminAPI.supplierAccount)
+	mux.HandleFunc("POST /api/v1/admin/finance/supplier-account/operations", adminAPI.createSupplierAccountOperation)
+	mux.HandleFunc("POST /api/v1/admin/finance/supplier-account/reconcile", adminAPI.reconcileSupplierAccount)
+	mux.HandleFunc("GET /api/v1/admin/returns/products", adminAPI.returnProducts)
+	mux.HandleFunc("POST /api/v1/admin/returns", adminAPI.createMarketplaceReturns)
+	mux.HandleFunc("PATCH /api/v1/admin/returns/{id}", adminAPI.updateMarketplaceReturn)
+	mux.HandleFunc("POST /api/v1/admin/returns/{id}/receipt", adminAPI.createReturnReceipt)
+	mux.HandleFunc("POST /api/v1/admin/returns/{id}/photos", adminAPI.addReturnPhoto)
+	mux.HandleFunc("GET /api/v1/admin/return-photos/{id}", adminAPI.returnPhoto)
 	mux.HandleFunc("GET /api/v1/admin/products", adminAPI.products)
 	mux.HandleFunc("DELETE /api/v1/admin/products", adminAPI.deleteDraftProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/publish", adminAPI.publishDraftProducts)
@@ -290,6 +316,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			analytics, dependencies.SiteURL,
 		)
 	}
+	handler = guardAdminPages(adminAPI, handler)
 	handler = canonicalHostRedirect(dependencies.SiteURL, handler)
 	return requestLogger(logger, invalidatePublicCacheAfterMutation(publicCache, invalidateDetails,
 		gzipResponses(securityHeaders(dependencies.CookieSecure, rejectCrossOriginMutations(dependencies.SiteURL, recoverPanics(logger, handler))))))

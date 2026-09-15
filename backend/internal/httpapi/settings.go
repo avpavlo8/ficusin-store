@@ -58,12 +58,6 @@ func (handlers settingsHandlers) update(response http.ResponseWriter, request *h
 }
 
 func (handlers settingsHandlers) allowed(response http.ResponseWriter, request *http.Request) bool {
-	if handlers.settings == nil {
-		writeJSON(response, http.StatusServiceUnavailable, errorResponse{
-			Error: "Настройки недоступны",
-		})
-		return false
-	}
 	cookie, err := request.Cookie(auth.CookieName)
 	if err != nil {
 		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
@@ -78,6 +72,12 @@ func (handlers settingsHandlers) allowed(response http.ResponseWriter, request *
 	if user.AdminRole != admin.RoleOwner {
 		writeJSON(response, http.StatusForbidden, errorResponse{
 			Error: "Настройки доступны только владельцу",
+		})
+		return false
+	}
+	if handlers.settings == nil {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{
+			Error: "Настройки недоступны",
 		})
 		return false
 	}

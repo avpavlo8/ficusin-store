@@ -4,13 +4,13 @@ import { Dialog, api } from "./adminShared";
 import { ProductMediaManager } from "./ProductMediaManager";
 import type { Product } from "./adminTypes";
 
-function ProductMediaDialog({ product, onClose, onChanged }: {
-  product: Product; onClose: () => void; onChanged: () => void;
+function ProductMediaDialog({ owner, product, onClose, onChanged }: {
+  owner: boolean; product: Product; onClose: () => void; onChanged: () => void;
 }) {
   const [error, setError] = useState("");
   return <Dialog title={`Фотографии · ${product.name}`} onClose={onClose}>
     {error && <p className="admin-error">{error}</p>}
-    <ProductMediaManager productId={product.id} onError={setError} onChanged={onChanged} />
+    <ProductMediaManager canDelete={owner} productId={product.id} onError={setError} onChanged={onChanged} />
   </Dialog>;
 }
 
@@ -43,13 +43,13 @@ export function PdpAdminTools({ slug, adminRole, onChanged }: {
       <button type="button" disabled={loading} onClick={() => void open("media")}>Фотографии</button>
       {error && <small>{error}</small>}
     </div>
-    {product && mode === "edit" && <ProductDialog
+    {product && mode === "edit" && <ProductDialog owner={adminRole === "owner"}
       product={product}
       onClose={() => setMode("")}
       onError={setError}
       onSaved={(saved) => { setProduct(saved); setMode(""); onChanged(); }}
     />}
-    {product && mode === "media" && <ProductMediaDialog
+    {product && mode === "media" && <ProductMediaDialog owner={adminRole === "owner"}
       product={product}
       onClose={() => setMode("")}
       onChanged={onChanged}

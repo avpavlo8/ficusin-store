@@ -13,6 +13,7 @@ type OrderDetail = {
   deliveryMethod: string;
   address: string;
   comment: string;
+  cancellationReason?: string;
   customerName: string;
   phone: string;
   email: string;
@@ -32,7 +33,10 @@ type OrderDetail = {
   paymentReady: boolean;
   createdAt: string;
   items: Array<{ productName: string; unitPrice: number; quantity: number }>;
+  shipmentOffers: ShipmentOffer[];
 };
+
+type ShipmentOffer = { id:number;paymentToken?:string;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;boxes:number;items:Array<{productName:string;unitPrice:number;originalUnitPrice?:number;quantity:number}> };
 
 const money = new Intl.NumberFormat("ru-RU", {
   style: "currency",
@@ -80,6 +84,8 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+
+  const payOffer=async(offer:ShipmentOffer)=>{if(!offer.paymentToken)return;setPaying(true);setError("");try{const response=await fetch(`/api/v1/payments/shipment-offers/${encodeURIComponent(offer.paymentToken)}`,{method:"POST",credentials:"same-origin"});const body=await response.json() as {confirmationUrl?:string;error?:string};if(!response.ok||!body.confirmationUrl)throw new Error(body.error||"Не удалось начать оплату отправки");window.location.assign(body.confirmationUrl);}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось начать оплату отправки");setPaying(false)}};
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,6 +198,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             </div>
             <span>{orderStatusLabels[order.status] ?? order.status}</span>
           </div>
+          {order.status==="cancelled"&&order.cancellationReason&&<p className="order-note">{order.cancellationReason}. Можно оформить новый заказ по актуальным цене и наличию.</p>}
 
           <section className="order-items">
             {order.items.map((item, index) => <div className="order-item" key={`${item.productName}-${index}`}>
@@ -200,6 +207,20 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
               <strong>{money.format(item.unitPrice * item.quantity)}</strong>
             </div>)}
           </section>
+
+          {!!order.shipmentOffers?.length&&<section className="account-shipment-offers">
+            <div><p className="eyebrow">Частичная отправка</p><h3>Готовы к отправке</h3></div>
+            {order.shipmentOffers.map(offer=><article className={`account-shipment-offer account-shipment-offer-${offer.status}`} key={offer.id}>
+              <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span>{item.originalUnitPrice!=null&&item.originalUnitPrice!==item.unitPrice&&<small>При оформлении: {money.format(item.originalUnitPrice)} · цена обновлена при поступлении</small>}</p>)}</div>
+              <div><span>Товары</span><strong>{money.format(offer.subtotal)}</strong><span>Доставка · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>К оплате</span><strong>{money.format(offer.total)}</strong></div>
+              {offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`Оплатить отправку ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
+              {offer.status==="payment_pending"&&<p className="order-note">Платёж проверяется. Повторная ссылка не создаётся.</p>}
+              {offer.status==="paid"&&<p className="order-note">Эта отправка оплачена.</p>}
+              {offer.status==="expired"&&<p className="order-note">Срок предложения истёк. Ожидаемые растения остались в исходном заказе.</p>}
+              {offer.status==="stale"&&<p className="order-note">Состав или адрес изменился. Менеджер подготовит новое предложение.</p>}
+            </article>)}
+            {order.hasPreorder&&<p className="order-note">Ожидаем поступления остальных растений. Они сохраняются в исходном заказе и будут предложены отдельно.</p>}
+          </section>}
 
           <section className="order-totals">
             <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>

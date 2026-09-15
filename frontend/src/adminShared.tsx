@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Role } from "./adminTypes";
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
@@ -76,5 +76,16 @@ export function ConfirmDialog({ title, text, confirmLabel, busy, danger, onCance
 }
 
 export function Dialog({ title, onClose, children, className = "" }: { title: string; onClose: () => void; children: React.ReactNode; className?: string }) {
-  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><section className={`admin-dialog ${className}`.trim()} role="dialog" aria-modal="true"><header><h2>{title}</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>{children}</section></>;
+  const titleId = useId();
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => { const previous = document.activeElement; panel.current?.focus(); return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }; }, []);
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} tabIndex={-1} /><section ref={panel} tabIndex={-1} className={`admin-dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={event => {
+    if (event.key === "Escape") { event.stopPropagation(); onClose(); }
+    if (event.key !== "Tab") return;
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(element => element.getClientRects().length && !element.closest('fieldset:disabled'));
+    const first = controls[0], last = controls.at(-1);
+    if (!first) { event.preventDefault(); return; }
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
+    if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel.current)) { event.preventDefault(); first.focus(); }
+  }}><header><h2 id={titleId}>{title}</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>{children}</section></>;
 }

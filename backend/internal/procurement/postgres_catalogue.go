@@ -49,6 +49,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
+			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
 		GROUP BY o.id, s.name
 		ORDER BY o.created_at DESC
 		LIMIT 100
@@ -81,7 +82,7 @@ func (store *PostgresStore) listDocuments(ctx context.Context) ([]DocumentSummar
 			COALESCE(d.package_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.document_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.calculated_total, 0)::DOUBLE PRECISION,
-			d.parse_error, d.created_at
+			d.parse_error, d.created_at,d.revision_no,(d.superseded_at IS NOT NULL)
 		FROM procurement_documents d
 		JOIN procurement_suppliers s ON s.id = d.supplier_id
 		ORDER BY d.created_at DESC
@@ -141,7 +142,10 @@ func (store *PostgresStore) listAvailability(ctx context.Context) ([]Availabilit
 		SELECT sp.supplier_id, s.name, sp.saby_id, COALESCE(n.name, ''),
 			COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), ''),
 			sp.availability_status, COALESCE(sp.check_after::TEXT, ''),
-			COALESCE(sp.unavailable_since::TEXT, ''), COALESCE(n.balance, 0), a.last_seen_at
+			COALESCE(sp.unavailable_since::TEXT, ''), COALESCE(n.balance, 0), a.last_seen_at,
+			sp.availability_reason,sp.availability_comment,sp.availability_last_action,
+			sp.availability_last_action_at,
+			(sp.availability_status IN('check','temporarily_unavailable') AND (sp.check_after IS NULL OR sp.check_after<=CURRENT_DATE)) AS due
 		FROM procurement_supplier_products sp
 		JOIN procurement_suppliers s ON s.id = sp.supplier_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
@@ -167,7 +171,8 @@ func (store *PostgresStore) listAvailability(ctx context.Context) ([]Availabilit
 		var item AvailabilityItem
 		if err := rows.Scan(&item.SupplierID, &item.SupplierName, &item.SabyID, &item.Name,
 			&item.SupplierArticle, &item.Status, &item.CheckAfter, &item.UnavailableSince,
-			&item.Balance, &item.LastSeenAt); err != nil {
+			&item.Balance, &item.LastSeenAt, &item.Reason, &item.Comment, &item.LastAction,
+			&item.LastActionAt, &item.Due); err != nil {
 			return nil, fmt.Errorf("scan procurement availability: %w", err)
 		}
 		items = append(items, item)
@@ -177,9 +182,14 @@ func (store *PostgresStore) listAvailability(ctx context.Context) ([]Availabilit
 
 func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
-		FROM procurement_requests
-		WHERE status IN ('open', 'included')
+		SELECT r.id,r.kind,COALESCE(r.saby_id,''),r.requested_name,r.quantity,r.status,r.notes,r.created_at,
+			r.customer_order_id,COALESCE(o.customer_name,''),r.source,
+			COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0)::INTEGER
+		FROM procurement_requests r
+		LEFT JOIN orders o ON o.id=r.customer_order_id
+		LEFT JOIN procurement_request_allocations a ON a.request_id=r.id
+		WHERE r.status IN ('open', 'included')
+		GROUP BY r.id,o.customer_name
 		ORDER BY CASE kind WHEN 'customer_order' THEN 0 ELSE 1 END, created_at DESC
 		LIMIT 100
 	`)
@@ -191,31 +201,71 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 	for rows.Next() {
 		var item Request
 		if err := rows.Scan(&item.ID, &item.Kind, &item.SabyID, &item.RequestedName,
-			&item.Quantity, &item.Status, &item.Notes, &item.CreatedAt); err != nil {
+			&item.Quantity, &item.Status, &item.Notes, &item.CreatedAt, &item.CustomerOrderID,
+			&item.CustomerName, &item.Source, &item.AllocatedQuantity); err != nil {
 			return nil, fmt.Errorf("scan procurement request: %w", err)
 		}
+		item.RemainingQuantity = max(0, item.Quantity-item.AllocatedQuantity)
+		item.Allocations = []RequestAllocation{}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for index := range items {
+		allocationRows, err := store.pool.Query(ctx, `
+		SELECT l.procurement_order_id,COALESCE(o.order_number,''),a.active_quantity,a.status
+		FROM procurement_request_allocations a JOIN procurement_order_lines l ON l.id=a.procurement_order_line_id
+		JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE a.request_id=$1 AND a.active_quantity>0 ORDER BY a.created_at`, items[index].ID)
+		if err != nil {
+			return nil, fmt.Errorf("query request allocations: %w", err)
+		}
+		for allocationRows.Next() {
+			var a RequestAllocation
+			if err := allocationRows.Scan(&a.ProcurementOrderID, &a.OrderNumber, &a.Quantity, &a.Status); err != nil {
+				allocationRows.Close()
+				return nil, err
+			}
+			items[index].Allocations = append(items[index].Allocations, a)
+		}
+		if err := allocationRows.Err(); err != nil {
+			allocationRows.Close()
+			return nil, err
+		}
+		allocationRows.Close()
+	}
+	return items, nil
 }
 
 func (store *PostgresStore) listRecommendations(ctx context.Context, settings PricingSettings) ([]Recommendation, error) {
 	rows, err := store.pool.Query(ctx, `
-		WITH sales AS (
-			SELECT saby_id,
-				COALESCE(SUM(units) FILTER (WHERE channel = 'site'), 0)::INTEGER AS site_units,
-				COALESCE(SUM(units) FILTER (WHERE channel = 'saby'), 0)::INTEGER AS saby_units,
-				COALESCE(SUM(units) FILTER (WHERE channel = 'wb'), 0)::INTEGER AS wb_units,
-				COALESCE(SUM(units) FILTER (WHERE channel = 'ozon'), 0)::INTEGER AS ozon_units,
-				COALESCE(SUM(units), 0)::INTEGER AS units
-			FROM procurement_sales_daily
-			WHERE sale_date >= CURRENT_DATE - ($1 - 1) AND saby_id IS NOT NULL
-			GROUP BY saby_id
+		WITH request_remaining AS (
+			SELECT r.id,r.kind,r.saby_id,GREATEST(0,r.quantity-COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0))::INTEGER quantity,
+				COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0)::INTEGER allocated_quantity
+			FROM procurement_requests r LEFT JOIN procurement_request_allocations a ON a.request_id=r.id
+			WHERE r.status IN('open','included') AND r.saby_id IS NOT NULL GROUP BY r.id
+		), sales AS (
+			SELECT event.saby_id,
+				COALESCE(SUM(event.units*event.effect) FILTER (WHERE channel='site'),0)::INTEGER site_units,
+				COALESCE(SUM(event.units*event.effect) FILTER (WHERE channel='saby'),0)::INTEGER saby_units,
+				COALESCE(SUM(event.units*event.effect) FILTER (WHERE channel='wb'),0)::INTEGER wb_units,
+				COALESCE(SUM(event.units*event.effect) FILTER (WHERE channel='ozon'),0)::INTEGER ozon_units,
+				COALESCE(SUM(event.units*event.effect),0)::INTEGER units,
+				COALESCE(SUM(event.units) FILTER(WHERE event.effect=1),0)::INTEGER gross_units,
+				COALESCE(SUM(event.units) FILTER(WHERE event.effect=-1),0)::INTEGER return_units
+			FROM sales_events event
+			WHERE (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE >= CURRENT_DATE-($1-1)
+				AND event.saby_id IS NOT NULL AND event.event_status='confirmed' AND event.reconciliation_status='counted'
+				AND NOT (event.channel='site' AND EXISTS(SELECT 1 FROM procurement_requests r JOIN orders o ON o.id=r.customer_order_id
+					WHERE r.saby_id=event.saby_id AND o.order_number=event.source_document_id AND r.status IN('open','included')))
+			GROUP BY event.saby_id
 		), requests AS (
 			SELECT saby_id,
 				COALESCE(SUM(quantity) FILTER (WHERE kind = 'customer_order'), 0)::INTEGER AS customer_units,
-				COALESCE(SUM(quantity) FILTER (WHERE kind = 'staff_recommendation'), 0)::INTEGER AS staff_units
-			FROM procurement_requests WHERE status = 'open' AND saby_id IS NOT NULL GROUP BY saby_id
+				COALESCE(SUM(quantity) FILTER (WHERE kind = 'staff_recommendation'), 0)::INTEGER AS staff_units,
+				COALESCE(SUM(allocated_quantity),0)::INTEGER AS allocated_units
+			FROM request_remaining GROUP BY saby_id
 		), incoming AS (
 				SELECT l.saby_id, COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER AS units
 				FROM procurement_order_lines l
@@ -254,9 +304,9 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 		)
 			SELECT sp.alias_id, sp.supplier_id, n.saby_id, n.name, sp.article,
 				sp.dutch_name, sp.pot_diameter_cm::DOUBLE PRECISION, sp.height_cm::DOUBLE PRECISION,
-				sp.expected_unit_price::DOUBLE PRECISION, sp.availability_status, n.balance, COALESCE(i.units, 0),
+				sp.expected_unit_price::DOUBLE PRECISION, sp.availability_status, n.balance,n.missing_since IS NULL,n.seen_at,COALESCE(i.units, 0),
 				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
-				COALESCE(s.ozon_units, 0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),
+				COALESCE(s.ozon_units, 0),COALESCE(s.gross_units,0),COALESCE(s.return_units,0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),COALESCE(r.allocated_units,0),
 				sp.minimum_order_qty, sp.order_multiple, lo.last_ordered_at,
 				e.saby_id IS NOT NULL, COALESCE(e.reason, '')
 			FROM products sp
@@ -268,6 +318,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			LEFT JOIN procurement_excluded_products e ON e.saby_id = n.saby_id
 			WHERE sp.preference = 1 AND (n.balance <= 0 OR COALESCE(s.units, 0) > 0 OR
 				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0 OR
+				COALESCE(r.allocated_units, 0) > 0 OR
 				e.saby_id IS NOT NULL)
 			ORDER BY CASE WHEN COALESCE(s.units, 0) > 0 OR COALESCE(r.customer_units, 0) > 0
 				OR COALESCE(r.staff_units, 0) > 0 THEN 0 ELSE 1 END, n.balance, n.name
@@ -282,12 +333,13 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 		var input recommendationInput
 		if err := rows.Scan(&input.AliasID, &input.SupplierID, &input.SabyID, &input.Name, &input.SupplierArticle,
 			&input.DutchName, &input.PotDiameterCM, &input.HeightCM, &input.LastUnitPrice,
-			&input.AvailabilityStatus, &input.Balance, &input.Incoming, &input.SiteSales, &input.SabySales,
-			&input.WBSales, &input.OzonSales, &input.CustomerRequests, &input.StaffRequests,
+			&input.AvailabilityStatus, &input.Balance, &input.BalanceKnown, &input.BalanceAsOf, &input.Incoming, &input.SiteSales, &input.SabySales,
+			&input.WBSales, &input.OzonSales, &input.GrossSales, &input.Returns, &input.CustomerRequests, &input.StaffRequests, &input.AllocatedRequests,
 			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt,
 			&input.Excluded, &input.ExclusionReason); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
+		input.BalanceStateProvided = true
 		item, include := calculateRecommendation(input, settings.RecommendationDays, settings.TargetCoverDays)
 		if include {
 			items = append(items, item)
@@ -311,14 +363,21 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 
 func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatus, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT state.channel, state.status, state.last_attempt_at, state.last_success_at,
+		SELECT state.channel, COALESCE(sync.status,state.status),
+			COALESCE(sync.last_attempt_at,state.last_attempt_at), COALESCE(sync.last_success_at,state.last_success_at),
 			state.last_error, state.rows_synced, COALESCE(state.period_from::TEXT, ''),
 			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, ''),
-			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER
+			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER,
+			sync.next_attempt_at,sync.next_deep_at,
+			CASE WHEN sync.next_deep_at<=CURRENT_TIMESTAMP THEN 'deep' ELSE 'current' END,
+			CASE WHEN COALESCE(sync.last_success_at,state.last_success_at) IS NULL OR MAX(sale.sale_date) IS NULL THEN 'unknown'
+				WHEN MAX(sale.sale_date)<CURRENT_DATE-INTERVAL '30 days' THEN 'stale' ELSE 'fresh' END
 		FROM procurement_sales_sync_state state
 		LEFT JOIN procurement_sales_daily sale ON sale.channel = state.channel
+		LEFT JOIN procurement_integration_sync_state sync ON sync.channel=state.channel AND sync.resource='sales'
 		GROUP BY state.channel, state.status, state.last_attempt_at, state.last_success_at,
-			state.last_error, state.rows_synced, state.period_from, state.period_to
+			state.last_error, state.rows_synced, state.period_from, state.period_to,
+			sync.status,sync.last_attempt_at,sync.last_success_at,sync.next_attempt_at,sync.next_deep_at
 		ORDER BY CASE state.channel WHEN 'saby' THEN 0 WHEN 'site' THEN 1 WHEN 'wb' THEN 2 ELSE 3 END
 	`)
 	if err != nil {
@@ -330,7 +389,7 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 		var item SalesSyncStatus
 		if err := rows.Scan(&item.Channel, &item.Status, &item.LastAttemptAt, &item.LastSuccessAt,
 			&item.LastError, &item.RowsSynced, &item.PeriodFrom, &item.PeriodTo, &item.LatestSale,
-			&item.RowsLinked); err != nil {
+			&item.RowsLinked, &item.NextAttemptAt, &item.NextDeepAt, &item.Mode, &item.Freshness); err != nil {
 			return nil, fmt.Errorf("scan sales synchronization state: %w", err)
 		}
 		items = append(items, item)
@@ -365,19 +424,64 @@ func (store *PostgresStore) MarkSalesSync(ctx context.Context, channel, status s
 }
 
 func (store *PostgresStore) RefreshSiteSales(ctx context.Context, from, to time.Time) (int, error) {
-	return store.replaceSalesWithQuery(ctx, "site", from, to, `
-		INSERT INTO procurement_sales_daily (
-			channel, sale_date, external_product_id, saby_id, units, gross_rub
-		)
-		SELECT 'site', o.created_at::DATE, pv.saby_id, pv.saby_id,
-			SUM(oi.quantity)::INTEGER, SUM(oi.quantity * oi.unit_price)::NUMERIC
-		FROM orders o
-		JOIN order_items oi ON oi.order_id = o.id
-		JOIN product_variants pv ON pv.id = oi.variant_id
-		WHERE o.created_at::DATE BETWEEN $1 AND $2
-			AND o.status <> 'cancelled' AND pv.saby_id IS NOT NULL
-		GROUP BY o.created_at::DATE, pv.saby_id
-	`)
+	rows, err := store.pool.Query(ctx, `SELECT o.created_at,pv.saby_id,pv.saby_id,
+		oi.quantity,(oi.quantity*oi.unit_price)::DOUBLE PRECISION,o.order_number,oi.id::TEXT,
+		CASE WHEN o.status='cancelled' THEN 'cancellation' ELSE 'sale' END,
+		CASE WHEN o.status='cancelled' THEN 'cancelled'
+			WHEN o.payment_status='paid' OR o.status='completed' THEN 'confirmed' ELSE 'pending' END
+		FROM orders o JOIN order_items oi ON oi.order_id=o.id
+		JOIN product_variants pv ON pv.id=oi.variant_id
+		WHERE (o.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+			AND pv.saby_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id)
+		UNION ALL
+		SELECT o.created_at,'__delivery__','','0',o.delivery_fee::DOUBLE PRECISION,o.order_number,'delivery',
+			CASE WHEN o.status='cancelled' THEN 'cancellation' ELSE 'sale' END,
+			CASE WHEN o.status='cancelled' THEN 'cancelled'
+				WHEN o.payment_status='paid' OR o.status='completed' THEN 'confirmed' ELSE 'pending' END
+		FROM orders o WHERE o.delivery_fee<>0 AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id)
+			AND (o.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+		UNION ALL
+		SELECT payment.paid_at,pv.saby_id,pv.saby_id,SUM(soi.quantity)::INTEGER,
+			SUM(soi.quantity*soi.unit_price)::DOUBLE PRECISION,o.order_number,
+			'offer:'||so.id::TEXT||':'||pv.saby_id,'sale','confirmed'
+		FROM shipment_offers so JOIN orders o ON o.id=so.order_id
+		JOIN shipment_offer_items soi ON soi.shipment_offer_id=so.id
+		JOIN product_variants pv ON pv.id=soi.variant_id
+		JOIN LATERAL (SELECT MIN(p.paid_at) paid_at FROM payments p WHERE p.shipment_offer_id=so.id AND p.status='paid') payment ON payment.paid_at IS NOT NULL
+		WHERE (payment.paid_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+			AND pv.saby_id IS NOT NULL
+		GROUP BY so.id,o.order_number,pv.saby_id,payment.paid_at
+		UNION ALL
+		SELECT payment.paid_at,'__delivery__','','0',so.delivery_fee::DOUBLE PRECISION,
+			o.order_number,'offer:'||so.id::TEXT||':delivery','sale','confirmed'
+		FROM shipment_offers so JOIN orders o ON o.id=so.order_id
+		JOIN LATERAL (SELECT MIN(p.paid_at) paid_at FROM payments p WHERE p.shipment_offer_id=so.id AND p.status='paid') payment ON payment.paid_at IS NOT NULL
+		WHERE so.delivery_fee<>0 AND (payment.paid_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE
+		UNION ALL
+		SELECT refund.created_at,'__adjustment__','','0',refund.amount::DOUBLE PRECISION,
+			refund.idempotence_key,'refund:'||refund.id::TEXT,'return',
+			CASE WHEN refund.status='succeeded' THEN 'confirmed' ELSE 'pending' END
+		FROM payment_refunds refund
+		WHERE (refund.created_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1::DATE AND $2::DATE`, from, to)
+	if err != nil {
+		return 0, fmt.Errorf("query site sales events: %w", err)
+	}
+	defer rows.Close()
+	records := make([]SalesRecord, 0)
+	for rows.Next() {
+		var record SalesRecord
+		if err := rows.Scan(&record.Date, &record.ExternalID, &record.SabyID, &record.Units,
+			&record.GrossRUB, &record.SourceEventID, &record.SourceLineID,
+			&record.EventType, &record.EventStatus); err != nil {
+			return 0, err
+		}
+		record.SourceDocumentID = record.SourceEventID
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return store.ReplaceSales(ctx, "site", from, to, records)
 }
 
 func (store *PostgresStore) replaceSalesWithQuery(
@@ -417,68 +521,14 @@ func (store *PostgresStore) ReplaceSales(
 	if !validSalesChannel(channel) || from.After(to) {
 		return 0, ErrInvalidInput
 	}
-	normalized, err := normalizeSalesRecords(records, day(from), day(to))
-	if err != nil {
-		return 0, err
-	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin replace sales: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `DELETE FROM procurement_sales_daily WHERE channel = $1 AND sale_date BETWEEN $2 AND $3`, channel, from, to); err != nil {
-		return 0, fmt.Errorf("clear sales window: %w", err)
-	}
-	inserted := 0
-	for _, record := range normalized {
-		command, err := tx.Exec(ctx, `
-			WITH resolved AS (
-				SELECT directory.variant_id, directory.saby_id,
-					external.id AS external_mapping_id, directory.product_id
-				FROM canonical_product_directory directory
-				LEFT JOIN LATERAL (
-					SELECT mapping.id
-					FROM product_external_ids mapping
-					WHERE mapping.variant_id = directory.variant_id
-						AND mapping.external_id = $3
-						AND mapping.status IN ('active','legacy')
-						AND (($1='saby' AND mapping.provider='saby'
-							AND mapping.id_type IN ('id','code','alias'))
-							OR ($1='wb' AND mapping.provider='wildberries'
-							AND mapping.id_type IN ('sku','nm_id'))
-							OR ($1='ozon' AND mapping.provider='ozon'
-							AND mapping.id_type='offer_id'))
-					ORDER BY (mapping.source='manual') DESC,
-						(mapping.status='active') DESC, mapping.updated_at DESC
-					LIMIT 1
-				) external ON TRUE
-				WHERE (($1='site' AND directory.saby_id = NULLIF($4,''))
-					OR ($1='saby' AND (directory.saby_id = NULLIF($4,'') OR external.id IS NOT NULL))
-					OR ($1 IN ('wb','ozon') AND external.id IS NOT NULL))
-				ORDER BY (external.id IS NOT NULL) DESC, directory.variant_id
-				LIMIT 1
-			)
-			INSERT INTO procurement_sales_daily (
-				channel, sale_date, external_product_id, saby_id,
-				canonical_variant_id, external_mapping_id, units, gross_rub
-			)
-			SELECT $1, $2, $3, resolved.saby_id, resolved.variant_id,
-				resolved.external_mapping_id, $5, $6
-			FROM (SELECT 1) seed LEFT JOIN resolved ON TRUE
-			WHERE $1 <> 'saby' OR EXISTS (
-				SELECT 1 FROM products WHERE products.id = resolved.product_id
-					AND products.catalog_section = 'plants'
-			)
-			ON CONFLICT (channel, sale_date, external_product_id) DO UPDATE SET
-				saby_id = EXCLUDED.saby_id,
-				canonical_variant_id = EXCLUDED.canonical_variant_id,
-				external_mapping_id = EXCLUDED.external_mapping_id, units = EXCLUDED.units,
-				gross_rub = EXCLUDED.gross_rub, synced_at = CURRENT_TIMESTAMP
-		`, channel, record.Date, record.ExternalID, record.SabyID, record.Units, record.GrossRUB)
-		if err != nil {
-			return 0, fmt.Errorf("insert sales record: %w", err)
-		}
-		inserted += int(command.RowsAffected())
+	inserted, err := replaceSalesEvents(ctx, tx, channel, from, to, records)
+	if err != nil {
+		return 0, err
 	}
 	if err := finishSalesSync(ctx, tx, channel, from, to, inserted); err != nil {
 		return 0, err
@@ -579,7 +629,7 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	if input.MatchStatus == "confirmed" {
 		if err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
-			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err,pgx.ErrNoRows) {
+			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
 		}
 		if canonicalVariantID == 0 {
@@ -722,6 +772,16 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			load_unit = CASE WHEN $8 THEN $9 ELSE load_unit END,
 			comparison_accepted = CASE WHEN $10 THEN $11 ELSE comparison_accepted END,
 			comparison_note = CASE WHEN $12 THEN $13 ELSE comparison_note END,
+			invoice_excluded = CASE WHEN $14 THEN $15 ELSE invoice_excluded END,
+			invoice_exclusion_reason = CASE WHEN $14 THEN CASE WHEN $15 THEN $16 ELSE '' END ELSE invoice_exclusion_reason END,
+			invoice_excluded_at = CASE WHEN $14 THEN CASE WHEN $15 THEN CURRENT_TIMESTAMP ELSE NULL END ELSE invoice_excluded_at END,
+			invoice_excluded_by = CASE WHEN $14 THEN CASE WHEN $15 THEN $17::BIGINT ELSE NULL END ELSE invoice_excluded_by END,
+			reconciliation_status = CASE WHEN $14 THEN CASE WHEN $15 THEN 'excluded'
+				WHEN procurement_document_id IS NULL THEN 'missing'
+				WHEN ordered_qty=0 THEN 'added'
+				WHEN invoiced_qty IS DISTINCT FROM ordered_qty OR
+					(expected_unit_price IS NOT NULL AND ABS(expected_unit_price-unit_price)>.005) THEN 'changed'
+				ELSE 'matched' END ELSE reconciliation_status END,
 			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
@@ -733,9 +793,15 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 		input.HeightCM != nil, input.HeightCM,
 		input.LoadUnit != nil, input.LoadUnit,
 		input.AcceptComparison != nil, input.AcceptComparison,
-		input.ComparisonNote != nil, input.ComparisonNote)
+		input.ComparisonNote != nil, input.ComparisonNote,
+		input.InvoiceExcluded != nil, input.InvoiceExcluded, input.ExclusionReason, actor.CustomerID)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("update procurement line: %w", err)
+	}
+	if input.InvoiceExcluded != nil {
+		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("rebalance excluded procurement line: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
@@ -780,10 +846,13 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if input.Status == "received" {
 		var prepared bool
 		if err := tx.QueryRow(ctx, `
-			SELECT EXISTS (SELECT 1 FROM procurement_action_batches
-				WHERE procurement_order_id = $1 AND kind = 'receipt' AND status NOT IN ('draft', 'cancelled'))
+			SELECT EXISTS (SELECT 1 FROM procurement_action_batches batch
+				JOIN procurement_action_items item ON item.batch_id=batch.id
+				WHERE batch.procurement_order_id = $1 AND batch.kind = 'receipt'
+					AND item.channel='saby_receipt' AND item.status='completed'
+					AND item.receipt_verified_at IS NOT NULL)
 		`, orderID).Scan(&prepared); err != nil || !prepared {
-			return OrderDetail{}, ErrInvalidInput
+			return OrderDetail{}, &UserFacingError{Message: "Сначала проведите поступление в СБИС и дождитесь проверки строк и количества в CRM"}
 		}
 	}
 	if _, err := tx.Exec(ctx, `
@@ -796,24 +865,14 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 		return OrderDetail{}, fmt.Errorf("update procurement order status: %w", err)
 	}
 	if input.Status == "cancelled" {
-		if _, err := tx.Exec(ctx, `
-			UPDATE procurement_requests SET status = 'open', updated_at = CURRENT_TIMESTAMP
-			WHERE status = 'included' AND saby_id IN (
-				SELECT saby_id FROM procurement_order_lines WHERE procurement_order_id = $1 AND saby_id IS NOT NULL
-			)
-		`, orderID); err != nil {
-			return OrderDetail{}, fmt.Errorf("restore procurement requests: %w", err)
+		if err := releaseOrderAllocations(ctx, tx, orderID, "order_cancelled"); err != nil {
+			return OrderDetail{}, err
 		}
 		_, _ = tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE procurement_order_id = $1 AND status = 'draft'`, orderID)
 	}
 	if input.Status == "received" {
-		if _, err := tx.Exec(ctx, `
-			UPDATE procurement_requests SET status = 'fulfilled', updated_at = CURRENT_TIMESTAMP
-			WHERE status = 'included' AND saby_id IN (
-				SELECT saby_id FROM procurement_order_lines WHERE procurement_order_id = $1 AND saby_id IS NOT NULL
-			)
-		`, orderID); err != nil {
-			return OrderDetail{}, fmt.Errorf("fulfil procurement requests: %w", err)
+		if err := fulfilOrderAllocations(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, err
 		}
 	}
 	if input.Status == "review" {
@@ -869,13 +928,17 @@ func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, inpu
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item Request
 	err = tx.QueryRow(ctx, `
-		INSERT INTO procurement_requests (kind, saby_id,canonical_variant_id, requested_name, quantity, notes, created_by)
-		VALUES ($1, NULLIF($2, ''),(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1), $3, $4, $5, $6)
-		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
-	`, input.Kind, input.SabyID, input.RequestedName, input.Quantity, input.Notes, actor.CustomerID).Scan(
+		INSERT INTO procurement_requests (kind,saby_id,canonical_variant_id,requested_name,quantity,notes,created_by,customer_order_id,source)
+		SELECT $1,NULLIF($2,''),(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1),$3,$4,$5,$6,$7,$8
+		WHERE $7::BIGINT IS NULL OR EXISTS(SELECT 1 FROM orders WHERE id=$7)
+		RETURNING id,kind,COALESCE(saby_id,''),requested_name,quantity,status,notes,created_at,customer_order_id,source
+	`, input.Kind, input.SabyID, input.RequestedName, input.Quantity, input.Notes, actor.CustomerID, input.CustomerOrderID, input.Source).Scan(
 		&item.ID, &item.Kind, &item.SabyID, &item.RequestedName, &item.Quantity,
-		&item.Status, &item.Notes, &item.CreatedAt,
+		&item.Status, &item.Notes, &item.CreatedAt, &item.CustomerOrderID, &item.Source,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Request{}, ErrNotFound
+	}
 	if err != nil {
 		if uniqueViolation(err) {
 			return Request{}, ErrInvalidInput
@@ -913,6 +976,16 @@ func (store *PostgresStore) UpdateRequest(ctx context.Context, actor Actor, requ
 	}
 	if err != nil {
 		return Request{}, fmt.Errorf("update procurement request: %w", err)
+	}
+	if input.Status == "cancelled" {
+		if _, err := tx.Exec(ctx, `UPDATE procurement_request_allocations SET active_quantity=0,status='released',release_reason='request_cancelled',updated_at=CURRENT_TIMESTAMP WHERE request_id=$1 AND status='active'`, requestID); err != nil {
+			return Request{}, fmt.Errorf("release cancelled request: %w", err)
+		}
+	}
+	if input.Status == "fulfilled" {
+		if _, err := tx.Exec(ctx, `UPDATE procurement_request_allocations SET status='fulfilled',updated_at=CURRENT_TIMESTAMP WHERE request_id=$1 AND status='active'`, requestID); err != nil {
+			return Request{}, fmt.Errorf("fulfil request allocations: %w", err)
+		}
 	}
 	if err := audit(ctx, tx, actor, "procurement.request.update", "procurement_request", requestID, item); err != nil {
 		return Request{}, err

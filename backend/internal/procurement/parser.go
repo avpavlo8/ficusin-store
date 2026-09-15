@@ -13,15 +13,16 @@ import (
 	"time"
 )
 
-const parserVersion = 1
+const parserVersion = 2
 
 var (
-	hollandLinePattern    = regexp.MustCompile(`^\s*(\d+)\s+(.+?)\s+(\d[\d.]*,\d{2})\s+(\d[\d.]*,\d{2})\s*$`)
-	hollandBoxPattern     = regexp.MustCompile(`(?i)Box\s+no:\s*(\d+)`)
-	potPattern            = regexp.MustCompile(`(?i)(?:Pot\s*[ØO]|\bd|диаметр)\s*:?\s*([0-9]+(?:[.,][0-9]+)?)`)
-	heightPattern         = regexp.MustCompile(`(?i)Height\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
-	domesticLinePattern   = regexp.MustCompile(`^\s*\d+\s+(.+?)\s+(\d+)\s+шт\s+([\d ]+,\d{2})\s+(?:\d+%\s+)?(?:[\d ]+,\d{2}\s+)?([\d ]+,\d{2})\s*$`)
-	domesticHeaderPattern = regexp.MustCompile(`(?i)Счет на оплату №\s*([^\s]+)\s+от\s+(\d{1,2})\s+([а-яё]+)\s+(\d{4})`)
+	hollandLinePattern     = regexp.MustCompile(`^\s*(\d+)\s+(.+?)\s+(\d[\d.]*,\d{2})\s+(\d[\d.]*,\d{2})\s*$`)
+	hollandBoxPattern      = regexp.MustCompile(`(?i)Box\s+no:\s*(\d+)`)
+	potPattern             = regexp.MustCompile(`(?i)(?:Pot\s*[ØO]|\bd|диаметр)\s*:?\s*([0-9]+(?:[.,][0-9]+)?)`)
+	heightPattern          = regexp.MustCompile(`(?i)Height\s*:\s*([0-9]+(?:[.,][0-9]+)?)`)
+	supplierArticlePattern = regexp.MustCompile(`(?i)(?:Article|Art\.?|Code|Артикул)\s*[:#]?\s*([A-Z0-9][A-Z0-9._/-]+)`)
+	domesticLinePattern    = regexp.MustCompile(`^\s*\d+\s+(.+?)\s+(\d+)\s+шт\s+([\d ]+,\d{2})\s+(?:\d+%\s+)?(?:[\d ]+,\d{2}\s+)?([\d ]+,\d{2})\s*$`)
+	domesticHeaderPattern  = regexp.MustCompile(`(?i)Счет на оплату №\s*([^\s]+)\s+от\s+(\d{1,2})\s+([а-яё]+)\s+(\d{4})`)
 )
 
 type Parser interface {
@@ -132,6 +133,9 @@ func parseHolland(text string) (ParsedDocument, error) {
 				continue
 			}
 			if lastLine >= 0 {
+				if match := supplierArticlePattern.FindStringSubmatch(row); len(match) > 1 && result.Lines[lastLine].SupplierArticle == "" {
+					result.Lines[lastLine].SupplierArticle = strings.TrimSpace(match[1])
+				}
 				if value := parseDimension(row, potPattern); value != nil {
 					result.Lines[lastLine].PotDiameterCM = value
 				}

@@ -1,6 +1,6 @@
 export type Role = "owner" | "manager" | "";
 
-export type Section = "dashboard" | "analytics" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement";
+export type Section = "dashboard" | "analytics" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement" | "returns" | "finance" | "marketplaces";
 
 export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string; productsCount: number; childrenCount: number };
 
@@ -21,6 +21,25 @@ export type AdminData = {
     recentOrders: Array<{ orderNumber: string; customerName: string; total: number; status: string }>;
   };
 };
+
+export type MarketplaceReturn = {
+  id: number; channel: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
+  salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
+  condition: "inspection" | "ready" | "restoring" | "dead"; comment: string; unitCost?: number;
+  costOutcome: "unknown" | "restored" | "lost"; financialStatus: "linked" | "incomplete";
+  receiptStatus: "none" | "queued" | "checking" | "draft_created" | "posted" | "failed" | "correction_required";
+  receiptExternalUrl?: string; photoIds: number[];
+  history: Array<{ from: string; to: string; comment: string; createdAt: string }>;
+};
+
+export type ReturnProduct = { variantId: number; name: string; sku: string };
+export type FinanceImport = { id:number; bank:string; accountNumber:string; fileName:string; status:"preview"|"confirmed"|"failed"; rowsTotal:number; rowsNew:number; rowsDuplicate:number; rowsReview:number; createdAt:string; openingBalance?:number; incomingTotal?:number; outgoingTotal?:number; closingBalance?:number; balanceValid?:boolean };
+export type FinanceTransaction = { id:number; importId:number; bank:string; operationDate:string; documentNumber:string; counterparty:string; purpose:string; currency:string; debit:number; credit:number; classification:string; pnlEffect:string; reviewReason:string; confirmed:boolean };
+export type FinanceCashEntry = { id:number; operationDate:string; kind:string; direction:"in"|"out"; amount:number; purpose:string; linkedTransactionId?:number };
+export type FinanceOverview = { imports:FinanceImport[]|null; transactions:FinanceTransaction[]|null; cash:FinanceCashEntry[]|null; income:number; expense:number; cashBalance:number; reviewCount:number };
+export type PnLReport = { from:string; to:string; preliminary:boolean; revenue:number; cogs:number; grossProfit:number; marketplaceCosts:number; packaging:number; returnLoss:number; operatingExpenses:number; profitBeforeTax:number; actualTax?:number|null; netProfit?:number|null; cashFlow:number; taxRegime:string; taxRate:number; actualCostUnits:number; estimatedCostUnits:number; unknownCostUnits:number; actualCostAmount:number; estimatedCostAmount:number; warnings:string[]|null; channels:Array<{channel:string;revenue:number;cogs:number;costs:number;profit:number}>|null; products:Array<{variantId:number;product:string;sku:string;units:number;revenue:number;cogs:number;packaging:number;marketplaceCosts:number;returnLoss:number;otherCosts:number;profit:number;costSource:string;estimated:boolean;unknownUnits:number}>|null };
+export type SupplierAccountOperation = { id:number;operationDate:string;kind:string;originalAmountEur:number;normalizedAmountEur:number;linkedTopupId?:number;procurementOrderId?:number;sourceReference:string;comment:string };
+export type SupplierAccountOverview = { balanceEur:number;originalBalanceEur?:number|null;reservedEur?:number|null;availableEur?:number|null;reconciliationDifferenceEur?:number|null;lastReconciledAt?:string;operations:SupplierAccountOperation[]|null };
 
 export type Customer = {
   id: number; email: string; phone: string; fullName: string; lastName: string;
@@ -90,7 +109,7 @@ export type ProcurementDocument = {
   id: number; supplierId: number; supplierName: string; orderId: number; fileName: string;
   parserKind: string; parseStatus: string; arithmeticStatus: string; documentNumber: string;
   documentDate?: string; currency: string; lines: number; units: number; productSubtotal: number;
-  packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; createdAt: string;
+  packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; revisionNo: number; superseded: boolean; createdAt: string;
 };
 
 export type NomenclatureCandidate = {
@@ -116,17 +135,19 @@ export type SalesLinkResult = {
   linkedRows: number; linkedUnits: number; takenFrom: string; remaining: number;
 };
 
-export type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string };
+export type ProcurementRequestAllocation = { procurementOrderId: number; orderNumber: string; quantity: number; status: string };
+export type ProcurementRequest = { id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string; customerOrderId?: number; customerName: string; source: string; allocatedQuantity: number; remainingQuantity: number; allocations: ProcurementRequestAllocation[] };
 
-export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; customerRequests: number; staffRequests: number; openRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
+export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; balanceKnown: boolean; balanceAsOf?: string; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; grossSales: number; returns: number; customerRequests: number; staffRequests: number; openRequests: number; allocatedRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; demandQty: number; needBeforeIncoming: number; uncoveredQty: number; quantityKnown: boolean; roundingExplanation: string; dailySales: number; daysOfCover?: number; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
 
 export type RecommendationStatus = "recommended" | "already_ordered" | "check_availability" | "supplier_unavailable" | "excluded";
 
-export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string };
+export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string; reason: string; comment: string; lastAction: string; lastActionAt?: string; due: boolean };
 
-export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string };
+export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string; nextAttemptAt?: string; nextDeepAt?: string; mode?: string; freshness: "fresh" | "stale" | "unknown" };
 
 export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
+export type IntegrationSyncStatus = { channel: "saby" | "wb" | "ozon"; resource: "catalog" | "sales"; status: string; priority: "background" | "interactive"; requestedGeneration: number; activeGeneration: number; completedGeneration: number; lastAttemptAt?: string; lastSuccessAt?: string; nextAttemptAt?: string; nextDeepAt?: string; cooldownUntil?: string; periodFrom: string; periodTo: string; latestEventAt?: string; rowsSynced: number; lastError: string };
 
 export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: string; sabyArticle: string; name: string; sabySection: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; wbArticles: string[]; wbLegacyArticles: string[]; ozonArticles: string[]; ozonLegacyArticles: string[]; sabySales: number; siteSales: number; wbSales: number; ozonSales: number; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[]; supplierCategory: string; expectedUnitPrice?: number; potDiameterCm?: number; heightCm?: number; unitsPerPackage?: number };
 
@@ -137,9 +158,13 @@ export type ProcurementActionBatch = { id: number; kind: string; status: string;
 
 export type ProcurementOrderLine = {
   id: number; sabyId: string; sabyCode: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
+  supplierCategory: string; packageCount?: number; unitsPerPackage?: number;
+  invoiceRawName: string; invoiceSupplierArticle: string; reconciliationStatus: string;
+  invoiceExcluded: boolean; invoiceExclusionReason: string;
   unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
+  currentUnitCostRub?: number; currentUnitCostKind: string; currentUnitCostEffectiveAt?: string;
   currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
   proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
@@ -147,7 +172,7 @@ export type ProcurementOrderLine = {
 
 export type ProcurementValidation = { canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
 
-export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
+export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 
 export type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
@@ -156,6 +181,7 @@ export type ProcurementData = {
   documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
   availability: ProcurementAvailability[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
   integrationHealth: IntegrationHealth[];
+  integrationSync: IntegrationSyncStatus[];
 };
 
 export type AdminCollection = { id: number; slug: string; title: string; note: string; active: boolean; products: number[] };

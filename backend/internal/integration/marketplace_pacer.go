@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,20 +20,20 @@ import (
 // один новый запрос, какой бы метод площадки ни понадобился завтра.
 type pacedTransport struct {
 	base   http.RoundTripper
-	sleep  func(time.Duration)
+	wait   func(context.Context, time.Duration) error
 	now    func() time.Time
 	mu     sync.Mutex
 	lastAt map[string]time.Time
 }
 
-// Паузы взяты с запасом к объявленным лимитам: Ozon разрешает два запроса в
-// секунду, мы просим один в шестьсот миллисекунд. У Wildberries предел не
-// назван числом и считается на продавца целиком, вместе с чужими
-// интеграциями, поэтому секунда.
+// Паузы консервативны: точные лимиты Ozon и Saby не зашиваются в код, потому
+// что зависят от договора и метода. Ответ Retry-After всегда имеет приоритет.
 func marketplacePace(host string) time.Duration {
 	switch {
 	case strings.HasSuffix(host, "ozon.ru"):
 		return 600 * time.Millisecond
+	case strings.HasSuffix(host, "saby.ru"), strings.HasSuffix(host, "sbis.ru"):
+		return time.Second
 	// Оперативные продажи имеют строгий лимит на продавца. Часовое зеркало
 	// делает один такой запрос, а эта пауза страхует ручную диагностику.
 	case strings.HasSuffix(host, "statistics-api.wildberries.ru"):
@@ -54,7 +55,7 @@ func newPacedTransport(base http.RoundTripper) *pacedTransport {
 		base = http.DefaultTransport
 	}
 	return &pacedTransport{
-		base: base, sleep: time.Sleep, now: time.Now, lastAt: map[string]time.Time{},
+		base: base, wait: waitForContext, now: time.Now, lastAt: map[string]time.Time{},
 	}
 }
 
@@ -66,7 +67,10 @@ func (transport *pacedTransport) RoundTrip(request *http.Request) (*http.Respons
 		transport.mu.Lock()
 		if last, known := transport.lastAt[host]; known {
 			if wait := pause - transport.now().Sub(last); wait > 0 {
-				transport.sleep(wait)
+				if err := transport.wait(request.Context(), wait); err != nil {
+					transport.mu.Unlock()
+					return nil, err
+				}
 			}
 		}
 		transport.lastAt[host] = transport.now()

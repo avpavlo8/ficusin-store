@@ -181,7 +181,7 @@ func main() {
 	if !yandexDeliveryClient.Configured() {
 		logger.Warn("Yandex Delivery is off; set YANDEX_DELIVERY_TOKEN, YANDEX_GEOCODER_API_KEY and sender point coordinates")
 	}
-	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService)
+	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient)
 	paymentService := payment.NewService(
 		pool,
 		integration.NewYooKassaClient(
@@ -198,12 +198,13 @@ func main() {
 	procurementStore := procurement.NewPostgresStore(pool)
 	marketplaceExecutor := integration.NewMarketplaceExecutor(
 		cfg.Marketplaces.WBToken, cfg.Marketplaces.OzonClientID, cfg.Marketplaces.OzonAPIKey,
-	).WithWBRequestLimiter(procurementStore)
+	).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
-	)
+	).WithIntegrationRequestLimiter(procurementStore)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient).
 		WithSabyCatalogSync(sabyService)
+	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
@@ -281,7 +282,8 @@ func main() {
 	go notificationWorker.Run(ctx)
 	go procurement.NewActionWorker(procurementStore, procurementExecutor, logger).Run(ctx)
 	go procurement.NewWBMirrorWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
-	go procurement.NewSalesWorker(procurementStore, marketplaceExecutor, logger).Run(ctx)
+	go procurement.NewCatalogWorker(procurementStore, procurementExecutor, logger).Run(ctx)
+	go procurement.NewSalesWorker(procurementStore, salesExecutor, logger).Run(ctx)
 	go payment.NewReconcileWorker(paymentService, logger).Run(ctx)
 	go operationsProbe.Run(ctx, logger)
 

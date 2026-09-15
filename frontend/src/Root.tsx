@@ -42,6 +42,7 @@ export default function Root() {
   if (path.startsWith("/collections/")) {
     return withFooter(<StorefrontPage landing={{ type:"collection", slug:decodeURIComponent(path.slice("/collections/".length)) }} />);
   }
+  if (path.startsWith("/admin/")) return ready(<AdminPage />);
   switch (path) {
     case "/login":
       return ready(<LoginPage />);

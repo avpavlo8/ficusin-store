@@ -20,6 +20,11 @@ const (
 	cdekFromCityCode = 159
 )
 
+var (
+	ErrCDEKOutcomeUnknown = errors.New("результат операции СДЭК неизвестен")
+	ErrCDEKOrderNotFound  = errors.New("отправление СДЭК не найдено")
+)
+
 type CDEKCity struct {
 	Code        int    `json:"code"`
 	City        string `json:"city"`
@@ -174,6 +179,35 @@ func (client *CDEKClient) CalculatePVZ(
 	cityCode int,
 	box Parcel,
 ) ([]CDEKQuote, error) {
+	return client.CalculatePVZPackages(ctx, cityCode, []Parcel{box})
+}
+
+// CalculatePVZPackages quotes the exact set of physical boxes. This is used
+// by the manager's partial-shipment editor: merging two plants into one box
+// and sending two separate boxes are deliberately different quotes.
+func (client *CDEKClient) CalculatePVZPackages(
+	ctx context.Context,
+	cityCode int,
+	boxes []Parcel,
+) ([]CDEKQuote, error) {
+	if cityCode <= 0 {
+		return nil, errors.New("не указан город СДЭК")
+	}
+	if len(boxes) == 0 {
+		return nil, errors.New("не указаны коробки")
+	}
+	packages := make([]map[string]int, 0, len(boxes))
+	for _, box := range boxes {
+		if !box.Measured() {
+			return nil, errors.New("у каждой коробки должны быть указаны размеры и вес")
+		}
+		packages = append(packages, map[string]int{
+			"weight": box.WeightGrams,
+			"length": box.LengthCM,
+			"width": box.WidthCM,
+			"height": box.HeightCM,
+		})
+	}
 	type tariff struct {
 		Code         int     `json:"tariff_code"`
 		Name         string  `json:"tariff_name"`
@@ -187,12 +221,7 @@ func (client *CDEKClient) CalculatePVZ(
 		"currency":      1,
 		"from_location": map[string]int{"code": cdekFromCityCode},
 		"to_location":   map[string]int{"code": cityCode},
-		"packages": []map[string]int{{
-			"weight": max(1, box.WeightGrams),
-			"length": max(1, box.LengthCM),
-			"width":  max(1, box.WidthCM),
-			"height": max(1, box.HeightCM),
-		}},
+		"packages":      packages,
 	}
 	var result struct {
 		Tariffs []tariff `json:"tariff_codes"`
@@ -259,14 +288,20 @@ func (client *CDEKClient) request(
 	request.Header.Set("User-Agent", "Ficusin-Store/1.0")
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("СДЭК временно недоступен: %w", err)
+		return fmt.Errorf("%w: СДЭК временно недоступен: %v", ErrCDEKOutcomeUnknown, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		if response.StatusCode == http.StatusNotFound {
+			return ErrCDEKOrderNotFound
+		}
+		if response.StatusCode >= http.StatusInternalServerError {
+			return fmt.Errorf("%w: СДЭК временно недоступен (%d)", ErrCDEKOutcomeUnknown, response.StatusCode)
+		}
 		return fmt.Errorf("СДЭК временно недоступен (%d)", response.StatusCode)
 	}
 	if err := json.NewDecoder(response.Body).Decode(destination); err != nil {
-		return fmt.Errorf("СДЭК вернул некорректный ответ: %w", err)
+		return fmt.Errorf("%w: СДЭК вернул некорректный ответ: %v", ErrCDEKOutcomeUnknown, err)
 	}
 	return nil
 }
@@ -334,6 +369,10 @@ type ShipmentRequest struct {
 	CityCode      int
 	Box           Parcel
 	Items         []ShipmentItem
+	// Packages is the measured packing accepted by the customer. When it is
+	// present, CDEK receives these exact places. Box and Items remain as the
+	// backwards-compatible path for ordinary orders.
+	Packages      []ShipmentPackage
 	SenderName    string
 	SenderPhone   string
 	SenderAddress string
@@ -345,6 +384,12 @@ type ShipmentRequest struct {
 	// PaymentOnDelivery is money CDEK collects at the counter. Zero for an
 	// order already paid on the site.
 	PaymentOnDelivery float64
+}
+
+type ShipmentPackage struct {
+	Number string
+	Box    Parcel
+	Items  []ShipmentItem
 }
 
 type ShipmentItem struct {
@@ -367,14 +412,22 @@ func (client *CDEKClient) CreateOrder(
 	if request.OfficeCode == "" || request.TariffCode <= 0 {
 		return Shipment{}, errors.New("не хватает пункта выдачи или тарифа")
 	}
-	packages := []map[string]any{{
-		"number": request.OrderNumber,
-		"weight": max(1, request.Box.WeightGrams),
-		"length": max(1, request.Box.LengthCM),
-		"width":  max(1, request.Box.WidthCM),
-		"height": max(1, request.Box.HeightCM),
-		"items":  shipmentItems(request.Items),
-	}}
+	packages := make([]map[string]any, 0, max(1, len(request.Packages)))
+	if len(request.Packages) == 0 {
+		request.Packages = []ShipmentPackage{{Number: request.OrderNumber, Box: request.Box, Items: request.Items}}
+	}
+	for _, current := range request.Packages {
+		number := current.Number
+		if number == "" { number = request.OrderNumber }
+		packages = append(packages, map[string]any{
+			"number": number,
+			"weight": max(1, current.Box.WeightGrams),
+			"length": max(1, current.Box.LengthCM),
+			"width":  max(1, current.Box.WidthCM),
+			"height": max(1, current.Box.HeightCM),
+			"items":  shipmentItems(current.Items),
+		})
+	}
 	body := map[string]any{
 		"type":            1,
 		"number":          request.OrderNumber,
@@ -411,9 +464,50 @@ func (client *CDEKClient) CreateOrder(
 		}
 	}
 	if result.Entity.UUID == "" {
-		return Shipment{}, errors.New("СДЭК не вернул номер заявки")
+		return Shipment{}, fmt.Errorf("%w: СДЭК не вернул номер заявки", ErrCDEKOutcomeUnknown)
 	}
 	return Shipment{UUID: result.Entity.UUID}, nil
+}
+
+// FindOrderByNumber resolves a lost create response without issuing another
+// create request. The merchant order number is stable and unique in Ficusin.
+func (client *CDEKClient) FindOrderByNumber(ctx context.Context, number string) (Shipment, error) {
+	number = strings.TrimSpace(number)
+	if number == "" {
+		return Shipment{}, ErrCDEKOrderNotFound
+	}
+	var result struct {
+		Entity struct {
+			UUID       string `json:"uuid"`
+			CDEKNumber string `json:"cdek_number"`
+			Statuses   []struct {
+				Code string `json:"code"`
+				Name string `json:"name"`
+			} `json:"statuses"`
+		} `json:"entity"`
+		Requests []struct {
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		} `json:"requests"`
+	}
+	if err := client.request(ctx, http.MethodGet, "/orders?im_number="+url.QueryEscape(number), nil, &result); err != nil {
+		return Shipment{}, err
+	}
+	for _, request := range result.Requests {
+		for _, failure := range request.Errors {
+			return Shipment{}, fmt.Errorf("СДЭК не нашёл заявку: %s", failure.Message)
+		}
+	}
+	if result.Entity.UUID == "" {
+		return Shipment{}, ErrCDEKOrderNotFound
+	}
+	shipment := Shipment{UUID: result.Entity.UUID, TrackNumber: result.Entity.CDEKNumber}
+	if count := len(result.Entity.Statuses); count > 0 {
+		shipment.Status = result.Entity.Statuses[count-1].Code
+		shipment.StatusReason = result.Entity.Statuses[count-1].Name
+	}
+	return shipment, nil
 }
 
 // FetchOrder asks what has happened to a shipment. CDEK registers a parcel

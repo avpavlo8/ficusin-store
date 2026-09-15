@@ -303,11 +303,15 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var before map[string]any
+	var currentStatus string
 	if err := tx.QueryRow(ctx, `
-		SELECT jsonb_build_object('status', status, 'paymentStatus', payment_status)
+		SELECT jsonb_build_object('status', status, 'paymentStatus', payment_status), status
 		FROM orders WHERE id = $1 FOR UPDATE
-	`, id).Scan(&before); err != nil {
+	`, id).Scan(&before, &currentStatus); err != nil {
 		return Order{}, err
+	}
+	if currentStatus == "cancelled" || currentStatus == "completed" {
+		return Order{}, fmt.Errorf("%w: закрытый заказ доступен только для просмотра", ErrInvalidInput)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET status = COALESCE(NULLIF($2, ''), status),
@@ -474,7 +478,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 // checks and deletion share one transaction so a concurrent status/order
 // change cannot turn a safe cleanup into destructive catalogue loss.
 func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, actor Actor, ids []int64) (int64, error) {
-	if !Can(actor.Role, PermissionProductsEdit) {
+	if !Can(actor.Role, PermissionDelete) {
 		return 0, ErrForbidden
 	}
 	if len(ids) == 0 || len(ids) > 1000 {
@@ -517,6 +521,7 @@ func (repository *PostgresRepository) UpdateProduct(
 	if !Can(actor.Role, PermissionProductsEdit) {
 		return Product{}, ErrForbidden
 	}
+	if err := ValidateProductUpdate(actor, update); err != nil { return Product{}, err }
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return Product{}, err
@@ -526,6 +531,7 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, err
 	}
+	if err := validateManagerAttributes(ctx, tx, actor, update.Attributes); err != nil { return Product{}, err }
 	productFields := changedProductFields(update)
 	variantFields := changedVariantFields(update)
 	_, err = tx.Exec(ctx, `
@@ -736,7 +742,7 @@ func (repository *PostgresRepository) ListCategoryAttributes(ctx context.Context
 }
 
 func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor Actor, input CategoryCreate) (Category,error) {
-	if actor.Role != RoleOwner{return Category{},ErrForbidden}
+	if !Can(actor.Role, PermissionProductsEdit){return Category{},ErrForbidden}
 	input.Name=strings.TrimSpace(input.Name); input.Slug=strings.TrimSpace(input.Slug)
 	var id int64
 	err:=repository.pool.QueryRow(ctx,`
@@ -747,7 +753,7 @@ func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor 
 }
 
 func (repository *PostgresRepository) UpdateCategory(ctx context.Context, actor Actor,id int64,input CategoryUpdate)(Category,error){
-	if actor.Role != RoleOwner{return Category{},ErrForbidden}
+	if !Can(actor.Role, PermissionProductsEdit){return Category{},ErrForbidden}
 	_,err:=repository.pool.Exec(ctx,`
 		UPDATE categories SET name=COALESCE(NULLIF(TRIM($2),''),name),
 			slug=COALESCE(NULLIF(TRIM($3),''),slug),sort_order=COALESCE($4,sort_order),updated_at=NOW()

@@ -56,6 +56,9 @@ func (stub *adjustmentPaymentsStub) RefundExcess(context.Context, int64, string)
 func (stub *adjustmentPaymentsStub) StartOutstandingForOrderID(context.Context, int64) (string, payment.Balance, error) {
 	return "", payment.Balance{}, nil
 }
+func (stub *adjustmentPaymentsStub) RecoverUnknownForOrder(context.Context, int64, int64) (string,error) { return "",nil }
+func (stub *adjustmentPaymentsStub) ResolveUnknown(context.Context,int64,int64,string) (payment.Balance,error) { return payment.Balance{},nil }
+func (stub *adjustmentPaymentsStub) DismissUnknown(context.Context,int64,int64) (payment.Balance,error) { return payment.Balance{},nil }
 
 func TestOrderContentsRetiresOldPendingLinkAndKeepsAddedProduct(t *testing.T) {
 	t.Parallel()

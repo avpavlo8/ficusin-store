@@ -90,8 +90,8 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.Balance, &item.CurrentPriceRUB, &item.SupplierID, &item.SupplierName,
 			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
 			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
-			&item.WBArticles,&item.WBLegacyArticles,
-			&item.OzonArticles,&item.OzonLegacyArticles,
+			&item.WBArticles, &item.WBLegacyArticles,
+			&item.OzonArticles, &item.OzonLegacyArticles,
 			&item.MinimumOrderQty, &item.OrderMultiple,
 			&item.Aliases, &item.AliasIDs, &item.SabySales, &item.SiteSales,
 			&item.WBSales, &item.OzonSales, &item.SupplierCategory, &item.ExpectedUnitPrice,
@@ -112,7 +112,7 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	var variantID int64
 	if err := tx.QueryRow(ctx, `SELECT variant_id,saby_id FROM canonical_product_directory
 		WHERE active AND (($1>0 AND variant_id=$1) OR ($1<=0 AND saby_id=$2))
-		ORDER BY ($1>0 AND variant_id=$1) DESC,variant_id LIMIT 1`, input.VariantID, input.SabyID).Scan(&variantID,&input.SabyID); err != nil {
+		ORDER BY ($1>0 AND variant_id=$1) DESC,variant_id LIMIT 1`, input.VariantID, input.SabyID).Scan(&variantID, &input.SabyID); err != nil {
 		return ProductDirectoryItem{}, ErrNotFound
 	}
 	_, err = tx.Exec(ctx, `
@@ -180,12 +180,14 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 		return AvailabilityItem{}, fmt.Errorf("begin update procurement availability: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	action := map[string]string{"available": "marked_available", "temporarily_unavailable": "marked_unavailable", "check": "scheduled_check", "discontinued": "discontinued"}[input.Status]
 	command, err := tx.Exec(ctx, `
 		INSERT INTO procurement_supplier_products (
-			supplier_id, saby_id, canonical_variant_id,availability_status, check_after, unavailable_since, updated_by
+			supplier_id, saby_id, canonical_variant_id,availability_status, check_after, unavailable_since, updated_by,
+			availability_reason,availability_comment,availability_last_action,availability_last_action_at
 		)
 		SELECT $1, $2,directory.variant_id,$3, NULLIF($4, '')::DATE,
-			CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5
+			CASE WHEN $3 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $5,$6,$7,$8,CURRENT_TIMESTAMP
 		FROM canonical_product_directory directory
 		WHERE directory.saby_id=$2 AND directory.active
 			AND EXISTS (SELECT 1 FROM procurement_suppliers WHERE id = $1)
@@ -193,10 +195,12 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 			canonical_variant_id=EXCLUDED.canonical_variant_id,
 			availability_status = EXCLUDED.availability_status,
 			check_after = EXCLUDED.check_after,
-			unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
-				THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
-			updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter, actor.CustomerID)
+				unavailable_since = CASE WHEN EXCLUDED.availability_status = 'temporarily_unavailable'
+					THEN COALESCE(procurement_supplier_products.unavailable_since, CURRENT_DATE) ELSE NULL END,
+				availability_reason=EXCLUDED.availability_reason,availability_comment=EXCLUDED.availability_comment,
+				availability_last_action=EXCLUDED.availability_last_action,availability_last_action_at=CURRENT_TIMESTAMP,
+				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter, actor.CustomerID, input.Reason, input.Comment, action)
 	if err != nil {
 		return AvailabilityItem{}, fmt.Errorf("update procurement availability: %w", err)
 	}
@@ -213,19 +217,26 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 	`, input.SupplierID, input.SabyID, input.Status, input.CheckAfter); err != nil {
 		return AvailabilityItem{}, fmt.Errorf("sync procurement alias availability: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `INSERT INTO procurement_supplier_availability_events(supplier_id,saby_id,status,reason,comment,check_after,created_by)
+		VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::DATE,$7)`, input.SupplierID, input.SabyID, input.Status, input.Reason, input.Comment, input.CheckAfter, actor.CustomerID); err != nil {
+		return AvailabilityItem{}, fmt.Errorf("record procurement availability action: %w", err)
+	}
 	var item AvailabilityItem
 	if err := tx.QueryRow(ctx, `
 		SELECT sp.supplier_id, s.name, sp.saby_id, COALESCE(n.name, ''),
 			COALESCE(sp.supplier_article, ''), sp.availability_status,
 			COALESCE(sp.check_after::TEXT, ''), COALESCE(sp.unavailable_since::TEXT, ''),
-			COALESCE(n.balance, 0)
+				COALESCE(n.balance, 0),sp.availability_reason,sp.availability_comment,
+				sp.availability_last_action,sp.availability_last_action_at,
+				(sp.availability_status IN('check','temporarily_unavailable') AND (sp.check_after IS NULL OR sp.check_after<=CURRENT_DATE))
 		FROM procurement_supplier_products sp
 		JOIN procurement_suppliers s ON s.id = sp.supplier_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
 		WHERE sp.supplier_id = $1 AND sp.saby_id = $2
 	`, input.SupplierID, input.SabyID).Scan(&item.SupplierID, &item.SupplierName, &item.SabyID,
 		&item.Name, &item.SupplierArticle, &item.Status, &item.CheckAfter,
-		&item.UnavailableSince, &item.Balance); errors.Is(err, pgx.ErrNoRows) {
+		&item.UnavailableSince, &item.Balance, &item.Reason, &item.Comment, &item.LastAction,
+		&item.LastActionAt, &item.Due); errors.Is(err, pgx.ErrNoRows) {
 		return AvailabilityItem{}, ErrNotFound
 	} else if err != nil {
 		return AvailabilityItem{}, fmt.Errorf("load procurement availability: %w", err)
@@ -331,7 +342,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				JOIN procurement_suppliers supplier ON supplier.id = o.supplier_id
 				JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 				WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
-					AND l.saby_id IS NOT NULL
+					AND l.saby_id IS NOT NULL AND NOT l.invoice_excluded
+					AND l.reconciliation_status<>'superseded'
 				GROUP BY o.id, o.order_number, supplier.name, supplier.tax_id, supplier.kpp,
 					l.saby_id, n.code, n.name, n.balance
 			)
@@ -363,6 +375,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					MAX(proposed_marketplace_strike_rub) AS strike
 				FROM procurement_order_lines
 				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
+					AND NOT invoice_excluded AND reconciliation_status<>'superseded'
 					AND canonical_variant_id IS NOT NULL AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
 				GROUP BY canonical_variant_id,saby_id
 			)
@@ -403,6 +416,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					FROM procurement_order_lines l
 					JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 					WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
+						AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
 						AND l.saby_id IS NOT NULL AND l.proposed_retail_rub IS NOT NULL
 					GROUP BY l.saby_id, n.code, n.name, n.price_minor
 				)
@@ -488,7 +502,7 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 				WHEN channel = 'ozon' AND external_article = '' THEN 'Не заполнен Ozon offer_id. Укажите его в справочнике закупок или нажмите «Подтянуть артикулы».'
 				ELSE 'API-адаптер канала не настроен' END,
 			completed_at = CASE WHEN channel = 'site' THEN CURRENT_TIMESTAMP ELSE NULL END,
-			next_attempt_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
+			next_attempt_at = CURRENT_TIMESTAMP, priority='interactive', updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
 	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"]); err != nil {
 		return ActionBatch{}, fmt.Errorf("update procurement action statuses: %w", err)
 	}
@@ -559,7 +573,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 		for itemRows.Next() {
 			var item ActionItem
 			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.ProductCode, &item.Channel,
-				&item.ExternalArticle,&item.DisplayArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
+				&item.ExternalArticle, &item.DisplayArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
 				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL, &item.Payload); err != nil {
 				itemRows.Close()
 				return nil, fmt.Errorf("scan procurement batch item: %w", err)
@@ -594,26 +608,30 @@ func containsString(values []string, wanted string) bool {
 	return false
 }
 
-func (store *PostgresStore) ClaimAction(ctx context.Context) (*ActionItem, error) {
+func (store *PostgresStore) ClaimAction(ctx context.Context, owner string) (*ActionItem, error) {
+	if owner == "" {
+		return nil, ErrInvalidInput
+	}
 	var item ActionItem
 	err := store.pool.QueryRow(ctx, `
 		WITH candidate AS (
 			SELECT id FROM procurement_action_items
 			WHERE (status = 'queued' AND next_attempt_at <= CURRENT_TIMESTAMP)
 				OR (status = 'processing' AND locked_until < CURRENT_TIMESTAMP)
-			ORDER BY next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+			ORDER BY CASE WHEN priority='interactive' AND updated_at>CURRENT_TIMESTAMP-INTERVAL '5 minutes' THEN 0 ELSE 1 END,
+				next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1
 		)
 		UPDATE procurement_action_items item SET status = 'processing', attempts = attempts + 1,
 			last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '2 minutes',
-			updated_at = CURRENT_TIMESTAMP
+			lock_owner=$1,lock_token=lock_token+1,updated_at = CURRENT_TIMESTAMP
 		FROM candidate WHERE item.id = candidate.id
-		RETURNING item.id, item.procurement_order_line_id, item.channel, item.external_article,
+		RETURNING item.id, COALESCE(item.procurement_order_line_id,0), item.channel, item.external_article,
 			item.old_value::DOUBLE PRECISION, item.new_value::DOUBLE PRECISION,
 			item.compare_at_value::DOUBLE PRECISION, item.quantity, item.external_operation_id,
-			item.external_url, item.payload, item.attempts
-	`).Scan(&item.ID, &item.LineID, &item.Channel, &item.ExternalArticle, &item.OldValue,
+			item.external_url, item.payload, item.attempts,item.lock_owner,item.lock_token
+	`, owner).Scan(&item.ID, &item.LineID, &item.Channel, &item.ExternalArticle, &item.OldValue,
 		&item.NewValue, &item.CompareAtValue, &item.Quantity, &item.ExternalOperationID,
-		&item.ExternalURL, &item.Payload, &item.Attempts)
+		&item.ExternalURL, &item.Payload, &item.Attempts, &item.LockOwner, &item.LockToken)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -626,14 +644,18 @@ func (store *PostgresStore) ClaimAction(ctx context.Context) (*ActionItem, error
 // ClaimActionGroup claims one marketplace upload at a time. Initial uploads
 // are grouped by batch and channel; polling groups the rows sharing the same
 // external operation id. Saby documents intentionally remain single actions.
-func (store *PostgresStore) ClaimActionGroup(ctx context.Context) ([]ActionItem, error) {
+func (store *PostgresStore) ClaimActionGroup(ctx context.Context, owner string) ([]ActionItem, error) {
+	if owner == "" {
+		return nil, ErrInvalidInput
+	}
 	rows, err := store.pool.Query(ctx, `
 		WITH seed AS (
 			SELECT id, batch_id, channel, COALESCE(external_operation_id, '') AS operation_id
 			FROM procurement_action_items
 			WHERE ((status = 'queued' AND next_attempt_at <= CURRENT_TIMESTAMP)
 				OR (status = 'processing' AND locked_until < CURRENT_TIMESTAMP))
-			ORDER BY next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+			ORDER BY CASE WHEN priority='interactive' AND updated_at>CURRENT_TIMESTAMP-INTERVAL '5 minutes' THEN 0 ELSE 1 END,
+				next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1
 		), candidates AS (
 			SELECT item.id FROM procurement_action_items item JOIN seed
 				ON item.batch_id = seed.batch_id AND item.channel = seed.channel
@@ -644,15 +666,15 @@ func (store *PostgresStore) ClaimActionGroup(ctx context.Context) ([]ActionItem,
 		), claimed AS (
 			UPDATE procurement_action_items item SET status = 'processing', attempts = attempts + 1,
 				last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '2 minutes',
-				updated_at = CURRENT_TIMESTAMP
+				lock_owner=$1,lock_token=lock_token+1,updated_at = CURRENT_TIMESTAMP
 			FROM candidates WHERE item.id = candidates.id
 			RETURNING item.*
 		)
-		SELECT id, procurement_order_line_id, channel, external_article,
+		SELECT id, COALESCE(procurement_order_line_id,0), channel, external_article,
 			old_value::DOUBLE PRECISION, new_value::DOUBLE PRECISION,
 			compare_at_value::DOUBLE PRECISION, quantity, external_operation_id,
-			external_url, payload, attempts FROM claimed ORDER BY id
-	`)
+			external_url, payload, attempts,lock_owner,lock_token FROM claimed ORDER BY id
+	`, owner)
 	if err != nil {
 		return nil, fmt.Errorf("claim procurement action group: %w", err)
 	}
@@ -662,7 +684,7 @@ func (store *PostgresStore) ClaimActionGroup(ctx context.Context) ([]ActionItem,
 		var item ActionItem
 		if err := rows.Scan(&item.ID, &item.LineID, &item.Channel, &item.ExternalArticle, &item.OldValue,
 			&item.NewValue, &item.CompareAtValue, &item.Quantity, &item.ExternalOperationID,
-			&item.ExternalURL, &item.Payload, &item.Attempts); err != nil {
+			&item.ExternalURL, &item.Payload, &item.Attempts, &item.LockOwner, &item.LockToken); err != nil {
 			return nil, fmt.Errorf("scan procurement action group: %w", err)
 		}
 		items = append(items, item)
@@ -673,24 +695,30 @@ func (store *PostgresStore) ClaimActionGroup(ctx context.Context) ([]ActionItem,
 	if len(items) > 0 {
 		return items, nil
 	}
-	item, err := store.ClaimAction(ctx)
+	item, err := store.ClaimAction(ctx, owner)
 	if err != nil || item == nil {
 		return nil, err
 	}
 	return []ActionItem{*item}, nil
 }
 
-func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, result ActionExecution, executeErr error) error {
+func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, owner string, token int64, result ActionExecution, executeErr error) (bool, error) {
+	if owner == "" || token <= 0 {
+		return false, ErrInvalidInput
+	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin finish procurement action: %w", err)
+		return false, fmt.Errorf("begin finish procurement action: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	var batchID int64
+	var batchID *int64
+	var returnID *int64
 	var attempts int
 	var channel string
-	if err := tx.QueryRow(ctx, `SELECT batch_id, attempts,channel FROM procurement_action_items WHERE id = $1 FOR UPDATE`, actionID).Scan(&batchID, &attempts,&channel); err != nil {
-		return fmt.Errorf("lock finished procurement action: %w", err)
+	if err := tx.QueryRow(ctx, `SELECT batch_id,marketplace_return_id,attempts,channel FROM procurement_action_items WHERE id=$1 AND lock_owner=$2 AND lock_token=$3 FOR UPDATE`, actionID, owner, token).Scan(&batchID, &returnID, &attempts, &channel); errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock finished procurement action: %w", err)
 	}
 	status, message, delay := "queued", "", result.RetryAfter
 	if delay <= 0 {
@@ -703,7 +731,9 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 		// seller-wide limit into a permanent error after five attempts.
 		if result.RetryAfter > 0 {
 			marketplace := "Площадка"
-			if channel == "wb" { marketplace = "Wildberries" }
+			if channel == "wb" {
+				marketplace = "Wildberries"
+			}
 			message = fmt.Sprintf("%s временно ограничил API; запрос сохранён и повторится автоматически не раньше чем через %s", marketplace, result.RetryAfter.Round(time.Second))
 		} else if attempts >= 5 {
 			status = "failed"
@@ -719,9 +749,9 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 			external_url = CASE WHEN $5 = '' THEN external_url ELSE $5 END,
 			completed_at = CASE WHEN $2 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
 			next_attempt_at = CURRENT_TIMESTAMP + ($6 * INTERVAL '1 second'), locked_until = NULL,
-			updated_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, actionID, status, message, result.ExternalOperationID, result.ExternalURL, int(delay.Seconds())); err != nil {
-		return fmt.Errorf("update procurement action result: %w", err)
+			lock_owner='',updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND lock_owner=$7 AND lock_token=$8
+	`, actionID, status, message, result.ExternalOperationID, result.ExternalURL, int(delay.Seconds()), owner, token); err != nil {
+		return false, fmt.Errorf("update procurement action result: %w", err)
 	}
 	// Once WB confirms the upload, advance the local mirror immediately. The
 	// next hourly read will verify it, but screens do not need to show the old
@@ -738,21 +768,63 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, re
 			WHERE item.id = $1 AND item.channel = 'wb'
 				AND product.channel = 'wb' AND product.external_id = item.external_article
 		`, actionID); err != nil {
-			return fmt.Errorf("update confirmed Wildberries mirror price: %w", err)
+			return false, fmt.Errorf("update confirmed Wildberries mirror price: %w", err)
+		}
+		if channel == "saby_receipt" && returnID == nil {
+			// The Saby adapter reports Completed only after it has read the same
+			// document back as posted with the exact expected quantities. Record
+			// the resulting cost once; a retry cannot create a second effective
+			// cost or rewrite a historical sale snapshot.
+			if _, err := tx.Exec(ctx, `UPDATE procurement_action_items
+				SET receipt_verified_at=CURRENT_TIMESTAMP WHERE id=$1`, actionID); err != nil {
+				return false, fmt.Errorf("mark Saby receipt verified: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `
+				WITH source AS (
+					SELECT batch.procurement_order_id,line.canonical_variant_id,line.saby_id,
+						MIN(line.id) AS line_id,MAX(line.unit_cost_rub) AS unit_cost
+					FROM procurement_action_items item
+					JOIN procurement_action_batches batch ON batch.id=item.batch_id
+					JOIN procurement_order_lines line ON line.procurement_order_id=batch.procurement_order_id
+					WHERE item.id=$1 AND line.match_status='confirmed' AND NOT line.invoice_excluded
+						AND line.reconciliation_status<>'superseded' AND line.canonical_variant_id IS NOT NULL
+						AND line.saby_id IS NOT NULL AND line.unit_cost_rub IS NOT NULL
+					GROUP BY batch.procurement_order_id,line.canonical_variant_id,line.saby_id
+				), inserted AS (
+					INSERT INTO procurement_cost_history(canonical_variant_id,saby_id,procurement_order_id,
+						procurement_order_line_id,unit_cost_rub,cost_kind,source,effective_at)
+					SELECT canonical_variant_id,saby_id,procurement_order_id,line_id,unit_cost,
+						'actual','saby_posted_receipt',CURRENT_TIMESTAMP FROM source
+					ON CONFLICT DO NOTHING RETURNING canonical_variant_id,unit_cost_rub,effective_at
+				)
+				UPDATE product_variants variant SET current_unit_cost_rub=inserted.unit_cost_rub,
+					current_unit_cost_kind='actual',current_unit_cost_effective_at=inserted.effective_at,
+					updated_at=CURRENT_TIMESTAMP
+				FROM inserted WHERE variant.id=inserted.canonical_variant_id
+			`, actionID); err != nil {
+				return false, fmt.Errorf("apply verified receipt costs: %w", err)
+			}
 		}
 	}
-	if _, err := tx.Exec(ctx, `
+	if returnID != nil {
+		if _, err := tx.Exec(ctx, `UPDATE marketplace_returns SET receipt_status=CASE WHEN $2='completed' THEN 'posted' WHEN $3<>'' THEN 'draft_created' WHEN $2='failed' THEN 'failed' ELSE 'checking' END,receipt_external_id=CASE WHEN $3='' THEN receipt_external_id ELSE $3 END,receipt_external_url=CASE WHEN $4='' THEN receipt_external_url ELSE $4 END,receipt_posted_at=CASE WHEN $2='completed' THEN CURRENT_TIMESTAMP ELSE receipt_posted_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *returnID, status, result.ExternalOperationID, result.ExternalURL); err != nil {
+			return false, fmt.Errorf("update marketplace return receipt: %w", err)
+		}
+	}
+	if batchID != nil {
+		if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches SET status = CASE
 			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('queued', 'processing')) THEN 'processing'
 			WHEN EXISTS (SELECT 1 FROM procurement_action_items WHERE batch_id = $1 AND status IN ('failed', 'not_configured', 'skipped')) THEN 'partially_completed'
 			ELSE 'completed' END, updated_at = CURRENT_TIMESTAMP WHERE id = $1
-	`, batchID); err != nil {
-		return fmt.Errorf("update procurement batch result: %w", err)
+	`, *batchID); err != nil {
+			return false, fmt.Errorf("update procurement batch result: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit procurement action result: %w", err)
+		return false, fmt.Errorf("commit procurement action result: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 func (store *PostgresStore) RetryBatch(ctx context.Context, actor Actor, batchID int64, configured map[string]bool) (ActionBatch, error) {
@@ -818,6 +890,7 @@ func scanDocument(row rowScanner, item *DocumentSummary) error {
 		&item.DocumentNumber, &item.DocumentDate, &item.Currency, &item.Lines,
 		&item.Units, &item.ProductSubtotal, &item.PackageTotal, &item.DocumentTotal,
 		&item.CalculatedTotal, &item.ParseError, &item.CreatedAt,
+		&item.RevisionNo, &item.Superseded,
 	)
 }
 
@@ -863,7 +936,7 @@ func loadDocumentByHash(
 			COALESCE(d.package_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.document_total, 0)::DOUBLE PRECISION,
 			COALESCE(d.calculated_total, 0)::DOUBLE PRECISION,
-			d.parse_error, d.created_at
+			d.parse_error, d.created_at,d.revision_no,(d.superseded_at IS NOT NULL)
 		FROM procurement_documents d
 		JOIN procurement_suppliers s ON s.id = d.supplier_id
 		WHERE d.supplier_id = $1 AND d.sha256 = $2
@@ -897,6 +970,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
+			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
 		WHERE o.id = $1
 		GROUP BY o.id, s.name
 	`, orderID).Scan(
@@ -997,11 +1071,19 @@ func audit(ctx context.Context, executor auditExecutor, actor Actor, action, ent
 	if err != nil {
 		return fmt.Errorf("encode procurement audit: %w", err)
 	}
+	var actorID any = actor.CustomerID
+	if actor.CustomerID <= 0 {
+		actorID = nil
+	}
+	role := actor.Role
+	if role == "" {
+		role = "system"
+	}
 	if _, err := executor.Exec(ctx, `
 		INSERT INTO admin_audit_log (
 			actor_customer_id, actor_role, action, entity_type, entity_id, after_data
 		) VALUES ($1, $2, $3, $4, $5, $6)
-	`, actor.CustomerID, actor.Role, action, entityType, fmt.Sprint(entityID), string(payload)); err != nil {
+	`, actorID, role, action, entityType, fmt.Sprint(entityID), string(payload)); err != nil {
 		return fmt.Errorf("insert procurement audit: %w", err)
 	}
 	return nil

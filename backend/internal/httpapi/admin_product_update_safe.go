@@ -17,7 +17,7 @@ import (
 // no-op field and let the existing, fully validated update handler do the rest.
 func safeAdminProductUpdateHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, _, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
 		if !ok {
 			return
 		}
@@ -36,6 +36,7 @@ func safeAdminProductUpdateHandler(adminAPI adminHandlers) http.HandlerFunc {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
 			return
 		}
+		if !validateManagerProductFields(response, actor, fields) { return }
 		if encoded, present := fields["image"]; present {
 			var incoming string
 			if json.Unmarshal(encoded, &incoming) == nil {

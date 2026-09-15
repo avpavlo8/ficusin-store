@@ -15,7 +15,7 @@ func TestRolePermissions(t *testing.T) {
 		{name: "owner can edit integrations", role: RoleOwner, permission: PermissionIntegrationsEdit, want: true},
 		{name: "manager can edit orders", role: RoleManager, permission: PermissionOrdersEdit, want: true},
 		{name: "manager can edit products", role: RoleManager, permission: PermissionProductsEdit, want: true},
-		{name: "manager can sync products", role: RoleManager, permission: PermissionProductsSync, want: true},
+		{name: "manager cannot sync products", role: RoleManager, permission: PermissionProductsSync, want: false},
 		{name: "manager cannot edit customers", role: RoleManager, permission: PermissionCustomersEdit, want: false},
 		{name: "manager cannot edit discounts", role: RoleManager, permission: PermissionDiscountsEdit, want: false},
 		{name: "unknown role has no access", role: "unknown", permission: PermissionDashboard, want: false},

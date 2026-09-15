@@ -16,9 +16,9 @@ export const recommendationEmptyText = (value: string) => value === "recommended
 
 export const integrationChannelLabel = (value: string) => ({ saby: "СБИС / Saby", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 
-export async function updateAvailability(supplierId: number, sabyId: string, status: string, reload: () => Promise<unknown>, onError: (message: string) => void) {
+export async function updateAvailability(supplierId: number, sabyId: string, status: string, reload: () => Promise<unknown>, onError: (message: string) => void, details: {checkAfter?: string;reason?: string;comment?: string} = {}) {
   const date = status === "check" ? new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) : "";
-  try { await api("/api/v1/admin/procurement/availability", { method: "PATCH", body: JSON.stringify({ supplierId, sabyId, status, checkAfter: date }) }); await reload(); }
+  try { await api("/api/v1/admin/procurement/availability", { method: "PATCH", body: JSON.stringify({ supplierId, sabyId, status, checkAfter: details.checkAfter ?? date, reason: details.reason || "", comment: details.comment || "" }) }); await reload(); }
   catch (error) { onError((error as Error).message); }
 }
 

@@ -3,7 +3,8 @@ import { api } from "./adminShared";
 
 export type VariantMedia = { id: number; url: string; primary: boolean; sortOrder: number };
 
-export function VariantMediaManager({ variantId, sku, onChanged, onError }: {
+export function VariantMediaManager({ canDelete = false, variantId, sku, onChanged, onError }: {
+  canDelete?: boolean;
   variantId: number; sku: string; onChanged: () => void; onError: (message: string) => void;
 }) {
   const [items, setItems] = useState<VariantMedia[]>([]);
@@ -63,7 +64,7 @@ export function VariantMediaManager({ variantId, sku, onChanged, onError }: {
         <img src={item.url} alt={`SKU ${sku}`} />
         <div>
           {item.primary ? <strong>Главная</strong> : <button type="button" disabled={busy} onClick={() => void makePrimary(item)}>Сделать главной</button>}
-          <button type="button" className="danger" disabled={busy} onClick={() => void remove(item)}>Удалить</button>
+          <button type="button" className="danger" disabled={!canDelete || busy} onClick={() => void remove(item)}>Удалить</button>
         </div>
       </article>)}
       {!items.length && <p className="admin-inline-error">Статус SKU: без собственного фото. Будет использована общая галерея товара.</p>}

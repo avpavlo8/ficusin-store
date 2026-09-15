@@ -1,17 +1,7 @@
 name: Saby catalog sync
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - scripts/sync-saby.py
-      - scripts/saby_catalog_merge.py
-      - timeweb/migrations/*saby*.sql
-      - .github/workflows/saby-catalog-sync.yml
-  schedule:
-    # Cached Saby prices and balances are the source for every site screen.
-    # Refresh hourly; the admin button remains available for an immediate pull.
-    - cron: '17 * * * *'
+  # Emergency fallback only. Scheduled Saby reads run inside the application worker.
   workflow_dispatch: {}
 
 permissions:

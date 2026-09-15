@@ -9,6 +9,7 @@ Amount Description Price: Total:
 Box no: 1 CC-Kar (+ 5 plaat) *imi*
 8 Acer Deshojo Bonsai 18,05 144,40
 Pot Ø: 15 Cm Height: 30 Cm number of cuttings: 32
+Article: NL-ACER-15
 10 Aglao Green Mix 4,80 48,00
 Pot Ø: 11 Cm Height: 30 Cm
 
@@ -35,6 +36,9 @@ Total Amount € 542,50`
 	}
 	if result.Lines[0].PotDiameterCM == nil || *result.Lines[0].PotDiameterCM != 15 || result.Lines[0].HeightCM == nil || *result.Lines[0].HeightCM != 30 {
 		t.Fatalf("dimensions were not parsed: %+v", result.Lines[0])
+	}
+	if result.Lines[0].SupplierArticle != "NL-ACER-15" {
+		t.Fatalf("supplier article was not parsed: %+v", result.Lines[0])
 	}
 	if !result.ArithmeticOK || !almostEqual(result.PackageTotal, 227.6) {
 		t.Fatalf("unexpected totals: %+v", result)

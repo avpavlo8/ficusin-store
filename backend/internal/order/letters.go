@@ -55,11 +55,16 @@ func (worker *LetterWorker) process(ctx context.Context) {
 	}
 
 	rows, err := worker.pool.Query(ctx, `
-		SELECT id, recipient, subject, body
-		FROM outbox
-		WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts < 5
-		ORDER BY id
-		LIMIT 20
+		WITH picked AS (
+			SELECT id FROM outbox
+			WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts < 5
+				AND (locked_until IS NULL OR locked_until < CURRENT_TIMESTAMP)
+			ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED
+		)
+		UPDATE outbox item SET lock_token=md5(random()::TEXT||clock_timestamp()::TEXT),
+			locked_until=CURRENT_TIMESTAMP+INTERVAL '5 minutes'
+		FROM picked WHERE item.id=picked.id
+		RETURNING item.id,item.recipient,item.subject,item.body,item.shipment_offer_id,item.lock_token
 	`)
 	if err != nil {
 		worker.logger.Error("read outbox failed", "error", err)
@@ -68,11 +73,13 @@ func (worker *LetterWorker) process(ctx context.Context) {
 	type pending struct {
 		id                       int64
 		recipient, subject, body string
+		shipmentOfferID          *int64
+		lockToken                string
 	}
 	letters := make([]pending, 0)
 	for rows.Next() {
 		var item pending
-		if err := rows.Scan(&item.id, &item.recipient, &item.subject, &item.body); err != nil {
+		if err := rows.Scan(&item.id, &item.recipient, &item.subject, &item.body, &item.shipmentOfferID, &item.lockToken); err != nil {
 			worker.logger.Error("scan outbox failed", "error", err)
 			break
 		}
@@ -89,17 +96,18 @@ func (worker *LetterWorker) process(ctx context.Context) {
 			// minutes should not cost the customer their confirmation.
 			worker.logger.Error("send letter failed", "error", err, "letter_id", item.id)
 			if _, failed := worker.pool.Exec(ctx, `
-				UPDATE outbox SET attempts = attempts + 1, last_error = $2
-				WHERE id = $1 AND sent_at IS NULL AND cancelled_at IS NULL
-			`, item.id, err.Error()); failed != nil {
+				UPDATE outbox SET attempts=attempts+1,last_error=$2,lock_token='',locked_until=NULL
+				WHERE id=$1 AND lock_token=$3 AND sent_at IS NULL AND cancelled_at IS NULL
+			`, item.id, err.Error(),item.lockToken); failed != nil {
 				worker.logger.Error("record letter failure", "error", failed)
 			}
 			continue
 		}
-		if _, err := worker.pool.Exec(ctx, `
-			UPDATE outbox SET sent_at = CURRENT_TIMESTAMP
-			WHERE id = $1 AND cancelled_at IS NULL
-		`, item.id); err != nil {
+		tx,err:=worker.pool.Begin(ctx);if err!=nil{worker.logger.Error("begin letter completion failed","error",err);continue}
+		command,err:=tx.Exec(ctx,`UPDATE outbox SET sent_at=CURRENT_TIMESTAMP,lock_token='',locked_until=NULL WHERE id=$1 AND lock_token=$2 AND cancelled_at IS NULL AND sent_at IS NULL`,item.id,item.lockToken)
+		if err==nil&&command.RowsAffected()==1&&item.shipmentOfferID!=nil{_,err=tx.Exec(ctx,`UPDATE shipment_offers SET status='offered',notified_at=COALESCE(notified_at,CURRENT_TIMESTAMP),expires_at=COALESCE(expires_at,CURRENT_TIMESTAMP+INTERVAL '48 hours'),updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='notifying'`,*item.shipmentOfferID)}
+		if err==nil{err=tx.Commit(ctx)}else{_ = tx.Rollback(ctx)}
+		if err != nil {
 			worker.logger.Error("mark letter sent failed", "error", err, "letter_id", item.id)
 		}
 	}
@@ -107,11 +115,14 @@ func (worker *LetterWorker) process(ctx context.Context) {
 
 func (worker *LetterWorker) cancelDisabled(ctx context.Context) {
 	command, err := worker.pool.Exec(ctx, `
-		UPDATE outbox
+		WITH closed AS (UPDATE outbox
 		SET cancelled_at = CURRENT_TIMESTAMP,
 			cancel_reason = 'mail_not_configured',
-			last_error = 'почта отключена конфигурацией'
+			last_error = 'почта отключена конфигурацией',lock_token='',locked_until=NULL
 		WHERE sent_at IS NULL AND cancelled_at IS NULL
+		RETURNING shipment_offer_id)
+		UPDATE shipment_offers SET status='draft',updated_at=CURRENT_TIMESTAMP
+		WHERE id IN (SELECT shipment_offer_id FROM closed WHERE shipment_offer_id IS NOT NULL)
 	`)
 	if err != nil {
 		worker.logger.Error("close disabled outbox failed", "error", err)

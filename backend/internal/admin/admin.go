@@ -24,10 +24,17 @@ const (
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
 	PermissionProductsSync     = "products.sync"
+	PermissionProductsManage = "products.manage"
+	PermissionDelete = "catalog.delete"
+	PermissionReturnsRead = "returns.read"
+	PermissionReturnsEdit = "returns.edit"
+	PermissionReturnsReceipt = "returns.receipt.create"
 	PermissionProcurementRead  = "procurement.read"
 	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
 	PermissionAnalyticsRead    = "analytics.read"
+	PermissionFinanceRead      = "finance.read"
+	PermissionFinanceEdit      = "finance.edit"
 )
 
 var ErrForbidden = errors.New("admin action is forbidden")
@@ -46,12 +53,10 @@ func Can(role, permission string) bool {
 	switch role {
 	case RoleManager:
 		return permission == PermissionDashboard ||
-			permission == PermissionAnalyticsRead ||
 			permission == PermissionCustomersRead ||
 			permission == PermissionOrdersRead || permission == PermissionOrdersEdit ||
 			permission == PermissionProductsRead || permission == PermissionProductsEdit ||
-			permission == PermissionProductsSync ||
-			permission == PermissionProcurementRead || permission == PermissionProcurementEdit
+			permission == PermissionReturnsRead || permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt
 	default:
 		return false
 	}
@@ -144,12 +149,17 @@ type Order struct {
 }
 
 type OrderItem struct {
+	ID           int64   `json:"id"`
 	ProductID    int64   `json:"productId"`
 	SKU          string  `json:"sku"`
 	VariantLabel string  `json:"variantLabel"`
 	ProductName  string  `json:"productName"`
 	UnitPrice    float64 `json:"unitPrice"`
 	Quantity     int     `json:"quantity"`
+	PackageLengthCM int `json:"packageLengthCm"`
+	PackageWidthCM int `json:"packageWidthCm"`
+	PackageHeightCM int `json:"packageHeightCm"`
+	PackageWeightGrams int `json:"packageWeightGrams"`
 }
 
 type Product struct {

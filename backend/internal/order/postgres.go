@@ -74,7 +74,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 	var orderID int64
 	err := repository.pool.QueryRow(ctx, `
 		SELECT
-			o.id, o.order_number, o.delivery_method, o.address, o.comment,
+			o.id, o.order_number, o.delivery_method, o.address, o.comment,o.cancellation_reason,
 			o.customer_name, o.phone, o.email, o.status, o.payment_method, o.payment_status,
 			COALESCE(o.cdek_track_number, ''), o.has_preorder = 1,
 			o.delivery_fee::DOUBLE PRECISION,
@@ -98,6 +98,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.DeliveryMethod,
 		&detail.Address,
 		&detail.Comment,
+		&detail.CancellationReason,
 		&detail.CustomerName,
 		&detail.Phone,
 		&detail.Email,
@@ -146,5 +147,10 @@ func (repository *PostgresRepository) DetailForCustomer(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read order items: %w", err)
 	}
+	rows.Close()
+	offerRows,err:=repository.pool.Query(ctx,`SELECT id,public_token,status,delivery_fee::DOUBLE PRECISION,subtotal::DOUBLE PRECISION,total::DOUBLE PRECISION,notified_at,expires_at,(SELECT COUNT(*) FROM shipment_offer_boxes WHERE shipment_offer_id=so.id)::INTEGER FROM shipment_offers so WHERE order_id=$1 ORDER BY id DESC`,orderID);if err!=nil{return nil,fmt.Errorf("query shipment offers: %w",err)}
+	detail.ShipmentOffers=[]ShipmentOffer{}
+	for offerRows.Next(){var offer ShipmentOffer;if err:=offerRows.Scan(&offer.ID,&offer.PaymentToken,&offer.Status,&offer.DeliveryFee,&offer.Subtotal,&offer.Total,&offer.NotifiedAt,&offer.ExpiresAt,&offer.Boxes);err!=nil{offerRows.Close();return nil,err};items,err:=repository.pool.Query(ctx,`SELECT product_name,unit_price::DOUBLE PRECISION,COALESCE(original_unit_price,unit_price)::DOUBLE PRECISION,quantity FROM shipment_offer_items WHERE shipment_offer_id=$1 ORDER BY id`,offer.ID);if err!=nil{offerRows.Close();return nil,err};offer.Items=[]Item{};for items.Next(){var item Item;if err:=items.Scan(&item.ProductName,&item.UnitPrice,&item.OriginalUnitPrice,&item.Quantity);err!=nil{items.Close();offerRows.Close();return nil,err};offer.Items=append(offer.Items,item)};items.Close();if offer.Status!="offered"&&offer.Status!="payment_pending"{offer.PaymentToken=""};detail.ShipmentOffers=append(detail.ShipmentOffers,offer)}
+	if err:=offerRows.Err();err!=nil{return nil,err};offerRows.Close()
 	return &detail, nil
 }

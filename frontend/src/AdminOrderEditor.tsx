@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 import type { Order, Product } from "./adminTypes";
 
@@ -11,6 +11,16 @@ type PaymentBalance = {
   overpaid: number;
   ready: boolean;
   paymentStatus: string;
+  issues: Array<{
+    id: number;
+    amount: number;
+    createdAt: string;
+    recoveryDeadline: string;
+    attempts: number;
+    lastAttemptAt?: string;
+    lastError: string;
+    needsReview: boolean;
+  }>;
 };
 
 type Adjustment = {
@@ -21,12 +31,23 @@ type Adjustment = {
   deliveryFeePending: boolean;
   hasPreorder: boolean;
   status: string;
-  items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
+  deliveryMethod: string;
+  cdekTariffCode?: number;
+  cdekCreateState: string;
+  cdekStatus: string;
+  cdekStatusReason: string;
+  cdekLastError: string;
+  items: Array<{ id: number; productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number; packageLengthCm: number; packageWidthCm: number; packageHeightCm: number; packageWeightGrams: number }>;
+  shipmentOffers: ShipmentOffer[];
 };
+
+type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
+const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOffers})));
 
 const emptyPayment: PaymentBalance = {
   total: 0, paid: 0, refunded: 0, netPaid: 0, due: 0, overpaid: 0,
   ready: false, paymentStatus: "pending",
+  issues: [],
 };
 
 export function AdminOrderEditor({ order, onSaved, onError }: {
@@ -42,7 +63,9 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const [addProduct, setAddProduct] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [paymentLink, setPaymentLink] = useState("");
+  const [providerPaymentIds, setProviderPaymentIds] = useState<Record<number,string>>({});
   const [busy, setBusy] = useState(false);
+  const readOnly = ["cancelled", "completed", "shipped"].includes(order.status);
 
   const load = async () => {
     try {
@@ -87,6 +110,46 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
 
   const compositionChanged = () => setPaymentLink("");
 
+  const recoverPayment = async (paymentId: number) => {
+    setBusy(true);
+    try {
+      const result = await api<{ confirmationUrl?: string; payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/recover`, { method: "POST" },
+      );
+      setPayment(result.payment);
+      if (result.confirmationUrl) setPaymentLink(result.confirmationUrl);
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const resolvePayment = async (paymentId: number) => {
+    const providerPaymentId = (providerPaymentIds[paymentId] ?? "").trim();
+    if (!providerPaymentId) { onError("Укажите ID платежа из ЮKassa"); return; }
+    setBusy(true);
+    try {
+      const result = await api<{ payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/resolve`,
+        { method: "POST", body: JSON.stringify({ providerPaymentId }) },
+      );
+      setPayment(result.payment);
+      setProviderPaymentIds((current) => ({ ...current, [paymentId]: "" }));
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const dismissPayment = async (paymentId: number) => {
+    if (!window.confirm("Вы проверили кабинет ЮKassa и уверены, что такого платежа нет?")) return;
+    setBusy(true);
+    try {
+      const result = await api<{ payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/dismiss`,
+        { method: "POST", body: JSON.stringify({ confirmed: true }) },
+      );
+      setPayment(result.payment);
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+
   const changeQuantity = (index: number, quantity: number) => {
     setLines((current) => current.map((line, position) => position === index
       ? { ...line, quantity: Math.max(1, Math.min(100, quantity || 1)) }
@@ -107,12 +170,17 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     const product = products.find((item) => item.sku === addProduct);
     if (!product) return;
     setLines((current) => [...current, {
+      id: 0,
       productId: product.id,
       sku: product.sku,
       variantLabel: product.variantLabel,
       productName: product.name,
       unitPrice: product.price,
       quantity: 1,
+      packageLengthCm: product.packageLengthCm ?? 0,
+      packageWidthCm: product.packageWidthCm ?? 0,
+      packageHeightCm: product.packageHeightCm ?? 0,
+      packageWeightGrams: product.packageWeightGrams ?? 0,
     }]);
     setAddProduct("");
     compositionChanged();
@@ -159,6 +227,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       try { await navigator.clipboard.writeText(result.confirmationUrl); } catch { /* link stays visible */ }
     } catch (error) {
       onError((error as Error).message);
+      await load();
     } finally { setBusy(false); }
   };
 
@@ -190,19 +259,19 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       <div className="admin-block-heading"><div><strong>Состав заказа</strong><small>Менеджер может изменить заказ до отправки</small></div></div>
       {lines.map((line, index) => <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
         <span><strong>{line.productName}</strong><small>{money.format(line.unitPrice)} / шт.</small></span>
-        <input aria-label={`Количество ${line.productName}`} type="number" min="1" max="100" value={line.quantity}
+        <input aria-label={`Количество ${line.productName}`} type="number" min="1" max="100" value={line.quantity} disabled={readOnly}
           onChange={(event) => changeQuantity(index, Number(event.target.value))} />
         <strong>{money.format(line.unitPrice * line.quantity)}</strong>
-        <button type="button" className="admin-action" onClick={() => removeLine(index)}>Удалить</button>
+        <button type="button" className="admin-action" disabled={readOnly} onClick={() => removeLine(index)}>Удалить</button>
       </div>)}
       <div className="admin-order-add-line">
-        <select value={addProduct} onChange={(event) => setAddProduct(event.target.value)}>
+        <select value={addProduct} disabled={readOnly} onChange={(event) => setAddProduct(event.target.value)}>
           <option value="">Добавить товар…</option>
           {availableProducts.map((product) => <option value={product.sku} key={product.id}>
             {product.name} · {money.format(product.price)} · остаток {product.stock}
           </option>)}
         </select>
-        <button type="button" className="admin-action" disabled={!addProduct} onClick={appendProduct}>Добавить</button>
+        <button type="button" className="admin-action" disabled={readOnly || !addProduct} onClick={appendProduct}>Добавить</button>
       </div>
       <div className="admin-order-draft-total">
         <small>После сохранения эта сумма станет итогом заказа</small>
@@ -214,14 +283,18 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     {order.deliveryMethod !== "pickup" && <section className="admin-block">
       <strong>Доставка</strong>
       <div className="admin-form-grid">
-        <label>Стоимость доставки, ₽<input type="number" min="0" step="1" value={deliveryFee}
+        <label>Стоимость доставки, ₽<input type="number" min="0" step="1" value={deliveryFee} disabled={readOnly}
           onChange={(event) => { setDeliveryFee(Math.max(0, Number(event.target.value))); setPaymentLink(""); }} /></label>
       </div>
       <small>Нажатие «Сохранить изменения» подтверждает эту стоимость для клиента.</small>
+      {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && <p className="admin-flag">СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной отправки.</p>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && <p className="admin-flag">Проверьте заказ {adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.</p>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekStatus && <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekLastError && ["unknown","manual_review","retry"].includes(adjustment.cdekCreateState) && <small>{adjustment.cdekLastError}</small>}
     </section>}
 
     <div className="dialog-actions">
-      <button type="button" className="primary" disabled={busy} onClick={save}>Сохранить изменения</button>
+      <button type="button" className="primary" disabled={busy || readOnly} onClick={save}>Сохранить изменения</button>
     </div>
 
     <section className="admin-block admin-order-payment-block">
@@ -231,10 +304,24 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       {shownOverpaid > 0 && <p className="admin-flag">Переплата: <b>{money.format(shownOverpaid)}</b></p>}
       {hasUnsavedChanges && shownDue > 0 && <p>Сначала сохраните изменения — старая ссылка больше не используется.</p>}
       {!hasUnsavedChanges && !payment.ready && payment.due > 0 && <p>Оплата закрыта: в заказе есть товар без подтверждённого наличия.</p>}
-      {!hasUnsavedChanges && payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>
+      {!readOnly && !hasUnsavedChanges && payment.ready && payment.due > 0 && <button type="button" className="admin-action" disabled={busy} onClick={createPaymentLink}>
         {payment.netPaid > 0 ? "Создать ссылку на доплату" : "Создать ссылку на оплату"}
       </button>}
       {paymentLink && <p><a href={paymentLink} target="_blank" rel="noreferrer">Ссылка на оплату</a> <small>скопирована в буфер, если браузер разрешил</small></p>}
+      {(payment.issues ?? []).map((issue) => <div className="admin-payment-issue" key={issue.id}>
+        <div><strong>Результат оплаты {money.format(issue.amount)} уточняется</strong>
+          <small>{issue.needsReview
+            ? "Автопроверка остановлена: безопасное окно повтора закончилось. Заказ и резерв не отменяются."
+            : `ЮKassa не ответила. Система повторяет тот же запрос; попыток: ${issue.attempts}.`}</small>
+          {issue.lastError && <small>{issue.lastError}</small>}
+        </div>
+        {!issue.needsReview && <button type="button" className="admin-action" disabled={busy} onClick={() => void recoverPayment(issue.id)}>Проверить сейчас</button>}
+        {issue.needsReview && <div className="admin-payment-resolve">
+          <input value={providerPaymentIds[issue.id] ?? ""} onChange={(event) => setProviderPaymentIds((current) => ({ ...current, [issue.id]: event.target.value }))} placeholder="ID платежа из ЮKassa" />
+          <button type="button" className="admin-action" disabled={busy} onClick={() => void resolvePayment(issue.id)}>Сверить</button>
+          <button type="button" className="admin-action" disabled={busy} onClick={() => void dismissPayment(issue.id)}>Платежа нет</button>
+        </div>}
+      </div>)}
       {payment.netPaid > 0 && <div className="admin-refund admin-order-refund-form">
         <input type="number" min="1" max={payment.netPaid} step="1" placeholder="Сумма возврата"
           value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} />
@@ -242,5 +329,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
         <button type="button" className="admin-action" disabled={busy} onClick={() => refund(payment.netPaid)}>Вернуть всё</button>
       </div>}
     </section>
+
+    <Suspense fallback={<p>Готовим частичные отправки…</p>}><ShipmentOffers orderId={order.id} items={adjustment.items} offers={adjustment.shipmentOffers??[]} deliveryMethod={adjustment.deliveryMethod} deliveryFee={adjustment.deliveryFee} cdekTariffCode={adjustment.cdekTariffCode} busy={busy} readOnly={readOnly} setBusy={setBusy} onCreated={load} onError={onError}/></Suspense>
   </div>;
 }

@@ -83,8 +83,13 @@ class CatalogPIMContractTest(unittest.TestCase):
     def test_role_boundaries_exist_for_system_definitions(self):
         pim = text("backend/internal/admin/catalog_pim.go")
         manage = text("backend/internal/admin/manage.go")
+        permissions = text("backend/internal/admin/admin.go")
         self.assertIn("if actor.Role != RoleOwner", pim)
-        self.assertGreaterEqual(manage.count("if actor.Role != RoleOwner"), 3)
+        self.assertIn("PermissionProductsManage", permissions)
+        self.assertIn("PermissionDelete", permissions)
+        self.assertNotIn("permission == PermissionProductsManage", permissions.split("case RoleManager:", 1)[1])
+        self.assertNotIn("permission == PermissionDelete", permissions.split("case RoleManager:", 1)[1])
+        self.assertIn("PermissionDelete", manage)
 
     def test_variant_delete_is_safe_only_before_sale(self):
         pim = text("backend/internal/admin/catalog_pim.go")

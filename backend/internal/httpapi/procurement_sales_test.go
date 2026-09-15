@@ -42,12 +42,12 @@ func (stub *salesLinkStub) LinkSalesProduct(_ context.Context, _ procurement.Act
 	}, nil
 }
 
-func TestUnlinkedSalesListReachesTheManager(t *testing.T) {
+func TestUnlinkedSalesListReachesTheOwner(t *testing.T) {
 	t.Parallel()
 	service := &salesLinkStub{}
 	request := adminRequest(http.MethodGet, "/api/v1/admin/procurement/sales/unlinked?channel=wb", "")
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
@@ -67,7 +67,7 @@ func TestLinkableNomenclatureSearchReachesTheService(t *testing.T) {
 	service := &salesLinkStub{}
 	request := adminRequest(http.MethodGet, "/api/v1/admin/procurement/sales/nomenclature?q=мухоловка", "")
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
@@ -89,7 +89,7 @@ func TestSalesLinkCarriesTheDecisionToTheService(t *testing.T) {
 		`{"channel":"ozon","externalId":"fikus-benjamina-12","sabyId":"S-1"}`,
 	)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleManager)).ServeHTTP(response, request)
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
@@ -106,7 +106,7 @@ func TestSalesLinkCarriesTheDecisionToTheService(t *testing.T) {
 
 func TestSalesLinkAnswersHonestlyWithoutSupport(t *testing.T) {
 	t.Parallel()
-	router := NewRouter(discardLogger(), procurementDependencies(&procurementStub{}, admin.RoleManager))
+	router := NewRouter(discardLogger(), procurementDependencies(&procurementStub{}, admin.RoleOwner))
 	for _, request := range []*http.Request{
 		adminRequest(http.MethodGet, "/api/v1/admin/procurement/sales/unlinked?channel=ozon", ""),
 		adminRequest(http.MethodGet, "/api/v1/admin/procurement/sales/nomenclature?q=фикус", ""),

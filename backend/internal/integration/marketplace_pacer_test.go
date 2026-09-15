@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -13,18 +14,18 @@ func (transport *recordingRoundTripper) RoundTrip(*http.Request) (*http.Response
 	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Header: http.Header{}}, nil
 }
 
-// Ozon отвечает отказом на третий запрос в секунду, Wildberries считает
-// лимит на продавца целиком. Обход каталога шлёт десятки запросов подряд,
-// поэтому паузу держит транспорт, а не вызывающий код.
+// Обход каталога шлёт десятки запросов подряд, поэтому паузу держит
+// транспорт, а не вызывающий код.
 func TestPacedTransportWaitsBetweenRequestsToTheSameHost(t *testing.T) {
 	base := &recordingRoundTripper{}
 	transport := newPacedTransport(base)
 	moment := time.Unix(0, 0)
 	slept := make([]time.Duration, 0, 4)
 	transport.now = func() time.Time { return moment }
-	transport.sleep = func(wait time.Duration) {
+	transport.wait = func(_ context.Context, wait time.Duration) error {
 		slept = append(slept, wait)
 		moment = moment.Add(wait)
+		return nil
 	}
 
 	request, err := http.NewRequest(http.MethodGet, "https://api-seller.ozon.ru/v3/product/list", nil)
@@ -53,8 +54,11 @@ func TestPacedTransportWaitsBetweenRequestsToTheSameHost(t *testing.T) {
 func TestPacedTransportDoesNotDelayOtherHosts(t *testing.T) {
 	base := &recordingRoundTripper{}
 	transport := newPacedTransport(base)
-	transport.sleep = func(time.Duration) { t.Fatal("пауза для постороннего хоста") }
-	request, err := http.NewRequest(http.MethodGet, "https://online.sbis.ru/oauth/service/", nil)
+	transport.wait = func(context.Context, time.Duration) error {
+		t.Fatal("пауза для постороннего хоста")
+		return nil
+	}
+	request, err := http.NewRequest(http.MethodGet, "https://example.com/health", nil)
 	if err != nil {
 		t.Fatalf("создать запрос: %v", err)
 	}
@@ -62,6 +66,25 @@ func TestPacedTransportDoesNotDelayOtherHosts(t *testing.T) {
 		if _, err := transport.RoundTrip(request); err != nil {
 			t.Fatalf("запрос %d: %v", index, err)
 		}
+	}
+}
+
+func TestPacedTransportCancelsWait(t *testing.T) {
+	base := &recordingRoundTripper{}
+	transport := newPacedTransport(base)
+	transport.now = func() time.Time { return time.Unix(0, 0) }
+	request, _ := http.NewRequest(http.MethodGet, "https://api-seller.ozon.ru/v3/product/list", nil)
+	if _, err := transport.RoundTrip(request); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request = request.WithContext(ctx)
+	if _, err := transport.RoundTrip(request); err == nil {
+		t.Fatal("cancelled wait reached external transport")
+	}
+	if base.calls != 1 {
+		t.Fatalf("external calls=%d, want 1", base.calls)
 	}
 }
 

@@ -47,7 +47,7 @@ func (repository *PostgresRepository) CreateProduct(
 	actor Actor,
 	input ProductCreate,
 ) (Product, error) {
-	if !Can(actor.Role, PermissionProductsEdit) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return Product{}, ErrForbidden
 	}
 	name := strings.TrimSpace(input.Name)
@@ -247,7 +247,7 @@ func (repository *PostgresRepository) ImportProducts(
 	actor Actor,
 	request ImportRequest,
 ) (ImportResult, error) {
-	if !Can(actor.Role, PermissionProductsEdit) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ImportResult{}, ErrForbidden
 	}
 	codes := normalizeCodes(request.Codes)
@@ -397,7 +397,7 @@ func (repository *PostgresRepository) ImportProducts(
 // PRODUCT. It refuses published/history-bearing sources: merging those would
 // silently rewrite links, reviews and order history.
 func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, actor Actor, request MergeProductsRequest) error {
-	if !Can(actor.Role, PermissionProductsEdit) { return ErrForbidden }
+	if !Can(actor.Role, PermissionProductsManage) { return ErrForbidden }
 	if request.TargetProductID <= 0 || len(request.SourceProductIDs) == 0 { return ErrInvalidInput }
 	tx, err := repository.pool.Begin(ctx); if err != nil { return err }; defer func(){ _=tx.Rollback(ctx) }()
 	var targetStatus string

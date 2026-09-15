@@ -17,7 +17,7 @@ import (
 type analyticsStore interface {
 	Record(context.Context, *int64, []commerceanalytics.Event) error
 	RecordOrder(context.Context, string, float64, commerceanalytics.Attribution) error
-	Summary(context.Context, int) (commerceanalytics.Summary, error)
+	Summary(context.Context, int, string) (commerceanalytics.Summary, error)
 }
 
 func analyticsConfigHandler(store settingsService) http.HandlerFunc {
@@ -71,7 +71,7 @@ func analyticsSummaryHandler(logger *slog.Logger, handlers adminHandlers, store 
 			return
 		}
 		days, _ := strconv.Atoi(request.URL.Query().Get("days"))
-		summary, err := store.Summary(request.Context(), days)
+		summary, err := store.Summary(request.Context(), days, strings.TrimSpace(request.URL.Query().Get("channel")))
 		if err != nil {
 			logger.Error("analytics summary failed", "error", err)
 			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить аналитику"})

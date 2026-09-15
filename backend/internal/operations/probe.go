@@ -93,13 +93,23 @@ FROM (
   UNION ALL
   SELECT 'cdek_manual_review', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
-  FROM orders WHERE cdek_create_state = 'manual_review' OR cdek_cancel_state = 'manual_review'
+  FROM (
+    SELECT created_at FROM orders
+    WHERE cdek_create_state = 'manual_review' OR cdek_cancel_state = 'manual_review'
+    UNION ALL
+    SELECT created_at FROM shipment_offers WHERE cdek_create_state = 'manual_review'
+  ) cdek_review
   UNION ALL
   SELECT 'cdek_retry_overdue', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(cdek_next_attempt_at)))::bigint
-  FROM orders
-  WHERE cdek_create_state = 'retry'
-    AND cdek_next_attempt_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+  FROM (
+    SELECT cdek_next_attempt_at FROM orders
+    WHERE cdek_create_state IN ('retry', 'unknown')
+    UNION ALL
+    SELECT cdek_next_attempt_at FROM shipment_offers
+    WHERE cdek_create_state IN ('retry', 'unknown')
+  ) cdek_retry
+  WHERE cdek_next_attempt_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'
   UNION ALL
   SELECT CASE failed.channel
            WHEN 'wb' THEN 'failed_procurement_action_wb'

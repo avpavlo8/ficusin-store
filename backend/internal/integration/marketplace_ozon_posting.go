@@ -4,6 +4,7 @@ package integration
 // читается неверно — именно на этом разрыве шесть тысяч отправлений
 // превращались в ноль продаж.
 type ozonPosting struct {
+	PostingNumber  string `json:"posting_number"`
 	CreatedAt      string `json:"created_at"`
 	InProcessAt    string `json:"in_process_at"`
 	ShipmentDate   string `json:"shipment_date"`

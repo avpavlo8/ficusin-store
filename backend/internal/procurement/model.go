@@ -45,18 +45,19 @@ type Summary struct {
 }
 
 type Dashboard struct {
-	Summary           Summary             `json:"summary"`
-	Integrations      IntegrationStatus   `json:"integrations"`
-	Settings          PricingSettings     `json:"settings"`
-	Suppliers         []Supplier          `json:"suppliers"`
-	Orders            []OrderSummary      `json:"orders"`
-	Documents         []DocumentSummary   `json:"documents"`
-	Review            []AliasReview       `json:"review"`
-	Requests          []Request           `json:"requests"`
-	Availability      []AvailabilityItem  `json:"availability"`
-	Recommendations   []Recommendation    `json:"recommendations"`
-	SalesSync         []SalesSyncStatus   `json:"salesSync"`
-	IntegrationHealth []IntegrationHealth `json:"integrationHealth"`
+	Summary           Summary                 `json:"summary"`
+	Integrations      IntegrationStatus       `json:"integrations"`
+	Settings          PricingSettings         `json:"settings"`
+	Suppliers         []Supplier              `json:"suppliers"`
+	Orders            []OrderSummary          `json:"orders"`
+	Documents         []DocumentSummary       `json:"documents"`
+	Review            []AliasReview           `json:"review"`
+	Requests          []Request               `json:"requests"`
+	Availability      []AvailabilityItem      `json:"availability"`
+	Recommendations   []Recommendation        `json:"recommendations"`
+	SalesSync         []SalesSyncStatus       `json:"salesSync"`
+	IntegrationHealth []IntegrationHealth     `json:"integrationHealth"`
+	IntegrationSync   []IntegrationSyncStatus `json:"integrationSync"`
 }
 
 type PricingSettings struct {
@@ -136,9 +137,9 @@ type OrderCreate struct {
 
 type PlanCreate struct {
 	Costs       *CalculationInput `json:"costs,omitempty"`
-	SupplierID  int64      `json:"supplierId"`
-	OrderNumber string     `json:"orderNumber"`
-	Items       []PlanItem `json:"items"`
+	SupplierID  int64             `json:"supplierId"`
+	OrderNumber string            `json:"orderNumber"`
+	Items       []PlanItem        `json:"items"`
 }
 
 type PlanItem struct {
@@ -157,6 +158,7 @@ type PlanItem struct {
 
 type OrderCosts struct {
 	ExchangeRate        float64 `json:"exchangeRate"`
+	CurrentDefaultExchangeRate float64 `json:"currentDefaultExchangeRate"`
 	TrolleyCostCurrency float64 `json:"trolleyCostCurrency"`
 	TrolleyCostRUB      float64 `json:"trolleyCostRub"`
 	DeliveryToMoscowRUB float64 `json:"deliveryToMoscowRub"`
@@ -195,6 +197,14 @@ type OrderLine struct {
 	SabyName                     string   `json:"sabyName"`
 	RawName                      string   `json:"rawName"`
 	SupplierArticle              string   `json:"supplierArticle"`
+	SupplierCategory             string   `json:"supplierCategory"`
+	PackageCount                 *int     `json:"packageCount,omitempty"`
+	UnitsPerPackage              *int     `json:"unitsPerPackage,omitempty"`
+	InvoiceRawName               string   `json:"invoiceRawName"`
+	InvoiceSupplierArticle       string   `json:"invoiceSupplierArticle"`
+	ReconciliationStatus         string   `json:"reconciliationStatus"`
+	InvoiceExcluded              bool     `json:"invoiceExcluded"`
+	InvoiceExclusionReason       string   `json:"invoiceExclusionReason"`
 	Quantity                     int      `json:"quantity"`
 	OrderedQuantity              int      `json:"orderedQuantity"`
 	InvoicedQuantity             *int     `json:"invoicedQuantity,omitempty"`
@@ -208,6 +218,9 @@ type OrderLine struct {
 	TrolleyDeliveryUnitRUB       *float64 `json:"trolleyDeliveryUnitRub,omitempty"`
 	RyazanDeliveryUnitRUB        *float64 `json:"ryazanDeliveryUnitRub,omitempty"`
 	UnitCostRUB                  *float64 `json:"unitCostRub,omitempty"`
+	CurrentUnitCostRUB           *float64 `json:"currentUnitCostRub,omitempty"`
+	CurrentUnitCostKind          string   `json:"currentUnitCostKind"`
+	CurrentUnitCostEffectiveAt   *time.Time `json:"currentUnitCostEffectiveAt,omitempty"`
 	CurrentRetailRUB             float64  `json:"currentRetailRub"`
 	ProposedRetailRUB            *int64   `json:"proposedRetailRub,omitempty"`
 	ProposedMarketplaceRUB       *int64   `json:"proposedMarketplaceRub,omitempty"`
@@ -228,22 +241,37 @@ type CalculationInput struct {
 }
 
 type Request struct {
-	ID            int64     `json:"id"`
-	Kind          string    `json:"kind"`
-	SabyID        string    `json:"sabyId"`
-	RequestedName string    `json:"requestedName"`
-	Quantity      int       `json:"quantity"`
-	Status        string    `json:"status"`
-	Notes         string    `json:"notes"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID                int64               `json:"id"`
+	Kind              string              `json:"kind"`
+	SabyID            string              `json:"sabyId"`
+	RequestedName     string              `json:"requestedName"`
+	Quantity          int                 `json:"quantity"`
+	Status            string              `json:"status"`
+	Notes             string              `json:"notes"`
+	CreatedAt         time.Time           `json:"createdAt"`
+	CustomerOrderID   *int64              `json:"customerOrderId,omitempty"`
+	CustomerName      string              `json:"customerName"`
+	Source            string              `json:"source"`
+	AllocatedQuantity int                 `json:"allocatedQuantity"`
+	RemainingQuantity int                 `json:"remainingQuantity"`
+	Allocations       []RequestAllocation `json:"allocations"`
+}
+
+type RequestAllocation struct {
+	ProcurementOrderID int64  `json:"procurementOrderId"`
+	OrderNumber        string `json:"orderNumber"`
+	Quantity           int    `json:"quantity"`
+	Status             string `json:"status"`
 }
 
 type RequestCreate struct {
-	Kind          string `json:"kind"`
-	SabyID        string `json:"sabyId"`
-	RequestedName string `json:"requestedName"`
-	Quantity      int    `json:"quantity"`
-	Notes         string `json:"notes"`
+	Kind            string `json:"kind"`
+	SabyID          string `json:"sabyId"`
+	RequestedName   string `json:"requestedName"`
+	Quantity        int    `json:"quantity"`
+	Notes           string `json:"notes"`
+	CustomerOrderID *int64 `json:"customerOrderId"`
+	Source          string `json:"source"`
 }
 
 type RequestUpdate struct {
@@ -266,6 +294,8 @@ type OrderLineUpdate struct {
 	LoadUnit          *string  `json:"loadUnit"`
 	AcceptComparison  *bool    `json:"acceptComparison"`
 	ComparisonNote    *string  `json:"comparisonNote"`
+	InvoiceExcluded   *bool    `json:"invoiceExcluded"`
+	ExclusionReason   *string  `json:"exclusionReason"`
 }
 
 // AvailabilityUpdate — наличие у поставщика. Ключ — пара поставщик+товар,
@@ -276,6 +306,8 @@ type AvailabilityUpdate struct {
 	SabyID     string `json:"sabyId"`
 	Status     string `json:"status"`
 	CheckAfter string `json:"checkAfter"`
+	Reason     string `json:"reason"`
+	Comment    string `json:"comment"`
 }
 
 // AvailabilityItem — строка раздела «Наличие у поставщика».
@@ -290,6 +322,11 @@ type AvailabilityItem struct {
 	UnavailableSince string     `json:"unavailableSince"`
 	Balance          int        `json:"balance"`
 	LastSeenAt       *time.Time `json:"lastSeenAt,omitempty"`
+	Reason           string     `json:"reason"`
+	Comment          string     `json:"comment"`
+	LastAction       string     `json:"lastAction"`
+	LastActionAt     *time.Time `json:"lastActionAt,omitempty"`
+	Due              bool       `json:"due"`
 }
 
 // ExclusionUpdate — «не закупаем». Решение магазина, а не поставщика,
@@ -301,42 +338,58 @@ type ExclusionUpdate struct {
 }
 
 type Recommendation struct {
-	AliasID          int64      `json:"aliasId"`
-	SupplierID       int64      `json:"supplierId"`
-	SabyID           string     `json:"sabyId"`
-	Name             string     `json:"name"`
-	SupplierArticle  string     `json:"supplierArticle"`
-	DutchName       string     `json:"dutchName"`
-	PotDiameterCM   *float64   `json:"potDiameterCm,omitempty"`
-	HeightCM        *float64   `json:"heightCm,omitempty"`
-	LastUnitPrice   *float64   `json:"lastUnitPrice,omitempty"`
-	Availability     string     `json:"availability"`
-	Balance          int        `json:"balance"`
-	Incoming         int        `json:"incoming"`
-	SiteSales        int        `json:"siteSales"`
-	SabySales        int        `json:"sabySales"`
-	WBSales          int        `json:"wbSales"`
-	OzonSales        int        `json:"ozonSales"`
-	TotalSales       int        `json:"totalSales"`
-	CustomerRequests int        `json:"customerRequests"`
-	StaffRequests    int        `json:"staffRequests"`
-	OpenRequests     int        `json:"openRequests"`
-	MinimumOrderQty  int        `json:"minimumOrderQty"`
-	OrderMultiple    int        `json:"orderMultiple"`
-	SuggestedQty     int        `json:"suggestedQty"`
-	DailySales       float64    `json:"dailySales"`
-	DaysOfCover      *float64   `json:"daysOfCover,omitempty"`
-	LastOrderedAt    *time.Time `json:"lastOrderedAt,omitempty"`
-	Status           string     `json:"status"`
-	Reason           string     `json:"reason"`
+	AliasID             int64      `json:"aliasId"`
+	SupplierID          int64      `json:"supplierId"`
+	SabyID              string     `json:"sabyId"`
+	Name                string     `json:"name"`
+	SupplierArticle     string     `json:"supplierArticle"`
+	DutchName           string     `json:"dutchName"`
+	PotDiameterCM       *float64   `json:"potDiameterCm,omitempty"`
+	HeightCM            *float64   `json:"heightCm,omitempty"`
+	LastUnitPrice       *float64   `json:"lastUnitPrice,omitempty"`
+	Availability        string     `json:"availability"`
+	Balance             int        `json:"balance"`
+	BalanceKnown        bool       `json:"balanceKnown"`
+	BalanceAsOf         *time.Time `json:"balanceAsOf,omitempty"`
+	Incoming            int        `json:"incoming"`
+	SiteSales           int        `json:"siteSales"`
+	SabySales           int        `json:"sabySales"`
+	WBSales             int        `json:"wbSales"`
+	OzonSales           int        `json:"ozonSales"`
+	TotalSales          int        `json:"totalSales"`
+	GrossSales          int        `json:"grossSales"`
+	Returns             int        `json:"returns"`
+	CustomerRequests    int        `json:"customerRequests"`
+	StaffRequests       int        `json:"staffRequests"`
+	OpenRequests        int        `json:"openRequests"`
+	AllocatedRequests   int        `json:"allocatedRequests"`
+	MinimumOrderQty     int        `json:"minimumOrderQty"`
+	OrderMultiple       int        `json:"orderMultiple"`
+	SuggestedQty        int        `json:"suggestedQty"`
+	DemandQty           int        `json:"demandQty"`
+	NeedBeforeIncoming  int        `json:"needBeforeIncoming"`
+	UncoveredQty        int        `json:"uncoveredQty"`
+	QuantityKnown       bool       `json:"quantityKnown"`
+	RoundingExplanation string     `json:"roundingExplanation"`
+	DailySales          float64    `json:"dailySales"`
+	DaysOfCover         *float64   `json:"daysOfCover,omitempty"`
+	LastOrderedAt       *time.Time `json:"lastOrderedAt,omitempty"`
+	Status              string     `json:"status"`
+	Reason              string     `json:"reason"`
 }
 
 type SalesRecord struct {
-	Date       time.Time
-	ExternalID string
-	SabyID     string
-	Units      int
-	GrossRUB   float64
+	Date             time.Time
+	ExternalID       string
+	SabyID           string
+	Units            int
+	GrossRUB         float64
+	SourceEventID    string
+	SourceDocumentID string
+	SourceLineID     string
+	CrossSourceKey   string
+	EventType        string
+	EventStatus      string
 }
 
 type SalesSyncStatus struct {
@@ -350,6 +403,39 @@ type SalesSyncStatus struct {
 	PeriodFrom    string     `json:"periodFrom"`
 	PeriodTo      string     `json:"periodTo"`
 	LatestSale    string     `json:"latestSale"`
+	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
+	NextDeepAt    *time.Time `json:"nextDeepAt,omitempty"`
+	Mode          string     `json:"mode,omitempty"`
+	Freshness     string     `json:"freshness"`
+}
+
+type IntegrationSyncStatus struct {
+	Channel             string     `json:"channel"`
+	Resource            string     `json:"resource"`
+	Status              string     `json:"status"`
+	Priority            string     `json:"priority"`
+	RequestedGeneration int64      `json:"requestedGeneration"`
+	ActiveGeneration    int64      `json:"activeGeneration"`
+	CompletedGeneration int64      `json:"completedGeneration"`
+	LastAttemptAt       *time.Time `json:"lastAttemptAt,omitempty"`
+	LastSuccessAt       *time.Time `json:"lastSuccessAt,omitempty"`
+	NextAttemptAt       *time.Time `json:"nextAttemptAt,omitempty"`
+	NextDeepAt          *time.Time `json:"nextDeepAt,omitempty"`
+	CooldownUntil       *time.Time `json:"cooldownUntil,omitempty"`
+	PeriodFrom          string     `json:"periodFrom"`
+	PeriodTo            string     `json:"periodTo"`
+	LatestEventAt       *time.Time `json:"latestEventAt,omitempty"`
+	RowsSynced          int        `json:"rowsSynced"`
+	LastError           string     `json:"lastError"`
+}
+
+type SyncClaim struct {
+	Channel    string
+	Resource   string
+	Mode       string
+	Owner      string
+	Token      int64
+	Generation int64
 }
 
 type ProductDirectoryItem struct {
@@ -431,6 +517,8 @@ type ActionItem struct {
 	PreviewLines        []ActionPreviewLine `json:"previewLines,omitempty"`
 	Payload             json.RawMessage     `json:"-"`
 	Attempts            int                 `json:"-"`
+	LockOwner           string              `json:"-"`
+	LockToken           int64               `json:"-"`
 }
 
 // ActionPreviewLine exposes every line of one aggregate Saby document.
@@ -462,14 +550,17 @@ type ChannelProduct struct {
 // с каждой стороны и как они выглядят. Примеры берутся из артикулов и
 // штрихкодов, то есть из того, что и так печатается на ценнике.
 type ChannelLinkResult struct {
-	Channel        string   `json:"channel"`
-	Fetched        int      `json:"fetched"`
-	Linked         int      `json:"linked"`
-	Unmatched      int      `json:"unmatched"`
-	ChannelKeys    int      `json:"channelKeys"`
-	CatalogKeys    int      `json:"catalogKeys"`
-	ChannelSamples []string `json:"channelSamples"`
-	CatalogSamples []string `json:"catalogSamples"`
+	Channel        string     `json:"channel"`
+	Fetched        int        `json:"fetched"`
+	Linked         int        `json:"linked"`
+	Unmatched      int        `json:"unmatched"`
+	ChannelKeys    int        `json:"channelKeys"`
+	CatalogKeys    int        `json:"catalogKeys"`
+	ChannelSamples []string   `json:"channelSamples"`
+	CatalogSamples []string   `json:"catalogSamples"`
+	Queued         bool       `json:"queued"`
+	QueueStatus    string     `json:"queueStatus,omitempty"`
+	NextAttemptAt  *time.Time `json:"nextAttemptAt,omitempty"`
 }
 
 type IntegrationStatus struct {
@@ -503,11 +594,11 @@ type AliasReview struct {
 }
 
 type NomenclatureCandidate struct {
-	VariantID  int64   `json:"variantId"`
-	SabyID     string  `json:"sabyId"`
-	Code       string  `json:"code"`
-	Article    string  `json:"article"`
-	Name       string  `json:"name"`
+	VariantID      int64   `json:"variantId"`
+	SabyID         string  `json:"sabyId"`
+	Code           string  `json:"code"`
+	Article        string  `json:"article"`
+	Name           string  `json:"name"`
 	Balance        int     `json:"balance"`
 	Price          float64 `json:"price"`
 	TotalSales     int     `json:"totalSales"`
@@ -542,6 +633,8 @@ type DocumentSummary struct {
 	DocumentTotal    float64    `json:"documentTotal"`
 	CalculatedTotal  float64    `json:"calculatedTotal"`
 	ParseError       string     `json:"parseError"`
+	RevisionNo       int        `json:"revisionNo"`
+	Superseded       bool       `json:"superseded"`
 	CreatedAt        time.Time  `json:"createdAt"`
 }
 

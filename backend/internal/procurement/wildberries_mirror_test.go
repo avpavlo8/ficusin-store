@@ -15,19 +15,21 @@ type wbMirrorStoreStub struct {
 	products []ChannelProduct
 	sales    []SalesRecord
 	states   map[string]string
+	tokens   int64
 }
 
-func (stub *wbMirrorStoreStub) ClaimWBSync(_ context.Context, resource string, _ time.Duration) (bool, error) {
+func (stub *wbMirrorStoreStub) ClaimWBSync(_ context.Context, resource, owner string, _ time.Duration) (*SyncClaim, error) {
 	if !stub.claims[resource] {
-		return false, nil
+		return nil, nil
 	}
 	stub.claims[resource] = false
-	return true, nil
+	stub.tokens++
+	return &SyncClaim{Channel: "wb", Resource: resource, Owner: owner, Token: stub.tokens}, nil
 }
 
-func (stub *wbMirrorStoreStub) FinishWBSync(_ context.Context, resource string, _ int, next time.Duration, _ error) error {
-	stub.finished[resource] = next
-	return nil
+func (stub *wbMirrorStoreStub) FinishWBSync(_ context.Context, claim SyncClaim, _ int, next time.Duration, _ error) (bool, error) {
+	stub.finished[claim.Resource] = next
+	return true, nil
 }
 
 func (stub *wbMirrorStoreStub) RememberChannelProducts(_ context.Context, _ string, items []ChannelProduct) error {
@@ -68,7 +70,7 @@ func (stub *wbMirrorSourceStub) FetchSales(_ context.Context, _ string, from, to
 
 func TestWBMirrorOwnsOneHourlyCatalogueAndSalesRefresh(t *testing.T) {
 	store := &wbMirrorStoreStub{
-		claims: map[string]bool{"catalog": true, "sales": true},
+		claims:   map[string]bool{"catalog": true, "sales": true},
 		finished: map[string]time.Duration{}, states: map[string]string{},
 	}
 	source := &wbMirrorSourceStub{}

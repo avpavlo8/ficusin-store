@@ -123,6 +123,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	var status,deliveryMethod string;var customerID *int64;var oldDeliveryFee float64;var oldFeePending bool
 	if err:=tx.QueryRow(ctx,`SELECT status,delivery_method,customer_id,delivery_fee::DOUBLE PRECISION,delivery_fee_pending=1 FROM orders WHERE id=$1 FOR UPDATE`,id).Scan(&status,&deliveryMethod,&customerID,&oldDeliveryFee,&oldFeePending);err!=nil{return Order{},err}
 	if status=="cancelled" || status=="completed" || status=="shipped"{return Order{},fmt.Errorf("состав уже закрытого или отправленного заказа менять нельзя")}
+	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET status='stale',updated_at=CURRENT_TIMESTAMP WHERE order_id=$1 AND status IN ('draft','packaging_required','notifying','offered')`,id);err!=nil{return Order{},err}
 
 	var before map[string]any
 	if err:=tx.QueryRow(ctx,`SELECT jsonb_build_object('subtotal',subtotal,'deliveryFee',delivery_fee,'total',total,'hasPreorder',has_preorder,'feePending',delivery_fee_pending) FROM orders WHERE id=$1`,id).Scan(&before);err!=nil{return Order{},err}
@@ -185,7 +186,8 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 	if _,err:=tx.Exec(ctx,`
 		UPDATE orders SET subtotal=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0),
-			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0)+delivery_fee
+			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0)+delivery_fee,
+			shipment_revision=shipment_revision+1
 		WHERE id=$1
 	`,id);err!=nil{return Order{},err}
 	var after map[string]any

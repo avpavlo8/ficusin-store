@@ -27,6 +27,18 @@ func TestAllocatedLineUsesReconciledLogisticsWithoutCurrencyConversion(t *testin
 	}
 }
 
+func TestAllocateMoneyPerUnitPreservesEveryKopeck(t *testing.T) {
+	allocated := allocateMoneyPerUnit(100.01, []allocationWeight{
+		{ID: 1, Weight: 1, Quantity: 3},
+		{ID: 2, Weight: 2, Quantity: 7},
+		{ID: 3, Weight: 4, Quantity: 11},
+	})
+	total := allocated[1]*3 + allocated[2]*7 + allocated[3]*11
+	if math.Abs(total-100.01) > .000001 {
+		t.Fatalf("allocated total %.8f, want 100.01", total)
+	}
+}
+
 // Цена для маркетплейсов не была покрыта ничем, хотя именно она уезжает на
 // витрину WB и Ozon. Проверка записывает то, как магазин считает её
 // сегодня: упаковка прибавляется к рознице, а проценты возвратов, расходов

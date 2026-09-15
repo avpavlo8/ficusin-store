@@ -44,6 +44,9 @@ func (service *Service) SyncSales(ctx context.Context, upload SalesUpload) (Sale
 		records = append(records, procurement.SalesRecord{
 			Date: date, ExternalID: item.SabyID, SabyID: item.SabyID,
 			Units: item.Units, GrossRUB: item.GrossRUB,
+			SourceEventID: item.SourceEventID, SourceDocumentID: item.SourceDocumentID,
+			SourceLineID: item.SourceLineID, CrossSourceKey: item.CrossSourceKey,
+			EventType: item.EventType, EventStatus: item.EventStatus,
 		})
 		if strings.TrimSpace(item.Name) != "" || strings.TrimSpace(item.Article) != "" {
 			cards = append(cards, procurement.ChannelProduct{
@@ -154,19 +157,19 @@ func (service *Service) Sync(ctx context.Context, items []CatalogItem) (Result, 
 // poolRow — строка справочника номенклатуры в том виде, в каком она уезжает
 // в базу одним запросом.
 type poolRow struct {
-	SabyID      string   `json:"saby_id"`
-	Code        string   `json:"code"`
-	ExternalIDs []string `json:"external_ids"`
-	Article     string   `json:"article"`
-	Barcode     string   `json:"barcode"`
-	Barcodes    []string `json:"barcodes"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	PriceMinor  int64    `json:"price_minor"`
-	Balance     int      `json:"balance"`
-	Images      []string         `json:"images"`
-	Attributes  map[string]any   `json:"attributes"`
-	SectionPath []string         `json:"section_path"`
+	SabyID      string         `json:"saby_id"`
+	Code        string         `json:"code"`
+	ExternalIDs []string       `json:"external_ids"`
+	Article     string         `json:"article"`
+	Barcode     string         `json:"barcode"`
+	Barcodes    []string       `json:"barcodes"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	PriceMinor  int64          `json:"price_minor"`
+	Balance     int            `json:"balance"`
+	Images      []string       `json:"images"`
+	Attributes  map[string]any `json:"attributes"`
+	SectionPath []string       `json:"section_path"`
 }
 
 // Kept as one statement so the live PostgreSQL test can execute the exact
@@ -251,7 +254,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			SabyID: item.id, Code: item.code, ExternalIDs: item.externalIDs,
 			Article: item.article, Barcode: item.barcode,
 			Barcodes: item.barcodes,
-			Name: item.name, Description: item.description,
+			Name:     item.name, Description: item.description,
 			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images, Attributes: item.attributes,
 		})
 		received = append(received, item.id)
@@ -306,7 +309,9 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
 		WHERE external.variant_id=variant.id AND external.provider='saby'
 			AND external.id_type='id' AND external.external_id<>source.saby_id
-	`); err != nil { return fmt.Errorf("retire changed Saby IDs: %w", err) }
+	`); err != nil {
+		return fmt.Errorf("retire changed Saby IDs: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
 		SELECT p.id, pv.id, 'saby', 'id', source.saby_id,'active',TRUE,'sync',CURRENT_TIMESTAMP
@@ -328,7 +333,9 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		WHERE external.variant_id=variant.id AND external.provider='saby'
 			AND external.id_type='code' AND NULLIF(BTRIM(source.code),'') IS NOT NULL
 			AND external.external_id<>source.code
-	`); err != nil { return fmt.Errorf("retire changed Saby codes: %w", err) }
+	`); err != nil {
+		return fmt.Errorf("retire changed Saby codes: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
 		SELECT p.id, pv.id, 'saby', 'code', source.code,'active',TRUE,'sync',CURRENT_TIMESTAMP
@@ -351,7 +358,9 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		WHERE external.variant_id=variant.id AND external.provider='saby'
 			AND external.id_type='alias'
 			AND NOT (external.external_id=ANY(source.external_ids))
-	`); err != nil { return fmt.Errorf("retire changed Saby aliases: %w", err) }
+	`); err != nil {
+		return fmt.Errorf("retire changed Saby aliases: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
 		SELECT p.id, pv.id, 'saby', 'alias', alias.external_id,'active',FALSE,'sync',CURRENT_TIMESTAMP
@@ -647,39 +656,76 @@ func normalizeCharacteristics(raw any) map[string]any {
 	add := func(name string, value any) {
 		key := normalizeCharacteristicName(name)
 		code := characteristicCodes[key]
-		if code == "" { code = key }
-		if !allowed[code] { return }
+		if code == "" {
+			code = key
+		}
+		if !allowed[code] {
+			return
+		}
 		if code == "height_cm" || code == "pot_diameter_cm" {
-			if number, ok := valueFloat(value); ok && number > 0 { result[code] = number }
+			if number, ok := valueFloat(value); ok && number > 0 {
+				result[code] = number
+			}
 			return
 		}
 		switch typed := value.(type) {
 		case string:
-			if text := strings.ToLower(strings.TrimSpace(typed)); text != "" { result[code] = text }
+			if text := strings.ToLower(strings.TrimSpace(typed)); text != "" {
+				result[code] = text
+			}
 		case []any:
 			values := []string{}
-			for _, item := range typed { if text := strings.ToLower(valueString(item)); text != "" { values = append(values, text) } }
-			if len(values) > 0 { result[code] = values }
+			for _, item := range typed {
+				if text := strings.ToLower(valueString(item)); text != "" {
+					values = append(values, text)
+				}
+			}
+			if len(values) > 0 {
+				result[code] = values
+			}
 		case []string:
-			if len(typed) > 0 { result[code] = typed }
+			if len(typed) > 0 {
+				result[code] = typed
+			}
 		}
 	}
 	switch typed := raw.(type) {
 	case map[string]any:
-		for name, value := range typed { add(name, characteristicValue(value)) }
+		for name, value := range typed {
+			add(name, characteristicValue(value))
+		}
 	case []any:
 		for _, entry := range typed {
-			if item, ok := entry.(map[string]any); ok { add(valueString(firstValue(item, "code", "name", "title", "characteristic")), characteristicValue(firstValue(item, "value", "values", "text"))) }
+			if item, ok := entry.(map[string]any); ok {
+				add(valueString(firstValue(item, "code", "name", "title", "characteristic")), characteristicValue(firstValue(item, "value", "values", "text")))
+			}
 		}
 	}
 	return result
 }
 
 func normalizeCharacteristicName(value string) string {
-	return strings.Map(func(r rune) rune { if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' { return unicode.ToLower(r) }; return -1 }, value)
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, value)
 }
-func firstValue(values map[string]any, keys ...string) any { for _, key := range keys { if value, ok := values[key]; ok { return value } }; return nil }
-func characteristicValue(value any) any { if object, ok := value.(map[string]any); ok { return firstValue(object, "value", "values", "text") }; return value }
+func firstValue(values map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := values[key]; ok {
+			return value
+		}
+	}
+	return nil
+}
+func characteristicValue(value any) any {
+	if object, ok := value.(map[string]any); ok {
+		return firstValue(object, "value", "values", "text")
+	}
+	return value
+}
 
 var (
 	descriptionBreaks = regexp.MustCompile(`(?i)<\s*(br\s*/?|/p|/div|/li)\s*>`)
