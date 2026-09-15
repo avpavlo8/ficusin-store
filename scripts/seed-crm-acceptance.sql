@@ -11,6 +11,9 @@ FROM admin_users WHERE customer_id IN (SELECT id FROM customers WHERE email IN (
 INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,status)
 SELECT 'CRM-CHECK-01',id,'Клиент проверки','+70000000901','crm-owner@example.invalid','pickup',0,2490,2490,'new'
 FROM customers WHERE email='crm-owner@example.invalid';
+INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,status)
+SELECT 'CRM-CLOSED-01',id,'Закрытый заказ проверки','+70000000901','crm-owner@example.invalid','pickup',0,2490,2490,'cancelled'
+FROM customers WHERE email='crm-owner@example.invalid';
 INSERT INTO products(name,slug,status,category_id)
 SELECT 'Фикус для проверки CRM','crm-acceptance-ficus','published',id FROM categories WHERE slug='plants';
 INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active)

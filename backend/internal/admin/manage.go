@@ -303,11 +303,15 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var before map[string]any
+	var currentStatus string
 	if err := tx.QueryRow(ctx, `
-		SELECT jsonb_build_object('status', status, 'paymentStatus', payment_status)
+		SELECT jsonb_build_object('status', status, 'paymentStatus', payment_status), status
 		FROM orders WHERE id = $1 FOR UPDATE
-	`, id).Scan(&before); err != nil {
+	`, id).Scan(&before, &currentStatus); err != nil {
 		return Order{}, err
+	}
+	if currentStatus == "cancelled" || currentStatus == "completed" {
+		return Order{}, fmt.Errorf("%w: закрытый заказ доступен только для просмотра", ErrInvalidInput)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET status = COALESCE(NULLIF($2, ''), status),

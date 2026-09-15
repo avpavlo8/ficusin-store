@@ -65,7 +65,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
   const [paymentLink, setPaymentLink] = useState("");
   const [providerPaymentIds, setProviderPaymentIds] = useState<Record<number,string>>({});
   const [busy, setBusy] = useState(false);
-  const readOnly = ["canceled", "completed", "shipped"].includes(order.status);
+  const readOnly = ["cancelled", "completed", "shipped"].includes(order.status);
 
   const load = async () => {
     try {

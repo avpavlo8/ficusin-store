@@ -20,6 +20,7 @@ try {
   const response = await api.get('/api/v1/admin/dashboard');
   expect(response.status()).toBe(200);
   const data = await response.json();expect(data.role).toBe(role);
+  const closedOrder=((await (await api.get('/api/v1/admin/orders')).json()).orders||[]).find(order=>order.orderNumber==='CRM-CLOSED-01');expect(closedOrder).toBeTruthy();const closedEdit=await api.patch(`/api/v1/admin/orders/${closedOrder.id}`,{data:{status:'new',paymentStatus:''}});expect(closedEdit.status()).toBe(400);
   const products = (await (await api.get('/api/v1/admin/products')).json()).products;
   const product = products.find(p=>p.slug==='crm-acceptance-ficus');expect(product).toBeTruthy();
   const variants=(await (await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants;
@@ -59,6 +60,7 @@ try {
    await page.goto('/admin?section=orders');
    await expect(page.getByRole('heading',{name:'Заказы',exact:true})).toBeVisible();
    await expect(page.getByText('CRM-CHECK-01',{exact:true})).toBeVisible();
+   await expect(page.getByLabel('Статус заказа CRM-CLOSED-01',{exact:true})).toBeDisabled();await page.getByText('CRM-CLOSED-01',{exact:true}).click();await expect(page.getByRole('button',{name:'Сохранить изменения',exact:true})).toBeDisabled();await page.getByText('CRM-CLOSED-01',{exact:true}).click();
    expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
    await page.screenshot({path:`${out}/${role}-orders-${width}.png`,fullPage:true});
    await page.getByText('CRM-STAGE-08',{exact:true}).click();await expect(page.getByText('Частичные отправки',{exact:true})).toBeVisible();await expect(page.getByText('Ожидает оплаты',{exact:true}).last()).toBeVisible();await expect(page.getByText('Антуриум Stage 07 · 1 шт.',{exact:false})).toBeVisible();await page.screenshot({path:`${out}/${role}-stage08-partial-shipment-${width}.png`,fullPage:true});
