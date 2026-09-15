@@ -7,8 +7,14 @@ func TestCDEKStatusMappingUsesOnlyCustomerMilestones(t *testing.T) {
 
 	tests := map[string]string{
 		"RECEIVED_AT_SHIPMENT_WAREHOUSE": "shipped",
+		"READY_FOR_SHIPMENT_IN_SENDER_CITY": "shipped",
+		"TAKEN_BY_TRANSPORTER_FROM_SENDER_CITY": "shipped",
+		"SENT_TO_RECIPIENT_CITY":          "shipped",
 		"IN_TRANSIT":                     "shipped",
+		"ACCEPTED_IN_TRANSIT_CITY":        "shipped",
 		"RECEIVED_AT_DELIVERY_WAREHOUSE": "ready",
+		"ACCEPTED_AT_PICK_UP_POINT":       "ready",
+		"POSTOMAT_POSTED":                 "ready",
 		"READY_FOR_RECIPIENT":            "ready",
 		"DELIVERED":                      "completed",
 	}

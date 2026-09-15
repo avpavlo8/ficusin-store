@@ -33,11 +33,15 @@ type Adjustment = {
   status: string;
   deliveryMethod: string;
   cdekTariffCode?: number;
+  cdekCreateState: string;
+  cdekStatus: string;
+  cdekStatusReason: string;
+  cdekLastError: string;
   items: Array<{ id: number; productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number; packageLengthCm: number; packageWidthCm: number; packageHeightCm: number; packageWeightGrams: number }>;
   shipmentOffers: ShipmentOffer[];
 };
 
-type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
+type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
 const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOffers})));
 
 const emptyPayment: PaymentBalance = {
@@ -283,6 +287,10 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
           onChange={(event) => { setDeliveryFee(Math.max(0, Number(event.target.value))); setPaymentLink(""); }} /></label>
       </div>
       <small>Нажатие «Сохранить изменения» подтверждает эту стоимость для клиента.</small>
+      {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && <p className="admin-flag">СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной отправки.</p>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && <p className="admin-flag">Проверьте заказ {adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.</p>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekStatus && <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekLastError && ["unknown","manual_review","retry"].includes(adjustment.cdekCreateState) && <small>{adjustment.cdekLastError}</small>}
     </section>}
 
     <div className="dialog-actions">

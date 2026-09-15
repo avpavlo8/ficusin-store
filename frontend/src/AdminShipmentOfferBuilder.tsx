@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 
 type Item = { id:number;productName:string;unitPrice:number;quantity:number;packageLengthCm:number;packageWidthCm:number;packageHeightCm:number;packageWeightGrams:number };
-type Offer = {id:number;status:string;deliveryFee:number;total:number;expiresAt?:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<unknown>};
+type Offer = {id:number;status:string;deliveryFee:number;total:number;expiresAt?:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<unknown>};
 type Box = { key:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number;contents:Record<number,number> };
 type Quote = {tariffCode:number;tariffName:string;price:number;daysMin:number;daysMax:number};
 
@@ -46,7 +46,7 @@ export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliver
   };
   const send=async(id:number)=>{setBusy(true);try{await api(`/api/v1/admin/shipment-offers/${id}/send`,{method:"POST"});await onCreated();}catch(error){onError((error as Error).message);}finally{setBusy(false);}};
   const active=offers.some((offer)=>["draft","packaging_required","notifying","offered","payment_pending"].includes(offer.status));
-  const labels:Record<string,string>={draft:"Черновик",packaging_required:"Нужно распределить коробки",notifying:"Уведомление отправляется",offered:"Ожидает оплаты",payment_pending:"Платёж проверяется",paid:"Оплачено",shipping:"Передаём в СДЭК",shipped:"Передано в СДЭК",ready:"Готово к выдаче",completed:"Получено",expired:"Срок истёк",stale:"Устарело",cancelled:"Отменено"};
+  const labels:Record<string,string>={draft:"Черновик",packaging_required:"Нужно распределить коробки",notifying:"Уведомление отправляется",offered:"Ожидает оплаты",payment_pending:"Платёж проверяется",paid:"Оплачено",shipping:"Заявка в СДЭК",shipped:"Принято СДЭК",ready:"Готово к выдаче",completed:"Получено",expired:"Срок истёк",stale:"Устарело",cancelled:"Отменено"};
   return <section className="admin-block admin-shipment-offers">
     <div className="admin-block-heading"><div><strong>Частичные отправки</strong><small>Каждая отправка хранит свой состав, цену, коробки и срок оплаты</small></div></div>
     {!readOnly&&!active&&<div className="admin-shipment-builder">
@@ -66,6 +66,11 @@ export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliver
       <div><strong>Отправка №{offer.id}</strong><small>{labels[offer.status]||offer.status}</small></div>
       <div>{offer.items.map(item=><span key={item.orderItemId}>{item.productName} · {item.quantity} шт. · {money.format(item.unitPrice)}{item.originalUnitPrice!==item.unitPrice&&<small>При оформлении {money.format(item.originalUnitPrice)}</small>}</span>)}</div>
       <div><span>{offer.boxes.length} кор. · доставка {money.format(offer.deliveryFee)}</span><strong>{money.format(offer.total)}</strong></div>
+      {offer.cdekCreateState==="unknown"&&<p className="admin-flag">Ответ СДЭК потерян. Ищем заявку по номеру без повторного создания.</p>}
+      {offer.cdekCreateState==="manual_review"&&<p className="admin-flag">Проверьте отправку №{offer.id} в кабинете СДЭК. Автоповтор остановлен.</p>}
+      {offer.cdekTrackNumber&&<small>Трек: {offer.cdekTrackNumber}</small>}
+      {offer.cdekStatus&&<small>Статус СДЭК: {offer.cdekStatusReason||offer.cdekStatus}</small>}
+      {offer.cdekLastError&&["unknown","manual_review","retry"].includes(offer.cdekCreateState)&&<small>{offer.cdekLastError}</small>}
       {offer.expiresAt&&<small>Оплатить до {new Date(offer.expiresAt).toLocaleString("ru-RU")}</small>}
       {offer.status==="draft"&&!readOnly&&<button type="button" className="admin-action" disabled={busy} onClick={()=>void send(offer.id)}>Уведомить клиента</button>}
     </article>)}
