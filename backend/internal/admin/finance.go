@@ -13,16 +13,21 @@ import (
 )
 
 type FinanceImport struct {
-	ID            int64     `json:"id"`
-	Bank          string    `json:"bank"`
-	AccountNumber string    `json:"accountNumber"`
-	FileName      string    `json:"fileName"`
-	Status        string    `json:"status"`
-	RowsTotal     int       `json:"rowsTotal"`
-	RowsNew       int       `json:"rowsNew"`
-	RowsDuplicate int       `json:"rowsDuplicate"`
-	RowsReview    int       `json:"rowsReview"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID             int64     `json:"id"`
+	Bank           string    `json:"bank"`
+	AccountNumber  string    `json:"accountNumber"`
+	FileName       string    `json:"fileName"`
+	Status         string    `json:"status"`
+	RowsTotal      int       `json:"rowsTotal"`
+	RowsNew        int       `json:"rowsNew"`
+	RowsDuplicate  int       `json:"rowsDuplicate"`
+	RowsReview     int       `json:"rowsReview"`
+	CreatedAt      time.Time `json:"createdAt"`
+	OpeningBalance *float64  `json:"openingBalance,omitempty"`
+	IncomingTotal  *float64  `json:"incomingTotal,omitempty"`
+	OutgoingTotal  *float64  `json:"outgoingTotal,omitempty"`
+	ClosingBalance *float64  `json:"closingBalance,omitempty"`
+	BalanceValid   *bool     `json:"balanceValid,omitempty"`
 }
 type FinanceTransaction struct {
 	ID             int64   `json:"id"`
@@ -86,6 +91,13 @@ func (repository *PostgresRepository) PreviewFinanceImport(ctx context.Context, 
 	if err != nil {
 		return FinanceImport{}, err
 	}
+	var balanceText string
+	if format == "pdf" {
+		balanceText, _ = financePDFText(ctx, content)
+	} else {
+		balanceText = financeXLSXText(content)
+	}
+	balances := parseFinanceBalances(balanceText)
 	sum := sha256.Sum256(content)
 	hash := hex.EncodeToString(sum[:])
 	tx, err := repository.pool.Begin(ctx)
@@ -94,7 +106,7 @@ func (repository *PostgresRepository) PreviewFinanceImport(ctx context.Context, 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item FinanceImport
-	err = tx.QueryRow(ctx, `INSERT INTO finance_imports(bank,account_number,file_name,file_sha256,source_file,source_format,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(bank,account_number,file_sha256) DO UPDATE SET file_name=finance_imports.file_name RETURNING id,bank,account_number,file_name,status,rows_total,rows_new,rows_duplicate,rows_review,created_at`, bank, strings.TrimSpace(account), name, hash, content, format, actor.CustomerID).Scan(&item.ID, &item.Bank, &item.AccountNumber, &item.FileName, &item.Status, &item.RowsTotal, &item.RowsNew, &item.RowsDuplicate, &item.RowsReview, &item.CreatedAt)
+	err = tx.QueryRow(ctx, `INSERT INTO finance_imports(bank,account_number,file_name,file_sha256,source_file,source_format,created_by,opening_balance,incoming_total,outgoing_total,closing_balance,balance_valid) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(bank,account_number,file_sha256) DO UPDATE SET file_name=finance_imports.file_name RETURNING id,bank,account_number,file_name,status,rows_total,rows_new,rows_duplicate,rows_review,created_at,opening_balance::DOUBLE PRECISION,incoming_total::DOUBLE PRECISION,outgoing_total::DOUBLE PRECISION,closing_balance::DOUBLE PRECISION,balance_valid`, bank, strings.TrimSpace(account), name, hash, content, format, actor.CustomerID, balances.Opening, balances.Incoming, balances.Outgoing, balances.Closing, balances.Valid).Scan(&item.ID, &item.Bank, &item.AccountNumber, &item.FileName, &item.Status, &item.RowsTotal, &item.RowsNew, &item.RowsDuplicate, &item.RowsReview, &item.CreatedAt, &item.OpeningBalance, &item.IncomingTotal, &item.OutgoingTotal, &item.ClosingBalance, &item.BalanceValid)
 	if err != nil {
 		return FinanceImport{}, err
 	}
@@ -105,6 +117,13 @@ func (repository *PostgresRepository) PreviewFinanceImport(ctx context.Context, 
 	occurrences := map[string]int{}
 	for _, row := range rows {
 		class, effect, reason := classifyFinance(row)
+		var ruleClass, ruleEffect string
+		ruleErr := tx.QueryRow(ctx, `SELECT classification,pnl_effect FROM finance_classification_rules WHERE (bank='' OR bank=$1) AND (counterparty_pattern='' OR lower($2) LIKE '%'||lower(counterparty_pattern)||'%') AND (counterparty_account='' OR counterparty_account=$3) AND (purpose_pattern='' OR lower($4) LIKE '%'||lower(purpose_pattern)||'%') ORDER BY id DESC LIMIT 1`, bank, row.Counterparty, row.CounterpartyAccount, row.Purpose).Scan(&ruleClass, &ruleEffect)
+		if ruleErr == nil {
+			class, effect, reason = ruleClass, ruleEffect, "Применено сохранённое правило"
+		} else if !errors.Is(ruleErr, pgx.ErrNoRows) {
+			return FinanceImport{}, ruleErr
+		}
 		base := financeDedupe(row)
 		occurrences[base]++
 		dedupe := fmt.Sprintf("%s:%d", base, occurrences[base])
@@ -145,6 +164,13 @@ func (repository *PostgresRepository) ConfirmFinanceImport(ctx context.Context, 
 		return FinanceImport{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	var balanceValid *bool
+	if err = tx.QueryRow(ctx, `SELECT balance_valid FROM finance_imports WHERE id=$1`, id).Scan(&balanceValid); err != nil {
+		return FinanceImport{}, err
+	}
+	if balanceValid != nil && !*balanceValid {
+		return FinanceImport{}, errors.New("остатки выписки не сходятся: входящий + поступления − списания не равен исходящему")
+	}
 	var changed int64
 	if err = tx.QueryRow(ctx, `UPDATE finance_imports SET status='confirmed',confirmed_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='preview' RETURNING id`, id).Scan(&changed); errors.Is(err, pgx.ErrNoRows) {
 		return FinanceImport{}, errors.New("импорт не найден или уже подтверждён")
@@ -182,6 +208,9 @@ func (repository *PostgresRepository) ClassifyFinanceTransaction(ctx context.Con
 		return FinanceTransaction{}, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE finance_transactions SET classification=$2,pnl_effect=$3,review_reason=$4 WHERE id=$1`, id, input.Classification, input.PnlEffect, strings.TrimSpace(input.Reason)); err != nil {
+		return FinanceTransaction{}, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO finance_classification_rules(bank,counterparty_pattern,counterparty_account,purpose_pattern,classification,pnl_effect,created_from_transaction_id,created_by) SELECT bank,counterparty,counterparty_account,purpose,$2,$3,id,$4 FROM finance_transactions WHERE id=$1 AND (bank<>'' OR counterparty<>'' OR counterparty_account<>'' OR purpose<>'')`, id, input.Classification, input.PnlEffect, actor.CustomerID); err != nil {
 		return FinanceTransaction{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -271,13 +300,13 @@ func (repository *PostgresRepository) ReconcileFinanceCash(ctx context.Context, 
 
 func (repository *PostgresRepository) FinanceOverview(ctx context.Context) (FinanceOverview, error) {
 	var out FinanceOverview
-	rows, err := repository.pool.Query(ctx, `SELECT id,bank,account_number,file_name,status,rows_total,rows_new,rows_duplicate,rows_review,created_at FROM finance_imports ORDER BY created_at DESC LIMIT 20`)
+	rows, err := repository.pool.Query(ctx, `SELECT id,bank,account_number,file_name,status,rows_total,rows_new,rows_duplicate,rows_review,created_at,opening_balance::DOUBLE PRECISION,incoming_total::DOUBLE PRECISION,outgoing_total::DOUBLE PRECISION,closing_balance::DOUBLE PRECISION,balance_valid FROM finance_imports ORDER BY created_at DESC LIMIT 20`)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var x FinanceImport
-		if err = rows.Scan(&x.ID, &x.Bank, &x.AccountNumber, &x.FileName, &x.Status, &x.RowsTotal, &x.RowsNew, &x.RowsDuplicate, &x.RowsReview, &x.CreatedAt); err != nil {
+		if err = rows.Scan(&x.ID, &x.Bank, &x.AccountNumber, &x.FileName, &x.Status, &x.RowsTotal, &x.RowsNew, &x.RowsDuplicate, &x.RowsReview, &x.CreatedAt, &x.OpeningBalance, &x.IncomingTotal, &x.OutgoingTotal, &x.ClosingBalance, &x.BalanceValid); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -330,7 +359,7 @@ func (repository *PostgresRepository) FinanceOverview(ctx context.Context) (Fina
 
 func (repository *PostgresRepository) financeImport(ctx context.Context, id int64) (FinanceImport, error) {
 	var x FinanceImport
-	err := repository.pool.QueryRow(ctx, `SELECT id,bank,account_number,file_name,status,rows_total,rows_new,rows_duplicate,rows_review,created_at FROM finance_imports WHERE id=$1`, id).Scan(&x.ID, &x.Bank, &x.AccountNumber, &x.FileName, &x.Status, &x.RowsTotal, &x.RowsNew, &x.RowsDuplicate, &x.RowsReview, &x.CreatedAt)
+	err := repository.pool.QueryRow(ctx, `SELECT id,bank,account_number,file_name,status,rows_total,rows_new,rows_duplicate,rows_review,created_at,opening_balance::DOUBLE PRECISION,incoming_total::DOUBLE PRECISION,outgoing_total::DOUBLE PRECISION,closing_balance::DOUBLE PRECISION,balance_valid FROM finance_imports WHERE id=$1`, id).Scan(&x.ID, &x.Bank, &x.AccountNumber, &x.FileName, &x.Status, &x.RowsTotal, &x.RowsNew, &x.RowsDuplicate, &x.RowsReview, &x.CreatedAt, &x.OpeningBalance, &x.IncomingTotal, &x.OutgoingTotal, &x.ClosingBalance, &x.BalanceValid)
 	return x, err
 }
 func (repository *PostgresRepository) financeTransaction(ctx context.Context, id int64) (FinanceTransaction, error) {

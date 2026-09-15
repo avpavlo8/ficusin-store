@@ -17,16 +17,20 @@ type PnLLine struct {
 }
 
 type PnLProduct struct {
-	VariantID    int64   `json:"variantId"`
-	Product      string  `json:"product"`
-	SKU          string  `json:"sku"`
-	Units        int     `json:"units"`
-	Revenue      float64 `json:"revenue"`
-	COGS         float64 `json:"cogs"`
-	Packaging    float64 `json:"packaging"`
-	CostSource   string  `json:"costSource"`
-	Estimated    bool    `json:"estimated"`
-	UnknownUnits int     `json:"unknownUnits"`
+	VariantID        int64   `json:"variantId"`
+	Product          string  `json:"product"`
+	SKU              string  `json:"sku"`
+	Units            int     `json:"units"`
+	Revenue          float64 `json:"revenue"`
+	COGS             float64 `json:"cogs"`
+	Packaging        float64 `json:"packaging"`
+	MarketplaceCosts float64 `json:"marketplaceCosts"`
+	ReturnLoss       float64 `json:"returnLoss"`
+	OtherCosts       float64 `json:"otherCosts"`
+	Profit           float64 `json:"profit"`
+	CostSource       string  `json:"costSource"`
+	Estimated        bool    `json:"estimated"`
+	UnknownUnits     int     `json:"unknownUnits"`
 }
 
 type PnLReport struct {
@@ -64,14 +68,20 @@ type TaxPeriodInput struct {
 }
 
 type MarketplaceAdjustmentInput struct {
-	Channel          string  `json:"channel"`
-	SourceDocumentID string  `json:"sourceDocumentId"`
-	SourceLineID     string  `json:"sourceLineId"`
-	OperationDate    string  `json:"operationDate"`
-	Kind             string  `json:"kind"`
-	Amount           float64 `json:"amount"`
-	Effect           int     `json:"effect"`
-	Status           string  `json:"status"`
+	Channel             string  `json:"channel"`
+	SourceDocumentID    string  `json:"sourceDocumentId"`
+	SourceLineID        string  `json:"sourceLineId"`
+	OperationDate       string  `json:"operationDate"`
+	Kind                string  `json:"kind"`
+	Amount              float64 `json:"amount"`
+	Effect              int     `json:"effect"`
+	Status              string  `json:"status"`
+	PeriodStart         string  `json:"periodStart"`
+	PeriodEnd           string  `json:"periodEnd"`
+	PeriodStatus        string  `json:"periodStatus"`
+	UnmatchedRows       int     `json:"unmatchedRows"`
+	SourceHash          string  `json:"sourceHash"`
+	LinkedTransactionID *int64  `json:"linkedTransactionId"`
 }
 
 type SupplierAccountOperation struct {
@@ -160,8 +170,8 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 	}
 	out.COGS -= restored
 	err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(pack.amount_rub),0)::DOUBLE PRECISION
-		FROM finance_packaging_snapshots pack JOIN sales_events event ON event.id=pack.sales_event_id
-		WHERE (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE >= $1::DATE AND (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE < $2::DATE`, from, toExclusive).Scan(&out.Packaging)
+		FROM finance_packaging_snapshots pack
+		WHERE pack.recognition_date >= $1::DATE AND pack.recognition_date < $2::DATE`, from, toExclusive).Scan(&out.Packaging)
 	if err != nil {
 		return out, err
 	}
@@ -200,7 +210,7 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 		COALESCE(SUM(event.gross_rub*event.effect),0)::DOUBLE PRECISION,
 		COALESCE(SUM(event.unit_cost_rub_snapshot*event.units) FILTER(WHERE event.event_type='sale'),0)::DOUBLE PRECISION,
 		COALESCE(SUM(pack.amount_rub),0)::DOUBLE PRECISION
-		FROM sales_events event LEFT JOIN finance_packaging_snapshots pack ON pack.sales_event_id=event.id WHERE `+strings.ReplaceAll(base, "event_", "event.event_")+` GROUP BY event.channel ORDER BY event.channel`, from, toExclusive)
+		FROM sales_events event LEFT JOIN finance_packaging_snapshots pack ON pack.sales_event_id=event.id AND pack.recognition_date >= $1::DATE AND pack.recognition_date < $2::DATE WHERE `+strings.ReplaceAll(base, "event_", "event.event_")+` GROUP BY event.channel ORDER BY event.channel`, from, toExclusive)
 	if err != nil {
 		return out, err
 	}
@@ -210,20 +220,63 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 			rows.Close()
 			return out, err
 		}
-		var restored, adjustmentNet float64
+		var restored, adjustmentNet, packaging float64
 		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(r.unit_cost_rub_snapshot),0)::DOUBLE PRECISION FROM marketplace_returns r JOIN sales_events s ON s.id=r.sales_event_id WHERE r.condition='ready' AND r.returned_at >= $1 AND r.returned_at <= $2 AND s.channel=$3 AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted'`, from, to, line.Channel).Scan(&restored); err != nil {
 			return out, err
 		}
 		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_rub*effect),0)::DOUBLE PRECISION FROM finance_marketplace_adjustments WHERE status='confirmed' AND operation_date >= $1 AND operation_date <= $2 AND channel=$3`, from, to, line.Channel).Scan(&adjustmentNet); err != nil {
 			return out, err
 		}
+		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(p.amount_rub),0)::DOUBLE PRECISION FROM finance_packaging_snapshots p JOIN sales_events s ON s.id=p.sales_event_id WHERE p.recognition_date >= $1 AND p.recognition_date <= $2 AND s.channel=$3`, from, to, line.Channel).Scan(&packaging); err != nil {
+			return out, err
+		}
 		line.COGS -= restored
-		line.Costs -= adjustmentNet
+		line.Costs = packaging - adjustmentNet
 		line.Profit = line.Revenue - line.COGS - line.Costs
 		out.Channels = append(out.Channels, line)
 	}
 	rows.Close()
-	if err = rows.Err(); err != nil { return out, err }
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	knownChannels := map[string]bool{}
+	for _, line := range out.Channels {
+		knownChannels[line.Channel] = true
+	}
+	rows, err = repository.pool.Query(ctx, `SELECT channel FROM (SELECT s.channel FROM finance_packaging_snapshots p JOIN sales_events s ON s.id=p.sales_event_id WHERE p.recognition_date >= $1 AND p.recognition_date <= $2 UNION SELECT channel FROM finance_marketplace_adjustments WHERE status='confirmed' AND operation_date >= $1 AND operation_date <= $2 UNION SELECT s.channel FROM marketplace_returns r JOIN sales_events s ON s.id=r.sales_event_id WHERE r.condition='ready' AND r.returned_at >= $1 AND r.returned_at <= $2) q GROUP BY channel`, from, to)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var channel string
+		if err = rows.Scan(&channel); err != nil {
+			rows.Close()
+			return out, err
+		}
+		if knownChannels[channel] {
+			continue
+		}
+		var restored, adjustmentNet, packaging float64
+		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(r.unit_cost_rub_snapshot),0)::DOUBLE PRECISION FROM marketplace_returns r JOIN sales_events s ON s.id=r.sales_event_id WHERE r.condition='ready' AND r.returned_at >= $1 AND r.returned_at <= $2 AND s.channel=$3`, from, to, channel).Scan(&restored); err != nil {
+			return out, err
+		}
+		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(amount_rub*effect),0)::DOUBLE PRECISION FROM finance_marketplace_adjustments WHERE status='confirmed' AND operation_date >= $1 AND operation_date <= $2 AND channel=$3`, from, to, channel).Scan(&adjustmentNet); err != nil {
+			return out, err
+		}
+		if err = repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(p.amount_rub),0)::DOUBLE PRECISION FROM finance_packaging_snapshots p JOIN sales_events s ON s.id=p.sales_event_id WHERE p.recognition_date >= $1 AND p.recognition_date <= $2 AND s.channel=$3`, from, to, channel).Scan(&packaging); err != nil {
+			return out, err
+		}
+		line := PnLLine{Channel: channel, COGS: -restored, Costs: packaging - adjustmentNet}
+		line.Profit = line.Revenue - line.COGS - line.Costs
+		out.Channels = append(out.Channels, line)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	if out.OperatingExpenses != 0 {
+		out.Channels = append(out.Channels, PnLLine{Channel: "other", Costs: out.OperatingExpenses, Profit: -out.OperatingExpenses})
+	}
 	rows, err = repository.pool.Query(ctx, `SELECT event.canonical_variant_id,p.name,v.sku,
 		COALESCE(SUM(event.units*event.effect),0)::INTEGER,COALESCE(SUM(event.gross_rub*event.effect),0)::DOUBLE PRECISION,
 		COALESCE(SUM(event.unit_cost_rub_snapshot*event.units) FILTER(WHERE event.event_type='sale'),0)::DOUBLE PRECISION,
@@ -232,8 +285,8 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 		COALESCE(BOOL_OR(event.cost_quality='estimated'),FALSE),COALESCE(SUM(event.units) FILTER(WHERE event.event_type='sale' AND event.unit_cost_rub_snapshot IS NULL),0)::INTEGER,
 		COALESCE((SELECT SUM(r.unit_cost_rub_snapshot) FROM marketplace_returns r WHERE r.canonical_variant_id=event.canonical_variant_id AND r.condition='ready' AND EXISTS (SELECT 1 FROM sales_events original WHERE original.id=r.sales_event_id AND original.event_type='sale' AND original.event_status='confirmed' AND original.reconciliation_status='counted') AND r.returned_at >= $1 AND r.returned_at < $2),0)::DOUBLE PRECISION
 		FROM sales_events event JOIN product_variants v ON v.id=event.canonical_variant_id JOIN products p ON p.id=v.product_id
-		LEFT JOIN finance_packaging_snapshots pack ON pack.sales_event_id=event.id
-		WHERE `+strings.ReplaceAll(base, "event_", "event.event_")+` GROUP BY event.canonical_variant_id,p.name,v.sku ORDER BY SUM(event.gross_rub*event.effect) DESC LIMIT 100`, from, toExclusive)
+		LEFT JOIN finance_packaging_snapshots pack ON pack.sales_event_id=event.id AND pack.recognition_date >= $1::DATE AND pack.recognition_date < $2::DATE
+		WHERE `+strings.ReplaceAll(base, "event_", "event.event_")+` GROUP BY event.canonical_variant_id,p.name,v.sku ORDER BY SUM(event.gross_rub*event.effect) DESC`, from, toExclusive)
 	if err != nil {
 		return out, err
 	}
@@ -245,23 +298,55 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 			return out, err
 		}
 		item.COGS -= restored
+		item.Profit = item.Revenue - item.COGS - item.Packaging - item.MarketplaceCosts - item.ReturnLoss - item.OtherCosts
 		out.Products = append(out.Products, item)
 	}
 	rows.Close()
-	if err = rows.Err(); err != nil { return out, err }
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	var productRevenue, productCOGS, productPackaging float64
+	for _, item := range out.Products {
+		productRevenue += item.Revenue
+		productCOGS += item.COGS
+		productPackaging += item.Packaging
+	}
+	if deltaRevenue, deltaCOGS, deltaPackaging := out.Revenue-productRevenue, out.COGS-productCOGS, out.Packaging-productPackaging; deltaRevenue != 0 || deltaCOGS != 0 || deltaPackaging != 0 || out.MarketplaceCosts != 0 || out.ReturnLoss != 0 || out.OperatingExpenses != 0 {
+		item := PnLProduct{Product: "Возвраты и общие расходы", SKU: "—", Revenue: deltaRevenue, COGS: deltaCOGS, Packaging: deltaPackaging, MarketplaceCosts: out.MarketplaceCosts, ReturnLoss: out.ReturnLoss, OtherCosts: out.OperatingExpenses, CostSource: "Финансовый журнал"}
+		item.Profit = item.Revenue - item.COGS - item.Packaging - item.MarketplaceCosts - item.OtherCosts
+		out.Products = append(out.Products, item)
+	}
 	var marketplaceSales, unlinkedReturns, unclassified int
-	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM sales_events WHERE event_type='sale' AND event_status='confirmed' AND reconciliation_status='counted' AND channel IN ('ozon','wb') AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE >= $1::DATE AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE < $2::DATE`, from, toExclusive).Scan(&marketplaceSales); err != nil { return out, err }
-	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM marketplace_returns r WHERE returned_at >= $1 AND returned_at <= $2 AND NOT EXISTS (SELECT 1 FROM sales_events s WHERE s.id=r.sales_event_id AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted')`, from, to).Scan(&unlinkedReturns); err != nil { return out, err }
-	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM finance_transactions WHERE confirmed AND (classification='review' OR pnl_effect='review') AND operation_date >= $1 AND operation_date <= $2`, from, to).Scan(&unclassified); err != nil { return out, err }
-	if unlinkedReturns > 0 { out.Warnings = append(out.Warnings, "Есть возвраты без подтверждённой исходной продажи; себестоимость по ним не восстановлена") }
-	if unclassified > 0 { out.Warnings = append(out.Warnings, "Есть неразобранные банковские операции") }
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM sales_events WHERE event_type='sale' AND event_status='confirmed' AND reconciliation_status='counted' AND channel IN ('ozon','wb') AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE >= $1::DATE AND (event_at AT TIME ZONE 'Europe/Moscow')::DATE < $2::DATE`, from, toExclusive).Scan(&marketplaceSales); err != nil {
+		return out, err
+	}
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM marketplace_returns r WHERE returned_at >= $1 AND returned_at <= $2 AND NOT EXISTS (SELECT 1 FROM sales_events s WHERE s.id=r.sales_event_id AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted')`, from, to).Scan(&unlinkedReturns); err != nil {
+		return out, err
+	}
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM finance_transactions WHERE confirmed AND (classification='review' OR pnl_effect='review') AND operation_date >= $1 AND operation_date <= $2`, from, to).Scan(&unclassified); err != nil {
+		return out, err
+	}
+	if unlinkedReturns > 0 {
+		out.Warnings = append(out.Warnings, "Есть возвраты без подтверждённой исходной продажи; себестоимость по ним не восстановлена")
+	}
+	if unclassified > 0 {
+		out.Warnings = append(out.Warnings, "Есть неразобранные банковские операции")
+	}
 	if out.UnknownCostUnits > 0 {
 		out.Warnings = append(out.Warnings, "Есть продажи без себестоимости")
 	}
 	if out.EstimatedCostUnits > 0 {
 		out.Warnings = append(out.Warnings, "Часть себестоимости оценочная")
 	}
-	if marketplaceSales > 0 {
+	var incompletePeriods int
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM finance_marketplace_periods WHERE period_start<=$2 AND period_end>=$1 AND (status<>'closed' OR unmatched_rows>0)`, from, to).Scan(&incompletePeriods); err != nil {
+		return out, err
+	}
+	var missingClosedChannels int
+	if err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM (SELECT DISTINCT s.channel FROM sales_events s WHERE s.channel IN ('ozon','wb') AND s.event_type='sale' AND s.event_status='confirmed' AND s.reconciliation_status='counted' AND (s.event_at AT TIME ZONE 'Europe/Moscow')::DATE BETWEEN $1 AND $2) channel WHERE NOT EXISTS (SELECT 1 FROM finance_marketplace_periods p WHERE p.channel=channel.channel AND p.period_start<=$1 AND p.period_end>=$2 AND p.status='closed' AND p.unmatched_rows=0)`, from, to).Scan(&missingClosedChannels); err != nil {
+		return out, err
+	}
+	if marketplaceSales > 0 && (missingClosedChannels > 0 || incompletePeriods > 0) {
 		out.Warnings = append(out.Warnings, "Полнота комиссий и логистики маркетплейсов за период не подтверждена; отдельные строки отчёта не закрывают весь период")
 	}
 	if out.ActualTax == nil {
@@ -299,8 +384,54 @@ func (repository *PostgresRepository) CreateMarketplaceAdjustment(ctx context.Co
 	if !validChannel[input.Channel] || !validKind[input.Kind] || (input.Effect != -1 && input.Effect != 1) || input.SourceDocumentID == "" || (input.Status != "review" && input.Status != "confirmed") {
 		return errors.New("проверьте реквизиты отчёта")
 	}
-	_, err = repository.pool.Exec(ctx, `INSERT INTO finance_marketplace_adjustments(channel,source_document_id,source_line_id,operation_date,kind,amount_rub,effect,status,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(channel,source_document_id,source_line_id,kind) DO UPDATE SET amount_rub=EXCLUDED.amount_rub,effect=EXCLUDED.effect,status=EXCLUDED.status`, input.Channel, strings.TrimSpace(input.SourceDocumentID), strings.TrimSpace(input.SourceLineID), date, input.Kind, input.Amount, input.Effect, input.Status, actor.CustomerID)
-	return err
+	periodStart, periodEnd := date, date
+	if input.PeriodStart != "" {
+		periodStart, err = time.Parse("2006-01-02", input.PeriodStart)
+		if err != nil {
+			return errors.New("проверьте начало периода отчёта")
+		}
+	}
+	if input.PeriodEnd != "" {
+		periodEnd, err = time.Parse("2006-01-02", input.PeriodEnd)
+		if err != nil || periodEnd.Before(periodStart) {
+			return errors.New("проверьте конец периода отчёта")
+		}
+	}
+	periodStatus := input.PeriodStatus
+	if periodStatus == "" {
+		periodStatus = "incomplete"
+	}
+	if periodStatus != "incomplete" && periodStatus != "closed" {
+		return errors.New("неизвестный статус периода")
+	}
+	if periodStatus == "closed" && input.UnmatchedRows > 0 {
+		return errors.New("нельзя закрыть период с несопоставленными строками")
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var periodID, rowID int64
+	err = tx.QueryRow(ctx, `INSERT INTO finance_marketplace_periods(channel,period_start,period_end,source_document_id,source_hash,status,unmatched_rows,confirmed_by,confirmed_at) VALUES($1,$2,$3,$4,$5,$6,$7,CASE WHEN $6='closed' THEN $8 END,CASE WHEN $6='closed' THEN CURRENT_TIMESTAMP END) ON CONFLICT(channel,source_document_id) DO UPDATE SET period_start=EXCLUDED.period_start,period_end=EXCLUDED.period_end,source_hash=EXCLUDED.source_hash,status=EXCLUDED.status,unmatched_rows=EXCLUDED.unmatched_rows,confirmed_by=EXCLUDED.confirmed_by,confirmed_at=EXCLUDED.confirmed_at,updated_at=CURRENT_TIMESTAMP RETURNING id`, input.Channel, periodStart, periodEnd, strings.TrimSpace(input.SourceDocumentID), strings.TrimSpace(input.SourceHash), periodStatus, input.UnmatchedRows, actor.CustomerID).Scan(&periodID)
+	if err != nil {
+		return err
+	}
+	err = tx.QueryRow(ctx, `INSERT INTO finance_marketplace_report_rows(period_id,source_line_id,sales_event_id,row_kind,status) VALUES($1,$2,NULL,'primary',$3) ON CONFLICT(period_id,source_line_id) DO UPDATE SET status=EXCLUDED.status RETURNING id`, periodID, strings.TrimSpace(input.SourceLineID), map[bool]string{true: "unmatched", false: "matched"}[input.UnmatchedRows > 0]).Scan(&rowID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO finance_marketplace_adjustments(channel,source_document_id,source_line_id,operation_date,kind,amount_rub,effect,status,created_by,report_row_id,linked_transaction_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(channel,source_document_id,source_line_id,kind) DO UPDATE SET amount_rub=EXCLUDED.amount_rub,effect=EXCLUDED.effect,status=EXCLUDED.status,report_row_id=EXCLUDED.report_row_id,linked_transaction_id=EXCLUDED.linked_transaction_id`, input.Channel, strings.TrimSpace(input.SourceDocumentID), strings.TrimSpace(input.SourceLineID), date, input.Kind, input.Amount, input.Effect, input.Status, actor.CustomerID, rowID, input.LinkedTransactionID)
+	if err != nil {
+		return err
+	}
+	if input.LinkedTransactionID != nil {
+		_, err = tx.Exec(ctx, `UPDATE finance_transactions SET classification='marketplace_payout',pnl_effect='none',review_reason='Связано со строкой закрывающего отчёта маркетплейса' WHERE id=$1`, *input.LinkedTransactionID)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) SupplierAccount(ctx context.Context) (SupplierAccountOverview, error) {

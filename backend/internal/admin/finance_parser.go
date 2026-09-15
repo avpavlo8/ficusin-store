@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"regexp"
@@ -27,6 +28,40 @@ type FinanceSourceRow struct {
 
 var financeMoney = regexp.MustCompile(`[-+]?\d[\d\s]*(?:[.,]\d{1,2})`)
 var financeDate = regexp.MustCompile(`\b(\d{2}[.]\d{2}[.]\d{4})\b`)
+
+type FinanceBalances struct {
+	Opening, Incoming, Outgoing, Closing *float64
+	Valid                                *bool
+}
+
+func parseFinanceBalances(text string) FinanceBalances {
+	text = strings.ReplaceAll(strings.ToLower(text), "\u00a0", " ")
+	amountPattern := `[-+]?\d[\d\s]*(?:[.,]\d{1,2})?`
+	find := func(labels ...string) *float64 {
+		for _, label := range labels {
+			re := regexp.MustCompile(regexp.QuoteMeta(label) + `[^\d+-]{0,40}(` + amountPattern + `)`)
+			if match := re.FindStringSubmatch(text); len(match) > 1 {
+				value := parseFinanceAmount(match[1])
+				return &value
+			}
+		}
+		return nil
+	}
+	out := FinanceBalances{Opening: find("входящий остаток", "начальный остаток"), Incoming: find("поступления", "поступило", "оборот по кредиту"), Outgoing: find("списания", "списано", "оборот по дебету"), Closing: find("исходящий остаток", "конечный остаток")}
+	if out.Incoming == nil || out.Outgoing == nil {
+		re := regexp.MustCompile(`итого оборотов[^\d+-]{0,40}(` + amountPattern + `)[^\d+-]{1,40}(` + amountPattern + `)`)
+		if match := re.FindStringSubmatch(text); len(match) > 2 {
+			incoming, outgoing := parseFinanceAmount(match[1]), parseFinanceAmount(match[2])
+			out.Incoming = &incoming
+			out.Outgoing = &outgoing
+		}
+	}
+	if out.Opening != nil && out.Incoming != nil && out.Outgoing != nil && out.Closing != nil {
+		valid := math.Abs(*out.Opening+*out.Incoming-*out.Outgoing-*out.Closing) < 0.01
+		out.Valid = &valid
+	}
+	return out
+}
 
 func ParseFinanceStatement(ctx context.Context, name string, content []byte) ([]FinanceSourceRow, string, error) {
 	lower := strings.ToLower(name)
@@ -194,8 +229,15 @@ func parseFinanceXLSX(content []byte) ([]FinanceSourceRow, error) {
 			values[col] = strings.TrimSpace(value)
 		}
 		if len(headers) == 0 {
+			candidate := map[string]int{}
 			for col, v := range values {
-				headers[strings.ToLower(v)] = col
+				candidate[compact(v)] = col
+			}
+			_, hasDate := candidate["дата"]
+			_, hasCredit := candidate["поступление"]
+			_, hasDebit := candidate["списание"]
+			if hasDate && (hasCredit || hasDebit) {
+				headers = candidate
 			}
 			continue
 		}
@@ -212,6 +254,59 @@ func parseFinanceXLSX(content []byte) ([]FinanceSourceRow, error) {
 		return nil, errors.New("в XLSX не найдены операции")
 	}
 	return result, nil
+}
+
+// financeXLSXText exposes summary labels and values to the balance validator.
+// It never leaves the process and is not stored separately from the source file.
+func financeXLSXText(content []byte) string {
+	z, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return ""
+	}
+	var sheet []byte
+	shared := []string{}
+	for _, f := range z.File {
+		if f.Name == "xl/worksheets/sheet1.xml" {
+			sheet, _ = readZipFile(f)
+		}
+		if f.Name == "xl/sharedStrings.xml" {
+			raw, _ := readZipFile(f)
+			var root struct {
+				Items []sharedItem `xml:"si"`
+			}
+			_ = xml.Unmarshal(raw, &root)
+			for _, item := range root.Items {
+				shared = append(shared, item.Text+strings.Join(item.Texts, ""))
+			}
+		}
+	}
+	var doc xlsxSheet
+	if xml.Unmarshal(sheet, &doc) != nil {
+		return ""
+	}
+	var lines []string
+	for _, row := range doc.Rows {
+		var cells []string
+		for _, c := range row.Cells {
+			value := c.V
+			if c.Type == "inlineStr" {
+				value = c.Inline.Text + strings.Join(c.Inline.Texts, "")
+			}
+			if c.Type == "s" {
+				n, _ := strconv.Atoi(c.V)
+				if n >= 0 && n < len(shared) {
+					value = shared[n]
+				}
+			}
+			if strings.TrimSpace(value) != "" {
+				cells = append(cells, strings.TrimSpace(value))
+			}
+		}
+		if len(cells) > 0 {
+			lines = append(lines, strings.Join(cells, " "))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func readZipFile(f *zip.File) ([]byte, error) {
