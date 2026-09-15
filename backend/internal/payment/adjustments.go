@@ -258,7 +258,12 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 			var adopted bool
 			paymentRowID,orderID,shipmentOfferID,expected,adopted,err=service.adoptUnknownFromMetadata(ctx,payment)
 			if err!=nil{return fmt.Errorf("adopt unknown payment: %w",err)}
-			if !adopted{service.logger.Warn("unknown payment notified", "payment_id", providerPaymentID);return nil}
+			if !adopted{
+				safePaymentID := strings.ReplaceAll(providerPaymentID, "\n", "")
+				safePaymentID = strings.ReplaceAll(safePaymentID, "\r", "")
+				service.logger.Warn("unknown payment notified", "payment_id", safePaymentID)
+				return nil
+			}
 		} else {
 			return fmt.Errorf("load payment: %w", err)
 		}
