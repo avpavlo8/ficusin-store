@@ -51,7 +51,7 @@ func TestStage13FinalInvoiceCostBecomesCurrentBeforeReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_orders(supplier_id,order_number,source_kind,currency,status,created_by)
-		VALUES($1,$2,'payment_invoice','RUB','review',$3) RETURNING id`, fmt.Sprintf("STAGE-13-INVOICE-%d", unique), actorID).Scan(&orderID); err != nil {
+		VALUES($1,$2,'payment_invoice','RUB','review',$3) RETURNING id`, supplierID, fmt.Sprintf("STAGE-13-INVOICE-%d", unique), actorID).Scan(&orderID); err != nil {
 		t.Fatal(err)
 	}
 	var documentID int64
