@@ -971,6 +971,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
 			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
+			AND (l.reconciliation_status <> 'added' OR l.comparison_accepted)
 		WHERE o.id = $1
 		GROUP BY o.id, s.name
 	`, orderID).Scan(
