@@ -1,0 +1,211 @@
+name: Apply procurement action reliability fixes
+on:
+  push:
+    branches: [fix/procurement-actions-saby-idempotency]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/procurement-actions-saby-idempotency
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Patch procurement actions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one occurrence, got {count}: {old[:160]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # 1) Saby price XLSX: export only rows the UI marks as a meaningful
+          # retail-price change. For duplicated invoice rows of the same Saby
+          # product, decide using the highest proposed retail price (the same
+          # conservative price the action batch uses).
+          replace_once(
+              'backend/internal/procurement/saby_price_xlsx.go',
+              '''\ttype priceRow struct {\n\t\tcode  string\n\t\tprice int64\n\t}''',
+              '''\ttype priceRow struct {\n\t\tcode   string\n\t\tprice  int64\n\t\tneeded bool\n\t}''')
+          replace_once(
+              'backend/internal/procurement/saby_price_xlsx.go',
+              '''\t\tcandidate := priceRow{code: code, price: *line.ProposedRetailRUB}\n\t\tif current, exists := byProduct[key]; !exists || candidate.price > current.price {\n\t\t\tbyProduct[key] = candidate\n\t\t}\n\t}\n\trows := make([]priceRow, 0, len(byProduct))\n\tfor _, row := range byProduct {\n\t\trows = append(rows, row)\n\t}''',
+              '''\t\tcandidate := priceRow{code: code, price: *line.ProposedRetailRUB, needed: line.PriceChangeNeeded}\n\t\tif current, exists := byProduct[key]; !exists || candidate.price > current.price {\n\t\t\tbyProduct[key] = candidate\n\t\t}\n\t}\n\trows := make([]priceRow, 0, len(byProduct))\n\tfor _, row := range byProduct {\n\t\tif row.needed {\n\t\t\trows = append(rows, row)\n\t\t}\n\t}''')
+
+          # 2) Price action batches: Site follows the same Saby retail
+          # threshold/red-row rule. WB and Ozon intentionally keep receiving
+          # every connected calculated item, as requested.
+          replace_once(
+              'backend/internal/procurement/postgres_actions.go',
+              '''\t\t\tWHERE channel.name = ANY($3::TEXT[])\n\t\t`, batchID, orderID, channels)''',
+              '''\t\t\tWHERE channel.name = ANY($3::TEXT[])\n\t\t\t\tAND (channel.name IN ('wb','ozon')\n\t\t\t\t\tOR n.price_minor <= 0\n\t\t\t\t\tOR ABS(p.retail::NUMERIC - n.price_minor::NUMERIC / 100)\n\t\t\t\t\t\t> (n.price_minor::NUMERIC / 100) *\n\t\t\t\t\t\t\t(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))\n\t\t`, batchID, orderID, channels)''')
+          replace_once(
+              'backend/internal/procurement/postgres_actions.go',
+              '''\t\t\t\t\tGROUP BY l.saby_id, n.code, n.name, n.price_minor\n\t\t\t\t)''',
+              '''\t\t\t\t\tGROUP BY l.saby_id, n.code, n.name, n.price_minor\n\t\t\t\t\tHAVING n.price_minor <= 0\n\t\t\t\t\t\tOR ABS(MAX(l.proposed_retail_rub)::NUMERIC - n.price_minor::NUMERIC / 100)\n\t\t\t\t\t\t\t> (n.price_minor::NUMERIC / 100) *\n\t\t\t\t\t\t\t\t(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)\n\t\t\t\t)''')
+
+          # 3) Receipt preview must use a fresh Saby catalogue snapshot so
+          # oldBalance/newBalance are not stale zeros. This happens on the
+          # explicit operator action only, not on every procurement page load.
+          replace_once(
+              'backend/internal/procurement/service.go',
+              '''\t}\n\treturn service.store.PrepareBatch(ctx, actor, orderID, kind, selected)\n}\n\nfunc channelDisplayName''',
+              '''\t}\n\tif kind == "receipt" && service.executor != nil && service.executor.Configured("saby") {\n\t\tif refresher, ok := service.executor.(SabyCatalogRefresher); ok {\n\t\t\tif _, err := refresher.RefreshSabyCatalog(ctx); err != nil {\n\t\t\t\treturn ActionBatch{}, &UserFacingError{Message: "Не удалось обновить актуальные остатки СБИС перед поступлением. Повторите подготовку поступления позже."}\n\t\t\t}\n\t\t}\n\t}\n\treturn service.store.PrepareBatch(ctx, actor, orderID, kind, selected)\n}\n\nfunc channelDisplayName''')
+
+          # 4) Saby receipt write must be idempotent. Production proved that
+          # ДокОтгрВх.Прочитать can temporarily expose an unreadable/unknown
+          # row schema even though NomCreateWithSaveBatch already saved rows.
+          # Never append rows again to an existing receipt just because our
+          # reader reports zero; that was exactly how 36 rows became 72.
+          replace_once(
+              'backend/internal/integration/saby_procurement.go',
+              '''\tinternalID, _ := strconv.ParseInt(strings.TrimSpace(item.ExternalOperationID), 10, 64)\n\tlink := safeSabyURL(item.ExternalURL)''',
+              '''\tinternalID, _ := strconv.ParseInt(strings.TrimSpace(item.ExternalOperationID), 10, 64)\n\tcreatedNow := internalID <= 0\n\tlink := safeSabyURL(item.ExternalURL)''')
+          replace_once(
+              'backend/internal/integration/saby_procurement.go',
+              '''\tvar document map[string]any\n\tsavedLineCount := 0\n\tvar err error\n\tif internalID > 0 {\n\t\tdocument, savedLineCount, err = client.readReceipt(ctx, internalID)''',
+              '''\tvar document map[string]any\n\tvar err error\n\tif internalID > 0 {\n\t\tdocument, _, err = client.readReceipt(ctx, internalID)''')
+          replace_once(
+              'backend/internal/integration/saby_procurement.go',
+              '''\tif savedLineCount == 0 {''',
+              '''\tif createdNow {''')
+
+          # Accept the internal protocol's common field aliases. Exact names
+          # still win; fallback only handles @Номенклатура and quantity fields
+          # with a suffix, avoiding КоличествоМест.
+          replace_once(
+              'backend/internal/integration/saby_procurement.go',
+              '''func sabyFieldIndex(fields []any, name string) int {\n\tfor index, raw := range fields {\n\t\tfield, _ := raw.(map[string]any)\n\t\tif field["n"] == name {\n\t\t\treturn index\n\t\t}\n\t}\n\treturn -1\n}''',
+              '''func sabyFieldIndex(fields []any, name string) int {\n\twanted := normalizeSabyFieldName(name)\n\tfor index, raw := range fields {\n\t\tfield, _ := raw.(map[string]any)\n\t\tif normalizeSabyFieldName(field["n"]) == wanted {\n\t\t\treturn index\n\t\t}\n\t}\n\tfor index, raw := range fields {\n\t\tfield, _ := raw.(map[string]any)\n\t\tactual := normalizeSabyFieldName(field["n"])\n\t\tif wanted == "номенклатура" && strings.Contains(actual, "номенклатур") {\n\t\t\treturn index\n\t\t}\n\t\tif wanted == "количество" && strings.Contains(actual, "количеств") && !strings.Contains(actual, "мест") {\n\t\t\treturn index\n\t\t}\n\t}\n\treturn -1\n}\n\nfunc normalizeSabyFieldName(value any) string {\n\tname := strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))\n\tname = strings.TrimLeft(name, "@")\n\treturn strings.NewReplacer(" ", "", "_", "", "-", "").Replace(name)\n}''')
+
+          # Make long-running WB work understandable instead of a generic
+          # "Отправляется" once WB has accepted the upload and returned an id.
+          replace_once(
+              'frontend/src/AdminProcurementDialogs.tsx',
+              '''  const label = item.channel === "saby_receipt" && item.status === "draft" ? "Подготовлено" : item.channel === "saby_receipt" && item.externalUrl && ["queued", "processing"].includes(item.status) ? "Черновик создан · ждёт проведения" : item.channel === "saby_receipt" && item.status === "completed" ? "Проведение подтверждено" : (({ draft: "Черновик", queued: "В очереди", processing: "Отправляется", completed: "Выполнено", failed: "Ошибка", skipped: "Пропущено", not_configured: "API не подключён" } as Record<string, string>)[item.status] || item.status);''',
+              '''  const label = item.channel === "saby_receipt" && item.status === "draft" ? "Подготовлено" : item.channel === "saby_receipt" && item.externalUrl && ["queued", "processing"].includes(item.status) ? "Черновик создан · ждёт проведения" : item.channel === "saby_receipt" && item.status === "completed" ? "Проведение подтверждено" : item.channel === "wb" && item.externalOperationId && ["queued", "processing"].includes(item.status) ? "Wildberries обрабатывает загрузку" : (({ draft: "Черновик", queued: "В очереди", processing: "Отправляется", completed: "Выполнено", failed: "Ошибка", skipped: "Пропущено", not_configured: "API не подключён" } as Record<string, string>)[item.status] || item.status);''')
+
+          # Tests: Saby XLSX threshold.
+          p = Path('backend/internal/procurement/saby_price_xlsx_test.go')
+          text = p.read_text()
+          text = text.replace(
+              '''\tfirst, second, ignored := int64(2650), int64(2790), int64(9999)\n\tcontent, count, err := BuildSabyPriceXLSX([]OrderLine{\n\t\t{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &first},\n\t\t{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &second},\n\t\t{SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored},\n\t})''',
+              '''\tfirst, second, ignored, unchanged := int64(2650), int64(2790), int64(9999), int64(2750)\n\tcontent, count, err := BuildSabyPriceXLSX([]OrderLine{\n\t\t{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &first, PriceChangeNeeded: true},\n\t\t{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &second, PriceChangeNeeded: true},\n\t\t{SabyID: "77", SabyCode: "X77", MatchStatus: "confirmed", ProposedRetailRUB: &unchanged, PriceChangeNeeded: false},\n\t\t{SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},\n\t})''')
+          text = text.replace(
+              '''\tif strings.Contains(sheet, "X99") { t.Fatalf("ignored product leaked into sheet: %s", sheet) }''',
+              '''\tif strings.Contains(sheet, "X99") { t.Fatalf("ignored product leaked into sheet: %s", sheet) }\n\tif strings.Contains(sheet, "X77") { t.Fatalf("unchanged price leaked into sheet: %s", sheet) }''')
+          p.write_text(text)
+
+          # Tests: receipt preparation refreshes Saby balances before snapshot.
+          p = Path('backend/internal/procurement/service_test.go')
+          text = p.read_text()
+          anchor = '''type probeExecutorStub struct{ probeCalls int }\n'''
+          insert = '''type sabyRefreshExecutorStub struct{ refreshCalls int }\n\nfunc (stub *sabyRefreshExecutorStub) Configured(channel string) bool { return channel == "saby" }\nfunc (*sabyRefreshExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {\n\treturn ActionExecution{}, nil\n}\nfunc (stub *sabyRefreshExecutorStub) RefreshSabyCatalog(context.Context) (ChannelLinkResult, error) {\n\tstub.refreshCalls++\n\treturn ChannelLinkResult{Channel: "saby", Fetched: 10, Linked: 10}, nil\n}\n\n'''
+          if insert not in text:
+              text = text.replace(anchor, insert + anchor)
+          test_anchor = '''func TestWildberriesConnectionCheckReadsMirrorWithoutCallingAPI(t *testing.T) {'''
+          new_test = '''func TestPrepareReceiptRefreshesSabyBalancesBeforeSnapshot(t *testing.T) {\n\tt.Parallel()\n\tstore := &storeStub{}\n\texecutor := &sabyRefreshExecutorStub{}\n\tservice := NewServiceWithExecutor(store, executor)\n\tbatch, err := service.PrepareBatch(context.Background(), Actor{}, 18, "receipt", nil)\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif batch.Kind != "receipt" || executor.refreshCalls != 1 {\n\t\tt.Fatalf("batch=%+v refreshCalls=%d", batch, executor.refreshCalls)\n\t}\n}\n\n'''
+          if new_test not in text:
+              text = text.replace(test_anchor, new_test + test_anchor)
+          p.write_text(text)
+
+          # Tests: a retry on an existing Saby receipt may read/verify but must
+          # never append the batch again. Replace the former test that expected
+          # the unsafe second append.
+          p = Path('backend/internal/integration/saby_procurement_test.go')
+          text = p.read_text()
+          start = text.index('func TestSabyReceiptRetryUsesStableExternalID')
+          end = text.index('\nfunc TestSabyReceiptRetryReplacesUnaddressablePublicHeader', start)
+          replacement = r'''func TestSabyReceiptRetryNeverAppendsRowsToExistingDocument(t *testing.T) {
+	const receiptGUID = "22222222-2222-4222-8222-222222222222"
+	var creates, adds int
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/oauth/service/" {
+			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
+			return
+		}
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
+		switch rpc.Method {
+		case "РеалВх.Создать":
+			creates++
+			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"}]}}`, receiptGUID)
+		case "РеалВх.NomCreateWithSaveBatch":
+			adds++
+			// Ambiguous write failure: production may already have saved these
+			// rows, so a retry must never append them again.
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary add error"}}`))
+		case "ДокОтгрВх.Прочитать":
+			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q,false,{"_type":"recordset","d":[],"s":[{"n":"@Номенклатура"},{"n":"КоличествоОсн"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"},{"n":"Строки"}]}}`, receiptGUID)
+		default:
+			t.Fatalf("unexpected method: %s", rpc.Method)
+		}
+	}))
+	defer server.Close()
+	client := NewSabyClient("client", "secret", "service", 278, 6)
+	client.authURL, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL+"/service/?srv=1", server.Client()
+	payload := json.RawMessage(`{"orderId":323,"lines":[{"sabyId":"42","name":"Орхидея D12","quantity":2}]}`)
+	first, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload})
+	if err == nil || first.ExternalOperationID != "8" { t.Fatalf("first=%+v err=%v", first, err) }
+	second, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload, ExternalOperationID: first.ExternalOperationID, ExternalURL: first.ExternalURL})
+	if err == nil || !strings.Contains(err.Error(), "0 товарных строк из 1") { t.Fatalf("second=%+v err=%v", second, err) }
+	if creates != 1 || adds != 1 { t.Fatalf("creates=%d adds=%d; retry duplicated Saby rows", creates, adds) }
+}
+'''
+          text = text[:start] + replacement + text[end:]
+          alias_test = r'''
+func TestSabyLineReadersAcceptInternalFieldAliases(t *testing.T) {
+	t.Parallel()
+	value := map[string]any{
+		"_type": "recordset",
+		"s": []any{map[string]any{"n": "@Номенклатура"}, map[string]any{"n": "КоличествоОсн"}},
+		"d": []any{[]any{float64(3604), "3,0"}},
+	}
+	if count := sabyLineCount(value); count != 1 { t.Fatalf("count=%d", count) }
+	quantities := sabyLineQuantities(value)
+	if quantities[3604] != 3 { t.Fatalf("quantities=%+v", quantities) }
+}
+'''
+          if 'TestSabyLineReadersAcceptInternalFieldAliases' not in text:
+              text += alias_test
+          p.write_text(text)
+          PY
+
+          gofmt -w backend/internal/procurement/saby_price_xlsx.go backend/internal/procurement/saby_price_xlsx_test.go backend/internal/procurement/service.go backend/internal/procurement/service_test.go backend/internal/procurement/postgres_actions.go backend/internal/integration/saby_procurement.go backend/internal/integration/saby_procurement_test.go
+
+      - name: Verify backend
+        working-directory: backend
+        run: |
+          go test ./internal/procurement ./internal/integration ./internal/saby
+          go vet ./...
+          go build ./cmd/api
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit fix
+        run: |
+          git config user.name github-actions
+          git config user.email actions@users.noreply.github.com
+          git add backend frontend
+          git commit -m 'fix(procurement): make receipt and price actions safe'
+          git push origin HEAD:fix/procurement-actions-saby-idempotency
