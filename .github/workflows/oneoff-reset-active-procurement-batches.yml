@@ -1,0 +1,34 @@
+name: Apply active procurement batch reset
+on:
+  push:
+    branches:
+      - fix/procurement-actions-saby-idempotency
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/procurement-actions-saby-idempotency
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: backend/go.sum
+      - name: Apply reset patch
+        run: python3 scripts/oneoff_cancel_active_procurement_batches.py
+      - name: Verify backend
+        working-directory: backend
+        run: |
+          gofmt -w internal/procurement/postgres_catalogue.go
+          go test ./internal/procurement
+          go vet ./...
+          go build ./cmd/api
+      - name: Commit fix
+        run: |
+          git config user.name github-actions
+          git config user.email actions@users.noreply.github.com
+          git add backend
+          git commit -m 'fix(procurement): allow cancelling active action batches'
+          git push origin HEAD:fix/procurement-actions-saby-idempotency
