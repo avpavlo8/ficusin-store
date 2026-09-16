@@ -1,12 +1,12 @@
 module github.com/avpavlo8/ficusin-store/backend
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/signintech/gopdf v0.38.1
 	golang.org/x/image v0.45.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
