@@ -634,9 +634,14 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 	}
 	if kind == "receipt" && service.executor != nil && service.executor.Configured("saby") {
 		if refresher, ok := service.executor.(SabyCatalogRefresher); ok {
-			if _, err := refresher.RefreshSabyCatalog(ctx); err != nil {
-				return ActionBatch{}, &UserFacingError{Message: "Не удалось обновить актуальные остатки СБИС перед поступлением. Повторите подготовку поступления позже."}
-			}
+			// Полная синхронизация каталога СБИС может занимать десятки секунд.
+			// Нельзя держать HTTP-запрос подготовки поступления до её окончания:
+			// reverse proxy обрывает такой запрос с 502. Даём короткое окно для
+			// свежих остатков, но при таймауте/ошибке продолжаем с локальным
+			// снимком; фоновая синхронизация всё равно обновит каталог отдельно.
+			refreshCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			_, _ = refresher.RefreshSabyCatalog(refreshCtx)
+			cancel()
 		}
 	}
 	return service.store.PrepareBatch(ctx, actor, orderID, kind, selected)
