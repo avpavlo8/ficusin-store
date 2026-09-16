@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { normalizeProcurementOrderDetail } from "./AdminProcurement";
 import { ConfirmDialog, api, money } from "./adminShared";
-import type { NomenclatureCandidate, ProcurementActionBatch, ProcurementActionItem, ProcurementAlias, ProcurementOrder, ProcurementOrderDetail, ProcurementOrderLine, ProcurementRecommendation, ProcurementSupplier, ProcurementSettings } from "./adminTypes";
+import type { IntegrationSyncStatus, NomenclatureCandidate, ProcurementActionBatch, ProcurementActionItem, ProcurementAlias, ProcurementOrder, ProcurementOrderDetail, ProcurementOrderLine, ProcurementRecommendation, ProcurementSupplier, ProcurementSettings } from "./adminTypes";
 
 const reconciliationLabel = (value: string) => ({ planned: "Ожидает инвойс", matched: "Совпадает", changed: "Изменено", missing: "Нет в инвойсе", added: "Добавлено поставщиком", excluded: "Исключено", superseded: "Прошлая версия" }[value] || value);
 
@@ -157,11 +157,26 @@ export function ProcurementOrderDetailDialog({ orderId, onClose, onSaved, onErro
     link.download = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] || `receiving-${orderId}.pdf`;
     document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
   };
+  const refreshSabyBeforeReceipt = async () => {
+    const requestedAt = Date.now();
+    await api("/api/v1/admin/procurement/integrations/saby/catalog", { method: "POST" });
+    const deadline = requestedAt + 90_000;
+    while (Date.now() < deadline) {
+      const snapshot = await api<{ integrationSync: IntegrationSyncStatus[] }>("/api/v1/admin/procurement", { cache: "no-store" });
+      const lane = snapshot.integrationSync?.find((item) => item.channel === "saby" && item.resource === "catalog");
+      if (lane?.status === "error") throw new Error(lane.lastError || "Не удалось обновить остатки СБИС");
+      const succeededAt = lane?.lastSuccessAt ? new Date(lane.lastSuccessAt).getTime() : 0;
+      if (lane?.status === "ok" && lane.completedGeneration >= lane.requestedGeneration && succeededAt >= requestedAt - 2_000) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+    }
+    throw new Error("СБИС ещё обновляет остатки. Подождите немного и повторите подготовку поступления.");
+  };
   const prepare = async (kind: "receipt" | "prices") => {
     const selected = kind === "prices" ? Object.entries(priceChannels).filter(([, enabled]) => enabled).map(([channel]) => channel) : [];
     const apiChannels = selected.filter((channel) => channel !== "saby_price");
     setSaving(true);
     try {
+      if (kind === "receipt") await refreshSabyBeforeReceipt();
       if (selected.includes("saby_price")) await downloadSabyPrices();
       if (kind === "receipt" || apiChannels.length > 0) await api(`/api/v1/admin/procurement/orders/${orderId}/batches`, { method: "POST", body: JSON.stringify({ kind, channels: apiChannels }) });
       await load();

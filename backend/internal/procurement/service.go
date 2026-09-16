@@ -632,13 +632,11 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 			}
 		}
 	}
-	if kind == "receipt" && service.executor != nil && service.executor.Configured("saby") {
-		if refresher, ok := service.executor.(SabyCatalogRefresher); ok {
-			if _, err := refresher.RefreshSabyCatalog(ctx); err != nil {
-				return ActionBatch{}, &UserFacingError{Message: "Не удалось обновить актуальные остатки СБИС перед поступлением. Повторите подготовку поступления позже."}
-			}
-		}
-	}
+	// Receipt preparation snapshots the local Saby mirror only. The browser
+	// explicitly queues a catalogue refresh and waits for the catalogue worker
+	// before calling this endpoint. Never perform external Saby I/O inside this
+	// HTTP request: a full catalogue traversal can exceed the reverse-proxy
+	// timeout and turn a healthy operation into a 502.
 	return service.store.PrepareBatch(ctx, actor, orderID, kind, selected)
 }
 
