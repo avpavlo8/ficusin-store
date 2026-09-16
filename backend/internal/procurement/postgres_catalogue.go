@@ -628,12 +628,16 @@ func (store *PostgresStore) ResolveAlias(
 		return AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
 	}
 	if input.MatchStatus == "confirmed" {
-		if err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
-			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		var candidateExists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM saby_nomenclature WHERE saby_id=$1 AND missing_since IS NULL)`, input.SabyID).Scan(&candidateExists); err != nil {
 			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
 		}
-		if canonicalVariantID == 0 {
+		if !candidateExists {
 			return AliasReview{}, ErrNotFound
+		}
+		if err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
+			WHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return AliasReview{}, fmt.Errorf("resolve canonical Saby candidate: %w", err)
 		}
 	}
 
@@ -644,7 +648,7 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_supplier_aliases SET
 			matched_saby_id = NULLIF($2, ''), match_status = $3,
-			canonical_variant_id = CASE WHEN $3='confirmed' THEN $5 ELSE NULL END,
+			canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($5,0) ELSE NULL END,
 			confidence = $4, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, aliasID, input.SabyID, input.MatchStatus, confidence, canonicalVariantID); err != nil {
@@ -653,7 +657,7 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_order_lines SET
 			saby_id = NULLIF($2, ''), match_status = $3,
-			canonical_variant_id = CASE WHEN $3='confirmed' THEN $4 ELSE NULL END,
+			canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($4,0) ELSE NULL END,
 			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
@@ -691,13 +695,13 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	if input.MatchStatus == "confirmed" {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO procurement_supplier_products (supplier_id, saby_id, supplier_article, availability_status, updated_by)
-			SELECT supplier_id, $2, supplier_article, availability_status, $3
+			INSERT INTO procurement_supplier_products (supplier_id, saby_id, canonical_variant_id, supplier_article, availability_status, updated_by)
+			SELECT supplier_id, $2, NULLIF($4,0), supplier_article, availability_status, NULLIF($3,0)
 			FROM procurement_supplier_aliases WHERE id = $1
 			ON CONFLICT (supplier_id, saby_id) DO UPDATE SET
 				supplier_article = CASE WHEN EXCLUDED.supplier_article <> '' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
 				updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
-		`, aliasID, input.SabyID, actor.CustomerID); err != nil {
+		`, aliasID, input.SabyID, actor.CustomerID, canonicalVariantID); err != nil {
 			return AliasReview{}, fmt.Errorf("upsert procurement supplier product: %w", err)
 		}
 	}
