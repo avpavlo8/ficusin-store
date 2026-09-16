@@ -1,0 +1,64 @@
+name: Apply late alias reconciliation patch
+
+on:
+  push:
+    branches:
+      - fix/procurement-late-alias-collapse
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ficusin_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_test?sslmode=disable
+      CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_test?sslmode=disable
+      DATABASE_SSL_VERIFY: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/procurement-late-alias-collapse
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: backend/go.sum
+      - name: Apply patch
+        run: python3 scripts/oneoff_fix_late_alias.py
+      - name: Format
+        run: gofmt -w backend/internal/procurement/postgres_catalogue.go backend/internal/procurement/late_alias_reconciliation_live_test.go
+      - name: Apply migrations
+        run: for file in timeweb/migrations/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file" >/dev/null; done
+      - name: Test backend
+        working-directory: backend
+        run: |
+          go test ./internal/procurement -run TestResolveAliasCollapsesLateInvoiceLineOnLiveDatabase -count=1
+          go test ./...
+          go vet ./...
+          go build ./cmd/api
+      - name: Commit fix
+        run: |
+          git config user.name github-actions
+          git config user.email actions@users.noreply.github.com
+          rm .github/workflows/oneoff-late-alias-reconcile.yml
+          rm .github/workflows/oneoff-late-alias-reconcile-v2.yml
+          rm scripts/oneoff_fix_late_alias.py
+          git add -A
+          git commit -m "fix(procurement): collapse late-matched invoice lines"
+          git push origin HEAD:fix/procurement-late-alias-collapse
