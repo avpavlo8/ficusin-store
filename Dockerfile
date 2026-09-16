@@ -13,6 +13,7 @@ FROM scratch AS frontend-dist
 COPY --from=frontend /src/frontend/dist /
 
 FROM golang:1.26-bookworm@sha256:6ef6e30f0ea5c384f6d111cf856e024e3086bbdcb1779da3f3b3fbba0aea53d2 AS backend
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
