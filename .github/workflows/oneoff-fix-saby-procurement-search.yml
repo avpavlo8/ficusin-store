@@ -1,0 +1,169 @@
+name: One-off Saby procurement search fix
+
+on:
+  push:
+    branches:
+      - fix/saby-procurement-flower-search
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/saby-procurement-flower-search
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Patch Saby flower search
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service = Path('backend/internal/saby/service.go')
+          text = service.read_text()
+          old = '''type poolRow struct {
+\tSabyID      string         `json:"saby_id"`
+\tCode        string         `json:"code"`
+\tExternalIDs []string       `json:"external_ids"`
+\tArticle     string         `json:"article"`
+\tBarcode     string         `json:"barcode"`
+\tBarcodes    []string       `json:"barcodes"`
+\tName        string         `json:"name"`
+\tDescription string         `json:"description"`
+\tPriceMinor  int64          `json:"price_minor"`
+\tBalance     int            `json:"balance"`
+\tImages      []string       `json:"images"`
+\tAttributes  map[string]any `json:"attributes"`
+\tSectionPath []string       `json:"section_path"`
+}
+'''
+          new = old + '''
+func poolRowFromNormalized(item normalizedItem) poolRow {
+\treturn poolRow{
+\t\tSabyID: item.id, Code: item.code, ExternalIDs: item.externalIDs,
+\t\tArticle: item.article, Barcode: item.barcode, Barcodes: item.barcodes,
+\t\tName: item.name, Description: item.description,
+\t\tPriceMinor: item.costMinor, Balance: item.balance, Images: item.images,
+\t\tAttributes: item.attributes, SectionPath: item.sectionPath,
+\t}
+}
+'''
+          if old not in text:
+              raise SystemExit('poolRow anchor not found')
+          text = text.replace(old, new, 1)
+          old_loop = '''\t\trows = append(rows, poolRow{
+\t\t\tSabyID: item.id, Code: item.code, ExternalIDs: item.externalIDs,
+\t\t\tArticle: item.article, Barcode: item.barcode,
+\t\t\tBarcodes: item.barcodes,
+\t\t\tName:     item.name, Description: item.description,
+\t\t\tPriceMinor: item.costMinor, Balance: item.balance, Images: item.images, Attributes: item.attributes,
+\t\t})
+'''
+          if old_loop not in text:
+              raise SystemExit('catalog row loop anchor not found')
+          text = text.replace(old_loop, '\t\trows = append(rows, poolRowFromNormalized(item))\n', 1)
+          service.write_text(text)
+
+          test = Path('backend/internal/saby/service_test.go')
+          t = test.read_text()
+          anchor = '''func TestNormalizeKeepsCodes(t *testing.T) {'''
+          addition = '''func TestPoolRowKeepsSectionPath(t *testing.T) {
+\trow := poolRowFromNormalized(normalizedItem{id: "fittonia-1", name: "Фиттония", sectionPath: []string{"Цветы маркетплейс"}})
+\tif !sameStrings(row.SectionPath, []string{"Цветы маркетплейс"}) {
+\t\tt.Fatalf("ветка СБИС потерялась перед записью в БД: %+v", row.SectionPath)
+\t}
+}
+
+'''
+          if anchor not in t:
+              raise SystemExit('service test anchor not found')
+          t = t.replace(anchor, addition + anchor, 1)
+          test.write_text(t)
+
+          catalogue = Path('backend/internal/procurement/postgres_catalogue.go')
+          p = catalogue.read_text()
+          old_filter = "WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы Marketplace'), LOWER('Комнатные растения'))"
+          new_filter = "WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'))"
+          if old_filter not in p:
+              raise SystemExit('procurement folder filter anchor not found')
+          p = p.replace(old_filter, new_filter, 1)
+          catalogue.write_text(p)
+
+          worker = Path('backend/internal/procurement/catalog_worker.go')
+          w = worker.read_text()
+          old_poll = 'poll: time.Minute}'
+          new_poll = 'poll: 5 * time.Second}'
+          if old_poll not in w:
+              raise SystemExit('catalog worker poll anchor not found')
+          worker.write_text(w.replace(old_poll, new_poll, 1))
+
+          frontend = Path('frontend/src/AdminProcurementDialogs.tsx')
+          f = frontend.read_text()
+          old_refresh = '''\tconst refreshSaby = async () => {
+\t  setRefreshing(true);
+\t  try {
+\t\tawait api("/api/v1/admin/procurement/integrations/saby/catalog", { method: "POST" });
+\t\tconst result = await api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`);
+\t\tsetItems(result.items);
+\t  } catch (error) { onError((error as Error).message); }
+\t  finally { setRefreshing(false); }
+\t};'''
+          new_refresh = '''\tconst refreshSaby = async () => {
+\t  const search = query.trim();
+\t  if (search.length < 2) { onError("Введите минимум 2 символа для поиска"); return; }
+\t  setRefreshing(true);
+\t  try {
+\t\tconst requestedAt = Date.now();
+\t\tawait api("/api/v1/admin/procurement/integrations/saby/catalog", { method: "POST" });
+\t\tlet completed = false;
+\t\tfor (let attempt = 0; attempt < 60; attempt += 1) {
+\t\t  await new Promise<void>((resolve) => window.setTimeout(resolve, 1500));
+\t\t  const dashboard = await api<{ integrationSync?: Array<{ channel: string; resource: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string }> }>("/api/v1/admin/procurement");
+\t\t  const state = dashboard.integrationSync?.find((item) => item.channel === "saby" && item.resource === "catalog");
+\t\t  const attemptAt = state?.lastAttemptAt ? Date.parse(state.lastAttemptAt) : 0;
+\t\t  const successAt = state?.lastSuccessAt ? Date.parse(state.lastSuccessAt) : 0;
+\t\t  if (state?.status === "error" && attemptAt >= requestedAt - 5000) throw new Error(state.lastError || "Не удалось обновить каталог СБИС");
+\t\t  if (successAt >= requestedAt - 5000) { completed = true; break; }
+\t\t}
+\t\tif (!completed) throw new Error("СБИС не успел обновить каталог за 90 секунд. Повторите попытку.");
+\t\tconst result = await api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(search)}`);
+\t\tsetItems(result.items);
+\t  } catch (error) { onError((error as Error).message); }
+\t  finally { setRefreshing(false); }
+\t};'''
+          if old_refresh not in f:
+              raise SystemExit('frontend refresh anchor not found')
+          frontend.write_text(f.replace(old_refresh, new_refresh, 1))
+          PY
+          gofmt -w backend/internal/saby/service.go backend/internal/saby/service_test.go backend/internal/procurement/catalog_worker.go backend/internal/procurement/postgres_catalogue.go
+      - name: Test backend
+        working-directory: backend
+        run: |
+          go test ./...
+          go vet ./...
+          go build ./cmd/api
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Commit fix and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/oneoff-fix-saby-procurement-search.yml
+          git add backend/internal/saby/service.go backend/internal/saby/service_test.go backend/internal/procurement/catalog_worker.go backend/internal/procurement/postgres_catalogue.go frontend/src/AdminProcurementDialogs.tsx .github/workflows/oneoff-fix-saby-procurement-search.yml
+          git commit -m "fix(procurement): restore Saby flower search"
+          git push origin HEAD:fix/saby-procurement-flower-search
