@@ -174,3 +174,77 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 		t.Fatalf("supplier-only line status=%q err=%v", status, err)
 	}
 }
+
+func TestManualInvoicePairSwapsAlreadyMatchedCarmonaRows(t *testing.T) {
+	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("CRM_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	store := NewPostgresStore(pool)
+	unique := time.Now().UnixNano()
+	firstSaby := fmt.Sprintf("carmona-straight-%d", unique)
+	secondSaby := fmt.Sprintf("carmona-curved-%d", unique)
+	for id, name := range map[string]string{firstSaby: "Бонсай Кармона D10", secondSaby: "Бонсай Кармона D15"} {
+		if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance,section_path,seen_at) VALUES($1,$1,$2,0,ARRAY['Цветы'],CURRENT_TIMESTAMP)`, id, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var actorID, supplierID, orderID, documentID int64
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Swap owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("swap-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,country_code,default_currency) VALUES($1,'international','NL','EUR') RETURNING id`, fmt.Sprintf("Swap supplier %d", unique)).Scan(&supplierID); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_orders(supplier_id,order_number,source_kind,currency,status,created_by) VALUES($1,$2,'recommendation','EUR','review',$3) RETURNING id`, supplierID, fmt.Sprintf("SWAP-%d", unique), actorID).Scan(&orderID); err != nil {
+		t.Fatal(err)
+	}
+	hash := fmt.Sprintf("%064x", unique+7)
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'swap.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'parsed','ok',$4,'EUR',2,40,$5) RETURNING id`, supplierID, orderID, hash, fmt.Sprintf("INV-SWAP-%d", unique), actorID).Scan(&documentID); err != nil {
+		t.Fatal(err)
+	}
+	var alias25, alias30 int64
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_supplier_aliases(supplier_id,raw_name,normalized_name,pot_diameter_cm,height_cm,matched_saby_id,match_status,confidence,occurrences,last_seen_at) VALUES($1,'Bonsai Carmona Macrophylla In Ceramic','bonsai carmona macrophylla in ceramic',10,25,$2,'confirmed',1,1,CURRENT_DATE) RETURNING id`, supplierID, secondSaby).Scan(&alias25); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_supplier_aliases(supplier_id,raw_name,normalized_name,pot_diameter_cm,height_cm,matched_saby_id,match_status,confidence,occurrences,last_seen_at) VALUES($1,'Bonsai Carmona Macrophylla In Ceramic','bonsai carmona macrophylla in ceramic',15,30,$2,'confirmed',1,1,CURRENT_DATE) RETURNING id`, supplierID, firstSaby).Scan(&alias30); err != nil {
+		t.Fatal(err)
+	}
+	var firstID, secondID int64
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,supplier_alias_id,saby_id,raw_name,invoice_raw_name,ordered_qty,invoiced_qty,expected_unit_price,unit_price,line_total,load_unit,pot_diameter_cm,height_cm,match_status,package_count,units_per_package,source_page,source_line,reconciliation_status) VALUES($1,$2,$3,$4,'Бонсай Кармона D10','Bonsai Carmona Macrophylla In Ceramic',20,20,8,12.25,245,'shelf',10,25,'confirmed',2,10,1,1,'changed') RETURNING id`, orderID, documentID, alias25, firstSaby).Scan(&firstID); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,supplier_alias_id,saby_id,raw_name,invoice_raw_name,ordered_qty,invoiced_qty,expected_unit_price,unit_price,line_total,load_unit,pot_diameter_cm,height_cm,match_status,package_count,units_per_package,source_page,source_line,reconciliation_status) VALUES($1,$2,$3,$4,'Бонсай Кармона D15','Bonsai Carmona Macrophylla In Ceramic',20,20,12,8.75,175,'shelf',15,30,'confirmed',2,10,1,2,'changed') RETURNING id`, orderID, documentID, alias30, secondSaby).Scan(&secondID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = store.UpdateOrderLine(ctx, Actor{CustomerID: actorID, Role: "owner"}, firstID, OrderLineUpdate{InvoiceLineID: &secondID}); err != nil {
+		t.Fatal(err)
+	}
+	var firstPrice, secondPrice float64
+	var firstAliasSaby, secondAliasSaby string
+	if err = pool.QueryRow(ctx, `SELECT unit_price::DOUBLE PRECISION FROM procurement_order_lines WHERE id=$1`, firstID).Scan(&firstPrice); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT unit_price::DOUBLE PRECISION FROM procurement_order_lines WHERE id=$1`, secondID).Scan(&secondPrice); err != nil {
+		t.Fatal(err)
+	}
+	if firstPrice != 8.75 || secondPrice != 12.25 {
+		t.Fatalf("swapped prices = %.2f / %.2f", firstPrice, secondPrice)
+	}
+	if err = pool.QueryRow(ctx, `SELECT matched_saby_id FROM procurement_supplier_aliases WHERE id=$1`, alias30).Scan(&firstAliasSaby); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT matched_saby_id FROM procurement_supplier_aliases WHERE id=$1`, alias25).Scan(&secondAliasSaby); err != nil {
+		t.Fatal(err)
+	}
+	if firstAliasSaby != firstSaby || secondAliasSaby != secondSaby {
+		t.Fatalf("aliases after swap = %q / %q", firstAliasSaby, secondAliasSaby)
+	}
+}

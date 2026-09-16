@@ -54,6 +54,9 @@ func (stub *procurementStub) OrderDetail(context.Context, int64) (procurement.Or
 func (stub *procurementStub) SabyPriceXLSX(context.Context, int64) ([]byte, string, error) {
 	return []byte("xlsx"), "saby-prices.xlsx", nil
 }
+func (stub *procurementStub) ReceivingPDF(context.Context, int64) ([]byte, string, error) {
+	return []byte("%PDF-test"), "receiving.pdf", nil
+}
 func (stub *procurementStub) CalculateOrder(_ context.Context, _ procurement.Actor, _ int64, _ procurement.CalculationInput) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
 }

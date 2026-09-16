@@ -877,27 +877,14 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 		FOR UPDATE OF planned,invoice
 	`, plannedID, orderID, invoiceID).Scan(&plannedSaby, &plannedCanonical, &aliasID, &documentID, &sourceLine)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return &UserFacingError{Message: "Эти строки уже нельзя сопоставить: обновите закупку и выберите две актуальные строки"}
+		return swapInvoiceAssignmentsBetweenPlans(ctx, tx, actorID, orderID, plannedID, invoiceID)
 	}
 	if err != nil {
 		return fmt.Errorf("lock manual procurement reconciliation pair: %w", err)
 	}
 	if plannedSaby != "" {
-		if _, err := tx.Exec(ctx, `UPDATE procurement_supplier_aliases SET
-			matched_saby_id=$2,canonical_variant_id=NULLIF($3,0),match_status='confirmed',confidence=1,updated_at=CURRENT_TIMESTAMP
-			WHERE id=$1`, aliasID, plannedSaby, plannedCanonical); err != nil {
-			return fmt.Errorf("confirm supplier alias from manual invoice match: %w", err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO procurement_supplier_products(
-			supplier_id,saby_id,canonical_variant_id,supplier_article,availability_status,updated_by)
-			SELECT supplier_id,$2,NULLIF($3,0),supplier_article,'available',NULLIF($4,0)
-			FROM procurement_supplier_aliases WHERE id=$1
-			ON CONFLICT (supplier_id,saby_id) DO UPDATE SET
-				canonical_variant_id=COALESCE(EXCLUDED.canonical_variant_id,procurement_supplier_products.canonical_variant_id),
-				supplier_article=CASE WHEN EXCLUDED.supplier_article<>'' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
-				availability_status='available',updated_by=EXCLUDED.updated_by,updated_at=CURRENT_TIMESTAMP`,
-			aliasID, plannedSaby, plannedCanonical, actorID); err != nil {
-			return fmt.Errorf("remember supplier product from manual invoice match: %w", err)
+		if err := remapProcurementAlias(ctx, tx, actorID, aliasID, plannedSaby, plannedCanonical); err != nil {
+			return err
 		}
 	}
 	// Release the document/source-line unique key before transferring invoice
@@ -920,6 +907,124 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 		FROM procurement_order_lines invoice WHERE planned.id=$1 AND invoice.id=$2`,
 		plannedID, invoiceID, documentID, sourceLine, plannedCanonical, plannedSaby); err != nil {
 		return fmt.Errorf("merge supplier invoice row into procurement plan: %w", err)
+	}
+	return nil
+}
+
+type procurementInvoiceAssignment struct {
+	aliasID    int64
+	documentID int64
+	rawName    string
+	article    string
+	quantity   int
+	unitPrice  float64
+	lineTotal  float64
+	sourcePage int
+	sourceLine int
+}
+
+type procurementPlanIdentity struct {
+	id        int64
+	sabyID    string
+	canonical int64
+	invoice   procurementInvoiceAssignment
+}
+
+func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID, orderID, firstID, secondID int64) error {
+	if firstID == secondID {
+		return &UserFacingError{Message: "Выберите другую строку инвойса"}
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT line.id,COALESCE(line.saby_id,''),COALESCE(line.canonical_variant_id,
+			(SELECT variant_id FROM canonical_product_directory WHERE active AND saby_id=line.saby_id ORDER BY variant_id LIMIT 1),0),
+			line.supplier_alias_id,line.procurement_document_id,line.invoice_raw_name,line.invoice_supplier_article,
+			COALESCE(line.invoiced_qty,0),COALESCE(line.unit_price,0)::DOUBLE PRECISION,COALESCE(line.line_total,0)::DOUBLE PRECISION,
+			COALESCE(line.source_page,0),line.source_line
+		FROM procurement_order_lines line
+		WHERE line.procurement_order_id=$1 AND line.id IN($2,$3)
+			AND line.ordered_qty>0 AND line.procurement_document_id IS NOT NULL
+			AND line.supplier_alias_id IS NOT NULL AND line.source_line IS NOT NULL
+			AND line.reconciliation_status IN('matched','changed') AND NOT line.invoice_excluded
+		ORDER BY line.id FOR UPDATE
+	`, orderID, firstID, secondID)
+	if err != nil {
+		return fmt.Errorf("query invoice assignments for swap: %w", err)
+	}
+	defer rows.Close()
+	plans := make(map[int64]procurementPlanIdentity, 2)
+	for rows.Next() {
+		var plan procurementPlanIdentity
+		if err := rows.Scan(&plan.id, &plan.sabyID, &plan.canonical, &plan.invoice.aliasID, &plan.invoice.documentID,
+			&plan.invoice.rawName, &plan.invoice.article, &plan.invoice.quantity, &plan.invoice.unitPrice,
+			&plan.invoice.lineTotal, &plan.invoice.sourcePage, &plan.invoice.sourceLine); err != nil {
+			return fmt.Errorf("scan invoice assignment for swap: %w", err)
+		}
+		plans[plan.id] = plan
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	first, firstOK := plans[firstID]
+	second, secondOK := plans[secondID]
+	if !firstOK || !secondOK || first.sabyID == "" || second.sabyID == "" {
+		return &UserFacingError{Message: "Эти строки нельзя поменять местами. Обновите закупку и выберите две сопоставленные позиции"}
+	}
+	if first.invoice.aliasID == second.invoice.aliasID && first.sabyID != second.sabyID {
+		return &UserFacingError{Message: "У этих строк один ключ поставщика. Сначала уточните размеры, чтобы разделить варианты товара"}
+	}
+	if err := remapProcurementAlias(ctx, tx, actorID, second.invoice.aliasID, first.sabyID, first.canonical); err != nil {
+		return err
+	}
+	if err := remapProcurementAlias(ctx, tx, actorID, first.invoice.aliasID, second.sabyID, second.canonical); err != nil {
+		return err
+	}
+	// Free one unique (document, source_line) slot, then rotate the two invoice
+	// assignments. Planned Saby cards, planned prices, dimensions and packaging
+	// remain on their original rows.
+	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET procurement_document_id=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, firstID); err != nil {
+		return fmt.Errorf("release invoice assignment for swap: %w", err)
+	}
+	if err := applyProcurementInvoiceAssignment(ctx, tx, secondID, second, first.invoice); err != nil {
+		return err
+	}
+	if err := applyProcurementInvoiceAssignment(ctx, tx, firstID, first, second.invoice); err != nil {
+		return err
+	}
+	return nil
+}
+
+func remapProcurementAlias(ctx context.Context, tx pgx.Tx, actorID, aliasID int64, sabyID string, canonical int64) error {
+	if _, err := tx.Exec(ctx, `UPDATE procurement_supplier_aliases SET
+		matched_saby_id=$2,canonical_variant_id=NULLIF($3,0),match_status='confirmed',confidence=1,updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1`, aliasID, sabyID, canonical); err != nil {
+		return fmt.Errorf("confirm supplier alias from manual invoice match: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO procurement_supplier_products(
+		supplier_id,saby_id,canonical_variant_id,supplier_article,availability_status,updated_by)
+		SELECT supplier_id,$2,NULLIF($3,0),supplier_article,'available',NULLIF($4,0)
+		FROM procurement_supplier_aliases WHERE id=$1
+		ON CONFLICT (supplier_id,saby_id) DO UPDATE SET
+			canonical_variant_id=COALESCE(EXCLUDED.canonical_variant_id,procurement_supplier_products.canonical_variant_id),
+			supplier_article=CASE WHEN EXCLUDED.supplier_article<>'' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+			availability_status='available',updated_by=EXCLUDED.updated_by,updated_at=CURRENT_TIMESTAMP`,
+		aliasID, sabyID, canonical, actorID); err != nil {
+		return fmt.Errorf("remember supplier product from manual invoice match: %w", err)
+	}
+	return nil
+}
+
+func applyProcurementInvoiceAssignment(ctx context.Context, tx pgx.Tx, lineID int64, plan procurementPlanIdentity, invoice procurementInvoiceAssignment) error {
+	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
+		procurement_document_id=$2,supplier_alias_id=$3,invoice_raw_name=$4,invoice_supplier_article=$5,
+		invoiced_qty=$6,unit_price=$7,line_total=$8,source_page=NULLIF($9,0),source_line=$10,
+		match_status='confirmed',canonical_variant_id=NULLIF($11,0),comparison_accepted=FALSE,comparison_note='',
+		reconciliation_status=CASE WHEN ordered_qty IS DISTINCT FROM $6::INTEGER
+			OR expected_unit_price IS NULL OR ABS(expected_unit_price-$7::NUMERIC)>.005 THEN 'changed' ELSE 'matched' END,
+		purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
+		proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1`, lineID, invoice.documentID, invoice.aliasID, invoice.rawName, invoice.article,
+		invoice.quantity, invoice.unitPrice, invoice.lineTotal, invoice.sourcePage, invoice.sourceLine, plan.canonical); err != nil {
+		return fmt.Errorf("apply swapped invoice assignment: %w", err)
 	}
 	return nil
 }
