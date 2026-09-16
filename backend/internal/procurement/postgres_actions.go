@@ -407,6 +407,11 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				AND ozon_product.external_id = directory.ozon_articles[1]
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 			WHERE channel.name = ANY($3::TEXT[])
+				AND (channel.name IN ('wb','ozon')
+					OR n.price_minor <= 0
+					OR ABS(p.retail::NUMERIC - n.price_minor::NUMERIC / 100)
+						> (n.price_minor::NUMERIC / 100) *
+							(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
 		`, batchID, orderID, channels)
 		if err == nil && containsString(channels, "saby_price") {
 			_, err = tx.Exec(ctx, `
@@ -419,6 +424,10 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 						AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
 						AND l.saby_id IS NOT NULL AND l.proposed_retail_rub IS NOT NULL
 					GROUP BY l.saby_id, n.code, n.name, n.price_minor
+					HAVING n.price_minor <= 0
+						OR ABS(MAX(l.proposed_retail_rub)::NUMERIC - n.price_minor::NUMERIC / 100)
+							> (n.price_minor::NUMERIC / 100) *
+								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
 				)
 				INSERT INTO procurement_action_items (
 					batch_id, procurement_order_line_id, channel, external_article,

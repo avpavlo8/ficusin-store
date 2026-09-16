@@ -115,6 +115,17 @@ func (stub *storeStub) ListIntegrationHealth(context.Context) ([]IntegrationHeal
 	return stub.integrationHealth, nil
 }
 
+type sabyRefreshExecutorStub struct{ refreshCalls int }
+
+func (stub *sabyRefreshExecutorStub) Configured(channel string) bool { return channel == "saby" }
+func (*sabyRefreshExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
+	return ActionExecution{}, nil
+}
+func (stub *sabyRefreshExecutorStub) RefreshSabyCatalog(context.Context) (ChannelLinkResult, error) {
+	stub.refreshCalls++
+	return ChannelLinkResult{Channel: "saby", Fetched: 10, Linked: 10}, nil
+}
+
 type probeExecutorStub struct{ probeCalls int }
 
 func (*probeExecutorStub) Configured(string) bool { return true }
@@ -165,6 +176,20 @@ func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 	}
 	if len(store.batchChannels) != 2 || store.batchChannels[0] != "saby_price" || store.batchChannels[1] != "ozon" {
 		t.Fatalf("channels = %#v", store.batchChannels)
+	}
+}
+
+func TestPrepareReceiptRefreshesSabyBalancesBeforeSnapshot(t *testing.T) {
+	t.Parallel()
+	store := &storeStub{}
+	executor := &sabyRefreshExecutorStub{}
+	service := NewServiceWithExecutor(store, executor)
+	batch, err := service.PrepareBatch(context.Background(), Actor{}, 18, "receipt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.Kind != "receipt" || executor.refreshCalls != 1 {
+		t.Fatalf("batch=%+v refreshCalls=%d", batch, executor.refreshCalls)
 	}
 }
 
