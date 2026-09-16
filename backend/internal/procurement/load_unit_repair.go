@@ -48,6 +48,20 @@ func repairStoredInvoiceLoadUnits(ctx context.Context, tx pgx.Tx, orderID int64)
 	if parserKind != "holland_packing_list" || strings.TrimSpace(extractedText) == "" {
 		return nil
 	}
+	var needsRepair bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM procurement_order_lines
+			WHERE procurement_order_id=$1 AND procurement_document_id=$2
+				AND reconciliation_status<>'superseded'
+				AND (BTRIM(load_unit)='' OR LOWER(BTRIM(load_unit))='shelf')
+		)
+	`, orderID, documentID).Scan(&needsRepair); err != nil {
+		return fmt.Errorf("check invoice trolley repair: %w", err)
+	}
+	if !needsRepair {
+		return nil
+	}
 	parsed, err := ParseDocumentText(extractedText)
 	if err != nil {
 		return fmt.Errorf("reparse invoice trolley data: %w", err)

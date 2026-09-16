@@ -518,6 +518,17 @@ func (store *PostgresStore) CreatePlan(ctx context.Context, actor Actor, input P
 }
 
 func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (OrderDetail, error) {
+	repairTx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return OrderDetail{}, fmt.Errorf("begin invoice trolley repair: %w", err)
+	}
+	if err := repairStoredInvoiceLoadUnits(ctx, repairTx, orderID); err != nil {
+		_ = repairTx.Rollback(ctx)
+		return OrderDetail{}, err
+	}
+	if err := repairTx.Commit(ctx); err != nil {
+		return OrderDetail{}, fmt.Errorf("commit invoice trolley repair: %w", err)
+	}
 	order, err := loadOrderSummary(ctx, store.pool, orderID)
 	if err != nil {
 		return OrderDetail{}, err

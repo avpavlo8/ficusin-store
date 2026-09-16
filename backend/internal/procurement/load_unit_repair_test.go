@@ -1,6 +1,10 @@
 package procurement
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestValidInvoiceLoadUnitRejectsPlanningShelf(t *testing.T) {
 	for _, value := range []string{"", "shelf", "CC1", "1.0"} {
@@ -22,5 +26,22 @@ func TestParseHollandKeepsBoxAcrossPagesUntilNextBox(t *testing.T) {
 	}
 	if len(doc.Lines) != 3 || doc.Lines[0].LoadUnit != "1" || doc.Lines[1].LoadUnit != "1" || doc.Lines[2].LoadUnit != "2" {
 		t.Fatalf("load units = %#v", doc.Lines)
+	}
+}
+
+func TestOrderDetailRepairsLoadUnitsBeforeValidationSourceGuard(t *testing.T) {
+	source, err := os.ReadFile("postgres.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func (store *PostgresStore) OrderDetail")
+	end := strings.Index(text[start:], "func (store *PostgresStore) loadOrderValidation")
+	if start < 0 || end < 0 {
+		t.Fatal("OrderDetail source not found")
+	}
+	body := text[start : start+end]
+	if !strings.Contains(body, "repairStoredInvoiceLoadUnits(ctx, repairTx, orderID)") {
+		t.Fatal("OrderDetail must repair invoice load units before validation")
 	}
 }

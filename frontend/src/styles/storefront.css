@@ -448,3 +448,18 @@
 }
 .account-shipment-offers{display:grid;gap:16px;padding:24px;border:1px solid var(--line);border-radius:18px;background:var(--paper)}.account-shipment-offers h3{margin:4px 0 0;font-family:var(--serif);font-size:32px;color:var(--green)}.account-shipment-offer{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr);gap:18px;padding:18px;border:1px solid var(--line);border-radius:14px}.account-shipment-offer>div{display:grid;grid-template-columns:1fr auto;gap:8px 16px}.account-shipment-offer p{display:flex;justify-content:space-between;gap:16px;margin:0}.account-shipment-offer .primary-button,.account-shipment-offer>.order-note,.account-shipment-offer>small{grid-column:1/-1}.account-shipment-offer-expired,.account-shipment-offer-stale{opacity:.78}
 @media(max-width:700px){.account-shipment-offers{padding:16px}.account-shipment-offer{grid-template-columns:1fr}.account-shipment-offer p{align-items:flex-start;flex-direction:column;gap:2px}}
+
+
+/* Procurement retail price delta */
+.procurement-lines td.procurement-retail-change {
+  background: rgba(188, 92, 58, 0.10);
+  box-shadow: inset 3px 0 0 rgba(164, 73, 44, 0.78);
+}
+.procurement-lines .procurement-price-new {
+  color: #9c4f35;
+  font-weight: 750;
+}
+.procurement-lines td.procurement-retail-change small {
+  color: #8d5947;
+  font-weight: 600;
+}
