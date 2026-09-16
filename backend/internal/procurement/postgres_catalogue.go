@@ -567,7 +567,7 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 			WHERE nomenclature.missing_since IS NULL
 				AND EXISTS (
 					SELECT 1 FROM UNNEST(nomenclature.section_path) part
-					WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы Marketplace'), LOWER('Комнатные растения'))
+					WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'))
 				)
 				AND (nomenclature.name ILIKE '%' || $1 || '%'
 				OR nomenclature.code ILIKE '%' || $1 || '%'

@@ -30,7 +30,7 @@ type CatalogWorker struct {
 }
 
 func NewCatalogWorker(store CatalogSyncStore, source CatalogSyncSource, logger *slog.Logger) *CatalogWorker {
-	return &CatalogWorker{store: store, source: source, logger: logger, owner: fmt.Sprintf("catalog-%d", time.Now().UnixNano()), poll: time.Minute}
+	return &CatalogWorker{store: store, source: source, logger: logger, owner: fmt.Sprintf("catalog-%d", time.Now().UnixNano()), poll: 5 * time.Second}
 }
 
 func (worker *CatalogWorker) Run(ctx context.Context) {
