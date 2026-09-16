@@ -668,6 +668,21 @@ func (store *PostgresStore) ResolveAlias(
 	`, aliasID, input.SabyID, input.MatchStatus, canonicalVariantID); err != nil {
 		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
 	}
+	if input.MatchStatus == "confirmed" {
+		orderIDs, err := reconcileLateAliasMatches(ctx, tx, aliasID, input.SabyID)
+		if err != nil {
+			return AliasReview{}, fmt.Errorf("reconcile procurement lines after late alias match: %w", err)
+		}
+		for _, orderID := range orderIDs {
+			if err := releaseOrderAllocations(ctx, tx, orderID, "late_alias_reconcile"); err != nil {
+				return AliasReview{}, fmt.Errorf("release allocations after late alias match: %w", err)
+			}
+			if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+				return AliasReview{}, fmt.Errorf("rebalance allocations after late alias match: %w", err)
+			}
+		}
+	}
+
 	// A prepared document contains a snapshot of the old Saby IDs and balances.
 	// After an alias is moved to another card that snapshot must not be reused.
 	// Cancel only batches which have not produced a successful external action;
@@ -748,6 +763,95 @@ func (store *PostgresStore) ResolveAlias(
 		return AliasReview{}, fmt.Errorf("commit procurement alias resolution: %w", err)
 	}
 	return item, nil
+}
+
+func reconcileLateAliasMatches(ctx context.Context, tx pgx.Tx, aliasID int64, sabyID string) ([]int64, error) {
+	type lateAliasPair struct {
+		orderID    int64
+		addedID    int64
+		plannedID  int64
+		documentID int64
+		sourceLine int
+	}
+	rows, err := tx.Query(ctx, `
+		WITH unique_added AS (
+			SELECT line.procurement_order_id,line.saby_id,MIN(line.id) AS added_id
+			FROM procurement_order_lines line
+			JOIN procurement_supplier_aliases alias ON alias.id=line.supplier_alias_id
+			WHERE line.supplier_alias_id=$1 AND line.saby_id=$2
+				AND alias.match_status='confirmed' AND alias.matched_saby_id=line.saby_id
+				AND line.procurement_document_id IS NOT NULL AND line.source_line IS NOT NULL
+				AND line.reconciliation_status='added' AND line.match_status='confirmed'
+				AND NOT line.invoice_excluded
+			GROUP BY line.procurement_order_id,line.saby_id
+			HAVING COUNT(*)=1
+		), unique_missing AS (
+			SELECT procurement_order_id,saby_id,MIN(id) AS planned_id
+			FROM procurement_order_lines
+			WHERE saby_id=$2 AND procurement_document_id IS NULL
+				AND ordered_qty>0 AND reconciliation_status='missing'
+			GROUP BY procurement_order_id,saby_id
+			HAVING COUNT(*)=1
+		)
+		SELECT added.procurement_order_id,added.added_id,missing.planned_id,
+			invoice.procurement_document_id,invoice.source_line
+		FROM unique_added added
+		JOIN unique_missing missing USING(procurement_order_id,saby_id)
+		JOIN procurement_orders orders ON orders.id=added.procurement_order_id
+		JOIN procurement_order_lines invoice ON invoice.id=added.added_id
+		WHERE orders.status NOT IN ('received','cancelled')
+	`, aliasID, sabyID)
+	if err != nil {
+		return nil, err
+	}
+	pairs := make([]lateAliasPair, 0)
+	for rows.Next() {
+		var pair lateAliasPair
+		if err := rows.Scan(&pair.orderID, &pair.addedID, &pair.plannedID, &pair.documentID, &pair.sourceLine); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		pairs = append(pairs, pair)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	seen := map[int64]struct{}{}
+	orderIDs := make([]int64, 0, len(pairs))
+	for _, pair := range pairs {
+		// Free the document/source-line unique key before moving invoice provenance
+		// onto the buyer's original planned row. The superseded row keeps all
+		// parsed invoice facts, while the active row becomes the single source of truth.
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
+			procurement_document_id=NULL,reconciliation_status='superseded',updated_at=CURRENT_TIMESTAMP
+			WHERE id=$1`, pair.addedID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines planned SET
+			procurement_document_id=$3,supplier_alias_id=invoice.supplier_alias_id,
+			canonical_variant_id=COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id),
+			invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,
+			invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,
+			match_status=invoice.match_status,source_page=invoice.source_page,source_line=$4,
+			comparison_accepted=FALSE,comparison_note='',
+			reconciliation_status=CASE WHEN planned.ordered_qty IS DISTINCT FROM invoice.invoiced_qty
+				OR (planned.expected_unit_price IS NOT NULL AND
+					(invoice.unit_price IS NULL OR ABS(planned.expected_unit_price-invoice.unit_price)>.005))
+				THEN 'changed' ELSE 'matched' END,
+			updated_at=CURRENT_TIMESTAMP
+			FROM procurement_order_lines invoice WHERE planned.id=$1 AND invoice.id=$2`,
+			pair.plannedID, pair.addedID, pair.documentID, pair.sourceLine); err != nil {
+			return nil, err
+		}
+		if _, ok := seen[pair.orderID]; !ok {
+			seen[pair.orderID] = struct{}{}
+			orderIDs = append(orderIDs, pair.orderID)
+		}
+	}
+	return orderIDs, nil
 }
 
 func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
