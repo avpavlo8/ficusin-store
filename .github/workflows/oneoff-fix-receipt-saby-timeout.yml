@@ -1,0 +1,45 @@
+name: Apply receipt Saby timeout fix
+on:
+  push:
+    branches:
+      - fix/procurement-receipt-saby-timeout
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/procurement-receipt-saby-timeout
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply patch
+        run: python3 scripts/oneoff_fix_receipt_saby_timeout.py
+      - name: Format and verify backend
+        working-directory: backend
+        run: |
+          gofmt -w internal/procurement/service.go internal/procurement/service_test.go
+          go test ./internal/procurement
+          go vet ./...
+          go build ./cmd/api
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit fix
+        run: |
+          git config user.name github-actions
+          git config user.email actions@users.noreply.github.com
+          git add backend/internal/procurement/service.go backend/internal/procurement/service_test.go frontend/src/AdminProcurementDialogs.tsx
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix(procurement): avoid Saby refresh gateway timeout"
+          git push origin HEAD:fix/procurement-receipt-saby-timeout
