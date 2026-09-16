@@ -1,0 +1,142 @@
+name: One-off procurement recovery and history patch
+
+on:
+  push:
+    branches:
+      - fix/procurement-recovery-history
+    paths:
+      - .github/workflows/one-off-procurement-recovery.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Patch procurement recovery and action history
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          backend = Path('backend/internal/procurement/postgres_catalogue.go')
+          text = backend.read_text()
+
+          old = '''\tallowed := input.Status == "cancelled" && current != "received" && current != "cancelled" ||
+          \t\tinput.Status == "review" && current == "ready_to_receive" ||
+          \t\tinput.Status == "received" && current == "ready_to_receive"'''
+          new = '''\trestoring := input.Status == "review" && current == "cancelled"
+          \tallowed := input.Status == "cancelled" && current != "received" && current != "cancelled" ||
+          \t\tinput.Status == "review" && (current == "ready_to_receive" || current == "cancelled") ||
+          \t\tinput.Status == "received" && current == "ready_to_receive"'''
+          if old not in text:
+              raise SystemExit('backend transition anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''\t\t\tcancelled_at = CASE WHEN $2 = 'cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,'''
+          new = '''\t\t\tcancelled_at = CASE WHEN $2 = 'cancelled' THEN CURRENT_TIMESTAMP WHEN $2 = 'review' THEN NULL ELSE cancelled_at END,'''
+          if old not in text:
+              raise SystemExit('backend cancelled_at anchor not found')
+          text = text.replace(old, new, 1)
+
+          anchor = '''\tif input.Status == "review" {
+          \t\t// Returning a procurement to review is also the operator escape hatch for'''
+          replacement = '''\tif restoring {
+          \t\tif err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+          \t\t\treturn OrderDetail{}, fmt.Errorf("restore procurement request allocations: %w", err)
+          \t\t}
+          \t}
+          \tif input.Status == "review" {
+          \t\t// Returning a procurement to review is also the operator escape hatch for'''
+          if anchor not in text:
+              raise SystemExit('backend review anchor not found')
+          text = text.replace(anchor, replacement, 1)
+          backend.write_text(text)
+
+          frontend = Path('frontend/src/AdminProcurementDialogs.tsx')
+          text = frontend.read_text()
+
+          set_status = re.compile(r'''  const setStatus = async \(status: "received" \| "cancelled" \| "review"\) => \{.*?\n  const remove = async''', re.S)
+          replacement = '''  const setStatus = async (status: "received" | "cancelled" | "review") => {
+            const restoring = status === "review" && detail?.order.status === "cancelled";
+            const confirmation = status === "received"
+              ? "Поступление уже проведено в СБИС? Закрыть закупку и выполнить клиентские заявки?"
+              : status === "cancelled"
+                ? "Отменить закупку? Заявки вернутся в открытые."
+                : restoring
+                  ? "Вернуть отменённую закупку в работу? Она откроется на этапе проверки, а старые действия останутся в истории."
+                  : "Вернуть закупку на проверку? Активные действия будут отменены и останутся в истории.";
+            if (!window.confirm(confirmation)) return;
+            setSaving(true);
+            try {
+              const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+              setDetail(normalizeProcurementOrderDetail(item));
+              onSaved();
+            } catch (error) { onError((error as Error).message); }
+            finally { setSaving(false); }
+          };
+          const remove = async'''
+          text, count = set_status.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'frontend setStatus anchor count={count}')
+
+          batch_pattern = re.compile(r'''\{detail\.batches\.map\(\(batch\) => (?P<body><section className="procurement-batch".*?</section>)\)\}''', re.S)
+          match = batch_pattern.search(text)
+          if not match:
+              raise SystemExit('frontend batch renderer not found')
+          batch_body = match.group('body')
+          history_render = '''{detail.batches.filter((batch) => !["completed", "cancelled"].includes(batch.status)).map(renderBatch)}
+          {detail.batches.some((batch) => ["completed", "cancelled"].includes(batch.status)) && <details className="procurement-batch procurement-batch-history"><summary><strong>История поступлений и изменений цен</strong> · {detail.batches.filter((batch) => ["completed", "cancelled"].includes(batch.status)).length}</summary><div className="procurement-batch-history-list">{detail.batches.filter((batch) => ["completed", "cancelled"].includes(batch.status)).map(renderBatch)}</div></details>}'''
+          text = text[:match.start()] + history_render + text[match.end():]
+
+          insert_at = re.search(r'''(  const invoicePairCandidates = .*?\|\| \[\];\n)''', text)
+          if not insert_at:
+              raise SystemExit('frontend render helper anchor not found')
+          helper = f'''  const renderBatch = (batch: ProcurementActionBatch) => {batch_body};\n'''
+          text = text[:insert_at.end()] + helper + text[insert_at.end():]
+
+          cancelled_footer = re.compile(r'''\{detail\.order\.status === "cancelled" && <div className="procurement-order-final"><button className="text-button danger" disabled=\{saving\} onClick=\{\(\) => void remove\(\)\}>Удалить закупку и PDF</button><small>После удаления этот документ можно загрузить заново\.</small></div>\}''')
+          replacement = '''{detail.order.status === "cancelled" && <div className="procurement-order-final"><button className="admin-primary" disabled={saving} onClick={() => void setStatus("review")}>Вернуть закупку в работу</button><button className="text-button danger" disabled={saving} onClick={() => void remove()}>Удалить закупку и PDF</button><small>Восстановление вернёт закупку на проверку. Старые поступления и изменения цен останутся в свёрнутой истории.</small></div>}'''
+          text, count = cancelled_footer.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'frontend cancelled footer anchor count={count}')
+
+          frontend.write_text(text)
+          PY
+
+          gofmt -w backend/internal/procurement/postgres_catalogue.go
+
+      - name: Test backend procurement
+        working-directory: backend
+        run: go test ./internal/procurement
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit patch and remove one-off workflow
+        shell: bash
+        run: |
+          rm .github/workflows/one-off-procurement-recovery.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/internal/procurement/postgres_catalogue.go frontend/src/AdminProcurementDialogs.tsx .github/workflows/one-off-procurement-recovery.yml
+          git commit -m "fix(procurement): restore cancelled purchases and collapse history"
+          git push origin HEAD:fix/procurement-recovery-history
