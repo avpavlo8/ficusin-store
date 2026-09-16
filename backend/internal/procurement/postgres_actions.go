@@ -1014,8 +1014,8 @@ func upsertAlias(
 				unavailable_since = NULL, check_after = NULL, updated_at = CURRENT_TIMESTAMP
 			WHERE supplier_id = $1 AND LOWER(raw_name) = LOWER($2)
 				AND COALESCE(supplier_article, '') = COALESCE($4, '')
-				AND COALESCE(pot_diameter_cm, -1) = COALESCE($5, -1)
-				AND COALESCE(height_cm, -1) = COALESCE($6, -1)
+				AND pot_diameter_cm IS NOT DISTINCT FROM $5::NUMERIC(6,1)
+				AND height_cm IS NOT DISTINCT FROM $6::NUMERIC(6,1)
 			RETURNING id, COALESCE(matched_saby_id, ''), match_status
 		`, supplierID, line.RawName, normalizeAlias(line.RawName), line.SupplierArticle,
 			line.PotDiameterCM, line.HeightCM, seenAt,
