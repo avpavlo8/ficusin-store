@@ -1129,8 +1129,9 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	} else if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement order status: %w", err)
 	}
+	restoring := input.Status == "review" && current == "cancelled"
 	allowed := input.Status == "cancelled" && current != "received" && current != "cancelled" ||
-		input.Status == "review" && current == "ready_to_receive" ||
+		input.Status == "review" && (current == "ready_to_receive" || current == "cancelled") ||
 		input.Status == "received" && current == "ready_to_receive"
 	if !allowed {
 		return OrderDetail{}, ErrInvalidInput
@@ -1150,7 +1151,7 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_orders SET status = $2,
 			received_at = CASE WHEN $2 = 'received' THEN CURRENT_TIMESTAMP ELSE received_at END,
-			cancelled_at = CASE WHEN $2 = 'cancelled' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,
+			cancelled_at = CASE WHEN $2 = 'cancelled' THEN CURRENT_TIMESTAMP WHEN $2 = 'review' THEN NULL ELSE cancelled_at END,
 			notes = CASE WHEN $3 = '' THEN notes ELSE CONCAT_WS(E'\n', NULLIF(notes, ''), $3) END,
 			updated_at = CURRENT_TIMESTAMP WHERE id = $1
 	`, orderID, input.Status, input.Note); err != nil {
@@ -1165,6 +1166,11 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if input.Status == "received" {
 		if err := fulfilOrderAllocations(ctx, tx, orderID); err != nil {
 			return OrderDetail{}, err
+		}
+	}
+	if restoring {
+		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("restore procurement request allocations: %w", err)
 		}
 	}
 	if input.Status == "review" {
