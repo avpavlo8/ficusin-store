@@ -256,6 +256,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			Barcodes: item.barcodes,
 			Name:     item.name, Description: item.description,
 			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images, Attributes: item.attributes,
+			SectionPath: item.sectionPath,
 		})
 		received = append(received, item.id)
 	}
