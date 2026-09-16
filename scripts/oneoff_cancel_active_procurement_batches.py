@@ -1,9 +1,0 @@
-from pathlib import Path
-
-p = Path('backend/internal/procurement/postgres_catalogue.go')
-text = p.read_text()
-old = '''\tif input.Status == "review" {\n\t\t_, _ = tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE procurement_order_id = $1 AND status = 'draft'`, orderID)\n\t}\n'''
-new = '''\tif input.Status == "review" {\n\t\t// Returning a procurement to review is also the operator escape hatch for\n\t\t// an external action that is already queued/processing. Invalidate the\n\t\t// worker lease before cancelling the batch so a stale finisher cannot\n\t\t// revive it after the user has corrected the procurement. Completed\n\t\t// external actions remain immutable history.\n\t\tif _, err := tx.Exec(ctx, `\n\t\t\tUPDATE procurement_action_items item SET\n\t\t\t\tstatus='skipped', error_message='Отменено: закупка возвращена на проверку',\n\t\t\t\tlocked_until=NULL, lock_owner='', lock_token=lock_token+1, updated_at=CURRENT_TIMESTAMP\n\t\t\tFROM procurement_action_batches batch\n\t\t\tWHERE batch.id=item.batch_id AND batch.procurement_order_id=$1\n\t\t\t\tAND batch.status NOT IN ('completed','cancelled') AND item.status<>'completed'\n\t\t`, orderID); err != nil {\n\t\t\treturn OrderDetail{}, fmt.Errorf("stop procurement actions before review: %w", err)\n\t\t}\n\t\tif _, err := tx.Exec(ctx, `\n\t\t\tUPDATE procurement_action_batches SET status='cancelled',updated_at=CURRENT_TIMESTAMP\n\t\t\tWHERE procurement_order_id=$1 AND status NOT IN ('completed','cancelled')\n\t\t`, orderID); err != nil {\n\t\t\treturn OrderDetail{}, fmt.Errorf("cancel procurement batches before review: %w", err)\n\t\t}\n\t}\n'''
-if text.count(old) != 1:
-    raise SystemExit(f'expected one review cancellation block, got {text.count(old)}')
-p.write_text(text.replace(old, new, 1))
