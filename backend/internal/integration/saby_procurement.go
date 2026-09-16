@@ -264,9 +264,17 @@ func mergeSabyCatalog(complete, priced []map[string]any) []map[string]any {
 				}
 				continue
 			}
-			// The catalogue card is Saby's master price for this store. A
-			// configured price column may be channel-specific or stale, so it
-			// is only a fallback when the card itself has no price.
+			// A newly created catalogue card may temporarily expose cost=0
+			// even though the configured price list already has the retail price.
+			// Preserve a positive catalogue price, but let a positive price-list
+			// value fill an absent or zero catalogue price.
+			if field == "cost" {
+				existing, exists := current[field]
+				if (!exists || !positiveSabyNumber(existing)) && positiveSabyNumber(value) {
+					current[field] = value
+				}
+				continue
+			}
 			if existing, ok := current[field]; !ok || emptySabyValue(existing) {
 				current[field] = value
 			}
@@ -281,6 +289,11 @@ func mergeSabyCatalog(complete, priced []map[string]any) []map[string]any {
 		}
 	}
 	return result
+}
+
+func positiveSabyNumber(value any) bool {
+	parsed, err := strconv.ParseFloat(strings.ReplaceAll(sabyValue(value), ",", "."), 64)
+	return err == nil && parsed > 0
 }
 
 func cloneValues(source url.Values) url.Values {

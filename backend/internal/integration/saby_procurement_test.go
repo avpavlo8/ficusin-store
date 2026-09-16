@@ -95,6 +95,22 @@ func TestSabyCatalogPageAcceptsObjectWrappedRows(t *testing.T) {
 	}
 }
 
+func TestMergeSabyCatalogUsesPositivePriceListCostWhenCardCostIsZero(t *testing.T) {
+	t.Parallel()
+	complete := []map[string]any{{"id": "42", "name": "Anthu Black Love", "cost": float64(0), "balance": float64(0)}}
+	priced := []map[string]any{{"id": "42", "name": "Anthu Black Love", "cost": float64(1750), "balance": float64(3)}}
+	merged := mergeSabyCatalog(complete, priced)
+	if len(merged) != 1 {
+		t.Fatalf("merged rows = %d", len(merged))
+	}
+	if !positiveSabyNumber(merged[0]["cost"]) || sabyValue(merged[0]["cost"]) != "1750" {
+		t.Fatalf("merged cost = %#v", merged[0]["cost"])
+	}
+	if sabyValue(merged[0]["balance"]) != "3" {
+		t.Fatalf("merged balance = %#v", merged[0]["balance"])
+	}
+}
+
 func TestSabyCatalogPageAcceptsSingleObjectRow(t *testing.T) {
 	t.Parallel()
 	var page sabyCatalogPage
@@ -120,30 +136,44 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 		var rpc struct {
 			Method   string         `json:"method"`
 			Protocol int            `json:"protocol"`
-			Params map[string]any `json:"params"`
+			Params   map[string]any `json:"params"`
 		}
-		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
-		if rpc.Protocol != 6 { t.Fatalf("protocol = %d", rpc.Protocol) }
+		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil {
+			t.Fatal(err)
+		}
+		if rpc.Protocol != 6 {
+			t.Fatalf("protocol = %d", rpc.Protocol)
+		}
 		mutex.Lock()
 		methods = append(methods, rpc.Method)
 		mutex.Unlock()
 		switch rpc.Method {
 		case "РеалВх.Создать":
 			filter := rpc.Params["Фильтр"].(map[string]any)
-			if sabyRecordField(filter, "ТипДокумента") != float64(224) { t.Fatalf("filter: %+v", filter) }
+			if sabyRecordField(filter, "ТипДокумента") != float64(224) {
+				t.Fatalf("filter: %+v", filter)
+			}
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,%q,null],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"},{"n":"Примечание","t":"Строка"}]}}`, receiptGUID)
 		case "РеалВх.NomCreateWithSaveBatch":
 			recordSet := rpc.Params["rs"].(map[string]any)
 			rows := recordSet["d"].([]any)
-			if len(rows) != 1 || rows[0].([]any)[0] != float64(42) || rows[0].([]any)[2] != float64(2) { t.Fatalf("rows: %+v", rows) }
+			if len(rows) != 1 || rows[0].([]any)[0] != float64(42) || rows[0].([]any)[2] != float64(2) {
+				t.Fatalf("rows: %+v", rows)
+			}
 			actions := rpc.Params["actions"].(map[string]any)
-			if sabyRecordField(actions, "changed_document") != true { t.Fatalf("actions: %+v", actions) }
+			if sabyRecordField(actions, "changed_document") != true {
+				t.Fatalf("actions: %+v", actions)
+			}
 			added = true
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"created":true}]}`))
 		case "ДокОтгрВх.Прочитать":
-			if rpc.Params["ИдО"] != float64(7) { t.Fatalf("ИдО must be Int64, got %#v", rpc.Params["ИдО"]) }
+			if rpc.Params["ИдО"] != float64(7) {
+				t.Fatalf("ИдО must be Int64, got %#v", rpc.Params["ИдО"])
+			}
 			rows := "[]"
-			if added { rows = "[[42,2]]" }
+			if added {
+				rows = "[[42,2]]"
+			}
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[7,%q,true,{"_type":"recordset","d":%s,"s":[{"n":"Номенклатура","t":"Число целое"},{"n":"Количество","t":"Число вещественное"}]}],"s":[{"n":"@Документ","t":"Число целое"},{"n":"ИдентификаторДокумента","t":"UUID"},{"n":"Проведен","t":"Логическое"},{"n":"Строки","t":"Выборка"}]}}`, receiptGUID, rows)
 		default:
 			t.Fatalf("unsafe Saby method: %s", rpc.Method)
@@ -155,10 +185,16 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	client.authURL, client.apiBase, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL, server.URL+"/service/?srv=1", server.Client()
 	receiptPayload := json.RawMessage(`{"orderId":323,"orderNumber":"323","supplier":{"name":"ТК Ярославский, ООО","taxId":"7627031650"},"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","quantity":2,"unitCost":125.5}]}`)
 	result, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: receiptPayload})
-	if err != nil { t.Fatal(err) }
-	if !result.Completed || result.ExternalOperationID == "" || result.ExternalURL == "" { t.Fatalf("unexpected result: %+v", result) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Completed || result.ExternalOperationID == "" || result.ExternalURL == "" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
 	pricePayload := json.RawMessage(`{"orderId":323,"lines":[{"sabyId":"42","code":"X42","name":"Орхидея D12","newPrice":2650}]}`)
-	if _, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_price", Payload: pricePayload}); err == nil || !strings.Contains(err.Error(), "импорт XLSX") { t.Fatalf("price error = %v", err) }
+	if _, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_price", Payload: pricePayload}); err == nil || !strings.Contains(err.Error(), "импорт XLSX") {
+		t.Fatalf("price error = %v", err)
+	}
 
 	for _, method := range methods {
 		if strings.Contains(method, "ПодготовитьДействие") || strings.Contains(method, "ВыполнитьДействие") {
@@ -166,7 +202,9 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 		}
 	}
 	want := []string{"РеалВх.Создать", "РеалВх.NomCreateWithSaveBatch", "ДокОтгрВх.Прочитать"}
-	if fmt.Sprint(methods) != fmt.Sprint(want) { t.Fatalf("methods: %+v, want %+v", methods, want) }
+	if fmt.Sprint(methods) != fmt.Sprint(want) {
+		t.Fatalf("methods: %+v, want %+v", methods, want)
+	}
 }
 
 func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
@@ -178,8 +216,13 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
 			return
 		}
-		var rpc struct { Method string `json:"method"`; Params map[string]any `json:"params"` }
-		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
+		var rpc struct {
+			Method string         `json:"method"`
+			Params map[string]any `json:"params"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil {
+			t.Fatal(err)
+		}
 		switch rpc.Method {
 		case "РеалВх.Создать":
 			creates++
@@ -192,13 +235,19 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary add error"}}`))
 				return
 			}
-			if row[2] != float64(2) { t.Fatalf("retry must repeat the whole failed atomic batch, row=%+v", row) }
+			if row[2] != float64(2) {
+				t.Fatalf("retry must repeat the whole failed atomic batch, row=%+v", row)
+			}
 			saved = 2
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"created":true}]}`))
 		case "ДокОтгрВх.Прочитать":
-			if rpc.Params["ИдО"] != float64(8) { t.Fatalf("ИдО must remain numeric: %#v", rpc.Params["ИдО"]) }
+			if rpc.Params["ИдО"] != float64(8) {
+				t.Fatalf("ИдО must remain numeric: %#v", rpc.Params["ИдО"])
+			}
 			rows := "[]"
-			if saved > 0 { rows = fmt.Sprintf("[[42,%d]]", saved) }
+			if saved > 0 {
+				rows = fmt.Sprintf("[[42,%d]]", saved)
+			}
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q,true,{"_type":"recordset","d":%s,"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"},{"n":"Строки"}]}}`, receiptGUID, rows)
 		default:
 			t.Fatalf("unexpected method: %s", rpc.Method)
@@ -209,10 +258,16 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 	client.authURL, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL+"/service/?srv=1", server.Client()
 	payload := json.RawMessage(`{"orderId":323,"supplier":{"name":"ТК Ярославский","taxId":"7627031650","kpp":"762701001"},"lines":[{"sabyId":"42","name":"Орхидея D12","quantity":2}]}`)
 	first, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload})
-	if err == nil || first.ExternalOperationID != "8" { t.Fatalf("first: %+v, err=%v", first, err) }
+	if err == nil || first.ExternalOperationID != "8" {
+		t.Fatalf("first: %+v, err=%v", first, err)
+	}
 	second, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload, ExternalOperationID: first.ExternalOperationID, ExternalURL: first.ExternalURL})
-	if err != nil || !second.Completed { t.Fatalf("second: %+v, err=%v", second, err) }
-	if creates != 1 || adds != 2 { t.Fatalf("creates=%d adds=%d", creates, adds) }
+	if err != nil || !second.Completed {
+		t.Fatalf("second: %+v, err=%v", second, err)
+	}
+	if creates != 1 || adds != 2 {
+		t.Fatalf("creates=%d adds=%d", creates, adds)
+	}
 }
 
 func TestSabyReceiptRetryReplacesUnaddressablePublicHeader(t *testing.T) {
@@ -226,15 +281,22 @@ func TestSabyReceiptRetryReplacesUnaddressablePublicHeader(t *testing.T) {
 			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
 			return
 		}
-		var rpc struct { Method string `json:"method"`; Params map[string]any `json:"params"` }
-		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
+		var rpc struct {
+			Method string         `json:"method"`
+			Params map[string]any `json:"params"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil {
+			t.Fatal(err)
+		}
 		switch rpc.Method {
 		case "РеалВх.Создать":
 			creates++
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[777,%q],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"}]}}`, retailGUID)
 		case "ДокОтгрВх.Прочитать":
 			rows := "[]"
-			if saved { rows = `[[631,{"value":"20"}]]` }
+			if saved {
+				rows = `[[631,{"value":"20"}]]`
+			}
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[777,%q,true,{"_type":"recordset","d":%s,"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"},{"n":"Строки"}]}}`, retailGUID, rows)
 		case "РеалВх.NomCreateWithSaveBatch":
 			adds++
@@ -253,7 +315,9 @@ func TestSabyReceiptRetryReplacesUnaddressablePublicHeader(t *testing.T) {
 		Channel: "saby_receipt", Payload: payload, ExternalOperationID: failedHeaderGUID,
 		ExternalURL: "https://ret.saby.ru/doc/" + failedHeaderGUID,
 	})
-	if err != nil || !result.Completed { t.Fatalf("result=%+v, err=%v", result, err) }
+	if err != nil || !result.Completed {
+		t.Fatalf("result=%+v, err=%v", result, err)
+	}
 	if result.ExternalOperationID != "777" || result.ExternalURL == "https://ret.saby.ru/doc/"+failedHeaderGUID || creates != 1 || adds != 1 {
 		t.Fatalf("result=%+v creates=%d adds=%d", result, creates, adds)
 	}
@@ -266,8 +330,12 @@ func TestSabyReceiptIsNotCompletedUntilEveryLineIsVisible(t *testing.T) {
 			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
 			return
 		}
-		var rpc struct { Method string `json:"method"` }
-		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil { t.Fatal(err) }
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil {
+			t.Fatal(err)
+		}
 		switch rpc.Method {
 		case "РеалВх.Создать":
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[9,"receipt-guid"],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"}]}}`))
@@ -351,8 +419,8 @@ func TestSabyLineQuantitiesReadsNestedRelationCells(t *testing.T) {
 			[]any{
 				map[string]any{
 					"_type": "record",
-					"s": []any{map[string]any{"n": "@Номенклатура"}},
-					"d": []any{float64(3604)},
+					"s":     []any{map[string]any{"n": "@Номенклатура"}},
+					"d":     []any{float64(3604)},
 				},
 				map[string]any{"Количество": "3,0"},
 			},
@@ -368,7 +436,7 @@ func TestSabyLineCountIgnoresRelationCellShape(t *testing.T) {
 	t.Parallel()
 	result := map[string]any{
 		"_type": "recordset",
-		"s": []any{map[string]any{"n": "Номенклатура"}, map[string]any{"n": "Количество"}},
+		"s":     []any{map[string]any{"n": "Номенклатура"}, map[string]any{"n": "Количество"}},
 		"d": []any{
 			[]any{map[string]any{"object": "opaque"}, map[string]any{"value": "20"}},
 			[]any{map[string]any{"different": []any{3604}}, float64(3)},

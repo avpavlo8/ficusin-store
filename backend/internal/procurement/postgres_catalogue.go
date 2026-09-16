@@ -837,7 +837,7 @@ func reconcileLateAliasMatches(ctx context.Context, tx pgx.Tx, aliasID int64, sa
 			procurement_document_id=$3,supplier_alias_id=invoice.supplier_alias_id,
 			canonical_variant_id=COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id),
 			invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,
-			invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,
+			invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,load_unit=invoice.load_unit,
 			match_status=invoice.match_status,source_page=invoice.source_page,source_line=$4,
 			comparison_accepted=FALSE,comparison_note='',
 			reconciliation_status=CASE WHEN planned.ordered_qty IS DISTINCT FROM invoice.invoiced_qty
@@ -897,7 +897,7 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 		procurement_document_id=$3,supplier_alias_id=invoice.supplier_alias_id,
 		canonical_variant_id=CASE WHEN $5>0 THEN $5 ELSE COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id) END,
 		invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,
-		invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,
+		invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,load_unit=invoice.load_unit,
 		match_status=CASE WHEN $6<>'' THEN 'confirmed' ELSE invoice.match_status END,
 		source_page=invoice.source_page,source_line=$4,comparison_accepted=FALSE,comparison_note='',
 		reconciliation_status=CASE WHEN planned.ordered_qty IS DISTINCT FROM invoice.invoiced_qty

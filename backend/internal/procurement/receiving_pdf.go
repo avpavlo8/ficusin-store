@@ -8,9 +8,11 @@ import (
 	"github.com/signintech/gopdf"
 )
 
+// ISO 216 A4 in PDF points, landscape. Keep the exact dimensions so
+// printer drivers recognise the document as A4 rather than a custom sheet.
 const (
-	receivingPDFWidth  = 842.0
-	receivingPDFHeight = 595.0
+	receivingPDFWidth  = 841.89
+	receivingPDFHeight = 595.28
 )
 
 type receivingPDFRow struct {
