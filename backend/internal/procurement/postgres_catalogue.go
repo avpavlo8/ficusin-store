@@ -1168,7 +1168,27 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 		}
 	}
 	if input.Status == "review" {
-		_, _ = tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE procurement_order_id = $1 AND status = 'draft'`, orderID)
+		// Returning a procurement to review is also the operator escape hatch for
+		// an external action that is already queued/processing. Invalidate the
+		// worker lease before cancelling the batch so a stale finisher cannot
+		// revive it after the user has corrected the procurement. Completed
+		// external actions remain immutable history.
+		if _, err := tx.Exec(ctx, `
+			UPDATE procurement_action_items item SET
+				status='skipped', error_message='Отменено: закупка возвращена на проверку',
+				locked_until=NULL, lock_owner='', lock_token=lock_token+1, updated_at=CURRENT_TIMESTAMP
+			FROM procurement_action_batches batch
+			WHERE batch.id=item.batch_id AND batch.procurement_order_id=$1
+				AND batch.status NOT IN ('completed','cancelled') AND item.status<>'completed'
+		`, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("stop procurement actions before review: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE procurement_action_batches SET status='cancelled',updated_at=CURRENT_TIMESTAMP
+			WHERE procurement_order_id=$1 AND status NOT IN ('completed','cancelled')
+		`, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("cancel procurement batches before review: %w", err)
+		}
 	}
 	if err := audit(ctx, tx, actor, "procurement.order.status", "procurement_order", orderID, input); err != nil {
 		return OrderDetail{}, err

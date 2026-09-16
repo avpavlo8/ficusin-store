@@ -632,6 +632,13 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 			}
 		}
 	}
+	if kind == "receipt" && service.executor != nil && service.executor.Configured("saby") {
+		if refresher, ok := service.executor.(SabyCatalogRefresher); ok {
+			if _, err := refresher.RefreshSabyCatalog(ctx); err != nil {
+				return ActionBatch{}, &UserFacingError{Message: "Не удалось обновить актуальные остатки СБИС перед поступлением. Повторите подготовку поступления позже."}
+			}
+		}
+	}
 	return service.store.PrepareBatch(ctx, actor, orderID, kind, selected)
 }
 

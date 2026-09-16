@@ -400,6 +400,7 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	// this flow with СБИС.ЗаписатьДокумент: in production that public call
 	// created a second empty receipt instead of updating the Retail document.
 	internalID, _ := strconv.ParseInt(strings.TrimSpace(item.ExternalOperationID), 10, 64)
+	createdNow := internalID <= 0
 	link := safeSabyURL(item.ExternalURL)
 	if internalID <= 0 {
 		// A UUID here belongs to one of the failed public-header attempts and
@@ -407,10 +408,9 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		link = ""
 	}
 	var document map[string]any
-	savedLineCount := 0
 	var err error
 	if internalID > 0 {
-		document, savedLineCount, err = client.readReceipt(ctx, internalID)
+		document, _, err = client.readReceipt(ctx, internalID)
 		if err != nil {
 			execution := procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(internalID, 10), ExternalURL: link}
 			return execution, fmt.Errorf("открыть созданное поступление Saby %s: %w", link, err)
@@ -441,7 +441,7 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 		note = fmt.Sprintf("Ficusin Store, возврат растения №%d", payload.ReturnID)
 	}
 	setSabyRecordField(document, "Примечание", note)
-	if savedLineCount == 0 {
+	if createdNow {
 		fields := []any{
 			map[string]any{"n": "Номенклатура", "t": "Число целое"},
 			map[string]any{"n": "КодЕГАИС", "t": "Строка"},
@@ -622,13 +622,30 @@ func sabyLineCount(value any) int {
 }
 
 func sabyFieldIndex(fields []any, name string) int {
+	wanted := normalizeSabyFieldName(name)
 	for index, raw := range fields {
 		field, _ := raw.(map[string]any)
-		if field["n"] == name {
+		if normalizeSabyFieldName(field["n"]) == wanted {
+			return index
+		}
+	}
+	for index, raw := range fields {
+		field, _ := raw.(map[string]any)
+		actual := normalizeSabyFieldName(field["n"])
+		if wanted == "номенклатура" && strings.Contains(actual, "номенклатур") {
+			return index
+		}
+		if wanted == "количество" && strings.Contains(actual, "количеств") && !strings.Contains(actual, "мест") {
 			return index
 		}
 	}
 	return -1
+}
+
+func normalizeSabyFieldName(value any) string {
+	name := strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
+	name = strings.TrimLeft(name, "@")
+	return strings.NewReplacer(" ", "", "_", "", "-", "").Replace(name)
 }
 
 func addSabyQuantity(result map[int64]float64, row []any, nomIndex, quantityIndex int) {

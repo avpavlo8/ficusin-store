@@ -207,9 +207,9 @@ func TestSabyDraftsAreWrittenButNeverPosted(t *testing.T) {
 	}
 }
 
-func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
+func TestSabyReceiptRetryNeverAppendsRowsToExistingDocument(t *testing.T) {
 	const receiptGUID = "22222222-2222-4222-8222-222222222222"
-	var creates, adds, saved int
+	var creates, adds int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if request.URL.Path == "/oauth/service/" {
@@ -217,8 +217,7 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 			return
 		}
 		var rpc struct {
-			Method string         `json:"method"`
-			Params map[string]any `json:"params"`
+			Method string `json:"method"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&rpc); err != nil {
 			t.Fatal(err)
@@ -229,26 +228,9 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"}]}}`, receiptGUID)
 		case "РеалВх.NomCreateWithSaveBatch":
 			adds++
-			recordSet := rpc.Params["rs"].(map[string]any)
-			row := recordSet["d"].([]any)[0].([]any)
-			if adds == 1 {
-				_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary add error"}}`))
-				return
-			}
-			if row[2] != float64(2) {
-				t.Fatalf("retry must repeat the whole failed atomic batch, row=%+v", row)
-			}
-			saved = 2
-			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"created":true}]}`))
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary add error"}}`))
 		case "ДокОтгрВх.Прочитать":
-			if rpc.Params["ИдО"] != float64(8) {
-				t.Fatalf("ИдО must remain numeric: %#v", rpc.Params["ИдО"])
-			}
-			rows := "[]"
-			if saved > 0 {
-				rows = fmt.Sprintf("[[42,%d]]", saved)
-			}
-			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q,true,{"_type":"recordset","d":%s,"s":[{"n":"Номенклатура"},{"n":"Количество"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"},{"n":"Строки"}]}}`, receiptGUID, rows)
+			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q,false,{"_type":"recordset","d":[],"s":[{"n":"@Номенклатура"},{"n":"КоличествоОсн"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"},{"n":"Строки"}]}}`, receiptGUID)
 		default:
 			t.Fatalf("unexpected method: %s", rpc.Method)
 		}
@@ -256,17 +238,17 @@ func TestSabyReceiptRetryUsesStableExternalID(t *testing.T) {
 	defer server.Close()
 	client := NewSabyClient("client", "secret", "service", 278, 6)
 	client.authURL, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL+"/service/?srv=1", server.Client()
-	payload := json.RawMessage(`{"orderId":323,"supplier":{"name":"ТК Ярославский","taxId":"7627031650","kpp":"762701001"},"lines":[{"sabyId":"42","name":"Орхидея D12","quantity":2}]}`)
+	payload := json.RawMessage(`{"orderId":323,"lines":[{"sabyId":"42","name":"Орхидея D12","quantity":2}]}`)
 	first, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload})
 	if err == nil || first.ExternalOperationID != "8" {
-		t.Fatalf("first: %+v, err=%v", first, err)
+		t.Fatalf("first=%+v err=%v", first, err)
 	}
 	second, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload, ExternalOperationID: first.ExternalOperationID, ExternalURL: first.ExternalURL})
-	if err != nil || !second.Completed {
-		t.Fatalf("second: %+v, err=%v", second, err)
+	if err == nil || !strings.Contains(err.Error(), "0 товарных строк из 1") {
+		t.Fatalf("second=%+v err=%v", second, err)
 	}
-	if creates != 1 || adds != 2 {
-		t.Fatalf("creates=%d adds=%d", creates, adds)
+	if creates != 1 || adds != 1 {
+		t.Fatalf("creates=%d adds=%d; retry duplicated Saby rows", creates, adds)
 	}
 }
 
@@ -485,5 +467,21 @@ func TestSabyBoolAcceptsStringFolderFlag(t *testing.T) {
 	t.Parallel()
 	if !sabyBool("true") || !sabyBool(true) || sabyBool("false") || sabyBool(nil) {
 		t.Fatal("Saby folder flag must accept both JSON booleans and their string form")
+	}
+}
+
+func TestSabyLineReadersAcceptInternalFieldAliases(t *testing.T) {
+	t.Parallel()
+	value := map[string]any{
+		"_type": "recordset",
+		"s":     []any{map[string]any{"n": "@Номенклатура"}, map[string]any{"n": "КоличествоОсн"}},
+		"d":     []any{[]any{float64(3604), "3,0"}},
+	}
+	if count := sabyLineCount(value); count != 1 {
+		t.Fatalf("count=%d", count)
+	}
+	quantities := sabyLineQuantities(value)
+	if quantities[3604] != 3 {
+		t.Fatalf("quantities=%+v", quantities)
 	}
 }

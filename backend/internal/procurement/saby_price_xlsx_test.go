@@ -9,11 +9,12 @@ import (
 )
 
 func TestBuildSabyPriceXLSXUsesOfficialCodeAndHighestPrice(t *testing.T) {
-	first, second, ignored := int64(2650), int64(2790), int64(9999)
+	first, second, ignored, unchanged := int64(2650), int64(2790), int64(9999), int64(2750)
 	content, count, err := BuildSabyPriceXLSX([]OrderLine{
-		{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &first},
-		{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &second},
-		{SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored},
+		{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &first, PriceChangeNeeded: true},
+		{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &second, PriceChangeNeeded: true},
+		{SabyID: "77", SabyCode: "X77", MatchStatus: "confirmed", ProposedRetailRUB: &unchanged, PriceChangeNeeded: false},
+		{SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},
 	})
 	if err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
@@ -28,14 +29,25 @@ func TestBuildSabyPriceXLSXUsesOfficialCodeAndHighestPrice(t *testing.T) {
 			continue
 		}
 		opened, openErr := file.Open()
-		if openErr != nil { t.Fatal(openErr) }
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
 		data, readErr := io.ReadAll(opened)
 		_ = opened.Close()
-		if readErr != nil { t.Fatal(readErr) }
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
 		sheet = string(data)
 	}
 	for _, wanted := range []string{"Код", "Цена", "X42", "2790"} {
-		if !strings.Contains(sheet, wanted) { t.Fatalf("sheet lacks %q: %s", wanted, sheet) }
+		if !strings.Contains(sheet, wanted) {
+			t.Fatalf("sheet lacks %q: %s", wanted, sheet)
+		}
 	}
-	if strings.Contains(sheet, "X99") { t.Fatalf("ignored product leaked into sheet: %s", sheet) }
+	if strings.Contains(sheet, "X99") {
+		t.Fatalf("ignored product leaked into sheet: %s", sheet)
+	}
+	if strings.Contains(sheet, "X77") {
+		t.Fatalf("unchanged price leaked into sheet: %s", sheet)
+	}
 }
