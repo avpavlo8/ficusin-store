@@ -2,24 +2,23 @@ name: One-off Saby procurement search fix
 
 on:
   push:
-    branches:
-      - fix/saby-procurement-flower-search
+    branches: [fix/saby-procurement-flower-search]
+    paths:
+      - .github/workflows/oneoff-fix-saby-procurement-search.yml
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/saby-procurement-flower-search
-          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.x"
+          go-version: '1.26.x'
           cache-dependency-path: backend/go.sum
       - uses: actions/setup-node@v4
         with:
@@ -78,7 +77,7 @@ func poolRowFromNormalized(item normalizedItem) poolRow {
 
           test = Path('backend/internal/saby/service_test.go')
           t = test.read_text()
-          anchor = '''func TestNormalizeKeepsCodes(t *testing.T) {'''
+          anchor = 'func TestNormalizeKeepsCodes(t *testing.T) {'
           addition = '''func TestPoolRowKeepsSectionPath(t *testing.T) {
 \trow := poolRowFromNormalized(normalizedItem{id: "fittonia-1", name: "Фиттония", sectionPath: []string{"Цветы маркетплейс"}})
 \tif !sameStrings(row.SectionPath, []string{"Цветы маркетплейс"}) {
@@ -89,8 +88,7 @@ func poolRowFromNormalized(item normalizedItem) poolRow {
 '''
           if anchor not in t:
               raise SystemExit('service test anchor not found')
-          t = t.replace(anchor, addition + anchor, 1)
-          test.write_text(t)
+          test.write_text(t.replace(anchor, addition + anchor, 1))
 
           catalogue = Path('backend/internal/procurement/postgres_catalogue.go')
           p = catalogue.read_text()
@@ -98,16 +96,14 @@ func poolRowFromNormalized(item normalizedItem) poolRow {
           new_filter = "WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'))"
           if old_filter not in p:
               raise SystemExit('procurement folder filter anchor not found')
-          p = p.replace(old_filter, new_filter, 1)
-          catalogue.write_text(p)
+          catalogue.write_text(p.replace(old_filter, new_filter, 1))
 
           worker = Path('backend/internal/procurement/catalog_worker.go')
           w = worker.read_text()
           old_poll = 'poll: time.Minute}'
-          new_poll = 'poll: 5 * time.Second}'
           if old_poll not in w:
               raise SystemExit('catalog worker poll anchor not found')
-          worker.write_text(w.replace(old_poll, new_poll, 1))
+          worker.write_text(w.replace(old_poll, 'poll: 5 * time.Second}', 1))
 
           frontend = Path('frontend/src/AdminProcurementDialogs.tsx')
           f = frontend.read_text()
@@ -148,6 +144,7 @@ func poolRowFromNormalized(item normalizedItem) poolRow {
           frontend.write_text(f.replace(old_refresh, new_refresh, 1))
           PY
           gofmt -w backend/internal/saby/service.go backend/internal/saby/service_test.go backend/internal/procurement/catalog_worker.go backend/internal/procurement/postgres_catalogue.go
+          git diff --check
       - name: Test backend
         working-directory: backend
         run: |
@@ -161,9 +158,10 @@ func poolRowFromNormalized(item normalizedItem) poolRow {
           npm run build
       - name: Commit fix and remove one-off workflow
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm .github/workflows/oneoff-fix-saby-procurement-search.yml
-          git add backend/internal/saby/service.go backend/internal/saby/service_test.go backend/internal/procurement/catalog_worker.go backend/internal/procurement/postgres_catalogue.go frontend/src/AdminProcurementDialogs.tsx .github/workflows/oneoff-fix-saby-procurement-search.yml
-          git commit -m "fix(procurement): restore Saby flower search"
+          set -euo pipefail
+          git rm .github/workflows/oneoff-fix-saby-procurement-search.yml
+          git add backend/internal/saby/service.go backend/internal/saby/service_test.go backend/internal/procurement/catalog_worker.go backend/internal/procurement/postgres_catalogue.go frontend/src/AdminProcurementDialogs.tsx
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(procurement): restore Saby flower search'
           git push origin HEAD:fix/saby-procurement-flower-search
