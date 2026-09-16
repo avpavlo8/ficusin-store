@@ -179,7 +179,7 @@ func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 	}
 }
 
-func TestPrepareReceiptRefreshesSabyBalancesBeforeSnapshot(t *testing.T) {
+func TestPrepareReceiptDoesNotSynchronouslyRefreshSaby(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
 	executor := &sabyRefreshExecutorStub{}
@@ -188,8 +188,8 @@ func TestPrepareReceiptRefreshesSabyBalancesBeforeSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if batch.Kind != "receipt" || executor.refreshCalls != 1 {
-		t.Fatalf("batch=%+v refreshCalls=%d", batch, executor.refreshCalls)
+	if batch.Kind != "receipt" || executor.refreshCalls != 0 {
+		t.Fatalf("batch=%+v refreshCalls=%d; HTTP preparation must not call Saby catalogue directly", batch, executor.refreshCalls)
 	}
 }
 
