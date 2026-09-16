@@ -1087,8 +1087,8 @@ func (store *PostgresStore) ImportDocument(
 					canonical_variant_id=(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3),
 					invoiced_qty = $7, unit_price = $8, line_total = $9,
 					match_status = $10, source_page = $11, source_line = $12,
-					reconciliation_status=CASE WHEN ordered_qty<>$7 OR expected_unit_price IS NULL OR $8 IS NULL OR
-						ABS(expected_unit_price-$8)>.005
+					reconciliation_status=CASE WHEN ordered_qty<>$7 OR expected_unit_price IS NULL OR
+						ABS(expected_unit_price-($8::NUMERIC))>.005
 						THEN 'changed' ELSE 'matched' END,updated_at = CURRENT_TIMESTAMP
 				WHERE id = $13 AND procurement_order_id=$1 RETURNING id
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
