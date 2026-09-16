@@ -613,7 +613,9 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		SELECT s.kind, o.status,
 			COUNT(d.id) FILTER (WHERE d.superseded_at IS NULL)::INTEGER,
 			COUNT(d.id) FILTER (WHERE d.superseded_at IS NULL AND d.arithmetic_status <> 'ok')::INTEGER,
-			COUNT(DISTINCT NULLIF(l.load_unit, '')) FILTER (WHERE l.match_status = 'confirmed')::INTEGER
+			COUNT(DISTINCT NULLIF(BTRIM(l.load_unit), '')) FILTER (WHERE l.match_status = 'confirmed'
+				AND NOT l.invoice_excluded AND l.reconciliation_status <> 'superseded'
+				AND BTRIM(l.load_unit) ~ '^[0-9]+$')::INTEGER
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_documents d ON d.procurement_order_id = o.id
@@ -648,7 +650,7 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		if kind == KindInternational && (line.PotDiameterCM == nil || *line.PotDiameterCM <= 0 || line.HeightCM == nil || *line.HeightCM <= 0) {
 			result.MissingDimensions++
 		}
-		if kind == KindInternational && strings.TrimSpace(line.LoadUnit) == "" {
+		if kind == KindInternational && documents > 0 && !validInvoiceLoadUnit(line.LoadUnit) {
 			result.MissingLoadUnits++
 		}
 		quantity := float64(line.Quantity)
@@ -725,6 +727,11 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	if activeApproved {
 		return OrderDetail{}, ErrInvalidInput
 	}
+	if kind == KindInternational {
+		if err := repairStoredInvoiceLoadUnits(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, err
+		}
+	}
 	type sourceLine struct {
 		id                            int64
 		quantity, orderedQty          int
@@ -768,7 +775,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 				rows.Close()
 				return OrderDetail{}, ErrInvalidInput
 			}
-			if kind == KindInternational && (line.pot <= 0 || line.height <= 0 || strings.TrimSpace(line.loadUnit) == "") {
+			if kind == KindInternational && (line.pot <= 0 || line.height <= 0 || !validInvoiceLoadUnit(line.loadUnit)) {
 				rows.Close()
 				return OrderDetail{}, ErrInvalidInput
 			}
@@ -1085,14 +1092,14 @@ func (store *PostgresStore) ImportDocument(
 					supplier_alias_id = $3, saby_id=COALESCE(NULLIF($4,''),saby_id),
 					invoice_raw_name = $5, invoice_supplier_article = $6,
 					canonical_variant_id=(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3),
-					invoiced_qty = $7, unit_price = $8, line_total = $9,
-					match_status = $10, source_page = $11, source_line = $12,
+					invoiced_qty = $7, unit_price = $8, line_total = $9, load_unit = $10,
+					match_status = $11, source_page = $12, source_line = $13,
 					reconciliation_status=CASE WHEN ordered_qty<>$7 OR expected_unit_price IS NULL OR
 						ABS(expected_unit_price-($8::NUMERIC))>.005
 						THEN 'changed' ELSE 'matched' END,updated_at = CURRENT_TIMESTAMP
-				WHERE id = $13 AND procurement_order_id=$1 RETURNING id
+				WHERE id = $14 AND procurement_order_id=$1 RETURNING id
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
-				line.Quantity, line.UnitPrice, line.LineTotal, matchStatus,
+				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
 				line.SourcePage, line.SourceLine, reconciledID,
 			).Scan(&reconciledID)
 		}
