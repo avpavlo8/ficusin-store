@@ -50,6 +50,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
 			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
+			AND (l.reconciliation_status <> 'added' OR l.comparison_accepted)
 		GROUP BY o.id, s.name
 		ORDER BY o.created_at DESC
 		LIMIT 100
@@ -271,6 +272,8 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
 				WHERE l.saby_id IS NOT NULL AND l.match_status = 'confirmed'
+					AND NOT l.invoice_excluded AND l.reconciliation_status <> 'superseded'
+					AND (l.reconciliation_status <> 'added' OR l.comparison_accepted)
 					AND o.status IN ('ordered', 'invoice_received', 'review', 'ready_to_receive')
 				GROUP BY l.saby_id
 		), last_orders AS (
@@ -838,8 +841,8 @@ func reconcileLateAliasMatches(ctx context.Context, tx pgx.Tx, aliasID int64, sa
 			match_status=invoice.match_status,source_page=invoice.source_page,source_line=$4,
 			comparison_accepted=FALSE,comparison_note='',
 			reconciliation_status=CASE WHEN planned.ordered_qty IS DISTINCT FROM invoice.invoiced_qty
-				OR (planned.expected_unit_price IS NOT NULL AND
-					(invoice.unit_price IS NULL OR ABS(planned.expected_unit_price-invoice.unit_price)>.005))
+				OR planned.expected_unit_price IS NULL OR invoice.unit_price IS NULL
+				OR ABS(planned.expected_unit_price-invoice.unit_price)>.005
 				THEN 'changed' ELSE 'matched' END,
 			updated_at=CURRENT_TIMESTAMP
 			FROM procurement_order_lines invoice WHERE planned.id=$1 AND invoice.id=$2`,
@@ -852,6 +855,73 @@ func reconcileLateAliasMatches(ctx context.Context, tx pgx.Tx, aliasID int64, sa
 		}
 	}
 	return orderIDs, nil
+}
+
+func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, plannedID, invoiceID int64) error {
+	var plannedSaby string
+	var plannedCanonical int64
+	var aliasID, documentID int64
+	var sourceLine int
+	err := tx.QueryRow(ctx, `
+		SELECT COALESCE(planned.saby_id,''),COALESCE(planned.canonical_variant_id,
+			(SELECT variant_id FROM canonical_product_directory WHERE active AND saby_id=planned.saby_id ORDER BY variant_id LIMIT 1),0),
+			invoice.supplier_alias_id,invoice.procurement_document_id,invoice.source_line
+		FROM procurement_order_lines planned
+		JOIN procurement_order_lines invoice ON invoice.procurement_order_id=planned.procurement_order_id
+		WHERE planned.id=$1 AND planned.procurement_order_id=$2
+			AND planned.ordered_qty>0 AND planned.procurement_document_id IS NULL
+			AND planned.reconciliation_status='missing' AND NOT planned.invoice_excluded
+			AND invoice.id=$3 AND invoice.ordered_qty=0 AND invoice.procurement_document_id IS NOT NULL
+			AND invoice.source_line IS NOT NULL AND invoice.supplier_alias_id IS NOT NULL
+			AND invoice.reconciliation_status='added' AND NOT invoice.invoice_excluded
+		FOR UPDATE OF planned,invoice
+	`, plannedID, orderID, invoiceID).Scan(&plannedSaby, &plannedCanonical, &aliasID, &documentID, &sourceLine)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return &UserFacingError{Message: "Эти строки уже нельзя сопоставить: обновите закупку и выберите две актуальные строки"}
+	}
+	if err != nil {
+		return fmt.Errorf("lock manual procurement reconciliation pair: %w", err)
+	}
+	if plannedSaby != "" {
+		if _, err := tx.Exec(ctx, `UPDATE procurement_supplier_aliases SET
+			matched_saby_id=$2,canonical_variant_id=NULLIF($3,0),match_status='confirmed',confidence=1,updated_at=CURRENT_TIMESTAMP
+			WHERE id=$1`, aliasID, plannedSaby, plannedCanonical); err != nil {
+			return fmt.Errorf("confirm supplier alias from manual invoice match: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO procurement_supplier_products(
+			supplier_id,saby_id,canonical_variant_id,supplier_article,availability_status,updated_by)
+			SELECT supplier_id,$2,NULLIF($3,0),supplier_article,'available',NULLIF($4,0)
+			FROM procurement_supplier_aliases WHERE id=$1
+			ON CONFLICT (supplier_id,saby_id) DO UPDATE SET
+				canonical_variant_id=COALESCE(EXCLUDED.canonical_variant_id,procurement_supplier_products.canonical_variant_id),
+				supplier_article=CASE WHEN EXCLUDED.supplier_article<>'' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+				availability_status='available',updated_by=EXCLUDED.updated_by,updated_at=CURRENT_TIMESTAMP`,
+			aliasID, plannedSaby, plannedCanonical, actorID); err != nil {
+			return fmt.Errorf("remember supplier product from manual invoice match: %w", err)
+		}
+	}
+	// Release the document/source-line unique key before transferring invoice
+	// provenance to the buyer's original planned row.
+	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET procurement_document_id=NULL,
+		reconciliation_status='superseded',updated_at=CURRENT_TIMESTAMP WHERE id=$1`, invoiceID); err != nil {
+		return fmt.Errorf("supersede manually matched supplier line: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines planned SET
+		procurement_document_id=$3,supplier_alias_id=invoice.supplier_alias_id,
+		canonical_variant_id=CASE WHEN $5>0 THEN $5 ELSE COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id) END,
+		invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,
+		invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,
+		match_status=CASE WHEN $6<>'' THEN 'confirmed' ELSE invoice.match_status END,
+		source_page=invoice.source_page,source_line=$4,comparison_accepted=FALSE,comparison_note='',
+		reconciliation_status=CASE WHEN planned.ordered_qty IS DISTINCT FROM invoice.invoiced_qty
+			OR planned.expected_unit_price IS NULL OR invoice.unit_price IS NULL
+			OR ABS(planned.expected_unit_price-invoice.unit_price)>.005 THEN 'changed' ELSE 'matched' END,
+		updated_at=CURRENT_TIMESTAMP
+		FROM procurement_order_lines invoice WHERE planned.id=$1 AND invoice.id=$2`,
+		plannedID, invoiceID, documentID, sourceLine, plannedCanonical, plannedSaby); err != nil {
+		return fmt.Errorf("merge supplier invoice row into procurement plan: %w", err)
+	}
+	return nil
 }
 
 func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
@@ -872,7 +942,15 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
 	}
-	_, err = tx.Exec(ctx, `
+	if input.InvoiceLineID != nil {
+		if err := pairInvoiceLineWithPlan(ctx, tx, actor.CustomerID, orderID, lineID, *input.InvoiceLineID); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, fmt.Errorf("rebalance requests after manual invoice match: %w", err)
+		}
+	} else {
+		_, err = tx.Exec(ctx, `
 		UPDATE procurement_order_lines SET
 			expected_unit_price = CASE WHEN $2 THEN $3 ELSE expected_unit_price END,
 			pot_diameter_cm = CASE WHEN $4 THEN $5 ELSE pot_diameter_cm END,
@@ -887,8 +965,8 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			reconciliation_status = CASE WHEN $14 THEN CASE WHEN $15 THEN 'excluded'
 				WHEN procurement_document_id IS NULL THEN 'missing'
 				WHEN ordered_qty=0 THEN 'added'
-				WHEN invoiced_qty IS DISTINCT FROM ordered_qty OR
-					(expected_unit_price IS NOT NULL AND ABS(expected_unit_price-unit_price)>.005) THEN 'changed'
+				WHEN invoiced_qty IS DISTINCT FROM ordered_qty OR expected_unit_price IS NULL OR unit_price IS NULL
+					OR ABS(expected_unit_price-unit_price)>.005 THEN 'changed'
 				ELSE 'matched' END ELSE reconciliation_status END,
 			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
@@ -896,17 +974,18 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, lineID,
-		input.ExpectedUnitPrice != nil, input.ExpectedUnitPrice,
-		input.PotDiameterCM != nil, input.PotDiameterCM,
-		input.HeightCM != nil, input.HeightCM,
-		input.LoadUnit != nil, input.LoadUnit,
-		input.AcceptComparison != nil, input.AcceptComparison,
-		input.ComparisonNote != nil, input.ComparisonNote,
-		input.InvoiceExcluded != nil, input.InvoiceExcluded, input.ExclusionReason, actor.CustomerID)
-	if err != nil {
-		return OrderDetail{}, fmt.Errorf("update procurement line: %w", err)
+			input.ExpectedUnitPrice != nil, input.ExpectedUnitPrice,
+			input.PotDiameterCM != nil, input.PotDiameterCM,
+			input.HeightCM != nil, input.HeightCM,
+			input.LoadUnit != nil, input.LoadUnit,
+			input.AcceptComparison != nil, input.AcceptComparison,
+			input.ComparisonNote != nil, input.ComparisonNote,
+			input.InvoiceExcluded != nil, input.InvoiceExcluded, input.ExclusionReason, actor.CustomerID)
+		if err != nil {
+			return OrderDetail{}, fmt.Errorf("update procurement line: %w", err)
+		}
 	}
-	if input.InvoiceExcluded != nil {
+	if input.InvoiceLineID == nil && input.InvoiceExcluded != nil {
 		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
 			return OrderDetail{}, fmt.Errorf("rebalance excluded procurement line: %w", err)
 		}
