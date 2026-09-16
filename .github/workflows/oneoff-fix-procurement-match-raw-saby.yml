@@ -1,0 +1,222 @@
+name: One-off procurement raw Saby match fix
+
+on:
+  push:
+    branches:
+      - fix/procurement-match-saby-without-store-card
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ficusin_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_test?sslmode=disable
+      CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_test?sslmode=disable
+      DATABASE_SSL_VERIFY: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/procurement-match-saby-without-store-card
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Patch matching of Saby-only catalogue items
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/internal/procurement/postgres_catalogue.go')
+          text = path.read_text()
+          old = '''\tvar exists bool
+\tvar canonicalVariantID int64
+\tif err := tx.QueryRow(ctx, `SELECT TRUE FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
+\t\treturn AliasReview{}, ErrNotFound
+\t} else if err != nil {
+\t\treturn AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
+\t}
+\tif input.MatchStatus == "confirmed" {
+\t\tif err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
+\t\t\tWHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+\t\t\treturn AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
+\t\t}
+\t\tif canonicalVariantID == 0 {
+\t\t\treturn AliasReview{}, ErrNotFound
+\t\t}
+\t}
+'''
+          new = '''\tvar exists bool
+\tvar canonicalVariantID int64
+\tif err := tx.QueryRow(ctx, `SELECT TRUE FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
+\t\treturn AliasReview{}, ErrNotFound
+\t} else if err != nil {
+\t\treturn AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
+\t}
+\tif input.MatchStatus == "confirmed" {
+\t\tvar candidateExists bool
+\t\tif err := tx.QueryRow(ctx, `SELECT EXISTS(
+\t\t\tSELECT 1 FROM saby_nomenclature WHERE saby_id=$1 AND missing_since IS NULL
+\t\t)`, input.SabyID).Scan(&candidateExists); err != nil {
+\t\t\treturn AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
+\t\t}
+\t\tif !candidateExists {
+\t\t\treturn AliasReview{}, ErrNotFound
+\t\t}
+\t\t// A procurement match is allowed for a real Saby nomenclature item even
+\t\t// when it has not been imported into the public Ficusin catalogue yet.
+\t\t// canonical_variant_id is additive/nullable by design; keep it when a
+\t\t// storefront SKU exists, otherwise retain the Saby ID as the identity.
+\t\tif err := tx.QueryRow(ctx, `SELECT variant_id FROM canonical_product_directory
+\t\t\tWHERE active AND saby_id=$1 ORDER BY variant_id LIMIT 1`, input.SabyID).Scan(&canonicalVariantID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+\t\t\treturn AliasReview{}, fmt.Errorf("resolve canonical Saby candidate: %w", err)
+\t\t}
+\t}
+'''
+          if old not in text:
+              raise SystemExit('ResolveAlias validation anchor not found')
+          text = text.replace(old, new, 1)
+          text = text.replace("canonical_variant_id = CASE WHEN $3='confirmed' THEN $5 ELSE NULL END,", "canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($5, 0) ELSE NULL END,", 1)
+          text = text.replace("canonical_variant_id = CASE WHEN $3='confirmed' THEN $4 ELSE NULL END,", "canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($4, 0) ELSE NULL END,", 1)
+          old_upsert = '''\t\tif _, err := tx.Exec(ctx, `
+\t\t\tINSERT INTO procurement_supplier_products (supplier_id, saby_id, supplier_article, availability_status, updated_by)
+\t\t\tSELECT supplier_id, $2, supplier_article, availability_status, $3
+\t\t\tFROM procurement_supplier_aliases WHERE id = $1
+\t\t\tON CONFLICT (supplier_id, saby_id) DO UPDATE SET
+\t\t\t\tsupplier_article = CASE WHEN EXCLUDED.supplier_article <> '' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+\t\t\t\tupdated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
+\t\t`, aliasID, input.SabyID, actor.CustomerID); err != nil {
+'''
+          new_upsert = '''\t\tif _, err := tx.Exec(ctx, `
+\t\t\tINSERT INTO procurement_supplier_products (supplier_id, saby_id, canonical_variant_id, supplier_article, availability_status, updated_by)
+\t\t\tSELECT supplier_id, $2, NULLIF($4, 0), supplier_article, availability_status, NULLIF($3, 0)
+\t\t\tFROM procurement_supplier_aliases WHERE id = $1
+\t\t\tON CONFLICT (supplier_id, saby_id) DO UPDATE SET
+\t\t\t\tcanonical_variant_id = COALESCE(EXCLUDED.canonical_variant_id, procurement_supplier_products.canonical_variant_id),
+\t\t\t\tsupplier_article = CASE WHEN EXCLUDED.supplier_article <> '' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
+\t\t\t\tupdated_by = COALESCE(EXCLUDED.updated_by, procurement_supplier_products.updated_by), updated_at = CURRENT_TIMESTAMP
+\t\t`, aliasID, input.SabyID, actor.CustomerID, canonicalVariantID); err != nil {
+'''
+          if old_upsert not in text:
+              raise SystemExit('supplier product upsert anchor not found')
+          text = text.replace(old_upsert, new_upsert, 1)
+          path.write_text(text)
+
+          front = Path('frontend/src/AdminProcurementDialogs.tsx')
+          f = front.read_text()
+          f = f.replace('<article key={item.variantId}>', '<article key={item.sabyId}>', 1)
+          front.write_text(f)
+          PY
+          gofmt -w backend/internal/procurement/postgres_catalogue.go
+
+      - name: Add regression test
+        run: |
+          cat > backend/internal/procurement/alias_raw_saby_live_test.go <<'EOF'
+          package procurement
+
+          import (
+          	"context"
+          	"fmt"
+          	"os"
+          	"testing"
+          	"time"
+
+          	"github.com/jackc/pgx/v5/pgxpool"
+          )
+
+          // A manager must be able to match a Holland invoice name to an item
+          // that exists in Saby but has not been imported into the public store.
+          // canonical_variant_id is optional for this procurement identity.
+          func TestResolveAliasAllowsSabyItemWithoutStoreVariantOnLiveDatabase(t *testing.T) {
+          	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
+          	if dsn == "" {
+          		t.Skip("CRM_TEST_DATABASE_URL is not set")
+          	}
+          	ctx := context.Background()
+          	pool, err := pgxpool.New(ctx, dsn)
+          	if err != nil { t.Fatal(err) }
+          	defer pool.Close()
+
+          	unique := time.Now().UnixNano()
+          	sabyID := fmt.Sprintf("raw-saby-%d", unique)
+          	var supplierID, aliasID int64
+          	if err := pool.QueryRow(ctx, `
+          		INSERT INTO procurement_suppliers(name,kind,country_code,default_currency)
+          		VALUES($1,'international','NL','EUR') RETURNING id
+          	`, fmt.Sprintf("Raw Saby supplier %d", unique)).Scan(&supplierID); err != nil { t.Fatal(err) }
+          	if _, err := pool.Exec(ctx, `
+          		INSERT INTO saby_nomenclature(saby_id,code,name,balance,section_path,seen_at,missing_since)
+          		VALUES($1,$2,'Фиттония тест',3,ARRAY['Цветы'],CURRENT_TIMESTAMP,NULL)
+          	`, sabyID, fmt.Sprintf("X%d", unique%10000000)); err != nil { t.Fatal(err) }
+          	if err := pool.QueryRow(ctx, `
+          		INSERT INTO procurement_supplier_aliases(supplier_id,raw_name,normalized_name,match_status)
+          		VALUES($1,'Fitt Gem 3 Kl','fitt gem 3 kl','unmatched') RETURNING id
+          	`, supplierID).Scan(&aliasID); err != nil { t.Fatal(err) }
+
+          	store := NewPostgresStore(pool)
+          	if _, err := store.ResolveAlias(ctx, Actor{Role: "system"}, aliasID, AliasResolution{
+          		MatchStatus: "confirmed", SabyID: sabyID,
+          	}); err != nil {
+          		t.Fatalf("resolve raw Saby catalogue item: %v", err)
+          	}
+
+          	var matched string
+          	var canonical *int64
+          	if err := pool.QueryRow(ctx, `SELECT matched_saby_id,canonical_variant_id FROM procurement_supplier_aliases WHERE id=$1`, aliasID).Scan(&matched, &canonical); err != nil { t.Fatal(err) }
+          	if matched != sabyID { t.Fatalf("matched Saby ID = %q, want %q", matched, sabyID) }
+          	if canonical != nil { t.Fatalf("unexpected canonical variant for Saby-only item: %v", *canonical) }
+          	var linked bool
+          	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_supplier_products WHERE supplier_id=$1 AND saby_id=$2)`, supplierID, sabyID).Scan(&linked); err != nil { t.Fatal(err) }
+          	if !linked { t.Fatal("supplier product link was not created") }
+          }
+          EOF
+          gofmt -w backend/internal/procurement/alias_raw_saby_live_test.go
+
+      - name: Apply migrations
+        run: |
+          for file in timeweb/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file" >/dev/null
+          done
+      - name: Test backend
+        working-directory: backend
+        run: |
+          go test ./internal/procurement -run TestResolveAliasAllowsSabyItemWithoutStoreVariantOnLiveDatabase -count=1
+          go test ./...
+          go vet ./...
+          go build ./cmd/api
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit fix and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/oneoff-fix-procurement-match-raw-saby.yml
+          git add backend/internal/procurement/postgres_catalogue.go backend/internal/procurement/alias_raw_saby_live_test.go frontend/src/AdminProcurementDialogs.tsx .github/workflows/oneoff-fix-procurement-match-raw-saby.yml
+          git commit -m "fix(procurement): match Saby-only catalogue items"
+          git push origin HEAD:fix/procurement-match-saby-without-store-card
