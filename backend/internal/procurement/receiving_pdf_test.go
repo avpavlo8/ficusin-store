@@ -30,6 +30,7 @@ func TestReceivingPDFRowsIgnoreExcludedAndPendingSupplierRows(t *testing.T) {
 	rows, err := receivingPDFRows(OrderDetail{Lines: []OrderLine{
 		{SabyName: "Excluded", MatchStatus: "confirmed", ReconciliationStatus: "excluded", InvoiceExcluded: true, InvoicedQuantity: &qty, ProposedRetailRUB: &price},
 		{SabyName: "Pending", MatchStatus: "confirmed", ReconciliationStatus: "added", InvoicedQuantity: &qty, ProposedRetailRUB: &price},
+		{SabyName: "Ignored", MatchStatus: "ignored", ReconciliationStatus: "changed", ComparisonAccepted: true, InvoicedQuantity: &qty},
 		{SabyName: "Accepted", MatchStatus: "confirmed", ReconciliationStatus: "added", ComparisonAccepted: true, InvoicedQuantity: &qty, ProposedRetailRUB: &price},
 	}})
 	if err != nil {
