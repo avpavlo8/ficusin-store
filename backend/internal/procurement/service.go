@@ -109,6 +109,24 @@ func (service *Service) SabyPriceXLSX(ctx context.Context, orderID int64) ([]byt
 	return content, name, nil
 }
 
+func (service *Service) ReceivingPDF(ctx context.Context, orderID int64) ([]byte, string, error) {
+	if orderID <= 0 {
+		return nil, "", ErrInvalidInput
+	}
+	detail, err := service.store.OrderDetail(ctx, orderID)
+	if err != nil {
+		return nil, "", err
+	}
+	if detail.Order.Status != "ready_to_receive" || !detail.Validation.CanPrepareActions {
+		return nil, "", &UserFacingError{Message: "PDF приёмки доступен после полной сверки и расчёта закупки"}
+	}
+	content, count, err := BuildReceivingPDF(detail)
+	if err != nil {
+		return nil, "", err
+	}
+	return content, fmt.Sprintf("receiving-%d-%d-items.pdf", orderID, count), nil
+}
+
 func NewService(store Store) *Service {
 	return &Service{store: store, parser: NewPDFParser()}
 }

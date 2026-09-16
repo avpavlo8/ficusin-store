@@ -35,11 +35,13 @@ FROM minidocks/poppler:latest@sha256:fc646c55459b604e8b47262bb8b45ac27cd35caadde
 LABEL org.opencontainers.image.title="ficusin-store"
 WORKDIR /app
 COPY --from=backend /out/ficusin-api /app/ficusin-api
+COPY --from=backend /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /app/fonts/DejaVuSans.ttf
 COPY --from=frontend /src/frontend/dist /app/web
 COPY timeweb/migrations /app/migrations
 ENV PORT=3000
 ENV STATIC_DIR=/app/web
 ENV MIGRATIONS_DIR=/app/migrations
+ENV PROCUREMENT_PDF_FONT=/app/fonts/DejaVuSans.ttf
 EXPOSE 3000
 # This image deliberately carries no HEALTHCHECK.
 #

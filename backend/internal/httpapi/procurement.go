@@ -22,6 +22,7 @@ type procurementService interface {
 	CreatePlan(context.Context, procurement.Actor, procurement.PlanCreate) (procurement.OrderSummary, error)
 	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
 	SabyPriceXLSX(context.Context, int64) ([]byte, string, error)
+	ReceivingPDF(context.Context, int64) ([]byte, string, error)
 	CalculateOrder(context.Context, procurement.Actor, int64, procurement.CalculationInput) (procurement.OrderDetail, error)
 	UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error)
 	DeleteOrder(context.Context, procurement.Actor, int64) error
@@ -65,7 +66,9 @@ type procurementHandlers struct {
 }
 
 func (handlers procurementHandlers) previewPlan(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit); !ok { return }
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit); !ok {
+		return
+	}
 	var input procurement.PlanCreate
 	if err := json.NewDecoder(http.MaxBytesReader(response, request.Body, 1<<20)).Decode(&input); err != nil {
 		handlers.failed(response, "decode procurement preview", procurement.ErrInvalidInput)
@@ -74,9 +77,15 @@ func (handlers procurementHandlers) previewPlan(response http.ResponseWriter, re
 	service, ok := handlers.service.(interface {
 		PreviewPlan(context.Context, procurement.PlanCreate) (procurement.PlanPreview, error)
 	})
-	if !ok { handlers.failed(response, "procurement preview unavailable", procurement.ErrInvalidInput); return }
+	if !ok {
+		handlers.failed(response, "procurement preview unavailable", procurement.ErrInvalidInput)
+		return
+	}
 	preview, err := service.PreviewPlan(request.Context(), input)
-	if err != nil { handlers.failed(response, "preview procurement plan", err); return }
+	if err != nil {
+		handlers.failed(response, "preview procurement plan", err)
+		return
+	}
 	writeJSON(response, http.StatusOK, preview)
 }
 
@@ -232,6 +241,26 @@ func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, 
 		return
 	}
 	response.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	response.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	response.Header().Set("Cache-Control", "no-store")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(content)
+}
+
+func (handlers procurementHandlers) receivingPDF(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	content, name, err := handlers.service.ReceivingPDF(request.Context(), orderID)
+	if err != nil {
+		handlers.failed(response, "build procurement receiving PDF", err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/pdf")
 	response.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	response.Header().Set("Cache-Control", "no-store")
 	response.WriteHeader(http.StatusOK)
