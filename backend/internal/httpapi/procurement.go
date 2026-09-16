@@ -651,6 +651,9 @@ func (handlers procurementHandlers) failed(response http.ResponseWriter, operati
 	if errors.Is(err, procurement.ErrOrderNotCancelled) {
 		status, message = http.StatusConflict, "Сначала отмените закупку, затем её можно удалить"
 	}
+	if operation == "import procurement document" && message == "Не удалось выполнить операцию" {
+		message = procurementImportFailureMessage(err)
+	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: message})
 }
