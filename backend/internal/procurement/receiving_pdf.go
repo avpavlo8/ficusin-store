@@ -33,12 +33,21 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		if line.ReconciliationStatus == "added" && !line.ComparisonAccepted {
 			continue
 		}
-		if line.MatchStatus != "confirmed" || line.InvoicedQuantity == nil || *line.InvoicedQuantity <= 0 || line.ProposedRetailRUB == nil || *line.ProposedRetailRUB <= 0 {
-			return nil, &UserFacingError{Message: "PDF приёмки доступен только после сопоставления и расчёта всех позиций"}
+		if line.MatchStatus == "ignored" {
+			continue
 		}
 		name := strings.TrimSpace(line.SabyName)
 		if name == "" {
 			name = strings.TrimSpace(line.RawName)
+		}
+		if line.MatchStatus != "confirmed" {
+			return nil, &UserFacingError{Message: fmt.Sprintf("Не сопоставлена позиция для PDF приёмки: %s", blankDash(name))}
+		}
+		if line.InvoicedQuantity == nil || *line.InvoicedQuantity <= 0 {
+			return nil, &UserFacingError{Message: fmt.Sprintf("Не указано количество для PDF приёмки: %s", blankDash(name))}
+		}
+		if line.ProposedRetailRUB == nil || *line.ProposedRetailRUB <= 0 {
+			return nil, &UserFacingError{Message: fmt.Sprintf("Не рассчитана розничная цена для PDF приёмки: %s", blankDash(name))}
 		}
 		rows = append(rows, receivingPDFRow{
 			Name: name, InvoiceName: strings.TrimSpace(line.InvoiceRawName), Pot: line.PotDiameterCM, Height: line.HeightCM,
