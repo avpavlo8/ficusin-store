@@ -1,0 +1,244 @@
+name: Apply procurement trolley A4 and Saby price fixes
+on:
+  push:
+    branches: [fix/procurement-trolleys-a4-saby-price]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/procurement-trolleys-a4-saby-price
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Patch procurement logic
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one occurrence, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Canonical ISO A4 landscape dimensions in PDF points. The previous
+          # rounded 842x595 rectangle is close to A4, but some print drivers
+          # classify it as a custom page size.
+          replace_once(
+              "backend/internal/procurement/receiving_pdf.go",
+              "const (\n\treceivingPDFWidth  = 842.0\n\treceivingPDFHeight = 595.0\n)",
+              "// ISO 216 A4 in PDF points, landscape. Keep the exact dimensions so\n// printer drivers recognise the document as A4 rather than a custom sheet.\nconst (\n\treceivingPDFWidth  = 841.89\n\treceivingPDFHeight = 595.28\n)",
+          )
+
+          # When an invoice line reconciles with an existing buyer-plan row,
+          # invoice provenance must include the trolley/box. Previously the old
+          # plan value (usually \"shelf\") survived and became a phantom trolley.
+          replace_once(
+              "backend/internal/procurement/postgres.go",
+              "\t\t\t\t\tinvoiced_qty = $7, unit_price = $8, line_total = $9,\n\t\t\t\t\tmatch_status = $10, source_page = $11, source_line = $12,\n\t\t\t\t\treconciliation_status=CASE WHEN ordered_qty<>$7 OR expected_unit_price IS NULL OR\n\t\t\t\t\t\tABS(expected_unit_price-($8::NUMERIC))>.005\n\t\t\t\t\t\tTHEN 'changed' ELSE 'matched' END,updated_at = CURRENT_TIMESTAMP\n\t\t\t\tWHERE id = $13 AND procurement_order_id=$1 RETURNING id",
+              "\t\t\t\t\tinvoiced_qty = $7, unit_price = $8, line_total = $9, load_unit = $10,\n\t\t\t\t\tmatch_status = $11, source_page = $12, source_line = $13,\n\t\t\t\t\treconciliation_status=CASE WHEN ordered_qty<>$7 OR expected_unit_price IS NULL OR\n\t\t\t\t\t\tABS(expected_unit_price-($8::NUMERIC))>.005\n\t\t\t\t\t\tTHEN 'changed' ELSE 'matched' END,updated_at = CURRENT_TIMESTAMP\n\t\t\t\tWHERE id = $14 AND procurement_order_id=$1 RETURNING id",
+          )
+          replace_once(
+              "backend/internal/procurement/postgres.go",
+              "\t\t\t`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,\n\t\t\t\tline.Quantity, line.UnitPrice, line.LineTotal, matchStatus,\n\t\t\t\tline.SourcePage, line.SourceLine, reconciledID,",
+              "\t\t\t`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,\n\t\t\t\tline.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,\n\t\t\t\tline.SourcePage, line.SourceLine, reconciledID,",
+          )
+
+          # A loaded invoice should never count the old planning marker \"shelf\"
+          # as a physical trolley. Only numeric Box no values are trolley IDs.
+          replace_once(
+              "backend/internal/procurement/postgres.go",
+              "\t\t\tCOUNT(DISTINCT NULLIF(l.load_unit, '')) FILTER (WHERE l.match_status = 'confirmed')::INTEGER",
+              "\t\t\tCOUNT(DISTINCT NULLIF(BTRIM(l.load_unit), '')) FILTER (WHERE l.match_status = 'confirmed'\n\t\t\t\tAND NOT l.invoice_excluded AND l.reconciliation_status <> 'superseded'\n\t\t\t\tAND BTRIM(l.load_unit) ~ '^[0-9]+$')::INTEGER",
+          )
+          replace_once(
+              "backend/internal/procurement/postgres.go",
+              "\t\tif kind == KindInternational && strings.TrimSpace(line.LoadUnit) == \"\" {\n\t\t\tresult.MissingLoadUnits++\n\t\t}",
+              "\t\tif kind == KindInternational && documents > 0 && !validInvoiceLoadUnit(line.LoadUnit) {\n\t\t\tresult.MissingLoadUnits++\n\t\t}",
+          )
+          replace_once(
+              "backend/internal/procurement/postgres.go",
+              "\tif activeApproved {\n\t\treturn OrderDetail{}, ErrInvalidInput\n\t}\n\ttype sourceLine struct {",
+              "\tif activeApproved {\n\t\treturn OrderDetail{}, ErrInvalidInput\n\t}\n\tif kind == KindInternational {\n\t\tif err := repairStoredInvoiceLoadUnits(ctx, tx, orderID); err != nil {\n\t\t\treturn OrderDetail{}, err\n\t\t}\n\t}\n\ttype sourceLine struct {",
+          )
+          replace_once(
+              "backend/internal/procurement/postgres.go",
+              "\t\t\tif kind == KindInternational && (line.pot <= 0 || line.height <= 0 || strings.TrimSpace(line.loadUnit) == \"\") {",
+              "\t\t\tif kind == KindInternational && (line.pot <= 0 || line.height <= 0 || !validInvoiceLoadUnit(line.loadUnit)) {",
+          )
+
+          # Manual pairing/swap must carry the invoice trolley too. There are
+          # two transfer paths in this file; both use the same assignment text.
+          p = Path("backend/internal/procurement/postgres_catalogue.go")
+          text = p.read_text()
+          old = "invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,"
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f"postgres_catalogue.go: expected 2 invoice transfer paths, found {count}")
+          text = text.replace(old, old + "load_unit=invoice.load_unit,")
+          p.write_text(text)
+
+          # Saby complete-catalog cards may report cost=0 immediately after a
+          # product is created while the configured price-list endpoint already
+          # contains the real retail price. Treat only the cost field specially:
+          # use a positive price-list cost when the catalogue cost is absent/zero.
+          replace_once(
+              "backend/internal/integration/saby_procurement.go",
+              "\t\tfor field, value := range item {\n\t\t\tif field == \"balance\" {\n\t\t\t\tif !emptySabyValue(value) {\n\t\t\t\t\tcurrent[field] = value\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\t// The catalogue card is Saby's master price for this store. A\n\t\t\t// configured price column may be channel-specific or stale, so it\n\t\t\t// is only a fallback when the card itself has no price.\n\t\t\tif existing, ok := current[field]; !ok || emptySabyValue(existing) {\n\t\t\t\tcurrent[field] = value\n\t\t\t}\n\t\t}",
+              "\t\tfor field, value := range item {\n\t\t\tif field == \"balance\" {\n\t\t\t\tif !emptySabyValue(value) {\n\t\t\t\t\tcurrent[field] = value\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\t// A newly created catalogue card may temporarily expose cost=0\n\t\t\t// even though the configured price list already has the retail price.\n\t\t\t// Preserve a positive catalogue price, but let a positive price-list\n\t\t\t// value fill an absent or zero catalogue price.\n\t\t\tif field == \"cost\" {\n\t\t\t\texisting, exists := current[field]\n\t\t\t\tif (!exists || !positiveSabyNumber(existing)) && positiveSabyNumber(value) {\n\t\t\t\t\tcurrent[field] = value\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif existing, ok := current[field]; !ok || emptySabyValue(existing) {\n\t\t\t\tcurrent[field] = value\n\t\t\t}\n\t\t}",
+          )
+          replace_once(
+              "backend/internal/integration/saby_procurement.go",
+              "func cloneValues(source url.Values) url.Values {",
+              "func positiveSabyNumber(value any) bool {\n\tparsed, err := strconv.ParseFloat(strings.ReplaceAll(sabyValue(value), \",\", \".\"), 64)\n\treturn err == nil && parsed > 0\n}\n\nfunc cloneValues(source url.Values) url.Values {",
+          )
+
+          # Regression test for newly created Saby goods with a price only in
+          # the configured price-list response.
+          p = Path("backend/internal/integration/saby_procurement_test.go")
+          text = p.read_text()
+          marker = "func TestSabyCatalogPageAcceptsSingleObjectRow"
+          if "TestMergeSabyCatalogUsesPositivePriceListCostWhenCardCostIsZero" not in text:
+              idx = text.index(marker)
+              test = '''func TestMergeSabyCatalogUsesPositivePriceListCostWhenCardCostIsZero(t *testing.T) {\n\tt.Parallel()\n\tcomplete := []map[string]any{{\"id\": \"42\", \"name\": \"Anthu Black Love\", \"cost\": float64(0), \"balance\": float64(0)}}\n\tpriced := []map[string]any{{\"id\": \"42\", \"name\": \"Anthu Black Love\", \"cost\": float64(1750), \"balance\": float64(3)}}\n\tmerged := mergeSabyCatalog(complete, priced)\n\tif len(merged) != 1 {\n\t\tt.Fatalf(\"merged rows = %d\", len(merged))\n\t}\n\tif !positiveSabyNumber(merged[0][\"cost\"]) || sabyValue(merged[0][\"cost\"]) != \"1750\" {\n\t\tt.Fatalf(\"merged cost = %#v\", merged[0][\"cost\"])\n\t}\n\tif sabyValue(merged[0][\"balance\"]) != \"3\" {\n\t\tt.Fatalf(\"merged balance = %#v\", merged[0][\"balance\"])\n\t}\n}\n\n'''
+              p.write_text(text[:idx] + test + text[idx:])
+          PY
+
+          cat > backend/internal/procurement/load_unit_repair.go <<'EOF'
+          package procurement
+
+          import (
+          	"context"
+          	"errors"
+          	"fmt"
+          	"strings"
+
+          	"github.com/jackc/pgx/v5"
+          )
+
+          // validInvoiceLoadUnit accepts the Box no values produced by the
+          // Holland packing-list parser. Planning placeholders such as "shelf"
+          // must never become physical trolleys in logistics allocation.
+          func validInvoiceLoadUnit(value string) bool {
+          	value = strings.TrimSpace(value)
+          	if value == "" {
+          		return false
+          	}
+          	for _, symbol := range value {
+          		if symbol < '0' || symbol > '9' {
+          			return false
+          		}
+          	}
+          	return true
+          }
+
+          // repairStoredInvoiceLoadUnits heals invoices imported before the
+          // reconciliation code started copying Box no onto existing plan rows.
+          // The original extracted text is stored with the document, so the
+          // repair is deterministic and does not need to call Saby or read the
+          // PDF again. Explicit numeric/manual trolley assignments are preserved.
+          func repairStoredInvoiceLoadUnits(ctx context.Context, tx pgx.Tx, orderID int64) error {
+          	var documentID int64
+          	var parserKind, extractedText string
+          	err := tx.QueryRow(ctx, `
+          		SELECT id, parser_kind, extracted_text
+          		FROM procurement_documents
+          		WHERE procurement_order_id=$1 AND superseded_at IS NULL
+          		ORDER BY created_at DESC,id DESC LIMIT 1
+          	`, orderID).Scan(&documentID, &parserKind, &extractedText)
+          	if errors.Is(err, pgx.ErrNoRows) {
+          		return nil
+          	}
+          	if err != nil {
+          		return fmt.Errorf("load invoice text for trolley repair: %w", err)
+          	}
+          	if parserKind != "holland_packing_list" || strings.TrimSpace(extractedText) == "" {
+          		return nil
+          	}
+          	parsed, err := ParseDocumentText(extractedText)
+          	if err != nil {
+          		return fmt.Errorf("reparse invoice trolley data: %w", err)
+          	}
+          	for _, line := range parsed.Lines {
+          		if !validInvoiceLoadUnit(line.LoadUnit) {
+          			continue
+          		}
+          		if _, err := tx.Exec(ctx, `
+          			UPDATE procurement_order_lines SET load_unit=$4,updated_at=CURRENT_TIMESTAMP
+          			WHERE procurement_order_id=$1 AND procurement_document_id=$2 AND source_line=$3
+          				AND reconciliation_status<>'superseded'
+          				AND (BTRIM(load_unit)='' OR LOWER(BTRIM(load_unit))='shelf')
+          		`, orderID, documentID, line.SourceLine, strings.TrimSpace(line.LoadUnit)); err != nil {
+          			return fmt.Errorf("repair invoice trolley for source line %d: %w", line.SourceLine, err)
+          		}
+          	}
+          	return nil
+          }
+          EOF
+
+          cat > backend/internal/procurement/load_unit_repair_test.go <<'EOF'
+          package procurement
+
+          import "testing"
+
+          func TestValidInvoiceLoadUnitRejectsPlanningShelf(t *testing.T) {
+          	for _, value := range []string{"", "shelf", "CC1", "1.0"} {
+          		if validInvoiceLoadUnit(value) {
+          			t.Fatalf("%q must not be an invoice trolley id", value)
+          		}
+          	}
+          	for _, value := range []string{"1", " 2 ", "12"} {
+          		if !validInvoiceLoadUnit(value) {
+          			t.Fatalf("%q must be an invoice trolley id", value)
+          		}
+          	}
+          }
+
+          func TestParseHollandKeepsBoxAcrossPagesUntilNextBox(t *testing.T) {
+          	doc, err := ParseDocumentText("Packinglist\nBox no: 1 CC-Kar\n20 Cactus Gem 0,72 14,40\nPot Ø: 5,5 Cm Height: 5 Cm\fPackinglist\n8 Yucca 2,91 23,28\nPot Ø: 14 Cm Height: 60 Cm\nBox no: 2 CC-Kar\n6 Anthu Black Love Plastic Free 11,27 67,62\nPot Ø: 17 Cm Height: 60 Cm\nSubtotal product 105,30\nTotal Amount € 105,30")
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	if len(doc.Lines) != 3 || doc.Lines[0].LoadUnit != "1" || doc.Lines[1].LoadUnit != "1" || doc.Lines[2].LoadUnit != "2" {
+          		t.Fatalf("load units = %#v", doc.Lines)
+          	}
+          }
+          EOF
+
+          gofmt -w backend/internal/procurement/load_unit_repair.go backend/internal/procurement/load_unit_repair_test.go backend/internal/procurement/postgres.go backend/internal/procurement/postgres_catalogue.go backend/internal/procurement/receiving_pdf.go backend/internal/integration/saby_procurement.go backend/internal/integration/saby_procurement_test.go
+
+      - name: Verify backend
+        working-directory: backend
+        run: |
+          go test ./internal/procurement ./internal/integration ./internal/saby
+          go vet ./...
+          go build ./cmd/api
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Commit fix
+        run: |
+          git config user.name github-actions
+          git config user.email actions@users.noreply.github.com
+          git add backend frontend
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "fix(procurement): restore invoice trolleys and Saby prices"
+          git push origin HEAD:fix/procurement-trolleys-a4-saby-price
