@@ -104,6 +104,7 @@ type sabyCatalogPage struct {
 	Nomenclatures sabyCatalogRows `json:"nomenclatures"`
 	Items         sabyCatalogRows `json:"items"`
 	Result        sabyCatalogRows `json:"result"`
+	Outcome       *bool           `json:"outcome"`
 }
 
 func (page sabyCatalogPage) rows() []map[string]any {
@@ -165,6 +166,7 @@ func (client *SabyClient) fetchCatalogTree(ctx context.Context, base url.Values)
 func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Values, folder string, seenFolders map[string]bool, depth int, sectionPath []string) ([]map[string]any, error) {
 	rows := make([]map[string]any, 0)
 	seenRows := make(map[string]bool)
+	noProgressPages := 0
 	for pageNumber := 0; pageNumber < 200; pageNumber++ {
 		query := cloneValues(base)
 		query.Set("page", strconv.Itoa(pageNumber))
@@ -176,12 +178,10 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 			return nil, err
 		}
 		pageRows := page.rows()
-		// Saby can repeat rows on adjacent pages while still having newer cards
-		// on later pages. Stop only when the API returns an actually empty page;
-		// using "no fresh IDs" as EOF silently truncated recently created goods.
 		if len(pageRows) == 0 {
 			break
 		}
+		freshRows := 0
 		for _, item := range pageRows {
 			key := sabyValue(item["hierarchicalId"])
 			if key == "" {
@@ -191,8 +191,29 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 				continue
 			}
 			seenRows[key] = true
+			freshRows++
 			item["sectionPath"] = append([]string(nil), sectionPath...)
 			rows = append(rows, item)
+		}
+		// The documented Saby Retail response exposes `outcome` as the
+		// authoritative "has more" flag. Some tenants keep returning the
+		// last non-empty page for page numbers beyond EOF, so waiting for an
+		// empty page can loop until our hard 200-page guard. Trust outcome
+		// when it is present. Older/alternate response shapes omit it; for
+		// those, tolerate several duplicate-only pages so a transient repeat
+		// (the PR #390 regression) cannot truncate newer cards on a later page.
+		if page.Outcome != nil {
+			if !*page.Outcome {
+				break
+			}
+			noProgressPages = 0
+		} else if freshRows == 0 {
+			noProgressPages++
+			if noProgressPages >= 5 {
+				break
+			}
+		} else {
+			noProgressPages = 0
 		}
 		if pageNumber == 199 {
 			return nil, errors.New("превышен предел страниц каталога")
