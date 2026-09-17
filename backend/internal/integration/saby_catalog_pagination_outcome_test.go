@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,7 +10,27 @@ import (
 	"testing"
 )
 
-func TestSabyCatalogPaginationUsesOutcomeAsEOF(t *testing.T) {
+func TestSabyCatalogOutcomeAcceptsObjectShape(t *testing.T) {
+	var page sabyCatalogPage
+	if err := json.Unmarshal([]byte(`{"outcome":{"hasMore":false}}`), &page); err != nil {
+		t.Fatal(err)
+	}
+	if hasMore, known := page.hasMore(); !known || hasMore {
+		t.Fatalf("hasMore=%v known=%v, want false/true", hasMore, known)
+	}
+}
+
+func TestSabyCatalogOutcomeAcceptsBooleanShape(t *testing.T) {
+	var page sabyCatalogPage
+	if err := json.Unmarshal([]byte(`{"outcome":true}`), &page); err != nil {
+		t.Fatal(err)
+	}
+	if hasMore, known := page.hasMore(); !known || !hasMore {
+		t.Fatalf("hasMore=%v known=%v, want true/true", hasMore, known)
+	}
+}
+
+func TestSabyCatalogPaginationUsesObjectOutcomeAsEOF(t *testing.T) {
 	var catalogueCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
@@ -19,9 +40,9 @@ func TestSabyCatalogPaginationUsesOutcomeAsEOF(t *testing.T) {
 		}
 		catalogueCalls++
 		if request.URL.Query().Get("page") != "0" {
-			t.Errorf("unexpected page after outcome=false: %s", request.URL.Query().Get("page"))
+			t.Errorf("unexpected page after outcome.hasMore=false: %s", request.URL.Query().Get("page"))
 		}
-		_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":false}`))
+		_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":{"hasMore":false}}`))
 	}))
 	defer server.Close()
 
@@ -48,14 +69,14 @@ func TestSabyCatalogPaginationOutcomeKeepsDuplicateBridgePage(t *testing.T) {
 		page, _ := strconv.Atoi(request.URL.Query().Get("page"))
 		switch page {
 		case 0:
-			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":true}`))
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":{"hasMore":true}}`))
 		case 1:
-			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":true}`))
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":{"hasMore":true}}`))
 		case 2:
-			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"102","name":"Anthurium Black Love"},{"id":"103","name":"Anthurium Melodia Ibis"}],"outcome":false}`))
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"102","name":"Anthurium Black Love"},{"id":"103","name":"Anthurium Melodia Ibis"}],"outcome":{"hasMore":false}}`))
 		default:
 			t.Errorf("unexpected page %d", page)
-			_, _ = response.Write([]byte(`{"nomenclatures":[],"outcome":false}`))
+			_, _ = response.Write([]byte(`{"nomenclatures":[],"outcome":{"hasMore":false}}`))
 		}
 	}))
 	defer server.Close()

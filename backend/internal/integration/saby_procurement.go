@@ -104,7 +104,29 @@ type sabyCatalogPage struct {
 	Nomenclatures sabyCatalogRows `json:"nomenclatures"`
 	Items         sabyCatalogRows `json:"items"`
 	Result        sabyCatalogRows `json:"result"`
-	Outcome       *bool           `json:"outcome"`
+	Outcome       json.RawMessage `json:"outcome"`
+}
+
+// hasMore accepts both Saby response shapes seen in production and
+// documented across Retail endpoints: a direct boolean and the newer
+// object form {"hasMore": boolean}. Unknown shapes are treated as
+// absent so the bounded no-progress fallback can finish safely.
+func (page sabyCatalogPage) hasMore() (bool, bool) {
+	raw := bytes.TrimSpace(page.Outcome)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return false, false
+	}
+	var direct bool
+	if err := json.Unmarshal(raw, &direct); err == nil {
+		return direct, true
+	}
+	var wrapped struct {
+		HasMore *bool `json:"hasMore"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.HasMore != nil {
+		return *wrapped.HasMore, true
+	}
+	return false, false
 }
 
 func (page sabyCatalogPage) rows() []map[string]any {
@@ -202,8 +224,8 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 		// when it is present. Older/alternate response shapes omit it; for
 		// those, tolerate several duplicate-only pages so a transient repeat
 		// (the PR #390 regression) cannot truncate newer cards on a later page.
-		if page.Outcome != nil {
-			if !*page.Outcome {
+		if hasMore, known := page.hasMore(); known {
+			if !hasMore {
 				break
 			}
 			noProgressPages = 0
