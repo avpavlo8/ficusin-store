@@ -58,26 +58,60 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   useEffect(() => { void load(); }, [load]);
   const syncCatalog = async (channel: string) => {
     setSyncingCatalog(channel);
+    setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Запрашиваем СБИС…" : `Запрашиваем обновление ${integrationChannelLabel(channel)}…` });
     try {
       const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[]; queued?: boolean; queueStatus?: string; nextAttemptAt?: string } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
       const link = result.link;
-	  if (link.queued) {
-		setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Обновление справочника СБИС добавлено в общую очередь." : `Текущее зеркало сопоставлено; обновление ${integrationChannelLabel(channel)} добавлено в общую очередь.` });
-		await load();
-		return;
-	  }
-	  if (channel === "saby") {
-		setIntegrationNotice({ channel, ok: true, text: `Справочник СБИС обновлён: ${link.fetched} позиций. Новые карточки уже доступны для сопоставления.` });
-		await load();
-		return;
-	  }
+      if (link.queued && channel === "saby") {
+        setIntegrationNotice({ channel, ok: true, text: "СБИС: запрос принят…" });
+        let targetGeneration = 0;
+        const deadline = Date.now() + 120000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          const snapshot = await api<ProcurementData>("/api/v1/admin/procurement");
+          setData(snapshot);
+          const state = snapshot.integrationSync.find((item) => item.channel === "saby" && item.resource === "catalog");
+          if (!state) continue;
+          if (!targetGeneration) targetGeneration = state.requestedGeneration;
+          if (state.status === "error") {
+            setIntegrationNotice({ channel, ok: false, text: `СБИС: обновление не выполнено${state.lastError ? ` — ${state.lastError}` : "."}` });
+            return;
+          }
+          if (state.completedGeneration >= targetGeneration && state.status !== "running" && state.status !== "queued") {
+            setIntegrationNotice({ channel, ok: true, text: `СБИС обновлён: ${state.rowsSynced} позиций.` });
+            return;
+          }
+          setIntegrationNotice({
+            channel,
+            ok: true,
+            text: state.status === "running"
+              ? "СБИС: загрузка…"
+              : "СБИС: в очереди…",
+          });
+        }
+        setIntegrationNotice({ channel, ok: false, text: "СБИС: синхронизация дольше 2 минут. Статус — в «Интеграциях»." });
+        return;
+      }
+      if (link.queued) {
+        setIntegrationNotice({ channel, ok: true, text: `Текущее зеркало сопоставлено; обновление ${integrationChannelLabel(channel)} добавлено в общую очередь.` });
+        await load();
+        return;
+      }
+      if (channel === "saby") {
+        setIntegrationNotice({ channel, ok: true, text: `Справочник СБИС обновлён: ${link.fetched} позиций. Новые карточки уже доступны для сопоставления.` });
+        await load();
+        return;
+      }
       const detail = link.linked === 0 && link.fetched > 0
         ? ` Сравнивали ${link.channelKeys} ключей канала с ${link.catalogKeys} ключами СБИС. У канала: ${(link.channelSamples || []).join(", ") || "нет"}. В СБИС: ${(link.catalogSamples || []).join(", ") || "нет"}.`
         : "";
       setIntegrationNotice({ channel, ok: link.linked > 0, text: `Прочитано карточек: ${link.fetched}, связано: ${link.linked}, без совпадения: ${link.unmatched}.${detail}` });
       await load();
-    } catch (error) { setIntegrationNotice({ channel, ok: false, text: (error as Error).message }); }
-    finally { setSyncingCatalog(""); }
+    } catch (error) {
+      setIntegrationNotice({ channel, ok: false, text: (error as Error).message });
+    } finally {
+      setSyncingCatalog("");
+    }
   };
   const checkIntegration = async (channel: string) => {
     setCheckingIntegration(channel);
@@ -135,6 +169,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
 	  <button className="secondary-button" disabled={syncingCatalog !== "" || !data.integrations.saby} onClick={() => void syncCatalog("saby")}>{syncingCatalog === "saby" ? "Обновляем СБИС…" : "Обновить товары из СБИС"}</button>
       <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
     </div>
+    {integrationNotice?.channel === "saby" && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
 
     <div className="procurement-tabs" role="tablist">
       <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
