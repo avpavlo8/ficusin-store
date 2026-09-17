@@ -1,0 +1,229 @@
+name: One-off Saby outcome repair
+
+on:
+  push:
+    branches:
+      - fix/saby-outcome-object-final
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+      - name: Patch Saby outcome parsing
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/internal/integration/saby_procurement.go')
+          text = path.read_text()
+
+          old_struct = '''type sabyCatalogPage struct {
+          \tNomenclatures sabyCatalogRows `json:"nomenclatures"`
+          \tItems         sabyCatalogRows `json:"items"`
+          \tResult        sabyCatalogRows `json:"result"`
+          \tOutcome       *bool           `json:"outcome"`
+          }
+
+          func (page sabyCatalogPage) rows() []map[string]any {
+          '''
+          new_struct = '''type sabyCatalogPage struct {
+          \tNomenclatures sabyCatalogRows `json:"nomenclatures"`
+          \tItems         sabyCatalogRows `json:"items"`
+          \tResult        sabyCatalogRows `json:"result"`
+          \tOutcome       json.RawMessage  `json:"outcome"`
+          }
+
+          // hasMore accepts both Saby response shapes seen in production and
+          // documented across Retail endpoints: a direct boolean and the newer
+          // object form {"hasMore": boolean}. Unknown shapes are treated as
+          // absent so the bounded no-progress fallback can finish safely.
+          func (page sabyCatalogPage) hasMore() (bool, bool) {
+          \traw := bytes.TrimSpace(page.Outcome)
+          \tif len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+          \t\treturn false, false
+          \t}
+          \tvar direct bool
+          \tif err := json.Unmarshal(raw, &direct); err == nil {
+          \t\treturn direct, true
+          \t}
+          \tvar wrapped struct {
+          \t\tHasMore *bool `json:"hasMore"`
+          \t}
+          \tif err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.HasMore != nil {
+          \t\treturn *wrapped.HasMore, true
+          \t}
+          \treturn false, false
+          }
+
+          func (page sabyCatalogPage) rows() []map[string]any {
+          '''
+          if old_struct not in text:
+              raise SystemExit('sabyCatalogPage struct pattern not found')
+          text = text.replace(old_struct, new_struct, 1)
+
+          old_logic = '''\t\tif page.Outcome != nil {
+          \t\t\tif !*page.Outcome {
+          \t\t\t\tbreak
+          \t\t\t}
+          \t\t\tnoProgressPages = 0
+          \t\t} else if freshRows == 0 {
+          '''
+          new_logic = '''\t\tif hasMore, known := page.hasMore(); known {
+          \t\t\tif !hasMore {
+          \t\t\t\tbreak
+          \t\t\t}
+          \t\t\tnoProgressPages = 0
+          \t\t} else if freshRows == 0 {
+          '''
+          if old_logic not in text:
+              raise SystemExit('outcome pagination logic pattern not found')
+          text = text.replace(old_logic, new_logic, 1)
+          path.write_text(text)
+
+          test_path = Path('backend/internal/integration/saby_catalog_pagination_outcome_test.go')
+          test_path.write_text(r'''package integration
+
+          import (
+          	"context"
+          	"encoding/json"
+          	"net/http"
+          	"net/http/httptest"
+          	"net/url"
+          	"strconv"
+          	"testing"
+          )
+
+          func TestSabyCatalogOutcomeAcceptsObjectShape(t *testing.T) {
+          	var page sabyCatalogPage
+          	if err := json.Unmarshal([]byte(`{"outcome":{"hasMore":false}}`), &page); err != nil {
+          		t.Fatal(err)
+          	}
+          	if hasMore, known := page.hasMore(); !known || hasMore {
+          		t.Fatalf("hasMore=%v known=%v, want false/true", hasMore, known)
+          	}
+          }
+
+          func TestSabyCatalogOutcomeAcceptsBooleanShape(t *testing.T) {
+          	var page sabyCatalogPage
+          	if err := json.Unmarshal([]byte(`{"outcome":true}`), &page); err != nil {
+          		t.Fatal(err)
+          	}
+          	if hasMore, known := page.hasMore(); !known || !hasMore {
+          		t.Fatalf("hasMore=%v known=%v, want true/true", hasMore, known)
+          	}
+          }
+
+          func TestSabyCatalogPaginationUsesObjectOutcomeAsEOF(t *testing.T) {
+          	var catalogueCalls int
+          	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+          		response.Header().Set("Content-Type", "application/json")
+          		if request.URL.Path == "/oauth/service/" {
+          			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
+          			return
+          		}
+          		catalogueCalls++
+          		if request.URL.Query().Get("page") != "0" {
+          			t.Errorf("unexpected page after outcome.hasMore=false: %s", request.URL.Query().Get("page"))
+          		}
+          		_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":{"hasMore":false}}`))
+          	}))
+          	defer server.Close()
+
+          	client := NewSabyClient("client", "secret", "service", 278, 6)
+          	client.authURL, client.apiBase, client.client = server.URL+"/oauth/service/", server.URL, server.Client()
+          	rows, err := client.fetchCatalogSection(context.Background(), url.Values{"pointId": {"278"}, "pageSize": {"1000"}}, "", map[string]bool{}, 0, nil)
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	if len(rows) != 1 || catalogueCalls != 1 {
+          		t.Fatalf("rows=%d calls=%d, want one page", len(rows), catalogueCalls)
+          	}
+          }
+
+          func TestSabyCatalogPaginationOutcomeKeepsDuplicateBridgePage(t *testing.T) {
+          	var catalogueCalls int
+          	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+          		response.Header().Set("Content-Type", "application/json")
+          		if request.URL.Path == "/oauth/service/" {
+          			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
+          			return
+          		}
+          		catalogueCalls++
+          		page, _ := strconv.Atoi(request.URL.Query().Get("page"))
+          		switch page {
+          		case 0:
+          			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":{"hasMore":true}}`))
+          		case 1:
+          			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}],"outcome":{"hasMore":true}}`))
+          		case 2:
+          			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"102","name":"Anthurium Black Love"},{"id":"103","name":"Anthurium Melodia Ibis"}],"outcome":{"hasMore":false}}`))
+          		default:
+          			t.Errorf("unexpected page %d", page)
+          			_, _ = response.Write([]byte(`{"nomenclatures":[],"outcome":{"hasMore":false}}`))
+          		}
+          	}))
+          	defer server.Close()
+
+          	client := NewSabyClient("client", "secret", "service", 278, 6)
+          	client.authURL, client.apiBase, client.client = server.URL+"/oauth/service/", server.URL, server.Client()
+          	rows, err := client.fetchCatalogSection(context.Background(), url.Values{"pointId": {"278"}, "pageSize": {"1000"}}, "", map[string]bool{}, 0, nil)
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	if len(rows) != 3 || catalogueCalls != 3 {
+          		t.Fatalf("rows=%d calls=%d, want three rows across three pages", len(rows), catalogueCalls)
+          	}
+          }
+
+          func TestSabyCatalogPaginationStopsAfterRepeatedNoProgressWithoutOutcome(t *testing.T) {
+          	var catalogueCalls int
+          	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+          		response.Header().Set("Content-Type", "application/json")
+          		if request.URL.Path == "/oauth/service/" {
+          			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
+          			return
+          		}
+          		catalogueCalls++
+          		_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Anthurium Beauty Black"}]}`))
+          	}))
+          	defer server.Close()
+
+          	client := NewSabyClient("client", "secret", "service", 278, 6)
+          	client.authURL, client.apiBase, client.client = server.URL+"/oauth/service/", server.URL, server.Client()
+          	rows, err := client.fetchCatalogSection(context.Background(), url.Values{"pointId": {"278"}, "pageSize": {"1000"}}, "", map[string]bool{}, 0, nil)
+          	if err != nil {
+          		t.Fatal(err)
+          	}
+          	if len(rows) != 1 || catalogueCalls != 6 {
+          		t.Fatalf("rows=%d calls=%d, want one row and bounded fallback pagination", len(rows), catalogueCalls)
+          	}
+          }
+          ''')
+          PY
+      - name: Format and test
+        shell: bash
+        run: |
+          cd backend
+          gofmt -w internal/integration/saby_procurement.go internal/integration/saby_catalog_pagination_outcome_test.go
+          go test ./internal/integration ./internal/saby
+          go vet ./...
+          go build ./cmd/api
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add backend/internal/integration/saby_procurement.go backend/internal/integration/saby_catalog_pagination_outcome_test.go
+          git commit -m "fix(saby): parse object-shaped catalogue outcome"
+          git push
