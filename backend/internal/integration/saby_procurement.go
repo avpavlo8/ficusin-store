@@ -175,8 +175,14 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 		if err := client.authorizedJSON(ctx, http.MethodGet, client.apiBase+"/retail/v2/nomenclature/list?"+query.Encode(), nil, &page); err != nil {
 			return nil, err
 		}
-		fresh := 0
-		for _, item := range page.rows() {
+		pageRows := page.rows()
+		// Saby can repeat rows on adjacent pages while still having newer cards
+		// on later pages. Stop only when the API returns an actually empty page;
+		// using "no fresh IDs" as EOF silently truncated recently created goods.
+		if len(pageRows) == 0 {
+			break
+		}
+		for _, item := range pageRows {
 			key := sabyValue(item["hierarchicalId"])
 			if key == "" {
 				key = sabyValue(item["id"])
@@ -187,10 +193,6 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 			seenRows[key] = true
 			item["sectionPath"] = append([]string(nil), sectionPath...)
 			rows = append(rows, item)
-			fresh++
-		}
-		if fresh == 0 {
-			break
 		}
 		if pageNumber == 199 {
 			return nil, errors.New("превышен предел страниц каталога")

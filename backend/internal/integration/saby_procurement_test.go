@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,6 +81,46 @@ func TestSabyProbeCachesServiceSession(t *testing.T) {
 	}
 	if authCalls.Load() != 1 {
 		t.Fatalf("auth calls = %d, want 1", authCalls.Load())
+	}
+}
+
+func TestSabyCatalogPaginationContinuesPastDuplicateOnlyPage(t *testing.T) {
+	var pages []int
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/oauth/service/" {
+			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
+			return
+		}
+		page, _ := strconv.Atoi(request.URL.Query().Get("page"))
+		pages = append(pages, page)
+		switch page {
+		case 0:
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Антуриум Beauty Black"}]}`))
+		case 1:
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"101","name":"Антуриум Beauty Black"}]}`))
+		case 2:
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"102","name":"Антуриум Black Love"},{"id":"103","name":"Антуриум Melodia Ibis"}]}`))
+		default:
+			_, _ = response.Write([]byte(`{"nomenclatures":[]}`))
+		}
+	}))
+	defer server.Close()
+
+	client := NewSabyClient("client", "secret", "service", 278, 6)
+	client.authURL, client.apiBase, client.client = server.URL+"/oauth/service/", server.URL, server.Client()
+	rows, err := client.fetchCatalogSection(context.Background(), url.Values{"pointId": {"278"}, "pageSize": {"1000"}}, "", map[string]bool{}, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("rows=%d pages=%v; duplicate-only page truncated catalogue", len(rows), pages)
+	}
+	if sabyValue(rows[1]["id"]) != "102" || sabyValue(rows[2]["id"]) != "103" {
+		t.Fatalf("rows=%+v", rows)
+	}
+	if fmt.Sprint(pages) != "[0 1 2 3]" {
+		t.Fatalf("pages=%v", pages)
 	}
 }
 
