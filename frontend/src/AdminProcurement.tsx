@@ -58,12 +58,12 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   useEffect(() => { void load(); }, [load]);
   const syncCatalog = async (channel: string) => {
     setSyncingCatalog(channel);
-    setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Запрашиваем обновление каталога СБИС…" : `Запрашиваем обновление ${integrationChannelLabel(channel)}…` });
+    setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Запрашиваем СБИС…" : `Запрашиваем обновление ${integrationChannelLabel(channel)}…` });
     try {
       const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[]; queued?: boolean; queueStatus?: string; nextAttemptAt?: string } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
       const link = result.link;
       if (link.queued && channel === "saby") {
-        setIntegrationNotice({ channel, ok: true, text: "Запрос принят. Ждём, пока СБИС отдаст каталог…" });
+        setIntegrationNotice({ channel, ok: true, text: "СБИС: запрос принят…" });
         let targetGeneration = 0;
         const deadline = Date.now() + 120000;
         while (Date.now() < deadline) {
@@ -78,18 +78,18 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
             return;
           }
           if (state.completedGeneration >= targetGeneration && state.status !== "running" && state.status !== "queued") {
-            setIntegrationNotice({ channel, ok: true, text: `Каталог СБИС обновлён: ${state.rowsSynced} позиций. Данные на странице перечитаны.` });
+            setIntegrationNotice({ channel, ok: true, text: `СБИС обновлён: ${state.rowsSynced} позиций.` });
             return;
           }
           setIntegrationNotice({
             channel,
             ok: true,
             text: state.status === "running"
-              ? "СБИС: загружаем каталог…"
-              : "СБИС: обновление стоит в очереди…",
+              ? "СБИС: загрузка…"
+              : "СБИС: в очереди…",
           });
         }
-        setIntegrationNotice({ channel, ok: false, text: "СБИС: обновление не завершилось за 2 минуты. Откройте «Интеграции» — там будет видна причина или состояние очереди." });
+        setIntegrationNotice({ channel, ok: false, text: "СБИС: синхронизация дольше 2 минут. Статус — в «Интеграциях»." });
         return;
       }
       if (link.queued) {
