@@ -511,6 +511,55 @@ func TestSabyBoolAcceptsStringFolderFlag(t *testing.T) {
 	}
 }
 
+func TestSabyCatalogTreePreservesFolderIdentityForProducts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/oauth/service/" {
+			_, _ = response.Write([]byte(`{"token":"safe-token"}`))
+			return
+		}
+		if request.URL.Query().Get("page") != "0" {
+			_, _ = response.Write([]byte(`{"nomenclatures":[],"outcome":{"hasMore":false}}`))
+			return
+		}
+		switch request.URL.Query().Get("folder") {
+		case "":
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"folder-row","hierarchicalId":"folder-market","name":"Цветы маркетплейс","isParent":true}],"outcome":{"hasMore":false}}`))
+		case "folder-market":
+			_, _ = response.Write([]byte(`{"nomenclatures":[{"id":"3683","code":"X113534490","name":"Антуриум Блэк Бьюти D17","balance":4,"cost":3950}],"outcome":{"hasMore":false}}`))
+		default:
+			t.Fatalf("unexpected folder %q", request.URL.Query().Get("folder"))
+		}
+	}))
+	defer server.Close()
+
+	client := NewSabyClient("client", "secret", "service", 278, 6)
+	client.authURL, client.apiBase, client.client = server.URL+"/oauth/service/", server.URL, server.Client()
+	rows, err := client.fetchCatalogTree(context.Background(), url.Values{"pointId": {"278"}, "pageSize": {"1000"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows=%d: %+v", len(rows), rows)
+	}
+	var product map[string]any
+	for _, row := range rows {
+		if sabyValue(row["id"]) == "3683" {
+			product = row
+		}
+	}
+	if product == nil {
+		t.Fatalf("product not found: %+v", rows)
+	}
+	if sabyValue(product["parentFolderId"]) != "folder-market" {
+		t.Fatalf("parentFolderId=%v", product["parentFolderId"])
+	}
+	path, ok := product["sectionPath"].([]string)
+	if !ok || len(path) != 1 || path[0] != "Цветы маркетплейс" {
+		t.Fatalf("sectionPath=%#v", product["sectionPath"])
+	}
+}
+
 func TestSabyLineReadersAcceptInternalFieldAliases(t *testing.T) {
 	t.Parallel()
 	value := map[string]any{
