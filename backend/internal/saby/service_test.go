@@ -43,7 +43,7 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 		HierarchicalID: "17460b69-327e-4ec4-aabb-f064710a135a",
 		Article: "ART-1", Barcode: "4600000000001",
 		Name: "Аглаонема", Cost: 1490.0, Balance: 3.0,
-		SectionPath: []string{" Каталог ", "Комнатные растения", "комнатные РАСТЕНИЯ", ""},
+		SectionPath: []string{" Каталог ", "Комнатные растения", "комнатные РАСТЕНИЯ", ""}, ParentFolderID: "folder-plants",
 	}})
 	if len(items) != 1 {
 		t.Fatalf("ожидали одну позицию, получили %d", len(items))
@@ -63,6 +63,9 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 	}
 	if !sameStrings(item.sectionPath, []string{"Каталог", "Комнатные растения"}) {
 		t.Errorf("ветка каталога потерялась: %+v", item.sectionPath)
+	}
+	if item.folderID != "folder-plants" {
+		t.Errorf("ID папки каталога потерялся: %q", item.folderID)
 	}
 }
 
