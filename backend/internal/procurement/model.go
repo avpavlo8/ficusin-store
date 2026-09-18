@@ -439,6 +439,13 @@ type SyncClaim struct {
 	Generation int64
 }
 
+type SabyCatalogFolder struct {
+	ID       string   `json:"id"`
+	ParentID string   `json:"parentId"`
+	Name     string   `json:"name"`
+	Path     []string `json:"path"`
+}
+
 type ProductDirectoryItem struct {
 	VariantID          int64    `json:"variantId"`
 	SabyID             string   `json:"sabyId"`
@@ -446,6 +453,9 @@ type ProductDirectoryItem struct {
 	SabyArticle        string   `json:"sabyArticle"`
 	Name               string   `json:"name"`
 	SabySection        string   `json:"sabySection"`
+	FolderID           string   `json:"folderId"`
+	SectionPath        []string `json:"sectionPath"`
+	SiteStatus         string   `json:"siteStatus"`
 	Balance            int      `json:"balance"`
 	CurrentPriceRUB    float64  `json:"currentPriceRub"`
 	SupplierID         int64    `json:"supplierId"`
