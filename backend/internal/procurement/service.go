@@ -538,6 +538,16 @@ func (service *Service) ListProducts(ctx context.Context, supplierID int64, quer
 	return service.store.ListProducts(ctx, supplierID, query)
 }
 
+func (service *Service) ListSabyCatalogFolders(ctx context.Context) ([]SabyCatalogFolder, error) {
+	folderStore, ok := service.store.(interface {
+		ListSabyCatalogFolders(context.Context) ([]SabyCatalogFolder, error)
+	})
+	if !ok {
+		return []SabyCatalogFolder{}, nil
+	}
+	return folderStore.ListSabyCatalogFolders(ctx)
+}
+
 func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.SupplierArticle = strings.TrimSpace(input.SupplierArticle)
