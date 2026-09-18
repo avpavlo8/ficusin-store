@@ -136,17 +136,32 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 		return ProductDirectoryItem{}, fmt.Errorf("begin update procurement product: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	input.SabyID = strings.TrimSpace(input.SabyID)
 	var variantID int64
-	if err := tx.QueryRow(ctx, `SELECT variant_id,saby_id FROM canonical_product_directory
-		WHERE active AND (($1>0 AND variant_id=$1) OR ($1<=0 AND saby_id=$2))
-		ORDER BY ($1>0 AND variant_id=$1) DESC,variant_id LIMIT 1`, input.VariantID, input.SabyID).Scan(&variantID, &input.SabyID); err != nil {
-		return ProductDirectoryItem{}, ErrNotFound
+	if input.VariantID > 0 {
+		if err := tx.QueryRow(ctx, `SELECT variant_id,saby_id FROM canonical_product_directory
+			WHERE active AND variant_id=$1 LIMIT 1`, input.VariantID).Scan(&variantID, &input.SabyID); err != nil {
+			return ProductDirectoryItem{}, ErrNotFound
+		}
+	} else {
+		if input.SabyID == "" {
+			return ProductDirectoryItem{}, ErrInvalidInput
+		}
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM saby_nomenclature WHERE saby_id=$1 AND missing_since IS NULL
+		)`, input.SabyID).Scan(&exists); err != nil {
+			return ProductDirectoryItem{}, fmt.Errorf("validate Saby mirror product: %w", err)
+		}
+		if !exists {
+			return ProductDirectoryItem{}, ErrNotFound
+		}
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO procurement_supplier_products (
 			supplier_id, saby_id, canonical_variant_id, supplier_article, availability_status, check_after, unavailable_since,
 			minimum_order_qty, order_multiple, updated_by
-		) VALUES ($1, $2, $9, $3, $4, NULLIF($5, '')::DATE,
+		) VALUES ($1, $2, NULLIF($9,0), $3, $4, NULLIF($5, '')::DATE,
 			CASE WHEN $4 = 'temporarily_unavailable' THEN CURRENT_DATE ELSE NULL END, $6, $7, $8)
 		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET supplier_article = EXCLUDED.supplier_article,
 			canonical_variant_id = EXCLUDED.canonical_variant_id,
@@ -175,7 +190,7 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_supplier_aliases SET availability_status = $3,
 			check_after = NULLIF($4, '')::DATE,
-			canonical_variant_id = $5,
+			canonical_variant_id = NULLIF($5,0),
 			unavailable_since = CASE WHEN $3 = 'temporarily_unavailable' THEN COALESCE(unavailable_since, CURRENT_DATE) ELSE NULL END,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE supplier_id = $1 AND matched_saby_id = $2
