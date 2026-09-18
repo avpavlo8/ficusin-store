@@ -511,7 +511,17 @@ func (handlers procurementHandlers) listProducts(response http.ResponseWriter, r
 		handlers.failed(response, "list procurement products", err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+	folders := []procurement.SabyCatalogFolder{}
+	if folderService, ok := handlers.service.(interface {
+		ListSabyCatalogFolders(context.Context) ([]procurement.SabyCatalogFolder, error)
+	}); ok {
+		folders, err = folderService.ListSabyCatalogFolders(request.Context())
+		if err != nil {
+			handlers.failed(response, "list Saby catalogue folders", err)
+			return
+		}
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"items": items, "folders": folders})
 }
 
 func (handlers procurementHandlers) updateProduct(response http.ResponseWriter, request *http.Request) {

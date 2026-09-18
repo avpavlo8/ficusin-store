@@ -99,6 +99,7 @@ type normalizedItem struct {
 	images      []string
 	attributes  map[string]any
 	sectionPath []string
+	folderID    string
 }
 
 func NewService(pool *pgxpool.Pool, verifier *OIDCVerifier) *Service {
@@ -124,7 +125,7 @@ func (service *Service) Sync(ctx context.Context, items []CatalogItem) (Result, 
 		return Result{}, fmt.Errorf("start Saby sync: %w", err)
 	}
 
-	if err := service.sync(ctx, sourceItems); err != nil {
+	if err := service.sync(ctx, sourceItems, items); err != nil {
 		summary := err.Error()
 		if len(summary) > 500 {
 			summary = summary[:500]
@@ -169,7 +170,8 @@ type poolRow struct {
 	Balance     int            `json:"balance"`
 	Images      []string       `json:"images"`
 	Attributes  map[string]any `json:"attributes"`
-	SectionPath []string       `json:"section_path"`
+	SectionPath  []string       `json:"section_path"`
+	FolderSabyID string         `json:"folder_saby_id"`
 }
 
 // Kept as one statement so the live PostgreSQL test can execute the exact
@@ -213,7 +215,7 @@ const syncCharacteristicsSQL = `
 // неё и место в поиске остаются. Из СБИС по умолчанию приходит только
 // остаток; название, описание, цена и фотографии — лишь если это поле
 // отмечено у товара.
-func (service *Service) sync(ctx context.Context, items []normalizedItem) error {
+func (service *Service) sync(ctx context.Context, items []normalizedItem, rawItems []CatalogItem) error {
 	tx, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin Saby sync: %w", err)
@@ -243,6 +245,10 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 		return fmt.Errorf("upsert Saby warehouse: %w", err)
 	}
 
+	if err := syncCatalogFolders(ctx, tx, rawItems); err != nil {
+		return err
+	}
+
 	rows := make([]poolRow, 0, len(items))
 	received := make([]string, 0, len(items))
 	for _, item := range items {
@@ -256,7 +262,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			Barcodes: item.barcodes,
 			Name:     item.name, Description: item.description,
 			PriceMinor: item.costMinor, Balance: item.balance, Images: item.images, Attributes: item.attributes,
-			SectionPath: item.sectionPath,
+			SectionPath: item.sectionPath, FolderSabyID: item.folderID,
 		})
 		received = append(received, item.id)
 	}
@@ -271,19 +277,19 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO saby_nomenclature (
 			saby_id, code, external_ids, article, barcode, barcodes, name, description,
-			price_minor, balance, images, characteristics, section_path, seen_at, missing_since
+			price_minor, balance, images, characteristics, section_path, folder_saby_id, seen_at, missing_since
 		)
 		SELECT item.saby_id, item.code,
 			ARRAY(SELECT jsonb_array_elements_text(item.external_ids)), item.article, item.barcode,
 			ARRAY(SELECT jsonb_array_elements_text(item.barcodes)), item.name,
 			item.description, item.price_minor, item.balance,
 			ARRAY(SELECT jsonb_array_elements_text(item.images)), item.attributes,
-			ARRAY(SELECT jsonb_array_elements_text(item.section_path)),
+			ARRAY(SELECT jsonb_array_elements_text(item.section_path)), NULLIF(item.folder_saby_id, ''),
 			CURRENT_TIMESTAMP, NULL
 		FROM jsonb_to_recordset($1::jsonb) AS item(
 			saby_id TEXT, code TEXT, external_ids JSONB, article TEXT, barcode TEXT, barcodes JSONB,
 			name TEXT, description TEXT, price_minor BIGINT, balance INTEGER, images JSONB, attributes JSONB,
-			section_path JSONB
+			section_path JSONB, folder_saby_id TEXT
 		)
 		ON CONFLICT (saby_id) DO UPDATE SET
 			code = EXCLUDED.code, external_ids = EXCLUDED.external_ids, article = EXCLUDED.article,
@@ -291,7 +297,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem) error 
 			name = EXCLUDED.name,
 			description = EXCLUDED.description, price_minor = EXCLUDED.price_minor,
 			balance = EXCLUDED.balance, images = EXCLUDED.images,
-			section_path = EXCLUDED.section_path,
+			section_path = EXCLUDED.section_path, folder_saby_id = EXCLUDED.folder_saby_id,
 			characteristics = CASE WHEN EXCLUDED.characteristics='{}'::jsonb THEN saby_nomenclature.characteristics ELSE EXCLUDED.characteristics END,
 			seen_at = CURRENT_TIMESTAMP, missing_since = NULL
 	`, catalogue); err != nil {
@@ -556,6 +562,68 @@ func syncPhotos(ctx context.Context, tx pgx.Tx) error {
 	return nil
 }
 
+type catalogFolderRow struct {
+	SabyID       string   `json:"saby_id"`
+	ParentSabyID string   `json:"parent_saby_id"`
+	Name         string   `json:"name"`
+	Path         []string `json:"path"`
+}
+
+func syncCatalogFolders(ctx context.Context, tx pgx.Tx, items []CatalogItem) error {
+	folders := make([]catalogFolderRow, 0)
+	received := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, item := range items {
+		if !item.IsParent {
+			continue
+		}
+		id := valueString(item.HierarchicalID)
+		if id == "" {
+			id = valueString(item.ID)
+		}
+		name := strings.TrimSpace(item.Name)
+		if id == "" || name == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		path := append(normalizeSectionPath(item.SectionPath), name)
+		folders = append(folders, catalogFolderRow{
+			SabyID: id, ParentSabyID: valueString(item.ParentFolderID),
+			Name: name, Path: path,
+		})
+		received = append(received, id)
+	}
+	if len(folders) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(folders)
+	if err != nil {
+		return fmt.Errorf("pack Saby catalogue folders: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO saby_catalog_folders (saby_id, parent_saby_id, name, path, seen_at, missing_since)
+		SELECT folder.saby_id, NULLIF(folder.parent_saby_id, ''), folder.name,
+			ARRAY(SELECT jsonb_array_elements_text(folder.path)), CURRENT_TIMESTAMP, NULL
+		FROM jsonb_to_recordset($1::jsonb) AS folder(
+			saby_id TEXT, parent_saby_id TEXT, name TEXT, path JSONB
+		)
+		ON CONFLICT (saby_id) DO UPDATE SET
+			parent_saby_id = EXCLUDED.parent_saby_id,
+			name = EXCLUDED.name, path = EXCLUDED.path,
+			seen_at = CURRENT_TIMESTAMP, missing_since = NULL
+	`, payload); err != nil {
+		return fmt.Errorf("upsert Saby catalogue folders: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE saby_catalog_folders
+		SET missing_since = COALESCE(missing_since, CURRENT_TIMESTAMP)
+		WHERE missing_since IS NULL AND NOT (saby_id = ANY($1::text[]))
+	`, received); err != nil {
+		return fmt.Errorf("mark missing Saby catalogue folders: %w", err)
+	}
+	return nil
+}
+
 func sameStrings(left, right []string) bool {
 	if len(left) != len(right) {
 		return false
@@ -607,6 +675,7 @@ func normalizeItems(items []CatalogItem) []normalizedItem {
 			images:      images,
 			attributes:  normalizeCharacteristics(item.Attributes),
 			sectionPath: normalizeSectionPath(item.SectionPath),
+			folderID:    valueString(item.ParentFolderID),
 		})
 	}
 	return result

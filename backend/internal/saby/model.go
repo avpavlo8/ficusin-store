@@ -23,6 +23,7 @@ type CatalogItem struct {
 	Images         []string         `json:"images"`
 	Attributes     any              `json:"attributes"`
 	SectionPath    []string         `json:"sectionPath"`
+	ParentFolderID any              `json:"parentFolderId"`
 	Published      *bool            `json:"published"`
 	IsParent       bool             `json:"isParent"`
 }
