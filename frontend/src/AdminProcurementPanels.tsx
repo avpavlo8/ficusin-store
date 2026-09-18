@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "./adminShared";
 import type { NomenclatureCandidate, ProcurementProduct, ProcurementRequest, ProcurementSettings, ProcurementSupplier, SabyCatalogFolder } from "./adminTypes";
 
@@ -76,7 +76,7 @@ export function ProcurementProducts({ suppliers, onError }: { suppliers: Procure
       : items;
   const countInFolder = (folderId: string) => items.filter((item) => item.folderId === folderId).length;
 
-  const renderFolder = (folder: SabyCatalogFolder, depth: number): React.ReactNode => {
+  const renderFolder = (folder: SabyCatalogFolder, depth: number): ReactNode => {
     const children = childrenOf(folder.id);
     const expanded = expandedFolders[folder.id] !== false;
     return <div key={folder.id}>
