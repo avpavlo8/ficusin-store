@@ -18,6 +18,28 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+func (store *PostgresStore) ListSabyCatalogFolders(ctx context.Context) ([]SabyCatalogFolder, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT saby_id, COALESCE(parent_saby_id, ''), name, path
+		FROM saby_catalog_folders
+		WHERE missing_since IS NULL
+		ORDER BY path, name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query Saby catalogue folders: %w", err)
+	}
+	defer rows.Close()
+	items := make([]SabyCatalogFolder, 0)
+	for rows.Next() {
+		var item SabyCatalogFolder
+		if err := rows.Scan(&item.ID, &item.ParentID, &item.Name, &item.Path); err != nil {
+			return nil, fmt.Errorf("scan Saby catalogue folder: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
 	rows, err := store.pool.Query(ctx, `
 		WITH sales AS (
@@ -31,53 +53,57 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				AND saby_id IS NOT NULL
 			GROUP BY saby_id
 		)
-		SELECT directory.variant_id, directory.saby_id, COALESCE(NULLIF(directory.master_code,''), directory.display_sku),
-			COALESCE(n.article,''), directory.name,
-			CASE
-				WHEN EXISTS (SELECT 1 FROM UNNEST(n.section_path) part WHERE LOWER(BTRIM(part))=LOWER('Цветы Marketplace')) THEN 'Цветы Marketplace'
-				ELSE 'Цветы'
-			END,
-			COALESCE(n.balance,0),
-			COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
+		SELECT COALESCE(directory.variant_id,0), n.saby_id,
+			COALESCE(NULLIF(n.code,''), n.saby_id), COALESCE(n.article,''), n.name,
+			COALESCE(n.section_path[1],''), COALESCE(n.folder_saby_id,''),
+			COALESCE(n.section_path,ARRAY[]::TEXT[]), COALESCE(catalog_product.status,''),
+			COALESCE(n.balance,0), COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
 			s.id, s.name, COALESCE(sp.supplier_article,''), COALESCE(sp.availability_status,'unknown'),
 			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), NULL::BIGINT,
 			COALESCE(directory.wb_articles[1], ''), COALESCE(directory.ozon_articles[1], ''),
-			directory.wb_articles,directory.wb_legacy_articles,
-			directory.ozon_articles,directory.ozon_legacy_articles,
+			COALESCE(directory.wb_articles,ARRAY[]::TEXT[]),COALESCE(directory.wb_legacy_articles,ARRAY[]::TEXT[]),
+			COALESCE(directory.ozon_articles,ARRAY[]::TEXT[]),COALESCE(directory.ozon_legacy_articles,ARRAY[]::TEXT[]),
 			COALESCE(sp.minimum_order_qty,1), COALESCE(sp.order_multiple,1),
 			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
 				WHERE a.supplier_id = s.id AND (a.canonical_variant_id=directory.variant_id
-					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::TEXT[]),
+					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=n.saby_id))), ARRAY[]::TEXT[]),
 			COALESCE((SELECT ARRAY_AGG(a.id ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
 				WHERE a.supplier_id = s.id AND (a.canonical_variant_id=directory.variant_id
-					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=directory.saby_id))), ARRAY[]::BIGINT[]),
+					OR (a.canonical_variant_id IS NULL AND a.matched_saby_id=n.saby_id))), ARRAY[]::BIGINT[]),
 			COALESCE(sales.saby_sales,0),COALESCE(sales.site_sales,0),
 			COALESCE(sales.wb_sales,0),COALESCE(sales.ozon_sales,0),
 			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
 			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package
-		FROM canonical_product_directory directory
-		JOIN products catalog_product ON catalog_product.id=directory.product_id
+		FROM saby_nomenclature n
 		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
+		LEFT JOIN LATERAL (
+			SELECT candidate.*
+			FROM canonical_product_directory candidate
+			WHERE candidate.active AND candidate.saby_id=n.saby_id
+			ORDER BY candidate.variant_id
+			LIMIT 1
+		) directory ON TRUE
+		LEFT JOIN products catalog_product ON catalog_product.id=directory.product_id
 		LEFT JOIN procurement_supplier_products sp ON sp.supplier_id=s.id
 			AND (sp.canonical_variant_id=directory.variant_id
-				OR (sp.canonical_variant_id IS NULL AND sp.saby_id=directory.saby_id))
-		LEFT JOIN saby_nomenclature n ON n.saby_id = directory.saby_id
-		LEFT JOIN procurement_product_channels pc ON pc.saby_id = directory.saby_id
-		LEFT JOIN sales ON sales.saby_id = directory.saby_id
+				OR (sp.canonical_variant_id IS NULL AND sp.saby_id=n.saby_id))
+		LEFT JOIN procurement_product_channels pc ON pc.saby_id = n.saby_id
+		LEFT JOIN sales ON sales.saby_id = n.saby_id
 		LEFT JOIN LATERAL (
 			SELECT l.supplier_category,l.expected_unit_price,l.pot_diameter_cm,l.height_cm,l.units_per_package
 			FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id
 			WHERE o.supplier_id=s.id AND o.status<>'cancelled' AND
-				(l.canonical_variant_id=directory.variant_id OR (l.canonical_variant_id IS NULL AND l.saby_id=directory.saby_id))
+				(l.canonical_variant_id=directory.variant_id OR (l.canonical_variant_id IS NULL AND l.saby_id=n.saby_id))
 			ORDER BY o.created_at DESC,l.id DESC LIMIT 1
 		) last_line ON TRUE
-		WHERE directory.active AND catalog_product.catalog_section='plants'
-			AND ($2 = '' OR directory.name ILIKE '%' || $2 || '%'
-			OR directory.master_code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
-			OR directory.saby_id ILIKE '%' || $2 || '%' OR COALESCE(sp.supplier_article,'') ILIKE '%' || $2 || '%')
-		ORDER BY s.name, directory.name LIMIT 2000
+		WHERE n.missing_since IS NULL
+			AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
+			OR n.code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
+			OR n.saby_id ILIKE '%' || $2 || '%')
+		ORDER BY n.section_path, n.name
+		LIMIT 5000
 	`, supplierID, query)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement product directory: %w", err)
@@ -87,6 +113,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 	for rows.Next() {
 		var item ProductDirectoryItem
 		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name, &item.SabySection,
+			&item.FolderID, &item.SectionPath, &item.SiteStatus,
 			&item.Balance, &item.CurrentPriceRUB, &item.SupplierID, &item.SupplierName,
 			&item.SupplierArticle, &item.AvailabilityStatus, &item.CheckAfter,
 			&item.HollandArticle, &item.WBNmID, &item.WBVendorCode, &item.OzonOfferID,
