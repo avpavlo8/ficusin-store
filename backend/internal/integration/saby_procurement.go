@@ -215,6 +215,10 @@ func (client *SabyClient) fetchCatalogSection(ctx context.Context, base url.Valu
 			seenRows[key] = true
 			freshRows++
 			item["sectionPath"] = append([]string(nil), sectionPath...)
+			// Saby returns a level at a time. Preserve the containing folder ID so
+			// the local mirror can reproduce the same tree instead of guessing it
+			// back from translated folder names.
+			item["parentFolderId"] = folder
 			rows = append(rows, item)
 		}
 		// The documented Saby Retail response exposes `outcome` as the
