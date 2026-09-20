@@ -247,19 +247,24 @@ test("@desktop у кашпо нет растительного ухода и х�
   await expect(page.locator("#care-guide")).toHaveCount(0);
 });
 
-test("@desktop инструкция по уходу ведёт от адаптации к персональным рекомендациям", async ({ page }) => {
+test("@desktop @phone инструкция доступна по QR и раскрывает персональные рекомендации", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/product/1");
+  await page.goto("/product/1#plant-passport");
 
-  const guide = page.locator("#care-guide");
+  const guide = page.locator("#plant-passport");
   await expect(guide).toContainText("Первые дни дома");
-  await expect(guide).toContainText("Осмотрите");
-  await expect(guide.getByRole("tab", { name: /Свет/ })).toHaveAttribute("aria-selected", "true");
-  await guide.getByRole("tab", { name: /Полив/ }).click();
-  await expect(guide.getByRole("tabpanel")).toContainText("Полив");
-  await expect(guide.getByRole("tabpanel")).toContainText("После просыхания верхнего слоя");
-  await expect(guide).toContainText("Спрашивают чаще всего");
-  await expect(guide.getByText("Когда пересаживать?")).toBeVisible();
+  await expect(guide).toContainText("Распакуйте");
+  await expect(guide).toContainText("Пересадите при необходимости");
+  await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
+  await page.locator("#plant-watering-tab").click();
+  await expect(page.locator("#plant-watering-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#plant-watering .plant-copy")).toHaveText("После просыхания верхнего слоя");
+  await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug");
+  await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
+  await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
+  await page.getByRole("tab", { name: "Уход", exact: true }).click();
+  await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
 test("@desktop пустые вопросы и отзывы остаются полезными", async ({ page }) => {
@@ -271,9 +276,12 @@ test("@desktop пустые вопросы и отзывы остаются по
   await page.goto("/product/empty");
   const singlePhoto = await page.locator(".pdp-gallery.single .pdp-image").boundingBox();
   expect(singlePhoto?.width || 0).toBeGreaterThan(400);
-  await page.getByRole("tab", { name: "Вопросы" }).click();
-  await expect(page.locator("#questions")).toContainText("Остались вопросы?");
-  await page.getByRole("tab", { name: "Отзывы" }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Подробный рассказ о растении готовится.");
+  await page.getByRole("tab", { name: "Уход", exact: true }).click();
+  await expect(page.locator("#plant-lighting")).toContainText("Информация для этого растения готовится.");
+  await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
+  await expect(page.locator("#questions")).toContainText("Здесь появятся ответы");
+  await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
   await expect(page.locator(".purchase-review-meta")).toContainText("Пока без отзывов");
 });
