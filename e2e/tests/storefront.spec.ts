@@ -253,7 +253,8 @@ test("@desktop @phone инструкция доступна по QR и раск�
 
   const guide = page.locator("#plant-passport");
   await expect(guide).toContainText("Первые дни дома");
-  await expect(guide).toContainText("Распакуйте и осмотрите");
+  await expect(guide).toContainText("Распакуйте");
+  await expect(guide).toContainText("Пересадите при необходимости");
   await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
   await page.locator("#plant-watering-tab").click();
   await expect(page.locator("#plant-watering-tab")).toHaveAttribute("aria-selected", "true");
