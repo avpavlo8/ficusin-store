@@ -94,11 +94,13 @@ jobs:
             html="$(curl -fsS --max-time 15 "${BASE_URL}/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
+            care_arrival_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/first-days-home.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            care_topic_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/topics/light.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             catalog_count="$(curl -fsS --max-time 20 "${BASE_URL}/api/v1/catalog?deploy=${GITHUB_SHA}&attempt=${attempt}" \
               | python3 -c 'import json,sys; data=json.load(sys.stdin); products=data.get("products"); print(len(products) if isinstance(products, list) else 0)' \
               2>/dev/null || printf '0')"
 
-            echo "attempt=${attempt} health=${health} readiness=${readiness} operations=${operations_state} critical_checks=${critical_checks:-none} warning_checks=${warning_checks:-none} backend=${actual_backend} js=${actual_js} css=${actual_css} catalog_products=${catalog_count}"
+            echo "attempt=${attempt} health=${health} readiness=${readiness} operations=${operations_state} critical_checks=${critical_checks:-none} warning_checks=${warning_checks:-none} backend=${actual_backend} js=${actual_js} css=${actual_css} care_arrival=${care_arrival_status} care_topic=${care_topic_status} catalog_products=${catalog_count}"
 
             exact_release=0
             if [[ "$health" == *'"status":"ok"'* \
@@ -106,6 +108,8 @@ jobs:
               && "$actual_backend" == "$expected_backend" \
               && "$actual_js" == "$expected_js" \
               && "$actual_css" == "$expected_css" \
+              && "$care_arrival_status" == "200" \
+              && "$care_topic_status" == "200" \
               && "$catalog_count" =~ ^[0-9]+$ \
               && "$catalog_count" -gt 0 ]]; then
               exact_release=1
