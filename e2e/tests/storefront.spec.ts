@@ -252,11 +252,11 @@ test("@desktop @phone инструкция доступна по QR и раск�
   await page.goto("/product/1#plant-passport");
 
   const guide = page.locator("#plant-passport");
-  await expect(guide).toContainText("Растение приехало.");
-  await expect(guide).toContainText("Осмотрите");
+  await expect(guide).toContainText("Первые дни дома");
+  await expect(guide).toContainText("Распакуйте и осмотрите");
   await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
-  await page.locator("#plant-watering summary").click();
-  await expect(page.locator("#plant-watering")).toHaveAttribute("open", "");
+  await page.locator("#plant-watering-tab").click();
+  await expect(page.locator("#plant-watering-tab")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#plant-watering .plant-copy")).toHaveText("После просыхания верхнего слоя");
   await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug");
   await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
