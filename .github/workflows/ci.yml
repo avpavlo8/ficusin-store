@@ -83,7 +83,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
           cache-dependency-path: backend/go.sum
@@ -285,7 +285,7 @@ jobs:
       # Применённые миграции ещё не значат, что приложение умеет с ними работать.
       # Здесь бизнес-логика впервые исполняется на живой базе: витрина и
       # редактирование состава заказа — два места, которые уехали в прод сломанными.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
           cache-dependency-path: backend/go.sum
