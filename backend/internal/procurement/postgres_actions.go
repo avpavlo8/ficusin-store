@@ -200,6 +200,20 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	if err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement supplier product: %w", err)
 	}
+	resolvedWBNmID := input.WBNmID
+	if resolvedWBNmID == nil && strings.TrimSpace(input.WBVendorCode) != "" {
+		// WB changes prices by numeric nmID, while a manager naturally enters
+		// the seller article. Resolve that article against the already mirrored
+		// WB catalogue, but only when it identifies exactly one card.
+		if err := tx.QueryRow(ctx, `
+			SELECT CASE WHEN COUNT(*)=1 THEN MIN(external_id)::BIGINT END
+			FROM procurement_channel_products
+			WHERE channel='wb' AND LOWER(BTRIM(article))=LOWER(BTRIM($1))
+				AND external_id ~ '^[0-9]+$'
+		`, input.WBVendorCode).Scan(&resolvedWBNmID); err != nil {
+			return ProductDirectoryItem{}, fmt.Errorf("resolve Wildberries nmID from seller article: %w", err)
+		}
+	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO procurement_product_channels (
 			saby_id, holland_article, wb_nm_id, wb_vendor_code, ozon_offer_id, updated_by
@@ -209,7 +223,7 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 			wb_vendor_code = EXCLUDED.wb_vendor_code,
 			ozon_offer_id = EXCLUDED.ozon_offer_id, updated_by = EXCLUDED.updated_by,
 			updated_at = CURRENT_TIMESTAMP
-	`, input.SabyID, input.HollandArticle, input.WBNmID, input.WBVendorCode, input.OzonOfferID, actor.CustomerID)
+	`, input.SabyID, input.HollandArticle, resolvedWBNmID, input.WBVendorCode, input.OzonOfferID, actor.CustomerID)
 	if err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement product channels: %w", err)
 	}
