@@ -203,4 +203,52 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	if seen["ozon"].ExternalArticle != ozonOffer || seen["ozon"].NewValue != 3990 {
 		t.Fatalf("Ozon initial price action wrong: %+v", seen["ozon"])
 	}
+
+	// The calculated marketplace price is product-level information. It must
+	// stay visible even when the directory is currently filtered by another
+	// supplier.
+	var otherSupplierID int64
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency)
+		VALUES($1,'domestic','RUB') RETURNING id`, fmt.Sprintf("Marketplace price other supplier %d", unique)).Scan(&otherSupplierID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, otherSupplierID) }()
+	otherItems, err := store.ListProducts(ctx, otherSupplierID, code)
+	if err != nil || len(otherItems) != 1 || otherItems[0].SuggestedMarketplaceRUB == nil || *otherItems[0].SuggestedMarketplaceRUB != 3990 {
+		t.Fatalf("latest marketplace price disappeared behind supplier filter: items=%+v err=%v", otherItems, err)
+	}
+
+	// A missing WB nmID must not silently remove the product from the draft.
+	// The manager needs to see the calculated price and the exact missing link.
+	if _, err = pool.Exec(ctx, `UPDATE procurement_action_batches SET status='cancelled' WHERE id=$1`, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_product_channels SET wb_nm_id=NULL WHERE saby_id=$1`, sabyID); err != nil {
+		t.Fatal(err)
+	}
+	missingBatch, err := store.PrepareBatch(ctx, Actor{CustomerID: actorID}, orderID, "prices", []string{"wb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missingBatch.Items) != 1 || missingBatch.Items[0].Channel != "wb" ||
+		missingBatch.Items[0].ExternalArticle != "" || missingBatch.Items[0].NewValue != 3990 ||
+		missingBatch.Items[0].ErrorMessage == "" {
+		t.Fatalf("unlinked WB price was hidden instead of explained: %+v", missingBatch.Items)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_action_batches SET status='cancelled' WHERE id=$1`, missingBatch.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// When the fresh WB mirror later contains the card, the saved seller
+	// article should backfill nmID automatically without asking the manager to
+	// reopen and resave the product.
+	if err = store.RememberChannelProducts(ctx, "wb", []ChannelProduct{{
+		ExternalID: fmt.Sprint(wbNmID), Article: wbVendor, Name: "Антуриум Блэк Бьюти CI",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	keptWBNmID = nil
+	if err = pool.QueryRow(ctx, `SELECT wb_nm_id FROM procurement_product_channels WHERE saby_id=$1`, sabyID).Scan(&keptWBNmID); err != nil || keptWBNmID == nil || *keptWBNmID != wbNmID {
+		t.Fatalf("fresh WB mirror did not backfill nmID: nmID=%v err=%v", keptWBNmID, err)
+	}
 }
