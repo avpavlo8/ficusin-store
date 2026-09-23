@@ -113,7 +113,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				MAX(l.proposed_marketplace_strike_rub)::DOUBLE PRECISION AS strike
 			FROM procurement_order_lines l
 			JOIN procurement_orders o ON o.id=l.procurement_order_id
-			WHERE o.supplier_id=s.id AND o.status<>'cancelled'
+			WHERE o.status<>'cancelled'
 				AND l.saby_id=n.saby_id AND l.match_status='confirmed'
 				AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
 				AND l.proposed_marketplace_rub IS NOT NULL
@@ -495,14 +495,23 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 			WHERE channel.name = ANY($3::TEXT[])
 				AND (channel.name <> 'site' OR p.canonical_variant_id IS NOT NULL)
-				AND (channel.name <> 'wb' OR COALESCE(pc.wb_nm_id::TEXT,directory.wb_nm_ids[1],'') <> '')
-				AND (channel.name <> 'ozon' OR COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'') <> '')
 				AND (channel.name IN ('wb','ozon')
 					OR n.price_minor <= 0
 					OR ABS(p.retail::NUMERIC - n.price_minor::NUMERIC / 100)
 						> (n.price_minor::NUMERIC / 100) *
 							(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
 		`, batchID, orderID, channels)
+		if err == nil {
+			_, err = tx.Exec(ctx, `
+				UPDATE procurement_action_items SET error_message = CASE
+					WHEN channel='wb' AND external_article='' THEN
+						'Не найден WB nmID. Артикул продавца сохранён, но карточка ещё не сопоставилась с зеркалом Wildberries.'
+					WHEN channel='ozon' AND external_article='' THEN
+						'Не заполнен Ozon offer_id для этого товара.'
+					ELSE error_message END
+				WHERE batch_id=$1 AND external_article='' AND channel IN ('wb','ozon')
+			`, batchID)
+		}
 		if err == nil && containsString(channels, "saby_price") {
 			_, err = tx.Exec(ctx, `
 				WITH products AS (
