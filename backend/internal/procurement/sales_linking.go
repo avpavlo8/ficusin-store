@@ -321,7 +321,7 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 		if barcodes == nil {
 			barcodes = []string{}
 		}
-		batch.Queue(\`
+		batch.Queue(`
 			INSERT INTO procurement_channel_products (
 				channel, external_id, article, name, barcodes, current_price, current_base_price
 			) VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -331,7 +331,7 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 				current_price = COALESCE(EXCLUDED.current_price, procurement_channel_products.current_price),
 				current_base_price = COALESCE(EXCLUDED.current_base_price, procurement_channel_products.current_base_price),
 				seen_at = CURRENT_TIMESTAMP
-		\`, channel, externalID, strings.TrimSpace(item.Article), strings.TrimSpace(item.Name),
+		`, channel, externalID, strings.TrimSpace(item.Article), strings.TrimSpace(item.Name),
 			barcodes, item.CurrentPrice, item.CurrentBasePrice)
 	}
 	if batch.Len() == 0 {
@@ -354,7 +354,7 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 		// was saved, so resolve all previously stored seller articles every time
 		// the fresh WB catalogue mirror is remembered. Ambiguous articles stay
 		// unresolved instead of attaching a wrong card.
-		if _, err := store.pool.Exec(ctx, \`
+		if _, err := store.pool.Exec(ctx, `
 			WITH unique_matches AS (
 				SELECT pc.saby_id, MIN(card.external_id)::BIGINT AS nm_id
 				FROM procurement_product_channels pc
@@ -371,7 +371,7 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 			FROM unique_matches match
 			WHERE pc.saby_id=match.saby_id
 				AND pc.wb_nm_id IS DISTINCT FROM match.nm_id
-		\`); err != nil {
+		`); err != nil {
 			return fmt.Errorf("resolve stored WB seller articles: %w", err)
 		}
 	}
