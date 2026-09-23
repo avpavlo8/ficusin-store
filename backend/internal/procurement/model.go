@@ -480,10 +480,14 @@ type ProductDirectoryItem struct {
 	Aliases            []string `json:"aliases"`
 	AliasIDs           []int64  `json:"aliasIds"`
 	SupplierCategory   string   `json:"supplierCategory"`
-	ExpectedUnitPrice  *float64 `json:"expectedUnitPrice,omitempty"`
-	PotDiameterCM      *float64 `json:"potDiameterCm,omitempty"`
-	HeightCM           *float64 `json:"heightCm,omitempty"`
-	UnitsPerPackage    *int     `json:"unitsPerPackage,omitempty"`
+	ExpectedUnitPrice               *float64 `json:"expectedUnitPrice,omitempty"`
+	PotDiameterCM                   *float64 `json:"potDiameterCm,omitempty"`
+	HeightCM                        *float64 `json:"heightCm,omitempty"`
+	UnitsPerPackage                 *int     `json:"unitsPerPackage,omitempty"`
+	UnitCostRUB                     *float64 `json:"unitCostRub,omitempty"`
+	SuggestedMarketplaceRUB         *float64 `json:"suggestedMarketplaceRub,omitempty"`
+	SuggestedMarketplaceStrikeRUB   *float64 `json:"suggestedMarketplaceStrikeRub,omitempty"`
+	PriceSourceOrderNumber          string   `json:"priceSourceOrderNumber"`
 }
 
 type ProductDirectoryUpdate struct {
