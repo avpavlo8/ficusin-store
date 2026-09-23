@@ -338,10 +338,31 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 		return nil
 	}
 	results := store.pool.SendBatch(ctx, batch)
-	defer results.Close() //nolint:errcheck
 	for index := 0; index < batch.Len(); index++ {
 		if _, err := results.Exec(); err != nil {
+			_ = results.Close()
 			return fmt.Errorf("remember channel product: %w", err)
+		}
+	}
+	if err := results.Close(); err != nil {
+		return fmt.Errorf("finish channel product batch: %w", err)
+	}
+	if channel == "wb" {
+		_, err := store.pool.Exec(ctx,
+			"WITH unique_matches AS ("+
+				" SELECT pc.saby_id, MIN(card.external_id)::BIGINT AS nm_id"+
+				" FROM procurement_product_channels pc"+
+				" JOIN procurement_channel_products card ON card.channel='wb'"+
+				" AND LOWER(BTRIM(card.article))=LOWER(BTRIM(pc.wb_vendor_code))"+
+				" AND card.external_id<>'' AND card.external_id !~ '[^0-9]'"+
+				" WHERE BTRIM(pc.wb_vendor_code)<>''"+
+				" GROUP BY pc.saby_id HAVING COUNT(DISTINCT card.external_id)=1"+
+			") UPDATE procurement_product_channels pc SET"+
+				" wb_nm_id=match.nm_id, updated_at=CURRENT_TIMESTAMP"+
+				" FROM unique_matches match WHERE pc.saby_id=match.saby_id"+
+				" AND pc.wb_nm_id IS DISTINCT FROM match.nm_id")
+		if err != nil {
+			return fmt.Errorf("resolve stored WB seller articles: %w", err)
 		}
 	}
 	return nil
