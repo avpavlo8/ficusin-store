@@ -347,36 +347,14 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 	if err := results.Close(); err != nil {
 		return fmt.Errorf("finish channel product batch: %w", err)
 	}
-
 	if channel == "wb" {
-		// The user stores the human seller article, but WB price mutations need
-		// numeric nmID. A card can appear in WB after the Saby/product mapping
-		// was saved, so resolve all previously stored seller articles every time
-		// the fresh WB catalogue mirror is remembered. Ambiguous articles stay
-		// unresolved instead of attaching a wrong card.
-		if _, err := store.pool.Exec(ctx, `
-			WITH unique_matches AS (
-				SELECT pc.saby_id, MIN(card.external_id)::BIGINT AS nm_id
-				FROM procurement_product_channels pc
-				JOIN procurement_channel_products card
-					ON card.channel='wb'
-					AND LOWER(BTRIM(card.article))=LOWER(BTRIM(pc.wb_vendor_code))
-					AND card.external_id ~ '^[0-9]+$'
-				WHERE BTRIM(pc.wb_vendor_code)<>''
-				GROUP BY pc.saby_id
-				HAVING COUNT(DISTINCT card.external_id)=1
-			)
-			UPDATE procurement_product_channels pc SET
-				wb_nm_id=match.nm_id, updated_at=CURRENT_TIMESTAMP
-			FROM unique_matches match
-			WHERE pc.saby_id=match.saby_id
-				AND pc.wb_nm_id IS DISTINCT FROM match.nm_id
-		`); err != nil {
-			return fmt.Errorf("resolve stored WB seller articles: %w", err)
-		}
-	}
-	return nil
-}
+		_, err := store.pool.Exec(ctx,
+			"WITH unique_matches AS ("+
+				" SELECT pc.saby_id, MIN(card.external_id)::BIGINT AS nm_id"+
+				" FROM procurement_product_channels pc"+
+				" JOIN procurement_channel_products card ON card.channel='wb'"+
+				" AND LOWER(BTRIM(card.article))=LOWER(BTRIM(pc.wb_vendor_code))"+
+				" AND card.external_id ~ '^[0-9]+
 
 // LinkSalesProduct связывает код канала с товаром и чинит уже загруженные
 // продажи.
@@ -488,17 +466,14 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 	return result, nil
 }
-
-				WHERE BTRIM(pc.wb_vendor_code)<>''
-				GROUP BY pc.saby_id
-				HAVING COUNT(DISTINCT card.external_id)=1
-			)
-			UPDATE procurement_product_channels pc SET
-				wb_nm_id=match.nm_id, updated_at=CURRENT_TIMESTAMP
-			FROM unique_matches match
-			WHERE pc.saby_id=match.saby_id
-				AND pc.wb_nm_id IS DISTINCT FROM match.nm_id
-		`); err != nil {
+"+
+				" WHERE BTRIM(pc.wb_vendor_code)<>''"+
+				" GROUP BY pc.saby_id HAVING COUNT(DISTINCT card.external_id)=1"+
+			") UPDATE procurement_product_channels pc SET"+
+				" wb_nm_id=match.nm_id, updated_at=CURRENT_TIMESTAMP"+
+				" FROM unique_matches match WHERE pc.saby_id=match.saby_id"+
+				" AND pc.wb_nm_id IS DISTINCT FROM match.nm_id")
+		if err != nil {
 			return fmt.Errorf("resolve stored WB seller articles: %w", err)
 		}
 	}
