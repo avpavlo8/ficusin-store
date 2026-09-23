@@ -338,10 +338,153 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 		return nil
 	}
 	results := store.pool.SendBatch(ctx, batch)
-	defer results.Close() //nolint:errcheck
 	for index := 0; index < batch.Len(); index++ {
 		if _, err := results.Exec(); err != nil {
+			_ = results.Close()
 			return fmt.Errorf("remember channel product: %w", err)
+		}
+	}
+	if err := results.Close(); err != nil {
+		return fmt.Errorf("finish channel product batch: %w", err)
+	}
+
+	if channel == "wb" {
+		// The user stores the human seller article, but WB price mutations need
+		// numeric nmID. A card can appear in WB after the Saby/product mapping
+		// was saved, so resolve all previously stored seller articles every time
+		// the fresh WB catalogue mirror is remembered. Ambiguous articles stay
+		// unresolved instead of attaching a wrong card.
+		if _, err := store.pool.Exec(ctx, `
+			WITH unique_matches AS (
+				SELECT pc.saby_id, MIN(card.external_id)::BIGINT AS nm_id
+				FROM procurement_product_channels pc
+				JOIN procurement_channel_products card
+					ON card.channel='wb'
+					AND LOWER(BTRIM(card.article))=LOWER(BTRIM(pc.wb_vendor_code))
+					AND card.external_id ~ '^[0-9]+
+
+// LinkSalesProduct связывает код канала с товаром и чинит уже загруженные
+// продажи.
+//
+// Одной записи в справочник каналов мало: saby_id проставляется только при
+// вставке продажи, поэтому без засыпки задним числом разобранная строка
+// вернулась бы в расчёт лишь после следующей глубокой выгрузки, а более
+// старая — никогда.
+func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
+	result := SalesLinkResult{Channel: input.Channel, ExternalID: input.ExternalID, SabyID: input.SabyID}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return SalesLinkResult{}, fmt.Errorf("begin sales link: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var productID, variantID int64
+	err = tx.QueryRow(ctx, `
+		SELECT product_id, variant_id, saby_id, name
+		FROM canonical_product_directory
+		WHERE active AND (($1 > 0 AND variant_id = $1) OR ($1 <= 0 AND saby_id = $2))
+		ORDER BY ($1 > 0 AND variant_id = $1) DESC, variant_id
+		LIMIT 1
+	`, input.VariantID, input.SabyID).Scan(&productID, &variantID, &result.SabyID, &result.SabyName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return SalesLinkResult{}, ErrNotFound
+	}
+	if err != nil {
+		return SalesLinkResult{}, fmt.Errorf("load nomenclature for sales link: %w", err)
+	}
+
+	provider, idType := "ozon", "offer_id"
+	if input.Channel == "wb" { provider, idType = "wildberries", "sku" }
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(directory.master_code, directory.saby_id)
+		FROM product_external_ids external
+		JOIN canonical_product_directory directory ON directory.variant_id = external.variant_id
+		WHERE external.provider = $1 AND external.id_type = $2
+			AND external.external_id = $3 AND external.variant_id <> $4
+	`, provider, idType, input.ExternalID, variantID).Scan(&result.TakenFrom)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return SalesLinkResult{}, fmt.Errorf("release channel code: %w", err)
+	}
+	var mappingID int64
+	err = tx.QueryRow(ctx, `
+		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type,
+			external_id, status, is_primary, source, linked_by, confirmed_at, last_seen_at)
+		VALUES($1,$2,$3,$4,$5,'active',FALSE,'manual',$6,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+			status='active', is_primary=FALSE, source='manual', linked_by=EXCLUDED.linked_by,
+			confirmed_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP,
+			updated_at=CURRENT_TIMESTAMP
+		RETURNING id
+	`, productID, variantID, provider, idType, input.ExternalID, actor.CustomerID).Scan(&mappingID)
+	if err != nil {
+		return SalesLinkResult{}, fmt.Errorf("save channel code: %w", err)
+	}
+	// WB's numeric nmID is only the API join key. Store the seller article
+	// next to it, because this is the identifier people see and report on.
+	if input.Channel == "wb" {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,
+				external_id,status,is_primary,source,linked_by,confirmed_at,last_seen_at)
+			SELECT $1,$2,'wildberries','vendor_code',BTRIM(article),'active',FALSE,
+				'manual',$4,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
+			FROM procurement_channel_products
+			WHERE channel='wb' AND external_id=$3 AND BTRIM(article)<>''
+			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
+				product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
+				status='active', is_primary=FALSE, source='manual', linked_by=EXCLUDED.linked_by,
+				confirmed_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP,
+				updated_at=CURRENT_TIMESTAMP
+		`, productID, variantID, input.ExternalID, actor.CustomerID)
+		if err != nil { return SalesLinkResult{}, fmt.Errorf("save Wildberries article: %w", err) }
+	}
+
+	command, err := tx.Exec(ctx, `
+		UPDATE procurement_sales_daily SET saby_id = $3,
+			canonical_variant_id = $4, external_mapping_id = $5
+		WHERE channel = $1 AND external_product_id = $2
+			AND (canonical_variant_id IS DISTINCT FROM $4 OR saby_id IS DISTINCT FROM $3)
+	`, input.Channel, input.ExternalID, result.SabyID, variantID, mappingID)
+	if err != nil {
+		return SalesLinkResult{}, fmt.Errorf("backfill linked sales: %w", err)
+	}
+	result.LinkedRows = int(command.RowsAffected())
+
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(SUM(units), 0)::INTEGER FROM procurement_sales_daily
+		WHERE channel = $1 AND external_product_id = $2
+	`, input.Channel, input.ExternalID).Scan(&result.LinkedUnits); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("count linked sales: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT external_product_id)::INTEGER FROM procurement_sales_daily
+		WHERE channel = $1 AND canonical_variant_id IS NULL AND NOT EXISTS (
+			SELECT 1 FROM procurement_ignored_sales_products ignored
+			WHERE ignored.channel = procurement_sales_daily.channel
+				AND ignored.external_product_id = procurement_sales_daily.external_product_id)
+	`, input.Channel).Scan(&result.Remaining); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("count remaining sales: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.sales.link", "procurement_sales_daily", 0, result); err != nil {
+		return SalesLinkResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("commit sales link: %w", err)
+	}
+	return result, nil
+}
+
+				WHERE BTRIM(pc.wb_vendor_code)<>''
+				GROUP BY pc.saby_id
+				HAVING COUNT(DISTINCT card.external_id)=1
+			)
+			UPDATE procurement_product_channels pc SET
+				wb_nm_id=match.nm_id, updated_at=CURRENT_TIMESTAMP
+			FROM unique_matches match
+			WHERE pc.saby_id=match.saby_id
+				AND pc.wb_nm_id IS DISTINCT FROM match.nm_id
+		`); err != nil {
+			return fmt.Errorf("resolve stored WB seller articles: %w", err)
 		}
 	}
 	return nil
