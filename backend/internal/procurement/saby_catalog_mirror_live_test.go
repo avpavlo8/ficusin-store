@@ -133,10 +133,13 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID)
 	}()
 
-	if _, err = pool.Exec(ctx, `INSERT INTO procurement_product_channels(saby_id,wb_nm_id,wb_vendor_code,ozon_offer_id,updated_by)
-		VALUES($1,$2,$3,$4,$5)`, sabyID, wbNmID, wbVendor, ozonOffer, actorID); err != nil {
+	if _, err = pool.Exec(ctx, `INSERT INTO procurement_channel_products(channel,external_id,article,name,seen_at)
+		VALUES('wb',$1,$2,'Антуриум Блэк Бьюти CI',CURRENT_TIMESTAMP)`, fmt.Sprint(wbNmID), wbVendor); err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM procurement_channel_products WHERE channel='wb' AND external_id=$1`, fmt.Sprint(wbNmID))
+	}()
 	store := NewPostgresStore(pool)
 	if _, err = store.UpdateProduct(ctx, Actor{CustomerID: actorID}, ProductDirectoryUpdate{
 		SabyID: sabyID, SupplierID: supplierID, WBVendorCode: wbVendor, OzonOfferID: ozonOffer,
@@ -146,7 +149,7 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	}
 	var keptWBNmID *int64
 	if err = pool.QueryRow(ctx, `SELECT wb_nm_id FROM procurement_product_channels WHERE saby_id=$1`, sabyID).Scan(&keptWBNmID); err != nil || keptWBNmID == nil || *keptWBNmID != wbNmID {
-		t.Fatalf("WB nmID was lost after editing vendor code: nmID=%v err=%v", keptWBNmID, err)
+		t.Fatalf("WB nmID was not resolved from seller article: nmID=%v err=%v", keptWBNmID, err)
 	}
 
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_orders(
