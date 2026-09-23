@@ -59,10 +59,16 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE(n.section_path,ARRAY[]::TEXT[]), COALESCE(catalog_product.status,''),
 			COALESCE(n.balance,0), COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
 			s.id, s.name, COALESCE(sp.supplier_article,''), COALESCE(sp.availability_status,'unknown'),
-			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''), NULL::BIGINT,
-			COALESCE(directory.wb_articles[1], ''), COALESCE(directory.ozon_articles[1], ''),
-			COALESCE(directory.wb_articles,ARRAY[]::TEXT[]),COALESCE(directory.wb_legacy_articles,ARRAY[]::TEXT[]),
-			COALESCE(directory.ozon_articles,ARRAY[]::TEXT[]),COALESCE(directory.ozon_legacy_articles,ARRAY[]::TEXT[]),
+			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''),
+			COALESCE(pc.wb_nm_id, CASE WHEN COALESCE(directory.wb_nm_ids[1], '') ~ '^[0-9]+$' THEN directory.wb_nm_ids[1]::BIGINT END),
+			COALESCE(NULLIF(pc.wb_vendor_code, ''), directory.wb_articles[1], ''),
+			COALESCE(NULLIF(pc.ozon_offer_id, ''), directory.ozon_articles[1], ''),
+			CASE WHEN COALESCE(array_length(directory.wb_articles,1),0)>0 THEN directory.wb_articles
+				WHEN NULLIF(pc.wb_vendor_code,'') IS NOT NULL THEN ARRAY[pc.wb_vendor_code] ELSE ARRAY[]::TEXT[] END,
+			COALESCE(directory.wb_legacy_articles,ARRAY[]::TEXT[]),
+			CASE WHEN COALESCE(array_length(directory.ozon_articles,1),0)>0 THEN directory.ozon_articles
+				WHEN NULLIF(pc.ozon_offer_id,'') IS NOT NULL THEN ARRAY[pc.ozon_offer_id] ELSE ARRAY[]::TEXT[] END,
+			COALESCE(directory.ozon_legacy_articles,ARRAY[]::TEXT[]),
 			COALESCE(sp.minimum_order_qty,1), COALESCE(sp.order_multiple,1),
 			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
 				FROM procurement_supplier_aliases a
@@ -75,7 +81,9 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE(sales.saby_sales,0),COALESCE(sales.site_sales,0),
 			COALESCE(sales.wb_sales,0),COALESCE(sales.ozon_sales,0),
 			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
-			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package
+			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package,
+			COALESCE(pricing.order_id,0),COALESCE(pricing.order_number,''),
+			pricing.unit_cost,pricing.marketplace,pricing.strike
 		FROM saby_nomenclature n
 		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
 		LEFT JOIN LATERAL (
@@ -98,6 +106,21 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				(l.canonical_variant_id=directory.variant_id OR (l.canonical_variant_id IS NULL AND l.saby_id=n.saby_id))
 			ORDER BY o.created_at DESC,l.id DESC LIMIT 1
 		) last_line ON TRUE
+		LEFT JOIN LATERAL (
+			SELECT o.id AS order_id,COALESCE(o.order_number,'') AS order_number,
+				MAX(l.unit_cost_rub)::DOUBLE PRECISION AS unit_cost,
+				MAX(l.proposed_marketplace_rub)::DOUBLE PRECISION AS marketplace,
+				MAX(l.proposed_marketplace_strike_rub)::DOUBLE PRECISION AS strike
+			FROM procurement_order_lines l
+			JOIN procurement_orders o ON o.id=l.procurement_order_id
+			WHERE o.supplier_id=s.id AND o.status<>'cancelled'
+				AND l.saby_id=n.saby_id AND l.match_status='confirmed'
+				AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
+				AND l.proposed_marketplace_rub IS NOT NULL
+			GROUP BY o.id,o.order_number,o.calculated_at,o.created_at
+			ORDER BY o.calculated_at DESC NULLS LAST,o.created_at DESC,o.id DESC
+			LIMIT 1
+		) pricing ON TRUE
 		WHERE n.missing_since IS NULL
 			AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
 			OR n.code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
@@ -122,7 +145,9 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.MinimumOrderQty, &item.OrderMultiple,
 			&item.Aliases, &item.AliasIDs, &item.SabySales, &item.SiteSales,
 			&item.WBSales, &item.OzonSales, &item.SupplierCategory, &item.ExpectedUnitPrice,
-			&item.PotDiameterCM, &item.HeightCM, &item.UnitsPerPackage); err != nil {
+			&item.PotDiameterCM, &item.HeightCM, &item.UnitsPerPackage,
+			&item.LatestOrderID, &item.LatestOrderNumber, &item.LatestUnitCostRUB,
+			&item.SuggestedMarketplaceRUB, &item.SuggestedMarketplaceStrikeRUB); err != nil {
 			return nil, fmt.Errorf("scan procurement product directory: %w", err)
 		}
 		items = append(items, item)
@@ -175,15 +200,30 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	if err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement supplier product: %w", err)
 	}
+	resolvedWBNmID := input.WBNmID
+	if resolvedWBNmID == nil && strings.TrimSpace(input.WBVendorCode) != "" {
+		// WB changes prices by numeric nmID, while a manager naturally enters
+		// the seller article. Resolve that article against the already mirrored
+		// WB catalogue, but only when it identifies exactly one card.
+		if err := tx.QueryRow(ctx, `
+			SELECT CASE WHEN COUNT(*)=1 THEN MIN(external_id)::BIGINT END
+			FROM procurement_channel_products
+			WHERE channel='wb' AND LOWER(BTRIM(article))=LOWER(BTRIM($1))
+				AND external_id ~ '^[0-9]+$'
+		`, input.WBVendorCode).Scan(&resolvedWBNmID); err != nil {
+			return ProductDirectoryItem{}, fmt.Errorf("resolve Wildberries nmID from seller article: %w", err)
+		}
+	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO procurement_product_channels (
 			saby_id, holland_article, wb_nm_id, wb_vendor_code, ozon_offer_id, updated_by
 		) VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (saby_id) DO UPDATE SET holland_article = EXCLUDED.holland_article,
-			wb_nm_id = EXCLUDED.wb_nm_id, wb_vendor_code = EXCLUDED.wb_vendor_code,
+			wb_nm_id = COALESCE(EXCLUDED.wb_nm_id, procurement_product_channels.wb_nm_id),
+			wb_vendor_code = EXCLUDED.wb_vendor_code,
 			ozon_offer_id = EXCLUDED.ozon_offer_id, updated_by = EXCLUDED.updated_by,
 			updated_at = CURRENT_TIMESTAMP
-	`, input.SabyID, input.HollandArticle, input.WBNmID, input.WBVendorCode, input.OzonOfferID, actor.CustomerID)
+	`, input.SabyID, input.HollandArticle, resolvedWBNmID, input.WBVendorCode, input.OzonOfferID, actor.CustomerID)
 	if err != nil {
 		return ProductDirectoryItem{}, fmt.Errorf("upsert procurement product channels: %w", err)
 	}
@@ -412,21 +452,24 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		// дорогую поставку в убыток и Ozon не получит две команды на один SKU.
 		_, err = tx.Exec(ctx, `
 			WITH products AS (
-				SELECT canonical_variant_id,saby_id, MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
+				SELECT MAX(canonical_variant_id) AS canonical_variant_id,saby_id,
+					MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
 					MAX(proposed_marketplace_rub) AS marketplace,
 					MAX(proposed_marketplace_strike_rub) AS strike
 				FROM procurement_order_lines
 				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
 					AND NOT invoice_excluded AND reconciliation_status<>'superseded'
-					AND canonical_variant_id IS NOT NULL AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
-				GROUP BY canonical_variant_id,saby_id
+					AND saby_id IS NOT NULL AND proposed_retail_rub IS NOT NULL
+				GROUP BY saby_id
 			)
 			INSERT INTO procurement_action_items (
 				batch_id, procurement_order_line_id, channel, external_article, old_value, new_value, compare_at_value
 			)
 			SELECT $1, p.line_id, channel.name,
-				CASE channel.name WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1], '')
-					WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1], '') ELSE p.saby_id END,
+				CASE channel.name
+					WHEN 'wb' THEN COALESCE(pc.wb_nm_id::TEXT, directory.wb_nm_ids[1], '')
+					WHEN 'ozon' THEN COALESCE(NULLIF(pc.ozon_offer_id,''), directory.ozon_articles[1], '')
+					ELSE p.saby_id END,
 				CASE channel.name
 					WHEN 'site' THEN COALESCE(pv.base_price_minor, 0)::NUMERIC / 100
 					WHEN 'saby_price' THEN COALESCE(n.price_minor, 0)::NUMERIC / 100
@@ -437,18 +480,23 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.marketplace ELSE p.retail END,
 				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.strike ELSE NULL END
 			FROM products p
-			JOIN canonical_product_directory directory ON directory.variant_id=p.canonical_variant_id
+			LEFT JOIN canonical_product_directory directory ON directory.variant_id=p.canonical_variant_id
 			JOIN saby_nomenclature n ON n.saby_id = p.saby_id
+			LEFT JOIN procurement_product_channels pc ON pc.saby_id=p.saby_id
 			LEFT JOIN LATERAL (
 				SELECT MAX(base_price_minor) AS base_price_minor FROM product_variants WHERE saby_id = p.saby_id
 			) pv ON TRUE
 			LEFT JOIN procurement_channel_products wb_product
-				ON wb_product.channel = 'wb' AND wb_product.external_id = directory.wb_nm_ids[1]
+				ON wb_product.channel = 'wb'
+				AND wb_product.external_id = COALESCE(pc.wb_nm_id::TEXT, directory.wb_nm_ids[1])
 			LEFT JOIN procurement_channel_products ozon_product
 				ON ozon_product.channel = 'ozon'
-				AND ozon_product.external_id = directory.ozon_articles[1]
+				AND ozon_product.external_id = COALESCE(NULLIF(pc.ozon_offer_id,''), directory.ozon_articles[1])
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 			WHERE channel.name = ANY($3::TEXT[])
+				AND (channel.name <> 'site' OR p.canonical_variant_id IS NOT NULL)
+				AND (channel.name <> 'wb' OR COALESCE(pc.wb_nm_id::TEXT,directory.wb_nm_ids[1],'') <> '')
+				AND (channel.name <> 'ozon' OR COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'') <> '')
 				AND (channel.name IN ('wb','ozon')
 					OR n.price_minor <= 0
 					OR ABS(p.retail::NUMERIC - n.price_minor::NUMERIC / 100)

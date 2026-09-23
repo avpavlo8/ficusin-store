@@ -484,6 +484,11 @@ type ProductDirectoryItem struct {
 	PotDiameterCM      *float64 `json:"potDiameterCm,omitempty"`
 	HeightCM           *float64 `json:"heightCm,omitempty"`
 	UnitsPerPackage    *int     `json:"unitsPerPackage,omitempty"`
+	LatestOrderID       int64    `json:"latestOrderId"`
+	LatestOrderNumber   string   `json:"latestOrderNumber"`
+	LatestUnitCostRUB   *float64 `json:"latestUnitCostRub,omitempty"`
+	SuggestedMarketplaceRUB       *float64 `json:"suggestedMarketplaceRub,omitempty"`
+	SuggestedMarketplaceStrikeRUB *float64 `json:"suggestedMarketplaceStrikeRub,omitempty"`
 }
 
 type ProductDirectoryUpdate struct {
