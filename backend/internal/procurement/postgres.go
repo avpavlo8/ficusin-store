@@ -728,6 +728,38 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	if status == "received" || status == "cancelled" {
 		return OrderDetail{}, ErrInvalidInput
 	}
+
+	// The confirmed supplier alias is the operator's explicit identity decision.
+	// Older imports can still carry the pre-match Saby id on the order line
+	// (notably when a Saby-only product was created after the invoice arrived).
+	// Reconcile that stale identity immediately before recalculation so the new
+	// marketplace price is written against the product the manager actually
+	// selected. Ignored/excluded/history rows are deliberately left untouched.
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_order_lines line SET
+			saby_id=alias.matched_saby_id,
+			canonical_variant_id=alias.canonical_variant_id,
+			match_status='confirmed',
+			purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,
+			ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
+			proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,
+			proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
+		FROM procurement_supplier_aliases alias
+		WHERE line.procurement_order_id=$1
+			AND line.supplier_alias_id=alias.id
+			AND alias.match_status='confirmed'
+			AND alias.matched_saby_id IS NOT NULL
+			AND line.match_status<>'ignored'
+			AND NOT line.invoice_excluded
+			AND line.reconciliation_status<>'superseded'
+			AND (
+				line.saby_id IS DISTINCT FROM alias.matched_saby_id
+				OR line.canonical_variant_id IS DISTINCT FROM alias.canonical_variant_id
+				OR line.match_status IS DISTINCT FROM 'confirmed'
+			)
+	`, orderID); err != nil {
+		return OrderDetail{}, fmt.Errorf("reconcile procurement line identity before calculation: %w", err)
+	}
 	var activeApproved bool
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (SELECT 1 FROM procurement_action_batches
