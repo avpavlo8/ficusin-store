@@ -407,6 +407,6 @@
   .product-page .related-card { width:min(72vw,270px); min-width:210px; max-width:270px; flex:none; scroll-snap-align:start; }
   .product-page .related-card .product-info { min-height:126px; padding:12px 6px 6px; display:flex; flex-direction:column; }
   .product-page .related-card h3 { min-height:0; margin:4px 0 18px; }
-  .product-page .related-card .product-info > strong { margin-top:auto; padding-right:46px; white-space:nowrap; }
+  .product-page .related-card .product-info > strong { width:calc(100% - 46px); margin-top:auto; white-space:nowrap; }
   .product-page .related-arrow { right:4px; bottom:3px; }
 }
