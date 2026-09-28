@@ -83,6 +83,7 @@ type FeedOffer struct {
 	CategoryID   int64
 	Category     string
 	VariantCount int
+	AvitoID      string
 }
 
 type ProductDetail struct {
