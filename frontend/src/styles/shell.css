@@ -149,7 +149,7 @@ body.menu-open, body.drawer-open { overflow: hidden; }
      them in the header too would only crowd the brand. */
   .header-actions .favorites-button, .header-actions .cart-button { display: none; }
 
-  .tab-bar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(245,240,231,.98); backdrop-filter: blur(12px); box-shadow: 0 -6px 24px rgba(23,63,50,.08); }
+  .tab-bar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; z-index: 180; right: 0; bottom: 0; left: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: rgba(245,240,231,.98); backdrop-filter: blur(12px); box-shadow: 0 -6px 24px rgba(23,63,50,.08); }
   .tab-bar > a, .tab-bar > button { min-height: 52px; padding: 5px 2px; display: grid; gap: 2px; justify-items: center; align-content: center; border: 0; background: transparent; color: var(--green); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .tab-bar small { font-size: 10px; letter-spacing: .01em; }
   .tab-bar .tab-icon { position: relative; display: grid; place-items: center; }
@@ -181,7 +181,7 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 .install-hint { display: none; }
 
 @media (max-width: 850px) {
-  .install-hint { position: fixed; z-index: 39; right: 10px; bottom: calc(78px + env(safe-area-inset-bottom)); left: 10px; padding: 11px 12px; display: flex; gap: 11px; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(23,63,50,.16); }
+  .install-hint { position: fixed; z-index: 179; right: 10px; bottom: calc(78px + env(safe-area-inset-bottom)); left: 10px; padding: 11px 12px; display: flex; gap: 11px; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(23,63,50,.16); }
   .install-hint img { width: 38px; height: 38px; flex: none; border-radius: 10px; }
   .install-hint > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
   .install-hint strong { color: var(--green); font-size: 13px; font-weight: 700; }

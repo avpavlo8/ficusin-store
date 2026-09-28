@@ -391,6 +391,7 @@
 }
 .checkout.checkout-page-panel {
   position: static;
+  z-index: auto;
   width: min(1600px, calc(100% - 64px));
   min-height: 680px;
   margin: 28px auto 70px;
@@ -401,6 +402,18 @@
   border-radius: 24px;
   background: rgba(255, 250, 243, 0.66);
   box-shadow: none;
+}
+
+@media (max-width: 850px) {
+  .cart-page,
+  .checkout-page {
+    min-height: 100dvh;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  .drawer.cart-page-panel,
+  .checkout.checkout-page-panel {
+    z-index: auto;
+  }
 }
 .checkout-page-panel > .drawer-head {
   padding: 0 0 22px;
