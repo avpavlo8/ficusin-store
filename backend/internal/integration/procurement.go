@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 )
@@ -13,13 +14,14 @@ import (
 type ProcurementExecutor struct {
 	marketplaces *MarketplaceExecutor
 	saby         *SabyClient
+	avito        *avito.Service
 	sabySink     interface {
 		Sync(context.Context, []saby.CatalogItem) (saby.Result, error)
 	}
 }
 
-func NewProcurementExecutor(marketplaces *MarketplaceExecutor, saby *SabyClient) *ProcurementExecutor {
-	return &ProcurementExecutor{marketplaces: marketplaces, saby: saby}
+func NewProcurementExecutor(marketplaces *MarketplaceExecutor, saby *SabyClient, avitoService *avito.Service) *ProcurementExecutor {
+	return &ProcurementExecutor{marketplaces: marketplaces, saby: saby, avito: avitoService}
 }
 
 // WithSabyCatalogSync connects the read-only Saby Retail client to the local
@@ -40,6 +42,8 @@ func (executor *ProcurementExecutor) Configured(channel string) bool {
 		return executor != nil && executor.saby != nil && executor.saby.Configured()
 	case "saby_price", "saby_receipt":
 		return executor != nil && executor.saby != nil && executor.saby.Configured()
+	case "avito":
+		return executor != nil && executor.avito != nil && executor.avito.Configured()
 	default:
 		return false
 	}
@@ -54,6 +58,14 @@ func (executor *ProcurementExecutor) Execute(ctx context.Context, item procureme
 			return procurement.ActionExecution{}, fmt.Errorf("канал %s не настроен", item.Channel)
 		}
 		return executor.saby.CreateDraft(ctx, item)
+	case "avito":
+		if executor == nil || executor.avito == nil {
+			return procurement.ActionExecution{}, fmt.Errorf("канал Avito не настроен")
+		}
+		if err := executor.avito.UpdatePrice(ctx, item.ExternalArticle, item.NewValue); err != nil {
+			return procurement.ActionExecution{}, err
+		}
+		return procurement.ActionExecution{Completed: true}, nil
 	default:
 		return procurement.ActionExecution{}, fmt.Errorf("канал %s не поддерживается", item.Channel)
 	}

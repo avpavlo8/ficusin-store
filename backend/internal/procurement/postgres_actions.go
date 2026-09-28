@@ -544,6 +544,34 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				HAVING COUNT(*) > 0
 			`, batchID, orderID)
 		}
+		if err == nil && containsString(channels, "avito") {
+			_, err = tx.Exec(ctx, `
+				WITH changed_products AS (
+					SELECT changed_variant.product_id,MAX(line.proposed_retail_rub) new_price
+					FROM procurement_order_lines line
+					JOIN product_variants changed_variant ON changed_variant.id=line.canonical_variant_id
+					WHERE line.procurement_order_id=$2 AND line.proposed_retail_rub IS NOT NULL
+					GROUP BY changed_variant.product_id
+				), affected AS (
+					SELECT DISTINCT lp.item_id FROM changed_products c
+					JOIN avito_listing_products lp ON lp.product_id=c.product_id
+				), listing_product_prices AS (
+					SELECT a.item_id,lp.product_id,COALESCE(cp.new_price,MIN(v.base_price_minor)::NUMERIC/100) effective_price
+					FROM affected a JOIN avito_listing_products lp ON lp.item_id=a.item_id
+					JOIN product_variants v ON v.product_id=lp.product_id AND v.active
+					JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0
+					LEFT JOIN changed_products cp ON cp.product_id=lp.product_id
+					GROUP BY a.item_id,lp.product_id,cp.new_price
+				), prices AS (
+					SELECT item_id,MIN(effective_price) new_price,
+						(SELECT MIN(id) FROM procurement_order_lines WHERE procurement_order_id=$2) line_id
+					FROM listing_product_prices GROUP BY item_id
+				)
+				INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,old_value,new_value)
+				SELECT $1,p.line_id,'avito',p.item_id,al.remote_price_minor::NUMERIC/100,p.new_price
+				FROM prices p JOIN avito_listings al ON al.item_id=p.item_id
+			`, batchID, orderID)
+		}
 	}
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("fill procurement action batch: %w", err)
@@ -601,17 +629,18 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 				WHEN channel = 'ozon' AND $3 AND external_article <> '' THEN 'queued'
 				WHEN channel = 'saby_receipt' AND $4 THEN 'queued'
 				WHEN channel = 'saby_price' AND $5 THEN 'queued'
-				WHEN channel IN ('wb', 'ozon') AND external_article = '' THEN 'skipped'
+				WHEN channel = 'avito' AND $6 AND external_article <> '' THEN 'queued'
+				WHEN channel IN ('wb', 'ozon', 'avito') AND external_article = '' THEN 'skipped'
 				ELSE 'not_configured' END,
 			error_message = CASE
 				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '')
-					OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) THEN ''
+					OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) OR (channel = 'avito' AND $6 AND external_article <> '') THEN ''
 				WHEN channel = 'wb' AND external_article = '' THEN 'Не заполнен WB nmID. Укажите его в справочнике закупок или нажмите «Сопоставить из зеркала».'
 				WHEN channel = 'ozon' AND external_article = '' THEN 'Не заполнен Ozon offer_id. Укажите его в справочнике закупок или нажмите «Подтянуть артикулы».'
 				ELSE 'API-адаптер канала не настроен' END,
 			completed_at = CASE WHEN channel = 'site' THEN CURRENT_TIMESTAMP ELSE NULL END,
 			next_attempt_at = CURRENT_TIMESTAMP, priority='interactive', updated_at = CURRENT_TIMESTAMP WHERE batch_id = $1
-	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"]); err != nil {
+	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"], configured["avito"]); err != nil {
 		return ActionBatch{}, fmt.Errorf("update procurement action statuses: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
@@ -951,11 +980,11 @@ func (store *PostgresStore) RetryBatch(ctx context.Context, actor Actor, batchID
 		UPDATE procurement_action_items SET status = 'queued', attempts = 0, error_message = '',
 			next_attempt_at = CURRENT_TIMESTAMP, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE batch_id = $1 AND external_article <> '' AND (
-			(status = 'failed' AND channel IN ('wb', 'ozon', 'saby_receipt', 'saby_price')) OR
+			(status = 'failed' AND channel IN ('wb', 'ozon', 'avito', 'saby_receipt', 'saby_price')) OR
 			(status = 'not_configured' AND ((channel = 'wb' AND $2) OR (channel = 'ozon' AND $3)
-				OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5)))
+				OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) OR (channel = 'avito' AND $6)))
 		)
-	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"])
+	`, batchID, configured["wb"], configured["ozon"], configured["saby_receipt"], configured["saby_price"], configured["avito"])
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("retry procurement actions: %w", err)
 	}

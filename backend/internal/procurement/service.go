@@ -610,7 +610,7 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 	selected, seen := make([]string, 0, len(channels)), map[string]bool{}
 	for _, channel := range channels {
 		channel = strings.TrimSpace(channel)
-		if !oneOf(channel, "site", "wb", "ozon", "saby_price") || seen[channel] {
+		if !oneOf(channel, "site", "wb", "ozon", "avito", "saby_price") || seen[channel] {
 			continue
 		}
 		seen[channel], selected = true, append(selected, channel)
@@ -673,7 +673,7 @@ func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID i
 	}
 	configured := map[string]bool{}
 	if service.executor != nil {
-		for _, channel := range []string{"wb", "ozon", "saby_price", "saby_receipt"} {
+		for _, channel := range []string{"wb", "ozon", "avito", "saby_price", "saby_receipt"} {
 			configured[channel] = service.executor.Configured(channel)
 		}
 	}
@@ -686,7 +686,7 @@ func (service *Service) RetryBatch(ctx context.Context, actor Actor, batchID int
 	}
 	configured := map[string]bool{}
 	if service.executor != nil {
-		for _, channel := range []string{"wb", "ozon", "saby_price", "saby_receipt"} {
+		for _, channel := range []string{"wb", "ozon", "avito", "saby_price", "saby_receipt"} {
 			configured[channel] = service.executor.Configured(channel)
 		}
 	}

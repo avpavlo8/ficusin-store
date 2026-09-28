@@ -16,6 +16,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	commerceanalytics "github.com/avpavlo8/ficusin-store/backend/internal/analytics"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
+	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
@@ -202,7 +203,8 @@ func main() {
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
-	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient).
+	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
+	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).
 		WithSabyCatalogSync(sabyService)
 	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
@@ -210,6 +212,7 @@ func main() {
 	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
 	analyticsStore := commerceanalytics.NewStore(pool)
 	operationsProbe := operations.NewProbe(pool)
+	go avitoService.Run(ctx)
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
 		Catalog:          catalogRepository,
@@ -239,6 +242,7 @@ func main() {
 		SiteURL:          cfg.SiteURL,
 		Readiness:        pool,
 		Operations:       operationsProbe,
+		Avito:            avitoService,
 	}))
 	go func() {
 		ticker := time.NewTicker(time.Minute)
