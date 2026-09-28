@@ -172,7 +172,7 @@ export async function mockApi(page: Page, session: Session = guest) {
     careInstructions: "Поливать после просыхания грунта",
     images: [product.image],
     variants: [{ id: 1, sku: "1", label: "D12", price: product.price, stock: product.stock, heightCm: 35, potDiameterCm: 12, wholesaleMinQty: 1 }],
-    recommendations: [],
+    recommendations: [ficus, monstera],
     importantWarnings: ["Безопасно для животных"],
     passport: { origin: "Тропические леса Азии", lighting: "Яркий рассеянный свет", watering: "После просыхания верхнего слоя", faq: [{ question: "Когда пересаживать?", answer: "Весной, когда корни заполнят горшок." }] },
     rating: 5,

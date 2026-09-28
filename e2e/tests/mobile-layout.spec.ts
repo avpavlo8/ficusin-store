@@ -68,6 +68,91 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await expect(menu).toHaveCount(0);
 });
 
+test("@phone checkout stays below the menu and bottom navigation", async ({ page }) => {
+  await setStoredCounts(page, [], { "1": 2 });
+  await mockApi(page);
+  await page.goto("/checkout");
+
+  const panel = page.locator(".checkout-page-panel");
+  const tabBar = page.locator(".tab-bar");
+  await expect(panel).toBeVisible();
+  await expect(tabBar).toBeVisible();
+  expect(await tabBar.evaluate((node) => Number(getComputedStyle(node).zIndex)))
+    .toBeGreaterThan(await panel.evaluate((node) => Number(getComputedStyle(node).zIndex) || 0));
+
+  await page.locator(".menu-button").click();
+  const menu = page.locator(".mobile-menu");
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((node) => Number(getComputedStyle(node).zIndex)))
+    .toBeGreaterThan(await tabBar.evaluate((node) => Number(getComputedStyle(node).zIndex)));
+});
+
+test("@phone all checkout steps fit without a hidden horizontal strip", async ({ page }) => {
+  await setStoredCounts(page, [], { "1": 2 });
+  await mockApi(page);
+  await page.goto("/checkout");
+  const steps = page.locator(".checkout-steps");
+  await expect(steps.locator("span")).toHaveCount(4);
+  const [clientWidth, scrollWidth] = await steps.evaluate((node) => [node.clientWidth, node.scrollWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  for (const step of await steps.locator("span").all()) await expect(step).toBeInViewport();
+});
+
+test("@phone all account sections remain visible without clipping", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.goto("/account/profile");
+  const nav = page.locator('.account-sidebar nav[aria-label="Разделы личного кабинета"]');
+  await expect(nav.getByRole("link")).toHaveCount(4);
+  for (const link of await nav.getByRole("link").all()) await expect(link).toBeInViewport();
+  const [clientWidth, scrollWidth] = await nav.evaluate((node) => [node.clientWidth, node.scrollWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  await expect(page.getByRole("heading", { name: "Мои данные" })).toBeInViewport();
+});
+
+test("@phone catalogue quantity control stays inside its product card", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+  const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
+  await card.getByRole("button", { name: "В корзину" }).click();
+  const quantity = card.locator(".storefront-quantity");
+  const [cardBox, quantityBox] = await Promise.all([card.boundingBox(), quantity.boundingBox()]);
+  expect(cardBox).not.toBeNull();
+  expect(quantityBox).not.toBeNull();
+  expect(quantityBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+  expect(quantityBox!.x + quantityBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
+});
+
+test("@phone product purchase panel and recommendations do not collide", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/1");
+
+  const commerce = page.locator(".pdp-commerce-box");
+  const actions = commerce.locator(".pdp-actions");
+  const favorite = actions.locator(".pdp-favorite");
+  const cartButton = actions.locator(".pdp-cart-button");
+  const [commerceBox, actionsBox, favoriteBox, cartBox] = await Promise.all([
+    commerce.boundingBox(), actions.boundingBox(), favorite.boundingBox(), cartButton.boundingBox(),
+  ]);
+  expect(commerceBox).not.toBeNull();
+  expect(actionsBox).not.toBeNull();
+  expect(favoriteBox).not.toBeNull();
+  expect(cartBox).not.toBeNull();
+  expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(commerceBox!.x + commerceBox!.width);
+  expect(cartBox!.x + cartBox!.width).toBeLessThanOrEqual(favoriteBox!.x - 8);
+
+  const related = page.locator(".related-card").first();
+  await related.scrollIntoViewIfNeeded();
+  const relatedBox = await related.boundingBox();
+  expect(relatedBox).not.toBeNull();
+  expect(relatedBox!.width).toBeGreaterThanOrEqual(210);
+  const price = related.locator(".product-info > strong");
+  const arrow = related.locator(".related-arrow");
+  const [priceBox, arrowBox] = await Promise.all([price.boundingBox(), arrow.boundingBox()]);
+  expect(priceBox).not.toBeNull();
+  expect(arrowBox).not.toBeNull();
+  expect(priceBox!.x + priceBox!.width).toBeLessThanOrEqual(arrowBox!.x);
+});
+
 // Нижняя панель ведёт на настоящий адрес: каждый переход — новая загрузка
 // и новый запрос корзины. Корзина обязана пережить этот переход.
 //

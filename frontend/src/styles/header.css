@@ -132,6 +132,10 @@
 }
 
 @media (max-width: 850px) {
+  /* Page panels such as checkout have their own stacking context. The menu
+     must always be the topmost application surface. */
+  body.menu-open > #root .overlay { z-index: 190; }
+  body.menu-open > #root .mobile-menu { z-index: 200; }
   .header.store-header {
     width: 100%;
     height: 68px;

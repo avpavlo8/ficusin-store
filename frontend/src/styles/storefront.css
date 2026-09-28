@@ -353,6 +353,31 @@
   .storefront-preset-carousel .preset { min-height:205px; }
   .home-catalog-toolbar { overflow-x:auto; }
   .storefront-buy button { width:44px; height:44px; }
+
+  /* A two-column card is narrower than the desktop controls. Keep the
+     price on its own row and let the quantity control use the card width
+     instead of spilling into the neighbouring product. */
+  .storefront-card .storefront-buy {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .storefront-card .storefront-price {
+    min-width: 0;
+    white-space: normal;
+  }
+  .storefront-card .storefront-quantity {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    justify-content: space-between;
+  }
+  .storefront-card .storefront-quantity button {
+    width: 38px;
+    height: 36px;
+  }
+  .storefront-card .storefront-buy > button:not(.storefront-quantity button) {
+    align-self: flex-end;
+  }
 }
 
 /* Навигация главной раскрывается на месте, не уводя пользователя к якорю. */
