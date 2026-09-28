@@ -25,7 +25,7 @@ test("@desktop @phone workspace preserves real navigation and filters recent ord
   await setup(page);
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(9);
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(10);
   await expect(page.getByRole("button", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Склад", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "В работе", exact: true }).click();
