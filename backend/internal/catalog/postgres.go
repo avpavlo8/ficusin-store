@@ -623,13 +623,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 				ORDER BY (media.variant_id=variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 			),''),
 			COALESCE(product.category_id,0),COALESCE(category.path,'Каталог'),
-			COUNT(*) OVER (PARTITION BY product.id)::INTEGER,
-			COALESCE((
-				SELECT external.external_id FROM product_external_ids external
-				WHERE external.product_id=product.id AND external.variant_id=variant.id
-				  AND external.provider='avito' AND external.id_type='item_id'
-				LIMIT 1
-			),'')
+			COUNT(*) OVER (PARTITION BY product.id)::INTEGER
 		FROM products product
 		JOIN product_variants variant ON variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
 		LEFT JOIN category_paths category ON category.id=product.category_id
@@ -645,7 +639,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 		var offer FeedOffer
 		var priceMinor int64
 		if err := rows.Scan(&offer.ProductCode, &offer.SKU, &offer.Name, &offer.Label, &offer.Description,
-			&priceMinor, &offer.Stock, &offer.Image, &offer.CategoryID, &offer.Category, &offer.VariantCount, &offer.AvitoID); err != nil {
+			&priceMinor, &offer.Stock, &offer.Image, &offer.CategoryID, &offer.Category, &offer.VariantCount); err != nil {
 			return nil, fmt.Errorf("scan feed offer: %w", err)
 		}
 		offer.Price = float64(priceMinor) / 100

@@ -55,7 +55,6 @@ type Dependencies struct {
 	SiteURL          string
 	Readiness        readinessChecker
 	Operations       operationsReader
-	AvitoFeed        AvitoFeedConfig
 }
 type catalogAIGenerator interface {
 	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
@@ -313,7 +312,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		feedRepository, _ := dependencies.Catalog.(feedCatalog)
 		handler = spaFallback(
 			logger, mux, dependencies.StaticDir,
-			sitemapHandler(logger, publicCatalog, dependencies.Collections, dependencies.SiteURL), productFeedHandler(logger, feedRepository, dependencies.SiteURL, dependencies.AvitoFeed), publicCatalog,
+			sitemapHandler(logger, publicCatalog, dependencies.Collections, dependencies.SiteURL), productFeedHandler(logger, feedRepository, dependencies.SiteURL), publicCatalog,
 			publicCatalog, dependencies.Collections,
 			analytics, dependencies.SiteURL,
 		)

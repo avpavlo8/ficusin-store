@@ -40,16 +40,6 @@ type Marketplaces struct {
 	WBToken      string
 	OzonClientID string
 	OzonAPIKey   string
-	AvitoFeed    AvitoFeed
-}
-
-type AvitoFeed struct {
-	Enabled      bool
-	Address      string
-	ManagerName  string
-	ContactPhone string
-	Category     string
-	GoodsType    string
 }
 
 // Saby holds service authorization and the retail scope used by the
@@ -238,14 +228,6 @@ func Load() (Config, error) {
 			WBToken:      strings.TrimSpace(os.Getenv("WB_API_TOKEN")),
 			OzonClientID: strings.TrimSpace(os.Getenv("OZON_CLIENT_ID")),
 			OzonAPIKey:   strings.TrimSpace(os.Getenv("OZON_API_KEY")),
-			AvitoFeed: AvitoFeed{
-				Enabled:      booleanEnabled(os.Getenv("AVITO_FEED_ENABLED"), false),
-				Address:      strings.TrimSpace(os.Getenv("AVITO_FEED_ADDRESS")),
-				ManagerName:  strings.TrimSpace(os.Getenv("AVITO_FEED_MANAGER_NAME")),
-				ContactPhone: strings.TrimSpace(os.Getenv("AVITO_FEED_CONTACT_PHONE")),
-				Category:     strings.TrimSpace(os.Getenv("AVITO_FEED_CATEGORY")),
-				GoodsType:    strings.TrimSpace(os.Getenv("AVITO_FEED_GOODS_TYPE")),
-			},
 		},
 		Saby: Saby{
 			AppClientID: strings.TrimSpace(os.Getenv("SABY_APP_CLIENT_ID")),

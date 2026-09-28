@@ -79,7 +79,7 @@ func spaFallback(
 			_, _ = response.Write([]byte(script))
 			return
 		}
-		if (request.URL.Path == "/feeds/google-products.xml" || request.URL.Path == "/feeds/yandex.yml" || request.URL.Path == "/feeds/avito.xml") && feeds != nil {
+		if (request.URL.Path == "/feeds/google-products.xml" || request.URL.Path == "/feeds/yandex.yml") && feeds != nil {
 			feeds.ServeHTTP(response, request)
 			return
 		}

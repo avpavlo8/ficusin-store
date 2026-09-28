@@ -86,49 +86,6 @@ type yandexParam struct {
 	Value string `xml:",chardata"`
 }
 
-// AvitoFeedConfig contains public listing fields only. Credentials are not
-// needed because Avito Autoload pulls this XML over HTTPS.
-type AvitoFeedConfig struct {
-	Enabled      bool
-	Address      string
-	ManagerName  string
-	ContactPhone string
-	Category     string
-	GoodsType    string
-}
-
-func (config AvitoFeedConfig) configured() bool {
-	return config.Enabled && strings.TrimSpace(config.Address) != "" && strings.TrimSpace(config.ManagerName) != "" &&
-		strings.TrimSpace(config.ContactPhone) != "" && strings.TrimSpace(config.Category) != "" && strings.TrimSpace(config.GoodsType) != ""
-}
-
-type avitoAds struct {
-	XMLName       xml.Name  `xml:"Ads"`
-	FormatVersion string    `xml:"formatVersion,attr"`
-	Target        string    `xml:"target,attr"`
-	Ads           []avitoAd `xml:"Ad"`
-}
-type avitoAd struct {
-	ID           string      `xml:"Id"`
-	AvitoID      string      `xml:"AvitoId"`
-	Title        string      `xml:"Title"`
-	Description  string      `xml:"Description"`
-	Category     string      `xml:"Category"`
-	GoodsType    string      `xml:"GoodsType"`
-	Condition    string      `xml:"Condition"`
-	Price        int         `xml:"Price"`
-	Address      string      `xml:"Address"`
-	ManagerName  string      `xml:"ManagerName"`
-	ContactPhone string      `xml:"ContactPhone"`
-	Images       avitoImages `xml:"Images"`
-}
-type avitoImages struct {
-	Items []avitoImage `xml:"Image"`
-}
-type avitoImage struct {
-	URL string `xml:"url,attr"`
-}
-
 var markupPattern = regexp.MustCompile(`<[^>]*>`)
 
 func plainFeedText(value string, limit int) string {
@@ -165,17 +122,13 @@ func feedDescription(offer catalog.FeedOffer) string {
 	return description
 }
 
-func productFeedHandler(logger *slog.Logger, repository feedCatalog, configuredBase string, avitoConfig AvitoFeedConfig) http.Handler {
+func productFeedHandler(logger *slog.Logger, repository feedCatalog, configuredBase string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if repository == nil {
 			http.NotFound(response, request)
 			return
 		}
-		if request.URL.Path != "/feeds/google-products.xml" && request.URL.Path != "/feeds/yandex.yml" && request.URL.Path != "/feeds/avito.xml" {
-			http.NotFound(response, request)
-			return
-		}
-		if request.URL.Path == "/feeds/avito.xml" && !avitoConfig.configured() {
+		if request.URL.Path != "/feeds/google-products.xml" && request.URL.Path != "/feeds/yandex.yml" {
 			http.NotFound(response, request)
 			return
 		}
@@ -232,25 +185,6 @@ func productFeedHandler(logger *slog.Logger, repository feedCatalog, configuredB
 				yandexOffers = append(yandexOffers, yandexOffer{ID: offer.SKU, Available: true, URL: base + "/product/" + url.PathEscape(offer.ProductCode) + "?sku=" + url.QueryEscape(offer.SKU), Price: fmt.Sprintf("%.2f", offer.Price), CurrencyID: "RUB", CategoryID: offer.CategoryID, Picture: absoluteFeedURL(base, offer.Image), Name: feedTitle(offer), Description: feedDescription(offer), VendorCode: offer.SKU, Param: parameter})
 			}
 			_ = encoder.Encode(yandexCatalog{Date: time.Now().Format("2006-01-02 15:04"), Shop: yandexShop{Name: "Фикусин", Company: "Фикусин", URL: base, Currencies: []yandexCurrency{{ID: "RUB", Rate: "1"}}, Categories: yandexCategories, Offers: yandexOffers}})
-		case "/feeds/avito.xml":
-			ads := make([]avitoAd, 0, len(offers))
-			for _, offer := range offers {
-				// An explicit Avito item mapping is mandatory. Exporting every site
-				// product would create new paid listings instead of controlling the
-				// owner's existing ones.
-				if strings.TrimSpace(offer.AvitoID) == "" || offer.Stock <= 0 || offer.Price <= 0 || strings.TrimSpace(offer.Image) == "" {
-					continue
-				}
-				ads = append(ads, avitoAd{
-					ID: offer.SKU, AvitoID: strings.TrimSpace(offer.AvitoID), Title: feedTitle(offer),
-					Description: feedDescription(offer), Category: avitoConfig.Category, GoodsType: avitoConfig.GoodsType,
-					Condition: "Новое", Price: int(offer.Price + 0.5), Address: avitoConfig.Address,
-					ManagerName: avitoConfig.ManagerName, ContactPhone: avitoConfig.ContactPhone,
-					Images: avitoImages{Items: []avitoImage{{URL: absoluteFeedURL(base, offer.Image)}}},
-				})
-			}
-			response.Header().Set("X-FicusIn-Avito-Offers", fmt.Sprintf("%d", len(ads)))
-			_ = encoder.Encode(avitoAds{FormatVersion: "3", Target: "Avito.ru", Ads: ads})
 		}
 	})
 }
