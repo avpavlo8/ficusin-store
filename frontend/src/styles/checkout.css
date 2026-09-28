@@ -1513,6 +1513,30 @@
   color: var(--co-orange);
 }
 @media (max-width: 700px) {
+  .checkout-page-panel .checkout-steps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    overflow: visible;
+  }
+  .checkout-page-panel .checkout-steps span {
+    min-width: 0;
+    flex-direction: column;
+    gap: 7px;
+    text-align: center;
+  }
+  .checkout-page-panel .checkout-steps span:after {
+    top: 16px;
+    right: calc(-50% + 22px);
+    left: calc(50% + 22px);
+  }
+  .checkout-page-panel .checkout-steps small {
+    width: 100%;
+    padding: 0 2px;
+    background: transparent;
+    font-size: 9px;
+    line-height: 1.15;
+    white-space: normal;
+  }
   .checkout-page-panel [data-checkout-step="2"],
   .checkout-page-panel [data-checkout-step="3"] {
     padding: 24px 18px;

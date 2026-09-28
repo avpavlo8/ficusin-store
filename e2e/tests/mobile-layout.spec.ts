@@ -87,6 +87,28 @@ test("@phone checkout stays below the menu and bottom navigation", async ({ page
     .toBeGreaterThan(await tabBar.evaluate((node) => Number(getComputedStyle(node).zIndex)));
 });
 
+test("@phone all checkout steps fit without a hidden horizontal strip", async ({ page }) => {
+  await setStoredCounts(page, [], { "1": 2 });
+  await mockApi(page);
+  await page.goto("/checkout");
+  const steps = page.locator(".checkout-steps");
+  await expect(steps.locator("span")).toHaveCount(4);
+  const [clientWidth, scrollWidth] = await steps.evaluate((node) => [node.clientWidth, node.scrollWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  for (const step of await steps.locator("span").all()) await expect(step).toBeInViewport();
+});
+
+test("@phone all account sections remain visible without clipping", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.goto("/account/profile");
+  const nav = page.locator('.account-sidebar nav[aria-label="Разделы личного кабинета"]');
+  await expect(nav.getByRole("link")).toHaveCount(4);
+  for (const link of await nav.getByRole("link").all()) await expect(link).toBeInViewport();
+  const [clientWidth, scrollWidth] = await nav.evaluate((node) => [node.clientWidth, node.scrollWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  await expect(page.getByRole("heading", { name: "Мои данные" })).toBeInViewport();
+});
+
 test("@phone catalogue quantity control stays inside its product card", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
