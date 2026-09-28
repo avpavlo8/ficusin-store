@@ -103,7 +103,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/avito/products", avitoProductsHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("PUT /api/v1/admin/avito/{itemID}/products", avitoMappingHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("PUT /api/v1/admin/avito/publication", avitoPublicationHandler(adminAPI, dependencies.Avito))
-		mux.HandleFunc("GET /feeds/avito/{token}.xml", avitoFeedHandler(dependencies.Avito))
+		mux.HandleFunc("GET /feeds/avito/{token}", avitoFeedHandler(dependencies.Avito))
 	}
 
 	callLimiter := newRateLimiter(5, 10*time.Minute)

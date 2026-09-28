@@ -21,7 +21,12 @@ type avitoService interface {
 
 func avitoFeedHandler(service avitoService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := service.WriteFeed(r.Context(), r.PathValue("token"), w); err != nil {
+		token := strings.TrimSuffix(r.PathValue("token"), ".xml")
+		if token == r.PathValue("token") || token == "" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := service.WriteFeed(r.Context(), token, w); err != nil {
 			http.NotFound(w, r)
 		}
 	}
