@@ -55,6 +55,7 @@ type Dependencies struct {
 	SiteURL          string
 	Readiness        readinessChecker
 	Operations       operationsReader
+	Avito            avitoService
 }
 type catalogAIGenerator interface {
 	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
@@ -96,6 +97,14 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.CatalogAI,
 	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
+	if dependencies.Avito != nil {
+		mux.HandleFunc("GET /api/v1/admin/avito", avitoListHandler(adminAPI, dependencies.Avito))
+		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))
+		mux.HandleFunc("GET /api/v1/admin/avito/products", avitoProductsHandler(adminAPI, dependencies.Avito))
+		mux.HandleFunc("PUT /api/v1/admin/avito/{itemID}/products", avitoMappingHandler(adminAPI, dependencies.Avito))
+		mux.HandleFunc("PUT /api/v1/admin/avito/publication", avitoPublicationHandler(adminAPI, dependencies.Avito))
+		mux.HandleFunc("GET /feeds/avito/{token}", avitoFeedHandler(dependencies.Avito))
+	}
 
 	callLimiter := newRateLimiter(5, 10*time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)

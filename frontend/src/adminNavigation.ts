@@ -8,6 +8,7 @@ export const sections: Array<{ id: Section; label: string; permission?: string; 
   { id: "procurement", label: "Закупки", permission: "procurement.read" },
   { id: "returns", label: "Возвраты", permission: "returns.read" },
   { id: "marketplaces", label: "Маркетплейсы", permission: "procurement.read" },
+  { id: "avito", label: "Авито", permission: "procurement.read" },
   { id: "finance", label: "Финансы", owner: true },
   { id: "analytics", label: "Аналитика", permission: "analytics.read" },
   { id: "customers", label: "Клиенты", permission: "customers.read" },

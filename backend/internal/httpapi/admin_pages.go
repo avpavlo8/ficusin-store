@@ -21,7 +21,7 @@ func guardAdminPages(handlers adminHandlers, next http.Handler) http.Handler {
   permission:=admin.PermissionDashboard
   switch section {
   case "analytics":permission=admin.PermissionAnalyticsRead
-  case "procurement","marketplaces":permission=admin.PermissionProcurementRead
+  case "procurement","marketplaces","avito":permission=admin.PermissionProcurementRead
   case "settings":permission=admin.PermissionIntegrationsEdit
   case "finance":permission=admin.PermissionFinanceRead
   case "customers":permission=admin.PermissionCustomersRead

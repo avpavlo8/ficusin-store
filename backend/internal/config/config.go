@@ -37,9 +37,16 @@ type OpenAI struct {
 // Marketplaces holds seller API credentials. Empty credentials keep the
 // corresponding channel disabled; secrets never live in the database.
 type Marketplaces struct {
-	WBToken      string
-	OzonClientID string
-	OzonAPIKey   string
+	WBToken           string
+	OzonClientID      string
+	OzonAPIKey        string
+	AvitoClientID     string
+	AvitoClientSecret string
+	AvitoAddress      string
+	AvitoManagerName  string
+	AvitoContactPhone string
+	AvitoCategory     string
+	AvitoGoodsType    string
 }
 
 // Saby holds service authorization and the retail scope used by the
@@ -225,9 +232,16 @@ func Load() (Config, error) {
 			SecretKey: strings.TrimSpace(os.Getenv("S3_SECRET_KEY")),
 		},
 		Marketplaces: Marketplaces{
-			WBToken:      strings.TrimSpace(os.Getenv("WB_API_TOKEN")),
-			OzonClientID: strings.TrimSpace(os.Getenv("OZON_CLIENT_ID")),
-			OzonAPIKey:   strings.TrimSpace(os.Getenv("OZON_API_KEY")),
+			WBToken:           strings.TrimSpace(os.Getenv("WB_API_TOKEN")),
+			OzonClientID:      strings.TrimSpace(os.Getenv("OZON_CLIENT_ID")),
+			OzonAPIKey:        strings.TrimSpace(os.Getenv("OZON_API_KEY")),
+			AvitoClientID:     strings.TrimSpace(os.Getenv("AVITO_CLIENT_ID")),
+			AvitoClientSecret: strings.TrimSpace(os.Getenv("AVITO_CLIENT_SECRET")),
+			AvitoAddress:      defaultString(os.Getenv("AVITO_ADDRESS"), "Рязань, Новоселов 40а"),
+			AvitoManagerName:  defaultString(os.Getenv("AVITO_MANAGER_NAME"), "Павловский Александр Владимирович"),
+			AvitoContactPhone: defaultString(os.Getenv("AVITO_CONTACT_PHONE"), "+7 (915) 615-11-00"),
+			AvitoCategory:     defaultString(os.Getenv("AVITO_CATEGORY"), "Растения"),
+			AvitoGoodsType:    defaultString(os.Getenv("AVITO_GOODS_TYPE"), "Комнатные растения"),
 		},
 		Saby: Saby{
 			AppClientID: strings.TrimSpace(os.Getenv("SABY_APP_CLIENT_ID")),
