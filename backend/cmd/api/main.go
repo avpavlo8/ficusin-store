@@ -239,6 +239,11 @@ func main() {
 		SiteURL:          cfg.SiteURL,
 		Readiness:        pool,
 		Operations:       operationsProbe,
+		AvitoFeed: httpapi.AvitoFeedConfig{
+			Enabled: cfg.Marketplaces.AvitoFeed.Enabled, Address: cfg.Marketplaces.AvitoFeed.Address,
+			ManagerName: cfg.Marketplaces.AvitoFeed.ManagerName, ContactPhone: cfg.Marketplaces.AvitoFeed.ContactPhone,
+			Category: cfg.Marketplaces.AvitoFeed.Category, GoodsType: cfg.Marketplaces.AvitoFeed.GoodsType,
+		},
 	}))
 	go func() {
 		ticker := time.NewTicker(time.Minute)
