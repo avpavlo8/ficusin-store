@@ -121,7 +121,7 @@ test("@desktop сохранение менеджером подтверждае�
   await editor.locator("select").first().selectOption("1003");
   await editor.getByRole("button", { name: "Добавить", exact: true }).click();
 
-  await expect(editor.getByText("Аглаонема Мария Кристина D12")).toBeVisible();
+  await expect(editor.getByText("Аглаонема Мария Кристина D12", { exact: true })).toBeVisible();
   await expect(editor.locator(".admin-order-draft-total")).toContainText(/3.?970/);
   await expect(payment).toContainText(/Итого:\s*3.?970/);
   await expect(payment).toContainText("Сначала сохраните изменения");
