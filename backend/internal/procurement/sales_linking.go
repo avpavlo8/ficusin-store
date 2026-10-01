@@ -479,7 +479,7 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 	command, err := tx.Exec(ctx, `
 		UPDATE sales_events SET saby_id=$3,canonical_variant_id=$4,
-			external_mapping_id=$5,updated_at=CURRENT_TIMESTAMP
+			external_mapping_id=$5
 		WHERE channel=$1 AND external_product_id=$2
 			AND (canonical_variant_id IS DISTINCT FROM $4 OR saby_id IS DISTINCT FROM $3
 				OR external_mapping_id IS DISTINCT FROM $5)
