@@ -144,7 +144,7 @@ export type RecommendationStatus = "recommended" | "already_ordered" | "check_av
 
 export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string; reason: string; comment: string; lastAction: string; lastActionAt?: string; due: boolean };
 
-export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; periodFrom: string; periodTo: string; latestSale: string; nextAttemptAt?: string; nextDeepAt?: string; mode?: string; freshness: "fresh" | "stale" | "unknown" };
+export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; rowsUnlinked: number; periodFrom: string; periodTo: string; latestSale: string; nextAttemptAt?: string; nextDeepAt?: string; mode?: string; freshness: "fresh" | "stale" | "unknown" };
 
 export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
 export type IntegrationSyncStatus = { channel: "saby" | "wb" | "ozon"; resource: "catalog" | "sales"; status: string; priority: "background" | "interactive"; requestedGeneration: number; activeGeneration: number; completedGeneration: number; lastAttemptAt?: string; lastSuccessAt?: string; nextAttemptAt?: string; nextDeepAt?: string; cooldownUntil?: string; periodFrom: string; periodTo: string; latestEventAt?: string; rowsSynced: number; lastError: string };

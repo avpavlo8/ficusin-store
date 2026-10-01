@@ -88,8 +88,12 @@ func TestStage07PostedReceiptAndDatedCostsOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT receipt_verified_at IS NOT NULL FROM procurement_action_items WHERE id=$1`, actionID).Scan(&verified); err != nil || !verified {
 		t.Fatalf("receipt verified=%v err=%v", verified, err)
 	}
-	if _, err = store.UpdateOrderStatus(ctx, Actor{CustomerID: actorID}, orderID, OrderStatusUpdate{Status: "received"}); err != nil {
+	var orderStatus string
+	if err = pool.QueryRow(ctx, `SELECT status FROM procurement_orders WHERE id=$1`, orderID).Scan(&orderStatus); err != nil {
 		t.Fatal(err)
+	}
+	if orderStatus != "received" {
+		t.Fatalf("verified Saby receipt left procurement status=%s, want received", orderStatus)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE procurement_cost_history SET effective_at='2035-01-02T00:00:00Z'
 		WHERE procurement_order_id=$1 AND canonical_variant_id=$2`, orderID, variantID); err != nil {

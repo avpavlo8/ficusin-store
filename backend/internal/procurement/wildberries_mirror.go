@@ -108,7 +108,12 @@ func (worker *WBMirrorWorker) syncSales(ctx context.Context) {
 		rows, syncErr = worker.store.ReplaceSales(ctx, "wb", from, to, records)
 	}
 	if syncErr != nil {
-		_ = worker.store.MarkSalesSync(ctx, "wb", "error", syncErr)
+		status := "error"
+		var retryable interface{ RetryDelay() time.Duration }
+		if errors.As(syncErr, &retryable) && retryable.RetryDelay() > 0 {
+			status = "pending"
+		}
+		_ = worker.store.MarkSalesSync(ctx, "wb", status, syncErr)
 	}
 	worker.finish(ctx, *claim, rows, syncErr)
 }

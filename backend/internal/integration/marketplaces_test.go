@@ -112,6 +112,62 @@ func TestWBSalesUseOnlyOperationalReport(t *testing.T) {
 	}
 }
 
+func TestWBSalesContinueFromLastChangeDateWhenPageIsFull(t *testing.T) {
+	calls := 0
+	reports := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		calls++
+		response.Header().Set("Content-Type", "application/json")
+		if calls == 1 {
+			_, _ = response.Write([]byte(`[
+				{"nmId":101,"saleID":"S1","srid":"SR1","date":"2026-08-05T12:00:00Z","lastChangeDate":"2026-08-05T13:00:00Z","finishedPrice":1000},
+				{"nmId":102,"saleID":"S2","srid":"SR2","date":"2026-08-06T12:00:00Z","lastChangeDate":"2026-08-06T13:00:00Z","finishedPrice":1100}
+			]`))
+			return
+		}
+		if got := request.URL.Query().Get("dateFrom"); got != "2026-08-06T13:00:00Z" {
+			t.Fatalf("second page dateFrom=%q", got)
+		}
+		_, _ = response.Write([]byte(`[
+			{"nmId":103,"saleID":"S3","srid":"SR3","date":"2026-08-07T12:00:00Z","lastChangeDate":"2026-08-07T13:00:00Z","finishedPrice":1200}
+		]`))
+	}))
+	defer reports.Close()
+	executor := NewMarketplaceExecutor("token", "", "")
+	executor.wbReportsBase, executor.client = reports.URL, reports.Client()
+	from := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	records, err := executor.fetchWBOperationalSalesPaged(context.Background(), from, to, 2)
+	if err != nil || len(records) != 3 {
+		t.Fatalf("records=%+v err=%v", records, err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls=%d, want 2", calls)
+	}
+	if records[0].SourceEventID != "SR1" {
+		t.Fatalf("source event=%q, want WB srid", records[0].SourceEventID)
+	}
+}
+
+func TestWildberries429WithoutRetryHeaderUsesSafeMinuteWindow(t *testing.T) {
+	limiter := &wbLimiterStub{deferred: map[string]time.Duration{}}
+	executor := NewMarketplaceExecutor("token", "", "").WithWBRequestLimiter(limiter)
+	executor.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Body: io.NopCloser(strings.NewReader(`{"status":429}`)),
+			Header: make(http.Header),
+		}, nil
+	})}
+	_, err := executor.FetchSales(context.Background(), "wb", time.Now().AddDate(0, 0, -30), time.Now())
+	var retryable interface{ RetryDelay() time.Duration }
+	if !errors.As(err, &retryable) || retryable.RetryDelay() != 65*time.Second {
+		t.Fatalf("retry error=%v delay=%v", err, retryable)
+	}
+	if limiter.deferred["sales"] != 65*time.Second {
+		t.Fatalf("published delay=%v", limiter.deferred["sales"])
+	}
+}
+
 func TestOzonSalesCombineFBSAndFBO(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")

@@ -124,51 +124,79 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 
 // fetchWBOperationalSales is the single source for the hourly sales mirror.
 // It contains both sales and returns and keeps the rolling window used by the
-// procurement recommendation. Exactly one request is made per mirror run.
+// procurement recommendation. A full 80,000-row page is continued from the
+// lastChangeDate cursor; the shared WB limiter spaces those extra pages.
 func (executor *MarketplaceExecutor) fetchWBOperationalSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
+	return executor.fetchWBOperationalSalesPaged(ctx, from, to, 80000)
+}
+
+func (executor *MarketplaceExecutor) fetchWBOperationalSalesPaged(ctx context.Context, from, to time.Time, pageLimit int) ([]procurement.SalesRecord, error) {
+	const maxPages = 15
+	if pageLimit <= 0 {
+		return nil, errors.New("Wildberries sales page limit must be positive")
+	}
 	type wbSale struct {
 		NmID          int64             `json:"nmId"`
 		SaleID        string            `json:"saleID"`
+		SrID          string            `json:"srid"`
 		Date          string            `json:"date"`
 		LastChange    string            `json:"lastChangeDate"`
 		FinishedPrice marketplaceNumber `json:"finishedPrice"`
 		PriceWithDisc marketplaceNumber `json:"priceWithDisc"`
 	}
-	endpoint, err := url.Parse(executor.wbReportsBase + "/api/v1/supplier/sales")
-	if err != nil {
-		return nil, err
-	}
-	query := endpoint.Query()
-	query.Set("dateFrom", from.Format(time.RFC3339))
-	query.Set("flag", "0")
-	endpoint.RawQuery = query.Encode()
-	var rows []wbSale
-	if err := executor.requestRead(ctx, http.MethodGet, endpoint.String(), nil,
-		map[string]string{"Authorization": executor.wbToken}, &rows); err != nil {
-		return nil, fmt.Errorf("получить оперативные продажи Wildberries: %w", err)
-	}
-	records := make([]procurement.SalesRecord, 0, len(rows))
-	for _, row := range rows {
-		date, err := parseMarketplaceDate(firstNonEmpty(row.Date, row.LastChange))
-		if err != nil || date.Before(from) || date.After(to.Add(24*time.Hour-time.Second)) || row.NmID <= 0 {
-			continue
+	cursor := from.Format(time.RFC3339)
+	records := make([]procurement.SalesRecord, 0, 4096)
+	seen := make(map[string]struct{})
+	for page := 0; page < maxPages; page++ {
+		endpoint, err := url.Parse(executor.wbReportsBase + "/api/v1/supplier/sales")
+		if err != nil {
+			return nil, err
 		}
-		sign := 1
-		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(row.SaleID)), "R") {
-			sign = -1
+		query := endpoint.Query()
+		query.Set("dateFrom", cursor)
+		query.Set("flag", "0")
+		endpoint.RawQuery = query.Encode()
+		var rows []wbSale
+		if err := executor.requestRead(ctx, http.MethodGet, endpoint.String(), nil,
+			map[string]string{"Authorization": executor.wbToken}, &rows); err != nil {
+			return nil, fmt.Errorf("получить оперативные продажи Wildberries: %w", err)
 		}
-		amount := math.Abs(float64(row.FinishedPrice))
-		if amount == 0 {
-			amount = math.Abs(float64(row.PriceWithDisc))
+		for _, row := range rows {
+			date, err := parseMarketplaceDate(firstNonEmpty(row.Date, row.LastChange))
+			if err != nil || date.Before(from) || date.After(to.Add(24*time.Hour-time.Second)) || row.NmID <= 0 {
+				continue
+			}
+			sign := 1
+			if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(row.SaleID)), "R") {
+				sign = -1
+			}
+			amount := math.Abs(float64(row.FinishedPrice))
+			if amount == 0 {
+				amount = math.Abs(float64(row.PriceWithDisc))
+			}
+			eventID := firstNonEmpty(strings.TrimSpace(row.SrID), strings.TrimSpace(row.SaleID))
+			key := fmt.Sprintf("%s|%d|%s|%s", eventID, row.NmID, row.Date, row.LastChange)
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			records = append(records, procurement.SalesRecord{
+				Date: date, ExternalID: strconv.FormatInt(row.NmID, 10), Units: sign, GrossRUB: float64(sign) * amount,
+				SourceEventID: eventID, SourceDocumentID: eventID,
+				SourceLineID: strconv.FormatInt(row.NmID, 10), CrossSourceKey: eventID,
+				EventType: map[bool]string{true: "return", false: "sale"}[sign < 0], EventStatus: "confirmed",
+			})
 		}
-		records = append(records, procurement.SalesRecord{
-			Date: date, ExternalID: strconv.FormatInt(row.NmID, 10), Units: sign, GrossRUB: float64(sign) * amount,
-			SourceEventID: strings.TrimSpace(row.SaleID), SourceDocumentID: strings.TrimSpace(row.SaleID),
-			SourceLineID: strconv.FormatInt(row.NmID, 10), CrossSourceKey: strings.TrimSpace(row.SaleID),
-			EventType: map[bool]string{true: "return", false: "sale"}[sign < 0], EventStatus: "confirmed",
-		})
+		if len(rows) < pageLimit {
+			return records, nil
+		}
+		next := strings.TrimSpace(rows[len(rows)-1].LastChange)
+		if next == "" || next == cursor {
+			return nil, fmt.Errorf("Wildberries вернул полную страницу продаж без нового lastChangeDate; остановлено, чтобы не зациклить синхронизацию")
+		}
+		cursor = next
 	}
-	return records, nil
+	return nil, fmt.Errorf("Wildberries вернул больше %d страниц продаж; синхронизация остановлена до полного чтения", maxPages)
 }
 
 func isRateLimit(err error) bool {
@@ -695,6 +723,7 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 			if delay <= 0 {
 				delay = 65 * time.Second
 			}
+			remote.RetryAfter = delay
 			if bucket := wbRequestBucket(endpoint); bucket != "" {
 				_ = executor.wbLimiter.DeferWBRequests(ctx, bucket, delay)
 			}

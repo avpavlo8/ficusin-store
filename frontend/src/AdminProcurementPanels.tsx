@@ -6,7 +6,7 @@ export const availabilityLabel = (value: string) => ({ available: "Есть", ch
 
 export const salesChannelLabel = (value: string) => ({ site: "Сайт", saby: "СБИС / магазин", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 
-export const salesSyncLabel = (value: string) => ({ pending: "Ожидает первой загрузки", running: "Обновляется", ok: "Актуально", error: "Ошибка", disabled: "Не подключено" }[value] || value);
+export const salesSyncLabel = (value: string) => ({ pending: "Ожидает обновления", running: "Обновляется", ok: "Актуально", error: "Ошибка", disabled: "Не подключено" }[value] || value);
 
 export const recommendationStatusLabel = (value: string) => ({ recommended: "К заказу", already_ordered: "Уже заказано", check_availability: "Проверить наличие", supplier_unavailable: "Нет у поставщика", excluded: "Не закупаем" }[value] || value);
 

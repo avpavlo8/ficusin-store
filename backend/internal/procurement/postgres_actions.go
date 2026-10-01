@@ -957,6 +957,30 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 	`, *batchID); err != nil {
 			return false, fmt.Errorf("update procurement batch result: %w", err)
 		}
+		// A procurement is finished by the verified Saby receipt, not by a
+		// separate manager click. Close it only after every receipt action in the
+		// batch is completed and read back from Saby with verified quantities.
+		var receivedOrderID int64
+		err := tx.QueryRow(ctx, `
+			UPDATE procurement_orders orders SET status='received',
+				received_at=COALESCE(received_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP
+			WHERE orders.id=(SELECT procurement_order_id FROM procurement_action_batches WHERE id=$1 AND kind='receipt')
+				AND orders.status='ready_to_receive'
+				AND EXISTS (SELECT 1 FROM procurement_action_items item
+					WHERE item.batch_id=$1 AND item.channel='saby_receipt')
+				AND NOT EXISTS (SELECT 1 FROM procurement_action_items item
+					WHERE item.batch_id=$1 AND item.channel='saby_receipt'
+						AND (item.status<>'completed' OR item.receipt_verified_at IS NULL))
+			RETURNING orders.id
+		`, *batchID).Scan(&receivedOrderID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return false, fmt.Errorf("auto-complete procurement after verified receipt: %w", err)
+		}
+		if err == nil {
+			if err := fulfilOrderAllocations(ctx, tx, receivedOrderID); err != nil {
+				return false, err
+			}
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit procurement action result: %w", err)

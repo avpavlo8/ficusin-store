@@ -5,7 +5,7 @@ import type { IntegrationSyncStatus, ProcurementData } from "./adminTypes";
 
 const channelName = (value: string) => ({ saby: "СБИС", wb: "Wildberries", ozon: "Ozon" }[value] || value);
 const resourceName = (value: string) => value === "catalog" ? "Карточки и цены" : "Продажи";
-const statusName = (value: string) => ({ pending: "Ожидает первой загрузки", queued: "В очереди", running: "Обновляется", ok: "Завершено", error: "Нужен повтор", disabled: "Не подключено" }[value] || value);
+const statusName = (value: string) => ({ pending: "Ожидает обновления", queued: "В очереди", running: "Обновляется", ok: "Завершено", error: "Нужен повтор", disabled: "Не подключено" }[value] || value);
 const when = (value?: string) => value ? new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }) : "не было";
 
 export function AdminMarketplaces({ onError }: { onError: (value: string) => void }) {

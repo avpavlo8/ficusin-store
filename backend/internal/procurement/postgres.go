@@ -1003,6 +1003,7 @@ func (store *PostgresStore) ImportDocument(
 	} else {
 		err = tx.QueryRow(ctx, `
 			UPDATE procurement_orders SET
+				order_number = CASE WHEN BTRIM(order_number)='' AND BTRIM($3)<>'' THEN $3 ELSE order_number END,
 				document_number = $3, document_date = $4, source_kind = $5,
 				currency = $6, status = 'invoice_received', updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1 AND supplier_id = $2 AND status NOT IN ('received', 'cancelled')

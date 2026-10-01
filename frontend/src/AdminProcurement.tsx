@@ -20,7 +20,7 @@ export function normalizeProcurementOrderDetail(item: ProcurementOrderDetail): P
 export const procurementStatusLabels: Record<string, string> = {
   draft: "Черновик", ordered: "Заказано", invoice_received: "Инвойс получен",
   review: "Требует проверки", ready_to_receive: "Готово к поступлению",
-  received: "Принято", cancelled: "Отменено",
+  received: "Завершено", cancelled: "Отменено",
 };
 
 export const procurementSourceLabels: Record<string, string> = {
@@ -201,7 +201,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
         <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Строк / шт.</th><th>Сумма</th><th>Проверка</th>
       </tr></thead><tbody>{data.orders.map((item) => <tr key={item.id} className="clickable" onClick={() => setSelectedOrder(item.id)}>
-        <td><strong>{item.orderNumber || `Черновик №${item.id}`}</strong><small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small></td>
+        <td><strong>{item.orderNumber || `Закупка №${item.id}`}</strong><small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small></td>
         <td><strong>{item.supplierName}</strong><small>{item.currency}</small></td>
         <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
         <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
@@ -226,7 +226,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     {view === "recommendations" && <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button aria-label="Сформировать заказ" className="admin-primary" disabled={!selectedRecommendationItems.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ · {selectedRecommendationItems.length}</button></div>
       <p className="admin-hint procurement-note">К закупке = подтверждённые продажи минус возвраты за {data.settings.recommendationDays} дней, пересчитанные на запас {data.settings.targetCoverDays} дней, + нераспределённые заявки клиентов и магазина − текущий остаток СБИС − товар в пути. Продажа сайта, уже связанная с заявкой клиента, повторно не считается.</p>
-      <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced}, связано {sync.rowsLinked}</small>{sync.rowsSynced > sync.rowsLinked && <em>Часть продаж не сопоставлена с товарами и не участвует в расчёте — разберите их на вкладке «Продажи без товара»</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
+      <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced} · без товара {sync.rowsUnlinked}</small>{sync.rowsUnlinked > 0 && <em>{sync.rowsUnlinked} товарных кодов продаж не сопоставлены и не участвуют в расчёте — разберите их на вкладке «Продажи без товара»</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
       <div className="procurement-recommendation-tabs">
         {(["recommended", "already_ordered", "check_availability", "supplier_unavailable", "excluded"] as const).map((status) => <button className={recommendationView === status ? "active" : ""} key={status} onClick={() => setRecommendationView(status)}>{recommendationStatusLabel(status)} <span>{data.recommendations.filter((item) => item.status === status).length}</span></button>)}
       </div>

@@ -53,6 +53,11 @@ func (store *PostgresStore) FinishWBSync(
 	status, message := "ok", ""
 	if syncErr != nil {
 		status, message = "error", safeError(syncErr.Error())
+		var retryable interface{ RetryDelay() time.Duration }
+		if errors.As(syncErr, &retryable) && retryable.RetryDelay() > 0 {
+			status = "pending"
+			message = fmt.Sprintf("Wildberries временно ограничил частоту API; повтор запланирован не раньше чем через %s", next.Round(time.Second))
+		}
 	}
 	var applied bool
 	err := store.pool.QueryRow(ctx, `
@@ -74,7 +79,7 @@ func (store *PostgresStore) FinishWBSync(
 	_, err = store.pool.Exec(ctx, `
 		UPDATE procurement_integration_sync_state SET status=$2,last_success_at=CASE WHEN $2='ok' THEN CURRENT_TIMESTAMP ELSE last_success_at END,
 			next_attempt_at=CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION),
-			cooldown_until=CASE WHEN $2='error' THEN CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION) ELSE NULL END,
+			cooldown_until=CASE WHEN $2 IN ('error','pending') THEN CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION) ELSE NULL END,
 			rows_synced=CASE WHEN $2='ok' THEN $4 ELSE rows_synced END,last_error=$5,updated_at=CURRENT_TIMESTAMP
 		WHERE channel='wb' AND resource=$1
 	`, claim.Resource, status, next.Seconds(), rows, message)

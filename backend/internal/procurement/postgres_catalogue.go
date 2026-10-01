@@ -371,6 +371,26 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 			state.last_error, state.rows_synced, COALESCE(state.period_from::TEXT, ''),
 			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, ''),
 			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER,
+			(SELECT COUNT(DISTINCT unresolved.external_product_id)::INTEGER
+			 FROM procurement_sales_daily unresolved
+			 LEFT JOIN procurement_ignored_sales_products ignored
+			   ON ignored.channel=unresolved.channel AND ignored.external_product_id=unresolved.external_product_id
+			 WHERE unresolved.channel=state.channel
+			   AND unresolved.canonical_variant_id IS NULL
+			   AND ignored.external_product_id IS NULL
+			   AND (unresolved.channel<>'saby' OR EXISTS (
+			     SELECT 1 FROM LATERAL (
+			       SELECT nomenclature.section_path
+			       FROM saby_nomenclature nomenclature
+			       WHERE nomenclature.saby_id=unresolved.external_product_id
+			         OR nomenclature.code=unresolved.external_product_id
+			         OR unresolved.external_product_id=ANY(nomenclature.external_ids)
+			       ORDER BY (nomenclature.missing_since IS NULL) DESC,nomenclature.seen_at DESC
+			       LIMIT 1
+			     ) saby_card
+			     WHERE EXISTS (SELECT 1 FROM UNNEST(saby_card.section_path) section_name
+			       WHERE LOWER(BTRIM(section_name))=LOWER('Комнатные растения'))
+			   ))) AS rows_unlinked,
 			sync.next_attempt_at,sync.next_deep_at,
 			CASE WHEN sync.next_deep_at<=CURRENT_TIMESTAMP THEN 'deep' ELSE 'current' END,
 			CASE WHEN COALESCE(sync.last_success_at,state.last_success_at) IS NULL OR MAX(sale.sale_date) IS NULL THEN 'unknown'
@@ -392,7 +412,7 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 		var item SalesSyncStatus
 		if err := rows.Scan(&item.Channel, &item.Status, &item.LastAttemptAt, &item.LastSuccessAt,
 			&item.LastError, &item.RowsSynced, &item.PeriodFrom, &item.PeriodTo, &item.LatestSale,
-			&item.RowsLinked, &item.NextAttemptAt, &item.NextDeepAt, &item.Mode, &item.Freshness); err != nil {
+			&item.RowsLinked, &item.RowsUnlinked, &item.NextAttemptAt, &item.NextDeepAt, &item.Mode, &item.Freshness); err != nil {
 			return nil, fmt.Errorf("scan sales synchronization state: %w", err)
 		}
 		items = append(items, item)
