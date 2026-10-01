@@ -204,6 +204,15 @@ func isRateLimit(err error) bool {
 	return errors.As(err, &remote) && remote.Status == http.StatusTooManyRequests
 }
 
+func ozonPostingCountsAsSale(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "driver_pickup", "delivering", "last_mile", "delivered":
+		return true
+	default:
+		return false
+	}
+}
+
 func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
 	if !executor.Configured("ozon") {
 		return nil, errors.New("ключи Ozon не настроены")
@@ -219,7 +228,7 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 			return nil, err
 		}
 		for postingIndex, posting := range items {
-			if posting.Status != "delivered" {
+			if !ozonPostingCountsAsSale(posting.Status) {
 				continue
 			}
 			date, err := posting.saleDate()
