@@ -255,7 +255,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				COALESCE(SUM(event.units*event.effect),0)::INTEGER units,
 				COALESCE(SUM(event.units) FILTER(WHERE event.effect=1),0)::INTEGER gross_units,
 				COALESCE(SUM(event.units) FILTER(WHERE event.effect=-1),0)::INTEGER return_units,
-				MAX(event.event_at) AS last_sale_at
+				MAX(event.event_at) FILTER (WHERE event.effect=1) AS last_sale_at
 			FROM sales_events event
 			WHERE (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE >= CURRENT_DATE-($1-1)
 				AND event.saby_id IS NOT NULL AND event.event_status='confirmed' AND event.reconciliation_status='counted'
