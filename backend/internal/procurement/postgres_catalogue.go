@@ -376,6 +376,7 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 			 LEFT JOIN procurement_ignored_sales_products ignored
 			   ON ignored.channel=unresolved.channel AND ignored.external_product_id=unresolved.external_product_id
 			 WHERE unresolved.channel=state.channel
+			   AND unresolved.channel IN ('saby','wb','ozon')
 			   AND unresolved.canonical_variant_id IS NULL
 			   AND unresolved.event_status='confirmed'
 			   AND unresolved.reconciliation_status='unmatched'
