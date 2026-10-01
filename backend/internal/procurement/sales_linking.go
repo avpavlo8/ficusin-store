@@ -487,21 +487,21 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("backfill linked sales events: %w", err)
 	}
-	result.LinkedRows = int(command.RowsAffected())
+	changedRows := int(command.RowsAffected())
 	if err := reconcileSalesEvents(ctx, tx); err != nil {
 		return SalesLinkResult{}, fmt.Errorf("reconcile linked sales events: %w", err)
 	}
-	if result.LinkedRows > 0 {
+	if changedRows > 0 {
 		if err := rebuildSalesDaily(ctx, tx, day(from), day(to)); err != nil {
 			return SalesLinkResult{}, fmt.Errorf("rebuild linked sales daily totals: %w", err)
 		}
 	}
 	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(SUM(units*effect),0)::INTEGER FROM sales_events
+		SELECT COUNT(*)::INTEGER,COALESCE(SUM(units*effect),0)::INTEGER FROM sales_events
 		WHERE channel=$1 AND external_product_id=$2 AND canonical_variant_id=$3
 			AND event_status='confirmed' AND reconciliation_status='counted'
-	`, input.Channel, input.ExternalID, variantID).Scan(&result.LinkedUnits); err != nil {
-		return SalesLinkResult{}, fmt.Errorf("count linked sales units: %w", err)
+	`, input.Channel, input.ExternalID, variantID).Scan(&result.LinkedRows, &result.LinkedUnits); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("count linked sales events: %w", err)
 	}
 	if err := tx.QueryRow(ctx, `
 		SELECT COUNT(DISTINCT event.external_product_id)::INTEGER
