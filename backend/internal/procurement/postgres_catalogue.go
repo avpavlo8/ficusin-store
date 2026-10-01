@@ -379,12 +379,17 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 			   AND unresolved.canonical_variant_id IS NULL
 			   AND ignored.external_product_id IS NULL
 			   AND (unresolved.channel<>'saby' OR EXISTS (
-			     SELECT 1 FROM saby_nomenclature nomenclature
-			     WHERE (nomenclature.saby_id=unresolved.external_product_id
-			       OR nomenclature.code=unresolved.external_product_id
-			       OR unresolved.external_product_id=ANY(nomenclature.external_ids))
-			       AND EXISTS (SELECT 1 FROM UNNEST(nomenclature.section_path) section_name
-			         WHERE LOWER(BTRIM(section_name))=LOWER('Комнатные растения'))
+			     SELECT 1 FROM LATERAL (
+			       SELECT nomenclature.section_path
+			       FROM saby_nomenclature nomenclature
+			       WHERE nomenclature.saby_id=unresolved.external_product_id
+			         OR nomenclature.code=unresolved.external_product_id
+			         OR unresolved.external_product_id=ANY(nomenclature.external_ids)
+			       ORDER BY (nomenclature.missing_since IS NULL) DESC,nomenclature.seen_at DESC
+			       LIMIT 1
+			     ) saby_card
+			     WHERE EXISTS (SELECT 1 FROM UNNEST(saby_card.section_path) section_name
+			       WHERE LOWER(BTRIM(section_name))=LOWER('Комнатные растения'))
 			   ))) AS rows_unlinked,
 			sync.next_attempt_at,sync.next_deep_at,
 			CASE WHEN sync.next_deep_at<=CURRENT_TIMESTAMP THEN 'deep' ELSE 'current' END,
