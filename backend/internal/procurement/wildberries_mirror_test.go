@@ -13,6 +13,7 @@ type wbMirrorStoreStub struct {
 	claims   map[string]bool
 	finished map[string]time.Duration
 	products []ChannelProduct
+	linked   []ChannelProduct
 	sales    []SalesRecord
 	states   map[string]string
 	tokens   int64
@@ -35,6 +36,11 @@ func (stub *wbMirrorStoreStub) FinishWBSync(_ context.Context, claim SyncClaim, 
 func (stub *wbMirrorStoreStub) RememberChannelProducts(_ context.Context, _ string, items []ChannelProduct) error {
 	stub.products = append([]ChannelProduct(nil), items...)
 	return nil
+}
+
+func (stub *wbMirrorStoreStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
+	stub.linked = append([]ChannelProduct(nil), items...)
+	return ChannelLinkResult{Channel: channel, Fetched: len(items), Linked: len(items)}, nil
 }
 
 func (stub *wbMirrorStoreStub) ReplaceSales(_ context.Context, _ string, _, _ time.Time, items []SalesRecord) (int, error) {
@@ -84,8 +90,8 @@ func TestWBMirrorOwnsOneHourlyCatalogueAndSalesRefresh(t *testing.T) {
 	if source.catalogCalls != 1 || source.salesCalls != 1 {
 		t.Fatalf("remote calls: catalogue=%d sales=%d", source.catalogCalls, source.salesCalls)
 	}
-	if len(store.products) != 1 || len(store.sales) != 1 {
-		t.Fatalf("mirror: products=%+v sales=%+v", store.products, store.sales)
+	if len(store.products) != 1 || len(store.linked) != 1 || len(store.sales) != 1 {
+		t.Fatalf("mirror: products=%+v linked=%+v sales=%+v", store.products, store.linked, store.sales)
 	}
 	if store.finished["catalog"] != time.Hour || store.finished["sales"] != time.Hour {
 		t.Fatalf("next runs = %+v", store.finished)
