@@ -126,8 +126,14 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 // It contains both sales and returns and keeps the rolling window used by the
 // procurement recommendation. Exactly one request is made per mirror run.
 func (executor *MarketplaceExecutor) fetchWBOperationalSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
-	const pageLimit = 80000
+	return executor.fetchWBOperationalSalesPaged(ctx, from, to, 80000)
+}
+
+func (executor *MarketplaceExecutor) fetchWBOperationalSalesPaged(ctx context.Context, from, to time.Time, pageLimit int) ([]procurement.SalesRecord, error) {
 	const maxPages = 15
+	if pageLimit <= 0 {
+		return nil, errors.New("Wildberries sales page limit must be positive")
+	}
 	type wbSale struct {
 		NmID          int64             `json:"nmId"`
 		SaleID        string            `json:"saleID"`
