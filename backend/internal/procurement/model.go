@@ -375,6 +375,7 @@ type Recommendation struct {
 	RoundingExplanation string     `json:"roundingExplanation"`
 	DailySales          float64    `json:"dailySales"`
 	DaysOfCover         *float64   `json:"daysOfCover,omitempty"`
+	LastSaleAt          *time.Time `json:"lastSaleAt,omitempty"`
 	LastOrderedAt       *time.Time `json:"lastOrderedAt,omitempty"`
 	Status              string     `json:"status"`
 	Reason              string     `json:"reason"`
