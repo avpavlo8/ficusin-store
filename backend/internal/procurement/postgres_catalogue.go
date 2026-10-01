@@ -254,7 +254,8 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				COALESCE(SUM(event.units*event.effect) FILTER (WHERE channel='ozon'),0)::INTEGER ozon_units,
 				COALESCE(SUM(event.units*event.effect),0)::INTEGER units,
 				COALESCE(SUM(event.units) FILTER(WHERE event.effect=1),0)::INTEGER gross_units,
-				COALESCE(SUM(event.units) FILTER(WHERE event.effect=-1),0)::INTEGER return_units
+				COALESCE(SUM(event.units) FILTER(WHERE event.effect=-1),0)::INTEGER return_units,
+				MAX(event.event_at) AS last_sale_at
 			FROM sales_events event
 			WHERE (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE >= CURRENT_DATE-($1-1)
 				AND event.saby_id IS NOT NULL AND event.event_status='confirmed' AND event.reconciliation_status='counted'
@@ -277,7 +278,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 					AND o.status IN ('ordered', 'invoice_received', 'review', 'ready_to_receive')
 				GROUP BY l.saby_id
 		), last_orders AS (
-			SELECT l.saby_id, MAX(COALESCE(o.received_at, o.created_at)) AS last_ordered_at
+			SELECT l.saby_id, MAX(o.created_at) AS last_ordered_at
 			FROM procurement_order_lines l JOIN procurement_orders o ON o.id = l.procurement_order_id
 			WHERE l.saby_id IS NOT NULL AND o.status <> 'cancelled' GROUP BY l.saby_id
 		), products AS (
@@ -310,7 +311,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				sp.expected_unit_price::DOUBLE PRECISION, sp.availability_status, n.balance,n.missing_since IS NULL,n.seen_at,COALESCE(i.units, 0),
 				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
 				COALESCE(s.ozon_units, 0),COALESCE(s.gross_units,0),COALESCE(s.return_units,0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),COALESCE(r.allocated_units,0),
-				sp.minimum_order_qty, sp.order_multiple, lo.last_ordered_at,
+				sp.minimum_order_qty, sp.order_multiple, s.last_sale_at, lo.last_ordered_at,
 				e.saby_id IS NOT NULL, COALESCE(e.reason, '')
 			FROM products sp
 			JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
@@ -338,7 +339,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			&input.DutchName, &input.PotDiameterCM, &input.HeightCM, &input.LastUnitPrice,
 			&input.AvailabilityStatus, &input.Balance, &input.BalanceKnown, &input.BalanceAsOf, &input.Incoming, &input.SiteSales, &input.SabySales,
 			&input.WBSales, &input.OzonSales, &input.GrossSales, &input.Returns, &input.CustomerRequests, &input.StaffRequests, &input.AllocatedRequests,
-			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastOrderedAt,
+			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastSaleAt, &input.LastOrderedAt,
 			&input.Excluded, &input.ExclusionReason); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
