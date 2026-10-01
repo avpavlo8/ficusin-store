@@ -21,6 +21,7 @@ type WBMirrorStore interface {
 	ClaimWBSync(context.Context, string, string, time.Duration) (*SyncClaim, error)
 	FinishWBSync(context.Context, SyncClaim, int, time.Duration, error) (bool, error)
 	RememberChannelProducts(context.Context, string, []ChannelProduct) error
+	LinkChannelProducts(context.Context, Actor, string, []ChannelProduct) (ChannelLinkResult, error)
 	ReplaceSales(context.Context, string, time.Time, time.Time, []SalesRecord) (int, error)
 	MarkSalesSync(context.Context, string, string, error) error
 }
@@ -86,6 +87,9 @@ func (worker *WBMirrorWorker) syncCatalog(ctx context.Context) {
 	items, syncErr := worker.source.FetchCatalog(ctx, "wb")
 	if syncErr == nil {
 		syncErr = worker.store.RememberChannelProducts(ctx, "wb", items)
+	}
+	if syncErr == nil {
+		_, syncErr = worker.store.LinkChannelProducts(ctx, Actor{Role: "system"}, "wb", items)
 	}
 	worker.finish(ctx, *claim, len(items), syncErr)
 }
