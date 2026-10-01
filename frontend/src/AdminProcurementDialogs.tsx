@@ -180,19 +180,22 @@ export function ProcurementOrderDetailDialog({ orderId, onClose, onSaved, onErro
   const acceptAllChanged = async () => { if (!detail) return; const lines = detail.lines.filter((line) => line.reconciliationStatus === "changed" && line.comparisonMismatch && !line.comparisonAccepted && !line.invoiceExcluded); if (!lines.length || !window.confirm(`Принять все изменения по цене/количеству: ${lines.length}? Несопоставленные и отсутствующие позиции сюда не входят.`)) return; setSaving(true); try { await Promise.all(lines.map((line) => api(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ acceptComparison: true, comparisonNote: "Массово принято в сверке закупки" }) }))); await load(); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   const matchInvoiceLine = async (plannedLine: ProcurementOrderLine, invoiceLine: ProcurementOrderLine) => { setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${plannedLine.id}`, { method: "PATCH", body: JSON.stringify({ invoiceLineId: invoiceLine.id }) }); setDetail(normalizeProcurementOrderDetail(item)); setPairingLineID(null); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   const acceptAddedLine = async (line: ProcurementOrderLine) => { if (!window.confirm(`Добавить «${line.invoiceRawName || line.rawName}» в закупку как новую позицию поставщика?`)) return; setSaving(true); try { const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/order-lines/${line.id}`, { method: "PATCH", body: JSON.stringify({ acceptComparison: true, comparisonNote: "Подтверждено как новая позиция из инвойса" }) }); setDetail(normalizeProcurementOrderDetail(item)); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
-  const setStatus = async (status: "received" | "cancelled" | "review") => {
+  const setStatus = async (status: "received" | "cancelled" | "review", force = false) => {
   const restoring = status === "review" && detail?.order.status === "cancelled";
-  const confirmation = status === "received"
-    ? "Поступление уже проведено в СБИС? Закрыть закупку и выполнить клиентские заявки?"
-    : status === "cancelled"
-      ? "Отменить закупку? Заявки вернутся в открытые."
-      : restoring
-        ? "Вернуть отменённую закупку в работу? Она откроется на этапе проверки, а старые действия останутся в истории."
-        : "Вернуть закупку на проверку? Активные действия будут отменены и останутся в истории.";
+  const confirmation = force
+    ? "Принудительно завершить закупку? CRM не будет ждать подтверждения проведения из СБИС. Используйте это только если поступление уже действительно проведено."
+    : status === "received"
+      ? "Поступление уже проведено в СБИС? Закрыть закупку и выполнить клиентские заявки?"
+      : status === "cancelled"
+        ? "Отменить закупку? Заявки вернутся в открытые."
+        : restoring
+          ? "Вернуть отменённую закупку в работу? Она откроется на этапе проверки, а старые действия останутся в истории."
+          : "Вернуть закупку на проверку? Активные действия будут отменены и останутся в истории.";
   if (!window.confirm(confirmation)) return;
   setSaving(true);
   try {
-    const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+    const note = force ? "Закупка завершена вручную оператором без автоматического подтверждения СБИС" : "";
+    const item = await api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}/status`, { method: "PATCH", body: JSON.stringify({ status, force, note }) });
     setDetail(normalizeProcurementOrderDetail(item));
     onSaved();
   } catch (error) { onError((error as Error).message); }
@@ -229,7 +232,7 @@ const remove = async () => { if (!window.confirm("Удалить отменён�
       {detail.order.status === "ready_to_receive" && <><div className="procurement-batch-buttons"><button className="admin-primary" disabled={saving || !detail.validation.canPrepareActions} onClick={() => void downloadReceivingPDF().catch((error) => onError((error as Error).message))}>Скачать PDF приёмки</button><small>Печатный лист: название СБИС, рассчитанная цена, количество, упаковка и размеры.</small></div><fieldset className="procurement-price-channels"><legend>Где подготовить изменение цен</legend>{[["saby_price", "СБИС — скачать XLSX"], ["site", "Сайт"], ["wb", "Wildberries"], ["ozon", "Ozon"], ["avito", "Авито"]].map(([channel, label]) => <label key={channel}><input type="checkbox" checked={priceChannels[channel]} onChange={(event) => setPriceChannels({ ...priceChannels, [channel]: event.target.checked })} />{label}</label>)}</fieldset><p className="admin-hint procurement-note">Для Saby будет скачан официальный формат «Код / Цена». Загрузите его в «Склад → Документы → Из файла» и проверьте документ перед проведением.</p><div className="procurement-batch-buttons"><button onClick={() => void setStatus("review")} disabled={saving}>Вернуть на проверку</button><button onClick={() => void prepare("receipt")} disabled={saving || !detail.validation.canPrepareActions}>Подготовить поступление СБИС</button><button className="admin-primary" onClick={() => void prepare("prices")} disabled={saving || !detail.validation.canPrepareActions || !Object.values(priceChannels).some(Boolean)}>Подготовить изменение цен</button></div></>}
       {detail.batches.filter((batch) => !["completed", "cancelled"].includes(batch.status)).map(renderBatch)}
 {detail.batches.some((batch) => ["completed", "cancelled"].includes(batch.status)) && <details className="procurement-batch procurement-batch-history"><summary><strong>История поступлений и изменений цен</strong> · {detail.batches.filter((batch) => ["completed", "cancelled"].includes(batch.status)).length}</summary><div className="procurement-batch-history-list">{detail.batches.filter((batch) => ["completed", "cancelled"].includes(batch.status)).map(renderBatch)}</div></details>}
-      {!['received', 'cancelled'].includes(detail.order.status) && <div className="procurement-order-final"><button className="text-button danger" disabled={saving} onClick={() => void setStatus("cancelled")}>Отменить закупку</button>{detail.order.status === "ready_to_receive" && detail.batches.some((batch) => batch.kind === "receipt" && batch.items.some((item) => item.channel === "saby_receipt" && item.status === "completed")) && <button className="admin-primary" disabled={saving} onClick={() => void setStatus("received")}>Проведение подтверждено — закрыть</button>}</div>}
+      {!['received', 'cancelled'].includes(detail.order.status) && <div className="procurement-order-final"><button className="text-button danger" disabled={saving} onClick={() => void setStatus("cancelled")}>Отменить закупку</button>{detail.order.status === "ready_to_receive" && detail.batches.some((batch) => batch.kind === "receipt" && batch.items.some((item) => item.channel === "saby_receipt" && item.status === "completed")) && <button className="admin-primary" disabled={saving} onClick={() => void setStatus("received")}>Проведение подтверждено — закрыть</button>}{detail.order.status === "ready_to_receive" && <><button className="secondary-button" disabled={saving} onClick={() => void setStatus("received", true)}>Завершить вручную</button><small>Ручное завершение не ждёт обратной проверки СБИС и сразу убирает закупку из «товара в пути».</small></>}</div>}
       {detail.order.status === "cancelled" && <div className="procurement-order-final"><button className="admin-primary" disabled={saving} onClick={() => void setStatus("review")}>Вернуть закупку в работу</button><button className="text-button danger" disabled={saving} onClick={() => void remove()}>Удалить закупку и PDF</button><small>Восстановление вернёт закупку на проверку. Старые поступления и изменения цен останутся в свёрнутой истории.</small></div>}
     </div>}
   </div></>;

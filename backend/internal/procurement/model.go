@@ -285,6 +285,7 @@ type RequestUpdate struct {
 type OrderStatusUpdate struct {
 	Status string `json:"status"`
 	Note   string `json:"note"`
+	Force  bool   `json:"force"`
 }
 
 type OrderLineUpdate struct {

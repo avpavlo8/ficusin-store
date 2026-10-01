@@ -127,6 +127,86 @@ func TestStage04SalesLedgerOnLiveDatabase(t *testing.T) {
 	if pendingStatus != "excluded" || unknownStatus != "unmatched" {
 		t.Fatalf("pending=%s unknown=%s", pendingStatus, unknownStatus)
 	}
+
+	// Unmatched sales must be visible from the event ledger, then disappear
+	// from both the review queue and rowsUnlinked after a manual link. The same
+	// transaction rebuilds procurement_sales_daily so recommendations see them
+	// immediately instead of waiting for the next marketplace sync.
+	unlinkedBefore, err := store.ListUnlinkedSales(ctx, "ozon", 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundUnknown := false
+	for _, item := range unlinkedBefore {
+		if item.ExternalID == "unknown-product" {
+			foundUnknown = true
+			if item.Units != 2 {
+				t.Fatalf("unlinked units=%d, want 2", item.Units)
+			}
+		}
+	}
+	if !foundUnknown {
+		t.Fatal("unmatched sales event is missing from review queue")
+	}
+	syncBefore, err := store.listSalesSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlinkedCountBefore := -1
+	for _, item := range syncBefore {
+		if item.Channel == "ozon" {
+			unlinkedCountBefore = item.RowsUnlinked
+		}
+	}
+	if unlinkedCountBefore < 1 {
+		t.Fatalf("rowsUnlinked before link=%d, want at least 1", unlinkedCountBefore)
+	}
+	var actorID int64
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
+		VALUES($1,$2,'','Stage 04 sales linker',CURRENT_TIMESTAMP) RETURNING id`,
+		fmt.Sprintf("stage04-link-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
+		t.Fatal(err)
+	}
+	link, err := store.LinkSalesProduct(ctx, Actor{CustomerID: actorID}, SalesLink{
+		Channel: "ozon", ExternalID: "unknown-product", VariantID: variantID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link.LinkedRows != 1 || link.LinkedUnits != 2 {
+		t.Fatalf("linked result=%+v", link)
+	}
+	unlinkedAfter, err := store.ListUnlinkedSales(ctx, "ozon", 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range unlinkedAfter {
+		if item.ExternalID == "unknown-product" {
+			t.Fatal("linked sales event stayed in review queue")
+		}
+	}
+	syncAfter, err := store.listSalesSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlinkedCountAfter := -1
+	for _, item := range syncAfter {
+		if item.Channel == "ozon" {
+			unlinkedCountAfter = item.RowsUnlinked
+		}
+	}
+	if unlinkedCountAfter != unlinkedCountBefore-1 {
+		t.Fatalf("rowsUnlinked after link=%d, before=%d", unlinkedCountAfter, unlinkedCountBefore)
+	}
+	var linkedDailyUnits int
+	if err = pool.QueryRow(ctx, `SELECT COALESCE(SUM(units),0)::INTEGER
+		FROM procurement_sales_daily WHERE channel='ozon' AND external_product_id='unknown-product'
+			AND canonical_variant_id=$1`, variantID).Scan(&linkedDailyUnits); err != nil {
+		t.Fatal(err)
+	}
+	if linkedDailyUnits != 2 {
+		t.Fatalf("linked daily units=%d, want 2", linkedDailyUnits)
+	}
 	// A cancellation before confirmation is retained as an excluded fact, not a negative sale.
 	cancelled := ozon
 	cancelled.SourceEventID = "OZ-CANCELLED"

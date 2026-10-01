@@ -408,7 +408,8 @@ func (service *Service) CalculateOrder(ctx context.Context, actor Actor, orderID
 func (service *Service) UpdateOrderStatus(ctx context.Context, actor Actor, orderID int64, input OrderStatusUpdate) (OrderDetail, error) {
 	input.Status = strings.TrimSpace(input.Status)
 	input.Note = strings.TrimSpace(input.Note)
-	if orderID <= 0 || !oneOf(input.Status, "received", "cancelled", "review") {
+	if orderID <= 0 || !oneOf(input.Status, "received", "cancelled", "review") ||
+		(input.Force && input.Status != "received") {
 		return OrderDetail{}, ErrInvalidInput
 	}
 	return service.store.UpdateOrderStatus(ctx, actor, orderID, input)

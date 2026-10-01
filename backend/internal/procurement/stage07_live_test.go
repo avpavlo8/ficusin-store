@@ -95,6 +95,30 @@ func TestStage07PostedReceiptAndDatedCostsOnLiveDatabase(t *testing.T) {
 	if orderStatus != "received" {
 		t.Fatalf("verified Saby receipt left procurement status=%s, want received", orderStatus)
 	}
+
+	// Manual completion is the explicit operator escape hatch when the receipt
+	// was posted in Saby but the reverse verification cannot finish. The normal
+	// received transition remains guarded; only Force bypasses that check.
+	var forcedOrderID int64
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_orders(supplier_id,order_number,source_kind,currency,status,created_by)
+		VALUES($1,'STAGE-07-FORCED','payment_invoice','RUB','ready_to_receive',$2) RETURNING id`, supplierID, actorID).Scan(&forcedOrderID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.UpdateOrderStatus(ctx, Actor{CustomerID: actorID}, forcedOrderID, OrderStatusUpdate{Status: "received"}); err == nil {
+		t.Fatal("normal completion without a verified Saby receipt must still fail")
+	}
+	if _, err = store.UpdateOrderStatus(ctx, Actor{CustomerID: actorID}, forcedOrderID, OrderStatusUpdate{
+		Status: "received", Force: true, Note: "Stage 07 manual completion",
+	}); err != nil {
+		t.Fatalf("forced manual completion failed: %v", err)
+	}
+	var forcedStatus, forcedNotes string
+	if err = pool.QueryRow(ctx, `SELECT status,notes FROM procurement_orders WHERE id=$1`, forcedOrderID).Scan(&forcedStatus, &forcedNotes); err != nil {
+		t.Fatal(err)
+	}
+	if forcedStatus != "received" || forcedNotes != "Stage 07 manual completion" {
+		t.Fatalf("forced completion status=%s notes=%q", forcedStatus, forcedNotes)
+	}
 	if _, err = pool.Exec(ctx, `UPDATE procurement_cost_history SET effective_at='2035-01-02T00:00:00Z'
 		WHERE procurement_order_id=$1 AND canonical_variant_id=$2`, orderID, variantID); err != nil {
 		t.Fatal(err)
