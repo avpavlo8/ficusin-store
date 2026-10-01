@@ -124,7 +124,8 @@ func (executor *MarketplaceExecutor) fetchWBSales(ctx context.Context, from, to 
 
 // fetchWBOperationalSales is the single source for the hourly sales mirror.
 // It contains both sales and returns and keeps the rolling window used by the
-// procurement recommendation. Exactly one request is made per mirror run.
+// procurement recommendation. A full 80,000-row page is continued from the
+// lastChangeDate cursor; the shared WB limiter spaces those extra pages.
 func (executor *MarketplaceExecutor) fetchWBOperationalSales(ctx context.Context, from, to time.Time) ([]procurement.SalesRecord, error) {
 	return executor.fetchWBOperationalSalesPaged(ctx, from, to, 80000)
 }
