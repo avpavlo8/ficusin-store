@@ -401,6 +401,7 @@ type SalesSyncStatus struct {
 	LastError     string     `json:"lastError"`
 	RowsSynced    int        `json:"rowsSynced"`
 	RowsLinked    int        `json:"rowsLinked"`
+	RowsUnlinked  int        `json:"rowsUnlinked"`
 	PeriodFrom    string     `json:"periodFrom"`
 	PeriodTo      string     `json:"periodTo"`
 	LatestSale    string     `json:"latestSale"`
