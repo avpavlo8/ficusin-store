@@ -372,11 +372,13 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 			COALESCE(state.period_to::TEXT, ''), COALESCE(MAX(sale.sale_date)::TEXT, ''),
 			COUNT(*) FILTER (WHERE sale.saby_id IS NOT NULL)::INTEGER,
 			(SELECT COUNT(DISTINCT unresolved.external_product_id)::INTEGER
-			 FROM procurement_sales_daily unresolved
+			 FROM sales_events unresolved
 			 LEFT JOIN procurement_ignored_sales_products ignored
 			   ON ignored.channel=unresolved.channel AND ignored.external_product_id=unresolved.external_product_id
 			 WHERE unresolved.channel=state.channel
 			   AND unresolved.canonical_variant_id IS NULL
+			   AND unresolved.event_status='confirmed'
+			   AND unresolved.reconciliation_status='unmatched'
 			   AND ignored.external_product_id IS NULL
 			   AND (unresolved.channel<>'saby' OR EXISTS (
 			     SELECT 1 FROM LATERAL (
@@ -1156,7 +1158,7 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if !allowed {
 		return OrderDetail{}, ErrInvalidInput
 	}
-	if input.Status == "received" {
+	if input.Status == "received" && !input.Force {
 		var prepared bool
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS (SELECT 1 FROM procurement_action_batches batch
@@ -1165,7 +1167,7 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 					AND item.channel='saby_receipt' AND item.status='completed'
 					AND item.receipt_verified_at IS NOT NULL)
 		`, orderID).Scan(&prepared); err != nil || !prepared {
-			return OrderDetail{}, &UserFacingError{Message: "Сначала проведите поступление в СБИС и дождитесь проверки строк и количества в CRM"}
+			return OrderDetail{}, &UserFacingError{Message: "Сначала проведите поступление в СБИС и дождитесь проверки строк и количества в CRM либо используйте ручное завершение"}
 		}
 	}
 	if _, err := tx.Exec(ctx, `
