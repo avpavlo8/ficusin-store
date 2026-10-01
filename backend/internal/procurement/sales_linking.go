@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -181,17 +182,18 @@ func (store *PostgresStore) ListUnlinkedSalesIncludingIgnored(ctx context.Contex
 }
 
 func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel string, limit int, includeIgnored bool) ([]UnlinkedSale, error) {
-	// Подпись карточки берётся слева: площадку могли ещё ни разу не
-	// прочитать, и это не повод прятать продажи — код покажем как есть.
+	// sales_events is the source of truth for unresolved sales. The daily
+	// aggregate intentionally contains only counted, linked events.
 	rows, err := store.pool.Query(ctx, `
-		SELECT sale.external_product_id, COUNT(*)::INTEGER,
-			COALESCE(SUM(sale.units), 0)::INTEGER,
-			COALESCE(SUM(sale.gross_rub), 0)::DOUBLE PRECISION,
-			MAX(sale.sale_date)::TEXT,
+		SELECT sale.external_product_id,
+			COUNT(DISTINCT (sale.event_at AT TIME ZONE 'Europe/Moscow')::DATE)::INTEGER,
+			COALESCE(SUM(sale.units*sale.effect), 0)::INTEGER,
+			COALESCE(SUM(sale.gross_rub*sale.effect), 0)::DOUBLE PRECISION,
+			MAX((sale.event_at AT TIME ZONE 'Europe/Moscow')::DATE)::TEXT,
 			COALESCE(MAX(NULLIF(card.article,'')), MAX(saby_card.article), ''),
 			COALESCE(MAX(NULLIF(card.name,'')), MAX(saby_card.name), ''),
 			BOOL_OR(ignored.external_product_id IS NOT NULL)
-		FROM procurement_sales_daily sale
+		FROM sales_events sale
 		LEFT JOIN procurement_channel_products card
 			ON card.channel = sale.channel AND card.external_id = sale.external_product_id
 		LEFT JOIN LATERAL (
@@ -207,18 +209,26 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 		) saby_card ON TRUE
 		LEFT JOIN procurement_ignored_sales_products ignored
 			ON ignored.channel = sale.channel AND ignored.external_product_id = sale.external_product_id
-		WHERE sale.channel = $1 AND sale.canonical_variant_id IS NULL
+		WHERE sale.channel = $1
+			AND sale.canonical_variant_id IS NULL
+			AND sale.event_status='confirmed'
+			AND sale.event_type<>'cancellation'
+			AND (
+				sale.reconciliation_status='unmatched'
+				OR ($3 AND ignored.external_product_id IS NOT NULL AND sale.reconciliation_status='excluded')
+			)
 			AND ($3 OR ignored.external_product_id IS NULL)
 			AND (sale.channel <> 'saby' OR EXISTS (
 				SELECT 1 FROM UNNEST(saby_card.section_path) section_name
 				WHERE LOWER(BTRIM(section_name)) = LOWER('Комнатные растения')
 			))
 		GROUP BY sale.external_product_id
-		ORDER BY SUM(sale.units) DESC, MAX(sale.sale_date) DESC
+		ORDER BY SUM(sale.units*sale.effect) DESC,
+			MAX((sale.event_at AT TIME ZONE 'Europe/Moscow')::DATE) DESC
 		LIMIT $2
 	`, channel, limit, includeIgnored)
 	if err != nil {
-		return nil, fmt.Errorf("list unlinked sales: %w", err)
+		return nil, fmt.Errorf("list unlinked sales events: %w", err)
 	}
 	defer rows.Close()
 	items := make([]UnlinkedSale, 0, 64)
@@ -228,7 +238,7 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 			&item.ExternalID, &item.Days, &item.Units, &item.GrossRUB, &item.LastSale,
 			&item.Article, &item.Name, &item.Ignored,
 		); err != nil {
-			return nil, fmt.Errorf("scan unlinked sales: %w", err)
+			return nil, fmt.Errorf("scan unlinked sales event: %w", err)
 		}
 		items = append(items, item)
 	}
@@ -247,7 +257,10 @@ func (store *PostgresStore) IgnoreSalesProduct(ctx context.Context, actor Actor,
 	} else if _, err = tx.Exec(ctx, `DELETE FROM procurement_ignored_sales_products WHERE channel=$1 AND external_product_id=$2`, channel, externalID); err != nil {
 		return fmt.Errorf("restore sales product: %w", err)
 	}
-	if err := audit(ctx, tx, actor, "procurement.sales.ignore", "procurement_sales_daily", 0, map[string]any{"channel": channel, "externalId": externalID, "ignored": ignored}); err != nil { return err }
+	if err := reconcileSalesEvents(ctx, tx); err != nil {
+		return fmt.Errorf("reconcile ignored sales events: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.sales.ignore", "sales_events", 0, map[string]any{"channel": channel, "externalId": externalID, "ignored": ignored}); err != nil { return err }
 	return tx.Commit(ctx)
 }
 
@@ -399,14 +412,25 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 
 	provider, idType := "ozon", "offer_id"
-	if input.Channel == "wb" { provider, idType = "wildberries", "sku" }
+	switch input.Channel {
+	case "wb":
+		provider, idType = "wildberries", "sku"
+	case "saby":
+		provider, idType = "saby", "alias"
+	}
+	idTypes := []string{idType}
+	if input.Channel == "saby" {
+		idTypes = []string{"id", "code", "alias"}
+	}
 	err = tx.QueryRow(ctx, `
 		SELECT COALESCE(directory.master_code, directory.saby_id)
 		FROM product_external_ids external
 		JOIN canonical_product_directory directory ON directory.variant_id = external.variant_id
-		WHERE external.provider = $1 AND external.id_type = $2
+		WHERE external.provider = $1 AND external.id_type=ANY($2::TEXT[])
 			AND external.external_id = $3 AND external.variant_id <> $4
-	`, provider, idType, input.ExternalID, variantID).Scan(&result.TakenFrom)
+		ORDER BY (external.source='manual') DESC,external.updated_at DESC
+		LIMIT 1
+	`, provider, idTypes, input.ExternalID, variantID).Scan(&result.TakenFrom)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SalesLinkResult{}, fmt.Errorf("release channel code: %w", err)
 	}
@@ -425,8 +449,6 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("save channel code: %w", err)
 	}
-	// WB's numeric nmID is only the API join key. Store the seller article
-	// next to it, because this is the identifier people see and report on.
 	if input.Channel == "wb" {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,
@@ -444,33 +466,68 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 		if err != nil { return SalesLinkResult{}, fmt.Errorf("save Wildberries article: %w", err) }
 	}
 
+	var from, to time.Time
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(MIN(event_at),CURRENT_TIMESTAMP),
+			COALESCE(MAX(event_at),CURRENT_TIMESTAMP)
+		FROM sales_events WHERE channel=$1 AND external_product_id=$2
+	`, input.Channel, input.ExternalID).Scan(&from, &to); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("load linked sales event window: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM procurement_ignored_sales_products WHERE channel=$1 AND external_product_id=$2`, input.Channel, input.ExternalID); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("restore linked sales product: %w", err)
+	}
 	command, err := tx.Exec(ctx, `
-		UPDATE procurement_sales_daily SET saby_id = $3,
-			canonical_variant_id = $4, external_mapping_id = $5
-		WHERE channel = $1 AND external_product_id = $2
-			AND (canonical_variant_id IS DISTINCT FROM $4 OR saby_id IS DISTINCT FROM $3)
+		UPDATE sales_events SET saby_id=$3,canonical_variant_id=$4,
+			external_mapping_id=$5,updated_at=CURRENT_TIMESTAMP
+		WHERE channel=$1 AND external_product_id=$2
+			AND (canonical_variant_id IS DISTINCT FROM $4 OR saby_id IS DISTINCT FROM $3
+				OR external_mapping_id IS DISTINCT FROM $5)
 	`, input.Channel, input.ExternalID, result.SabyID, variantID, mappingID)
 	if err != nil {
-		return SalesLinkResult{}, fmt.Errorf("backfill linked sales: %w", err)
+		return SalesLinkResult{}, fmt.Errorf("backfill linked sales events: %w", err)
 	}
 	result.LinkedRows = int(command.RowsAffected())
-
-	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(SUM(units), 0)::INTEGER FROM procurement_sales_daily
-		WHERE channel = $1 AND external_product_id = $2
-	`, input.Channel, input.ExternalID).Scan(&result.LinkedUnits); err != nil {
-		return SalesLinkResult{}, fmt.Errorf("count linked sales: %w", err)
+	if err := reconcileSalesEvents(ctx, tx); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("reconcile linked sales events: %w", err)
+	}
+	if result.LinkedRows > 0 {
+		if err := rebuildSalesDaily(ctx, tx, day(from), day(to)); err != nil {
+			return SalesLinkResult{}, fmt.Errorf("rebuild linked sales daily totals: %w", err)
+		}
 	}
 	if err := tx.QueryRow(ctx, `
-		SELECT COUNT(DISTINCT external_product_id)::INTEGER FROM procurement_sales_daily
-		WHERE channel = $1 AND canonical_variant_id IS NULL AND NOT EXISTS (
-			SELECT 1 FROM procurement_ignored_sales_products ignored
-			WHERE ignored.channel = procurement_sales_daily.channel
-				AND ignored.external_product_id = procurement_sales_daily.external_product_id)
+		SELECT COALESCE(SUM(units*effect),0)::INTEGER FROM sales_events
+		WHERE channel=$1 AND external_product_id=$2 AND canonical_variant_id=$3
+			AND event_status='confirmed' AND reconciliation_status='counted'
+	`, input.Channel, input.ExternalID, variantID).Scan(&result.LinkedUnits); err != nil {
+		return SalesLinkResult{}, fmt.Errorf("count linked sales units: %w", err)
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT event.external_product_id)::INTEGER
+		FROM sales_events event
+		LEFT JOIN procurement_ignored_sales_products ignored
+			ON ignored.channel=event.channel AND ignored.external_product_id=event.external_product_id
+		LEFT JOIN LATERAL (
+			SELECT nomenclature.section_path
+			FROM saby_nomenclature nomenclature
+			WHERE event.channel='saby' AND (
+				nomenclature.saby_id=event.external_product_id
+				OR nomenclature.code=event.external_product_id
+				OR event.external_product_id=ANY(nomenclature.external_ids))
+			ORDER BY (nomenclature.missing_since IS NULL) DESC,nomenclature.seen_at DESC
+			LIMIT 1
+		) saby_card ON TRUE
+		WHERE event.channel=$1 AND event.canonical_variant_id IS NULL
+			AND event.event_status='confirmed' AND event.reconciliation_status='unmatched'
+			AND ignored.external_product_id IS NULL
+			AND (event.channel<>'saby' OR EXISTS (
+				SELECT 1 FROM UNNEST(saby_card.section_path) section_name
+				WHERE LOWER(BTRIM(section_name))=LOWER('Комнатные растения')))
 	`, input.Channel).Scan(&result.Remaining); err != nil {
-		return SalesLinkResult{}, fmt.Errorf("count remaining sales: %w", err)
+		return SalesLinkResult{}, fmt.Errorf("count remaining sales events: %w", err)
 	}
-	if err := audit(ctx, tx, actor, "procurement.sales.link", "procurement_sales_daily", 0, result); err != nil {
+	if err := audit(ctx, tx, actor, "procurement.sales.link", "sales_events", 0, result); err != nil {
 		return SalesLinkResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -478,3 +535,4 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 	return result, nil
 }
+
