@@ -12,10 +12,10 @@ import { api, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { Analytics } from "./AdminAnalytics";
 import { AdminMarketplaces } from "./AdminMarketplaces";
-import { AdminAvito } from "./AdminAvito";
 
 const AdminReturns = lazy(() => import("./AdminReturns").then((module) => ({ default: module.AdminReturns })));
 const AdminFinance = lazy(() => import("./AdminFinance").then((module) => ({ default: module.AdminFinance })));
+const AdminAvito = lazy(() => import("./AdminAvito").then((module) => ({ default: module.AdminAvito })));
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
@@ -64,7 +64,7 @@ export default function AdminPage() {
           {section === "returns" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем возвраты…" />}><AdminReturns can={can} onError={setError} /></Suspense>}
           {section === "finance" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем финансы…" />}><AdminFinance onError={setError} /></Suspense>}
           {section === "marketplaces" && <AdminMarketplaces onError={setError} />}
-          {section === "avito" && <AdminAvito onError={setError} />}
+          {section === "avito" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}><AdminAvito onError={setError} /></Suspense>}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
           {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}

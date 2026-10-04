@@ -15,6 +15,7 @@ type avitoService interface {
 	List(context.Context) ([]avito.Listing, avito.State, error)
 	SearchProducts(context.Context, string) ([]avito.Product, error)
 	ReplaceProducts(context.Context, string, []int64) error
+	Reconcile(context.Context) error
 	SetPublication(context.Context, bool) error
 	WriteFeed(context.Context, string, http.ResponseWriter) error
 }
@@ -88,6 +89,18 @@ func avitoMappingHandler(administration adminHandlers, service avitoService) htt
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
+	}
+}
+func avitoReconcileHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionProcurementEdit); !ok {
+			return
+		}
+		if err := service.Reconcile(r.Context()); err != nil {
+			administration.failed(w, "reconcile Avito ads", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"checked": true})
 	}
 }
 func avitoPublicationHandler(administration adminHandlers, service avitoService) http.HandlerFunc {

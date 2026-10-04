@@ -37,6 +37,26 @@ test("@desktop @phone workspace preserves real navigation and filters recent ord
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
+test("@desktop @phone Avito operations view surfaces risks and gates activation", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/admin/avito", route => route.fulfill({ json: {
+    state: { configured: true, publicationEnabled: false, feedUrl: "https://ficusin.ru/feeds/avito/test.xml", lastImportAt: "2026-10-04T08:00:00Z", lastWorkerAt: "2026-10-04T08:01:00Z", lastSuccessAt: "2026-10-04T08:01:00Z", lastError: "" },
+    items: [
+      { itemId: "101", title: "Дипсис Арека", status: "active", url: "https://www.avito.ru/items/101", remotePrice: 2490, desiredPublished: false, lastReconciledAt: "2026-10-04T08:01:00Z", lastError: "", products: [{ id: 1, name: "Дипсис Арека D12", slug: "areca", image: "", price: 2490, stock: 0 }] },
+      { itemId: "102", title: "Фикус Бенджамина", status: "active", url: "https://www.avito.ru/items/102", remotePrice: 1990, desiredPublished: true, lastReconciledAt: "2026-10-04T08:01:00Z", lastError: "", products: [] },
+    ],
+  } }));
+  await page.goto("/admin?section=avito");
+  await expect(page.getByRole("heading", { name: "Авито", exact: true })).toBeVisible();
+  await expect(page.getByText("Требуется внимание", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Не применилось · 1/ })).toBeVisible();
+  await page.getByRole("button", { name: "Проверить готовность и включить" }).click();
+  await expect(page.getByRole("heading", { name: "Проверка готовности" })).toBeVisible();
+  await expect(page.getByText(/Без привязки: 1/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Включить управление" })).toBeDisabled();
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
 test("@desktop @phone analytics failure does not trap the dashboard and can be retried", async ({ page }) => {
   await setup(page);
   let calls = 0;
