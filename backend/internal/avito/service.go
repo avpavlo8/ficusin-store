@@ -29,13 +29,15 @@ type Product struct {
 	Stock int     `json:"stock"`
 }
 type Listing struct {
-	ItemID           string    `json:"itemId"`
-	Title            string    `json:"title"`
-	Status           string    `json:"status"`
-	URL              string    `json:"url"`
-	RemotePrice      float64   `json:"remotePrice"`
-	DesiredPublished *bool     `json:"desiredPublished"`
-	Products         []Product `json:"products"`
+	ItemID           string     `json:"itemId"`
+	Title            string     `json:"title"`
+	Status           string     `json:"status"`
+	URL              string     `json:"url"`
+	RemotePrice      float64    `json:"remotePrice"`
+	DesiredPublished *bool      `json:"desiredPublished"`
+	LastReconciledAt *time.Time `json:"lastReconciledAt"`
+	LastError        string     `json:"lastError"`
+	Products         []Product  `json:"products"`
 }
 type State struct {
 	Configured         bool       `json:"configured"`
@@ -162,7 +164,7 @@ func (s *Service) List(ctx context.Context) ([]Listing, State, error) {
 	if err != nil {
 		return nil, state, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT l.item_id,l.title,l.status,l.url,l.remote_price_minor,l.desired_published,p.id,p.name,p.slug,COALESCE((SELECT MIN(v.base_price_minor) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0 AND GREATEST(i.available_qty-i.reserved_qty,0)>0),0),COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l LEFT JOIN avito_listing_products lp ON lp.item_id=l.item_id LEFT JOIN products p ON p.id=lp.product_id WHERE LOWER(l.status)<>'removed' ORDER BY l.last_seen_at DESC,l.item_id,p.name`)
+	rows, err := s.pool.Query(ctx, `SELECT l.item_id,l.title,l.status,l.url,l.remote_price_minor,l.desired_published,l.last_reconciled_at,l.last_error,p.id,p.name,p.slug,COALESCE((SELECT MIN(v.base_price_minor) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0 AND GREATEST(i.available_qty-i.reserved_qty,0)>0),0),COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l LEFT JOIN avito_listing_products lp ON lp.item_id=l.item_id LEFT JOIN products p ON p.id=lp.product_id WHERE LOWER(l.status)<>'removed' ORDER BY l.last_seen_at DESC,l.item_id,p.name`)
 	if err != nil {
 		return nil, state, err
 	}
@@ -175,7 +177,7 @@ func (s *Service) List(ctx context.Context) ([]Listing, State, error) {
 		var name, slug, image *string
 		var remoteMinor int64
 		var productMinor, stock *int64
-		if err := rows.Scan(&l.ItemID, &l.Title, &l.Status, &l.URL, &remoteMinor, &l.DesiredPublished, &productID, &name, &slug, &productMinor, &stock, &image); err != nil {
+		if err := rows.Scan(&l.ItemID, &l.Title, &l.Status, &l.URL, &remoteMinor, &l.DesiredPublished, &l.LastReconciledAt, &l.LastError, &productID, &name, &slug, &productMinor, &stock, &image); err != nil {
 			return nil, state, err
 		}
 		pos, ok := index[l.ItemID]

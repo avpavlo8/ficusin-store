@@ -102,6 +102,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("GET /api/v1/admin/avito/products", avitoProductsHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("PUT /api/v1/admin/avito/{itemID}/products", avitoMappingHandler(adminAPI, dependencies.Avito))
+		mux.HandleFunc("POST /api/v1/admin/avito/reconcile", avitoReconcileHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("PUT /api/v1/admin/avito/publication", avitoPublicationHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("GET /feeds/avito/{token}", avitoFeedHandler(dependencies.Avito))
 	}
