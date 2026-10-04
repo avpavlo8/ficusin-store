@@ -73,7 +73,7 @@ test("@desktop @phone analytics failure does not trap the dashboard and can be r
 
 test("@desktop search opens permitted sections by keyboard", async ({ page }) => {
   await setup(page);
-  await page.route("**/api/v1/admin/customers", route => route.fulfill({ json: { customers: [] } }));
+  await page.route("**/api/v1/admin/customers?*", route => route.fulfill({ json: { customers: [], total: 0, hasMore: false } }));
   await page.goto("/admin");
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Клиенты");
   await page.getByRole("searchbox", { name: "Найти раздел" }).press("Enter");
