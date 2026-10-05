@@ -91,7 +91,10 @@ jobs:
             operations_state="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("status", "") + ":" + data.get("version", ""))' 2>/dev/null || true)"
             critical_checks="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(",".join(sorted(str(x) for x in data.get("criticalChecks", []))))' 2>/dev/null || true)"
             warning_checks="$(printf '%s' "$operations" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(",".join(sorted(str(x) for x in data.get("warningChecks", []))))' 2>/dev/null || true)"
-            html="$(curl -fsS --max-time 15 "${BASE_URL}/admin?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            # /admin is intentionally authentication-gated and redirects anonymous
+            # smoke requests to /login. Read the public storefront shell when
+            # comparing the deployed frontend bundle instead.
+            html="$(curl -fsS --max-time 15 "${BASE_URL}/?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
             care_arrival_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/first-days-home.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
