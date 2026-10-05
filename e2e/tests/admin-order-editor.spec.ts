@@ -129,7 +129,7 @@ test("@desktop сохранение менеджером подтверждае�
 
   await editor.getByRole("button", { name: "Сохранить изменения" }).click();
 
-  await expect(editor.getByText("Аглаонема Мария Кристина D12")).toBeVisible();
+  await expect(editor.getByText("Аглаонема Мария Кристина D12", { exact: true })).toBeVisible();
   await expect(page.locator(".admin-table tbody tr.clickable").first()).toContainText(/3.?970/);
   await expect(payment).toContainText(/Итого:\s*3.?970/);
   await expect(payment.getByRole("button", { name: "Создать ссылку на оплату" })).toBeVisible();
