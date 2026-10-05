@@ -93,6 +93,26 @@ func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, 
 }
 
 func (repository *PostgresRepository) ListCustomers(ctx context.Context) ([]Customer, error) {
+	page, err := repository.ListCustomersPage(ctx, "", false, 100, 0)
+	return page.Customers, err
+}
+
+func (repository *PostgresRepository) ListCustomersPage(ctx context.Context, query string, wholesalePending bool, limit, offset int) (CustomerPage, error) {
+	if limit < 1 || limit > 200 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	query = strings.TrimSpace(query)
+	var total int
+	if err := repository.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM customers c
+		WHERE ($1 = '' OR CONCAT_WS(' ', c.full_name, c.last_name, c.patronymic, c.phone, COALESCE(c.email, '')) ILIKE '%' || $1 || '%')
+		  AND (NOT $2 OR (c.account_type = 'wholesale' AND c.wholesale_status = 'pending'))
+	`, query, wholesalePending).Scan(&total); err != nil {
+		return CustomerPage{}, fmt.Errorf("count admin customers: %w", err)
+	}
 	rows, err := repository.pool.Query(ctx, `
 		SELECT c.id, COALESCE(c.email, ''), c.phone, c.full_name, c.last_name,
 			c.patronymic, c.delivery_address, c.account_type, c.wholesale_status,
@@ -103,12 +123,15 @@ func (repository *PostgresRepository) ListCustomers(ctx context.Context) ([]Cust
 			SELECT role FROM admin_users
 			WHERE is_active = TRUE AND customer_id = c.id LIMIT 1
 		) au ON TRUE
-		LEFT JOIN orders o ON o.customer_id = c.id
-		GROUP BY c.id, au.role
-		ORDER BY c.created_at DESC
-	`)
+			LEFT JOIN orders o ON o.customer_id = c.id
+			WHERE ($1 = '' OR CONCAT_WS(' ', c.full_name, c.last_name, c.patronymic, c.phone, COALESCE(c.email, '')) ILIKE '%' || $1 || '%')
+			  AND (NOT $2 OR (c.account_type = 'wholesale' AND c.wholesale_status = 'pending'))
+			GROUP BY c.id, au.role
+			ORDER BY c.created_at DESC
+			LIMIT $3 OFFSET $4
+	`, query, wholesalePending, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("query admin customers: %w", err)
+		return CustomerPage{}, fmt.Errorf("query admin customers: %w", err)
 	}
 	defer rows.Close()
 	result := make([]Customer, 0)
@@ -120,11 +143,14 @@ func (repository *PostgresRepository) ListCustomers(ctx context.Context) ([]Cust
 			&item.WholesaleStatus, &item.RetailDiscountBPS, &item.LifetimeSpend,
 			&item.Active, &item.AdminRole, &item.OrdersCount, &item.CreatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("scan admin customer: %w", err)
+			return CustomerPage{}, fmt.Errorf("scan admin customer: %w", err)
 		}
 		result = append(result, item)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return CustomerPage{}, err
+	}
+	return CustomerPage{Customers: result, Total: total, HasMore: offset+len(result) < total}, nil
 }
 
 func (repository *PostgresRepository) UpdateCustomer(
@@ -364,16 +390,7 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 			_ = repository.notifier.NotifyOrderStatus(ctx, *customerID, orderNumber, status)
 		}
 	}
-	orders, err := repository.ListOrders(ctx)
-	if err != nil {
-		return Order{}, err
-	}
-	for _, order := range orders {
-		if order.ID == id {
-			return order, nil
-		}
-	}
-	return Order{}, pgx.ErrNoRows
+	return currentAdminOrder(ctx, repository, id)
 }
 
 func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Product, error) {
@@ -460,7 +477,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
 			&item.SabyUpdatedAt, &item.CategoryID, &item.Passport, &item.ImportantWarnings,
-				&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues); err != nil {
+			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		if err := json.Unmarshal(externalIDs, &item.ExternalIDs); err != nil {
@@ -485,7 +502,9 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 		return 0, fmt.Errorf("%w: выберите от 1 до 1000 черновиков", ErrInvalidInput)
 	}
 	tx, err := repository.pool.Begin(ctx)
-	if err != nil { return 0, err }
+	if err != nil {
+		return 0, err
+	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var safeCount int
 	if err = tx.QueryRow(ctx, `
@@ -496,19 +515,25 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 			JOIN order_items oi ON oi.variant_id = pv.id
 			WHERE pv.product_id = p.id
 		)
-	`, ids).Scan(&safeCount); err != nil { return 0, fmt.Errorf("validate draft products: %w", err) }
+	`, ids).Scan(&safeCount); err != nil {
+		return 0, fmt.Errorf("validate draft products: %w", err)
+	}
 	if safeCount != len(ids) {
 		return 0, fmt.Errorf("%w: удалять можно только непроданные черновики", ErrInvalidInput)
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM products WHERE id = ANY($1::bigint[])`, ids)
-	if err != nil { return 0, fmt.Errorf("delete draft products: %w", err) }
+	if err != nil {
+		return 0, fmt.Errorf("delete draft products: %w", err)
+	}
 	if tag.RowsAffected() != int64(len(ids)) {
 		return 0, fmt.Errorf("delete draft products: expected %d rows, deleted %d", len(ids), tag.RowsAffected())
 	}
 	if err = insertAudit(ctx, tx, actor, "product.drafts.delete", "product", "bulk", map[string]any{"productIds": ids}, nil); err != nil {
 		return 0, err
 	}
-	if err = tx.Commit(ctx); err != nil { return 0, err }
+	if err = tx.Commit(ctx); err != nil {
+		return 0, err
+	}
 	return tag.RowsAffected(), nil
 }
 
@@ -521,7 +546,9 @@ func (repository *PostgresRepository) UpdateProduct(
 	if !Can(actor.Role, PermissionProductsEdit) {
 		return Product{}, ErrForbidden
 	}
-	if err := ValidateProductUpdate(actor, update); err != nil { return Product{}, err }
+	if err := ValidateProductUpdate(actor, update); err != nil {
+		return Product{}, err
+	}
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return Product{}, err
@@ -531,7 +558,9 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, err
 	}
-	if err := validateManagerAttributes(ctx, tx, actor, update.Attributes); err != nil { return Product{}, err }
+	if err := validateManagerAttributes(ctx, tx, actor, update.Attributes); err != nil {
+		return Product{}, err
+	}
 	productFields := changedProductFields(update)
 	variantFields := changedVariantFields(update)
 	_, err = tx.Exec(ctx, `
@@ -569,7 +598,9 @@ func (repository *PostgresRepository) UpdateProduct(
 		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
 	_, err = tx.Exec(ctx, `UPDATE products SET plant_passport=COALESCE($2, plant_passport), important_warnings=COALESCE($3, important_warnings), updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, update.Passport, update.ImportantWarnings)
-	if err != nil { return Product{}, fmt.Errorf("update plant passport: %w", err) }
+	if err != nil {
+		return Product{}, fmt.Errorf("update plant passport: %w", err)
+	}
 	_, err = tx.Exec(ctx, `
 		UPDATE product_variants SET label = COALESCE($2, label),
 			base_price_minor = COALESCE($3, base_price_minor),
@@ -600,12 +631,24 @@ func (repository *PostgresRepository) UpdateProduct(
 	}
 	if legacyVariantID > 0 {
 		dimensions := map[string]any{}
-		if update.HeightCM != nil { dimensions["height_cm"] = *update.HeightCM }
-		if update.PotDiameterCM != nil { dimensions["pot_diameter_cm"] = *update.PotDiameterCM }
-		if update.PackageLengthCM != nil { dimensions["package_length_cm"] = *update.PackageLengthCM }
-		if update.PackageWidthCM != nil { dimensions["package_width_cm"] = *update.PackageWidthCM }
-		if update.PackageHeightCM != nil { dimensions["package_height_cm"] = *update.PackageHeightCM }
-		if update.PackageWeightGrams != nil { dimensions["package_weight_grams"] = *update.PackageWeightGrams }
+		if update.HeightCM != nil {
+			dimensions["height_cm"] = *update.HeightCM
+		}
+		if update.PotDiameterCM != nil {
+			dimensions["pot_diameter_cm"] = *update.PotDiameterCM
+		}
+		if update.PackageLengthCM != nil {
+			dimensions["package_length_cm"] = *update.PackageLengthCM
+		}
+		if update.PackageWidthCM != nil {
+			dimensions["package_width_cm"] = *update.PackageWidthCM
+		}
+		if update.PackageHeightCM != nil {
+			dimensions["package_height_cm"] = *update.PackageHeightCM
+		}
+		if update.PackageWeightGrams != nil {
+			dimensions["package_weight_grams"] = *update.PackageWeightGrams
+		}
 		if len(dimensions) > 0 {
 			if err := saveVariantPIMValues(ctx, tx, id, legacyVariantID, dimensions); err != nil {
 				return Product{}, err
@@ -633,13 +676,32 @@ func (repository *PostgresRepository) UpdateProduct(
 	}
 	if update.Status != nil && *update.Status == "published" || update.CategoryID != nil || update.ClearCategory || update.Attributes != nil {
 		var status string
-		if err := tx.QueryRow(ctx,"SELECT status FROM products WHERE id=$1",id).Scan(&status); err != nil { return Product{},err }
-		if status == "published" { var hasCategory bool;if err:=tx.QueryRow(ctx,"SELECT category_id IS NOT NULL FROM products WHERE id=$1",id).Scan(&hasCategory);err!=nil{return Product{},err};if !hasCategory{return Product{},fmt.Errorf("%w: выберите корректную категорию",ErrInvalidInput)};if err := validateRequiredAttributes(ctx,tx,id); err != nil { return Product{},err } }
+		if err := tx.QueryRow(ctx, "SELECT status FROM products WHERE id=$1", id).Scan(&status); err != nil {
+			return Product{}, err
+		}
+		if status == "published" {
+			var hasCategory bool
+			if err := tx.QueryRow(ctx, "SELECT category_id IS NOT NULL FROM products WHERE id=$1", id).Scan(&hasCategory); err != nil {
+				return Product{}, err
+			}
+			if !hasCategory {
+				return Product{}, fmt.Errorf("%w: выберите корректную категорию", ErrInvalidInput)
+			}
+			if err := validateRequiredAttributes(ctx, tx, id); err != nil {
+				return Product{}, err
+			}
+		}
 	}
-	if update.ExternalIDs != nil { if err := replaceEditableExternalIDs(ctx,tx,id,*update.ExternalIDs); err != nil { return Product{},err } }
+	if update.ExternalIDs != nil {
+		if err := replaceEditableExternalIDs(ctx, tx, id, *update.ExternalIDs); err != nil {
+			return Product{}, err
+		}
+	}
 	if update.Image != nil {
 		if strings.TrimSpace(*update.Image) != "" {
-			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=0 WHERE product_id=$1`, id); err != nil { return Product{}, err }
+			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=0 WHERE product_id=$1`, id); err != nil {
+				return Product{}, err
+			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO product_media(product_id, object_key, alt_text, sort_order, is_primary)
 				SELECT id, $2, name, COALESCE((SELECT MAX(sort_order)+1 FROM product_media WHERE product_id=$1),0), 1 FROM products WHERE id = $1
@@ -647,8 +709,12 @@ func (repository *PostgresRepository) UpdateProduct(
 				return Product{}, err
 			}
 		} else {
-			if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id=$1 AND is_primary<>0`, id); err != nil { return Product{}, err }
-			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=1 WHERE id=(SELECT id FROM product_media WHERE product_id=$1 ORDER BY sort_order,id LIMIT 1)`, id); err != nil { return Product{}, err }
+			if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id=$1 AND is_primary<>0`, id); err != nil {
+				return Product{}, err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=1 WHERE id=(SELECT id FROM product_media WHERE product_id=$1 ORDER BY sort_order,id LIMIT 1)`, id); err != nil {
+				return Product{}, err
+			}
 		}
 	}
 	after, err := productAuditData(ctx, tx, id)
@@ -668,31 +734,49 @@ func (repository *PostgresRepository) UpdateProduct(
 // of deleting them. Historical marketplace articles must keep resolving old
 // sales after somebody corrects a card in the editor.
 func replaceEditableExternalIDs(ctx context.Context, tx pgx.Tx, productID int64, mappings []ExternalID) error {
-	if _,err:=tx.Exec(ctx,`UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP WHERE product_id=$1 AND provider NOT IN ('ficusin','saby') AND NOT (provider='wildberries' AND id_type IN ('sku','nm_id')) AND status='active'`,productID);err!=nil{return fmt.Errorf("retire external mappings: %w",err)}
-	for _,mapping:=range mappings{
-		provider:=strings.ToLower(strings.TrimSpace(mapping.Provider));kind:=strings.ToLower(strings.TrimSpace(mapping.Type));external:=strings.TrimSpace(mapping.ExternalID)
-		if provider=="ficusin"||provider=="saby"{continue}
-		if !safeMappingToken(provider)||!safeMappingToken(kind)||external==""||len(external)>240{return fmt.Errorf("%w: неверный внешний идентификатор",ErrInvalidInput)}
-		tag,err:=tx.Exec(ctx,`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,last_seen_at)
+	if _, err := tx.Exec(ctx, `UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP WHERE product_id=$1 AND provider NOT IN ('ficusin','saby') AND NOT (provider='wildberries' AND id_type IN ('sku','nm_id')) AND status='active'`, productID); err != nil {
+		return fmt.Errorf("retire external mappings: %w", err)
+	}
+	for _, mapping := range mappings {
+		provider := strings.ToLower(strings.TrimSpace(mapping.Provider))
+		kind := strings.ToLower(strings.TrimSpace(mapping.Type))
+		external := strings.TrimSpace(mapping.ExternalID)
+		if provider == "ficusin" || provider == "saby" {
+			continue
+		}
+		if !safeMappingToken(provider) || !safeMappingToken(kind) || external == "" || len(external) > 240 {
+			return fmt.Errorf("%w: неверный внешний идентификатор", ErrInvalidInput)
+		}
+		tag, err := tx.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,last_seen_at)
 			SELECT $1,pv.id,$2,$3,$4,'active',NOT EXISTS(SELECT 1 FROM product_external_ids current WHERE current.variant_id=pv.id AND current.provider=$2 AND current.id_type=$3 AND current.status='active' AND current.is_primary),'manual',CURRENT_TIMESTAMP
 			FROM product_variants pv WHERE pv.product_id=$1 ORDER BY pv.is_active DESC,pv.id LIMIT 1
 			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET product_id=EXCLUDED.product_id,variant_id=EXCLUDED.variant_id,status='active',source='manual',last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-			WHERE product_external_ids.product_id=EXCLUDED.product_id`,productID,provider,kind,external)
-		if err!=nil{return fmt.Errorf("save external mapping: %w",err)}
-		if tag.RowsAffected()!=1{return fmt.Errorf("%w: внешний идентификатор уже связан с другим товаром",ErrInvalidInput)}
+			WHERE product_external_ids.product_id=EXCLUDED.product_id`, productID, provider, kind, external)
+		if err != nil {
+			return fmt.Errorf("save external mapping: %w", err)
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("%w: внешний идентификатор уже связан с другим товаром", ErrInvalidInput)
+		}
 	}
 	return nil
 }
 
 func safeMappingToken(value string) bool {
-	if value==""||len(value)>40{return false}
-	for _,char:=range value{if !(char>='a'&&char<='z'||char>='0'&&char<='9'||char=='_'||char=='-'){return false}}
+	if value == "" || len(value) > 40 {
+		return false
+	}
+	for _, char := range value {
+		if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '_' || char == '-') {
+			return false
+		}
+	}
 	return true
 }
 
-func (repository *PostgresRepository) CatalogMediaHealth(ctx context.Context) (MediaHealth,error) {
+func (repository *PostgresRepository) CatalogMediaHealth(ctx context.Context) (MediaHealth, error) {
 	var result MediaHealth
-	err:=repository.pool.QueryRow(ctx,`
+	err := repository.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM product_media)::int,
 			(SELECT COUNT(*) FROM product_media WHERE object_key ~ '^https?://')::int,
@@ -701,9 +785,11 @@ func (repository *PostgresRepository) CatalogMediaHealth(ctx context.Context) (M
 			(SELECT COUNT(*) FROM product_media pm JOIN media_mirror mm ON mm.source_url=pm.object_key WHERE pm.object_key ~ '^https?://' AND (mm.card_url IS NULL OR mm.large_url IS NULL) AND mm.attempts>=5)::int,
 			(SELECT COUNT(*) FROM products p WHERE NOT EXISTS(SELECT 1 FROM product_media pm WHERE pm.product_id=p.id))::int,
 			(SELECT COUNT(*) FROM media_mirror mm WHERE NOT EXISTS(SELECT 1 FROM product_media pm WHERE pm.object_key=mm.source_url))::int
-	`).Scan(&result.References,&result.External,&result.Mirrored,&result.Pending,&result.Exhausted,&result.ProductsWithoutMedia,&result.OrphanMappings)
-	if err!=nil{return MediaHealth{},fmt.Errorf("catalog media health: %w",err)}
-	return result,nil
+	`).Scan(&result.References, &result.External, &result.Mirrored, &result.Pending, &result.Exhausted, &result.ProductsWithoutMedia, &result.OrphanMappings)
+	if err != nil {
+		return MediaHealth{}, fmt.Errorf("catalog media health: %w", err)
+	}
+	return result, nil
 }
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
@@ -713,24 +799,41 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 			(SELECT COUNT(*) FROM categories ch WHERE ch.parent_id=c.id)::int
 		FROM categories c WHERE c.active=1 ORDER BY c.sort_order,c.name
 	`)
-	if err != nil { return nil, fmt.Errorf("query admin categories: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("query admin categories: %w", err)
+	}
 	defer rows.Close()
-	result:=make([]Category,0)
-	for rows.Next(){ var c Category; if err:=rows.Scan(&c.ID,&c.ParentID,&c.Name,&c.Slug,&c.SortOrder,&c.Icon,&c.ProductsCount,&c.ChildrenCount); err!=nil{return nil,err}; result=append(result,c)}
-	return result,rows.Err()
+	result := make([]Category, 0)
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.SortOrder, &c.Icon, &c.ProductsCount, &c.ChildrenCount); err != nil {
+			return nil, err
+		}
+		result = append(result, c)
+	}
+	return result, rows.Err()
 }
 
 // ListCategoryAttributes returns the effective category schema. Definitions
 // on the nearest category override the same code inherited from an ancestor.
 func (repository *PostgresRepository) ListCategoryAttributes(ctx context.Context, categoryID int64) ([]CategoryAttribute, error) {
 	items, err := repository.EffectiveCategoryAttributes(ctx, categoryID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	result := make([]CategoryAttribute, 0, len(items))
 	for _, definition := range items {
-		if !definition.Active || definition.Excluded { continue }
+		if !definition.Active || definition.Excluded {
+			continue
+		}
 		options := make([]string, 0, len(definition.Options))
 		optionLabels := make(map[string]string, len(definition.Options))
-		for _, option := range definition.Options { if option.Active { options = append(options, option.Code); optionLabels[option.Code] = option.Label } }
+		for _, option := range definition.Options {
+			if option.Active {
+				options = append(options, option.Code)
+				optionLabels[option.Code] = option.Label
+			}
+		}
 		result = append(result, CategoryAttribute{
 			Code: definition.Code, Name: definition.Name, DataType: definition.DataType,
 			Unit: definition.Unit, Options: options, OptionLabels: optionLabels, Audience: definition.Audience, Scope: definition.Scope,
@@ -741,51 +844,70 @@ func (repository *PostgresRepository) ListCategoryAttributes(ctx context.Context
 	return result, nil
 }
 
-func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor Actor, input CategoryCreate) (Category,error) {
-	if !Can(actor.Role, PermissionProductsEdit){return Category{},ErrForbidden}
-	input.Name=strings.TrimSpace(input.Name); input.Slug=strings.TrimSpace(input.Slug)
+func (repository *PostgresRepository) CreateCategory(ctx context.Context, actor Actor, input CategoryCreate) (Category, error) {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return Category{}, ErrForbidden
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	input.Slug = strings.TrimSpace(input.Slug)
 	var id int64
-	err:=repository.pool.QueryRow(ctx,`
+	err := repository.pool.QueryRow(ctx, `
 		INSERT INTO categories(parent_id,name,slug,sort_order) VALUES($1,$2,$3,$4) RETURNING id
-	`,input.ParentID,input.Name,input.Slug,input.SortOrder).Scan(&id)
-	if err!=nil{return Category{},fmt.Errorf("create category: %w",err)}
-	return repository.categoryByID(ctx,id)
+	`, input.ParentID, input.Name, input.Slug, input.SortOrder).Scan(&id)
+	if err != nil {
+		return Category{}, fmt.Errorf("create category: %w", err)
+	}
+	return repository.categoryByID(ctx, id)
 }
 
-func (repository *PostgresRepository) UpdateCategory(ctx context.Context, actor Actor,id int64,input CategoryUpdate)(Category,error){
-	if !Can(actor.Role, PermissionProductsEdit){return Category{},ErrForbidden}
-	_,err:=repository.pool.Exec(ctx,`
+func (repository *PostgresRepository) UpdateCategory(ctx context.Context, actor Actor, id int64, input CategoryUpdate) (Category, error) {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return Category{}, ErrForbidden
+	}
+	_, err := repository.pool.Exec(ctx, `
 		UPDATE categories SET name=COALESCE(NULLIF(TRIM($2),''),name),
 			slug=COALESCE(NULLIF(TRIM($3),''),slug),sort_order=COALESCE($4,sort_order),updated_at=NOW()
 		WHERE id=$1
-	`,id,input.Name,input.Slug,input.SortOrder)
-	if err!=nil{return Category{},fmt.Errorf("update category: %w",err)}
-	return repository.categoryByID(ctx,id)
+	`, id, input.Name, input.Slug, input.SortOrder)
+	if err != nil {
+		return Category{}, fmt.Errorf("update category: %w", err)
+	}
+	return repository.categoryByID(ctx, id)
 }
 
-func (repository *PostgresRepository) DeleteCategory(ctx context.Context,actor Actor,id int64)error{
-	if actor.Role != RoleOwner{return ErrForbidden}
-	var children,products int
-	if err:=repository.pool.QueryRow(ctx,`
+func (repository *PostgresRepository) DeleteCategory(ctx context.Context, actor Actor, id int64) error {
+	if actor.Role != RoleOwner {
+		return ErrForbidden
+	}
+	var children, products int
+	if err := repository.pool.QueryRow(ctx, `
 		SELECT (SELECT COUNT(*) FROM categories WHERE parent_id=$1)::int,
 			(SELECT COUNT(*) FROM products WHERE category_id=$1)::int
-	`,id).Scan(&children,&products);err!=nil{return err}
-	if children>0||products>0{return ErrCategoryNotEmpty}
-	command,err:=repository.pool.Exec(ctx,"DELETE FROM categories WHERE id=$1",id)
-	if err!=nil{return fmt.Errorf("delete category: %w",err)}
-	if command.RowsAffected()==0{return pgx.ErrNoRows}
+	`, id).Scan(&children, &products); err != nil {
+		return err
+	}
+	if children > 0 || products > 0 {
+		return ErrCategoryNotEmpty
+	}
+	command, err := repository.pool.Exec(ctx, "DELETE FROM categories WHERE id=$1", id)
+	if err != nil {
+		return fmt.Errorf("delete category: %w", err)
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
-func(repository *PostgresRepository) categoryByID(ctx context.Context,id int64)(Category,error){
+func (repository *PostgresRepository) categoryByID(ctx context.Context, id int64) (Category, error) {
 	var c Category
-	err:=repository.pool.QueryRow(ctx,`
+	err := repository.pool.QueryRow(ctx, `
 		SELECT c.id,c.parent_id,c.name,c.slug,c.sort_order,
 			(SELECT COUNT(*) FROM products WHERE category_id=c.id)::int,
 			(SELECT COUNT(*) FROM categories WHERE parent_id=c.id)::int
 		FROM categories c WHERE c.id=$1
-	`,id).Scan(&c.ID,&c.ParentID,&c.Name,&c.Slug,&c.SortOrder,&c.ProductsCount,&c.ChildrenCount)
-	return c,err
+	`, id).Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.SortOrder, &c.ProductsCount, &c.ChildrenCount)
+	return c, err
 }
 
 // SyncProducts подтягивает выбранные поля из справочника СБИС.
@@ -1039,16 +1161,7 @@ func (repository *PostgresRepository) SetDeliveryFee(
 			}
 		}
 	}
-	orders, err := repository.ListOrders(ctx)
-	if err != nil {
-		return Order{}, err
-	}
-	for _, order := range orders {
-		if order.ID == id {
-			return order, nil
-		}
-	}
-	return Order{}, pgx.ErrNoRows
+	return currentAdminOrder(ctx, repository, id)
 }
 
 // queueStatusLetter writes the letter about a status change into the outbox.

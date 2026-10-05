@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,7 +25,9 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, directory string) error {
 	}
 	defer connection.Release()
 
-	if _, err := connection.Exec(ctx, "SELECT pg_advisory_lock($1)", advisoryLockID); err != nil {
+	lockCtx, cancelLock := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelLock()
+	if _, err := connection.Exec(lockCtx, "SELECT pg_advisory_lock($1)", advisoryLockID); err != nil {
 		return fmt.Errorf("lock migrations: %w", err)
 	}
 	defer func() {
@@ -70,6 +73,10 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, directory string) error {
 		transaction, err := connection.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", name, err)
+		}
+		if _, err := transaction.Exec(ctx, "SET LOCAL lock_timeout = '10s'; SET LOCAL statement_timeout = '5min'"); err != nil {
+			_ = transaction.Rollback(ctx)
+			return fmt.Errorf("set migration timeouts %s: %w", name, err)
 		}
 		if _, err := transaction.Exec(ctx, string(sql)); err != nil {
 			_ = transaction.Rollback(ctx)

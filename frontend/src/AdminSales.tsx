@@ -1,5 +1,5 @@
 import { WorkspaceState, WorkspaceStatus, WorkspaceTable, WorkspaceTasks, WorkspaceForm } from "./WorkspaceUI";
-import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Dialog, PageHeading, api, money, orderStatuses, paymentLabels, paymentMethodLabels, roleLabel, roles, statusLabels } from "./adminShared";
 import type { Customer, Order, Role } from "./adminTypes";
 
@@ -14,21 +14,39 @@ export function Customers({ can, wholesaleOnly, onError }: { can: (permission: s
   const [query, setQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(Boolean(wholesaleOnly));
   const [editing, setEditing] = useState<Customer | null>(null);
-  useEffect(() => { api<{ customers: Customer[] }>("/api/v1/admin/customers").then((data) => setItems(data.customers)).catch((error) => { setLoadError(error.message); onError(error.message); }).finally(() => setLoading(false)); }, [onError]);
-  const filtered = useMemo(() => items.filter((item) => {
-    if (pendingOnly && !(item.accountType === "wholesale" && item.wholesaleStatus === "pending")) return false;
-    return `${item.fullName} ${item.lastName} ${item.phone} ${item.email}`.toLowerCase().includes(query.toLowerCase());
-  }), [items, query, pendingOnly]);
+	const [total, setTotal] = useState(0);
+	const [hasMore, setHasMore] = useState(false);
+	const requestVersion = useRef(0);
+	const loadCustomers = async (offset = 0, append = false) => {
+		const version = ++requestVersion.current;
+		const params = new URLSearchParams({ limit: "100", offset: String(offset) });
+		if (query.trim()) params.set("q", query.trim());
+		if (pendingOnly) params.set("pendingWholesale", "1");
+		const data = await api<{ customers: Customer[]; total: number; hasMore: boolean }>(`/api/v1/admin/customers?${params}`);
+		if (version !== requestVersion.current) return;
+		setItems((current) => append ? [...current, ...data.customers] : data.customers);
+		setTotal(data.total);
+		setHasMore(data.hasMore);
+	};
+	useEffect(() => {
+		setLoading(true); setLoadError("");
+		const timer = window.setTimeout(() => {
+			loadCustomers().catch((error) => { setLoadError(error.message); onError(error.message); }).finally(() => setLoading(false));
+		}, 250);
+		return () => window.clearTimeout(timer);
+	// loadCustomers intentionally follows the current search controls.
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [onError, query, pendingOnly]);
   const openCard = (customer: Customer) => setEditing(customer);
   return <>
     <PageHeading eyebrow="CRM" title="Клиенты" text="Профили, покупки, адреса, скидки и доступ сотрудников" />
     <div className="admin-toolbar">
       <input aria-label="Поиск клиентов" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по имени, телефону или email" />
       <label className="admin-checkbox"><input type="checkbox" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} />Только оптовые заявки</label>
-      <span>{filtered.length} клиентов</span>
+	  <span>{total} клиентов</span>
     </div>
-    {loading ? <WorkspaceState kind="loading" title="Загружаем клиентов…" /> : loadError ? <WorkspaceState kind="error" title={loadError} /> : !filtered.length ? <WorkspaceState kind="empty" title={query || pendingOnly ? "Клиенты не найдены" : "Клиентов пока нет"} /> : <WorkspaceTable label="Клиенты"><thead><tr><th>Клиент</th><th>Контакты и адрес</th><th>Покупки</th><th>Тип</th><th>Доступ</th><th /></tr></thead><tbody>
-      {filtered.map((customer) => <tr
+	{loading ? <WorkspaceState kind="loading" title="Загружаем клиентов…" /> : loadError ? <WorkspaceState kind="error" title={loadError} /> : !items.length ? <WorkspaceState kind="empty" title={query || pendingOnly ? "Клиенты не найдены" : "Клиентов пока нет"} /> : <><WorkspaceTable label="Клиенты"><thead><tr><th>Клиент</th><th>Контакты и адрес</th><th>Покупки</th><th>Тип</th><th>Доступ</th><th /></tr></thead><tbody>
+	  {items.map((customer) => <tr
         key={customer.id}
         className={`${!customer.active ? "muted" : ""} clickable`}
         onClick={() => openCard(customer)}
@@ -39,7 +57,7 @@ export function Customers({ can, wholesaleOnly, onError }: { can: (permission: s
         <td><span className="admin-pill">{customer.accountType === "wholesale" ? "Опт" : "Розница"}</span><small>{customer.wholesaleStatus}</small></td>
         <td><strong>{roleLabel(customer.adminRole)}</strong><small>{customer.active ? "Активен" : "Заблокирован"}</small></td>
         <td><button className="admin-action" onClick={() => setEditing(customer)}>{can("customers.edit") ? "Изменить" : "Открыть"}</button></td>
-      </tr>)}</tbody></WorkspaceTable>}
+	  </tr>)}</tbody></WorkspaceTable>{hasMore && <button type="button" className="admin-action" onClick={() => void loadCustomers(items.length, true).catch((error) => onError(error.message))}>Показать ещё</button>}</>}
     {editing && <CustomerDialog readOnly={!can("customers.edit")} customer={editing} owner={can("roles.edit")} onClose={() => setEditing(null)} onSaved={(customer) => { setItems((current) => current.map((item) => item.id === customer.id ? customer : item)); setEditing(null); }} onError={onError} />}
   </>;
 }

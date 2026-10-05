@@ -70,6 +70,26 @@ func TestPutReportsRefusal(t *testing.T) {
 	}
 }
 
+func TestDeleteSignsObjectRequest(t *testing.T) {
+	var got *http.Request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	storage := NewStorage(server.URL, "ru-1", "bucket", "key", "secret")
+	if err := storage.Delete(context.Background(), "reviews/42/media.webp"); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+	if got.Method != http.MethodDelete || got.URL.Path != "/bucket/reviews/42/media.webp" {
+		t.Fatalf("unexpected request: %s %s", got.Method, got.URL.Path)
+	}
+	if !strings.Contains(got.Header.Get("Authorization"), "SignedHeaders=host;x-amz-content-sha256;x-amz-date") {
+		t.Fatalf("delete request is not signed: %s", got.Header.Get("Authorization"))
+	}
+}
+
 func TestUnconfiguredStorageStaysQuiet(t *testing.T) {
 	storage := NewStorage("", "", "", "", "")
 	if storage.Configured() {

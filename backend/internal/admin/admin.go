@@ -24,11 +24,11 @@ const (
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
 	PermissionProductsSync     = "products.sync"
-	PermissionProductsManage = "products.manage"
-	PermissionDelete = "catalog.delete"
-	PermissionReturnsRead = "returns.read"
-	PermissionReturnsEdit = "returns.edit"
-	PermissionReturnsReceipt = "returns.receipt.create"
+	PermissionProductsManage   = "products.manage"
+	PermissionDelete           = "catalog.delete"
+	PermissionReturnsRead      = "returns.read"
+	PermissionReturnsEdit      = "returns.edit"
+	PermissionReturnsReceipt   = "returns.receipt.create"
 	PermissionProcurementRead  = "procurement.read"
 	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
@@ -149,17 +149,17 @@ type Order struct {
 }
 
 type OrderItem struct {
-	ID           int64   `json:"id"`
-	ProductID    int64   `json:"productId"`
-	SKU          string  `json:"sku"`
-	VariantLabel string  `json:"variantLabel"`
-	ProductName  string  `json:"productName"`
-	UnitPrice    float64 `json:"unitPrice"`
-	Quantity     int     `json:"quantity"`
-	PackageLengthCM int `json:"packageLengthCm"`
-	PackageWidthCM int `json:"packageWidthCm"`
-	PackageHeightCM int `json:"packageHeightCm"`
-	PackageWeightGrams int `json:"packageWeightGrams"`
+	ID                 int64   `json:"id"`
+	ProductID          int64   `json:"productId"`
+	SKU                string  `json:"sku"`
+	VariantLabel       string  `json:"variantLabel"`
+	ProductName        string  `json:"productName"`
+	UnitPrice          float64 `json:"unitPrice"`
+	Quantity           int     `json:"quantity"`
+	PackageLengthCM    int     `json:"packageLengthCm"`
+	PackageWidthCM     int     `json:"packageWidthCm"`
+	PackageHeightCM    int     `json:"packageHeightCm"`
+	PackageWeightGrams int     `json:"packageWeightGrams"`
 }
 
 type Product struct {
@@ -197,16 +197,16 @@ type Product struct {
 	OverrideFields     []string `json:"overrideFields"`
 	// SabyFields — что этому товару разрешено брать из СБИС. Пусто значит
 	// «ничего»: карточка целиком наша.
-	SabyFields        []string              `json:"sabyFields"`
-	SabyCode          string                `json:"sabyCode"`
-	SabyUpdatedAt     *time.Time            `json:"sabyUpdatedAt"`
-	CategoryID        *int64                `json:"categoryId"`
-	Passport          catalog.PlantPassport `json:"passport"`
-	ImportantWarnings []string              `json:"importantWarnings"`
-	ExternalIDs       []ExternalID          `json:"externalIds"`
-	Attributes        map[string]any        `json:"attributes"`
-	VariantStage1Missing bool               `json:"variantStage1Missing"`
-	UnknownEnumValues    bool               `json:"unknownEnumValues"`
+	SabyFields           []string              `json:"sabyFields"`
+	SabyCode             string                `json:"sabyCode"`
+	SabyUpdatedAt        *time.Time            `json:"sabyUpdatedAt"`
+	CategoryID           *int64                `json:"categoryId"`
+	Passport             catalog.PlantPassport `json:"passport"`
+	ImportantWarnings    []string              `json:"importantWarnings"`
+	ExternalIDs          []ExternalID          `json:"externalIds"`
+	Attributes           map[string]any        `json:"attributes"`
+	VariantStage1Missing bool                  `json:"variantStage1Missing"`
+	UnknownEnumValues    bool                  `json:"unknownEnumValues"`
 }
 
 type ExternalID struct {
@@ -340,20 +340,20 @@ type CategoryUpdate struct {
 // CategoryAttribute is the product-editor contract for one category. Audience
 // keeps delivery/integration fields out of the customer-facing PDP contract.
 type CategoryAttribute struct {
-	Code       string   `json:"code"`
-	Name       string   `json:"name"`
-	DataType   string   `json:"dataType"`
-	Unit       string   `json:"unit"`
-	Options    []string `json:"options"`
-	OptionLabels map[string]string `json:"optionLabels"`
-	Audience   string   `json:"audience"`
-	Scope      string   `json:"scope"`
-	Required   bool     `json:"required"`
-	Filterable bool     `json:"filterable"`
-	ShowOnPDP  bool     `json:"showOnPdp"`
-	KeyCharacteristic bool `json:"keyCharacteristic"`
-	Badge      bool     `json:"badge"`
-	SortOrder  int      `json:"sortOrder"`
+	Code              string            `json:"code"`
+	Name              string            `json:"name"`
+	DataType          string            `json:"dataType"`
+	Unit              string            `json:"unit"`
+	Options           []string          `json:"options"`
+	OptionLabels      map[string]string `json:"optionLabels"`
+	Audience          string            `json:"audience"`
+	Scope             string            `json:"scope"`
+	Required          bool              `json:"required"`
+	Filterable        bool              `json:"filterable"`
+	ShowOnPDP         bool              `json:"showOnPdp"`
+	KeyCharacteristic bool              `json:"keyCharacteristic"`
+	Badge             bool              `json:"badge"`
+	SortOrder         int               `json:"sortOrder"`
 }
 
 type SyncRequest struct {
@@ -400,4 +400,10 @@ type Repository interface {
 	CreateCategory(context.Context, Actor, CategoryCreate) (Category, error)
 	UpdateCategory(context.Context, Actor, int64, CategoryUpdate) (Category, error)
 	DeleteCategory(context.Context, Actor, int64) error
+}
+
+type CustomerPage struct {
+	Customers []Customer `json:"customers"`
+	Total     int        `json:"total"`
+	HasMore   bool       `json:"hasMore"`
 }

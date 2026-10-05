@@ -3,7 +3,6 @@ import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
 import { Procurement } from "./AdminProcurement";
-import { Customers, Orders } from "./AdminSales";
 import { Dashboard } from "./AdminDashboard";
 import { WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
 import "./styles/admin-workspace.css";
@@ -16,6 +15,8 @@ import { AdminMarketplaces } from "./AdminMarketplaces";
 const AdminReturns = lazy(() => import("./AdminReturns").then((module) => ({ default: module.AdminReturns })));
 const AdminFinance = lazy(() => import("./AdminFinance").then((module) => ({ default: module.AdminFinance })));
 const AdminAvito = lazy(() => import("./AdminAvito").then((module) => ({ default: module.AdminAvito })));
+const Customers = lazy(() => import("./AdminSales").then((module) => ({ default: module.Customers })));
+const Orders = lazy(() => import("./AdminSales").then((module) => ({ default: module.Orders })));
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
@@ -67,8 +68,8 @@ export default function AdminPage() {
           {section === "avito" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}><AdminAvito onError={setError} /></Suspense>}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
-          {section === "customers" && <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />}
-          {section === "orders" && <Orders focusOrder={focusOrder} onError={setError} />}
+		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
+		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} /></Suspense>}
           {section === "procurement" && <Procurement onError={setError} />}
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}

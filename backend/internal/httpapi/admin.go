@@ -94,12 +94,30 @@ func (handlers adminHandlers) customers(response http.ResponseWriter, request *h
 	if !ok {
 		return
 	}
+	query := strings.TrimSpace(request.URL.Query().Get("q"))
+	pendingWholesale := request.URL.Query().Get("pendingWholesale") == "1"
+	limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(request.URL.Query().Get("offset"))
+	if limit == 0 {
+		limit = 100
+	}
+	if pager, ok := handlers.repository.(interface {
+		ListCustomersPage(context.Context, string, bool, int, int) (admin.CustomerPage, error)
+	}); ok {
+		page, err := pager.ListCustomersPage(request.Context(), query, pendingWholesale, limit, offset)
+		if err != nil {
+			handlers.failed(response, "list admin customers", err)
+			return
+		}
+		writeJSON(response, http.StatusOK, page)
+		return
+	}
 	customers, err := handlers.repository.ListCustomers(request.Context())
 	if err != nil {
 		handlers.failed(response, "list admin customers", err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"customers": customers})
+	writeJSON(response, http.StatusOK, map[string]any{"customers": customers, "total": len(customers), "hasMore": false})
 }
 
 func (handlers adminHandlers) updateCustomer(response http.ResponseWriter, request *http.Request) {
@@ -547,17 +565,20 @@ func (handlers adminHandlers) generateProductDraft(response http.ResponseWriter,
 			break
 		}
 	}
-		if product == nil {
+	if product == nil {
 		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Товар не найден"})
 		return
-		}
-		isPlant, err := adminProductIsPlant(request.Context(), handlers.repository, *product)
-		if err != nil { handlers.failed(response, "resolve product category for ai", err); return }
-		if body.Mode == "care" && !isPlant {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Уход и паспорт доступны только для растений"})
-			return
-		}
-		input := catalogai.Input{Name: product.Name, SabyCode: product.SabyCode, Category: product.CatalogSection, IsPlant: isPlant, CurrentDescription: product.Description, Attributes: []catalogai.Attribute{}}
+	}
+	isPlant, err := adminProductIsPlant(request.Context(), handlers.repository, *product)
+	if err != nil {
+		handlers.failed(response, "resolve product category for ai", err)
+		return
+	}
+	if body.Mode == "care" && !isPlant {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Уход и паспорт доступны только для растений"})
+		return
+	}
+	input := catalogai.Input{Name: product.Name, SabyCode: product.SabyCode, Category: product.CatalogSection, IsPlant: isPlant, CurrentDescription: product.Description, Attributes: []catalogai.Attribute{}}
 	if product.CategoryID != nil {
 		if provider, yes := handlers.repository.(effectiveAttributeProvider); yes {
 			attributes, e := provider.EffectiveCategoryAttributes(request.Context(), *product.CategoryID)

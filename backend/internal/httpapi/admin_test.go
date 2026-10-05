@@ -49,15 +49,19 @@ func (stub adminAuthStub) UserByToken(context.Context, string) (*auth.User, erro
 }
 
 type adminRepositoryStub struct {
-	createdProducts []admin.ProductCreate
-	importRequests  []admin.ImportRequest
-	mergeRequests   []admin.MergeProductsRequest
-	deletedDraftIDs []int64
-	publishedDraftIDs []int64
+	createdProducts     []admin.ProductCreate
+	importRequests      []admin.ImportRequest
+	mergeRequests       []admin.MergeProductsRequest
+	deletedDraftIDs     []int64
+	publishedDraftIDs   []int64
 	updateCustomerCalls int
 	syncCalls           int
 	createCategoryCalls int
 	deliveryFee         float64
+	customerPageQuery   string
+	customerPagePending bool
+	customerPageLimit   int
+	customerPageOffset  int
 }
 
 func (stub *adminRepositoryStub) Dashboard(context.Context) (admin.Dashboard, error) {
@@ -66,6 +70,12 @@ func (stub *adminRepositoryStub) Dashboard(context.Context) (admin.Dashboard, er
 
 func (stub *adminRepositoryStub) ListCustomers(context.Context) ([]admin.Customer, error) {
 	return []admin.Customer{}, nil
+}
+
+func (stub *adminRepositoryStub) ListCustomersPage(_ context.Context, query string, pending bool, limit, offset int) (admin.CustomerPage, error) {
+	stub.customerPageQuery, stub.customerPagePending = query, pending
+	stub.customerPageLimit, stub.customerPageOffset = limit, offset
+	return admin.CustomerPage{Customers: []admin.Customer{{ID: 7}}, Total: 201, HasMore: true}, nil
 }
 
 func (stub *adminRepositoryStub) UpdateCustomer(context.Context, admin.Actor, int64, admin.CustomerUpdate) (admin.Customer, error) {
@@ -131,16 +141,28 @@ func (stub *adminRepositoryStub) PublishDraftProducts(_ context.Context, _ admin
 	stub.publishedDraftIDs = append(stub.publishedDraftIDs, ids...)
 	return admin.BulkPublishResult{Published: append([]int64{}, ids...), Blocked: []admin.BulkPublishBlocked{}}, nil
 }
-func (stub *adminRepositoryStub) MergeDraftProducts(_ context.Context,_ admin.Actor,request admin.MergeProductsRequest) error { stub.mergeRequests=append(stub.mergeRequests,request);return nil }
+func (stub *adminRepositoryStub) MergeDraftProducts(_ context.Context, _ admin.Actor, request admin.MergeProductsRequest) error {
+	stub.mergeRequests = append(stub.mergeRequests, request)
+	return nil
+}
 
 func (stub *adminRepositoryStub) SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error) {
 	stub.syncCalls++
 	return admin.SyncResult{Updated: 1, Skipped: []int64{}}, nil
 }
-func(stub *adminRepositoryStub) ListCategories(context.Context)([]admin.Category,error){return []admin.Category{},nil}
-func(stub *adminRepositoryStub) CreateCategory(context.Context,admin.Actor,admin.CategoryCreate)(admin.Category,error){stub.createCategoryCalls++;return admin.Category{ID:1,Name:"Аглаонема",Slug:"aglaonema"},nil}
-func(stub *adminRepositoryStub) UpdateCategory(context.Context,admin.Actor,int64,admin.CategoryUpdate)(admin.Category,error){return admin.Category{},nil}
-func(stub *adminRepositoryStub) DeleteCategory(context.Context,admin.Actor,int64)error{return nil}
+func (stub *adminRepositoryStub) ListCategories(context.Context) ([]admin.Category, error) {
+	return []admin.Category{}, nil
+}
+func (stub *adminRepositoryStub) CreateCategory(context.Context, admin.Actor, admin.CategoryCreate) (admin.Category, error) {
+	stub.createCategoryCalls++
+	return admin.Category{ID: 1, Name: "Аглаонема", Slug: "aglaonema"}, nil
+}
+func (stub *adminRepositoryStub) UpdateCategory(context.Context, admin.Actor, int64, admin.CategoryUpdate) (admin.Category, error) {
+	return admin.Category{}, nil
+}
+func (stub *adminRepositoryStub) DeleteCategory(context.Context, admin.Actor, int64) error {
+	return nil
+}
 
 func TestAdminManagerCannotAssignRoles(t *testing.T) {
 	t.Parallel()
@@ -251,6 +273,23 @@ func TestUnknownRoleCannotReadCustomers(t *testing.T) {
 	}
 }
 
+func TestAdminCustomersPassesPaginationAndSearch(t *testing.T) {
+	t.Parallel()
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodGet, "/api/v1/admin/customers?q=%D0%98%D0%B2%D0%B0%D0%BD&pendingWholesale=1&limit=50&offset=100", "")
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if repository.customerPageQuery != "Иван" || !repository.customerPagePending || repository.customerPageLimit != 50 || repository.customerPageOffset != 100 {
+		t.Fatalf("unexpected page request: query=%q pending=%v limit=%d offset=%d", repository.customerPageQuery, repository.customerPagePending, repository.customerPageLimit, repository.customerPageOffset)
+	}
+	if !strings.Contains(response.Body.String(), `"total":201`) || !strings.Contains(response.Body.String(), `"hasMore":true`) {
+		t.Fatalf("unexpected response: %s", response.Body.String())
+	}
+}
+
 func adminDependencies(repository adminRepository, role, email string) Dependencies {
 	return Dependencies{
 		Catalog: catalogStub{},
@@ -326,7 +365,9 @@ func TestDeleteDraftProductsPassesExplicitIDs(t *testing.T) {
 	request := adminRequest(http.MethodDelete, "/api/v1/admin/products", `{"productIds":[11,12]}`)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
-	if response.Code != http.StatusOK { t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String()) }
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
 	if len(repository.deletedDraftIDs) != 2 || repository.deletedDraftIDs[0] != 11 || repository.deletedDraftIDs[1] != 12 {
 		t.Fatalf("deleted ids = %v", repository.deletedDraftIDs)
 	}
@@ -338,29 +379,43 @@ func TestDeleteDraftProductsRejectsEmptySelection(t *testing.T) {
 	request := adminRequest(http.MethodDelete, "/api/v1/admin/products", `{"productIds":[]}`)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest { t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest) }
-	if len(repository.deletedDraftIDs) != 0 { t.Fatalf("unexpected deletion: %v", repository.deletedDraftIDs) }
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if len(repository.deletedDraftIDs) != 0 {
+		t.Fatalf("unexpected deletion: %v", repository.deletedDraftIDs)
+	}
 }
 
 func TestPublishDraftProductsPassesExplicitIDs(t *testing.T) {
 	t.Parallel()
-	repository:=&adminRepositoryStub{}
-	request:=adminRequest(http.MethodPost,"/api/v1/admin/products/publish",`{"productIds":[21,22]}`)
-	response:=httptest.NewRecorder()
-	NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
-	if response.Code!=http.StatusOK{t.Fatalf("status = %d, want %d; body = %s",response.Code,http.StatusOK,response.Body.String())}
-	if len(repository.publishedDraftIDs)!=2||repository.publishedDraftIDs[0]!=21||repository.publishedDraftIDs[1]!=22{t.Fatalf("published ids = %v",repository.publishedDraftIDs)}
-	if !strings.Contains(response.Body.String(),`"published":[21,22]`){t.Fatalf("body = %s",response.Body.String())}
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/publish", `{"productIds":[21,22]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if len(repository.publishedDraftIDs) != 2 || repository.publishedDraftIDs[0] != 21 || repository.publishedDraftIDs[1] != 22 {
+		t.Fatalf("published ids = %v", repository.publishedDraftIDs)
+	}
+	if !strings.Contains(response.Body.String(), `"published":[21,22]`) {
+		t.Fatalf("body = %s", response.Body.String())
+	}
 }
 
 func TestPublishDraftProductsRejectsEmptySelection(t *testing.T) {
 	t.Parallel()
-	repository:=&adminRepositoryStub{}
-	request:=adminRequest(http.MethodPost,"/api/v1/admin/products/publish",`{"productIds":[]}`)
-	response:=httptest.NewRecorder()
-	NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
-	if response.Code!=http.StatusBadRequest{t.Fatalf("status = %d, want %d",response.Code,http.StatusBadRequest)}
-	if len(repository.publishedDraftIDs)!=0{t.Fatalf("unexpected publication: %v",repository.publishedDraftIDs)}
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/publish", `{"productIds":[]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if len(repository.publishedDraftIDs) != 0 {
+		t.Fatalf("unexpected publication: %v", repository.publishedDraftIDs)
+	}
 }
 
 // Пустой список кодов — это опечатка, а не команда «завести всё подряд».
@@ -402,14 +457,26 @@ func TestImportPassesCodesAndSection(t *testing.T) {
 }
 
 func TestMergeProductsPassesReviewedGroup(t *testing.T) {
-	t.Parallel(); repository:=&adminRepositoryStub{}
-	request:=adminRequest(http.MethodPost,"/api/v1/admin/products/merge",`{"targetProductId":10,"sourceProductIds":[11,12]}`)
-	response:=httptest.NewRecorder();NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
-	if response.Code!=http.StatusOK { t.Fatalf("status=%d body=%s",response.Code,response.Body.String()) }
-	if len(repository.mergeRequests)!=1 || repository.mergeRequests[0].TargetProductID!=10 || len(repository.mergeRequests[0].SourceProductIDs)!=2 { t.Fatalf("merge request=%+v",repository.mergeRequests) }
+	t.Parallel()
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/merge", `{"targetProductId":10,"sourceProductIds":[11,12]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if len(repository.mergeRequests) != 1 || repository.mergeRequests[0].TargetProductID != 10 || len(repository.mergeRequests[0].SourceProductIDs) != 2 {
+		t.Fatalf("merge request=%+v", repository.mergeRequests)
+	}
 }
 
 func TestMergeProductsRefusesMissingSources(t *testing.T) {
-	t.Parallel();repository:=&adminRepositoryStub{};request:=adminRequest(http.MethodPost,"/api/v1/admin/products/merge",`{"targetProductId":10,"sourceProductIds":[]}`);response:=httptest.NewRecorder();NewRouter(discardLogger(),adminDependencies(repository,admin.RoleOwner,"owner@example.com")).ServeHTTP(response,request)
-	if response.Code!=http.StatusBadRequest || len(repository.mergeRequests)!=0 { t.Fatalf("status=%d calls=%d",response.Code,len(repository.mergeRequests)) }
+	t.Parallel()
+	repository := &adminRepositoryStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products/merge", `{"targetProductId":10,"sourceProductIds":[]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || len(repository.mergeRequests) != 0 {
+		t.Fatalf("status=%d calls=%d", response.Code, len(repository.mergeRequests))
+	}
 }
