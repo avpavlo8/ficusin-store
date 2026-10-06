@@ -285,7 +285,8 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			-- Товар может быть заведён у нескольких поставщиков. Берём того,
 			-- у кого наличие подтверждено раньше прочих: рекомендация должна
 			-- вести к поставщику, у которого растение действительно есть.
-			SELECT sp.*, COALESCE(a.id, 0) AS alias_id, a.last_seen_at,
+			SELECT sp.supplier_id, sp.saby_id, sp.availability_status, sp.minimum_order_qty, sp.order_multiple,
+				COALESCE(a.id, 0) AS alias_id,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
 				COALESCE(NULLIF(last_line.supplier_category, ''), '') AS dutch_name,
 				CASE WHEN last_line.id IS NOT NULL THEN last_line.pot_diameter_cm ELSE a.pot_diameter_cm END AS pot_diameter_cm,
@@ -305,6 +306,19 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				WHERE l.saby_id = sp.saby_id AND o.supplier_id = sp.supplier_id AND o.status <> 'cancelled'
 					AND l.match_status = 'confirmed' AND COALESCE(l.unit_price, l.expected_unit_price) IS NOT NULL
 				ORDER BY o.created_at DESC, l.id DESC LIMIT 1) last_line ON TRUE
+			UNION ALL
+			-- A linked sale still represents demand when no supplier has been assigned.
+			-- Keep supplier_id=0 so the UI cannot add it to an order by accident.
+			SELECT 0::BIGINT, n.saby_id, 'unknown'::TEXT, 1, 1,
+				0::BIGINT, COALESCE(NULLIF(pc.holland_article,''),''), ''::TEXT,
+				NULL::NUMERIC, NULL::NUMERIC, NULL::NUMERIC, 1::BIGINT
+			FROM saby_nomenclature n
+			LEFT JOIN procurement_product_channels pc ON pc.saby_id=n.saby_id
+			WHERE n.missing_since IS NULL
+				AND NOT EXISTS (SELECT 1 FROM procurement_supplier_products existing WHERE existing.saby_id=n.saby_id)
+				AND (EXISTS (SELECT 1 FROM sales WHERE sales.saby_id=n.saby_id AND sales.units>0)
+					OR EXISTS (SELECT 1 FROM requests WHERE requests.saby_id=n.saby_id
+						AND requests.customer_units+requests.staff_units>0))
 		)
 			SELECT sp.alias_id, sp.supplier_id, n.saby_id, n.name, sp.article,
 				sp.dutch_name, sp.pot_diameter_cm::DOUBLE PRECISION, sp.height_cm::DOUBLE PRECISION,
