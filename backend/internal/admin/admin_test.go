@@ -13,6 +13,11 @@ func TestRolePermissions(t *testing.T) {
 	}{
 		{name: "owner can edit roles", role: RoleOwner, permission: PermissionRolesEdit, want: true},
 		{name: "owner can edit integrations", role: RoleOwner, permission: PermissionIntegrationsEdit, want: true},
+		{name: "administrator can edit procurement", role: RoleAdministrator, permission: PermissionProcurementEdit, want: true},
+		{name: "administrator cannot edit roles", role: RoleAdministrator, permission: PermissionRolesEdit, want: false},
+		{name: "administrator cannot access finance", role: RoleAdministrator, permission: PermissionFinanceRead, want: false},
+		{name: "administrator cannot edit integrations", role: RoleAdministrator, permission: PermissionIntegrationsEdit, want: false},
+		{name: "administrator cannot delete", role: RoleAdministrator, permission: PermissionDelete, want: false},
 		{name: "manager can edit orders", role: RoleManager, permission: PermissionOrdersEdit, want: true},
 		{name: "manager can edit products", role: RoleManager, permission: PermissionProductsEdit, want: true},
 		{name: "manager cannot sync products", role: RoleManager, permission: PermissionProductsSync, want: false},
@@ -31,11 +36,11 @@ func TestRolePermissions(t *testing.T) {
 	}
 }
 
-func TestOnlyManagerRoleIsAssignable(t *testing.T) {
+func TestStaffRolesAreAssignable(t *testing.T) {
 	t.Parallel()
 
-	if !AssignableRole("") || !AssignableRole(RoleManager) {
-		t.Fatal("manager role and role removal must be assignable")
+	if !AssignableRole("") || !AssignableRole(RoleManager) || !AssignableRole(RoleAdministrator) {
+		t.Fatal("staff roles and role removal must be assignable")
 	}
 	if AssignableRole(RoleOwner) {
 		t.Fatal("owner role must never be assignable through the application")

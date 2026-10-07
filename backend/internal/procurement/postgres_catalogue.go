@@ -407,7 +407,7 @@ func (store *PostgresStore) listSalesSync(ctx context.Context) ([]SalesSyncStatu
 			       LIMIT 1
 			     ) saby_card
 			     WHERE EXISTS (SELECT 1 FROM UNNEST(saby_card.section_path) section_name
-			       WHERE LOWER(BTRIM(section_name))=LOWER('Комнатные растения'))
+			       WHERE LOWER(BTRIM(section_name)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
 			   ))) AS rows_unlinked,
 			sync.next_attempt_at,sync.next_deep_at,
 			CASE WHEN sync.next_deep_at<=CURRENT_TIMESTAMP THEN 'deep' ELSE 'current' END,

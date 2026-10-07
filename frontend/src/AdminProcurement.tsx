@@ -41,9 +41,11 @@ function AvailabilityRow({item,reload,onError}:{item:ProcurementAvailability;rel
   return <tr><td><strong>{item.name||item.sabyId}</strong><small>{item.supplierArticle||"Артикул не заполнен"}</small></td><td>{item.supplierName}</td><td>{item.balance}</td><td>{item.unavailableSince?new Date(`${item.unavailableSince}T00:00:00`).toLocaleDateString("ru-RU"):item.lastSeenAt?new Date(item.lastSeenAt).toLocaleDateString("ru-RU"):"—"}</td><td>{availabilityLabel(item.availabilityStatus)}<small>{item.lastActionAt?`Последнее действие ${new Date(item.lastActionAt).toLocaleString("ru-RU")}`:"Действий ещё нет"}</small></td><td><div className="procurement-availability-editor"><input aria-label={`Причина ${item.name}`} value={reason} onChange={(event)=>setReason(event.target.value)} placeholder="Причина"/><textarea aria-label={`Комментарий ${item.name}`} value={comment} onChange={(event)=>setComment(event.target.value)} placeholder="Комментарий поставщика"/><label>Следующая проверка<input type="date" value={checkAfter} onChange={(event)=>setCheckAfter(event.target.value)}/></label><div className="procurement-inline-actions"><button onClick={()=>void save("available")}>Появился — вернуть</button><button onClick={()=>void save("temporarily_unavailable")}>Всё ещё нет</button><button onClick={()=>void save("discontinued")}>Снят с продажи</button></div></div></td></tr>;
 }
 
-export function Procurement({ onError }: { onError: (value: string) => void }) {
+type PlanDraftSummary = { id: number; title: string; updatedAt: string; createdAt: string };
+
+export function Procurement({ onError, canIntegrations, canDelete }: { onError: (value: string) => void; canIntegrations: boolean; canDelete: boolean }) {
   const [data, setData] = useState<ProcurementData | null>(null);
-  const [view, setView] = useState<"orders" | "calculator" | "recommendations" | "products" | "unlinkedSales" | "requests" | "availability" | "integrations" | "settings">("orders");
+  const [view, setView] = useState<"orders" | "drafts" | "calculator" | "recommendations" | "products" | "unlinkedSales" | "requests" | "availability" | "integrations" | "settings">("orders");
   const [recommendationView, setRecommendationView] = useState<RecommendationStatus>("recommended");
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
   const [availabilityDueOnly, setAvailabilityDueOnly] = useState(true);
@@ -55,15 +57,22 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   const [uploadDialog, setUploadDialog] = useState(false);
   const [requestDialog, setRequestDialog] = useState(false);
   const [planDialog, setPlanDialog] = useState(false);
-  const [serverPlanDraftAt, setServerPlanDraftAt] = useState("");
+  const [drafts, setDrafts] = useState<PlanDraftSummary[]>([]);
+  const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [matchDialog, setMatchDialog] = useState<ProcurementAlias | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
   const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
     .then(setData).catch((error) => onError((error as Error).message)), [onError]);
   useEffect(() => { void load(); }, [load]);
-  const refreshPlanDraft = useCallback(() => api<{ draft: { updatedAt: string } | null }>("/api/v1/admin/procurement/plans/draft")
-    .then((result) => setServerPlanDraftAt(result.draft?.updatedAt || "")).catch(() => undefined), []);
-  useEffect(() => { void refreshPlanDraft(); }, [refreshPlanDraft]);
+  const refreshPlanDrafts = useCallback(() => api<{ drafts: PlanDraftSummary[] }>("/api/v1/admin/procurement/plan-drafts")
+    .then((result) => setDrafts(result.drafts || [])).catch((error) => onError(`Не удалось загрузить черновики: ${(error as Error).message}`)), [onError]);
+  useEffect(() => { void refreshPlanDrafts(); }, [refreshPlanDrafts]);
+  const openNewPlan = () => { setEditingDraftId(null); setPlanDialog(true); };
+  const deleteDraft = async (draft: PlanDraftSummary) => {
+    if (!window.confirm(`Удалить черновик «${draft.title}» для всей команды?`)) return;
+    try { await api(`/api/v1/admin/procurement/plan-drafts/${draft.id}`, { method: "DELETE" }); await refreshPlanDrafts(); }
+    catch (error) { onError(`Не удалось удалить черновик: ${(error as Error).message}`); }
+  };
   const syncCatalog = async (channel: string) => {
     setSyncingCatalog(channel);
     setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Запрашиваем СБИС…" : `Запрашиваем обновление ${integrationChannelLabel(channel)}…` });
@@ -156,10 +165,10 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   const formatMoney = (value: number, currency: string) => currency ? new Intl.NumberFormat("ru-RU", {
     style: "currency", currency, maximumFractionDigits: 2,
   }).format(value) : "—";
-  if (planDialog) return <ProcurementPlanDialog suppliers={data.suppliers} recommendations={selectedRecommendationItems} settings={data.settings} onClose={() => { setPlanDialog(false); void refreshPlanDraft(); }} onSaved={() => { setPlanDialog(false); setServerPlanDraftAt(""); setView("orders"); void load(); }} onError={onError} />;
+  if (planDialog) return <ProcurementPlanDialog key={editingDraftId ?? "new"} draftId={editingDraftId} suppliers={data.suppliers} recommendations={editingDraftId ? [] : selectedRecommendationItems} settings={data.settings} onClose={() => { setPlanDialog(false); void refreshPlanDrafts(); }} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); void refreshPlanDrafts(); }} onError={onError} />;
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Планирование, стоимость, документы и поступления в одном месте." />
-    <div className="procurement-intro"><div><span className="procurement-intro-label">Рабочий день</span><h2>Что делаем с закупкой?</h2><p>Рассчитайте разовую позицию, соберите заказ поставщику или разберите полученный инвойс.</p></div><div className="procurement-intro-actions"><button className="procurement-intro-primary" onClick={() => setPlanDialog(true)} disabled={!data.suppliers.length}>Собрать заказ <span aria-hidden="true">↗</span></button><button onClick={() => setView("calculator")}>Калькулятор цены</button><button onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить инвойс</button></div></div>
+    <div className="procurement-intro"><div><span className="procurement-intro-label">Рабочий день</span><h2>Что делаем с закупкой?</h2><p>Рассчитайте разовую позицию, соберите заказ поставщику или разберите полученный инвойс.</p></div><div className="procurement-intro-actions"><button className="procurement-intro-primary" onClick={openNewPlan} disabled={!data.suppliers.length}>Собрать заказ <span aria-hidden="true">↗</span></button><button onClick={() => setView("calculator")}>Калькулятор цены</button><button onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить инвойс</button></div></div>
     <details className="procurement-safety">
       <summary>Изменения только после подтверждения</summary>
       <div><p>Сайт применяет цену сразу. Для СБИС он создаёт документы поступления без проведения; остатки меняются после того, как вы сами нажмёте «Провести» в СБИС.</p><small>WB: {data.integrations.wb ? "подключён" : "нужен токен"} · Ozon: {data.integrations.ozon ? "подключён" : "нужны ключи"} · СБИС: {data.integrations.saby ? "поступления подключены" : "нужны ключи"}</small></div>
@@ -173,27 +182,29 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     </div>
     <div className="admin-toolbar procurement-toolbar">
       <button className="secondary-button" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Пустой черновик закупки</button>
-      {serverPlanDraftAt && <button className="secondary-button" onClick={() => setPlanDialog(true)}>Черновик заказа · {new Date(serverPlanDraftAt).toLocaleString("ru-RU")}</button>}
+      <button className="secondary-button" onClick={() => setView("drafts")}>Черновики · {drafts.length}</button>
       <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Поставщики</button>
       <button className="secondary-button" onClick={() => setRequestDialog(true)}>Добавить запрос</button>
-	  <button className="secondary-button" disabled={syncingCatalog !== "" || !data.integrations.saby} onClick={() => void syncCatalog("saby")}>{syncingCatalog === "saby" ? "Обновляем СБИС…" : "Обновить товары из СБИС"}</button>
+      {canIntegrations && <button className="secondary-button" disabled={syncingCatalog !== "" || !data.integrations.saby} onClick={() => void syncCatalog("saby")}>{syncingCatalog === "saby" ? "Обновляем СБИС…" : "Обновить товары из СБИС"}</button>}
       <span>{data.suppliers.length ? `Поставщиков: ${data.suppliers.length}` : "Сначала добавьте поставщика"}</span>
     </div>
     {integrationNotice?.channel === "saby" && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
 
     <div className="procurement-workspace"><nav className="procurement-tabs" aria-label="Разделы закупок">
       <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
+      <button className={view === "drafts" ? "active" : ""} onClick={() => setView("drafts")}>Черновики <span>{drafts.length}</span></button>
       <button className={view === "calculator" ? "active" : ""} onClick={() => setView("calculator")}>Калькулятор</button>
       <button className={view === "recommendations" ? "active" : ""} onClick={() => setView("recommendations")}>Что заказать</button>
       <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Товары</button>
       <button className={view === "unlinkedSales" ? "active" : ""} onClick={() => setView("unlinkedSales")}>Продажи без товара</button>
       <button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Под заказ <span>{data.summary.openRequests}</span></button>
       <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Проверить наличие <span>{data.summary.availabilityChecks}</span></button>
-      <button className={view === "integrations" ? "active" : ""} onClick={() => setView("integrations")}>Интеграции</button>
-      <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Формула v{data.settings.version}</button>
+      {canIntegrations && <button className={view === "integrations" ? "active" : ""} onClick={() => setView("integrations")}>Интеграции</button>}
+      {canIntegrations && <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Формула v{data.settings.version}</button>}
     </nav><div className="procurement-content">
 
-    {view === "calculator" && <ProcurementCostCalculator />}
+    {view === "calculator" && <ProcurementCostCalculator settings={data.settings} />}
+    {view === "drafts" && <section className="admin-block procurement-block"><div className="admin-block-heading"><div><p className="eyebrow">Доступны всей команде</p><h2>Черновики закупок</h2></div><button className="admin-primary" onClick={openNewPlan}>Новый черновик</button></div>{drafts.length ? <div className="procurement-draft-list">{drafts.map((draft) => <article key={draft.id}><div><strong>{draft.title}</strong><small>Изменён {new Date(draft.updatedAt).toLocaleString("ru-RU")}</small></div><div><button onClick={() => { setEditingDraftId(draft.id); setPlanDialog(true); }}>Продолжить</button><button className="danger" onClick={() => void deleteDraft(draft)}>Удалить</button></div></article>)}</div> : <div className="procurement-zero"><strong>Черновиков пока нет</strong><span>Сохраните план, чтобы вернуться к нему вместе с командой.</span></div>}</section>}
     {view === "orders" && <><section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Текущие закупки</h2></div></div>
       {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
@@ -234,7 +245,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     </section></>}
 
     {view === "recommendations" && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button aria-label="Сформировать заказ" className="admin-primary" disabled={!selectedRecommendationItems.length || !data.suppliers.length} onClick={() => setPlanDialog(true)}>Сформировать заказ · {selectedRecommendationItems.length}</button></div>
+      <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button aria-label="Сформировать заказ" className="admin-primary" disabled={!selectedRecommendationItems.length || !data.suppliers.length} onClick={openNewPlan}>Сформировать заказ · {selectedRecommendationItems.length}</button></div>
       <p className="admin-hint procurement-note">К закупке = подтверждённые продажи минус возвраты за {data.settings.recommendationDays} дней, пересчитанные на запас {data.settings.targetCoverDays} дней, + нераспределённые заявки клиентов и магазина − текущий остаток СБИС − товар в пути. Продажа сайта, уже связанная с заявкой клиента, повторно не считается.</p>
       <div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced} · без товара {sync.rowsUnlinked}</small>{sync.rowsUnlinked > 0 && <em>{sync.rowsUnlinked} товарных кодов продаж не сопоставлены и не участвуют в расчёте — разберите их на вкладке «Продажи без товара»</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
       <div className="procurement-recommendation-tabs">
@@ -258,7 +269,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       {availabilityItems.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Поставщик</th><th>Остаток</th><th>С какого дня</th><th>Статус</th><th>Проверка вручную</th></tr></thead><tbody>{availabilityItems.map((item) => <AvailabilityRow key={`${item.supplierId}-${item.sabyId}`} item={item} reload={load} onError={onError}/>)}</tbody></table></div> : <div className="procurement-zero"><strong>На сегодня проверок нет</strong><span>Будущие проверки сохранены во вкладке «Все».</span></div>}
     </section>}
 
-    {view === "integrations" && <section className="admin-block procurement-block">
+    {view === "integrations" && canIntegrations && <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Безопасная диагностика</p><h2>Подключения API</h2></div></div>
       <p className="admin-hint procurement-note">Проверка только читает одну служебную запись. Цены, остатки, заказы и документы не изменяются.</p>
       <div className="integration-health-grid">{(data.integrationHealth || []).map((item) => <article className={item.lastError ? "attention" : item.lastSuccessAt ? "connected" : ""} key={item.channel}>
@@ -274,13 +285,13 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
 	  <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления ставит один приоритетный проход в общую очередь; состояние и следующий запуск видны в разделе «Маркетплейсы».</p>
     </section>}
 
-    {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
+    {view === "settings" && canIntegrations && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
     </div></div>
-    {supplierDialog && <SupplierDialog suppliers={data.suppliers} onClose={() => setSupplierDialog(false)} onSaved={() => void load()} onError={onError} />}
+    {supplierDialog && <SupplierDialog suppliers={data.suppliers} canDelete={canDelete} onClose={() => setSupplierDialog(false)} onSaved={() => void load()} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
     {requestDialog && <ProcurementRequestDialog onClose={() => setRequestDialog(false)} onSaved={() => { setRequestDialog(false); void load(); }} onError={onError} />}
     {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
-    {selectedOrder && <ProcurementOrderDetailDialog orderId={selectedOrder} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
+    {selectedOrder && <ProcurementOrderDetailDialog orderId={selectedOrder} canDelete={canDelete} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
   </>;
 }

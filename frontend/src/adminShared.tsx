@@ -7,7 +7,7 @@ export const sabyFieldLabels: Record<string, string> = { stock: "остаток"
 export const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 });
 
 export const roles: Array<{ value: Role; label: string }> = [
-  { value: "", label: "Без доступа" }, { value: "manager", label: "Менеджер" },
+  { value: "", label: "Без доступа" }, { value: "manager", label: "Менеджер" }, { value: "administrator", label: "Администратор" },
 ];
 
 export const roleLabel = (role: Role) => role === "owner" ? "Владелец" : roles.find((item) => item.value === role)?.label || "Клиент";

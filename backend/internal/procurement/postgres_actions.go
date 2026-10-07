@@ -42,7 +42,15 @@ func (store *PostgresStore) ListSabyCatalogFolders(ctx context.Context) ([]SabyC
 
 func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
 	rows, err := store.pool.Query(ctx, `
-		WITH sales AS (
+		WITH selected_cards AS (
+			SELECT * FROM saby_nomenclature
+			WHERE missing_since IS NULL
+				AND ($2 = '' OR name ILIKE '%' || $2 || '%'
+				OR code ILIKE '%' || $2 || '%' OR COALESCE(article,'') ILIKE '%' || $2 || '%'
+				OR saby_id ILIKE '%' || $2 || '%')
+			ORDER BY section_path, name
+			LIMIT 300
+		), sales AS (
 			SELECT saby_id,
 				COALESCE(SUM(units) FILTER (WHERE channel='saby'),0)::INTEGER AS saby_sales,
 				COALESCE(SUM(units) FILTER (WHERE channel='site'),0)::INTEGER AS site_sales,
@@ -84,7 +92,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package,
 			COALESCE(pricing.order_id,0),COALESCE(pricing.order_number,''),
 			pricing.unit_cost,pricing.marketplace,pricing.strike
-		FROM saby_nomenclature n
+		FROM selected_cards n
 		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
 		LEFT JOIN LATERAL (
 			SELECT candidate.*
@@ -121,12 +129,8 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			ORDER BY o.calculated_at DESC NULLS LAST,o.created_at DESC,o.id DESC
 			LIMIT 1
 		) pricing ON TRUE
-		WHERE n.missing_since IS NULL
-			AND ($2 = '' OR n.name ILIKE '%' || $2 || '%'
-			OR n.code ILIKE '%' || $2 || '%' OR COALESCE(n.article,'') ILIKE '%' || $2 || '%'
-			OR n.saby_id ILIKE '%' || $2 || '%')
 		ORDER BY n.section_path, n.name
-		LIMIT 5000
+		LIMIT 300
 	`, supplierID, query)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement product directory: %w", err)

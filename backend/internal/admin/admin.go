@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	RoleOwner   = "owner"
-	RoleManager = "manager"
+	RoleOwner         = "owner"
+	RoleAdministrator = "administrator"
+	RoleManager       = "manager"
 )
 
 const (
@@ -43,7 +44,7 @@ var ErrCategoryNotEmpty = errors.New("category is not empty")
 // AssignableRole deliberately excludes owner. Ownership is configured only
 // through ADMIN_EMAILS and cannot be granted from the admin UI or API.
 func AssignableRole(role string) bool {
-	return role == "" || role == RoleManager
+	return role == "" || role == RoleManager || role == RoleAdministrator
 }
 
 func Can(role, permission string) bool {
@@ -51,6 +52,14 @@ func Can(role, permission string) bool {
 		return true
 	}
 	switch role {
+	case RoleAdministrator:
+		return permission == PermissionDashboard || permission == PermissionCustomersRead ||
+			permission == PermissionCustomersEdit || permission == PermissionOrdersRead ||
+			permission == PermissionOrdersEdit || permission == PermissionProductsRead ||
+			permission == PermissionProductsEdit || permission == PermissionReturnsRead ||
+			permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt ||
+			permission == PermissionProcurementRead || permission == PermissionProcurementEdit ||
+			permission == PermissionAnalyticsRead
 	case RoleManager:
 		return permission == PermissionDashboard ||
 			permission == PermissionCustomersRead ||
