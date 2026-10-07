@@ -189,7 +189,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
   const formatMoney = (value: number, currency: string) => currency ? new Intl.NumberFormat("ru-RU", {
     style: "currency", currency, maximumFractionDigits: 2,
   }).format(value) : "—";
-  if (planDialog) return <ProcurementPlanDialog key={editingDraftId ?? "new"} draftId={editingDraftId} suppliers={data.suppliers} recommendations={editingDraftId ? [] : selectedRecommendationItems} settings={data.settings} onClose={() => { setPlanDialog(false); void refreshPlanDrafts(); }} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); void refreshPlanDrafts(); }} onError={onError} />;
+  if (planDialog) return <ProcurementPlanDialog key={editingDraftId ?? "new"} draftId={editingDraftId} suppliers={data.suppliers} recommendations={actionableRecommendations} initialRecommendations={editingDraftId ? [] : selectedRecommendationItems} settings={data.settings} onClose={() => { setPlanDialog(false); void refreshPlanDrafts(); }} onSaved={() => { setPlanDialog(false); setView("orders"); void load(); void refreshPlanDrafts(); }} onError={onError} />;
   return <>
     <PageHeading eyebrow="Снабжение" title="Закупки" text="Планирование, стоимость, документы и поступления в одном месте." />
     <div className="procurement-intro"><div><span className="procurement-intro-label">Рабочий день</span><h2>Что делаем с закупкой?</h2><p>Рассчитайте разовую позицию, соберите заказ поставщику или разберите полученный инвойс.</p></div><div className="procurement-intro-actions"><button className="procurement-intro-primary" onClick={openNewPlan} disabled={!data.suppliers.length}>Собрать заказ <span aria-hidden="true">↗</span></button><button onClick={() => setView("calculator")}>Калькулятор цены</button><button onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить инвойс</button></div></div>
@@ -206,7 +206,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
     </div>
     <div className="admin-toolbar procurement-toolbar">
       <button className="secondary-button" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Создать закупку без плана</button>
-      <button className="secondary-button" onClick={() => setView("drafts")}>Черновики · {drafts.length}</button>
+      <button className="secondary-button" onClick={() => setView("drafts")}>Планы · {drafts.length}</button>
       <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Поставщики</button>
       <button className="secondary-button" onClick={() => setRequestDialog(true)}>Добавить запрос</button>
       {canIntegrations && <button className="secondary-button" disabled={syncingCatalog !== "" || !data.integrations.saby} onClick={() => void syncCatalog("saby")}>{syncingCatalog === "saby" ? "Обновляем СБИС…" : "Обновить товары из СБИС"}</button>}
@@ -216,7 +216,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
 
     <div className="procurement-workspace"><nav className="procurement-tabs" aria-label="Разделы закупок">
       <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
-      <button className={view === "drafts" ? "active" : ""} onClick={() => setView("drafts")}>Черновики <span>{drafts.length}</span></button>
+      <button className={view === "drafts" ? "active" : ""} onClick={() => setView("drafts")}>Планы <span>{drafts.length}</span></button>
       <button className={view === "calculator" ? "active" : ""} onClick={() => setView("calculator")}>Калькулятор</button>
       <button className={view === "recommendations" ? "active" : ""} onClick={() => setView("recommendations")}>Что заказать</button>
       <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Товары</button>
@@ -228,7 +228,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
     </nav><div className="procurement-content">
 
     {view === "calculator" && <ProcurementCostCalculator settings={data.settings} />}
-    {view === "drafts" && <section className="admin-block procurement-block"><div className="admin-block-heading"><div><p className="eyebrow">Доступны всей команде</p><h2>Черновики закупок</h2></div><button className="admin-primary" onClick={openNewPlan}>Новый черновик</button></div>{drafts.length ? <div className="procurement-draft-list">{drafts.map((draft) => <article key={draft.id}><div><strong>{draft.title}</strong><small>Изменён {new Date(draft.updatedAt).toLocaleString("ru-RU")}</small></div><div><button onClick={() => { setEditingDraftId(draft.id); setPlanDialog(true); }}>Продолжить</button><button className="danger" onClick={() => void deleteDraft(draft)}>Удалить</button></div></article>)}</div> : <div className="procurement-zero"><strong>Черновиков пока нет</strong><span>Сохраните план, чтобы вернуться к нему вместе с командой.</span></div>}</section>}
+    {view === "drafts" && <section className="admin-block procurement-block"><div className="admin-block-heading"><div><p className="eyebrow">Доступны всей команде</p><h2>Планы закупок</h2></div><button className="admin-primary" onClick={openNewPlan}>Новый план</button></div>{drafts.length ? <div className="procurement-draft-list">{drafts.map((draft) => <article key={draft.id}><div><strong>{draft.title}</strong><small>Изменён {new Date(draft.updatedAt).toLocaleString("ru-RU")}</small></div><div><button onClick={() => { setEditingDraftId(draft.id); setPlanDialog(true); }}>Продолжить</button><button className="danger" onClick={() => void deleteDraft(draft)}>Удалить</button></div></article>)}</div> : <div className="procurement-zero"><strong>Планов пока нет</strong><span>Начните закупку — изменения сохранятся автоматически и будут доступны команде.</span></div>}</section>}
     {view === "orders" && <><section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Текущие закупки</h2></div></div>
       {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
@@ -240,7 +240,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
         <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
         <td>{item.lines} / {item.units}</td><td>{formatTotal(item)}</td>
         <td>{item.unmatched ? <span className="procurement-warning">{item.unmatched} новых позиций<small>Связь с СБИС проверяется после загрузки инвойса</small></span> : <span className="procurement-ok">Готово</span>}</td>
-      </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупок пока нет</h3><p>Создайте черновик вручную или загрузите PDF поставщика.</p></div>}
+      </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупок пока нет</h3><p>Создайте план вручную или загрузите PDF поставщика.</p></div>}
     </section>
 
     <section className="admin-block procurement-block">

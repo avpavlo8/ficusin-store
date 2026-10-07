@@ -450,46 +450,46 @@ type SabyCatalogFolder struct {
 }
 
 type ProductDirectoryItem struct {
-	VariantID          int64    `json:"variantId"`
-	SabyID             string   `json:"sabyId"`
-	SabyCode           string   `json:"sabyCode"`
-	SabyArticle        string   `json:"sabyArticle"`
-	Name               string   `json:"name"`
-	SabySection        string   `json:"sabySection"`
-	FolderID           string   `json:"folderId"`
-	SectionPath        []string `json:"sectionPath"`
-	SiteStatus         string   `json:"siteStatus"`
-	Balance            int      `json:"balance"`
-	CurrentPriceRUB    float64  `json:"currentPriceRub"`
-	SupplierID         int64    `json:"supplierId"`
-	SupplierName       string   `json:"supplierName"`
-	SupplierArticle    string   `json:"supplierArticle"`
-	AvailabilityStatus string   `json:"availabilityStatus"`
-	CheckAfter         string   `json:"checkAfter"`
-	HollandArticle     string   `json:"hollandArticle"`
-	WBNmID             *int64   `json:"wbNmId,omitempty"`
-	WBVendorCode       string   `json:"wbVendorCode"`
-	OzonOfferID        string   `json:"ozonOfferId"`
-	WBArticles         []string `json:"wbArticles"`
-	WBLegacyArticles   []string `json:"wbLegacyArticles"`
-	OzonArticles       []string `json:"ozonArticles"`
-	OzonLegacyArticles []string `json:"ozonLegacyArticles"`
-	SabySales          int      `json:"sabySales"`
-	SiteSales          int      `json:"siteSales"`
-	WBSales            int      `json:"wbSales"`
-	OzonSales          int      `json:"ozonSales"`
-	MinimumOrderQty    int      `json:"minimumOrderQty"`
-	OrderMultiple      int      `json:"orderMultiple"`
-	Aliases            []string `json:"aliases"`
-	AliasIDs           []int64  `json:"aliasIds"`
-	SupplierCategory   string   `json:"supplierCategory"`
-	ExpectedUnitPrice  *float64 `json:"expectedUnitPrice,omitempty"`
-	PotDiameterCM      *float64 `json:"potDiameterCm,omitempty"`
-	HeightCM           *float64 `json:"heightCm,omitempty"`
-	UnitsPerPackage    *int     `json:"unitsPerPackage,omitempty"`
-	LatestOrderID       int64    `json:"latestOrderId"`
-	LatestOrderNumber   string   `json:"latestOrderNumber"`
-	LatestUnitCostRUB   *float64 `json:"latestUnitCostRub,omitempty"`
+	VariantID                     int64    `json:"variantId"`
+	SabyID                        string   `json:"sabyId"`
+	SabyCode                      string   `json:"sabyCode"`
+	SabyArticle                   string   `json:"sabyArticle"`
+	Name                          string   `json:"name"`
+	SabySection                   string   `json:"sabySection"`
+	FolderID                      string   `json:"folderId"`
+	SectionPath                   []string `json:"sectionPath"`
+	SiteStatus                    string   `json:"siteStatus"`
+	Balance                       int      `json:"balance"`
+	CurrentPriceRUB               float64  `json:"currentPriceRub"`
+	SupplierID                    int64    `json:"supplierId"`
+	SupplierName                  string   `json:"supplierName"`
+	SupplierArticle               string   `json:"supplierArticle"`
+	AvailabilityStatus            string   `json:"availabilityStatus"`
+	CheckAfter                    string   `json:"checkAfter"`
+	HollandArticle                string   `json:"hollandArticle"`
+	WBNmID                        *int64   `json:"wbNmId,omitempty"`
+	WBVendorCode                  string   `json:"wbVendorCode"`
+	OzonOfferID                   string   `json:"ozonOfferId"`
+	WBArticles                    []string `json:"wbArticles"`
+	WBLegacyArticles              []string `json:"wbLegacyArticles"`
+	OzonArticles                  []string `json:"ozonArticles"`
+	OzonLegacyArticles            []string `json:"ozonLegacyArticles"`
+	SabySales                     int      `json:"sabySales"`
+	SiteSales                     int      `json:"siteSales"`
+	WBSales                       int      `json:"wbSales"`
+	OzonSales                     int      `json:"ozonSales"`
+	MinimumOrderQty               int      `json:"minimumOrderQty"`
+	OrderMultiple                 int      `json:"orderMultiple"`
+	Aliases                       []string `json:"aliases"`
+	AliasIDs                      []int64  `json:"aliasIds"`
+	SupplierCategory              string   `json:"supplierCategory"`
+	ExpectedUnitPrice             *float64 `json:"expectedUnitPrice,omitempty"`
+	PotDiameterCM                 *float64 `json:"potDiameterCm,omitempty"`
+	HeightCM                      *float64 `json:"heightCm,omitempty"`
+	UnitsPerPackage               *int     `json:"unitsPerPackage,omitempty"`
+	LatestOrderID                 int64    `json:"latestOrderId"`
+	LatestOrderNumber             string   `json:"latestOrderNumber"`
+	LatestUnitCostRUB             *float64 `json:"latestUnitCostRub,omitempty"`
 	SuggestedMarketplaceRUB       *float64 `json:"suggestedMarketplaceRub,omitempty"`
 	SuggestedMarketplaceStrikeRUB *float64 `json:"suggestedMarketplaceStrikeRub,omitempty"`
 }
@@ -626,6 +626,22 @@ type NomenclatureCandidate struct {
 	OzonSales      int     `json:"ozonSales"`
 	SiteSales      int     `json:"siteSales"`
 	SupplierLinked bool    `json:"supplierLinked"`
+}
+
+type NomenclatureBalance struct {
+	SabyID   string               `json:"sabyId"`
+	Balance  int                  `json:"balance"`
+	SeenAt   *time.Time           `json:"seenAt,omitempty"`
+	Defaults []PlanProductDefault `json:"defaults"`
+}
+
+type PlanProductDefault struct {
+	PotDiameterCM   *float64 `json:"potDiameterCm"`
+	HeightCM        *float64 `json:"heightCm"`
+	Category        string   `json:"category"`
+	Article         string   `json:"article"`
+	UnitPrice       *float64 `json:"unitPrice"`
+	UnitsPerPackage int      `json:"unitsPerPackage"`
 }
 
 type AliasResolution struct {

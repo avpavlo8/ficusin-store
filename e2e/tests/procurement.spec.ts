@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR" } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -26,6 +26,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       { channel: "saby", configured: false, lastError: "" },
     ],
   };
+  if (options.anotherRecommendation) procurement.recommendations.push({ aliasId: 11, supplierId: 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
     validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
@@ -84,6 +85,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/procurement/plans/preview" && init?.method === "POST") {
         return json({ lines: [{ purchase: 636, cost: 700, retail: 1490 }] });
       }
+      if (path === "/api/v1/admin/procurement/nomenclature/balances") return json({ items: [{ sabyId: "TEST-SABY-1", balance: 2, seenAt: "2026-08-10T12:00:00Z" }, { sabyId: "TEST-SABY-3", balance: 4, seenAt: "2026-08-10T12:00:00Z" }] });
       if (path === "/api/v1/admin/procurement/nomenclature") {
         return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "X616872557", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7, sabySales: 1, wbSales: 3, ozonSales: 2, siteSales: 1, supplierLinked: true }] });
       }
@@ -315,11 +317,11 @@ test("@desktop @phone procurement fullscreen plan stays on screen and accepts ro
   await dialog.getByLabel("Количество упаковок", { exact: true }).fill("2");
   await dialog.getByLabel("Штук в упаковке", { exact: true }).fill("12");
   await expect(dialog.getByText("1 позиции", { exact: false })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Создать и рассчитать →", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "Закупка сделана →", exact: true })).toBeEnabled();
 });
 
 test("@desktop procurement recommendation keeps category and purchasing context in the order", async ({ page }) => {
-  await mockProcurement(page);
+  await mockProcurement(page, { anotherRecommendation: true });
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
@@ -334,7 +336,8 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   expect(drawerBounds!.x + drawerBounds!.width).toBeGreaterThanOrEqual(viewport.width - 1);
   expect(drawerBounds!.y).toBe(0);
   expect(drawerBounds!.height).toBeGreaterThanOrEqual(viewport.height - 1);
-  await expect(drawer.getByText("Все рекомендации добавлены", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Олива D18", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Все рекомендации добавлены", { exact: true })).toHaveCount(0);
 
   await expect(dialog.locator("tbody tr")).toHaveCount(1);
   await expect(dialog.locator('input[value="Цитрус"]')).toBeVisible();
@@ -346,6 +349,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
   await expect(dialog.getByLabel("Цена в рублях", { exact: true })).toHaveValue("5.3");
   await expect(dialog.getByText("31,80 ₽", { exact: true })).toBeVisible();
+  await expect(dialog.locator("tbody tr").first().getByText("2 шт.", { exact: true })).toBeVisible();
   expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
 });
 
@@ -360,18 +364,21 @@ test("@desktop saved procurement draft is shared and a new recommendation starts
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
   await dialog.getByPlaceholder("Категория").fill("Цитрус");
   await dialog.getByPlaceholder("Артикул", { exact: true }).fill("NL-42");
-  await dialog.getByRole("button", { name: "Сохранить новый черновик" }).click();
   await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("SUP-1");
-  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).click();
-  await page.getByRole("button", { name: "Черновики", exact: false }).last().click();
-  await page.getByRole("button", { name: "Продолжить" }).click();
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: "Планы", exact: false }).last().click();
+  await page.getByRole("button", { name: "Продолжить" }).first().click();
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Категория")).toHaveValue("Цитрус");
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-42");
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true }).fill("NL-43");
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: "Продолжить" }).first().click();
+  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-43");
 });
 
 test("@desktop procurement can add a linked Saby product outside recommendations", async ({ page }) => {

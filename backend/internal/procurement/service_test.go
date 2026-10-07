@@ -67,6 +67,9 @@ func (stub *storeStub) SearchNomenclature(_ context.Context, query string) ([]No
 	stub.searchInput = query
 	return []NomenclatureCandidate{{SabyID: "X1", Name: "Фикус Лирата"}}, nil
 }
+func (stub *storeStub) ListNomenclatureBalances(_ context.Context, _ int64, ids []string) ([]NomenclatureBalance, error) {
+	return []NomenclatureBalance{{SabyID: ids[0], Balance: 3}}, nil
+}
 func (stub *storeStub) ResolveAlias(_ context.Context, _ Actor, aliasID int64, input AliasResolution) (AliasReview, error) {
 	stub.aliasID, stub.resolution = aliasID, input
 	return AliasReview{ID: aliasID, MatchStatus: input.MatchStatus, SuggestedSabyID: input.SabyID}, nil

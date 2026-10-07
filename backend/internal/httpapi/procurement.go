@@ -29,6 +29,7 @@ type procurementService interface {
 	UpdateOrderLine(context.Context, procurement.Actor, int64, procurement.OrderLineUpdate) (procurement.OrderDetail, error)
 	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
+	ListNomenclatureBalances(context.Context, int64, []string) ([]procurement.NomenclatureBalance, error)
 	ResolveAlias(context.Context, procurement.Actor, int64, procurement.AliasResolution) (procurement.AliasReview, error)
 	CreateRequest(context.Context, procurement.Actor, procurement.RequestCreate) (procurement.Request, error)
 	UpdateRequest(context.Context, procurement.Actor, int64, procurement.RequestUpdate) (procurement.Request, error)
@@ -421,6 +422,31 @@ func (handlers procurementHandlers) searchNomenclature(response http.ResponseWri
 	items, err := handlers.service.SearchNomenclature(request.Context(), request.URL.Query().Get("q"))
 	if err != nil {
 		handlers.failed(response, "search procurement nomenclature", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"items": items})
+}
+
+func (handlers procurementHandlers) nomenclatureBalances(response http.ResponseWriter, request *http.Request) {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	if handlers.service == nil {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Раздел закупок пока недоступен"})
+		return
+	}
+	var input struct {
+		SabyIDs    []string `json:"sabyIds"`
+		SupplierID int64    `json:"supplierId"`
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, 32<<10)
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный список товаров"})
+		return
+	}
+	items, err := handlers.service.ListNomenclatureBalances(request.Context(), input.SupplierID, input.SabyIDs)
+	if err != nil {
+		handlers.failed(response, "list procurement Saby balances", err)
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"items": items})

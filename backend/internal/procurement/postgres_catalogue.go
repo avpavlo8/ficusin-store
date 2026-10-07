@@ -287,10 +287,10 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			SELECT sp.supplier_id, sp.saby_id, sp.availability_status, sp.minimum_order_qty, sp.order_multiple,
 				COALESCE(a.id, 0) AS alias_id,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
-				COALESCE(NULLIF(last_line.supplier_category, ''), '') AS dutch_name,
-				CASE WHEN last_line.id IS NOT NULL THEN last_line.pot_diameter_cm ELSE a.pot_diameter_cm END AS pot_diameter_cm,
-				CASE WHEN last_line.id IS NOT NULL THEN last_line.height_cm ELSE a.height_cm END AS height_cm,
-				last_line.expected_unit_price,
+				COALESCE(NULLIF(defaults.category, ''), NULLIF(last_line.supplier_category, ''), '') AS dutch_name,
+				COALESCE(last_line.pot_diameter_cm, a.pot_diameter_cm) AS pot_diameter_cm,
+				COALESCE(last_line.height_cm, a.height_cm) AS height_cm,
+				COALESCE(defaults.unit_price, last_line.expected_unit_price) AS expected_unit_price,
 				ROW_NUMBER() OVER (PARTITION BY sp.saby_id ORDER BY
 					CASE WHEN pc.preferred_supplier_id = sp.supplier_id THEN 0 ELSE 1 END,
 					CASE sp.availability_status WHEN 'available' THEN 0 WHEN 'check' THEN 1 WHEN 'unknown' THEN 2 ELSE 3 END,
@@ -306,6 +306,11 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				WHERE l.saby_id = sp.saby_id AND o.supplier_id = sp.supplier_id AND o.status <> 'cancelled'
 					AND l.match_status = 'confirmed' AND COALESCE(l.unit_price, l.expected_unit_price) IS NOT NULL
 				ORDER BY o.created_at DESC, l.id DESC LIMIT 1) last_line ON TRUE
+			LEFT JOIN procurement_product_defaults defaults ON defaults.supplier_id=sp.supplier_id
+				AND defaults.saby_id=sp.saby_id
+				AND defaults.currency=(SELECT default_currency FROM procurement_suppliers WHERE id=sp.supplier_id)
+				AND defaults.pot_diameter_cm=COALESCE(last_line.pot_diameter_cm,a.pot_diameter_cm,-1)
+				AND defaults.height_cm=COALESCE(last_line.height_cm,a.height_cm,-1)
 			UNION ALL
 			-- A linked sale still represents demand when no supplier has been assigned.
 			-- Keep supplier_id=0 so the UI cannot add it to an order by accident.
@@ -649,6 +654,58 @@ func (store *PostgresStore) SearchNomenclature(ctx context.Context, query string
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (store *PostgresStore) ListNomenclatureBalances(ctx context.Context, supplierID int64, ids []string) ([]NomenclatureBalance, error) {
+	rows, err := store.pool.Query(ctx, `
+		SELECT saby_id, balance, seen_at
+		FROM saby_nomenclature
+		WHERE saby_id = ANY($1) AND missing_since IS NULL
+	`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list Saby balances for procurement: %w", err)
+	}
+	defer rows.Close()
+	items := make([]NomenclatureBalance, 0, len(ids))
+	for rows.Next() {
+		var item NomenclatureBalance
+		item.Defaults = []PlanProductDefault{}
+		if err := rows.Scan(&item.SabyID, &item.Balance, &item.SeenAt); err != nil {
+			return nil, fmt.Errorf("scan Saby balance for procurement: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	defaults, err := store.pool.Query(ctx, `
+		SELECT defaults.saby_id,
+			CASE WHEN defaults.pot_diameter_cm=-1 THEN NULL ELSE defaults.pot_diameter_cm::DOUBLE PRECISION END,
+			CASE WHEN defaults.height_cm=-1 THEN NULL ELSE defaults.height_cm::DOUBLE PRECISION END,
+			defaults.category,defaults.supplier_article,defaults.unit_price::DOUBLE PRECISION,defaults.units_per_package
+		FROM procurement_product_defaults defaults JOIN procurement_suppliers supplier ON supplier.id=defaults.supplier_id
+		WHERE defaults.supplier_id=$1 AND defaults.saby_id=ANY($2) AND defaults.currency=supplier.default_currency
+		ORDER BY defaults.updated_at DESC`, supplierID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list supplier prices for procurement: %w", err)
+	}
+	defer defaults.Close()
+	byID := make(map[string]int, len(items))
+	for index, item := range items {
+		byID[item.SabyID] = index
+	}
+	for defaults.Next() {
+		var id string
+		var value PlanProductDefault
+		if err := defaults.Scan(&id, &value.PotDiameterCM, &value.HeightCM, &value.Category, &value.Article, &value.UnitPrice, &value.UnitsPerPackage); err != nil {
+			return nil, fmt.Errorf("scan supplier price for procurement: %w", err)
+		}
+		if index, ok := byID[id]; ok {
+			items[index].Defaults = append(items[index].Defaults, value)
+		}
+	}
+	return items, defaults.Err()
 }
 
 func (store *PostgresStore) ResolveAlias(
@@ -1076,16 +1133,20 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var orderID int64
+	var orderStatus string
 	err = tx.QueryRow(ctx, `
-		SELECT l.procurement_order_id FROM procurement_order_lines l
+		SELECT l.procurement_order_id,o.status FROM procurement_order_lines l
 		JOIN procurement_orders o ON o.id = l.procurement_order_id
 		WHERE l.id = $1 AND o.status NOT IN ('received', 'cancelled') FOR UPDATE OF l, o
-	`, lineID).Scan(&orderID)
+	`, lineID).Scan(&orderID, &orderStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OrderDetail{}, ErrNotFound
 	}
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
+	}
+	if orderStatus == "ordered" || (orderStatus != "draft" && input.ExpectedUnitPrice != nil) {
+		return OrderDetail{}, ErrInvalidInput
 	}
 	if input.InvoiceLineID != nil {
 		if err := pairInvoiceLineWithPlan(ctx, tx, actor.CustomerID, orderID, lineID, *input.InvoiceLineID); err != nil {
