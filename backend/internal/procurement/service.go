@@ -31,6 +31,7 @@ type Store interface {
 	LinkChannelProducts(context.Context, Actor, string, []ChannelProduct) (ChannelLinkResult, error)
 	ListProducts(context.Context, int64, string) ([]ProductDirectoryItem, error)
 	UpdateProduct(context.Context, Actor, ProductDirectoryUpdate) (ProductDirectoryItem, error)
+	AssignSupplier(context.Context, Actor, string, int64) error
 	PrepareBatch(context.Context, Actor, int64, string, []string) (ActionBatch, error)
 	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ClaimAction(context.Context, string) (*ActionItem, error)
@@ -568,6 +569,14 @@ func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input Pr
 		}
 	}
 	return service.store.UpdateProduct(ctx, actor, input)
+}
+
+func (service *Service) AssignSupplier(ctx context.Context, actor Actor, sabyID string, supplierID int64) error {
+	sabyID = strings.TrimSpace(sabyID)
+	if sabyID == "" || supplierID <= 0 {
+		return ErrInvalidInput
+	}
+	return service.store.AssignSupplier(ctx, actor, sabyID, supplierID)
 }
 
 func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, input AvailabilityUpdate) (AvailabilityItem, error) {

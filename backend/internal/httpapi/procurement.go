@@ -36,6 +36,7 @@ type procurementService interface {
 	SetExclusion(context.Context, procurement.Actor, procurement.ExclusionUpdate) error
 	ListProducts(context.Context, int64, string) ([]procurement.ProductDirectoryItem, error)
 	UpdateProduct(context.Context, procurement.Actor, procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error)
+	AssignSupplier(context.Context, procurement.Actor, string, int64) error
 	PrepareBatch(context.Context, procurement.Actor, int64, string, []string) (procurement.ActionBatch, error)
 	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
@@ -540,6 +541,26 @@ func (handlers procurementHandlers) updateProduct(response http.ResponseWriter, 
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"item": item})
+}
+
+func (handlers procurementHandlers) assignSupplier(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	var input struct {
+		SabyID     string `json:"sabyId"`
+		SupplierID int64  `json:"supplierId"`
+	}
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный выбор поставщика"})
+		return
+	}
+	if err := handlers.service.AssignSupplier(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input.SabyID, input.SupplierID); err != nil {
+		handlers.failed(response, "assign procurement supplier", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (handlers procurementHandlers) updateAvailability(response http.ResponseWriter, request *http.Request) {
