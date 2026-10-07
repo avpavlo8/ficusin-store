@@ -283,8 +283,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			WHERE l.saby_id IS NOT NULL AND o.status <> 'cancelled' GROUP BY l.saby_id
 		), products AS (
 			-- Товар может быть заведён у нескольких поставщиков. Берём того,
-			-- у кого наличие подтверждено раньше прочих: рекомендация должна
-			-- вести к поставщику, у которого растение действительно есть.
+			-- назначенного вручную, иначе поставщика с лучшим статусом наличия.
 			SELECT sp.supplier_id, sp.saby_id, sp.availability_status, sp.minimum_order_qty, sp.order_multiple,
 				COALESCE(a.id, 0) AS alias_id,
 				COALESCE(NULLIF(sp.supplier_article, ''), NULLIF(pc.holland_article, ''), '') AS article,
@@ -293,6 +292,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				CASE WHEN last_line.id IS NOT NULL THEN last_line.height_cm ELSE a.height_cm END AS height_cm,
 				last_line.expected_unit_price,
 				ROW_NUMBER() OVER (PARTITION BY sp.saby_id ORDER BY
+					CASE WHEN pc.preferred_supplier_id = sp.supplier_id THEN 0 ELSE 1 END,
 					CASE sp.availability_status WHEN 'available' THEN 0 WHEN 'check' THEN 1 WHEN 'unknown' THEN 2 ELSE 3 END,
 					a.last_seen_at DESC NULLS LAST, sp.updated_at DESC, sp.supplier_id) AS preference
 			FROM procurement_supplier_products sp

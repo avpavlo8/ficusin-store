@@ -314,6 +314,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/requests/{id}", procurementAPI.updateRequest)
 	mux.HandleFunc("GET /api/v1/admin/procurement/products", procurementAPI.listProducts)
 	mux.HandleFunc("PUT /api/v1/admin/procurement/products", procurementAPI.updateProduct)
+	mux.HandleFunc("PUT /api/v1/admin/procurement/recommendations/supplier", procurementAPI.assignSupplier)
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/approve", procurementAPI.approveBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/batches/{id}/retry", procurementAPI.retryBatch)
 	mux.HandleFunc("POST /api/v1/admin/procurement/integrations/{channel}/check", procurementAPI.checkIntegration)

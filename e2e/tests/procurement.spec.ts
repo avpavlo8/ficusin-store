@@ -6,7 +6,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
     settings: { version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
-    suppliers: [{ id: 1, name: "Тестовый поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
+    suppliers: [{ id: 1, name: "Тестовый поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }, { id: 2, name: "Другой поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
     orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: options.currency || "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "Тестовый поставщик", rawName: "Тестовая строка D10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "TEST-SABY-1", suggestedSabyName: "Тестовый товар D10", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
@@ -51,6 +51,12 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
+      if (path === "/api/v1/admin/procurement/recommendations/supplier" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as { sabyId: string; supplierId: number };
+        const item = procurement.recommendations.find((candidate) => candidate.sabyId === body.sabyId);
+        if (item) { item.supplierId = body.supplierId; item.supplierArticle = ""; }
+        return json({ ok: true });
+      }
       if (path === "/api/v1/admin/procurement/plan-drafts") {
         if (init?.method === "POST") {
           const body = JSON.parse(String(init.body)) as { title: string; payload: unknown };
@@ -143,7 +149,7 @@ test("@desktop supplier deletion uses the site dialog and handles an empty succe
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Поставщики" }).click();
-  await page.getByRole("button", { name: "Удалить" }).click();
+  await page.getByRole("button", { name: "Удалить" }).first().click();
 
   const confirmation = page.getByRole("alertdialog", { name: "Удалить поставщика?" });
   await expect(confirmation).toBeVisible();
@@ -257,6 +263,26 @@ test("@desktop procurement separates actionable and already ordered recommendati
   await page.getByRole("button", { name: "Уже заказано 1" }).click();
   await expect(page.getByText("Товар уже едет")).toBeVisible();
   await expect(page.getByText("повторная закупка исключена")).toBeVisible();
+});
+
+test("@desktop procurement filters, selects visible rows, and assigns a supplier", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Выделить все видимые" })).toBeDisabled();
+  await page.getByLabel("Фильтр по количеству").selectOption("10");
+  await expect(page.getByText("1 позиций")).toBeVisible();
+  await page.getByLabel("Фильтр по поставщику").selectOption("1");
+  await page.getByRole("button", { name: "Выделить все видимые" }).click();
+  await expect(page.getByLabel("Выбрать Тестовый товар D10")).toBeChecked();
+  await expect(page.getByRole("button", { name: "Сформировать заказ", exact: true })).toBeEnabled();
+
+  await page.getByLabel("Поставщик для Тестовый товар D10").selectOption("2");
+  await expect(page.getByRole("button", { name: "Сформировать заказ", exact: true })).toBeDisabled();
+  await page.getByLabel("Фильтр по поставщику").selectOption("2");
+  await expect(page.getByLabel("Поставщик для Тестовый товар D10")).toHaveValue("2");
 });
 
 test("@desktop @phone procurement fullscreen plan stays on screen and accepts rows", async ({ page }) => {

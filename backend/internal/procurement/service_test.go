@@ -83,6 +83,7 @@ func (stub *storeStub) ListProducts(context.Context, int64, string) ([]ProductDi
 func (stub *storeStub) UpdateProduct(_ context.Context, _ Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
 	return ProductDirectoryItem{SabyID: input.SabyID}, nil
 }
+func (stub *storeStub) AssignSupplier(context.Context, Actor, string, int64) error { return nil }
 func (stub *storeStub) UpdateAvailability(_ context.Context, _ Actor, input AvailabilityUpdate) (AvailabilityItem, error) {
 	return AvailabilityItem{SupplierID: input.SupplierID, SabyID: input.SabyID, Status: input.Status}, nil
 }

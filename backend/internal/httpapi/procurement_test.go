@@ -95,6 +95,9 @@ func (stub *procurementStub) ListProducts(context.Context, int64, string) ([]pro
 func (stub *procurementStub) UpdateProduct(_ context.Context, _ procurement.Actor, input procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error) {
 	return procurement.ProductDirectoryItem{SabyID: input.SabyID}, nil
 }
+func (stub *procurementStub) AssignSupplier(context.Context, procurement.Actor, string, int64) error {
+	return nil
+}
 func (stub *procurementStub) UpdateAvailability(_ context.Context, _ procurement.Actor, input procurement.AvailabilityUpdate) (procurement.AvailabilityItem, error) {
 	return procurement.AvailabilityItem{SupplierID: input.SupplierID, SabyID: input.SabyID, Status: input.Status}, nil
 }

@@ -258,6 +258,39 @@ func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, inpu
 	return items[0], nil
 }
 
+func (store *PostgresStore) AssignSupplier(ctx context.Context, actor Actor, sabyID string, supplierID int64) error {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin assign procurement supplier: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	command, err := tx.Exec(ctx, `
+		INSERT INTO procurement_supplier_products (supplier_id, saby_id, updated_by)
+		SELECT s.id, n.saby_id, $3
+		FROM procurement_suppliers s CROSS JOIN saby_nomenclature n
+		WHERE s.id=$1 AND s.active AND n.saby_id=$2 AND n.missing_since IS NULL
+		ON CONFLICT (supplier_id, saby_id) DO UPDATE SET updated_by=$3, updated_at=CURRENT_TIMESTAMP
+	`, supplierID, sabyID, actor.CustomerID)
+	if err != nil {
+		return fmt.Errorf("link procurement supplier: %w", err)
+	}
+	if command.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO procurement_product_channels (saby_id, preferred_supplier_id, updated_by)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (saby_id) DO UPDATE SET preferred_supplier_id=EXCLUDED.preferred_supplier_id,
+			updated_by=EXCLUDED.updated_by, updated_at=CURRENT_TIMESTAMP
+	`, sabyID, supplierID, actor.CustomerID); err != nil {
+		return fmt.Errorf("prefer procurement supplier: %w", err)
+	}
+	if err := audit(ctx, tx, actor, "procurement.supplier.assign", "procurement_supplier", supplierID, map[string]any{"sabyId": sabyID}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // UpdateAvailability помечает наличие у поставщика. Ключ — пара
 // поставщик+товар: раньше статус жил на алиасе, и товар, чьё название ни
 // разу не встретилось в разобранном PDF, пометить было нечем.
