@@ -2,9 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { ProcurementMatchDialog, ProcurementOrderDetailDialog, ProcurementOrderDialog, ProcurementPlanDialog, ProcurementRequestDialog, ProcurementUploadDialog, SupplierDialog } from "./AdminProcurementDialogs";
 import { ProcurementSettingsPanel, availabilityLabel, integrationChannelLabel, recommendationEmptyText, recommendationEmptyTitle, recommendationStatusLabel, salesChannelLabel, salesSyncLabel, setExclusion, updateAvailability, updateRequestStatus } from "./AdminProcurementPanels";
 import { ProcurementUnlinkedSales } from "./AdminProcurementSales";
+import { ProcurementCostCalculator } from "./ProcurementCostCalculator";
 import { PageHeading, api } from "./adminShared";
 import type { IntegrationHealth, ProcurementAlias, ProcurementAvailability, ProcurementData, ProcurementOrder, ProcurementOrderDetail, RecommendationStatus } from "./adminTypes";
 import "./styles/admin-procurement-plan.css";
+import "./styles/admin-procurement-redesign.css";
 
 const ProcurementProducts = lazy(() => import("./AdminProcurementProducts").then((module) => ({ default: module.ProcurementProducts })));
 
@@ -41,7 +43,7 @@ function AvailabilityRow({item,reload,onError}:{item:ProcurementAvailability;rel
 
 export function Procurement({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
-  const [view, setView] = useState<"orders" | "recommendations" | "products" | "unlinkedSales" | "requests" | "availability" | "integrations" | "settings">("orders");
+  const [view, setView] = useState<"orders" | "calculator" | "recommendations" | "products" | "unlinkedSales" | "requests" | "availability" | "integrations" | "settings">("orders");
   const [recommendationView, setRecommendationView] = useState<RecommendationStatus>("recommended");
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
   const [availabilityDueOnly, setAvailabilityDueOnly] = useState(true);
@@ -156,11 +158,13 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
   }).format(value) : "—";
   if (planDialog) return <ProcurementPlanDialog suppliers={data.suppliers} recommendations={selectedRecommendationItems} settings={data.settings} onClose={() => { setPlanDialog(false); void refreshPlanDraft(); }} onSaved={() => { setPlanDialog(false); setServerPlanDraftAt(""); setView("orders"); void load(); }} onError={onError} />;
   return <>
-    <PageHeading eyebrow="Снабжение" title="Закупки" text="Заказ поставщику, разбор инвойса, сопоставление товаров и подготовка поступления." />
-    <div className="procurement-safety">
+    <PageHeading eyebrow="Снабжение" title="Закупки" text="Планирование, стоимость, документы и поступления в одном месте." />
+    <div className="procurement-intro"><div><span className="procurement-intro-label">Рабочий день</span><h2>Что делаем с закупкой?</h2><p>Рассчитайте разовую позицию, соберите заказ поставщику или разберите полученный инвойс.</p></div><div className="procurement-intro-actions"><button className="procurement-intro-primary" onClick={() => setPlanDialog(true)} disabled={!data.suppliers.length}>Собрать заказ <span aria-hidden="true">↗</span></button><button onClick={() => setView("calculator")}>Рассчитать цену</button><button onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить инвойс</button></div></div>
+    <details className="procurement-safety">
+      <summary>Как применяются изменения и какие интеграции подключены</summary>
       <div><strong>Изменения только после подтверждения</strong><p>Сайт применяет цену сразу. Для СБИС он создаёт документы поступления без проведения; остатки меняются после того, как вы сами нажмёте «Провести» в СБИС.</p><small>WB: {data.integrations.wb ? "подключён" : "нужен токен"} · Ozon: {data.integrations.ozon ? "подключён" : "нужны ключи"} · СБИС: {data.integrations.saby ? "поступления подключены" : "нужны ключи"}</small></div>
       <span>Проводка СБИС вручную</span>
-    </div>
+    </details>
     <div className="admin-stats procurement-stats">
       <article><span>Активные закупки</span><strong>{data.summary.openOrders}</strong><small>кроме принятых и отменённых</small></article>
       <article className={data.summary.unresolvedAliases ? "attention" : ""}><span>Нужно сопоставить</span><strong>{data.summary.unresolvedAliases}</strong><small>названий поставщиков</small></article>
@@ -168,8 +172,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       <article><span>Запросы</span><strong>{data.summary.openRequests}</strong><small>под заказ и от сотрудников</small></article>
     </div>
     <div className="admin-toolbar procurement-toolbar">
-      <button className="admin-primary" onClick={() => setUploadDialog(true)} disabled={!data.suppliers.length}>Загрузить PDF</button>
-      <button className="admin-primary" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Новая закупка</button>
+      <button className="secondary-button" onClick={() => setOrderDialog(true)} disabled={!data.suppliers.length}>Пустой черновик закупки</button>
       {serverPlanDraftAt && <button className="secondary-button" onClick={() => setPlanDialog(true)}>Черновик заказа · {new Date(serverPlanDraftAt).toLocaleString("ru-RU")}</button>}
       <button className="secondary-button" onClick={() => setSupplierDialog(true)}>Поставщики</button>
       <button className="secondary-button" onClick={() => setRequestDialog(true)}>Добавить запрос</button>
@@ -178,8 +181,9 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     </div>
     {integrationNotice?.channel === "saby" && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
 
-    <div className="procurement-tabs" role="tablist">
+    <div className="procurement-workspace"><nav className="procurement-tabs" aria-label="Разделы закупок">
       <button className={view === "orders" ? "active" : ""} onClick={() => setView("orders")}>Закупки</button>
+      <button className={view === "calculator" ? "active" : ""} onClick={() => setView("calculator")}>Калькулятор</button>
       <button className={view === "recommendations" ? "active" : ""} onClick={() => setView("recommendations")}>Что заказать</button>
       <button className={view === "products" ? "active" : ""} onClick={() => setView("products")}>Товары</button>
       <button className={view === "unlinkedSales" ? "active" : ""} onClick={() => setView("unlinkedSales")}>Продажи без товара</button>
@@ -187,21 +191,10 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
       <button className={view === "availability" ? "active" : ""} onClick={() => setView("availability")}>Проверить наличие <span>{data.summary.availabilityChecks}</span></button>
       <button className={view === "integrations" ? "active" : ""} onClick={() => setView("integrations")}>Интеграции</button>
       <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Формула v{data.settings.version}</button>
-    </div>
+    </nav><div className="procurement-content">
 
+    {view === "calculator" && <ProcurementCostCalculator />}
     {view === "orders" && <><section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Входящие документы</p><h2>Инвойсы и счета</h2></div><span className="admin-pill">{data.documents.length} загружено</span></div>
-      {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
-        <th>Документ</th><th>Поставщик</th><th>Формат</th><th>Строк / шт.</th><th>Растения</th><th>Упаковка</th><th>Проверка</th>
-      </tr></thead><tbody>{data.documents.map((item) => <tr key={item.id}>
-        <td><strong>{item.documentNumber || item.fileName}</strong><small>{item.documentDate ? new Date(item.documentDate).toLocaleDateString("ru-RU") : item.fileName}</small><small>Версия {item.revisionNo || 1}{item.superseded ? " · заменена" : " · действующая"}</small></td>
-        <td>{item.supplierName}</td><td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
-        <td>{item.lines} / {item.units}</td><td>{formatMoney(item.productSubtotal, item.currency)}</td><td>{formatMoney(item.packageTotal, item.currency)}</td>
-        <td>{item.arithmeticStatus === "ok" ? <span className="procurement-ok">Суммы сходятся</span> : <span className="procurement-warning">Проверить суммы</span>}<small>{item.parseStatus === "review" ? "Есть несопоставленные строки" : "Разобрано"}</small></td>
-      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Документов пока нет</strong><span>Загрузите PDF поставщика — строки и телеги будут разобраны автоматически.</span></div>}
-    </section>
-
-    <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Работа в процессе</p><h2>Текущие закупки</h2></div></div>
       {data.orders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
         <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Строк / шт.</th><th>Сумма</th><th>Проверка</th>
@@ -226,6 +219,18 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
         <td>{Math.round(item.confidence * 100)}%</td><td>{item.availabilityStatus === "check" ? "Проверить" : "Неизвестно"}</td>
         <td><button className="table-action" onClick={() => setMatchDialog(item)}>Сопоставить</button></td>
       </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Очередь пуста</strong><span>Новые названия появятся здесь после разбора первого документа.</span></div>}
+    </section>
+
+    <section className="admin-block procurement-block">
+      <div className="admin-block-heading"><div><p className="eyebrow">Входящие документы</p><h2>Инвойсы и счета</h2></div><span className="admin-pill">{data.documents.length} загружено</span></div>
+      {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
+        <th>Документ</th><th>Поставщик</th><th>Формат</th><th>Строк / шт.</th><th>Растения</th><th>Упаковка</th><th>Проверка</th>
+      </tr></thead><tbody>{data.documents.map((item) => <tr key={item.id}>
+        <td><strong>{item.documentNumber || item.fileName}</strong><small>{item.documentDate ? new Date(item.documentDate).toLocaleDateString("ru-RU") : item.fileName}</small><small>Версия {item.revisionNo || 1}{item.superseded ? " · заменена" : " · действующая"}</small></td>
+        <td>{item.supplierName}</td><td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
+        <td>{item.lines} / {item.units}</td><td>{formatMoney(item.productSubtotal, item.currency)}</td><td>{formatMoney(item.packageTotal, item.currency)}</td>
+        <td>{item.arithmeticStatus === "ok" ? <span className="procurement-ok">Суммы сходятся</span> : <span className="procurement-warning">Проверить суммы</span>}<small>{item.parseStatus === "review" ? "Есть несопоставленные строки" : "Разобрано"}</small></td>
+      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Документов пока нет</strong><span>Загрузите PDF поставщика — строки и телеги будут разобраны автоматически.</span></div>}
     </section></>}
 
     {view === "recommendations" && <section className="admin-block procurement-block">
@@ -270,6 +275,7 @@ export function Procurement({ onError }: { onError: (value: string) => void }) {
     </section>}
 
     {view === "settings" && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
+    </div></div>
     {supplierDialog && <SupplierDialog suppliers={data.suppliers} onClose={() => setSupplierDialog(false)} onSaved={() => void load()} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
     {uploadDialog && <ProcurementUploadDialog suppliers={data.suppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
