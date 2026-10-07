@@ -3,7 +3,7 @@ import { horizontalOverflow, mockApi, owner } from "./helpers";
 
 const dashboard = {
   user: { fullName: "Александр" }, role: "owner",
-  permissions: ["dashboard.read", "analytics.read", "orders.read", "products.read", "procurement.read", "customers.read"],
+  permissions: ["dashboard.read", "analytics.read", "orders.read", "products.read", "procurement.read", "customers.read", "integrations.edit"],
   dashboard: {
     products: 643, variants: 711, orders: 38, customers: 4, wholesalePending: 2,
     lastSync: { status: "success", itemsUpdated: 1000 },

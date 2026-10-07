@@ -44,7 +44,7 @@ type procurementService interface {
 }
 
 func (handlers procurementHandlers) checkIntegration(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionIntegrationsEdit)
 	if !ok {
 		return
 	}
@@ -110,7 +110,7 @@ func (handlers procurementHandlers) dashboard(response http.ResponseWriter, requ
 }
 
 func (handlers procurementHandlers) updateSettings(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionIntegrationsEdit)
 	if !ok {
 		return
 	}
@@ -152,7 +152,7 @@ func (handlers procurementHandlers) createSupplier(response http.ResponseWriter,
 }
 
 func (handlers procurementHandlers) deleteSupplier(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionDelete)
 	if !ok {
 		return
 	}
@@ -312,7 +312,7 @@ func (handlers procurementHandlers) updateOrderStatus(response http.ResponseWrit
 }
 
 func (handlers procurementHandlers) deleteOrder(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionDelete)
 	if !ok {
 		return
 	}
@@ -561,7 +561,7 @@ func (handlers procurementHandlers) updateAvailability(response http.ResponseWri
 }
 
 func (handlers procurementHandlers) syncChannelCatalog(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionIntegrationsEdit)
 	if !ok {
 		return
 	}

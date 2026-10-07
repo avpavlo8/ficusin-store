@@ -5,7 +5,7 @@ import { useSharedCart } from "./lib/cart";
 
 export type StoreUser = {
   fullName: string;
-  adminRole?: "manager" | "owner";
+  adminRole?: "manager" | "administrator" | "owner";
   // Set once a profile photo exists; the value doubles as a cache buster.
   avatarUpdatedAt?: string;
 };
@@ -88,7 +88,7 @@ function useBodyLock(locked: boolean, name: string) {
 
 export function AccountMenu({ user, iconOnly = false }: { user: StoreUser | null; iconOnly?: boolean }) {
   if (!user) return <a className={iconOnly ? "account-button icon-only" : "account-button"} href="/login" aria-label="Войти"><span>{iconOnly ? <Icon path={icons.person} /> : "◯"}</span>{!iconOnly && <span>Войти</span>}</a>;
-  const staff = user.adminRole === "manager" || user.adminRole === "owner";
+  const staff = user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner";
   const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
   if (!staff) return <a className={iconOnly ? "account-button icon-only" : "account-button"} href="/account" aria-label="Профиль">{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</a>;
   return <details className="account-menu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary className={iconOnly ? "account-button icon-only" : "account-button"}>{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</summary>
@@ -148,7 +148,7 @@ function MobileMenu({
     <button onClick={onClose} aria-label="Закрыть меню">×</button>
     {user ? <>
       <a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
-      {(user.adminRole === "manager" || user.adminRole === "owner") &&
+      {(user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner") &&
         <a href="/admin">Панель управления</a>}
     </> : <>
       <a href="/login">Войти</a>

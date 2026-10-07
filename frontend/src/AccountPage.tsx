@@ -16,7 +16,7 @@ export type StoreUser = {
   wholesaleStatus: string;
   retailDiscountBps: number;
   lifetimeSpendMinor: number;
-  adminRole?: "manager" | "owner";
+  adminRole?: "manager" | "administrator" | "owner";
   avatarUpdatedAt?: string;
 };
 
@@ -145,7 +145,7 @@ function AccountShell({ user, section, children, onSignOut }: {
   children: React.ReactNode;
   onSignOut: () => void;
 }) {
-  const staff = user.adminRole === "manager" || user.adminRole === "owner";
+  const staff = user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner";
   const initial = (user.lastName || user.fullName).trim().charAt(0).toUpperCase() || "Ф";
   return (
     <main className="account-page">

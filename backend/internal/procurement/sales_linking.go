@@ -220,7 +220,7 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 			AND ($3 OR ignored.external_product_id IS NULL)
 			AND (sale.channel <> 'saby' OR EXISTS (
 				SELECT 1 FROM UNNEST(saby_card.section_path) section_name
-				WHERE LOWER(BTRIM(section_name)) = LOWER('Комнатные растения')
+				WHERE LOWER(BTRIM(section_name)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения'))
 			))
 		GROUP BY sale.external_product_id
 		ORDER BY SUM(sale.units*sale.effect) DESC,
@@ -247,7 +247,9 @@ func (store *PostgresStore) listUnlinkedSales(ctx context.Context, channel strin
 
 func (store *PostgresStore) IgnoreSalesProduct(ctx context.Context, actor Actor, channel, externalID string, ignored bool) error {
 	tx, err := store.pool.Begin(ctx)
-	if err != nil { return fmt.Errorf("begin ignore sales product: %w", err) }
+	if err != nil {
+		return fmt.Errorf("begin ignore sales product: %w", err)
+	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	if ignored {
 		if _, err = tx.Exec(ctx, `INSERT INTO procurement_ignored_sales_products(channel, external_product_id, ignored_by)
@@ -260,7 +262,9 @@ func (store *PostgresStore) IgnoreSalesProduct(ctx context.Context, actor Actor,
 	if err := reconcileSalesEvents(ctx, tx); err != nil {
 		return fmt.Errorf("reconcile ignored sales events: %w", err)
 	}
-	if err := audit(ctx, tx, actor, "procurement.sales.ignore", "sales_events", 0, map[string]any{"channel": channel, "externalId": externalID, "ignored": ignored}); err != nil { return err }
+	if err := audit(ctx, tx, actor, "procurement.sales.ignore", "sales_events", 0, map[string]any{"channel": channel, "externalId": externalID, "ignored": ignored}); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -276,12 +280,16 @@ func (store *PostgresStore) SearchLinkableNomenclature(ctx context.Context, quer
 		"живой": true, "живое": true, "растение": true, "растения": true,
 		"микс": true, "mix": true, "асс": true, "штука": true,
 	}
-	for _, token := range strings.FieldsFunc(strings.ToLower(query), func(r rune) bool { return !(r >= 'а' && r <= 'я') && !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') }) {
+	for _, token := range strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !(r >= 'а' && r <= 'я') && !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	}) {
 		if len([]rune(token)) >= 3 && !stopWords[token] {
 			patterns = append(patterns, "%"+token+"%")
 		}
 	}
-	if len(patterns) == 0 { patterns = append(patterns, "%"+query+"%") }
+	if len(patterns) == 0 {
+		patterns = append(patterns, "%"+query+"%")
+	}
 	rows, err := store.pool.Query(ctx, `
 		SELECT directory.variant_id, directory.saby_id, directory.master_code,
 			COALESCE(nomenclature.article, ''), directory.name,
@@ -370,7 +378,7 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 				" AND card.external_id<>'' AND card.external_id !~ '[^0-9]'"+
 				" WHERE BTRIM(pc.wb_vendor_code)<>''"+
 				" GROUP BY pc.saby_id HAVING COUNT(DISTINCT card.external_id)=1"+
-			") UPDATE procurement_product_channels pc SET"+
+				") UPDATE procurement_product_channels pc SET"+
 				" wb_nm_id=match.nm_id, updated_at=CURRENT_TIMESTAMP"+
 				" FROM unique_matches match WHERE pc.saby_id=match.saby_id"+
 				" AND pc.wb_nm_id IS DISTINCT FROM match.nm_id")
@@ -463,7 +471,9 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 				confirmed_at=CURRENT_TIMESTAMP, last_seen_at=CURRENT_TIMESTAMP,
 				updated_at=CURRENT_TIMESTAMP
 		`, productID, variantID, input.ExternalID, actor.CustomerID)
-		if err != nil { return SalesLinkResult{}, fmt.Errorf("save Wildberries article: %w", err) }
+		if err != nil {
+			return SalesLinkResult{}, fmt.Errorf("save Wildberries article: %w", err)
+		}
 	}
 
 	var from, to time.Time
@@ -523,7 +533,7 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 			AND ignored.external_product_id IS NULL
 			AND (event.channel<>'saby' OR EXISTS (
 				SELECT 1 FROM UNNEST(saby_card.section_path) section_name
-				WHERE LOWER(BTRIM(section_name))=LOWER('Комнатные растения')))
+				WHERE LOWER(BTRIM(section_name)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения'))))
 	`, input.Channel).Scan(&result.Remaining); err != nil {
 		return SalesLinkResult{}, fmt.Errorf("count remaining sales events: %w", err)
 	}
@@ -535,4 +545,3 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	}
 	return result, nil
 }
-

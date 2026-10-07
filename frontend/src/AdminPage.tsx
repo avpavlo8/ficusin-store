@@ -61,7 +61,7 @@ export default function AdminPage() {
           {!allowed && <WorkspaceState kind="restricted" title="Доступ к разделу ограничен" detail="Этот раздел доступен владельцу." action={<button onClick={() => go("orders")}>К заказам</button>} />}
           {allowed && <>
           {["products", "categories", "collections"].includes(section) && <nav className="workspace-catalog-nav" aria-label="Каталог">{([{id:"products",label:"Товары"},{id:"categories",label:"Категории"},{id:"collections",label:"Подборки"}] as const).map(item => <a key={item.id} href={`/admin?section=${item.id}`} aria-current={section === item.id ? "page" : undefined} onClick={event => { event.preventDefault(); go(item.id); }}>{item.label}</a>)}</nav>}
-          {error && <div className="admin-message error">{error}<button onClick={() => setError("")}>×</button></div>}
+          {error && <div className="admin-message error" role="alert"><span><strong>Не удалось выполнить действие</strong><br />{error}</span><button aria-label="Закрыть сообщение об ошибке" onClick={() => setError("")}>×</button></div>}
           {section === "returns" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем возвраты…" />}><AdminReturns can={can} onError={setError} /></Suspense>}
           {section === "finance" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем финансы…" />}><AdminFinance onError={setError} /></Suspense>}
           {section === "marketplaces" && <AdminMarketplaces onError={setError} />}
@@ -70,7 +70,7 @@ export default function AdminPage() {
           {section === "analytics" && <Analytics onError={setError} />}
 		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
 		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} /></Suspense>}
-          {section === "procurement" && <Procurement onError={setError} />}
+          {section === "procurement" && <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} />}
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "collections" && <Collections owner={data.role === "owner"} onError={setError} />}

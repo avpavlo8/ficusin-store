@@ -17,7 +17,7 @@ function ProductMediaDialog({ owner, product, onClose, onChanged }: {
 export function PdpAdminTools({ slug, adminRole, onChanged }: {
   slug: string; adminRole?: string; onChanged: () => void;
 }) {
-  const allowed = adminRole === "owner" || adminRole === "manager";
+  const allowed = adminRole === "owner" || adminRole === "administrator" || adminRole === "manager";
   const [product, setProduct] = useState<Product | null>(null);
   const [mode, setMode] = useState<"edit" | "media" | "">("");
   const [loading, setLoading] = useState(false);

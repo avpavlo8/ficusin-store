@@ -13,19 +13,21 @@ export function ProcurementProducts({ suppliers, onError }: { suppliers: Procure
   const [editing, setEditing] = useState<ProcurementProduct | null>(null);
   const [importing, setImporting] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
     return api<{ items: ProcurementProduct[]; folders: SabyCatalogFolder[] }>(`/api/v1/admin/procurement/products?supplierId=${supplierId}&q=${encodeURIComponent(query)}`)
       .then((result) => {
         setItems(result.items || []);
+        setLoadError("");
         setFolders(result.folders || []);
         setExpandedFolders((current) => {
           if (Object.keys(current).length) return current;
           return Object.fromEntries((result.folders || []).filter((folder) => !folder.parentId).map((folder) => [folder.id, true]));
         });
       })
-      .catch((error) => onError((error as Error).message))
+      .catch((error) => { setLoadError((error as Error).message); onError(`Каталог СБИС: ${(error as Error).message}`); })
       .finally(() => setLoading(false));
   }, [supplierId, query, onError]);
 
@@ -86,7 +88,8 @@ export function ProcurementProducts({ suppliers, onError }: { suppliers: Procure
 
   return <section className="admin-block procurement-block">
     <div className="admin-block-heading"><div><p className="eyebrow">Зеркало Saby</p><h2>Товары и связи каналов</h2></div><span className="admin-pill">{visibleItems.length} товаров</span></div>
-    <p className="admin-hint procurement-note">Слева — те же папки, что в каталоге Saby. В списке видна вся номенклатура Saby независимо от того, создана ли карточка на сайте. Сайт, WB, Ozon и поставщики — связи поверх этого справочника.</p>
+    <p className="admin-hint procurement-note">Слева — папки каталога СБИС. Сначала показываются первые 300 карточек; поиск работает по всему каталогу. Карточка сайта не обязательна. Продажи и связи каналов показаны рядом с товаром СБИС.</p>
+    {loadError && <div className="procurement-product-error" role="alert"><strong>Не удалось загрузить товары СБИС</strong><span>{loadError}</span><button onClick={() => void load()}>Повторить</button></div>}
     <div className="admin-toolbar procurement-mirror-toolbar">
       <select value={supplierId} onChange={(event) => setSupplierId(Number(event.target.value))}>{suppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по названию, X-коду, ID или артикулу" />
@@ -107,7 +110,7 @@ export function ProcurementProducts({ suppliers, onError }: { suppliers: Procure
           <strong>{folders.find((folder) => folder.id === selectedFolderId)?.name || "Папка Saby"}</strong>
           <button type="button" onClick={() => setSelectedFolderId("")}>Показать весь каталог</button>
         </div>}
-        {visibleItems.length ? <div className="admin-table-wrap"><table className="admin-table procurement-directory"><thead><tr><th>Товар Saby</th><th>СБИС</th><th>Сайт</th><th>WB / продажи</th><th>Ozon / продажи</th><th>Поставщик / закупка</th><th></th></tr></thead><tbody>{visibleItems.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}>
+        {loading && !items.length ? <div className="procurement-zero" role="status"><strong>Загружаем каталог СБИС…</strong><span>Первая страница появится здесь.</span></div> : visibleItems.length ? <div className="admin-table-wrap"><table className="admin-table procurement-directory"><thead><tr><th>Товар Saby</th><th>СБИС</th><th>Сайт</th><th>WB / продажи</th><th>Ozon / продажи</th><th>Поставщик / закупка</th><th></th></tr></thead><tbody>{visibleItems.map((item) => <tr key={`${item.supplierId}-${item.sabyId}`}>
           <td><strong>{item.name}</strong><small>{item.sectionPath?.join(" / ") || "Корень каталога"}</small><small>Продажи: магазин {item.sabySales} · сайт {item.siteSales}</small></td>
           <td><strong>{item.sabyCode || "Код не заполнен"}</strong><small>ID: {item.sabyId || "—"}</small><small>Артикул: {item.sabyArticle || "—"}</small><small>{item.currentPriceRub.toLocaleString("ru-RU")} ₽ · остаток {item.balance}</small></td>
           <td>{item.variantId > 0 ? <><strong>{item.siteStatus === "published" ? "Опубликован" : item.siteStatus === "draft" ? "Черновик" : item.siteStatus || "На сайте"}</strong><small>Вариант {item.variantId}</small></> : <><strong>Нет на сайте</strong><small>Карточка Saby уже доступна для импорта</small><button type="button" className="table-action" disabled={importing === item.sabyId} onClick={() => void importToSite(item)}>{importing === item.sabyId ? "Добавляем…" : "Создать черновик"}</button></>}</td>
@@ -141,4 +144,3 @@ function ProcurementAliasReassign({ aliasId, aliasName, currentSabyId, onCancel,
   const choose = async (sabyId: string) => { setSaving(true); try { await api(`/api/v1/admin/procurement/aliases/${aliasId}`, { method: "PATCH", body: JSON.stringify({ matchStatus: "confirmed", sabyId }) }); onSaved(); } catch (error) { onError((error as Error).message); } finally { setSaving(false); } };
   return <section className="wide procurement-alias-reassign"><div className="admin-block-heading"><div><small>Позиция из инвойса</small><strong>{aliasName}</strong></div><button type="button" onClick={onCancel}>Отмена</button></div><label>Найти наш товар по названию или коду X…<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus /></label><p className="admin-hint">Список берётся из единого справочника PostgreSQL. Остаток рядом — последнее значение зеркала СБИС.</p><div className="procurement-candidates">{searching ? <span>Ищем…</span> : items.map((candidate) => <article key={candidate.variantId}><div><strong>{candidate.name}</strong><span>Главный код: {candidate.code || "—"}</span><small>Остаток: {candidate.balance}</small></div><button type="button" disabled={saving || candidate.sabyId === currentSabyId} onClick={() => void choose(candidate.sabyId)}>{candidate.sabyId === currentSabyId ? "Сейчас выбрано" : "Привязать"}</button></article>)}</div></section>;
 }
-

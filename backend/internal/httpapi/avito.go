@@ -35,7 +35,7 @@ func avitoFeedHandler(service avitoService) http.HandlerFunc {
 
 func avitoListHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := administration.authorize(w, r, admin.PermissionProcurementRead); !ok {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
 			return
 		}
 		items, state, err := service.List(r.Context())
@@ -48,7 +48,7 @@ func avitoListHandler(administration adminHandlers, service avitoService) http.H
 }
 func avitoImportHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := administration.authorize(w, r, admin.PermissionProcurementEdit); !ok {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
 			return
 		}
 		count, err := service.Import(r.Context())
@@ -61,7 +61,7 @@ func avitoImportHandler(administration adminHandlers, service avitoService) http
 }
 func avitoProductsHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := administration.authorize(w, r, admin.PermissionProcurementRead); !ok {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
 			return
 		}
 		items, err := service.SearchProducts(r.Context(), strings.TrimSpace(r.URL.Query().Get("q")))
@@ -74,7 +74,7 @@ func avitoProductsHandler(administration adminHandlers, service avitoService) ht
 }
 func avitoMappingHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := administration.authorize(w, r, admin.PermissionProcurementEdit); !ok {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
 			return
 		}
 		var input struct {
@@ -93,7 +93,7 @@ func avitoMappingHandler(administration adminHandlers, service avitoService) htt
 }
 func avitoReconcileHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := administration.authorize(w, r, admin.PermissionProcurementEdit); !ok {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
 			return
 		}
 		if err := service.Reconcile(r.Context()); err != nil {
