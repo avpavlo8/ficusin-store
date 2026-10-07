@@ -48,7 +48,9 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 				AND ($2 = '' OR name ILIKE '%' || $2 || '%'
 				OR code ILIKE '%' || $2 || '%' OR COALESCE(article,'') ILIKE '%' || $2 || '%'
 				OR saby_id ILIKE '%' || $2 || '%')
-			ORDER BY section_path, name
+			ORDER BY CASE WHEN EXISTS (SELECT 1 FROM UNNEST(section_path) part
+				WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
+				THEN 0 ELSE 1 END, section_path, name
 			LIMIT 300
 		), sales AS (
 			SELECT saby_id,
@@ -129,7 +131,9 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			ORDER BY o.calculated_at DESC NULLS LAST,o.created_at DESC,o.id DESC
 			LIMIT 1
 		) pricing ON TRUE
-		ORDER BY n.section_path, n.name
+		ORDER BY CASE WHEN EXISTS (SELECT 1 FROM UNNEST(n.section_path) part
+			WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
+			THEN 0 ELSE 1 END, n.section_path, n.name
 		LIMIT 300
 	`, supplierID, query)
 	if err != nil {
