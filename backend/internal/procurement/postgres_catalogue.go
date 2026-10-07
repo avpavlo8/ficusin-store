@@ -318,7 +318,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				AND EXISTS (SELECT 1 FROM UNNEST(n.section_path) part
 					WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
 				AND NOT EXISTS (SELECT 1 FROM procurement_supplier_products existing WHERE existing.saby_id=n.saby_id)
-				AND (n.balance <= 0 OR EXISTS (SELECT 1 FROM sales WHERE sales.saby_id=n.saby_id AND sales.units>0)
+				AND (EXISTS (SELECT 1 FROM sales WHERE sales.saby_id=n.saby_id AND sales.units>0)
 					OR EXISTS (SELECT 1 FROM requests WHERE requests.saby_id=n.saby_id
 						AND requests.customer_units+requests.staff_units>0))
 		)
