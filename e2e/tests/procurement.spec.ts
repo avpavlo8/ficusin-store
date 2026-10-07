@@ -360,18 +360,21 @@ test("@desktop saved procurement draft is shared and a new recommendation starts
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
   await dialog.getByPlaceholder("Категория").fill("Цитрус");
   await dialog.getByPlaceholder("Артикул", { exact: true }).fill("NL-42");
-  await dialog.getByRole("button", { name: "Сохранить новый черновик" }).click();
   await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("SUP-1");
-  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).click();
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
   await page.getByRole("button", { name: "Черновики", exact: false }).last().click();
-  await page.getByRole("button", { name: "Продолжить" }).click();
+  await page.getByRole("button", { name: "Продолжить" }).first().click();
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Категория")).toHaveValue("Цитрус");
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-42");
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true }).fill("NL-43");
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: "Продолжить" }).first().click();
+  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-43");
 });
 
 test("@desktop procurement can add a linked Saby product outside recommendations", async ({ page }) => {

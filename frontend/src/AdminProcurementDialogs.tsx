@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeProcurementOrderDetail } from "./AdminProcurement";
 import { ConfirmDialog, api, money } from "./adminShared";
 import type { NomenclatureCandidate, ProcurementActionBatch, ProcurementActionItem, ProcurementAlias, ProcurementOrder, ProcurementOrderDetail, ProcurementOrderLine, ProcurementRecommendation, ProcurementSupplier, ProcurementSettings } from "./adminTypes";
@@ -24,18 +24,47 @@ export function ProcurementPlanDialog({ suppliers, recommendations, settings, dr
   const [title, setTitle] = useState(() => recommendations.length ? `Закупка по рекомендациям · ${new Date().toLocaleDateString("ru-RU")}` : `Новая закупка · ${new Date().toLocaleDateString("ru-RU")}`);
   const [draftSaving, setDraftSaving] = useState(false);
   const [savedDraftSignature, setSavedDraftSignature] = useState("");
+  const initialTitle = useRef(title);
+  const remoteDraftRef = useRef<RemoteDraft | null>(null);
+  const savedSignatureRef = useRef("");
+  const failedSignatureRef = useRef("");
+  const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   useEffect(() => { if (!draftId) return; void api<{ draft: RemoteDraft }>(`/api/v1/admin/procurement/plan-drafts/${draftId}`)
-    .then(({ draft }) => { const saved = draft.payload; if (!saved?.items?.length) throw new Error("Черновик пуст или повреждён"); setRemoteDraft(draft); setTitle(draft.title); setSupplierId(saved.supplierId); setExchangeRate(saved.exchangeRate); setDeliveryToMoscowRub(saved.deliveryToMoscowRub); setDeliveryToRyazanRub(saved.deliveryToRyazanRub); setItems(saved.items); setSavedDraftSignature(JSON.stringify({ title: draft.title, payload: saved })); })
+    .then(({ draft }) => { const saved = draft.payload; if (!saved?.items?.length) throw new Error("Черновик пуст или повреждён"); const signature = JSON.stringify({ title: draft.title, payload: saved }); remoteDraftRef.current = draft; savedSignatureRef.current = signature; setRemoteDraft(draft); setTitle(draft.title); setSupplierId(saved.supplierId); setExchangeRate(saved.exchangeRate); setDeliveryToMoscowRub(saved.deliveryToMoscowRub); setDeliveryToRyazanRub(saved.deliveryToRyazanRub); setItems(saved.items); setSavedDraftSignature(signature); })
     .catch((error) => onError(`Не удалось открыть черновик: ${(error as Error).message}`)).finally(() => setDraftLoading(false)); }, [draftId, onError]);
   const currentDraft = (): SavedPlan => ({ supplierId, exchangeRate, deliveryToMoscowRub, deliveryToRyazanRub, items });
-  const saveDraft = async () => {
-    if (draftSaving || draftLoading || (draftId && !remoteDraft)) return;
-    setDraftSaving(true);
-    try {
-      const result = await api<{ draft: RemoteDraft }>(remoteDraft ? `/api/v1/admin/procurement/plan-drafts/${remoteDraft.id}` : "/api/v1/admin/procurement/plan-drafts", { method: remoteDraft ? "PUT" : "POST", body: JSON.stringify({ title: title.trim(), payload: currentDraft() }) });
-      setRemoteDraft(result.draft); setSavedDraftSignature(JSON.stringify({ title: title.trim(), payload: currentDraft() }));
-    } catch (error) { onError((error as Error).message); }
-    finally { setDraftSaving(false); }
+  const draftSignature = JSON.stringify({ title: title.trim(), payload: currentDraft() });
+  const persistDraft = useCallback((signature: string): Promise<boolean> => {
+    if (draftLoading || (draftId && !remoteDraftRef.current)) return Promise.resolve(false);
+    const queued = saveQueueRef.current.then(async () => {
+      if (signature === savedSignatureRef.current) return true;
+      const snapshot = JSON.parse(signature) as { title: string; payload: SavedPlan };
+      if (!snapshot.title) return false;
+      setDraftSaving(true);
+      try {
+        const existing = remoteDraftRef.current;
+        const result = await api<{ draft: RemoteDraft }>(existing ? `/api/v1/admin/procurement/plan-drafts/${existing.id}` : "/api/v1/admin/procurement/plan-drafts", { method: existing ? "PUT" : "POST", body: signature });
+        remoteDraftRef.current = result.draft;
+        savedSignatureRef.current = signature;
+        failedSignatureRef.current = "";
+        setRemoteDraft(result.draft);
+        setSavedDraftSignature(signature);
+        return true;
+      } catch (error) { failedSignatureRef.current = signature; onError(`Не удалось сохранить черновик: ${(error as Error).message}`); return false; }
+      finally { setDraftSaving(false); }
+    });
+    saveQueueRef.current = queued;
+    return queued;
+  }, [draftId, draftLoading, onError]);
+  const hasDraftContent = recommendations.length > 0 || items.some((item) => !isEmptyLine(item)) || title !== initialTitle.current;
+  useEffect(() => {
+    if (draftLoading || saving || !hasDraftContent || draftSignature === savedSignatureRef.current || draftSignature === failedSignatureRef.current) return;
+    const timer = window.setTimeout(() => void persistDraft(draftSignature), 800);
+    return () => window.clearTimeout(timer);
+  }, [draftLoading, draftSignature, hasDraftContent, persistDraft, saving]);
+  const closePlan = async () => {
+    if (hasDraftContent && draftSignature !== savedSignatureRef.current && !await persistDraft(draftSignature)) return;
+    onClose();
   };
   const availableRecommendations = recommendationsFor(supplierId).filter((item) => !items.some((line) => line.sabyId === item.sabyId));
   const updateItem = (id: string, patch: Partial<DraftLine>) => setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -114,25 +143,26 @@ export function ProcurementPlanDialog({ suppliers, recommendations, settings, dr
     if (!valid || saving) return;
     setSaving(true);
     try {
+      await saveQueueRef.current;
       const result = await api<{ order: ProcurementOrder }>("/api/v1/admin/procurement/plans", { method: "POST", body: requestBody });
       if (!result.order?.id) throw new Error("Сервер не вернул номер заказа. Проверьте список закупок перед повторным сохранением.");
-      if (remoteDraft) await api(`/api/v1/admin/procurement/plan-drafts/${remoteDraft.id}`, { method: "DELETE" }).catch(() => undefined);
+      if (remoteDraftRef.current) await api(`/api/v1/admin/procurement/plan-drafts/${remoteDraftRef.current.id}`, { method: "DELETE" }).catch(() => undefined);
       onSaved();
     } catch (error) { onError((error as Error).message); }
     finally { setSaving(false); }
   };
-  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} /><div className="admin-dialog procurement-plan-dialog procurement-plan-fullscreen" role="dialog" aria-modal="true" aria-labelledby="plan-title"><header><div><p className="eyebrow">{isDomestic ? "Российская закупка" : "Закупка в Голландии"}</p><h2 id="plan-title">Новый заказ поставщику</h2></div><button className="procurement-plan-close" onClick={onClose} aria-label="Закрыть">×</button></header>
+  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={() => void closePlan()} /><div className="admin-dialog procurement-plan-dialog procurement-plan-fullscreen" role="dialog" aria-modal="true" aria-labelledby="plan-title"><header><div><p className="eyebrow">{isDomestic ? "Российская закупка" : "Закупка в Голландии"}</p><h2 id="plan-title">Новый заказ поставщику</h2></div><button className="procurement-plan-close" onClick={() => void closePlan()} aria-label="Закрыть">×</button></header>
     <div className="procurement-plan-settings"><label>Поставщик<select value={supplierId} onChange={(event) => { if (selected.length && !window.confirm("Сменить поставщика и очистить текущий список?")) return; setSupplierId(Number(event.target.value)); setItems([makeLine()]); }}>{suppliers.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>{!isDomestic && <><label>Курс, ₽/€<input type="number" min="0" step="0.01" value={exchangeRate} onChange={(event) => setExchangeRate(draftNumber(event.target.value))} /></label><label>До Москвы, ₽<input type="number" min="0" value={deliveryToMoscowRub} placeholder="0" onChange={(event) => setDeliveryToMoscowRub(draftNumber(event.target.value))} /></label><label>Москва → Рязань, ₽<input type="number" min="0" value={deliveryToRyazanRub} placeholder="0" onChange={(event) => setDeliveryToRyazanRub(draftNumber(event.target.value))} /></label></>}</div>
     <div className="procurement-plan-tools">
       <label className="procurement-draft-title">Название черновика<input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="Например, закупка для озеленения" /></label>
       <button onClick={() => setItems((current) => [...current, makeLine()])}>+ Новая строка</button>
       <button onClick={sortItems}>↕ По категории</button>
-      <button onClick={saveDraft} disabled={draftSaving || draftLoading || Boolean(draftId && !remoteDraft) || !title.trim()}>{draftSaving ? "Сохраняем…" : remoteDraft ? "Сохранить изменения" : "Сохранить новый черновик"}</button>
-      <small>{draftLoading ? "Загружаем черновик…" : remoteDraft && savedDraftSignature === JSON.stringify({ title: title.trim(), payload: currentDraft() }) ? `Сохранено для команды ${new Date(remoteDraft.updatedAt).toLocaleString("ru-RU")}` : remoteDraft ? "Есть несохранённые изменения" : "Черновик появится у команды после сохранения"}</small>
+      <button onClick={() => void persistDraft(draftSignature)} disabled={draftSaving || draftLoading || Boolean(draftId && !remoteDraft) || !title.trim()}>{draftSaving ? "Сохраняем…" : remoteDraft ? "Сохранить изменения" : "Сохранить новый черновик"}</button>
+      <small>{draftLoading ? "Загружаем черновик…" : draftSaving ? "Сохраняем для команды…" : remoteDraft && savedDraftSignature === draftSignature ? `Сохранено для команды ${new Date(remoteDraft.updatedAt).toLocaleString("ru-RU")}` : draftSignature === failedSignatureRef.current ? "Не удалось сохранить. Нажмите «Сохранить»" : hasDraftContent ? "Автосохранение после паузы" : "Черновик появится после заполнения"}</small>
       <span><strong>{selected.length} позиции</strong> · {totalUnits} шт.</span>
     </div>
     <div className="admin-table-wrap procurement-plan-table-wrap"><table className="admin-table procurement-plan-table"><thead><tr><th>Категория</th><th>Товар СБИС</th><th>Артикул</th><th>Горшок · высота</th><th>Упаковки · штук</th><th>Цена, {isDomestic ? "₽" : "€"}</th><th>Себестоимость</th><th></th></tr></thead><tbody>{sorted.map((item) => { const units = Number(item.packageCount) * Number(item.unitsPerPackage); const selectedIndex = selected.indexOf(item); const lineMissing = missingFields(item); const estimate = selectedIndex >= 0 && valid && preview?.key === requestBody ? preview.lines[selectedIndex] : undefined; const preliminary = partialCost(item); return <tr key={item.id}><td><input value={item.category} onChange={(event) => updateItem(item.id, { category: event.target.value })} placeholder="Категория" /></td><td>{item.sabyId ? <strong>{item.sabyName}</strong> : <input aria-label="Название новой позиции" value={item.sabyName} onChange={(event) => updateItem(item.id, { sabyName: event.target.value })} placeholder="Название растения" />}{item.recommendedQty > 0 && <small className="procurement-recommended">Рекомендовано: {item.recommendedQty} шт.</small>}</td><td><input value={item.article} onChange={(event) => updateItem(item.id, { article: event.target.value })} placeholder="Артикул" /></td><td><div className="procurement-size-inputs"><input aria-label="Горшок, см" type="text" inputMode="decimal" value={item.potDiameterCm} placeholder="P, см" onChange={(event) => updateItem(item.id, { potDiameterCm: draftNumber(event.target.value) })} /><input aria-label="Высота, см" type="text" inputMode="decimal" value={item.heightCm} placeholder="H, см" onChange={(event) => updateItem(item.id, { heightCm: draftNumber(event.target.value) })} /></div></td><td><div className="procurement-quantity-inputs"><input aria-label="Количество упаковок" type="text" inputMode="numeric" value={item.packageCount} placeholder="Кол-во" onChange={(event) => updateItem(item.id, { packageCount: draftNumber(event.target.value) })} /><span>×</span><input aria-label="Штук в упаковке" type="text" inputMode="numeric" value={item.unitsPerPackage} placeholder="Кратность" onChange={(event) => updateItem(item.id, { unitsPerPackage: draftNumber(event.target.value) })} /></div><small>{units || 0} {units === 1 ? "штука" : "штук"}</small></td><td><input aria-label={isDomestic ? "Цена в рублях" : "Цена в евро"} className="procurement-price-input" type="text" inputMode="decimal" value={item.expectedUnitPrice} placeholder="0,00" onChange={(event) => updateItem(item.id, { expectedUnitPrice: draftNumber(event.target.value) })} /></td><td>{estimate ? <><strong>{money.format(estimate.cost)} / шт.</strong><small>Розница ≈ {money.format(estimate.retail)}</small></> : preliminary !== null ? <><strong>{money.format(preliminary)} / шт.</strong><small>{valid ? "Рассчитываем весь заказ…" : isDomestic ? "Предварительно по заполненной строке" : "Предварительно: цена + телега; без доставки до Рязани"}</small></> : <small>{lineMissing.length ? `Не заполнено: ${lineMissing.join(", ")}` : "Укажите курс"}</small>}</td><td><button className="table-action danger" aria-label={`Удалить ${item.sabyName || "позицию"}`} onClick={() => setItems((current) => { const remaining = current.filter((line) => line.id !== item.id); return remaining.length ? remaining : [makeLine()]; })}>×</button></td></tr>; })}</tbody></table></div>
-    <p className="admin-hint">{isDomestic ? "Российский план сохраняется в рублях без иностранного курса и логистики. Прайс можно приложить к закупке; строки вводятся вручную." : "Предварительный расчёт: доставка до Москвы распределяется по объёму растений, до Рязани — по высоте. Остатки и цены не меняются."}</p><div className="dialog-actions procurement-plan-footer"><div className="procurement-plan-total"><span>Сумма закупки</span><strong>{totalPurchaseEUR.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {isDomestic ? "₽" : "€"}</strong><small>{invalidItems.length ? `Нужно проверить строк: ${invalidItems.length}` : `${totalUnits} шт.`}</small></div><button onClick={onClose}>Отмена</button><button className="primary" disabled={!supplierId || !valid || saving} onClick={save}>{saving ? "Считаем…" : "Создать и рассчитать →"}</button></div>
+    <p className="admin-hint">{isDomestic ? "Российский план сохраняется в рублях без иностранного курса и логистики. Прайс можно приложить к закупке; строки вводятся вручную." : "Предварительный расчёт: доставка до Москвы распределяется по объёму растений, до Рязани — по высоте. Остатки и цены не меняются."}</p><div className="dialog-actions procurement-plan-footer"><div className="procurement-plan-total"><span>Сумма закупки</span><strong>{totalPurchaseEUR.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {isDomestic ? "₽" : "€"}</strong><small>{invalidItems.length ? `Нужно проверить строк: ${invalidItems.length}` : `${totalUnits} шт.`}</small></div><button onClick={() => void closePlan()}>Закрыть</button><button className="primary" disabled={!supplierId || !valid || saving} onClick={save}>{saving ? "Считаем…" : "Создать и рассчитать →"}</button></div>
     <aside className="procurement-recommendation-drawer" aria-label="Рекомендации к закупке"><header><div><p className="eyebrow">Что добавить</p><h3>Рекомендации</h3><small>Продажи за {settings.recommendationDays} дней · запас на {settings.targetCoverDays} дней</small></div></header><label className="procurement-saby-search"><span>Добавить товар из СБИС</span><input value={sabyQuery} onChange={(event) => setSabyQuery(event.target.value)} placeholder="Название, код или артикул" /><small>Поиск по сохранённому каталогу СБИС. Точный код и связь с инвойсами показываются первыми.</small></label><div className="procurement-recommendation-list">{sabyQuery.trim().length >= 2 ? searchingSaby ? <div className="procurement-plan-empty"><span>Ищем в каталоге СБИС…</span></div> : sabyResults.length ? sabyResults.map((item) => <article key={item.sabyId} className="procurement-saby-result"><div><div className="procurement-saby-title"><strong>{item.name}</strong>{item.supplierLinked && <span>Инвойсы Голландии</span>}</div><b className="procurement-saby-code">{item.code || item.article || item.sabyId}</b><div className="procurement-recommendation-metrics"><span>Остаток {item.balance}</span></div><small className="procurement-channel-sales">Продажи и рекомендация подтянутся после добавления товара.</small></div><button className="admin-primary" onClick={() => addSabyProduct(item)}>+ Добавить</button></article>) : <div className="procurement-plan-empty"><strong>Товар не найден</strong><span>Проверьте название или обновите каталог СБИС.</span></div> : availableRecommendations.length ? availableRecommendations.map((item) => <article key={item.sabyId}><div><strong>{item.name}</strong><div className="procurement-recommendation-metrics"><span>Рекомендовано {item.suggestedQty}</span><span>Остаток {item.balance}</span><span>Продано {item.totalSales}</span></div></div><button className="admin-primary" onClick={() => addRecommendation(item)}>+ Добавить</button></article>) : <div className="procurement-plan-empty"><strong>Все рекомендации добавлены</strong><span>Найдите другой товар через поиск СБИС.</span></div>}</div></aside>
   </div></>;
 }
