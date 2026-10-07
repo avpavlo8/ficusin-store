@@ -79,6 +79,9 @@ func (stub *procurementStub) SearchNomenclature(_ context.Context, query string)
 	stub.searchInputs = append(stub.searchInputs, query)
 	return []procurement.NomenclatureCandidate{{SabyID: "X1", Name: "Фикус Лирата"}}, nil
 }
+func (stub *procurementStub) ListNomenclatureBalances(_ context.Context, _ int64, ids []string) ([]procurement.NomenclatureBalance, error) {
+	return []procurement.NomenclatureBalance{{SabyID: ids[0], Balance: 3}}, nil
+}
 func (stub *procurementStub) ResolveAlias(_ context.Context, _ procurement.Actor, aliasID int64, input procurement.AliasResolution) (procurement.AliasReview, error) {
 	stub.aliasInputs = append(stub.aliasInputs, input)
 	return procurement.AliasReview{ID: aliasID, MatchStatus: input.MatchStatus}, nil

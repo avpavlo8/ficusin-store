@@ -23,6 +23,7 @@ type Store interface {
 	UpdateOrderLine(context.Context, Actor, int64, OrderLineUpdate) (OrderDetail, error)
 	ImportDocument(context.Context, Actor, DocumentUpload, ParsedDocument) (ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
+	ListNomenclatureBalances(context.Context, int64, []string) ([]NomenclatureBalance, error)
 	ResolveAlias(context.Context, Actor, int64, AliasResolution) (AliasReview, error)
 	CreateRequest(context.Context, Actor, RequestCreate) (Request, error)
 	UpdateRequest(context.Context, Actor, int64, RequestUpdate) (Request, error)
@@ -485,6 +486,18 @@ func (service *Service) SearchNomenclature(ctx context.Context, query string) ([
 		return nil, ErrInvalidInput
 	}
 	return service.store.SearchNomenclature(ctx, query)
+}
+
+func (service *Service) ListNomenclatureBalances(ctx context.Context, supplierID int64, ids []string) ([]NomenclatureBalance, error) {
+	if supplierID <= 0 || len(ids) == 0 || len(ids) > 200 {
+		return nil, ErrInvalidInput
+	}
+	for _, id := range ids {
+		if id == "" || len(id) > 200 || strings.TrimSpace(id) != id {
+			return nil, ErrInvalidInput
+		}
+	}
+	return service.store.ListNomenclatureBalances(ctx, supplierID, ids)
 }
 
 func (service *Service) ResolveAlias(

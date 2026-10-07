@@ -1169,6 +1169,30 @@ func (store *PostgresStore) ImportDocument(
 			AND reconciliation_status='planned'`, orderID); err != nil {
 		return ImportResult{}, fmt.Errorf("mark missing procurement plan lines: %w", err)
 	}
+	// A reconciled invoice sets the current supplier price. Planned prices stay
+	// on the order lines. An invoice with broken arithmetic awaits review.
+	if parsed.ArithmeticOK {
+		if _, err := tx.Exec(ctx, `
+		INSERT INTO procurement_product_defaults
+			(supplier_id,saby_id,currency,pot_diameter_cm,height_cm,category,supplier_article,unit_price,price_source,updated_by)
+		SELECT DISTINCT ON (line.saby_id,COALESCE(line.pot_diameter_cm,-1),COALESCE(line.height_cm,-1))
+			$1,line.saby_id,$5,COALESCE(line.pot_diameter_cm,-1),COALESCE(line.height_cm,-1),
+			COALESCE(alias.supplier_category,''),COALESCE(NULLIF(line.invoice_supplier_article,''),line.supplier_article,''),
+			line.unit_price,'invoice',$3
+		FROM procurement_order_lines line
+		LEFT JOIN procurement_supplier_aliases alias ON alias.id=line.supplier_alias_id
+		WHERE line.procurement_order_id=$2 AND line.procurement_document_id=$4
+			AND line.saby_id IS NOT NULL AND line.unit_price IS NOT NULL
+			AND line.match_status='confirmed' AND NOT line.invoice_excluded
+		ORDER BY line.saby_id,COALESCE(line.pot_diameter_cm,-1),COALESCE(line.height_cm,-1),line.id DESC
+		ON CONFLICT (supplier_id,saby_id,pot_diameter_cm,height_cm) DO UPDATE SET
+			unit_price=EXCLUDED.unit_price,currency=EXCLUDED.currency,price_source='invoice',
+			supplier_article=CASE WHEN EXCLUDED.supplier_article<>'' THEN EXCLUDED.supplier_article ELSE procurement_product_defaults.supplier_article END,
+			updated_by=EXCLUDED.updated_by,updated_at=CURRENT_TIMESTAMP
+	`, input.SupplierID, orderID, actor.CustomerID, document.ID, parsed.Currency); err != nil {
+			return ImportResult{}, fmt.Errorf("save current invoice supplier prices: %w", err)
+		}
+	}
 
 	parseStatus, orderStatus := "parsed", "invoice_received"
 	var comparisonMismatches int
