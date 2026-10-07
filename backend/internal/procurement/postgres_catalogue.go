@@ -336,7 +336,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			LEFT JOIN incoming i ON i.saby_id = n.saby_id
 			LEFT JOIN last_orders lo ON lo.saby_id = n.saby_id
 			LEFT JOIN procurement_excluded_products e ON e.saby_id = n.saby_id
-			WHERE sp.preference = 1 AND (n.balance <= 0 OR COALESCE(s.units, 0) > 0 OR
+			WHERE sp.preference = 1 AND (COALESCE(s.units, 0) > 0 OR
 				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0 OR
 				COALESCE(r.allocated_units, 0) > 0 OR
 				e.saby_id IS NOT NULL)
