@@ -1133,16 +1133,20 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var orderID int64
+	var orderStatus string
 	err = tx.QueryRow(ctx, `
-		SELECT l.procurement_order_id FROM procurement_order_lines l
+		SELECT l.procurement_order_id,o.status FROM procurement_order_lines l
 		JOIN procurement_orders o ON o.id = l.procurement_order_id
 		WHERE l.id = $1 AND o.status NOT IN ('received', 'cancelled') FOR UPDATE OF l, o
-	`, lineID).Scan(&orderID)
+	`, lineID).Scan(&orderID, &orderStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OrderDetail{}, ErrNotFound
 	}
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
+	}
+	if orderStatus == "ordered" || (orderStatus != "draft" && input.ExpectedUnitPrice != nil) {
+		return OrderDetail{}, ErrInvalidInput
 	}
 	if input.InvoiceLineID != nil {
 		if err := pairInvoiceLineWithPlan(ctx, tx, actor.CustomerID, orderID, lineID, *input.InvoiceLineID); err != nil {
