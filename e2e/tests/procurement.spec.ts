@@ -33,7 +33,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   };
   const dashboard = {
       user: { fullName: "Тестовый владелец" }, role: "owner",
-      permissions: ["dashboard.read", "procurement.read", "procurement.edit"],
+      permissions: ["dashboard.read", "procurement.read", "procurement.edit", "integrations.edit", "catalog.delete"],
       dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
   };
   // Install the API stub inside the page before React starts. WebKit handles
@@ -41,6 +41,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   // identical across the browsers this layout suite covers.
   await page.addInitScript(({ user, dashboard, procurement, orderDetail }) => {
     const originalFetch = window.fetch.bind(window);
+    const drafts: Array<{ id: number; title: string; payload: unknown; createdAt: string; updatedAt: string }> = [];
     const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
       status: 200, headers: { "Content-Type": "application/json" },
     }));
@@ -50,6 +51,22 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
+      if (path === "/api/v1/admin/procurement/plan-drafts") {
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as { title: string; payload: unknown };
+          const draft = { id: drafts.length + 1, title: body.title, payload: body.payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          drafts.push(draft);
+          return json({ draft });
+        }
+        return json({ drafts: drafts.map(({ id, title, createdAt, updatedAt }) => ({ id, title, createdAt, updatedAt })) });
+      }
+      if (path.startsWith("/api/v1/admin/procurement/plan-drafts/")) {
+        const id = Number(path.split("/").at(-1));
+        const draft = drafts.find((item) => item.id === id);
+        if (init?.method === "DELETE") { const index = drafts.findIndex((item) => item.id === id); if (index >= 0) drafts.splice(index, 1); return Promise.resolve(new Response(null, { status: 204 })); }
+        if (init?.method === "PUT" && draft) { const body = JSON.parse(String(init.body)) as { title: string; payload: unknown }; draft.title = body.title; draft.payload = body.payload; draft.updatedAt = new Date().toISOString(); }
+        return json({ draft });
+      }
       if (path === "/api/v1/admin/procurement/suppliers/1" && init?.method === "DELETE") {
         procurement.suppliers = [];
         return Promise.resolve(new Response(null, { status: 204 }));
@@ -306,7 +323,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
 });
 
-test("@desktop procurement draft survives leaving and reopening the page", async ({ page }) => {
+test("@desktop saved procurement draft is shared and a new recommendation starts fresh", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
@@ -317,11 +334,16 @@ test("@desktop procurement draft survives leaving and reopening the page", async
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
   await dialog.getByPlaceholder("Категория").fill("Цитрус");
   await dialog.getByPlaceholder("Артикул", { exact: true }).fill("NL-42");
+  await dialog.getByRole("button", { name: "Сохранить новый черновик" }).click();
+  await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "Что заказать", exact: true }).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
-
+  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("SUP-1");
+  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).click();
+  await page.getByRole("button", { name: "Черновики", exact: false }).last().click();
+  await page.getByRole("button", { name: "Продолжить" }).click();
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Категория")).toHaveValue("Цитрус");
   await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-42");
 });
