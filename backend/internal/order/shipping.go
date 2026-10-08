@@ -415,9 +415,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			SELECT o.id
 			FROM orders o
 				WHERE o.delivery_method = 'cdek'
-					-- CDEK recipient-paid transport depends on the merchant contract.
-					-- Do not create a carrier-payee shipment automatically until that
-					-- mode has been verified and wired into the integration.
+					-- The shop already collected delivery; do not collect it again.
 					AND o.delivery_payee = 'shop'
 					AND o.cdek_uuid = ''
 					AND o.cdek_create_state NOT IN ('unknown','manual_review')

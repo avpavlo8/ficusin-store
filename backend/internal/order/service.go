@@ -341,9 +341,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if err != nil {
 		return Created{}, err
 	}
-	// Delivery is paid directly to the carrier on receipt. Keep its estimate
-	// separate; the order total is only what the shop collects for plants.
-	total := subtotal
+	// The shop collects the delivery charge together with the plants. If the
+	// quote is pending, payment stays unavailable until a manager sets it.
+	total := subtotal + deliveryFee
 	var customerID any
 	if input.CustomerID != nil {
 		customerID = *input.CustomerID
@@ -359,7 +359,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'carrier'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop'
 		)
 		RETURNING id
 	`,

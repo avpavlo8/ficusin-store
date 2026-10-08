@@ -154,7 +154,7 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 	discountBPS:=0;if customerID!=nil{_ = tx.QueryRow(ctx,`SELECT COALESCE(retail_discount_bps,0) FROM customers WHERE id=$1`,*customerID).Scan(&discountBPS)};if discountBPS<0{discountBPS=0};if discountBPS>9000{discountBPS=9000}
 	if delivery=="cdek"&&!input.PackagingRequired&&input.CDEKTariffCode==nil{return ShipmentOffer{},errors.New("выберите пересчитанный тариф СДЭК для этого состава коробок")}
 	var offerID int64;offerStatus:="draft";if input.PackagingRequired{offerStatus="packaging_required"}
-	if err:=tx.QueryRow(ctx,`INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,cdek_tariff_code,cdek_tariff_name,manager_note,created_by,delivery_payee) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'carrier') RETURNING id`,orderID,token,revision,offerStatus,delivery,address,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),strings.TrimSpace(input.ManagerNote),actor.CustomerID).Scan(&offerID);err!=nil{return ShipmentOffer{},fmt.Errorf("create shipment offer: %w",err)}
+	if err:=tx.QueryRow(ctx,`INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,cdek_tariff_code,cdek_tariff_name,manager_note,created_by,delivery_payee) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'shop') RETURNING id`,orderID,token,revision,offerStatus,delivery,address,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),strings.TrimSpace(input.ManagerNote),actor.CustomerID).Scan(&offerID);err!=nil{return ShipmentOffer{},fmt.Errorf("create shipment offer: %w",err)}
 	seen:=map[int64]bool{};selected:=map[int64]int{};subtotal:=0.0
 	for _,requested:=range input.Items{
 		if requested.OrderItemID<=0||requested.Quantity<=0||seen[requested.OrderItemID]{return ShipmentOffer{},errors.New("некорректный состав предложения")};seen[requested.OrderItemID]=true
@@ -175,9 +175,8 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 		if !matched{return ShipmentOffer{},errors.New("выбранный тариф СДЭК больше недоступен — пересчитайте доставку")}
 	}
 	fingerprint,_:=json.Marshal(struct{Address string;Revision int;Items []ShipmentOfferLineInput;Boxes []ShipmentBoxInput}{address,revision,input.Items,input.Boxes})
-	// The carrier collects delivery from the recipient. Keep its quote for
-	// reference, but the offer total is the amount payable to the shop.
-	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=$2,cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
+	// The customer pays the plants and delivery together on the site.
+	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=$2+$3,cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
 	if err:=insertAudit(ctx,tx,actor,"order.shipment_offer.create","shipment_offer",fmt.Sprint(offerID),nil,map[string]any{"orderId":orderID,"status":offerStatus,"subtotal":subtotal,"deliveryFee":input.DeliveryFee});err!=nil{return ShipmentOffer{},err}
 	if err:=tx.Commit(ctx);err!=nil{return ShipmentOffer{},err};return repository.ShipmentOffer(ctx,offerID)
 }
@@ -194,7 +193,7 @@ func (repository *PostgresRepository) SendShipmentOffer(ctx context.Context,acto
 	if boxes==0{return ShipmentOffer{},errors.New("состав коробок не заполнен")}
 	link:="/account/orders/"+number
 	subject:="Товар по вашему заказу поступил"
-	body:="Товар по вашему заказу поступил. Теперь можно оплатить растения из выбранной отправки в течение 48 часов. Доставка оплачивается перевозчику при получении.\n\nОткрыть заказ: "+link
+	body:="Товар по вашему заказу поступил. Теперь можно оплатить выбранную отправку, включая доставку, в течение 48 часов.\n\nОткрыть заказ: "+link
 	command,err:=tx.Exec(ctx,`INSERT INTO outbox(recipient,subject,body,shipment_offer_id) VALUES($1,$2,$3,$4) ON CONFLICT (shipment_offer_id) WHERE shipment_offer_id IS NOT NULL AND cancelled_at IS NULL DO NOTHING`,email,subject,body,offerID);if err!=nil{return ShipmentOffer{},err}
 	if command.RowsAffected()>0{if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET status='notifying',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID);err!=nil{return ShipmentOffer{},err}}
 	if err:=insertAudit(ctx,tx,actor,"order.shipment_offer.notify","shipment_offer",fmt.Sprint(offerID),map[string]any{"status":offerStatus},map[string]any{"status":"notifying"});err!=nil{return ShipmentOffer{},err}
