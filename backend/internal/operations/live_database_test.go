@@ -51,7 +51,7 @@ func TestProbeDetectsAndClearsReservationMismatchOnLiveDatabase(t *testing.T) {
 	}()
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO inventory(warehouse_id, variant_id, available_qty, reserved_qty)
-		VALUES ($1, $2, 5, 1)
+		VALUES ($1, $2, 0, 1)
 	`, warehouseID, variantID); err != nil {
 		t.Fatalf("seed mismatch: %v", err)
 	}
@@ -63,6 +63,13 @@ func TestProbeDetectsAndClearsReservationMismatchOnLiveDatabase(t *testing.T) {
 	}
 	if !containsCheck(snapshot.Checks, "reservation_ledger_mismatch") {
 		t.Fatalf("reservation mismatch was not detected: %#v", snapshot)
+	}
+	diagnostics, err := probe.Diagnose(ctx)
+	if err != nil {
+		t.Fatalf("diagnose overreserved stock: %v", err)
+	}
+	if len(diagnostics.Overreserved) == 0 || diagnostics.Overreserved[0].VariantID != variantID {
+		t.Fatalf("overreserved variant missing from diagnostics: %#v", diagnostics.Overreserved)
 	}
 	if _, err := pool.Exec(ctx, "UPDATE inventory SET reserved_qty=0 WHERE warehouse_id=$1 AND variant_id=$2", warehouseID, variantID); err != nil {
 		t.Fatal(err)
