@@ -160,9 +160,9 @@ func seedStage13CDEKOffer(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	number := fmt.Sprintf("CRM-S13-CDEK-%s-%d", label, time.Now().UnixNano())
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,
-			payment_method,payment_status,status,has_preorder,cdek_city_code,cdek_office_code)
+			payment_method,payment_status,status,has_preorder,cdek_city_code,cdek_office_code,delivery_payee)
 		VALUES($1,$2,'Stage 13 CDEK','+70000000000','stage13-cdek@example.invalid','cdek',777,2290,3067,
-			'online','paid','confirmed',1,44,'PVZ-13') RETURNING id`, number, customerID).Scan(&orderID); err != nil {
+			'online','paid','confirmed',1,44,'PVZ-13','shop') RETURNING id`, number, customerID).Scan(&orderID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `
@@ -172,8 +172,8 @@ func seedStage13CDEKOffer(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,delivery_fee,subtotal,total,
-			cdek_tariff_code,cdek_tariff_name,created_by)
-		VALUES($1,$2,1,'paid','cdek',777,2290,3067,136,'Stage 13',$3) RETURNING id`, orderID, fmt.Sprintf("stage13-cdek-%s-%d", label, time.Now().UnixNano()), customerID).Scan(&offerID); err != nil {
+			cdek_tariff_code,cdek_tariff_name,created_by,delivery_payee)
+		VALUES($1,$2,1,'paid','cdek',777,2290,3067,136,'Stage 13',$3,'shop') RETURNING id`, orderID, fmt.Sprintf("stage13-cdek-%s-%d", label, time.Now().UnixNano()), customerID).Scan(&offerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
