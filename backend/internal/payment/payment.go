@@ -134,17 +134,18 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		return "", errors.New("оплата картой временно недоступна")
 	}
 	var (
-		orderID     int64
-		amount      float64
-		status      string
-		orderStatus string
-		email       string
-		phone       string
-		method      string
-		hasPreorder bool
-		existingURL string
-		paymentID   int64
-		key         string
+		orderID       int64
+		amount        float64
+		status        string
+		orderStatus   string
+		email         string
+		phone         string
+		method        string
+		hasPreorder   bool
+		existingURL   string
+		pendingAmount float64
+		paymentID     int64
+		key           string
 	)
 	err := service.pool.QueryRow(ctx, `
 		SELECT o.id, o.subtotal::DOUBLE PRECISION, o.has_preorder=1,
@@ -153,11 +154,15 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 			SELECT p.confirmation_url FROM payments p
 				WHERE p.order_id = o.id AND p.status = 'pending'
 				ORDER BY p.id DESC LIMIT 1
-			), '')
+			), ''), COALESCE((
+			SELECT p.amount::DOUBLE PRECISION FROM payments p
+				WHERE p.order_id = o.id AND p.status = 'pending'
+				ORDER BY p.id DESC LIMIT 1
+			), 0)
 		FROM orders o
 		WHERE o.order_number = $1
 	`, orderNumber).Scan(
-		&orderID, &amount, &hasPreorder, &status, &orderStatus, &email, &phone, &method, &existingURL,
+		&orderID, &amount, &hasPreorder, &status, &orderStatus, &email, &phone, &method, &existingURL, &pendingAmount,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("заказ не найден")
@@ -180,8 +185,14 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	if err := service.checkOrderStock(ctx, orderID); err != nil {
 		return "", err
 	}
+	if pendingAmount > 0 && cents(pendingAmount) != cents(amount) {
+		if err := service.CancelPending(ctx, orderID); err != nil {
+			return "", fmt.Errorf("не удалось закрыть прежнюю ссылку на оплату: %w", err)
+		}
+		existingURL = ""
+	}
 	// A customer who clicked away from the payment page and came back gets
-	// the same page, not a second charge waiting to happen.
+	// the same page only when its amount still equals the plant subtotal.
 	if existingURL != "" {
 		return existingURL, nil
 	}
@@ -203,11 +214,18 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Another request won the race. Reuse its durable idempotence key:
 		// YooKassa will then return the same payment instead of charging twice.
+		var concurrentAmount float64
 		err = service.pool.QueryRow(ctx, `
-			SELECT id, idempotence_key, confirmation_url
+			SELECT id, idempotence_key, confirmation_url, amount::DOUBLE PRECISION
 			FROM payments WHERE order_id = $1 AND status = 'pending'
 			ORDER BY id DESC LIMIT 1
-		`, orderID).Scan(&paymentID, &key, &existingURL)
+		`, orderID).Scan(&paymentID, &key, &existingURL, &concurrentAmount)
+		if err == nil && cents(concurrentAmount) != cents(amount) {
+			if cancelErr := service.CancelPending(ctx, orderID); cancelErr != nil {
+				return "", fmt.Errorf("не удалось закрыть прежнюю ссылку на оплату: %w", cancelErr)
+			}
+			return service.Start(ctx, orderNumber)
+		}
 		if err == nil && existingURL != "" {
 			return existingURL, nil
 		}
