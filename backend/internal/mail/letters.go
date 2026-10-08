@@ -13,6 +13,7 @@ type OrderLetter struct {
 	Subtotal      float64
 	DeliveryFee   float64
 	FeePending    bool
+	HasPreorder   bool
 	Total         float64
 	Delivery      string
 	Address       string
@@ -57,6 +58,8 @@ func Confirmation(order OrderLetter) Letter {
 	}
 
 	switch {
+	case order.HasPreorder:
+		lines = append(lines, "", "Часть растений сейчас отсутствует. Менеджер проверит заказ и свяжется с вами. Оплата пока не требуется.")
 	case order.PaymentStatus == "paid":
 		lines = append(lines, "", "Заказ оплачен. Мы соберём его и сообщим, когда он поедет.")
 	case order.PaymentMethod == "on_delivery":
