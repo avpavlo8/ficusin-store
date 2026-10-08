@@ -196,6 +196,10 @@ func main() {
 		cfg.SiteURL,
 		logger,
 	)
+	if err := paymentService.CancelLegacyDeliveryPayments(ctx); err != nil {
+		logger.Error("old payment links could not be cancelled; readiness blocked", "error", err)
+		os.Exit(1)
+	}
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
 	procurementStore := procurement.NewPostgresStore(pool)
 	marketplaceExecutor := integration.NewMarketplaceExecutor(
