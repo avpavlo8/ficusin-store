@@ -19,15 +19,17 @@
 .admin-page .procurement-plan-table input{width:100%;height:34px;padding:0 9px;border-radius:8px}
 .admin-page .procurement-plan-table td>strong{display:block;font-size:12px;line-height:1.3}
 .admin-page .procurement-plan-table td>small{display:block;margin-top:4px;color:#788078;font-size:10px}
-.admin-page .procurement-product-meta{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px;margin-top:6px}
+.admin-page .procurement-product-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;margin-top:6px}
 .admin-page .procurement-product-meta small{margin:0}
 .admin-page .procurement-plan-table .procurement-stock-note{color:#777d75;font-size:10px}
+.admin-page .procurement-plan-table .procurement-row-touched td{background:#f1e5dc}
+.admin-page .procurement-plan-table .procurement-row-touched td:first-child{box-shadow:inset 4px 0 #b65f42}
 .admin-page .procurement-plan-table .procurement-cost-cell{overflow-wrap:normal;word-break:normal}
 .admin-page .procurement-plan-table .procurement-cost-cell strong{display:block;white-space:nowrap;font-size:12px}
 .admin-page .procurement-plan-table .procurement-cost-cell small{line-height:1.35}
 .admin-page .procurement-size-inputs,.admin-page .procurement-quantity-inputs{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .admin-page .procurement-quantity-inputs{grid-template-columns:1fr 12px 1fr;align-items:center;text-align:center}
-.admin-page .procurement-recommended{width:max-content;max-width:100%;padding:4px 8px;border-radius:999px;background:#f4e6db;color:#94583f!important;font-weight:800}
+.admin-page .procurement-recommended{width:max-content;max-width:100%;padding:3px 5px;border-radius:999px;background:#f4e6db;color:#94583f!important;font-size:9px;font-weight:800}
 .admin-page .procurement-plan-table .table-action.danger{width:32px;height:32px;padding:0;border:0;border-radius:8px;background:#f6e8e3;color:#b65f42;font-size:17px}
 .admin-page .procurement-plan-fullscreen>.admin-hint{margin:12px 28px;padding:11px 13px;border:0;border-radius:9px;background:#ebe7dd;color:#747a70;font-size:11px}
 .admin-page .procurement-plan-fullscreen button:focus-visible,.admin-page .procurement-plan-fullscreen input:focus-visible,.admin-page .procurement-plan-fullscreen select:focus-visible{outline:2px solid #b65f42;outline-offset:2px}

@@ -347,7 +347,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(dialog.getByLabel("Горшок, см", { exact: true })).toHaveValue("12");
   await expect(dialog.getByLabel("Высота, см", { exact: true })).toHaveValue("35");
   await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
-  await expect(dialog.getByLabel("Цена в рублях", { exact: true })).toHaveValue("5.3");
+  await expect(dialog.getByLabel("Цена в рублях", { exact: true })).toHaveValue("5,3");
   await expect(dialog.getByText("31,80 ₽", { exact: true })).toBeVisible();
   await expect(dialog.locator("tbody tr").first().getByText("Остаток: 2 шт.", { exact: true })).toBeVisible();
   expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
@@ -405,6 +405,54 @@ test("@desktop procurement saves and sorts after leaving the edited row", async 
   await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
   const costCell = dialog.locator("tbody tr").last().locator(".procurement-cost-cell");
   expect((await costCell.boundingBox())!.height).toBeLessThan(90);
+});
+
+test("@desktop procurement prices use a comma without trailing zeros", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
+  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const price = dialog.getByLabel("Цена в рублях");
+  await expect(price).toHaveValue("5,3");
+  await price.fill("4.2500");
+  await expect(price).toHaveValue("4.2500");
+  await dialog.getByLabel("Название плана").click();
+  await expect(price).toHaveValue("4,25");
+  await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: "Планы", exact: false }).last().click();
+  await page.getByRole("button", { name: "Продолжить" }).first().click();
+  const reopenedPrice = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByLabel("Цена в рублях");
+  await expect(reopenedPrice).toHaveValue("4,25");
+  await reopenedPrice.fill("0,0001");
+  await dialog.getByLabel("Название плана").click();
+  await expect(reopenedPrice).toHaveValue("0,0001");
+});
+
+test("@desktop procurement touched rows highlight automatically and survive reopening a plan", async ({ page }) => {
+  await mockProcurement(page);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByLabel("Выбрать Тестовый товар D10").check();
+  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const row = dialog.locator("tbody tr").first();
+  await expect(row).not.toHaveClass(/procurement-row-touched/);
+  await row.click();
+  await expect(row).toHaveClass(/procurement-row-touched/);
+  await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: "Планы", exact: false }).last().click();
+  await page.getByRole("button", { name: "Продолжить" }).first().click();
+  const reopenedRow = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).locator("tbody tr").first();
+  await expect(reopenedRow).toHaveClass(/procurement-row-touched/);
+  await reopenedRow.getByLabel("Цена в рублях").fill("6,7");
+  await expect(reopenedRow).toHaveClass(/procurement-row-touched/);
 });
 
 test("@desktop procurement can add a linked Saby product outside recommendations", async ({ page }) => {

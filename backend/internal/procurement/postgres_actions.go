@@ -1379,6 +1379,10 @@ func (store *PostgresStore) LinkChannelProducts(
 		}
 	}
 	result.Unmatched = len(items) - len(matched)
+	var updatedBy any
+	if actor.CustomerID > 0 {
+		updatedBy = actor.CustomerID
+	}
 
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -1398,7 +1402,7 @@ func (store *PostgresStore) LinkChannelProducts(
 				ON CONFLICT (saby_id) DO UPDATE SET wb_nm_id = EXCLUDED.wb_nm_id,
 					updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
 				WHERE procurement_product_channels.wb_nm_id IS NULL
-			`, sabyID, nmID, actor.CustomerID)
+			`, sabyID, nmID, updatedBy)
 		} else {
 			command, err = tx.Exec(ctx, `
 				INSERT INTO procurement_product_channels (saby_id, ozon_offer_id, updated_by)
@@ -1406,7 +1410,7 @@ func (store *PostgresStore) LinkChannelProducts(
 				ON CONFLICT (saby_id) DO UPDATE SET ozon_offer_id = EXCLUDED.ozon_offer_id,
 					updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP
 				WHERE procurement_product_channels.ozon_offer_id = ''
-			`, sabyID, externalID, actor.CustomerID)
+			`, sabyID, externalID, updatedBy)
 		}
 		if err != nil {
 			return ChannelLinkResult{}, fmt.Errorf("link channel product: %w", err)
