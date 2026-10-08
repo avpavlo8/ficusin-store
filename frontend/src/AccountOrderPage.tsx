@@ -146,7 +146,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   // появляется без ручного F5. Фокус окна даёт мгновенную проверку, таймер —
   // запасной путь, если вкладка всё время открыта.
   useEffect(() => {
-    if (!order || order.paymentReady || order.amountDue <= 0) return;
+    if (!order || (order.paymentReady && !order.hasPreorder && !order.deliveryFeePending) || order.amountDue <= 0) return;
     const timer = window.setInterval(() => { void refreshOrder(); }, 8_000);
     const refreshOnFocus = () => { void refreshOrder(); };
     window.addEventListener("focus", refreshOnFocus);
@@ -157,7 +157,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   }, [order, refreshOrder]);
 
   const pay = async () => {
-    if (!order || !order.paymentReady || order.amountDue <= 0) return;
+    if (!order || !order.paymentReady || order.hasPreorder || order.deliveryFeePending || order.amountDue <= 0) return;
     setPaying(true);
     setError("");
     try {
