@@ -417,8 +417,22 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 					AND o.cdek_uuid = ''
 					AND o.cdek_create_state NOT IN ('unknown','manual_review')
 				AND o.delivery_fee_pending = 0
+				AND o.has_preorder = 0
 				AND o.status NOT IN ('cancelled', 'completed')
 				AND o.payment_status IN ('paid', 'on_delivery')
+				AND NOT EXISTS (
+					SELECT 1 FROM order_items oi
+					WHERE oi.order_id = o.id AND oi.variant_id IS NULL
+				)
+				AND NOT EXISTS (
+					SELECT 1 FROM order_items oi
+					WHERE oi.order_id = o.id AND oi.variant_id IS NOT NULL
+					GROUP BY oi.variant_id
+					HAVING SUM(oi.quantity) > COALESCE((
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty, 0))
+						FROM inventory i WHERE i.variant_id = oi.variant_id
+					), 0)
+				)
 				AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status IN ('paid','shipping','shipped','ready','completed'))
 				AND (o.cdek_next_attempt_at IS NULL OR o.cdek_next_attempt_at <= CURRENT_TIMESTAMP)
 			ORDER BY o.cdek_next_attempt_at ASC NULLS FIRST, o.id
