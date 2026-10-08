@@ -1,32 +1,16 @@
-import { useEffect, useState } from "react";
-import { api, money, statusLabels } from "./adminShared";
+import { lazy, Suspense, useState } from "react";
+import { money, statusLabels } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { AdminIcon } from "./AdminWorkspace";
 import { AdminRevenue } from "./AdminRevenue";
 
 type Navigate = (section: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => void;
 
-type OperationsResponse = {
-  operations: { status: string; checks: Array<{ code: string; affected: number }> };
-  diagnostics?: {
-    overreserved: Array<{ variantId: number; productName: string; variantLabel: string; warehouseName: string; available: number; reserved: number; syncedAt: string; orderNumbers: string[] }>;
-    failedReceipts: Array<{ batchId: number; orderId: number; orderNumber: string; lineId: number; productName: string; error: string }>;
-  };
-};
+const AdminOperations = lazy(() => import("./AdminOperations").then((module) => ({ default: module.AdminOperations })));
 
 export function Dashboard({ data, onNavigate }: { data: AdminData; onNavigate: Navigate }) {
   const { dashboard, permissions } = data;
   const [filter, setFilter] = useState("all");
-  const [operations, setOperations] = useState<OperationsResponse | null>(null);
-  const [operationsError, setOperationsError] = useState("");
-  useEffect(() => {
-    if (!permissions.includes("dashboard.read")) return;
-    let active = true;
-    api<OperationsResponse>("/api/v1/admin/operations")
-      .then((result) => { if (active) setOperations(result); })
-      .catch((error) => { if (active) setOperationsError(error instanceof Error ? error.message : "Не удалось загрузить диагностику"); });
-    return () => { active = false; };
-  }, [permissions]);
   const can = (permission: string) => permissions.includes(permission);
   const recent = dashboard.recentOrders || [];
   const visible = recent.filter(order => filter === "all" || (filter === "active" ? !["cancelled", "completed"].includes(order.status) : order.status === filter));
@@ -45,17 +29,7 @@ export function Dashboard({ data, onNavigate }: { data: AdminData; onNavigate: N
     </button>)}</div>
     <div className="workspace-dashboard-grid">
       <div className="workspace-dashboard-main">
-        {can("dashboard.read") && <section className="workspace-panel" aria-label="Операционная диагностика">
-          <header className="workspace-panel-heading"><div><p className="eyebrow">Контроль</p><h2>Остатки и поступления</h2></div></header>
-          {operationsError && <p role="alert">Диагностика недоступна: {operationsError}</p>}
-          {!operations && !operationsError && <p>Проверяем состояние…</p>}
-          {operations && <>
-            <p>Состояние: {operations.operations.status === "ok" ? "без предупреждений" : operations.operations.status === "degraded" ? "нужна проверка" : "критическая ошибка"}.</p>
-            {operations.operations.checks.map((check) => <p key={check.code}><strong>{check.code}</strong>: {check.affected}</p>)}
-            {operations.diagnostics?.overreserved.map((item) => <article key={`${item.variantId}-${item.warehouseName}`} className="admin-alert"><div><strong>{item.productName} · {item.variantLabel}</strong><p>{item.warehouseName}: в СБИС {item.available}, зарезервировано {item.reserved}. Заказы: {item.orderNumbers.join(", ") || "не найдены"}. Синхронизация: {new Date(item.syncedAt).toLocaleString("ru-RU")}.</p></div></article>)}
-            {operations.diagnostics?.failedReceipts.map((item) => <article key={`${item.batchId}-${item.lineId}`} className="admin-alert"><div><strong>Закупка {item.orderNumber || `№${item.orderId}`} · {item.productName}</strong><p>Партия {item.batchId}, строка {item.lineId}: {item.error || "Причина не сохранена"}</p><button type="button" onClick={() => onNavigate("procurement")}>Открыть закупки ↗</button></div></article>)}
-          </>}
-        </section>}
+        {can("dashboard.read") && <Suspense fallback={<section className="workspace-panel">Проверяем остатки и поступления…</section>}><AdminOperations onOpenProcurement={() => onNavigate("procurement")} /></Suspense>}
         {can("analytics.read") && <AdminRevenue onOpen={() => onNavigate("analytics")} />}
         {can("orders.read") && <section className="workspace-panel workspace-recent">
           <header className="workspace-panel-heading"><div><p className="eyebrow">Продажи</p><h2>Последние заказы</h2></div><button type="button" className="workspace-text-button" onClick={() => onNavigate("orders")}>Все заказы ↗</button></header>
