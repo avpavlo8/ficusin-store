@@ -85,10 +85,11 @@ func (repository *PostgresRepository) DetailForCustomer(
 			o.total::DOUBLE PRECISION,
 			COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id=o.id AND p.status='paid'),0)::DOUBLE PRECISION,
 			COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.order_id=o.id AND r.status='succeeded'),0)::DOUBLE PRECISION,
-			GREATEST(o.subtotal
+			GREATEST((CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END)
 				- COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id=o.id AND p.status='paid'),0)
 				+ COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.order_id=o.id AND r.status='succeeded'),0),0)::DOUBLE PRECISION,
 			(o.has_preorder=0 AND o.payment_method='online'
+				AND (o.delivery_payee='carrier' OR o.delivery_fee_pending=0)
 				AND o.status NOT IN ('cancelled','completed')),
 			o.created_at
 		FROM orders o
