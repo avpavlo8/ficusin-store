@@ -124,9 +124,9 @@ export function CartDrawer({
         </section>
         {!!lines.length && (
           <aside className="cart-summary">
-            <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка, справочно</dt><dd>при оформлении</dd></div></dl>
-            <div className="cart-summary-total"><span>К оплате за растения</span><strong>{money(subtotal)}</strong></div>
-            <p>Доставка оплачивается перевозчику при получении.</p>
+            <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>рассчитаем при оформлении</dd></div></dl>
+            <div className="cart-summary-total"><span>Растения</span><strong>{money(subtotal)}</strong></div>
+            <p>Стоимость доставки войдёт в итог заказа.</p>
             {!page && <div className="cart-bonus" hidden />}
             {!page && <button className="primary-button" disabled={status !== "ready" || missingCount > 0 || lines.some((item) => item.available === false)} onClick={onCheckout}>Оформить заказ <span>→</span></button>}
             {page && !checkoutActionVisible && <button className="primary-button cart-summary-checkout" disabled={status !== "ready" || missingCount > 0 || lines.some((item) => item.available === false)} aria-label="Перейти к оформлению" onClick={onCheckout}>Оформить заказ <span>→</span></button>}
@@ -250,7 +250,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
               <div className="success-next"><h3>Что будет дальше</h3>{confirmationPending ? <ol>
                 <li><b>1</b><span>Проверим наличие растений</span></li>
                 <li><b>2</b><span>Менеджер свяжется с вами после поступления</span></li>
-                <li><b>3</b><span>Стоимость доставки оплачивается перевозчику при получении</span></li>
+                <li><b>3</b><span>После решения менеджера вы сможете оплатить растения и доставку</span></li>
               </ol> : <ol>
                 <li><b>1</b><span>Соберём и проверим растения</span></li>
                 <li><b>2</b><span>Аккуратно упакуем</span></li>
@@ -309,12 +309,12 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           </fieldset>
 
           <div data-checkout-step="3" hidden={step!==3}>
-            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты растений</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => { setPaymentMethod(option.id); track("add_payment_info",{value:total,quantity:cartCount,properties:{paymentMethod:option.id}}); }} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div><p className="cdek-status">Доставка оплачивается перевозчику при получении. Если какого-либо растения нет в наличии, менеджер свяжется с вами, и оплата пока не потребуется.</p></fieldset>}
+            {paymentMethods.length > 0 && <fieldset><legend>Способ оплаты заказа</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => { setPaymentMethod(option.id); track("add_payment_info",{value:total,quantity:cartCount,properties:{paymentMethod:option.id}}); }} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div><p className="cdek-status">Растения и доставка оплачиваются на сайте. Если какого-либо растения нет в наличии или доставка требует уточнения, менеджер свяжется с вами до оплаты.</p></fieldset>}
             {!paymentMethods.length && <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !paymentMethods.length || deliveryBlocked}>{submitting ? "Оформляем…" : "Продолжить →"}</button></div>
           </div>
-        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка, справочно</dt><dd>{deliveryFee ? money(deliveryFee) : deliveryFeePending ? "уточняется" : "при оформлении"}</dd></div></dl><div><span>К оплате за растения</span><strong>{money(total)}</strong></div><p>Доставку вы оплатите перевозчику при получении.</p></aside></div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFeePending ? "уточняется" : money(deliveryFee)}</dd></div></dl><div><span>{deliveryFeePending ? "Растения, без доставки" : "Итого к оплате"}</span><strong>{money(total)}</strong></div>{deliveryFeePending && <p>Менеджер уточнит доставку и сообщит итог до оплаты.</p>}</aside></div>
       )}
     </aside>
   );

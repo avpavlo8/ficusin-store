@@ -243,7 +243,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
             {order.trackNumber && <div><small>Трек-номер СДЭК</small><span>{order.trackNumber}</span></div>}
             <div><small>Оплата</small><span className={order.amountDue === 0 ? "payment-state paid" : "payment-state unpaid"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
-            {order.paymentReady && !order.hasPreorder && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
+            {order.paymentReady && !order.hasPreorder && !order.deliveryFeePending && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
               {paying ? "Открываем оплату…" : `${order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"} ${money.format(order.amountDue)}`}
             </button>}
             {!order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит {order.hasPreorder ? "наличие растений" : "детали заказа"}; после его решения здесь появится кнопка оплаты.</p>}

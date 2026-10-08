@@ -158,8 +158,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       : cdekOffices
   ).slice(0, 12);
   const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
-  // Delivery is paid directly to the carrier on receipt, never in online payment.
-  const total = subtotal;
+  const total = subtotal + deliveryFee;
 
   async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);
@@ -262,11 +261,11 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
 	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
 	  track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
       trackYandexPurchase(data.orderNumber, subtotal, cartLines.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })));
-      setOrderConfirmationPending(needsManagerConfirmation || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
+      setOrderConfirmationPending(needsManagerConfirmation || deliveryFeePending || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
-      if (paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder) {
+      if (paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder && !deliveryFeePending) {
         try {
           const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
             method: "POST",
