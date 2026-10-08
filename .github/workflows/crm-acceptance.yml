@@ -66,7 +66,9 @@ jobs:
       - name: Verify stage 04 sales ledger and analytics on PostgreSQL
         env:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
-        run: go test ./internal/procurement ./internal/analytics -run TestStage04 -count=1
+        # Both packages use the same database, and procurement reconciliation
+        # updates all sales_events. Run their live tests one package at a time.
+        run: go test -p 1 ./internal/procurement ./internal/analytics -run TestStage04 -count=1
         working-directory: backend
       - name: Verify stage 05 recommendations and request allocation on PostgreSQL
         env:
