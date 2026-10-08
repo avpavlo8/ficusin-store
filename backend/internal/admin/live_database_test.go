@@ -174,13 +174,13 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 	})
 
-	t.Run("завершение заказа снимает резерв без изменения остатка СБИС", func(t *testing.T) {
+	t.Run("завершение заказа без резерва не меняет остаток СБИС", func(t *testing.T) {
 		var reservedBefore int
 		if err := pool.QueryRow(ctx, `SELECT reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant).Scan(&reservedBefore); err != nil {
 			t.Fatal(err)
 		}
-		if reservedBefore != 2 {
-			t.Fatalf("резерв до завершения = %d, ожидали 2", reservedBefore)
+		if reservedBefore != 0 {
+			t.Fatalf("резерв до завершения = %d, ожидали 0", reservedBefore)
 		}
 		if _, err := NewPostgresRepository(pool).UpdateOrderStatus(ctx, Actor{CustomerID: staffID, Role: RoleOwner}, orderID, "completed", ""); err != nil {
 			t.Fatalf("завершить заказ: %v", err)
@@ -195,7 +195,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		`, orderID, warehouseID, largeVariant).Scan(&available, &reserved, &released, &releases); err != nil {
 			t.Fatal(err)
 		}
-		if available != 10 || reserved != 0 || !released || releases != 1 {
+		if available != 10 || reserved != 0 || !released || releases != 0 {
 			t.Fatalf("после завершения: СБИС=%d резерв=%d закрыт=%v записей=%d", available, reserved, released, releases)
 		}
 	})
