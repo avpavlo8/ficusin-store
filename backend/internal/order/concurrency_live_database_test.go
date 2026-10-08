@@ -13,8 +13,7 @@ import (
 )
 
 // TestConcurrentCheckoutDoesNotOversellOnLiveDatabase puts real concurrent
-// transactions through the checkout service. Excess demand may become a
-// preorder, but the database reservation must never exceed physical stock.
+// transactions through checkout. Orders no longer reserve any stock.
 func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -108,7 +107,7 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 	`, emailPattern, warehouseID, variantID).Scan(&orders, &itemReservations, &inventoryReservations, &preorders); err != nil {
 		t.Fatal(err)
 	}
-	if orders != buyers || itemReservations != 3 || inventoryReservations != 3 || preorders != buyers-3 {
-		t.Fatalf("oversell guard failed: orders=%d item_reserved=%d inventory_reserved=%d preorders=%d", orders, itemReservations, inventoryReservations, preorders)
+	if orders != buyers || itemReservations != 0 || inventoryReservations != 0 || preorders != 0 {
+		t.Fatalf("checkout reserved stock or marked an available product as preorder: orders=%d item_reserved=%d inventory_reserved=%d preorders=%d", orders, itemReservations, inventoryReservations, preorders)
 	}
 }

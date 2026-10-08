@@ -93,6 +93,7 @@ type CDEKInput struct {
 type Created struct {
 	OrderNumber   string  `json:"orderNumber"`
 	PaymentStatus string  `json:"paymentStatus"`
+	HasPreorder   bool    `json:"hasPreorder"`
 	Total         float64 `json:"-"`
 }
 
@@ -130,8 +131,7 @@ type purchasableItem struct {
 	// Preorder means the shelf could not cover this line. The order still
 	// goes through; the manager names the date.
 	Preorder bool
-	// Reserved — сколько штук реально снято со склада. У предзаказа меньше
-	// количества, и вернуть при отмене нужно именно столько.
+	// Checkout currently does not reserve any stock. This remains zero for new orders.
 	Reserved int
 }
 
@@ -366,16 +366,14 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		return Created{}, invalid("Выберите доступный способ оплаты")
 	}
 
-	// Резерв — последним действием перед записью заказа, и намеренно после
-	// разговора с перевозчиком. Он блокирует строки склада до конца транзакции,
-	// и пока блокировка держится, никто другой не может купить то же растение.
+	// Availability is a checkout snapshot only. No order reserves stock; availability
+	// must be checked again before payment or fulfilment.
 	hasPreorder := false
 	for index := range items {
-		reserved, preorder, err := reserveStock(ctx, transaction, items[index])
+		preorder, err := needsPreorder(ctx, transaction, items[index])
 		if err != nil {
 			return Created{}, err
 		}
-		items[index].Reserved = reserved
 		items[index].Preorder = preorder
 		hasPreorder = hasPreorder || preorder
 	}
@@ -384,7 +382,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if err != nil {
 		return Created{}, err
 	}
-	total := subtotal + deliveryFee
+	// Delivery is paid directly to the carrier on receipt. Keep its estimate
+	// separate; the order total is only what the shop collects for plants.
+	total := subtotal
 	var customerID any
 	if input.CustomerID != nil {
 		customerID = *input.CustomerID
@@ -426,9 +426,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			boolToInt(item.Preorder), item.Reserved); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
-	}
-	if err := RecordMovement(ctx, transaction, orderID, MovementReserve); err != nil {
-		return Created{}, err
 	}
 	if err := recordPreorderRequests(ctx, transaction, orderID); err != nil {
 		return Created{}, err
@@ -491,7 +488,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		)
 	}
 
-	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), Total: total}, nil
+	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), HasPreorder: hasPreorder, Total: total}, nil
 }
 
 // deliveryFee is retained for old settings tests and existing installations.
@@ -505,57 +502,16 @@ func (service *Service) deliveryFee(key string) float64 {
 	return float64(settings.NonNegative(value))
 }
 
-func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) (int, bool, error) {
-	rows, err := transaction.Query(ctx, `
-		SELECT id, GREATEST(available_qty - reserved_qty, 0)
-		FROM inventory
-		WHERE variant_id = $1
-		ORDER BY id
-		FOR UPDATE
-	`, item.VariantID)
+func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {
+	var available int
+	err := transaction.QueryRow(ctx, `
+		SELECT COALESCE(SUM(GREATEST(available_qty - reserved_qty, 0)), 0)::INTEGER
+		FROM inventory WHERE variant_id = $1
+	`, item.VariantID).Scan(&available)
 	if err != nil {
-		return 0, false, fmt.Errorf("lock inventory: %w", err)
+		return false, fmt.Errorf("read inventory availability: %w", err)
 	}
-	type slot struct {
-		id   int64
-		free int
-	}
-	slots := make([]slot, 0, 4)
-	available := 0
-	for rows.Next() {
-		var current slot
-		if err := rows.Scan(&current.id, &current.free); err != nil {
-			rows.Close()
-			return 0, false, fmt.Errorf("scan inventory: %w", err)
-		}
-		available += current.free
-		slots = append(slots, current)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, false, fmt.Errorf("read inventory: %w", err)
-	}
-	if available == 0 {
-		return 0, true, nil
-	}
-	preorder := available < item.Quantity
-	remaining := min(item.Quantity, available)
-	for _, current := range slots {
-		if remaining == 0 {
-			break
-		}
-		take := min(current.free, remaining)
-		if take == 0 {
-			continue
-		}
-		if _, err := transaction.Exec(ctx, `
-			UPDATE inventory SET reserved_qty = reserved_qty + $2 WHERE id = $1
-		`, current.id, take); err != nil {
-			return 0, false, fmt.Errorf("reserve inventory: %w", err)
-		}
-		remaining -= take
-	}
-	return min(item.Quantity, available), preorder, nil
+	return available < item.Quantity, nil
 }
 
 func retailDiscountBPS(ctx context.Context, transaction pgx.Tx, customerID *int64) (int, error) {
