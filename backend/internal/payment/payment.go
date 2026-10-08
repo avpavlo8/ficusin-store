@@ -197,7 +197,7 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		existingURL = ""
 	}
 	// A customer who clicked away from the payment page and came back gets
-	// the same page only when its amount still equals the plant subtotal.
+	// the same page only when its amount still equals this order's payable total.
 	if existingURL != "" {
 		return existingURL, nil
 	}

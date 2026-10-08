@@ -243,7 +243,7 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 		Description:    "Оплата заказа " + state.number + " — Фикусин",
 		ReturnURL:      service.returnURL + "/?paid=" + state.number,
 		Email:          state.email, Phone: state.phone,
-		// The receipt covers plants only; delivery is paid to the carrier.
+		// The outstanding balance includes delivery when the shop collects it.
 		Items: []integration.PaymentItem{{Name: "Доплата по заказу " + state.number, Price: balance.Due, Quantity: 1}},
 	})
 	if err != nil {
@@ -261,7 +261,7 @@ func (service *Service) StartOutstandingForOrderID(ctx context.Context, orderID 
 }
 
 // StartShipmentOffer charges one immutable shipment, not the mutable balance
-// of its parent order. The receipt contains the plants only.
+// of its parent order. Shop-paid delivery is included in the receipt.
 func (service *Service) StartShipmentOffer(ctx context.Context, token string, customerID int64) (string, error) {
 	if !service.Configured() {
 		return "", errors.New("оплата картой временно недоступна")
