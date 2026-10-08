@@ -33,8 +33,6 @@ type Dependencies struct {
 	Orders           orderRepository
 	OrderCreator     orderCreator
 	CDEK             cdekService
-	RussianPost      deliveryPricer
-	YandexDelivery   deliveryPricer
 	Admin            adminRepository
 	Saby             sabySyncService
 	Push             pushService
@@ -83,12 +81,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		service:  dependencies.CDEK,
 		packages: dependencies.Packages,
 	}
-	deliveryAPI := deliveryQuoteHandlers{
-		logger:   logger,
-		post:     dependencies.RussianPost,
-		courier:  dependencies.YandexDelivery,
-		packages: dependencies.Packages,
-	}
 	adminAPI := newAdminHandlers(
 		logger,
 		dependencies.Auth,
@@ -110,7 +102,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	callLimiter := newRateLimiter(5, 10*time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
-	deliveryLimiter := newRateLimiter(60, time.Minute)
 	analyticsLimiter := newRateLimiter(240, time.Minute)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
@@ -194,15 +185,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	)
 	mux.HandleFunc("GET /api/v1/delivery/cdek", cdekAPI.get)
 	mux.HandleFunc("POST /api/v1/delivery/cdek", cdekAPI.calculate)
-	mux.HandleFunc("GET /api/v1/delivery/providers", deliveryAPI.providers)
-	mux.HandleFunc("POST /api/v1/delivery/post", deliveryLimiter.guard(
-		"Слишком много расчётов доставки. Попробуйте через несколько минут",
-		deliveryAPI.postQuote,
-	))
-	mux.HandleFunc("POST /api/v1/delivery/courier", deliveryLimiter.guard(
-		"Слишком много расчётов доставки. Попробуйте через несколько минут",
-		deliveryAPI.courierQuote,
-	))
 	mux.Handle("GET /api/v1/delivery/fees", deliveryFeesHandler(dependencies.Settings))
 	mux.HandleFunc("POST /api/v1/orders", orderLimiter.guard(
 		"Слишком много заказов подряд. Позвоните нам, если это ошибка",

@@ -143,26 +143,13 @@ func main() {
 	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
 	orderRepository := order.NewPostgresRepository(pool)
 	cdekClient := integration.NewCDEKClient(cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
-	russianPostClient := integration.NewRussianPostClient(
-		cfg.RussianPost.AccessToken,
-		cfg.RussianPost.UserAuthKey,
-		cfg.RussianPost.FromIndex,
-	)
-	yandexDeliveryClient := integration.NewYandexDeliveryClient(
-		cfg.YandexDelivery.Token,
-		cfg.YandexDelivery.GeocoderKey,
-		cfg.YandexDelivery.SenderAddress,
-		cfg.YandexDelivery.SenderLongitude,
-		cfg.YandexDelivery.SenderLatitude,
-	)
 	telegramClient, err := integration.NewTelegramClient(cfg.TelegramChatID, cfg.TelegramBotToken)
 	if err != nil {
 		logger.Error("Telegram configuration failed", "error", err)
 		os.Exit(1)
 	}
 	shopSettings := settings.NewService(pool, logger)
-	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger).
-		WithDeliveryPricers(russianPostClient, yandexDeliveryClient)
+	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger)
 	notificationWorker := order.NewNotificationWorker(pool, telegramClient, logger)
 	pushService, err := notify.NewService(
 		pool, cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Subject, logger,
@@ -176,12 +163,6 @@ func main() {
 	}
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
-	}
-	if !russianPostClient.Configured() {
-		logger.Warn("Russian Post delivery is off; set RUSSIAN_POST_ACCESS_TOKEN, RUSSIAN_POST_USER_AUTH_KEY and RUSSIAN_POST_FROM_INDEX")
-	}
-	if !yandexDeliveryClient.Configured() {
-		logger.Warn("Yandex Delivery is off; set YANDEX_DELIVERY_TOKEN, YANDEX_GEOCODER_API_KEY and sender point coordinates")
 	}
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient)
 	paymentService := payment.NewService(
@@ -221,8 +202,6 @@ func main() {
 		Orders:           orderRepository,
 		OrderCreator:     orderService,
 		CDEK:             cdekClient,
-		RussianPost:      russianPostClient,
-		YandexDelivery:   yandexDeliveryClient,
 		Admin:            adminRepository,
 		Saby:             sabyService,
 		Push:             pushService,

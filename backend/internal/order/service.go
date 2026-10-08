@@ -21,11 +21,6 @@ type CDEK interface {
 	CalculatePVZ(context.Context, int, integration.Parcel) ([]integration.CDEKQuote, error)
 }
 
-type DeliveryPricer interface {
-	Configured() bool
-	Calculate(context.Context, string, integration.Parcel) (integration.DeliveryQuote, error)
-}
-
 type Notifier interface {
 	SendOrder(context.Context, integration.TelegramOrder) error
 }
@@ -33,8 +28,6 @@ type Notifier interface {
 type Service struct {
 	pool     *pgxpool.Pool
 	cdek     CDEK
-	post     DeliveryPricer
-	courier  DeliveryPricer
 	notifier Notifier
 	settings settingsReader
 	logger   *slog.Logger
@@ -186,19 +179,12 @@ func NewService(
 	}
 }
 
-// WithDeliveryPricers wires the two address-delivery providers without
-// changing the old constructor used by focused unit tests. Production always
-// supplies real clients; empty credentials leave the corresponding method
-// unavailable instead of silently falling back to a made-up fixed price.
-func (service *Service) WithDeliveryPricers(post, courier DeliveryPricer) *Service {
-	service.post = post
-	service.courier = courier
-	return service
-}
-
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
 	if !input.Consent {
 		return Created{}, invalid("Подтвердите согласие на обработку персональных данных")
+	}
+	if input.Delivery != "pickup" && input.Delivery != "cdek" {
+		return Created{}, invalid("Выберите доступный способ получения")
 	}
 
 	transaction, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -323,33 +309,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			}
 		}
 		cityName = &resolvedCityName
-	} else if input.Delivery == "post" || input.Delivery == "courier" {
-		regularDelivery = true
-		pricer := service.post
-		providerName := "Почта России"
-		if input.Delivery == "courier" {
-			pricer = service.courier
-			providerName = "Яндекс Доставка"
-		}
-		if pricer == nil || !pricer.Configured() {
-			return Created{}, invalid(providerName + " временно недоступна. Выберите другой способ доставки")
-		}
-		box, measured := shippingBox(items)
-		if !measured {
-			feePending = true
-		} else if quote, quoteErr := pricer.Calculate(ctx, deliveryAddress, box); errors.Is(quoteErr, integration.ErrRussianPostAddress) {
-			return Created{}, invalid("Почта России не смогла определить адрес. Укажите его точнее")
-		} else if errors.Is(quoteErr, integration.ErrYandexOutsideRyazan) {
-			return Created{}, invalid("Курьер Яндекс Доставки доступен только по Рязани")
-		} else if quoteErr != nil {
-			service.logger.Error("delivery quote failed at checkout", "provider", providerName, "error", quoteErr)
-			feePending = true
-		} else if quote.Price <= 0 {
-			service.logger.Error("delivery provider returned empty price", "provider", providerName)
-			feePending = true
-		} else {
-			deliveryFee = quote.Price
-		}
 	} else if !regularDelivery {
 		return Created{}, invalid("Выберите способ получения")
 	}
