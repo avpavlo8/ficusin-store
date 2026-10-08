@@ -2,18 +2,14 @@ package payment
 
 import "testing"
 
-func TestBalanceFromStateWaitsForManagerWhenAnythingUnknown(t *testing.T) {
-	for _, state := range []orderMoneyState{
-		{total: 1500, feePending: true, method: MethodOnline, status: "new"},
-		{total: 1500, hasPreorder: true, method: MethodOnline, status: "new"},
-	} {
-		balance := balanceFromState(state)
-		if balance.Ready {
-			t.Fatalf("неполный заказ не должен быть доступен к оплате: %+v", balance)
-		}
-		if balance.Due != 1500 || balance.PaymentStatus != StatusPending {
-			t.Fatalf("неверный баланс ожидания: %+v", balance)
-		}
+func TestBalanceFromStateWaitsForPlantsButNotDeliveryQuote(t *testing.T) {
+	waiting := balanceFromState(orderMoneyState{total: 1500, hasPreorder: true, method: MethodOnline, status: "new"})
+	if waiting.Ready || waiting.Due != 1500 || waiting.PaymentStatus != StatusPending {
+		t.Fatalf("заказ с недоступными растениями не должен оплачиваться: %+v", waiting)
+	}
+	ready := balanceFromState(orderMoneyState{total: 1500, feePending: true, method: MethodOnline, status: "new"})
+	if !ready.Ready || ready.Due != 1500 {
+		t.Fatalf("справочная стоимость доставки не должна блокировать оплату растений: %+v", ready)
 	}
 }
 

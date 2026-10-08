@@ -136,18 +136,18 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	var (
 		orderID     int64
 		amount      float64
-		feePending  int
 		status      string
 		orderStatus string
 		email       string
 		phone       string
 		method      string
+		hasPreorder bool
 		existingURL string
 		paymentID   int64
 		key         string
 	)
 	err := service.pool.QueryRow(ctx, `
-		SELECT o.id, o.total::DOUBLE PRECISION, o.delivery_fee_pending,
+		SELECT o.id, o.subtotal::DOUBLE PRECISION, o.has_preorder=1,
 			o.payment_status, o.status, COALESCE(o.email, ''), o.phone, o.payment_method,
 			COALESCE((
 			SELECT p.confirmation_url FROM payments p
@@ -157,7 +157,7 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		FROM orders o
 		WHERE o.order_number = $1
 	`, orderNumber).Scan(
-		&orderID, &amount, &feePending, &status, &orderStatus, &email, &phone, &method, &existingURL,
+		&orderID, &amount, &hasPreorder, &status, &orderStatus, &email, &phone, &method, &existingURL,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("заказ не найден")
@@ -174,8 +174,11 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	if method != MethodOnline {
 		return "", errors.New("для заказа выбран другой способ оплаты")
 	}
-	if feePending == 1 {
-		return "", errors.New("стоимость доставки ещё не рассчитана — менеджер пришлёт ссылку на оплату")
+	if hasPreorder {
+		return "", errors.New("оплата будет доступна после подтверждения наличия всех растений менеджером")
+	}
+	if err := service.checkOrderStock(ctx, orderID); err != nil {
+		return "", err
 	}
 	// A customer who clicked away from the payment page and came back gets
 	// the same page, not a second charge waiting to happen.
@@ -186,16 +189,6 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	items, err := service.orderItems(ctx, orderID)
 	if err != nil {
 		return "", err
-	}
-	// Delivery is a line of the receipt too. Without it the receipt would
-	// total less than the payment, and the tax office reads both.
-	var deliveryFee float64
-	if err := service.pool.QueryRow(ctx, `
-		SELECT delivery_fee::DOUBLE PRECISION FROM orders WHERE id = $1
-	`, orderID).Scan(&deliveryFee); err == nil && deliveryFee > 0 {
-		items = append(items, integration.PaymentItem{
-			Name: "Доставка", Price: deliveryFee, Quantity: 1,
-		})
 	}
 	key, err = idempotenceKey()
 	if err != nil {
