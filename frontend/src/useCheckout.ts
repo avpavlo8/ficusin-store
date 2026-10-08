@@ -200,7 +200,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       : cdekOffices
   ).slice(0, 12);
   const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
-  const total = subtotal + deliveryFee;
+  // Delivery is paid directly to the carrier on receipt, never in online payment.
+  const total = subtotal;
 
   async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);
@@ -294,10 +295,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (addressDeliveryNeedsQuote) {
-      setNotice("Сначала рассчитайте стоимость доставки");
-      return;
-    }
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
     const phoneInput = event.currentTarget.elements.namedItem("phone") as HTMLInputElement;
@@ -337,33 +334,34 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
 	  attribution: getAttribution(),
     };
 
-    const needsManagerConfirmation = deliveryFeePending;
+    const needsManagerConfirmation = cartLines.some((item) => item.available === false || (item.stock !== undefined && item.stock < item.quantity));
     try {
       const response = await fetch("/api/v1/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await response.json()) as { orderNumber?: string; error?: string };
+      const data = (await response.json()) as { orderNumber?: string; paymentStatus?: string; hasPreorder?: boolean; error?: string };
       if (!response.ok || !data.orderNumber) {
         throw new Error(data.error || "Не удалось оформить заказ");
       }
-	  track("add_shipping_info", { value: total, quantity: cartCount, properties: { delivery } });
-	  track("add_payment_info", { value: total, quantity: cartCount, properties: { paymentMethod } });
-      trackYandexPurchase(data.orderNumber, total, cartLines.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })));
-      setOrderConfirmationPending(needsManagerConfirmation);
+	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
+	  track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
+      trackYandexPurchase(data.orderNumber, subtotal, cartLines.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })));
+      setOrderConfirmationPending(needsManagerConfirmation || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
-      if (paymentMethod === "online" && !deliveryFeePending) {
+      if (paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder) {
         try {
           const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
             method: "POST",
             credentials: "same-origin",
           });
-          const result = (await payment.json()) as { confirmationUrl?: string };
+          const result = (await payment.json()) as { confirmationUrl?: string; error?: string };
+          if (!payment.ok) throw new Error(result.error || "Не удалось начать оплату");
           if (result.confirmationUrl) {
-			track("payment_redirect", { value: total, quantity: cartCount, properties: { orderNumber: data.orderNumber } });
+			track("payment_redirect", { value: subtotal, quantity: cartCount, properties: { orderNumber: data.orderNumber } });
             window.location.assign(result.confirmationUrl);
             return;
           }

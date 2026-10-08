@@ -235,8 +235,7 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
   </>;
   if (!order) return <SectionHeading eyebrow="Заказ" title="Загружаем…" />;
 
-  // Coming back to an unpaid order and paying it later is normal: the card
-  // may have been declined, or the manager has only now priced the delivery.
+  // The manager can make an unpaid order payable after checking availability.
   const payOrder = async (number: string) => {
     try {
       const response = await fetch(`/api/v1/payments/orders/${number}`, {
@@ -269,19 +268,20 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
     </section>
     <section className="order-totals">
       <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>
-      <div><span>Доставка</span><span>{order.deliveryFeePending ? "рассчитает менеджер" : order.deliveryFee ? money.format(order.deliveryFee) : "—"}</span></div>
-      {order.hasPreorder && <p className="order-note">В заказе есть растения под заказ — менеджер уточнит срок поставки и свяжется с вами.</p>}
+      <div><span>Доставка, справочно</span><span>{order.deliveryFeePending ? "рассчитает менеджер" : order.deliveryFee ? money.format(order.deliveryFee) : "—"}</span></div>
+      {order.hasPreorder && <p className="order-note">В заказе есть растения под заказ. Менеджер уточнит срок поставки; до его решения оплата не требуется.</p>}
       {order.deliveryFeePending && <p className="order-note">{order.repackRequested
-        ? "Вы просили упаковать растения в одну коробку. Менеджер проверит, поместятся ли они вместе, пересчитает доставку и свяжется с вами. Оплата после подтверждения заказа менеджером."
-        : "Менеджер рассчитает стоимость доставки и свяжется с вами до отправки заказа. Оплата после подтверждения заказа менеджером."}</p>}
-      <div className="total"><span>Итого</span><span>{money.format(order.total)}</span></div>
+        ? "Вы просили упаковать растения в одну коробку. Менеджер уточнит стоимость доставки до отправки."
+        : "Менеджер уточнит стоимость доставки до отправки."}</p>}
+      <p className="order-note">Доставка оплачивается перевозчику при получении.</p>
+      <div className="total"><span>Растения к оплате</span><span>{money.format(order.subtotal)}</span></div>
     </section>
     <section className="order-facts">
       <div><small>Способ получения</small><span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span></div>
       {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
       {order.trackNumber && <div><small>Трек-номер СДЭК</small><span><a href={`https://www.cdek.ru/ru/tracking?order_id=${encodeURIComponent(order.trackNumber)}`} target="_blank" rel="noreferrer">{order.trackNumber}</a></span></div>}
       <div><small>Оплата</small><span className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
-      {order.paymentStatus === "pending" && !order.deliveryFeePending && <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>Оплатить {money.format(order.total)}</button>}
+      {order.paymentStatus === "pending" && !order.hasPreorder && <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>Оплатить растения: {money.format(order.subtotal)}</button>}
       <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
       {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
     </section>
