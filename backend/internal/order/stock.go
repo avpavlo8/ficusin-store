@@ -7,9 +7,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ReleaseStock puts an order's reservation back on the shelf. It is safe
-// to call twice: orders.stock_released_at is the guard, so a cancelled
-// order cannot give the same plants back a second time.
+// ReleaseStock removes an order's local reservation without changing the
+// physical balance imported from Saby. It is safe to call twice:
+// orders.stock_released_at guards both cancelled and completed orders.
 func ReleaseStock(ctx context.Context, tx pgx.Tx, orderID int64) error {
 	var alreadyReleased bool
 	if err := tx.QueryRow(ctx, `

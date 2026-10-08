@@ -173,4 +173,80 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 			t.Errorf("цена: %v, ожидали 2490 — новая позиция считается по цене витрины", price)
 		}
 	})
+
+	t.Run("завершение заказа снимает резерв без изменения остатка СБИС", func(t *testing.T) {
+		var reservedBefore int
+		if err := pool.QueryRow(ctx, `SELECT reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant).Scan(&reservedBefore); err != nil {
+			t.Fatal(err)
+		}
+		if reservedBefore != 2 {
+			t.Fatalf("резерв до завершения = %d, ожидали 2", reservedBefore)
+		}
+		if _, err := NewPostgresRepository(pool).UpdateOrderStatus(ctx, Actor{CustomerID: staffID, Role: RoleOwner}, orderID, "completed", ""); err != nil {
+			t.Fatalf("завершить заказ: %v", err)
+		}
+		var available, reserved, releases int
+		var released bool
+		if err := pool.QueryRow(ctx, `
+			SELECT stock.available_qty, stock.reserved_qty, purchase.stock_released_at IS NOT NULL,
+			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id AND movement.kind='release')
+			FROM orders purchase JOIN inventory stock ON stock.warehouse_id=$2 AND stock.variant_id=$3
+			WHERE purchase.id=$1
+		`, orderID, warehouseID, largeVariant).Scan(&available, &reserved, &released, &releases); err != nil {
+			t.Fatal(err)
+		}
+		if available != 10 || reserved != 0 || !released || releases != 1 {
+			t.Fatalf("после завершения: СБИС=%d резерв=%d закрыт=%v записей=%d", available, reserved, released, releases)
+		}
+	})
+
+	t.Run("миграция закрывает старый резерв завершённого заказа один раз", func(t *testing.T) {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
+		var oldOrderID int64
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,status)
+			VALUES($1,'Старый завершённый','+70000000000','legacy@example.invalid','pickup',0,2490,2490,'completed') RETURNING id
+		`, fmt.Sprintf("CI-LEGACY-%d", unique)).Scan(&oldOrderID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,unit_price,quantity,reserved_qty)
+			VALUES($1,$2,$3,$4,$5,'D25',2490,1,1)
+		`, oldOrderID, productID, largeVariant, largeSKU, productName); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE inventory SET reserved_qty=1 WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO stock_movements(order_id,variant_id,kind,quantity,status) VALUES($1,$2,'reserve',1,'pending')`, oldOrderID, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		migration, err := os.ReadFile("../../../timeweb/migrations/20261008_release_completed_order_reservations.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for attempt := 0; attempt < 2; attempt++ {
+			if _, err := tx.Exec(ctx, string(migration)); err != nil {
+				t.Fatalf("применить миграцию %d: %v", attempt+1, err)
+			}
+		}
+		var reserved, releases int
+		var released bool
+		if err := tx.QueryRow(ctx, `
+			SELECT stock.reserved_qty, purchase.stock_released_at IS NOT NULL,
+			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id
+			     AND movement.kind='release' AND movement.reason='completed_order_reconciliation_20261008')
+			FROM orders purchase JOIN inventory stock ON stock.warehouse_id=$2 AND stock.variant_id=$3
+			WHERE purchase.id=$1
+		`, oldOrderID, warehouseID, largeVariant).Scan(&reserved, &released, &releases); err != nil {
+			t.Fatal(err)
+		}
+		if reserved != 0 || !released || releases != 1 {
+			t.Fatalf("после миграции: резерв=%d закрыт=%v записей=%d", reserved, released, releases)
+		}
+	})
 }

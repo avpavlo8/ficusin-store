@@ -346,10 +346,14 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	`, id, status, paymentStatus); err != nil {
 		return Order{}, fmt.Errorf("update order status: %w", err)
 	}
-	if status == "cancelled" {
+	// A completed sale no longer owns a storefront reservation: the physical
+	// balance is supplied by Saby and this only removes our local hold.
+	if status == "cancelled" || status == "completed" {
 		if err := order.ReleaseStock(ctx, tx, id); err != nil {
 			return Order{}, err
 		}
+	}
+	if status == "cancelled" {
 		// An unfinished payment for a cancelled order is over. Left open it
 		// would keep the reconciliation loop asking YooKassa about it every
 		// minute for nothing.
