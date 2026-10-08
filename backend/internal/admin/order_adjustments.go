@@ -303,7 +303,8 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET subtotal=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0),
-			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0),
+			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0)
+				+ CASE WHEN delivery_payee='shop' THEN delivery_fee ELSE 0 END,
 			shipment_revision=shipment_revision+1
 		WHERE id=$1
 	`, id); err != nil {

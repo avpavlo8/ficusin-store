@@ -396,11 +396,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
 			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total,
-			payment_method, payment_status, has_preorder, status
+			payment_method, payment_status, has_preorder, status, delivery_payee
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'carrier'
 		)
 		RETURNING id
 	`,

@@ -257,7 +257,7 @@ func (repository *PostgresRepository) UpdateCustomer(
 func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, error) {
 	rows, err := repository.pool.Query(ctx, `
 		SELECT id, order_number, customer_id, customer_name, phone, email, address,
-			comment, delivery_method, delivery_fee_pending = 1,
+			comment, delivery_method, delivery_payee, delivery_fee_pending = 1,
 			delivery_repack_requested = 1, payment_method, payment_status,
 			COALESCE(cdek_track_number, ''), has_preorder = 1, status,
 			total::DOUBLE PRECISION, created_at
@@ -273,7 +273,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		var item Order
 		if err := rows.Scan(&item.ID, &item.OrderNumber, &item.CustomerID,
 			&item.CustomerName, &item.Phone, &item.Email, &item.Address, &item.Comment,
-			&item.DeliveryMethod, &item.DeliveryFeePending, &item.RepackRequested,
+			&item.DeliveryMethod, &item.DeliveryPayee, &item.DeliveryFeePending, &item.RepackRequested,
 			&item.PaymentMethod, &item.PaymentStatus, &item.TrackNumber,
 			&item.HasPreorder, &item.Status, &item.Total,
 			&item.CreatedAt); err != nil {
@@ -1124,13 +1124,13 @@ func (repository *PostgresRepository) SetDeliveryFee(
 	`, id).Scan(&before); err != nil {
 		return Order{}, err
 	}
-	// Delivery is paid to the carrier on receipt, so changing its estimate
-	// must not change the amount the shop collects for plants.
+	// Preserve the payment contract of historical shop-paid deliveries.
+	// New orders collect only for plants; the carrier charges transport.
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders
 		SET delivery_fee = $2,
 			delivery_fee_pending = 0,
-			total = subtotal
+			total = subtotal + CASE WHEN delivery_payee = 'shop' THEN $2 ELSE 0 END
 		WHERE id = $1
 	`, id, fee); err != nil {
 		return Order{}, fmt.Errorf("update delivery fee: %w", err)

@@ -68,6 +68,7 @@ type ShipmentOffer struct {
 	DeliveryFee float64 `json:"deliveryFee"`
 	Subtotal float64 `json:"subtotal"`
 	Total float64 `json:"total"`
+	DeliveryPayee string `json:"deliveryPayee"`
 	CDEKTariffCode *int `json:"cdekTariffCode,omitempty"`
 	CDEKTariffName string `json:"cdekTariffName"`
 	CDEKCreateState string `json:"cdekCreateState"`
@@ -153,7 +154,7 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 	discountBPS:=0;if customerID!=nil{_ = tx.QueryRow(ctx,`SELECT COALESCE(retail_discount_bps,0) FROM customers WHERE id=$1`,*customerID).Scan(&discountBPS)};if discountBPS<0{discountBPS=0};if discountBPS>9000{discountBPS=9000}
 	if delivery=="cdek"&&!input.PackagingRequired&&input.CDEKTariffCode==nil{return ShipmentOffer{},errors.New("выберите пересчитанный тариф СДЭК для этого состава коробок")}
 	var offerID int64;offerStatus:="draft";if input.PackagingRequired{offerStatus="packaging_required"}
-	if err:=tx.QueryRow(ctx,`INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,cdek_tariff_code,cdek_tariff_name,manager_note,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,orderID,token,revision,offerStatus,delivery,address,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),strings.TrimSpace(input.ManagerNote),actor.CustomerID).Scan(&offerID);err!=nil{return ShipmentOffer{},fmt.Errorf("create shipment offer: %w",err)}
+	if err:=tx.QueryRow(ctx,`INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,cdek_tariff_code,cdek_tariff_name,manager_note,created_by,delivery_payee) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'carrier') RETURNING id`,orderID,token,revision,offerStatus,delivery,address,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),strings.TrimSpace(input.ManagerNote),actor.CustomerID).Scan(&offerID);err!=nil{return ShipmentOffer{},fmt.Errorf("create shipment offer: %w",err)}
 	seen:=map[int64]bool{};selected:=map[int64]int{};subtotal:=0.0
 	for _,requested:=range input.Items{
 		if requested.OrderItemID<=0||requested.Quantity<=0||seen[requested.OrderItemID]{return ShipmentOffer{},errors.New("некорректный состав предложения")};seen[requested.OrderItemID]=true
@@ -204,7 +205,7 @@ func (repository *PostgresRepository) SendShipmentOffer(ctx context.Context,acto
 
 func (repository *PostgresRepository) ShipmentOffer(ctx context.Context,id int64)(ShipmentOffer,error){
 	var result ShipmentOffer
-	err:=repository.pool.QueryRow(ctx,`SELECT id,version,status,delivery_fee::DOUBLE PRECISION,subtotal::DOUBLE PRECISION,total::DOUBLE PRECISION,cdek_tariff_code,cdek_tariff_name,cdek_create_state,cdek_track_number,cdek_status,cdek_status_reason,cdek_last_error,manager_note,notified_at,expires_at FROM shipment_offers WHERE id=$1`,id).Scan(&result.ID,&result.Version,&result.Status,&result.DeliveryFee,&result.Subtotal,&result.Total,&result.CDEKTariffCode,&result.CDEKTariffName,&result.CDEKCreateState,&result.CDEKTrackNumber,&result.CDEKStatus,&result.CDEKStatusReason,&result.CDEKLastError,&result.ManagerNote,&result.NotifiedAt,&result.ExpiresAt);if err!=nil{return result,err}
+	err:=repository.pool.QueryRow(ctx,`SELECT id,version,status,delivery_fee::DOUBLE PRECISION,subtotal::DOUBLE PRECISION,total::DOUBLE PRECISION,delivery_payee,cdek_tariff_code,cdek_tariff_name,cdek_create_state,cdek_track_number,cdek_status,cdek_status_reason,cdek_last_error,manager_note,notified_at,expires_at FROM shipment_offers WHERE id=$1`,id).Scan(&result.ID,&result.Version,&result.Status,&result.DeliveryFee,&result.Subtotal,&result.Total,&result.DeliveryPayee,&result.CDEKTariffCode,&result.CDEKTariffName,&result.CDEKCreateState,&result.CDEKTrackNumber,&result.CDEKStatus,&result.CDEKStatusReason,&result.CDEKLastError,&result.ManagerNote,&result.NotifiedAt,&result.ExpiresAt);if err!=nil{return result,err}
 	items,err:=repository.pool.Query(ctx,`SELECT order_item_id,sku,product_name,unit_price::DOUBLE PRECISION,COALESCE(original_unit_price,unit_price)::DOUBLE PRECISION,quantity FROM shipment_offer_items WHERE shipment_offer_id=$1 ORDER BY id`,id);if err!=nil{return result,err};defer items.Close();result.Items=[]ShipmentOfferItem{};for items.Next(){var item ShipmentOfferItem;if err:=items.Scan(&item.OrderItemID,&item.SKU,&item.ProductName,&item.UnitPrice,&item.OriginalUnitPrice,&item.Quantity);err!=nil{return result,err};result.Items=append(result.Items,item)};if err:=items.Err();err!=nil{return result,err}
 	rows,err:=repository.pool.Query(ctx,`SELECT box_no,length_cm,width_cm,height_cm,weight_grams,contents FROM shipment_offer_boxes WHERE shipment_offer_id=$1 ORDER BY box_no`,id);if err!=nil{return result,err};defer rows.Close();result.Boxes=[]ShipmentOfferBox{};for rows.Next(){var box ShipmentOfferBox;var raw []byte;if err:=rows.Scan(&box.BoxNo,&box.LengthCM,&box.WidthCM,&box.HeightCM,&box.WeightGrams,&raw);err!=nil{return result,err};_ = json.Unmarshal(raw,&box.Contents);result.Boxes=append(result.Boxes,box)};return result,rows.Err()
 }
