@@ -15,7 +15,10 @@ export function AdminOperations({ onOpenProcurement }: { onOpenProcurement: () =
   useEffect(() => {
     let active = true;
     api<OperationsResponse>("/api/v1/admin/operations")
-      .then((result) => { if (active) setOperations(result); })
+      .then((result) => {
+        if (!result.operations || !Array.isArray(result.operations.checks)) throw new Error("Ответ диагностики неполный");
+        if (active) setOperations(result);
+      })
       .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Не удалось загрузить диагностику"); });
     return () => { active = false; };
   }, []);
