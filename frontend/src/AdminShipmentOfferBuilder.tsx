@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 
 type Item = { id:number;productName:string;unitPrice:number;quantity:number;packageLengthCm:number;packageWidthCm:number;packageHeightCm:number;packageWeightGrams:number };
-type Offer = {id:number;status:string;deliveryFee:number;total:number;expiresAt?:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<unknown>};
+type Offer = {id:number;status:string;deliveryFee:number;deliveryPayee?:"shop"|"carrier";total:number;expiresAt?:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<unknown>};
 type Box = { key:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number;contents:Record<number,number> };
 type Quote = {tariffCode:number;tariffName:string;price:number;daysMin:number;daysMax:number};
 
@@ -65,13 +65,13 @@ export function AdminShipmentOffers({orderId,items,offers,deliveryMethod,deliver
     {offers.map((offer)=><article className="admin-shipment-offer" key={offer.id}>
       <div><strong>Отправка №{offer.id}</strong><small>{labels[offer.status]||offer.status}</small></div>
       <div>{offer.items.map(item=><span key={item.orderItemId}>{item.productName} · {item.quantity} шт. · {money.format(item.unitPrice)}{item.originalUnitPrice!==item.unitPrice&&<small>При оформлении {money.format(item.originalUnitPrice)}</small>}</span>)}</div>
-      <div><span>{offer.boxes.length} кор. · доставка справочно {money.format(offer.deliveryFee)}</span><strong>Растения к оплате: {money.format(offer.total)}</strong></div>
+      <div><span>{offer.boxes.length} кор. · {offer.deliveryPayee === "carrier" ? "доставка справочно" : "доставка"} {money.format(offer.deliveryFee)}</span><strong>{offer.deliveryPayee === "carrier" ? "Растения к оплате" : "Итого к оплате"}: {money.format(offer.total)}</strong></div>
       {offer.cdekCreateState==="unknown"&&<p className="admin-flag">Ответ СДЭК потерян. Ищем заявку по номеру без повторного создания.</p>}
       {offer.cdekCreateState==="manual_review"&&<p className="admin-flag">Проверьте отправку №{offer.id} в кабинете СДЭК. Автоповтор остановлен.</p>}
       {offer.cdekTrackNumber&&<small>Трек: {offer.cdekTrackNumber}</small>}
       {offer.cdekStatus&&<small>Статус СДЭК: {offer.cdekStatusReason||offer.cdekStatus}</small>}
       {offer.cdekLastError&&["unknown","manual_review","retry"].includes(offer.cdekCreateState)&&<small>{offer.cdekLastError}</small>}
-      {offer.expiresAt&&<small>Оплатить растения до {new Date(offer.expiresAt).toLocaleString("ru-RU")}</small>}
+      {offer.expiresAt&&<small>{offer.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить отправку"} до {new Date(offer.expiresAt).toLocaleString("ru-RU")}</small>}
       {offer.status==="draft"&&!readOnly&&<button type="button" className="admin-action" disabled={busy} onClick={()=>void send(offer.id)}>Уведомить клиента</button>}
     </article>)}
     <small>Повторная отправка уведомления не продлевает 48 часов. Истечение частичной отправки не отменяет остальные позиции заказа.</small>

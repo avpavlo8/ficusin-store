@@ -28,6 +28,7 @@ type Adjustment = {
   orderNumber: string;
   subtotal: number;
   deliveryFee: number;
+  deliveryPayee?: "shop" | "carrier";
   deliveryFeePending: boolean;
   hasPreorder: boolean;
   status: string;
@@ -41,7 +42,7 @@ type Adjustment = {
   shipmentOffers: ShipmentOffer[];
 };
 
-type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
+type ShipmentOffer = { id:number;version:number;status:string;deliveryFee:number;deliveryPayee?:"shop"|"carrier";subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;managerNote:string;cdekCreateState:string;cdekTrackNumber:string;cdekStatus:string;cdekStatusReason:string;cdekLastError:string;items:Array<{orderItemId:number;productName:string;unitPrice:number;originalUnitPrice:number;quantity:number}>;boxes:Array<{boxNo:number;lengthCm:number;widthCm:number;heightCm:number;weightGrams:number}> };
 const ShipmentOffers=lazy(()=>import("./AdminShipmentOfferBuilder").then((module)=>({default:module.AdminShipmentOffers})));
 
 const emptyPayment: PaymentBalance = {
@@ -94,7 +95,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     () => lines.reduce((total, line) => total + line.unitPrice * line.quantity, 0),
     [lines],
   );
-  const draftTotal = draftSubtotal;
+  const draftTotal = draftSubtotal + (adjustment?.deliveryPayee === "carrier" ? 0 : Math.max(0, deliveryFee));
 
   const compositionSaved = useMemo(() => {
     if (!adjustment || adjustment.items.length !== lines.length) return false;
@@ -274,8 +275,8 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
         <button type="button" className="admin-action" disabled={readOnly || !addProduct} onClick={appendProduct}>Добавить</button>
       </div>
       <div className="admin-order-draft-total">
-        <small>После сохранения эта сумма станет стоимостью растений</small>
-        <span>Новая сумма к оплате за растения</span>
+        <small>После сохранения эта сумма станет итогом заказа</small>
+        <span>{adjustment.deliveryPayee === "carrier" ? "Новая сумма к оплате за растения" : "Новая сумма к оплате"}</span>
         <strong>{money.format(draftTotal)}</strong>
       </div>
     </section>
@@ -283,10 +284,10 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
     {order.deliveryMethod !== "pickup" && <section className="admin-block">
       <strong>Доставка</strong>
       <div className="admin-form-grid">
-        <label>Стоимость доставки, справочно, ₽<input type="number" min="0" step="1" value={deliveryFee} disabled={readOnly}
+        <label>{adjustment.deliveryPayee === "carrier" ? "Стоимость доставки, справочно, ₽" : "Стоимость доставки, ₽"}<input type="number" min="0" step="1" value={deliveryFee} disabled={readOnly}
           onChange={(event) => { setDeliveryFee(Math.max(0, Number(event.target.value))); setPaymentLink(""); }} /></label>
       </div>
-      <small>Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений.</small>
+      <small>{adjustment.deliveryPayee === "carrier" ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений." : "Стоимость доставки входит в сумму оплаты заказа."}</small>
       {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && <p className="admin-flag">СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной отправки.</p>}
       {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && <p className="admin-flag">Проверьте заказ {adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.</p>}
       {order.deliveryMethod === "cdek" && adjustment.cdekStatus && <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>}
@@ -299,7 +300,7 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
 
     <section className="admin-block admin-order-payment-block">
       <strong>Оплата</strong>
-      <p>Растения к оплате: <b>{money.format(shownTotal)}</b>{hasUnsavedChanges && <small> · после сохранения</small>} · получено: <b>{money.format(payment.paid)}</b> · возвращено: <b>{money.format(payment.refunded)}</b></p>
+      <p>{adjustment.deliveryPayee === "carrier" ? "Растения к оплате" : "Итого к оплате"}: <b>{money.format(shownTotal)}</b>{hasUnsavedChanges && <small> · после сохранения</small>} · получено: <b>{money.format(payment.paid)}</b> · возвращено: <b>{money.format(payment.refunded)}</b></p>
       {shownDue > 0 && <p className="admin-flag">К доплате: <b>{money.format(shownDue)}</b></p>}
       {shownOverpaid > 0 && <p className="admin-flag">Переплата: <b>{money.format(shownOverpaid)}</b></p>}
       {hasUnsavedChanges && shownDue > 0 && <p>Сначала сохраните изменения — старая ссылка больше не используется.</p>}

@@ -21,6 +21,7 @@ type OrderDetail = {
   paymentStatus: string;
   paymentMethod: string;
   deliveryFee: number;
+  deliveryPayee?: "shop" | "carrier";
   trackNumber?: string;
   hasPreorder?: boolean;
   deliveryFeePending?: boolean;
@@ -36,7 +37,7 @@ type OrderDetail = {
   shipmentOffers: ShipmentOffer[];
 };
 
-type ShipmentOffer = { id:number;paymentToken?:string;status:string;deliveryFee:number;subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;boxes:number;items:Array<{productName:string;unitPrice:number;originalUnitPrice?:number;quantity:number}> };
+type ShipmentOffer = { id:number;paymentToken?:string;status:string;deliveryFee:number;deliveryPayee?:"shop"|"carrier";subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;boxes:number;items:Array<{productName:string;unitPrice:number;originalUnitPrice?:number;quantity:number}> };
 
 const money = new Intl.NumberFormat("ru-RU", {
   style: "currency",
@@ -74,9 +75,11 @@ const paymentLabels: Record<string, string> = {
   refunded: "Возвращён",
 };
 
-const deliveryPendingText = (order: OrderDetail) => order.repackRequested
-  ? "Менеджер проверит упаковку и уточнит стоимость доставки до отправки. Доставку вы оплатите перевозчику при получении."
-  : "Менеджер уточнит стоимость доставки до отправки. Доставку вы оплатите перевозчику при получении.";
+const deliveryPendingText = (order: OrderDetail) => order.deliveryPayee === "carrier"
+  ? (order.repackRequested
+    ? "Менеджер проверит упаковку и уточнит стоимость доставки до отправки. Доставку вы оплатите перевозчику при получении."
+    : "Менеджер уточнит стоимость доставки до отправки. Доставку вы оплатите перевозчику при получении.")
+  : "Менеджер уточнит стоимость доставки и сообщит итоговую сумму заказа до оплаты.";
 
 export default function AccountOrderPage({ orderNumber }: { orderNumber: string }) {
   const [user, setUser] = useState<StoreUser | null>(null);
@@ -212,9 +215,9 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             <div><p className="eyebrow">Частичная отправка</p><h3>Готовы к отправке</h3></div>
             {order.shipmentOffers.map(offer=><article className={`account-shipment-offer account-shipment-offer-${offer.status}`} key={offer.id}>
               <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span>{item.originalUnitPrice!=null&&item.originalUnitPrice!==item.unitPrice&&<small>При оформлении: {money.format(item.originalUnitPrice)} · цена обновлена при поступлении</small>}</p>)}</div>
-              <div><span>Растения</span><strong>{money.format(offer.subtotal)}</strong><span>Доставка, справочно · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>К оплате за растения</span><strong>{money.format(offer.total)}</strong></div>
-              <p className="order-note">Доставка оплачивается перевозчику при получении.</p>
-              {offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`Оплатить растения ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
+              <div><span>Растения</span><strong>{money.format(offer.subtotal)}</strong><span>{offer.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"} · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>{offer.deliveryPayee === "carrier" ? "К оплате за растения" : "К оплате"}</span><strong>{money.format(offer.total)}</strong></div>
+              {offer.deliveryPayee === "carrier"&&<p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
+              {offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`${offer.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить отправку"} ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
               {offer.status==="payment_pending"&&<p className="order-note">Платёж проверяется. Повторная ссылка не создаётся.</p>}
               {offer.status==="paid"&&<p className="order-note">Эта отправка оплачена.</p>}
               {offer.status==="expired"&&<p className="order-note">Срок предложения истёк. Ожидаемые растения остались в исходном заказе.</p>}
@@ -225,14 +228,14 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
 
           <section className="order-totals">
             <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>
-            <div><span>Доставка, справочно</span><span>{order.deliveryFeePending ? "уточняет менеджер" : money.format(order.deliveryFee)}</span></div>
-            <div className="total"><span>К оплате за растения</span><span>{money.format(order.total)}</span></div>
+            <div><span>{order.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"}</span><span>{order.deliveryFeePending ? "уточняет менеджер" : money.format(order.deliveryFee)}</span></div>
+            <div className="total"><span>{order.deliveryPayee === "carrier" ? "К оплате за растения" : "Итого к оплате"}</span><span>{money.format(order.total)}</span></div>
             {order.paidAmount > 0 && <div><span>Оплачено</span><span>{money.format(order.paidAmount)}</span></div>}
             {order.refundedAmount > 0 && <div><span>Возвращено</span><span>{money.format(order.refundedAmount)}</span></div>}
             {order.amountDue > 0 && <div className="total"><span>К доплате</span><span>{money.format(order.amountDue)}</span></div>}
             {order.hasPreorder && <p className="order-note">В заказе есть товар, наличие которого должен подтвердить менеджер. Оплата откроется после подтверждения.</p>}
             {order.deliveryFeePending && <p className="order-note">{deliveryPendingText(order)}</p>}
-            {!order.deliveryFeePending && <p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
+            {!order.deliveryFeePending && order.deliveryPayee === "carrier" && <p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
           </section>
 
           <section className="order-facts">
@@ -241,9 +244,9 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             {order.trackNumber && <div><small>Трек-номер СДЭК</small><span>{order.trackNumber}</span></div>}
             <div><small>Оплата</small><span className={order.amountDue === 0 ? "payment-state paid" : "payment-state unpaid"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
             {order.paymentReady && !order.hasPreorder && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
-              {paying ? "Открываем оплату…" : `Оплатить ${money.format(order.amountDue)}`}
+              {paying ? "Открываем оплату…" : `${order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"} ${money.format(order.amountDue)}`}
             </button>}
-            {!order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит наличие растений; после его решения здесь появится кнопка оплаты.</p>}
+            {!order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит {order.hasPreorder ? "наличие растений" : "детали заказа"}; после его решения здесь появится кнопка оплаты.</p>}
             {order.amountDue === 0 && order.paymentStatus === "paid" && <p className="order-note">Заказ полностью оплачен.</p>}
             <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
             {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
