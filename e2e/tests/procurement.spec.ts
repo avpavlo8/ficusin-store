@@ -349,7 +349,7 @@ test("@desktop procurement recommendation keeps category and purchasing context 
   await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("6");
   await expect(dialog.getByLabel("Цена в рублях", { exact: true })).toHaveValue("5.3");
   await expect(dialog.getByText("31,80 ₽", { exact: true })).toBeVisible();
-  await expect(dialog.locator("tbody tr").first().getByText("Остаток СБИС: 2 шт.", { exact: true })).toBeVisible();
+  await expect(dialog.locator("tbody tr").first().getByText("Остаток: 2 шт.", { exact: true })).toBeVisible();
   expect((await dialog.locator(".procurement-plan-table-wrap").boundingBox())!.height).toBeGreaterThan(200);
 });
 
@@ -392,14 +392,14 @@ test("@desktop procurement saves and sorts after leaving the edited row", async 
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
   await expect(dialog.getByRole("columnheader", { name: "Остаток СБИС", exact: true })).toHaveCount(0);
-  await expect(dialog.locator("tbody tr").first().getByText("Остаток СБИС: 2 шт.")).toBeVisible();
+  await expect(dialog.locator("tbody tr").first().getByText("Остаток: 2 шт.")).toBeVisible();
   await dialog.getByLabel("Рекомендации к закупке").getByRole("button", { name: "+ Добавить" }).click();
   await expect(dialog.locator("tbody tr")).toHaveCount(2);
   const firstPrice = dialog.locator("tbody tr").first().getByLabel("Цена в рублях");
   await firstPrice.fill("20");
   await page.waitForTimeout(500);
   await expect(dialog.locator("tbody tr").first().getByText("Тестовый товар D10")).toBeVisible();
-  await expect(dialog.getByText("Сохранится после выхода из строки или вкладки")).toBeVisible();
+  await expect(dialog.getByText("Сохраним при выходе")).toBeVisible();
   await dialog.getByLabel("Название плана").click();
   await expect(dialog.locator("tbody tr").first().getByText("Олива D18")).toBeVisible();
   await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
