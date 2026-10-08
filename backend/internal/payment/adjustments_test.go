@@ -7,9 +7,13 @@ func TestBalanceFromStateWaitsForPlantsButNotDeliveryQuote(t *testing.T) {
 	if waiting.Ready || waiting.Due != 1500 || waiting.PaymentStatus != StatusPending {
 		t.Fatalf("заказ с недоступными растениями не должен оплачиваться: %+v", waiting)
 	}
-	ready := balanceFromState(orderMoneyState{total: 1500, feePending: true, method: MethodOnline, status: "new"})
+	ready := balanceFromState(orderMoneyState{total: 1500, feePending: true, deliveryPayee: "carrier", method: MethodOnline, status: "new"})
 	if !ready.Ready || ready.Due != 1500 {
 		t.Fatalf("справочная стоимость доставки не должна блокировать оплату растений: %+v", ready)
+	}
+	legacy := balanceFromState(orderMoneyState{total: 1500, feePending: true, deliveryPayee: "shop", method: MethodOnline, status: "new"})
+	if legacy.Ready {
+		t.Fatalf("старый заказ с оплатой доставки магазину ждёт расчёта доставки: %+v", legacy)
 	}
 }
 

@@ -28,17 +28,18 @@ type Balance struct {
 }
 
 type orderMoneyState struct {
-	id          int64
-	number      string
-	total       float64
-	paid        float64
-	refunded    float64
-	feePending  bool
-	hasPreorder bool
-	method      string
-	status      string
-	email       string
-	phone       string
+	id            int64
+	number        string
+	total         float64
+	paid          float64
+	refunded      float64
+	feePending    bool
+	hasPreorder   bool
+	deliveryPayee string
+	method        string
+	status        string
+	email         string
+	phone         string
 }
 
 func cents(value float64) int64           { return int64(math.Round(value * 100)) }
@@ -58,7 +59,7 @@ func balanceFromState(state orderMoneyState) Balance {
 		overpaid = -due
 		due = 0
 	}
-	ready := !state.hasPreorder && state.method == MethodOnline &&
+	ready := !(state.feePending && state.deliveryPayee == "shop") && !state.hasPreorder && state.method == MethodOnline &&
 		state.status != "cancelled" && state.status != "completed"
 
 	status := StatusPending
@@ -90,17 +91,17 @@ func balanceFromState(state orderMoneyState) Balance {
 func (service *Service) moneyStateByOrderID(ctx context.Context, orderID int64) (orderMoneyState, error) {
 	var state orderMoneyState
 	err := service.pool.QueryRow(ctx, `
-		SELECT o.id, o.order_number, o.subtotal::DOUBLE PRECISION,
+		SELECT o.id, o.order_number, (CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END)::DOUBLE PRECISION,
 			COALESCE((SELECT SUM(p.amount) FROM payments p
 				WHERE p.order_id=o.id AND p.status='paid'),0)::DOUBLE PRECISION,
 			COALESCE((SELECT SUM(r.amount) FROM payment_refunds r
 				WHERE r.order_id=o.id AND r.status='succeeded'),0)::DOUBLE PRECISION,
-			o.delivery_fee_pending=1, o.has_preorder=1, o.payment_method, o.status,
+			o.delivery_fee_pending=1, o.has_preorder=1, o.delivery_payee, o.payment_method, o.status,
 			COALESCE(o.email,''), COALESCE(o.phone,'')
 		FROM orders o WHERE o.id=$1
 	`, orderID).Scan(
 		&state.id, &state.number, &state.total, &state.paid, &state.refunded,
-		&state.feePending, &state.hasPreorder, &state.method, &state.status,
+		&state.feePending, &state.hasPreorder, &state.deliveryPayee, &state.method, &state.status,
 		&state.email, &state.phone,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -271,7 +272,8 @@ func (service *Service) StartShipmentOffer(ctx context.Context, token string, cu
 	var amount float64
 	var expires time.Time
 	var offerRevision, revision int
-	err := service.pool.QueryRow(ctx, `SELECT so.id,o.id,o.order_number,COALESCE(o.email,''),o.phone,so.status,so.subtotal::DOUBLE PRECISION,so.expires_at,so.address_snapshot,o.address,so.order_revision,o.shipment_revision FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.public_token=$1 AND o.customer_id=$2`, token, customerID).Scan(&offerID, &orderID, &number, &email, &phone, &status, &amount, &expires, &addressSnapshot, &address, &offerRevision, &revision)
+	var deliveryPayee string
+	err := service.pool.QueryRow(ctx, `SELECT so.id,o.id,o.order_number,COALESCE(o.email,''),o.phone,so.status,(CASE WHEN so.delivery_payee='carrier' THEN so.subtotal ELSE so.total END)::DOUBLE PRECISION,so.delivery_payee,so.expires_at,so.address_snapshot,o.address,so.order_revision,o.shipment_revision FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.public_token=$1 AND o.customer_id=$2`, token, customerID).Scan(&offerID, &orderID, &number, &email, &phone, &status, &amount, &deliveryPayee, &expires, &addressSnapshot, &address, &offerRevision, &revision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("предложение отправки не найдено")
 	}
@@ -336,6 +338,15 @@ func (service *Service) StartShipmentOffer(ctx context.Context, token string, cu
 		items = append(items, item)
 	}
 	rows.Close()
+	if deliveryPayee == "shop" {
+		var fee float64
+		if err := service.pool.QueryRow(ctx, `SELECT delivery_fee::DOUBLE PRECISION FROM shipment_offers WHERE id=$1`, offerID).Scan(&fee); err != nil {
+			return "", err
+		}
+		if fee > 0 {
+			items = append(items, integration.PaymentItem{Name: "Доставка", Price: fee, Quantity: 1})
+		}
+	}
 	if paymentID == 0 {
 		key, err = idempotenceKey()
 		if err != nil {

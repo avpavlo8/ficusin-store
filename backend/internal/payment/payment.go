@@ -142,13 +142,15 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		phone         string
 		method        string
 		hasPreorder   bool
+		deliveryPayee string
+		feePending    int
 		existingURL   string
 		pendingAmount float64
 		paymentID     int64
 		key           string
 	)
 	err := service.pool.QueryRow(ctx, `
-		SELECT o.id, o.subtotal::DOUBLE PRECISION, o.has_preorder=1,
+		SELECT o.id, (CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END)::DOUBLE PRECISION, o.has_preorder=1, o.delivery_payee, o.delivery_fee_pending,
 			o.payment_status, o.status, COALESCE(o.email, ''), o.phone, o.payment_method,
 			COALESCE((
 			SELECT p.confirmation_url FROM payments p
@@ -162,7 +164,7 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 		FROM orders o
 		WHERE o.order_number = $1
 	`, orderNumber).Scan(
-		&orderID, &amount, &hasPreorder, &status, &orderStatus, &email, &phone, &method, &existingURL, &pendingAmount,
+		&orderID, &amount, &hasPreorder, &deliveryPayee, &feePending, &status, &orderStatus, &email, &phone, &method, &existingURL, &pendingAmount,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("заказ не найден")
@@ -182,6 +184,9 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	if hasPreorder {
 		return "", errors.New("оплата будет доступна после подтверждения наличия всех растений менеджером")
 	}
+	if deliveryPayee == "shop" && feePending == 1 {
+		return "", errors.New("стоимость доставки ещё не рассчитана — менеджер пришлёт ссылку на оплату")
+	}
 	if err := service.checkOrderStock(ctx, orderID); err != nil {
 		return "", err
 	}
@@ -200,6 +205,15 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	items, err := service.orderItems(ctx, orderID)
 	if err != nil {
 		return "", err
+	}
+	if deliveryPayee == "shop" {
+		var deliveryFee float64
+		if err := service.pool.QueryRow(ctx, `SELECT delivery_fee::DOUBLE PRECISION FROM orders WHERE id=$1`, orderID).Scan(&deliveryFee); err != nil {
+			return "", err
+		}
+		if deliveryFee > 0 {
+			items = append(items, integration.PaymentItem{Name: "Доставка", Price: deliveryFee, Quantity: 1})
+		}
 	}
 	key, err = idempotenceKey()
 	if err != nil {
