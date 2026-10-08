@@ -58,7 +58,7 @@ jobs:
           -v "$GITHUB_WORKSPACE:/work"
           -w /work/e2e
           mcr.microsoft.com/playwright:v1.63.0-noble
-          npm test -- --workers=4
+          npm test
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
