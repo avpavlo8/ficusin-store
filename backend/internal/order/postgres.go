@@ -26,6 +26,7 @@ func (repository *PostgresRepository) ListForCustomer(
 		SELECT
 			o.order_number,
 			o.delivery_method,
+			o.delivery_payee,
 			o.total::DOUBLE PRECISION,
 			o.status,
 			o.created_at,
@@ -48,6 +49,7 @@ func (repository *PostgresRepository) ListForCustomer(
 		if err := rows.Scan(
 			&summary.OrderNumber,
 			&summary.DeliveryMethod,
+			&summary.DeliveryPayee,
 			&summary.Total,
 			&summary.Status,
 			&summary.CreatedAt,
@@ -74,7 +76,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 	var orderID int64
 	err := repository.pool.QueryRow(ctx, `
 		SELECT
-			o.id, o.order_number, o.delivery_method, o.address, o.comment,o.cancellation_reason,
+			o.id, o.order_number, o.delivery_method, o.delivery_payee, o.address, o.comment,o.cancellation_reason,
 			o.customer_name, o.phone, o.email, o.status, o.payment_method, o.payment_status,
 			COALESCE(o.cdek_track_number, ''), o.has_preorder = 1,
 			o.delivery_fee::DOUBLE PRECISION,
@@ -96,6 +98,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&orderID,
 		&detail.OrderNumber,
 		&detail.DeliveryMethod,
+		&detail.DeliveryPayee,
 		&detail.Address,
 		&detail.Comment,
 		&detail.CancellationReason,
@@ -148,14 +151,14 @@ func (repository *PostgresRepository) DetailForCustomer(
 		return nil, fmt.Errorf("read order items: %w", err)
 	}
 	rows.Close()
-	offerRows, err := repository.pool.Query(ctx, `SELECT id,public_token,status,delivery_fee::DOUBLE PRECISION,subtotal::DOUBLE PRECISION,total::DOUBLE PRECISION,notified_at,expires_at,(SELECT COUNT(*) FROM shipment_offer_boxes WHERE shipment_offer_id=so.id)::INTEGER FROM shipment_offers so WHERE order_id=$1 ORDER BY id DESC`, orderID)
+	offerRows, err := repository.pool.Query(ctx, `SELECT id,public_token,status,delivery_payee,delivery_fee::DOUBLE PRECISION,subtotal::DOUBLE PRECISION,total::DOUBLE PRECISION,notified_at,expires_at,(SELECT COUNT(*) FROM shipment_offer_boxes WHERE shipment_offer_id=so.id)::INTEGER FROM shipment_offers so WHERE order_id=$1 ORDER BY id DESC`, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query shipment offers: %w", err)
 	}
 	detail.ShipmentOffers = []ShipmentOffer{}
 	for offerRows.Next() {
 		var offer ShipmentOffer
-		if err := offerRows.Scan(&offer.ID, &offer.PaymentToken, &offer.Status, &offer.DeliveryFee, &offer.Subtotal, &offer.Total, &offer.NotifiedAt, &offer.ExpiresAt, &offer.Boxes); err != nil {
+		if err := offerRows.Scan(&offer.ID, &offer.PaymentToken, &offer.Status, &offer.DeliveryPayee, &offer.DeliveryFee, &offer.Subtotal, &offer.Total, &offer.NotifiedAt, &offer.ExpiresAt, &offer.Boxes); err != nil {
 			offerRows.Close()
 			return nil, err
 		}
