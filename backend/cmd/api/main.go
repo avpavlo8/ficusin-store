@@ -95,6 +95,7 @@ func main() {
 	)
 	defer stop()
 
+	// Keep liveness available during database setup; readiness is served only after the router swap.
 	liveHandler := newSwitchHandler(http.HandlerFunc(bootstrapHTTPHandler))
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address,
