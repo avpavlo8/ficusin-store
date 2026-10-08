@@ -6,10 +6,8 @@ const root = new URL("../dist/", import.meta.url).pathname;
 const limits = {
   entryJS: 105 * 1024,
   css: 45 * 1024,
-  // CRM stage 05 adds the auditable recommendation and supplier follow-up UI
-  // to the already lazy-loaded admin chunk. Keep the allowance tight around
-  // that isolated chunk rather than moving admin code into the public entry.
-  asyncJS: 38 * 1024,
+  // The lazy admin chunk includes procurement planning and locale-safe price fields.
+  asyncJS: 38.5 * 1024,
   staticAsset: 900 * 1024,
 };
 
