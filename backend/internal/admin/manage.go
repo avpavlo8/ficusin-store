@@ -1124,13 +1124,13 @@ func (repository *PostgresRepository) SetDeliveryFee(
 	`, id).Scan(&before); err != nil {
 		return Order{}, err
 	}
-	// The total is rebuilt from the goods rather than adjusted, so setting
-	// the fee twice cannot stack two deliveries onto one order.
+	// Delivery is paid to the carrier on receipt, so changing its estimate
+	// must not change the amount the shop collects for plants.
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders
 		SET delivery_fee = $2,
 			delivery_fee_pending = 0,
-			total = subtotal + $2
+			total = subtotal
 		WHERE id = $1
 	`, id, fee); err != nil {
 		return Order{}, fmt.Errorf("update delivery fee: %w", err)

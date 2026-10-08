@@ -101,47 +101,16 @@ func releaseOrderReservationsForEdit(ctx context.Context, tx pgx.Tx, orderID int
 }
 
 func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quantity int) (int, bool, error) {
-	rows, err := tx.Query(ctx, `
-		SELECT id,GREATEST(available_qty-reserved_qty,0) FROM inventory
-		WHERE variant_id=$1 ORDER BY id FOR UPDATE
-	`, variantID)
-	if err != nil {
+	// The availability snapshot decides whether manager review is needed.
+	// Editing an order no longer creates any local inventory reservation.
+	var available int
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(SUM(GREATEST(available_qty-reserved_qty,0)),0)::INTEGER
+		FROM inventory WHERE variant_id=$1
+	`, variantID).Scan(&available); err != nil {
 		return 0, false, err
 	}
-	type slot struct {
-		id   int64
-		free int
-	}
-	slots := []slot{}
-	available := 0
-	for rows.Next() {
-		var current slot
-		if err := rows.Scan(&current.id, &current.free); err != nil {
-			rows.Close()
-			return 0, false, err
-		}
-		slots = append(slots, current)
-		available += current.free
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, false, err
-	}
-	reserved := min(quantity, available)
-	remaining := reserved
-	for _, slot := range slots {
-		if remaining == 0 {
-			break
-		}
-		take := min(slot.free, remaining)
-		if take > 0 {
-			if _, err := tx.Exec(ctx, `UPDATE inventory SET reserved_qty=reserved_qty+$2 WHERE id=$1`, slot.id, take); err != nil {
-				return 0, false, err
-			}
-			remaining -= take
-		}
-	}
-	return reserved, reserved < quantity, nil
+	return 0, available < quantity, nil
 }
 
 func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id int64) (Order, error) {
@@ -334,7 +303,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET subtotal=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0),
-			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0)+delivery_fee,
+			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0),
 			shipment_revision=shipment_revision+1
 		WHERE id=$1
 	`, id); err != nil {

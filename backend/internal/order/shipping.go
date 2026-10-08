@@ -473,10 +473,9 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, err)
 			continue
 		}
-		cash := 0.0
-		if item.payStatus == "on_delivery" {
-			cash = item.total
-		}
+		// Plant payment stays with the shop. CDEK collects only its delivery
+		// charge from the recipient, including when plants were prepaid.
+		cash := item.deliveryFee
 		shipment, err := worker.cdek.CreateOrder(ctx, integration.ShipmentRequest{
 			OrderNumber:       item.number,
 			TariffCode:        item.tariff,

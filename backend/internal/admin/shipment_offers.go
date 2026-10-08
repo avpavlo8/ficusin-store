@@ -174,7 +174,9 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 		if !matched{return ShipmentOffer{},errors.New("выбранный тариф СДЭК больше недоступен — пересчитайте доставку")}
 	}
 	fingerprint,_:=json.Marshal(struct{Address string;Revision int;Items []ShipmentOfferLineInput;Boxes []ShipmentBoxInput}{address,revision,input.Items,input.Boxes})
-	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=CAST($2 AS NUMERIC)+CAST($3 AS NUMERIC),cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
+	// The carrier collects delivery from the recipient. Keep its quote for
+	// reference, but the offer total is the amount payable to the shop.
+	if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET subtotal=$2,delivery_fee=$3,total=$2,cdek_tariff_code=$4,cdek_tariff_name=$5,quote_fingerprint=md5($6),updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID,subtotal,input.DeliveryFee,input.CDEKTariffCode,strings.TrimSpace(input.CDEKTariffName),string(fingerprint));err!=nil{return ShipmentOffer{},err}
 	if err:=insertAudit(ctx,tx,actor,"order.shipment_offer.create","shipment_offer",fmt.Sprint(offerID),nil,map[string]any{"orderId":orderID,"status":offerStatus,"subtotal":subtotal,"deliveryFee":input.DeliveryFee});err!=nil{return ShipmentOffer{},err}
 	if err:=tx.Commit(ctx);err!=nil{return ShipmentOffer{},err};return repository.ShipmentOffer(ctx,offerID)
 }
@@ -191,7 +193,7 @@ func (repository *PostgresRepository) SendShipmentOffer(ctx context.Context,acto
 	if boxes==0{return ShipmentOffer{},errors.New("состав коробок не заполнен")}
 	link:="/account/orders/"+number
 	subject:="Товар по вашему заказу поступил"
-	body:="Товар по вашему заказу поступил. Теперь можно оплатить выбранную отправку в течение 48 часов.\n\nОткрыть заказ: "+link
+	body:="Товар по вашему заказу поступил. Теперь можно оплатить растения из выбранной отправки в течение 48 часов. Доставка оплачивается перевозчику при получении.\n\nОткрыть заказ: "+link
 	command,err:=tx.Exec(ctx,`INSERT INTO outbox(recipient,subject,body,shipment_offer_id) VALUES($1,$2,$3,$4) ON CONFLICT (shipment_offer_id) WHERE shipment_offer_id IS NOT NULL AND cancelled_at IS NULL DO NOTHING`,email,subject,body,offerID);if err!=nil{return ShipmentOffer{},err}
 	if command.RowsAffected()>0{if _,err:=tx.Exec(ctx,`UPDATE shipment_offers SET status='notifying',updated_at=CURRENT_TIMESTAMP WHERE id=$1`,offerID);err!=nil{return ShipmentOffer{},err}}
 	if err:=insertAudit(ctx,tx,actor,"order.shipment_offer.notify","shipment_offer",fmt.Sprint(offerID),map[string]any{"status":offerStatus},map[string]any{"status":"notifying"});err!=nil{return ShipmentOffer{},err}
