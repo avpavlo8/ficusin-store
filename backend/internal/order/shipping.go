@@ -119,6 +119,7 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 		WITH candidates AS (
 			SELECT so.id FROM shipment_offers so JOIN orders o ON o.id=so.order_id
 				WHERE so.status='paid' AND so.delivery_method='cdek' AND so.cdek_uuid=''
+					AND so.delivery_payee='shop'
 					AND so.cdek_create_state NOT IN ('unknown','manual_review')
 				AND (so.cdek_next_attempt_at IS NULL OR so.cdek_next_attempt_at<=CURRENT_TIMESTAMP)
 				AND o.status NOT IN ('cancelled','completed')
@@ -414,6 +415,10 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			SELECT o.id
 			FROM orders o
 				WHERE o.delivery_method = 'cdek'
+					-- CDEK recipient-paid transport depends on the merchant contract.
+					-- Do not create a carrier-payee shipment automatically until that
+					-- mode has been verified and wired into the integration.
+					AND o.delivery_payee = 'shop'
 					AND o.cdek_uuid = ''
 					AND o.cdek_create_state NOT IN ('unknown','manual_review')
 				AND o.delivery_fee_pending = 0
