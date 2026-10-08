@@ -43,14 +43,12 @@ function LineIcon({ name }: { name: "close" | "trash" }) {
   return <svg className="line-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
-type CheckoutIconName = "pickup" | "courier" | "cdek" | "post" | "card" | "wallet";
+type CheckoutIconName = "pickup" | "cdek" | "card" | "wallet";
 
 function CheckoutOptionIcon({ name }: { name: CheckoutIconName }) {
   if (name === "cdek") return <span className="checkout-brand-icon cdek-icon" aria-hidden="true">CDEK</span>;
-  if (name === "post") return <span className="checkout-brand-icon post-icon" aria-hidden="true"><svg viewBox="0 0 64 48"><path d="M7 35c13-2 20-10 27-25 3 11 11 18 23 20-10 3-18 3-25-1-7 7-15 9-25 6Z"/><path d="M13 40c16-1 28-8 36-20"/></svg></span>;
   const artwork = {
     pickup: <><path fill="#d5a35f" d="m9 28 15-7 14 7-15 8Z"/><path fill="#bd8146" d="m9 28 14 8v17L9 45Z"/><path fill="#e4bb7d" d="m23 36 15-8v17l-15 8Z"/><path fill="#f5e3c2" d="m18 24 14 8 4-2-14-8Z"/><path fill="#355b2d" d="M34 23c-2-10 3-16 11-18-1 8-4 13-11 18Z"/><path fill="#5e7b38" d="M34 24c1-9-4-14-11-16 0 8 4 13 11 16Z"/><path d="M34 13v18"/></>,
-    courier: <><circle cx="17" cy="46" r="7" fill="#263f28"/><circle cx="47" cy="46" r="7" fill="#263f28"/><path fill="#c9a86f" d="M15 42h29l-4-17H23l-7 9Z"/><path fill="#e4c792" d="M34 16h12l6 19H39Z"/><path d="M28 25h15M42 16l-3-7h-8M8 37h10"/><path fill="#9f5c30" d="M10 24h14v11H10Z"/></>,
     card: <><rect x="7" y="15" width="50" height="34" rx="6" fill="#e8bb72"/><rect x="7" y="20" width="50" height="8" fill="#2b332a"/><rect x="13" y="35" width="13" height="7" rx="2" fill="#f7e9cf"/><circle cx="49" cy="40" r="5" fill="#d84b2b" opacity=".85"/></>,
     wallet: <><path fill="#d8ad72" d="M9 19h43a6 6 0 0 1 6 6v27H15a6 6 0 0 1-6-6Z"/><path fill="#f1d29e" d="m12 19 34-10 3 10Z"/><path fill="#bc7b43" d="M40 31h20v13H40a6 6 0 1 1 0-13Z"/><circle cx="45" cy="37.5" r="2.5" fill="#fff1d4"/></>,
   } as const;
@@ -150,7 +148,6 @@ type CdekOffice = {
   work_time?: string;
 };
 type CdekQuote = { tariffCode: number; tariffName: string; price: number; daysMin: number; daysMax: number };
-type AddressDeliveryQuote = { price: number; daysMin?: number; daysMax?: number; service?: string };
 
 type CheckoutPanelProps = {
   page?: boolean;
@@ -198,20 +195,8 @@ type CheckoutPanelProps = {
   deliveryFee: number;
   total: number;
   submitting: boolean;
-  deliveryQuote: AddressDeliveryQuote | null;
-  deliveryQuoteLoading: boolean;
-  deliveryQuotePending: boolean;
-  deliveryQuoteError: string;
   deliveryFeePending: boolean;
-  addressDeliveryNeedsQuote: boolean;
-  calculateAddressDelivery: () => void | Promise<void>;
 };
-
-function deliveryDays(quote: AddressDeliveryQuote) {
-  if (!quote.daysMin && !quote.daysMax) return "";
-  if (quote.daysMin === quote.daysMax) return `${quote.daysMin} дн.`;
-  return `${quote.daysMin || 1}–${quote.daysMax || quote.daysMin} дн.`;
-}
 
 export function CheckoutPanel(props: CheckoutPanelProps) {
   const {
@@ -223,9 +208,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     cdekLoading, cdekError, cdekOffices, setCdekOfficeListOpen, cdekOfficeListOpen,
     cdekOfficeMatches, selectedOffice, cdekFeePending, cdekRepack, setCdekRepack,
     cartCount, cdekQuotes, paymentMethods, paymentMethod, setPaymentMethod, subtotal,
-    deliveryFee, total, submitting, deliveryQuote, deliveryQuoteLoading,
-    deliveryQuotePending, deliveryQuoteError, deliveryFeePending,
-    calculateAddressDelivery,
+    deliveryFee, total, submitting, deliveryFeePending,
   } = props;
   const [step, setStep] = useState<1|2|3>(1);
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
@@ -241,11 +224,10 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const deliveryIcon = (id: string): CheckoutIconName => id === "pickup" ? "pickup" : id === "cdek" ? "cdek" : id.includes("post") ? "post" : "courier";
+  const deliveryIcon = (id: string): CheckoutIconName => id === "cdek" ? "cdek" : "pickup";
   const selectedDelivery = availableDelivery.find((item) => item.id === delivery);
   const selectedPayment = paymentMethods.find((item) => item.id === paymentMethod);
-  const addressDelivery = delivery === "courier" || delivery === "post";
-  const deliveryBlocked = (delivery === "cdek" && !cdekOfficeCode) || deliveryQuoteLoading;
+  const deliveryBlocked = delivery === "cdek" && !cdekOfficeCode;
   const confirmationPending = Boolean(orderNumber && orderConfirmationPending);
 
   return (
@@ -295,12 +277,10 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <legend>Способ доставки</legend>
             <div className="delivery-options">
               {availableDelivery.map((item) => {
-                const dynamic = item.id === "courier" || item.id === "post";
-                const selectedDynamicQuote = dynamic && delivery === item.id ? deliveryQuote : null;
                 return <label className={delivery === item.id ? "selected" : ""} key={item.id}>
                   <input type="radio" name="delivery" value={item.id} checked={delivery === item.id} onChange={() => { setDelivery(item.id); track("add_shipping_info",{value:total,quantity:cartCount,properties:{delivery:item.id}}); }} />
                   <i className="option-icon"><CheckoutOptionIcon name={deliveryIcon(item.id)} /></i><span><b>{item.title}</b><small>{item.detail}</small></span>
-                  <strong>{item.id === "cdek" ? (delivery === "cdek" && cdekQuote ? money(cdekQuote.price) : "Рассчитать") : dynamic ? (selectedDynamicQuote ? money(selectedDynamicQuote.price) : "Рассчитать") : "0 ₽"}</strong>
+                  <strong>{item.id === "cdek" ? (delivery === "cdek" && cdekQuote ? money(cdekQuote.price) : "Рассчитать") : "0 ₽"}</strong>
                 </label>;
               })}
             </div>
@@ -321,14 +301,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                 {!cdekRepack && cdekQuote && cdekQuotes.length === 1 && <div className="cdek-quote"><b>{money(cdekQuote.price)}</b><span>{cdekQuote.daysMin === cdekQuote.daysMax ? `${cdekQuote.daysMin} дн.` : `${cdekQuote.daysMin}–${cdekQuote.daysMax} дн.`}</span><small>Расчёт по габаритам упаковки выбранных растений</small></div>}
               </div>
             ) : (
-              <div className={addressDelivery ? "cdek-picker" : undefined}>
-                <label>{delivery === "pickup" ? "Самовывоз" : "Адрес доставки"}<input name="address" required={delivery !== "pickup"} disabled={delivery === "pickup"} autoComplete="street-address" value={checkoutProfile.address} onChange={(event) => setCheckoutProfile((current) => ({ ...current, address: event.target.value }))} placeholder={delivery === "pickup" ? "Рязань, Новосёлов, 40А" : delivery === "courier" ? "Рязань, улица, дом, квартира" : "Город, улица, дом, квартира"} /></label>
-                {addressDelivery && <>
-                  <button type="button" className="primary-button" disabled={deliveryQuoteLoading || checkoutProfile.address.trim().length < 5} onClick={() => void calculateAddressDelivery()}>{deliveryQuoteLoading ? "Считаем…" : deliveryQuote ? "Пересчитать доставку" : "Рассчитать доставку"}</button>
-                  {deliveryQuote && <div className="cdek-quote"><b>{money(deliveryQuote.price)}</b><span>{deliveryDays(deliveryQuote)}</span><small>{deliveryQuote.service || (delivery === "post" ? "Почта России" : "Яндекс Доставка")}. Расчёт по габаритам упаковки заказа.</small></div>}
-                  {deliveryQuotePending && <div className="cdek-quote pending"><b>Стоимость уточнит менеджер</b><span>до отправки</span><small>{deliveryQuoteError || "Заказ можно оформить сейчас. Доставка оплачивается перевозчику при получении."}</small></div>}
-                  {!deliveryQuotePending && deliveryQuoteError && <p className="cdek-status error">{deliveryQuoteError}</p>}
-                </>}
+              <div>
+                <label>Самовывоз<input name="address" disabled autoComplete="street-address" value={checkoutProfile.address} placeholder="Рязань, Новосёлов, 40А" /></label>
               </div>
             )}
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(1)}>← Назад</button><button type="button" className="primary-button" disabled={deliveryBlocked} onClick={() => advance(3)}>Продолжить →</button></div>

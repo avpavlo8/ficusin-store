@@ -26,18 +26,9 @@ type CdekQuote = {
   daysMin: number;
   daysMax: number;
 };
-export type AddressDeliveryQuote = {
-  price: number;
-  daysMin?: number;
-  daysMax?: number;
-  service?: string;
-};
-
 const baseDeliveryOptions = [
   { id: "pickup", title: "Самовывоз в Рязани", detail: "Бесплатно", fee: 0 },
-  { id: "courier", title: "Курьер по Рязани", detail: "По тарифу Яндекс Доставки", fee: null },
   { id: "cdek", title: "СДЭК по России", detail: "Рассчитаем по адресу", fee: null },
-  { id: "post", title: "Почта России", detail: "По тарифу вашего договора с Почтой России", fee: null },
 ] as const;
 
 type UseCheckoutArgs = {
@@ -69,11 +60,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
   const [cdekAvailable, setCdekAvailable] = useState(true);
-  const [providerAvailability, setProviderAvailability] = useState({ courier: false, post: false });
-  const [deliveryQuote, setDeliveryQuote] = useState<AddressDeliveryQuote | null>(null);
-  const [deliveryQuoteLoading, setDeliveryQuoteLoading] = useState(false);
-  const [deliveryQuotePending, setDeliveryQuotePending] = useState(false);
-  const [deliveryQuoteError, setDeliveryQuoteError] = useState("");
   const [checkoutProfile, setCheckoutProfile] = useState<CheckoutProfile>({
     name: "",
     phone: "",
@@ -111,14 +97,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       .catch(() => setCdekAvailable(false));
   }, []);
 
-  useEffect(() => {
-    fetch("/api/v1/delivery/providers", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data: { courier?: boolean; post?: boolean }) =>
-        setProviderAvailability({ courier: Boolean(data.courier), post: Boolean(data.post) }),
-      )
-      .catch(() => setProviderAvailability({ courier: false, post: false }));
-  }, []);
 
   useEffect(() => {
     if (
@@ -154,25 +132,9 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
     };
   }, [delivery, cdekCityQuery, cdekCity]);
 
-  const cartFingerprint = useMemo(
-    () => cartLines.map((line) => `${line.id}:${line.quantity}`).sort().join("|"),
-    [cartLines],
-  );
-  useEffect(() => {
-    setDeliveryQuote(null);
-    setDeliveryQuotePending(false);
-    setDeliveryQuoteError("");
-  }, [delivery, checkoutProfile.address, cartFingerprint]);
-
   const deliveryOptions = useMemo(
-    () =>
-      baseDeliveryOptions.filter((item) => {
-        if (item.id === "cdek") return cdekAvailable;
-        if (item.id === "courier") return providerAvailability.courier;
-        if (item.id === "post") return providerAvailability.post;
-        return true;
-      }),
-    [cdekAvailable, providerAvailability],
+    () => baseDeliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable),
+    [cdekAvailable],
   );
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const availableDelivery = deliveryOptions;
@@ -180,17 +142,13 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
   const cdekQuote =
     cdekQuotes.find((item) => item.tariffCode === cdekTariffCode) ?? cdekQuotes[0] ?? null;
   const cdekFeePending = delivery === "cdek" && (!cdekQuote || cdekRepack);
-  const addressDelivery = delivery === "courier" || delivery === "post";
-  const addressDeliveryNeedsQuote = addressDelivery && !deliveryQuote && !deliveryQuotePending;
-  const deliveryFeePending = cdekFeePending || (addressDelivery && deliveryQuotePending);
+  const deliveryFeePending = cdekFeePending;
   const deliveryFee =
     delivery === "cdek"
       ? cdekFeePending
         ? 0
         : (cdekQuote?.price ?? 0)
-      : addressDelivery
-        ? (deliveryQuote?.price ?? 0)
-        : (deliveryOption?.fee ?? 0);
+      : (deliveryOption?.fee ?? 0);
   const officeSearch = cdekOfficeQuery.trim().toLowerCase();
   const cdekOfficeMatches = (
     officeSearch
@@ -246,50 +204,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       setCdekError(error instanceof Error ? error.message : "Не удалось рассчитать доставку");
     } finally {
       setCdekLoading(false);
-    }
-  }
-
-  async function calculateAddressDelivery() {
-    if (!addressDelivery) return;
-    const address = checkoutProfile.address.trim();
-    if (!address) {
-      setDeliveryQuoteError("Укажите адрес доставки");
-      return;
-    }
-    setDeliveryQuoteLoading(true);
-    setDeliveryQuoteError("");
-    setDeliveryQuote(null);
-    setDeliveryQuotePending(false);
-    try {
-      const response = await fetch(`/api/v1/delivery/${delivery}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address,
-          items: cartLines.map((line) => ({ id: line.id, quantity: line.quantity })),
-        }),
-      });
-      const data = (await response.json()) as {
-        quote?: AddressDeliveryQuote;
-        pending?: boolean;
-        message?: string;
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Не удалось рассчитать доставку");
-      if (data.quote?.price && data.quote.price > 0) {
-        setDeliveryQuote(data.quote);
-        return;
-      }
-      if (data.pending) {
-        setDeliveryQuotePending(true);
-        setDeliveryQuoteError(data.message || "Стоимость уточнит менеджер");
-        return;
-      }
-      throw new Error("Перевозчик не вернул стоимость доставки");
-    } catch (error) {
-      setDeliveryQuoteError(error instanceof Error ? error.message : "Не удалось рассчитать доставку");
-    } finally {
-      setDeliveryQuoteLoading(false);
     }
   }
 
@@ -433,13 +347,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       deliveryFee,
       total,
       submitting,
-      deliveryQuote,
-      deliveryQuoteLoading,
-      deliveryQuotePending,
-      deliveryQuoteError,
       deliveryFeePending,
-      addressDeliveryNeedsQuote,
-      calculateAddressDelivery,
     },
   };
 }

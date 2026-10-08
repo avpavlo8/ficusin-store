@@ -1406,13 +1406,6 @@
     0 5px 0 white,
     0 -5px 0 white;
 }
-.post-icon svg {
-  width: 62px;
-  height: 52px;
-  fill: #3973b9;
-  stroke: #3973b9;
-  stroke-width: 2.4;
-}
 .checkout-page-panel .cdek-picker {
   margin-top: -1px;
   padding: 22px 18px 18px;
