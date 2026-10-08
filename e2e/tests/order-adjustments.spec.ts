@@ -44,14 +44,14 @@ test("@desktop кабинет показывает возврат и оплач�
   await expect(page.getByRole("button", { name: /Оплатить заказ 1.?500/ })).toBeVisible();
 });
 
-test("@desktop кабинет не предлагает оплату до подтверждения менеджером", async ({ page }) => {
+test("@desktop кабинет не предлагает оплату до расчёта доставки", async ({ page }) => {
   await mockApi(page, owner);
   await page.route("**/api/v1/account/orders/0001-8", (route) => route.fulfill({
     json: {
       order: {
         orderNumber: "0001-8",
         deliveryPayee: "shop",
-        deliveryMethod: "post",
+        deliveryMethod: "cdek",
         address: "Адрес требует проверки",
         comment: "",
         customerName: "Александр",
@@ -69,7 +69,7 @@ test("@desktop кабинет не предлагает оплату до под
         paidAmount: 0,
         refundedAmount: 0,
         amountDue: 2500,
-        paymentReady: false,
+        paymentReady: true,
         createdAt: "2026-08-20T12:00:00Z",
         items: [{ productName: "Апельсин", unitPrice: 2500, quantity: 1 }],
       },
@@ -78,7 +78,7 @@ test("@desktop кабинет не предлагает оплату до под
 
   await page.goto("/account/orders/0001-8");
 
-  await expect(page.getByText(/Менеджер проверит детали заказа/)).toBeVisible();
+  await expect(page.getByText(/Менеджер уточнит стоимость доставки/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 });
 
