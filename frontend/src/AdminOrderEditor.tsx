@@ -289,9 +289,11 @@ export function AdminOrderEditor({ order, onSaved, onError }: {
       </div>
       <small>{adjustment.deliveryPayee === "carrier" ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений." : "Стоимость доставки входит в сумму оплаты заказа."}</small>
       {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && <p className="admin-flag">СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной отправки.</p>}
-      {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && <p className="admin-flag">Проверьте заказ {adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.</p>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && <p className="admin-flag">{adjustment.cdekLastError?.includes("остатка растений недостаточно")
+        ? `Отправка оплаченного заказа ${adjustment.orderNumber} остановлена: остатка растений недостаточно. Проверьте наличие и решите вручную.`
+        : `Проверьте заказ ${adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.`}</p>}
       {order.deliveryMethod === "cdek" && adjustment.cdekStatus && <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>}
-      {order.deliveryMethod === "cdek" && adjustment.cdekLastError && ["unknown","manual_review","retry"].includes(adjustment.cdekCreateState) && <small>{adjustment.cdekLastError}</small>}
+      {order.deliveryMethod === "cdek" && adjustment.cdekLastError && ["unknown","manual_review","retry"].includes(adjustment.cdekCreateState) && !(adjustment.cdekCreateState === "manual_review" && adjustment.cdekLastError.includes("остатка растений недостаточно")) && <small>{adjustment.cdekLastError}</small>}
     </section>}
 
     <div className="dialog-actions">

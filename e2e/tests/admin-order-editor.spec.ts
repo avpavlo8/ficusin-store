@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function mockOrderEditor(page: import("@playwright/test").Page) {
+async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false) {
   const order = {
     id: 30,
     orderNumber: "0001-30",
@@ -33,6 +33,13 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     hasPreorder: false,
     status: "new",
     items: [...order.items],
+    cdekCreateState: stockShortage ? "manual_review" : "",
+    cdekLastError: stockShortage ? "Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную." : "",
+    shipmentOffers: stockShortage ? [{
+      id: 73, status: "paid", deliveryFee: 590, deliveryPayee: "shop", total: 1380,
+      cdekCreateState: "manual_review", cdekLastError: "Оплаченная отправка: остатка растений недостаточно. Проверьте наличие и решите вручную.",
+      cdekTrackNumber: "", cdekStatus: "", cdekStatusReason: "", boxes: [], items: [],
+    }] : [],
   };
 
   await page.addInitScript(({ user, order, adjustment }) => {
@@ -143,4 +150,16 @@ test("@desktop сохранение менеджером обновляет со
   await payment.getByRole("button", { name: "Создать ссылку на оплату" }).click();
   await expect(payment.getByRole("link", { name: "Ссылка на оплату" })).toHaveAttribute("href", "https://pay.example.test/order-30");
   expect(await state.paymentLinkCalls()).toBe(1);
+});
+
+test("@desktop админка объясняет остановку оплаченных отправок из-за остатка", async ({ page }) => {
+  await mockOrderEditor(page, true);
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Заказы", exact: true }).click();
+  await page.getByText("0001-30").click();
+
+  const editor = page.locator(".admin-order-editor");
+  await expect(editor.getByText(/Отправка оплаченного заказа 0001-30 остановлена: остатка растений недостаточно/)).toBeVisible();
+  await expect(editor.getByText(/Отправка №73 оплачена, но остатка растений недостаточно/)).toBeVisible();
+  await expect(editor.getByText(/Проверьте заказ 0001-30 в кабинете СДЭК/)).toHaveCount(0);
 });
