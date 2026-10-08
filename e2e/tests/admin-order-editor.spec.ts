@@ -16,7 +16,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     paymentMethod: "online",
     paymentStatus: "pending",
     status: "new",
-    total: 2480,
+    total: 1480,
     createdAt: "2026-08-20T15:25:19Z",
     items: [
       { productId: 1, sku: "1001", variantLabel: "D9", productName: "Азалия D9", unitPrice: 790, quantity: 1 },
@@ -28,6 +28,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
     orderNumber: "0001-30",
     subtotal: 1480,
     deliveryFee: 1000,
+    deliveryPayee: "carrier",
     deliveryFeePending: true,
     hasPreorder: false,
     status: "new",
@@ -73,7 +74,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
         adjustment.subtotal = 2970;
         adjustment.deliveryFeePending = false;
         order.items = [...adjustment.items];
-        order.total = 2970 + adjustment.deliveryFee;
+        order.total = 2970;
         order.deliveryFeePending = false;
         return json({
           order,
@@ -89,7 +90,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
           ((window as typeof window & { __paymentLinkCalls?: number }).__paymentLinkCalls || 0) + 1;
         return json({
           confirmationUrl: "https://pay.example.test/order-30",
-          payment: { total: 3970, paid: 0, refunded: 0, netPaid: 0, due: 3970, overpaid: 0, ready: true, paymentStatus: "pending" },
+          payment: { total: 2970, paid: 0, refunded: 0, netPaid: 0, due: 2970, overpaid: 0, ready: true, paymentStatus: "pending" },
         });
       }
       if (path.startsWith("/api/v1/")) return json({});
@@ -105,7 +106,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page) {
   };
 }
 
-test("@desktop сохранение менеджером подтверждает состав, доставку и открывает оплату", async ({ page }) => {
+test("@desktop сохранение менеджером обновляет состав и открывает оплату только растений", async ({ page }) => {
   const state = await mockOrderEditor(page);
   await page.goto("/admin");
   await page.getByRole("button", { name: "Заказы", exact: true }).click();
@@ -114,24 +115,24 @@ test("@desktop сохранение менеджером подтверждае�
   const editor = page.locator(".admin-order-editor");
   const payment = editor.locator(".admin-order-payment-block");
 
-  // В редакторе больше нет отдельной галочки подтверждения: сохранить = подтвердить.
   await expect(editor.getByRole("checkbox")).toHaveCount(0);
-  await expect(editor.getByText(/Сохранить изменения.*подтверждает эту стоимость/i)).toBeVisible();
+  await expect(editor.getByText("После сохранения эта сумма станет итогом заказа")).toBeVisible();
+  await expect(editor.getByText("Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений.")).toBeVisible();
 
   await editor.locator("select").first().selectOption("1003");
   await editor.getByRole("button", { name: "Добавить", exact: true }).click();
 
   await expect(editor.getByText("Аглаонема Мария Кристина D12", { exact: true })).toBeVisible();
-  await expect(editor.locator(".admin-order-draft-total")).toContainText(/3.?970/);
-  await expect(payment).toContainText(/Итого:\s*3.?970/);
+  await expect(editor.locator(".admin-order-draft-total")).toContainText(/2.?970/);
+  await expect(payment).toContainText(/Растения к оплате:\s*2.?970/);
   await expect(payment).toContainText("Сначала сохраните изменения");
   await expect(payment.getByRole("button", { name: "Создать ссылку на оплату" })).toHaveCount(0);
 
   await editor.getByRole("button", { name: "Сохранить изменения" }).click();
 
   await expect(editor.getByText("Аглаонема Мария Кристина D12", { exact: true })).toBeVisible();
-  await expect(page.locator(".admin-table tbody tr.clickable").first()).toContainText(/3.?970/);
-  await expect(payment).toContainText(/Итого:\s*3.?970/);
+  await expect(page.locator(".admin-table tbody tr.clickable").first()).toContainText(/2.?970/);
+  await expect(payment).toContainText(/Растения к оплате:\s*2.?970/);
   await expect(payment.getByRole("button", { name: "Создать ссылку на оплату" })).toBeVisible();
 
   const saved = await state.savedEdit();
