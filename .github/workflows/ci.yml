@@ -37,10 +37,6 @@ jobs:
 
   layout:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,11 +58,11 @@ jobs:
           -v "$GITHUB_WORKSPACE:/work"
           -w /work/e2e
           mcr.microsoft.com/playwright:v1.63.0-noble
-          npm test -- --shard=${{ matrix.shard }}/2
+          npm test -- --workers=4
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report-${{ matrix.shard }}
+          name: playwright-report
           path: |
             e2e/playwright-report
             e2e/test-results
