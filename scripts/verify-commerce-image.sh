@@ -103,7 +103,7 @@ facts="$(psql_ci -Atq -F ':' -c "
   JOIN order_items oi ON oi.order_id=o.id
   JOIN inventory i ON i.variant_id=oi.variant_id
   WHERE o.order_number='${order_number}'")"
-expected="on_delivery:2980.00:carrier:${sku}:2:0:0:1:1:0"
+expected="on_delivery:2980.00:shop:${sku}:2:0:0:1:1:0"
 if [[ "$facts" != "$expected" ]]; then
   echo "Incomplete commerce transaction: ${facts}; expected ${expected}." >&2
   exit 1
