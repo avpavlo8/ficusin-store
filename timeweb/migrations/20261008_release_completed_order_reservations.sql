@@ -36,9 +36,9 @@ BEGIN
     FROM allocation
     WHERE allocation.id = stock.id AND allocation.give_back > 0;
 
-    INSERT INTO stock_movements (order_id, variant_id, saby_id, kind, quantity, status)
+    INSERT INTO stock_movements (order_id, variant_id, saby_id, kind, quantity, status, reason)
     SELECT item.order_id, item.variant_id, COALESCE(variant.saby_id, ''), 'release',
-      SUM(item.reserved_qty)::INTEGER, 'pending'
+      SUM(item.reserved_qty)::INTEGER, 'pending', 'completed_order_reconciliation_20261008'
     FROM order_items item
     LEFT JOIN product_variants variant ON variant.id = item.variant_id
     WHERE item.order_id = completed_order.id

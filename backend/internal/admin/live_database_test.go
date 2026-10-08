@@ -238,7 +238,8 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		var released bool
 		if err := tx.QueryRow(ctx, `
 			SELECT stock.reserved_qty, purchase.stock_released_at IS NOT NULL,
-			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id AND movement.kind='release')
+			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id
+			     AND movement.kind='release' AND movement.reason='completed_order_reconciliation_20261008')
 			FROM orders purchase JOIN inventory stock ON stock.warehouse_id=$2 AND stock.variant_id=$3
 			WHERE purchase.id=$1
 		`, oldOrderID, warehouseID, largeVariant).Scan(&reserved, &released, &releases); err != nil {
