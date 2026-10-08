@@ -71,6 +71,17 @@ func adminOperationsHandler(handlers adminHandlers, reader operationsReader) htt
 			handlers.failed(response, "admin commerce operations", err)
 			return
 		}
-		writeJSON(response, http.StatusOK, map[string]any{"operations": snapshot})
+		result := map[string]any{"operations": snapshot}
+		if diagnosticReader, ok := reader.(interface {
+			Diagnose(context.Context) (operations.Diagnostics, error)
+		}); ok {
+			diagnostics, err := diagnosticReader.Diagnose(ctx)
+			if err != nil {
+				handlers.failed(response, "admin commerce diagnostics", err)
+				return
+			}
+			result["diagnostics"] = diagnostics
+		}
+		writeJSON(response, http.StatusOK, result)
 	}
 }

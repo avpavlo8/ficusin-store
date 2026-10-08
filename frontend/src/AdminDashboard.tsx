@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { money, statusLabels } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { AdminIcon } from "./AdminWorkspace";
 import { AdminRevenue } from "./AdminRevenue";
 
 type Navigate = (section: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => void;
+
+const AdminOperations = lazy(() => import("./AdminOperations").then((module) => ({ default: module.AdminOperations })));
 
 export function Dashboard({ data, onNavigate }: { data: AdminData; onNavigate: Navigate }) {
   const { dashboard, permissions } = data;
@@ -27,6 +29,7 @@ export function Dashboard({ data, onNavigate }: { data: AdminData; onNavigate: N
     </button>)}</div>
     <div className="workspace-dashboard-grid">
       <div className="workspace-dashboard-main">
+        {can("dashboard.read") && <Suspense fallback={<section className="workspace-panel">Проверяем остатки и поступления…</section>}><AdminOperations onOpenProcurement={() => onNavigate("procurement")} /></Suspense>}
         {can("analytics.read") && <AdminRevenue onOpen={() => onNavigate("analytics")} />}
         {can("orders.read") && <section className="workspace-panel workspace-recent">
           <header className="workspace-panel-heading"><div><p className="eyebrow">Продажи</p><h2>Последние заказы</h2></div><button type="button" className="workspace-text-button" onClick={() => onNavigate("orders")}>Все заказы ↗</button></header>

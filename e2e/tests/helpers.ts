@@ -141,6 +141,11 @@ export async function mockApi(page: Page, session: Session = guest) {
   const context = page.context();
   await context.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
 
+  await context.route("**/api/v1/admin/operations", (route) => route.fulfill({ json: {
+    operations: { status: "ok", checks: [] },
+    diagnostics: { overreserved: [], failedReceipts: [] },
+  } }));
+
   await context.route("**/api/v1/catalog", (route) =>
     route.fulfill({ json: { products: [product, ficus, monstera, pot] } }));
 
