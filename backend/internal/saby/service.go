@@ -463,16 +463,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		return fmt.Errorf("update Saby descriptions: %w", err)
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE product_variants pv
-		SET base_price_minor = source.price_minor, updated_at = CURRENT_TIMESTAMP
-		FROM saby_nomenclature source, products p
-		WHERE source.saby_id = pv.saby_id AND p.id = pv.product_id
-			AND 'price' = ANY(p.saby_fields) AND source.missing_since IS NULL
-			AND source.price_minor > 0 AND pv.base_price_minor <> source.price_minor
-	`); err != nil {
-		return fmt.Errorf("update Saby prices: %w", err)
-	}
+	// The site owns its retail price. Saby price snapshots are retained in
+	// saby_nomenclature for comparison, but cannot overwrite a site price.
 
 	if err := syncPhotos(ctx, tx); err != nil {
 		return err
