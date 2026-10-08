@@ -13,17 +13,6 @@ permissions:
   contents: read
 
 jobs:
-  dependency-review:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -64,6 +53,8 @@ jobs:
       - run: npm run build
         working-directory: frontend
       - run: npm ci
+        working-directory: e2e
+      - run: npm audit --audit-level=high
         working-directory: e2e
       - name: Run Playwright tests in pinned browser image
         run: >-
