@@ -487,9 +487,10 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, err)
 			continue
 		}
-		// Plant payment stays with the shop. CDEK collects only its delivery
-		// charge from the recipient, including when plants were prepaid.
-		cash := item.deliveryFee
+		// delivery_recipient_cost is an *additional shop collection* in the
+		// CDEK API, not the carrier's own transport tariff. Recipient payment
+		// for transport must be configured in the CDEK contract separately.
+		cash := 0.0
 		shipment, err := worker.cdek.CreateOrder(ctx, integration.ShipmentRequest{
 			OrderNumber:       item.number,
 			TariffCode:        item.tariff,

@@ -381,8 +381,8 @@ type ShipmentRequest struct {
 	// service — unlike Telegram, where contacts must never appear.
 	RecipientName  string
 	RecipientPhone string
-	// PaymentOnDelivery is the delivery charge CDEK collects directly from
-	// the recipient. Plant payments are handled by the shop separately.
+	// PaymentOnDelivery is an additional shop collection at delivery, not
+	// the CDEK transport tariff. Normal prepaid-plant orders must pass zero.
 	PaymentOnDelivery float64
 }
 
@@ -440,7 +440,7 @@ func (client *CDEKClient) CreateOrder(
 		"comment":         "Заказ " + request.OrderNumber + " с сайта ficusin.ru",
 	}
 	if request.PaymentOnDelivery > 0 {
-		// This is the carrier's delivery charge, not a second plant payment.
+		// Additional shop collection; do not use for the carrier tariff.
 		body["delivery_recipient_cost"] = map[string]any{"value": request.PaymentOnDelivery}
 	}
 	var result struct {
