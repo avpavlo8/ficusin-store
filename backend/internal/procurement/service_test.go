@@ -46,6 +46,9 @@ func (stub *storeStub) CreatePlan(_ context.Context, _ Actor, input PlanCreate) 
 func (stub *storeStub) OrderDetail(context.Context, int64) (OrderDetail, error) {
 	return OrderDetail{}, nil
 }
+func (stub *storeStub) ApprovedSabyPriceExportLines(context.Context, int64) ([]OrderLine, error) {
+	return nil, nil
+}
 func (stub *storeStub) CalculateOrder(context.Context, Actor, int64, CalculationInput) (OrderDetail, error) {
 	return OrderDetail{}, nil
 }

@@ -125,6 +125,9 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 				t.Fatalf("Saby action should retain its own old price: %+v", saby)
 			}
 			actor := Actor{CustomerID: actorID, Role: "owner"}
+			if _, err := store.ApprovedSabyPriceExportLines(ctx, orderID); err == nil {
+				t.Fatal("Saby XLSX available before site price approval")
+			}
 			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
 				t.Fatal("external price approved before site price")
 			} else {
@@ -136,8 +139,27 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 			if _, err := store.ApproveBatch(ctx, actor, batch.ID, nil); err != nil {
 				t.Fatalf("approve site price: %v", err)
 			}
+			exportLines, err := store.ApprovedSabyPriceExportLines(ctx, orderID)
+			if err != nil || len(exportLines) != 1 || exportLines[0].ProposedRetailRUB == nil || *exportLines[0].ProposedRetailRUB != tc.proposed {
+				t.Fatalf("Saby XLSX must use approved proposal after current site price changed: lines=%+v err=%v", exportLines, err)
+			}
+			if _, count, err := BuildSabyPriceXLSX(exportLines); err != nil || count != 1 {
+				t.Fatalf("build approved Saby XLSX: count=%d err=%v", count, err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET saby_id=NULL WHERE id=$1`, variantID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.ApprovedSabyPriceExportLines(ctx, orderID); err == nil {
+				t.Fatal("Saby XLSX available after variant lost its Saby link")
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET saby_id=$2 WHERE id=$1`, variantID, sabyID); err != nil {
+				t.Fatal(err)
+			}
 			if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=$2 WHERE id=$1`, variantID, (tc.proposed+1)*100); err != nil {
 				t.Fatal(err)
+			}
+			if _, err := store.ApprovedSabyPriceExportLines(ctx, orderID); err == nil {
+				t.Fatal("Saby XLSX available after a later site price edit")
 			}
 			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
 				t.Fatal("external price approved after site price changed again")
@@ -147,6 +169,9 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 			}
 			if _, err := pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=COALESCE(calculation_version,0)+1 WHERE id=$1`, orderID); err != nil {
 				t.Fatal(err)
+			}
+			if _, err := store.ApprovedSabyPriceExportLines(ctx, orderID); err == nil {
+				t.Fatal("Saby XLSX available after recalculation")
 			}
 			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
 				t.Fatal("external price approved after a newer invoice calculation")

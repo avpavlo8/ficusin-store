@@ -59,7 +59,7 @@ jobs:
       - name: Verify durable synchronization coordination
         env:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
-        run: go test ./internal/procurement -run 'TestIntegrationCoordinatorLive|TestFailedSabyReceiptCannotBeRetriedWithoutReconciliation|TestHistoricalSabyReceiptReconciliationMigration' -count=1
+        run: go test ./internal/procurement -run 'TestIntegrationCoordinatorLive|TestFailedSabyReceiptCannotBeRetriedWithoutReconciliation|TestHistoricalSabyReceiptReconciliationMigration|TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase' -count=1
         working-directory: backend
       - name: Verify stage 03 catalogue invariants on PostgreSQL
         env:
