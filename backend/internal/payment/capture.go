@@ -47,7 +47,7 @@ func (service *Service) resolveAuthorization(ctx context.Context, payment integr
 				if _, err := service.pool.Exec(ctx, `UPDATE shipment_offers SET status='stale',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='payment_pending'`, *offerID); err != nil {
 					return err
 				}
-			} else if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_method=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND payment_method=$3 AND status NOT IN ('cancelled','completed')`, orderID, MethodManager, MethodOnline); err != nil {
+			} else if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_method=$2 WHERE id=$1 AND payment_method=$3 AND status NOT IN ('cancelled','completed')`, orderID, MethodManager, MethodOnline); err != nil {
 				return err
 			}
 		}
