@@ -2,6 +2,7 @@ package payment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -175,5 +176,28 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	}
 	if state != "refunded:refunded" {
 		t.Fatalf("refunded state is inconsistent: %s", state)
+	}
+	// An ambiguous create request must not be retried after the Saby snapshot
+	// expires: a retry could issue a new live provider page for unavailable stock.
+	payload, err := json.Marshal(provider.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var unknownID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO payments(order_id,idempotence_key,amount,status,request_payload)
+		VALUES($1,$2,1490,'pending',$3) RETURNING id
+	`, orderID, "ci-unknown-"+suffix, payload).Scan(&unknownID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	createsBefore := provider.creates
+	if _, err := service.RecoverUnknown(ctx, unknownID); err == nil {
+		t.Fatal("stale stock allowed payment recovery")
+	}
+	if provider.creates != createsBefore {
+		t.Fatalf("provider calls after stock became stale: %d -> %d", createsBefore, provider.creates)
 	}
 }
