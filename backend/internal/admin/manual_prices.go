@@ -85,15 +85,33 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 			return err
 		}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO procurement_action_items(batch_id,channel,external_article,old_value,new_value)
-		SELECT $1,'avito',listing.item_id,listing.remote_price_minor::numeric/100,
-			MIN(CASE WHEN variant.id=$4 THEN $3::numeric/100 ELSE variant.base_price_minor::numeric/100 END)
+	_, err = tx.Exec(ctx, `WITH fresh_stock AS (
+			SELECT variant.id variant_id,GREATEST(stock.available_qty-stock.reserved_qty,0) qty
+			FROM product_variants variant
+			JOIN products product ON product.id=variant.product_id AND 'stock'=ANY(product.saby_fields)
+			JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+			JOIN inventory stock ON stock.variant_id=variant.id AND stock.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+			JOIN warehouses warehouse ON warehouse.id=stock.warehouse_id
+				AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+			WHERE variant.is_active<>0 AND variant.archived_at IS NULL
+		), prices AS (
+			SELECT listing.item_id,listing.remote_price_minor,
+				MIN(CASE WHEN stock.qty>0 THEN
+					CASE WHEN variant.id=$4 THEN $3::numeric/100 ELSE variant.base_price_minor::numeric/100 END
+				END) new_price
 		FROM avito_listing_products target
 		JOIN avito_listings listing ON listing.item_id=target.item_id
 		JOIN avito_listing_products lp ON lp.item_id=listing.item_id
 		JOIN product_variants variant ON variant.product_id=lp.product_id AND variant.is_active<>0
-		JOIN inventory stock ON stock.variant_id=variant.id AND GREATEST(stock.available_qty-stock.reserved_qty,0)>0
-		WHERE target.product_id=$2 GROUP BY listing.item_id,listing.remote_price_minor`, batchID, productID, newMinor, variantID)
+			AND variant.archived_at IS NULL
+		LEFT JOIN fresh_stock stock ON stock.variant_id=variant.id
+		WHERE target.product_id=$2
+		GROUP BY listing.item_id,listing.remote_price_minor
+		HAVING COUNT(*)=COUNT(stock.variant_id)
+		)
+		INSERT INTO procurement_action_items(batch_id,channel,external_article,old_value,new_value)
+		SELECT $1,'avito',item_id,remote_price_minor::numeric/100,new_price
+		FROM prices WHERE new_price IS NOT NULL`, batchID, productID, newMinor, variantID)
 	return err
 }
 

@@ -331,6 +331,26 @@ func (s *Service) UpdatePrice(ctx context.Context, itemID string, price float64)
 	if !s.Configured() {
 		return errors.New("ключи Avito не настроены")
 	}
+	// A proposal may have been approved before stock became stale. Recheck at
+	// the last boundary before the external API call.
+	var stockKnown bool
+	err := s.pool.QueryRow(ctx, freshStockCTE+` SELECT
+		EXISTS(SELECT 1 FROM procurement_integration_sync_state
+			WHERE channel='saby' AND resource='catalog' AND status<>'error'
+				AND last_success_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours')
+		AND EXISTS(SELECT 1 FROM avito_listing_products lp
+			JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 AND v.archived_at IS NULL
+			JOIN fresh_stock f ON f.variant_id=v.id AND f.qty>0
+			WHERE lp.item_id=$1)
+		AND NOT EXISTS(SELECT 1 FROM avito_listing_products lp
+			JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 AND v.archived_at IS NULL
+			WHERE lp.item_id=$1 AND NOT EXISTS(SELECT 1 FROM fresh_stock f WHERE f.variant_id=v.id))`, itemID).Scan(&stockKnown)
+	if err != nil {
+		return err
+	}
+	if !stockKnown {
+		return errors.New("остаток СБИС не подтверждён; цена Авито не отправлена")
+	}
 	token, err := s.tokenFor(ctx)
 	if err != nil {
 		return err
