@@ -180,6 +180,10 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO procurement_product_channels(saby_id,wb_nm_id) VALUES($1,123456789)`, sabyID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = pool.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source)
+		VALUES($1,$2,'wildberries','sku','123456789','active',true,'manual')`, productID, variantID); err != nil {
+		t.Fatal(err)
+	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_batches(kind,source,manual_variant_id,manual_site_price_minor,created_by)
 		VALUES('prices','manual',$1,150000,$2) RETURNING id`, variantID, actorID).Scan(&batchID); err != nil {
 		t.Fatal(err)

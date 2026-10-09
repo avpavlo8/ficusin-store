@@ -65,7 +65,10 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source)
 		VALUES($1,$2,'wildberries','vendor_code',$3,'active',TRUE,'manual'),
-		($1,$2,'ozon','offer_id',$4,'legacy',FALSE,'manual')`, productID, firstID, fmt.Sprintf("wb-%d", unique), fmt.Sprintf("old-ozon-%d", unique)); err != nil {
+		($1,$2,'wildberries','sku',$4,'active',TRUE,'manual'),
+		($1,$2,'ozon','offer_id',$5,'active',TRUE,'manual'),
+		($1,$2,'ozon','offer_id',$6,'legacy',FALSE,'manual')`, productID, firstID,
+		fmt.Sprintf("wb-%d", unique), wbID, ozonID, fmt.Sprintf("old-ozon-%d", unique)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO avito_listings(item_id,title,status) VALUES($1,'Фикус, несколько размеров','active')`, listingID); err != nil {
