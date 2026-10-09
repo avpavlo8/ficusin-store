@@ -91,9 +91,9 @@ const passportFields = [
   ["toxicity","Токсичность"],["problems","Типичные проблемы и решения"],["pests","Вредители"],
 ] as const;
 
-export function ProductDialog({ owner = false, product, onClose, onSaved, onError, hasNext = false }: { owner?: boolean; product: Product; onClose: () => void; onSaved: (value: Product, openNext: boolean) => void; onError: (value: string) => void; hasNext?: boolean }) {
+export function ProductDialog({ owner = false, product, onClose, onSaved, onError, hasNext = false, initialSection = "main" }: { owner?: boolean; product: Product; onClose: () => void; onSaved: (value: Product, openNext: boolean) => void; onError: (value: string) => void; hasNext?: boolean; initialSection?: ProductEditorSection }) {
   const [form, setForm] = useState(product);
-  const [section, setSection] = useState<ProductEditorSection>("main");
+  const [section, setSection] = useState<ProductEditorSection>(initialSection);
   const [categories, setCategories] = useState<Category[]>([]);
   const [schema, setSchema] = useState<CategoryAttribute[]>([]);
   const [aiBusy,setAIBusy]=useState<ProductAIMode|null>(null);

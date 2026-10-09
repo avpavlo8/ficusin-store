@@ -596,8 +596,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		}
 		if err == nil && containsString(channels, "avito") {
 			_, err = tx.Exec(ctx, `
-				WITH changed_products AS (
-					SELECT changed_variant.product_id,MAX(line.proposed_retail_rub) new_price
+				WITH changed_variants AS (
+					SELECT line.canonical_variant_id variant_id,MAX(line.proposed_retail_rub) new_price
 					FROM procurement_order_lines line
 					JOIN product_variants changed_variant ON changed_variant.id=line.canonical_variant_id
 					WHERE line.procurement_order_id=$2 AND line.proposed_retail_rub IS NOT NULL
@@ -607,21 +607,20 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 							OR ABS(line.proposed_retail_rub::NUMERIC - COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100)
 							> (COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100) *
 								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
-					GROUP BY changed_variant.product_id
+					GROUP BY line.canonical_variant_id
 				), affected AS (
-					SELECT DISTINCT lp.item_id FROM changed_products c
-					JOIN avito_listing_products lp ON lp.product_id=c.product_id
-				), listing_product_prices AS (
-					SELECT a.item_id,lp.product_id,COALESCE(cp.new_price,MIN(v.base_price_minor)::NUMERIC/100) effective_price
+					SELECT DISTINCT lp.item_id FROM changed_variants c
+					JOIN product_variants v ON v.id=c.variant_id AND v.is_active<>0
+					JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0
+					JOIN avito_listing_products lp ON lp.product_id=v.product_id
+				), prices AS (
+					SELECT a.item_id,MIN(COALESCE(cv.new_price,v.base_price_minor::NUMERIC/100)) new_price,
+						(SELECT MIN(id) FROM procurement_order_lines WHERE procurement_order_id=$2) line_id
 					FROM affected a JOIN avito_listing_products lp ON lp.item_id=a.item_id
 					JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0
 					JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0
-					LEFT JOIN changed_products cp ON cp.product_id=lp.product_id
-					GROUP BY a.item_id,lp.product_id,cp.new_price
-				), prices AS (
-					SELECT item_id,MIN(effective_price) new_price,
-						(SELECT MIN(id) FROM procurement_order_lines WHERE procurement_order_id=$2) line_id
-					FROM listing_product_prices GROUP BY item_id
+					LEFT JOIN changed_variants cv ON cv.variant_id=v.id
+					GROUP BY a.item_id
 				)
 				INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,old_value,new_value)
 				SELECT $1,p.line_id,'avito',p.item_id,al.remote_price_minor::NUMERIC/100,p.new_price

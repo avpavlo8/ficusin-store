@@ -24,6 +24,7 @@ func registerAdminCatalogToolRoutes(mux *http.ServeMux, adminAPI adminHandlers, 
 	mux.HandleFunc("DELETE /api/v1/admin/categories/{id}/attributes/{attributeId}", categoryAttributeAssignmentHandler(adminAPI))
 
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/variants", productVariantsHandler(adminAPI))
+	mux.HandleFunc("GET /api/v1/admin/products/links", productLinksHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/relationships", productRelationshipsHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/variants", productVariantsHandler(adminAPI))
 	mux.HandleFunc("PATCH /api/v1/admin/variants/{variantId}", productVariantHandler(adminAPI))
