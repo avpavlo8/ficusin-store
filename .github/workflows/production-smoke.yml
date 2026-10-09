@@ -146,13 +146,16 @@ jobs:
           node-version: 24
       - run: npm ci
         working-directory: e2e
-      - run: npx playwright install --with-deps chromium webkit
-        working-directory: e2e
       - name: Verify real production in desktop and mobile browsers
         env:
           FICUSIN_BASE_URL: ${{ steps.target.outputs.base_url }}
-        run: npx playwright test --config playwright.production.config.ts
-        working-directory: e2e
+        run: >-
+          docker run --rm --ipc=host
+          -v "$GITHUB_WORKSPACE:/work"
+          -w /work/e2e
+          -e FICUSIN_BASE_URL
+          mcr.microsoft.com/playwright:v1.63.0-noble
+          npx playwright test --config playwright.production.config.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
