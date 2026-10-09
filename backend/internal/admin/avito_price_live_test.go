@@ -90,6 +90,22 @@ func TestManualAvitoPriceUsesCheapestAvailableVariantOnLiveDatabase(t *testing.T
 	if price != 1000 {
 		t.Fatalf("Avito price = %.2f; want cheapest available size price 1000", price)
 	}
+	// An edit to the cheaper sibling size must replace the first proposal for
+	// this same listing, rather than leave two independently approvable prices.
+	if err = createManualPriceProposals(ctx, tx, Actor{CustomerID: actorID, Role: RoleOwner}, cheapID, 100000, 110000); err != nil {
+		t.Fatal(err)
+	}
+	var oldStatus string
+	if err = tx.QueryRow(ctx, `SELECT item.status FROM procurement_action_items item
+		JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		WHERE batch.manual_variant_id=$1 AND item.channel='avito' AND item.external_article=$2`, expensiveID, listingID).Scan(&oldStatus); err != nil || oldStatus != "skipped" {
+		t.Fatalf("older sibling Avito proposal status=%q err=%v", oldStatus, err)
+	}
+	if err = tx.QueryRow(ctx, `SELECT item.new_value::float8 FROM procurement_action_items item
+		JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		WHERE batch.manual_variant_id=$1 AND item.channel='avito' AND item.status='draft'`, cheapID).Scan(&price); err != nil || price != 1100 {
+		t.Fatalf("new sibling Avito proposal price=%.2f err=%v", price, err)
+	}
 	// A stale cheaper size cannot hold down the proposed listing price.
 	if _, err = tx.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, cheapID); err != nil {
 		t.Fatal(err)
