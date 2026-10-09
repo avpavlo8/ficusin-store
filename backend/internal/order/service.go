@@ -11,7 +11,6 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
-	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -450,17 +449,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), HasPreorder: hasPreorder, Total: total}, nil
-}
-
-// deliveryFee is retained for old settings tests and existing installations.
-// New customer-facing courier and post prices are authoritative provider
-// quotes; these fixed numbers are no longer used to create new orders.
-func (service *Service) deliveryFee(key string) float64 {
-	value := settings.DefaultNumber(key)
-	if service.settings != nil {
-		value = service.settings.Number(key)
-	}
-	return float64(settings.NonNegative(value))
 }
 
 func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {
