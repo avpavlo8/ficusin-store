@@ -75,7 +75,7 @@ func TestStage13CDEKCreateRecoveryDoesNotDuplicateOrPretendShipment(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	client := &stage13CDEK{byNumber: map[string]integration.Shipment{}, byUUID: map[string]integration.Shipment{}}
@@ -148,22 +148,66 @@ func TestStage13CDEKUnknownMovesToManualReviewWithoutAnotherPOST(t *testing.T) {
 	}
 }
 
+func TestCDEKDoesNotCreateShipmentWithStaleSabyStock(t *testing.T) {
+	databaseURL := os.Getenv("CRM_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("CRM_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	client := &stage13CDEK{byNumber: map[string]integration.Shipment{}, byUUID: map[string]integration.Shipment{}}
+	worker := NewShippingWorker(pool, client, stage13ShippingSettings{}, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	orderID, offerID := seedStage13CDEKOffer(t, ctx, pool, "stale")
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID) }()
+	short, err := worker.offerStockShort(ctx, offerID)
+	if err != nil || short {
+		t.Fatalf("fresh Saby stock should allow the offer: short=%v err=%v", short, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=(SELECT variant_id FROM shipment_offer_items WHERE shipment_offer_id=$1 LIMIT 1)`, offerID); err != nil {
+		t.Fatal(err)
+	}
+	short, err = worker.offerStockShort(ctx, offerID)
+	if err != nil || !short {
+		t.Fatalf("stale Saby stock should block the offer: short=%v err=%v", short, err)
+	}
+	worker.markStockShortages(ctx)
+	worker.createOfferShipments(ctx)
+	var state string
+	if err := pool.QueryRow(ctx, `SELECT cdek_create_state FROM shipment_offers WHERE id=$1`, offerID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "manual_review" || client.creates != 0 {
+		t.Fatalf("stale offer reached CDEK: state=%s creates=%d", state, client.creates)
+	}
+}
+
 func seedStage13CDEKOffer(t *testing.T, ctx context.Context, pool *pgxpool.Pool, label string) (int64, int64) {
 	t.Helper()
 	var customerID, productID, variantID, warehouseID, orderID, itemID, offerID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM customers WHERE email='crm-owner@example.invalid'`).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT p.id,pv.id FROM products p JOIN product_variants pv ON pv.product_id=p.id WHERE p.slug='crm-stage07-a'`).Scan(&productID, &variantID); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT id FROM products WHERE slug='crm-stage07-a'`).Scan(&productID); err != nil {
 		t.Fatal(err)
 	}
-	// Shipment creation now checks the live Saby stock snapshot. Give this
-	// recovery scenario one available plant without changing shared fixtures.
-	if err := pool.QueryRow(ctx, `INSERT INTO warehouses(saby_id,name,city,address) VALUES($1,'Stage 13 CDEK CI','CI','CI') RETURNING id`, fmt.Sprintf("stage13-cdek-%s-%d", label, time.Now().UnixNano())).Scan(&warehouseID); err != nil {
+	// A private variant keeps the test independent from other live DB tests.
+	sabyID := fmt.Sprintf("stage13-cdek-%s-%d", label, time.Now().UnixNano())
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance) VALUES($1,$2,'Stage 13 CDEK plant',1)`, sabyID, sabyID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM warehouses WHERE id=$1`, warehouseID) })
-	if _, err := pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty) VALUES($1,$2,1)`, warehouseID, variantID); err != nil {
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID) })
+	if err := pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active) VALUES($1,$2,DEFAULT,'Stage 13',229000,1) RETURNING id`, productID, sabyID).Scan(&variantID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM product_variants WHERE id=$1`, variantID) })
+	if err := pool.QueryRow(ctx, `INSERT INTO warehouses(saby_id,name,city,address) VALUES('saby-ryazan-main','Основной склад','Рязань','CI') ON CONFLICT(saby_id) DO UPDATE SET saby_id=EXCLUDED.saby_id RETURNING id`).Scan(&warehouseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at) VALUES($1,$2,1,0,CURRENT_TIMESTAMP)`, warehouseID, variantID); err != nil {
 		t.Fatal(err)
 	}
 	number := fmt.Sprintf("CRM-S13-CDEK-%s-%d", label, time.Now().UnixNano())
