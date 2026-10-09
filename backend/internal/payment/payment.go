@@ -116,10 +116,13 @@ type Service struct {
 	provider  provider
 	returnURL string
 	logger    *slog.Logger
+	// A payment operation holds one connection for its advisory lock and can
+	// query through the pool on another. Leave capacity for those queries.
+	operationSlots chan struct{}
 }
 
 func NewService(pool *pgxpool.Pool, client provider, returnURL string, logger *slog.Logger) *Service {
-	return &Service{pool: pool, provider: client, returnURL: returnURL, logger: logger}
+	return &Service{pool: pool, provider: client, returnURL: returnURL, logger: logger, operationSlots: make(chan struct{}, 2)}
 }
 
 func (service *Service) Configured() bool {

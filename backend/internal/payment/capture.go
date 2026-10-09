@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
@@ -14,19 +15,43 @@ type capturer interface {
 	CapturePayment(ctx context.Context, paymentID, idempotenceKey string) error
 }
 
+type paymentOperationTx struct {
+	pgx.Tx
+	releaseOnce sync.Once
+	release     func()
+}
+
+func (tx *paymentOperationTx) Commit(ctx context.Context) error {
+	defer tx.releaseOnce.Do(tx.release)
+	return tx.Tx.Commit(ctx)
+}
+
+func (tx *paymentOperationTx) Rollback(ctx context.Context) error {
+	defer tx.releaseOnce.Do(tx.release)
+	return tx.Tx.Rollback(ctx)
+}
+
 // Payment operations share one transaction-scoped advisory lock. Order edits
 // retire their old payment before changing the order, so a capture and an edit
 // cannot choose opposite actions for the same attempt concurrently.
 func (service *Service) lockPaymentOperation(ctx context.Context, paymentRowID int64) (pgx.Tx, error) {
+	select {
+	case service.operationSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	release := func() { <-service.operationSlots }
 	tx, err := service.pool.Begin(ctx)
 	if err != nil {
+		release()
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, -paymentRowID); err != nil {
 		_ = tx.Rollback(ctx)
+		release()
 		return nil, err
 	}
-	return tx, nil
+	return &paymentOperationTx{Tx: tx, release: release}, nil
 }
 
 // resolveAuthorization runs before an authorized payment is recorded locally.
