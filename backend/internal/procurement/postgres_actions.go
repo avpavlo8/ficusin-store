@@ -953,7 +953,8 @@ func (store *PostgresStore) ClaimAction(ctx context.Context, owner string) (*Act
 
 // ClaimActionGroup claims one marketplace upload at a time. Initial uploads
 // are grouped by batch and channel; polling groups the rows sharing the same
-// external operation id. Saby documents intentionally remain single actions.
+// external operation id. Poll one product at a time because WB readback may
+// require a separate request per nmID. Saby documents remain single actions.
 func (store *PostgresStore) ClaimActionGroup(ctx context.Context, owner string) ([]ActionItem, error) {
 	if owner == "" {
 		return nil, ErrInvalidInput
@@ -972,10 +973,11 @@ func (store *PostgresStore) ClaimActionGroup(ctx context.Context, owner string) 
 				AND COALESCE(item.external_operation_id, '') = seed.operation_id
 			WHERE seed.channel IN ('wb', 'ozon') AND ((item.status = 'queued' AND item.next_attempt_at <= CURRENT_TIMESTAMP)
 				OR (item.status = 'processing' AND item.locked_until < CURRENT_TIMESTAMP))
-			ORDER BY item.id FOR UPDATE SKIP LOCKED LIMIT 1000
+			ORDER BY item.id FOR UPDATE SKIP LOCKED
+			LIMIT (SELECT CASE WHEN operation_id = '' THEN 20 ELSE 1 END FROM seed)
 		), claimed AS (
 			UPDATE procurement_action_items item SET status = 'processing', attempts = attempts + 1,
-				last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '2 minutes',
+				last_attempt_at = CURRENT_TIMESTAMP, locked_until = CURRENT_TIMESTAMP + INTERVAL '5 minutes',
 				lock_owner=$1,lock_token=lock_token+1,updated_at = CURRENT_TIMESTAMP
 			FROM candidates WHERE item.id = candidates.id
 			RETURNING item.*
@@ -1205,22 +1207,19 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 	`, actionID, status, message, result.ExternalOperationID, result.ExternalURL, int(delay.Seconds()), owner, token); err != nil {
 		return false, fmt.Errorf("update procurement action result: %w", err)
 	}
-	// Once WB confirms the upload, advance the local mirror immediately. The
-	// next hourly read will verify it, but screens do not need to show the old
-	// price in the meantime.
+	// Marketplace price actions complete only after a readback confirms the seller price.
+	// The base price is refreshed by the catalogue sync; it can differ from
+	// the requested strike-through price after channel promotions or discounts.
 	if status == "completed" {
 		if _, err := tx.Exec(ctx, `
 			UPDATE procurement_channel_products product SET
 				current_price = item.new_value,
-				current_base_price = CASE
-					WHEN item.compare_at_value > item.new_value THEN item.compare_at_value
-					ELSE item.new_value END,
 				seen_at = CURRENT_TIMESTAMP
 			FROM procurement_action_items item
-			WHERE item.id = $1 AND item.channel = 'wb'
-				AND product.channel = 'wb' AND product.external_id = item.external_article
+			WHERE item.id = $1 AND item.channel IN ('wb','ozon')
+				AND product.channel = item.channel AND product.external_id = item.external_article
 		`, actionID); err != nil {
-			return false, fmt.Errorf("update confirmed Wildberries mirror price: %w", err)
+			return false, fmt.Errorf("update confirmed marketplace mirror price: %w", err)
 		}
 		if channel == "saby_receipt" && returnID == nil {
 			// The Saby adapter reports Completed only after it has read the same

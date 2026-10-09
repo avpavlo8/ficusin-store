@@ -40,10 +40,28 @@ func (stub *wbLimiterStub) DeferWBRequests(_ context.Context, bucket string, del
 }
 
 func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
+	imports := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Client-Id") != "client" || request.Header.Get("Api-Key") != "secret" {
 			t.Fatal("Ozon credentials are missing")
 		}
+		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/v5/product/info/prices" {
+			var query struct {
+				Filter struct {
+					OfferID []string `json:"offer_id"`
+				} `json:"filter"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&query); err != nil || len(query.Filter.OfferID) != 1 || query.Filter.OfferID[0] != "OZ-1" {
+				t.Fatalf("Ozon readback query=%+v err=%v", query, err)
+			}
+			_, _ = response.Write([]byte(`{"items":[{"offer_id":"OZ-1","price":{"price":"1490","marketing_seller_price":"1200"}}]}`))
+			return
+		}
+		if request.URL.Path != "/v1/product/import/prices" {
+			t.Fatalf("unexpected Ozon request: %s", request.URL.Path)
+		}
+		imports++
 		var body map[string]any
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatal(err)
@@ -53,17 +71,24 @@ func TestOzonPriceIsConfirmedPerProduct(t *testing.T) {
 			t.Fatalf("unexpected Ozon price payload: %#v", body)
 		}
 		row := prices[0].(map[string]any)
-		if row["offer_id"] != "OZ-1" { t.Fatalf("unexpected Ozon price payload: %#v", body) }
-		if _, exists := row["min_price"]; exists { t.Fatalf("empty optional min_price must be omitted: %#v", row) }
-		response.Header().Set("Content-Type", "application/json")
+		if row["offer_id"] != "OZ-1" {
+			t.Fatalf("unexpected Ozon price payload: %#v", body)
+		}
+		if _, exists := row["min_price"]; exists {
+			t.Fatalf("empty optional min_price must be omitted: %#v", row)
+		}
 		_, _ = response.Write([]byte(`{"result":[{"offer_id":"OZ-1","updated":true,"errors":[]}]}`))
 	}))
 	defer server.Close()
 	executor := NewMarketplaceExecutor("", "client", "secret")
 	executor.ozonBase, executor.client = server.URL, server.Client()
 	result, err := executor.Execute(context.Background(), procurement.ActionItem{Channel: "ozon", ExternalArticle: "OZ-1", NewValue: 1490})
-	if err != nil || !result.Completed {
+	if err != nil || result.Completed || result.ExternalOperationID != ozonPriceCheckOperation {
 		t.Fatalf("result = %#v, err = %v", result, err)
+	}
+	result, err = executor.Execute(context.Background(), procurement.ActionItem{Channel: "ozon", ExternalArticle: "OZ-1", NewValue: 1490, ExternalOperationID: result.ExternalOperationID})
+	if err != nil || !result.Completed || imports != 1 {
+		t.Fatalf("readback result = %#v, imports=%d, err = %v", result, imports, err)
 	}
 }
 
@@ -154,8 +179,8 @@ func TestWildberries429WithoutRetryHeaderUsesSafeMinuteWindow(t *testing.T) {
 	executor.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusTooManyRequests,
-			Body: io.NopCloser(strings.NewReader(`{"status":429}`)),
-			Header: make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"status":429}`)),
+			Header:     make(http.Header),
 		}, nil
 	})}
 	_, err := executor.FetchSales(context.Background(), "wb", time.Now().AddDate(0, 0, -30), time.Now())
@@ -211,10 +236,19 @@ func TestOzonSalesReportEmptyPostingsAsError(t *testing.T) {
 }
 
 func TestWBSubmissionIsCheckedBeforeCompletion(t *testing.T) {
+	uploads := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
-		if request.Method == http.MethodPost {
+		if request.URL.Path == "/api/v2/upload/task" {
+			uploads++
 			_, _ = response.Write([]byte(`{"data":{"id":42,"alreadyExists":false},"error":false,"errorText":""}`))
+			return
+		}
+		if request.URL.Path == "/api/v2/list/goods/filter" {
+			if request.URL.Query().Get("filterNmID") != "123" {
+				t.Fatalf("WB readback nmID=%q", request.URL.Query().Get("filterNmID"))
+			}
+			_, _ = response.Write([]byte(`{"data":{"listGoods":[{"nmID":123,"sizes":[{"discountedPrice":1990}]}]}}`))
 			return
 		}
 		_, _ = response.Write([]byte(`{"data":{"uploadID":42,"status":3},"error":false,"errorText":""}`))
@@ -227,8 +261,120 @@ func TestWBSubmissionIsCheckedBeforeCompletion(t *testing.T) {
 		t.Fatalf("submission = %#v, err = %v", first, err)
 	}
 	second, err := executor.Execute(context.Background(), procurement.ActionItem{Channel: "wb", ExternalArticle: "123", NewValue: 1990, ExternalOperationID: "42"})
-	if err != nil || !second.Completed {
+	if err != nil || !second.Completed || uploads != 1 {
 		t.Fatalf("confirmation = %#v, err = %v", second, err)
+	}
+}
+
+func TestWBPriceMismatchIsNeverMarkedCompleteOrUploadedAgain(t *testing.T) {
+	uploads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/api/v2/upload/task":
+			uploads++
+			var payload struct {
+				Data []struct {
+					Price    int64 `json:"price"`
+					Discount int64 `json:"discount"`
+				} `json:"data"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil || len(payload.Data) != 1 || payload.Data[0].Price != 2000 || payload.Data[0].Discount != 25 {
+				t.Fatalf("WB payload=%+v err=%v", payload, err)
+			}
+			_, _ = response.Write([]byte(`{"data":{"id":42},"error":false}`))
+		case "/api/v2/history/tasks":
+			_, _ = response.Write([]byte(`{"data":{"status":3},"error":false}`))
+		case "/api/v2/list/goods/filter":
+			_, _ = response.Write([]byte(`{"data":{"listGoods":[{"nmID":123,"sizes":[{"discountedPrice":1500}]}]}}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("token", "", "")
+	executor.wbBase, executor.client = server.URL, server.Client()
+	strike := 2000.0
+	item := procurement.ActionItem{Channel: "wb", ExternalArticle: "123", NewValue: 1499, CompareAtValue: &strike}
+	first, err := executor.Execute(context.Background(), item)
+	if err != nil || first.Completed || first.ExternalOperationID != "42" {
+		t.Fatalf("upload=%+v err=%v", first, err)
+	}
+	item.ExternalOperationID = first.ExternalOperationID
+	item.Attempts = 2
+	second, err := executor.Execute(context.Background(), item)
+	if err != nil || second.Completed || second.RetryAfter == 0 || uploads != 1 {
+		t.Fatalf("mismatch=%+v uploads=%d err=%v", second, uploads, err)
+	}
+	item.Attempts = priceCheckMaxAttempts
+	final, err := executor.Execute(context.Background(), item)
+	if err == nil || final.Completed || uploads != 1 || !strings.Contains(err.Error(), "1500") {
+		t.Fatalf("final=%+v uploads=%d err=%v", final, uploads, err)
+	}
+}
+
+func TestOzonAcceptedPriceWaitsForSellerPriceReadback(t *testing.T) {
+	imports := 0
+	price := "1500"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/v1/product/import/prices":
+			imports++
+			_, _ = response.Write([]byte(`{"result":[{"offer_id":"OZ-1","updated":true}]}`))
+		case "/v5/product/info/prices":
+			_, _ = response.Write([]byte(`{"items":[{"offer_id":"OZ-1","price":{"price":"` + price + `","marketing_seller_price":"1200"}}]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	item := procurement.ActionItem{Channel: "ozon", ExternalArticle: "OZ-1", NewValue: 1490}
+	first, err := executor.Execute(context.Background(), item)
+	if err != nil || first.Completed || first.ExternalOperationID != ozonPriceCheckOperation {
+		t.Fatalf("import=%+v err=%v", first, err)
+	}
+	item.ExternalOperationID = first.ExternalOperationID
+	item.Attempts = 2
+	second, err := executor.Execute(context.Background(), item)
+	if err != nil || second.Completed || second.RetryAfter == 0 || imports != 1 {
+		t.Fatalf("mismatch=%+v imports=%d err=%v", second, imports, err)
+	}
+	price = "1490"
+	third, err := executor.Execute(context.Background(), item)
+	if err != nil || !third.Completed || imports != 1 {
+		t.Fatalf("readback=%+v imports=%d err=%v", third, imports, err)
+	}
+}
+
+func TestOzonAmbiguousUploadDoesNotSendPriceTwice(t *testing.T) {
+	imports := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/v1/product/import/prices":
+			imports++
+			http.Error(response, `{"message":"gateway failure"}`, http.StatusBadGateway)
+		case "/v5/product/info/prices":
+			_, _ = response.Write([]byte(`{"items":[{"offer_id":"OZ-1","price":{"price":"1490"}}]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	executor := NewMarketplaceExecutor("", "client", "secret")
+	executor.ozonBase, executor.client = server.URL, server.Client()
+	item := procurement.ActionItem{Channel: "ozon", ExternalArticle: "OZ-1", NewValue: 1490}
+	first, err := executor.Execute(context.Background(), item)
+	if err != nil || first.Completed || first.ExternalOperationID != ozonPriceCheckOperation {
+		t.Fatalf("ambiguous upload=%+v err=%v", first, err)
+	}
+	item.ExternalOperationID = first.ExternalOperationID
+	second, err := executor.Execute(context.Background(), item)
+	if err != nil || !second.Completed || imports != 1 {
+		t.Fatalf("readback=%+v imports=%d err=%v", second, imports, err)
 	}
 }
 
@@ -303,7 +449,7 @@ func TestOzonCatalogIncludesCurrentPrice(t *testing.T) {
 		case "/v3/product/info/list":
 			_, _ = response.Write([]byte(`{"items":[{"offer_id":"orchid-12","name":"Орхидея D12","barcodes":["46001"]}]}`))
 		case "/v5/product/info/prices":
-			_, _ = response.Write([]byte(`{"items":[{"offer_id":"orchid-12","price":{"marketing_seller_price":"3201","old_price":"3841"}}],"cursor":""}`))
+			_, _ = response.Write([]byte(`{"items":[{"offer_id":"orchid-12","price":{"price":"3201","marketing_seller_price":"2800","old_price":"3841"}}],"cursor":""}`))
 		default:
 			http.NotFound(response, request)
 		}
@@ -356,8 +502,8 @@ func TestWildberries429StopsImmediatelyAndPublishesRetryWindow(t *testing.T) {
 		calls++
 		return &http.Response{
 			StatusCode: http.StatusTooManyRequests,
-			Header: http.Header{"X-Ratelimit-Retry": []string{"137"}},
-			Body: io.NopCloser(strings.NewReader(`{"status":429,"detail":"rate limit exceeded"}`)),
+			Header:     http.Header{"X-Ratelimit-Retry": []string{"137"}},
+			Body:       io.NopCloser(strings.NewReader(`{"status":429,"detail":"rate limit exceeded"}`)),
 		}, nil
 	})}
 	_, err := executor.FetchSales(context.Background(), "wb", time.Now().AddDate(0, 0, -30), time.Now())
