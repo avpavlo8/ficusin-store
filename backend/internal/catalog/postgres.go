@@ -154,7 +154,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
 				JOIN warehouses warehouse ON warehouse.id=i.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=pv.saby_id AND source.missing_since IS NULL
-				WHERE i.variant_id=pv.id AND 'stock'=ANY((SELECT saby_fields FROM products WHERE id=pv.product_id))
+				WHERE i.variant_id=pv.id AND 'stock'=ANY(product.saby_fields)
 					AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER,
 			variant_numeric_attribute(pv.id, 'height_cm')::INTEGER,
 			variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.wholesale_min_qty,
@@ -187,6 +187,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 				  AND (e.show_in_summary OR e.show_in_characteristics OR e.is_badge OR e.is_filterable)
 			), '[]'::jsonb)
 		FROM product_variants pv
+		JOIN products product ON product.id=pv.product_id
 		WHERE pv.product_id = $1 AND pv.is_active = 1 AND pv.archived_at IS NULL
 		ORDER BY pv.id
 	`, productID, detail.CategoryID)

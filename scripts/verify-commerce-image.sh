@@ -80,7 +80,7 @@ PY
 
 order_payload="{\"customer\":{\"name\":\"CI Commerce\",\"phone\":\"+7 900 000-00-00\",\"email\":\"${email}\"},\"delivery\":\"pickup\",\"items\":[{\"id\":\"${sku}\",\"quantity\":2}],\"consent\":true,\"paymentMethod\":\"on_delivery\"}"
 
-# A forged payment choice must be rejected before it can reserve stock.
+# A forged payment choice must be rejected before it can create an order.
 forged_payload="${order_payload/\"on_delivery\"/\"online\"}"
 forged_code="$(curl --silent --show-error --output "${work}/forged-order.json" --write-out '%{http_code}' \
   -X POST -H 'Content-Type: application/json' --data "$forged_payload" "$base_url/api/v1/orders")"
