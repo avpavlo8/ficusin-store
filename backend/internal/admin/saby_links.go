@@ -96,10 +96,8 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 	if _, err = tx.Exec(ctx, `UPDATE product_variants SET saby_id=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, variantID, sabyID); err != nil {
 		return err
 	}
-	if productSabyID == "" {
-		if _, err = tx.Exec(ctx, `UPDATE products SET saby_id=$2,saby_fields=CASE WHEN 'stock'=ANY(saby_fields) THEN saby_fields ELSE array_append(saby_fields,'stock') END,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, productID, sabyID); err != nil {
-			return err
-		}
+	if _, err = tx.Exec(ctx, `UPDATE products SET saby_id=COALESCE(NULLIF(saby_id,''),$2),saby_fields=CASE WHEN 'stock'=ANY(saby_fields) THEN saby_fields ELSE array_append(saby_fields,'stock') END,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, productID, sabyID); err != nil {
+		return err
 	}
 	// Preserve a product-level legacy row if present; attach it to this SKU.
 	var mappingVariantID *int64

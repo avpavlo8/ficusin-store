@@ -24,16 +24,21 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("manual-link-%d", unique)
+	secondSabyID := fmt.Sprintf("manual-link-second-%d", unique)
 	code := fmt.Sprintf("X%d", unique)
-	var productID, variantID, ownerID int64
+	var productID, variantID, secondVariantID, ownerID int64
 	defer func() {
 		if variantID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='variant.saby.link' AND entity_id=$1`, fmt.Sprint(variantID))
+		}
+		if secondVariantID != 0 {
+			_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='variant.saby.link' AND entity_id=$1`, fmt.Sprint(secondVariantID))
 		}
 		if productID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
 		}
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID)
+		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, secondSabyID)
 		if ownerID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, ownerID)
 		}
@@ -42,6 +47,9 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Тестовый фикус')`, sabyID, code); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Тестовый фикус большой')`, secondSabyID, code+"-2"); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,saby_fields) VALUES('Тестовый фикус',$1,'draft',ARRAY['description']::TEXT[]) RETURNING id`, fmt.Sprintf("manual-link-%d", unique)).Scan(&productID); err != nil {
@@ -111,5 +119,20 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	}
 	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner}, variantID, sabyID); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("relink must fail: %v", err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'18 см',150000,1) RETURNING id`, productID, fmt.Sprintf("8%017d", unique%100000000000000000)).Scan(&secondVariantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['description']::TEXT[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner, CustomerID: ownerID}, secondVariantID, secondSabyID); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT saby_id,saby_fields FROM products WHERE id=$1`, productID).Scan(&productSabyID, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if productSabyID != sabyID || len(fields) != 2 || fields[0] != "description" || fields[1] != "stock" {
+		t.Fatalf("second link product saby=%q fields=%v", productSabyID, fields)
 	}
 }
