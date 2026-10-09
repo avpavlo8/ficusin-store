@@ -67,6 +67,7 @@ jobs:
             {
               find backend -type f \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) -print0 | sort -z | xargs -0 sha256sum | cut -d' ' -f1
               sha256sum frontend/dist/index.html | cut -d' ' -f1
+              sha256sum Dockerfile | cut -d' ' -f1
             } | sha256sum | cut -c1-16
           )"
 
