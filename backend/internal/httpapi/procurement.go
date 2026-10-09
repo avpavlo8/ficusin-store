@@ -230,7 +230,7 @@ func (handlers procurementHandlers) orderDetail(response http.ResponseWriter, re
 }
 
 func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit); !ok {
 		return
 	}
 	orderID, ok := pathID(response, request)
@@ -239,6 +239,11 @@ func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, 
 	}
 	content, name, err := handlers.service.SabyPriceXLSX(request.Context(), orderID)
 	if err != nil {
+		var userError *procurement.UserFacingError
+		if errors.As(err, &userError) {
+			writeJSON(response, http.StatusConflict, errorResponse{Error: userError.Message})
+			return
+		}
 		handlers.failed(response, "build Saby price XLSX", err)
 		return
 	}

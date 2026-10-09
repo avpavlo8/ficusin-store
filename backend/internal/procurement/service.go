@@ -17,6 +17,7 @@ type Store interface {
 	CreateOrder(context.Context, Actor, OrderCreate) (OrderSummary, error)
 	CreatePlan(context.Context, Actor, PlanCreate) (OrderSummary, error)
 	OrderDetail(context.Context, int64) (OrderDetail, error)
+	ApprovedSabyPriceExportLines(context.Context, int64) ([]OrderLine, error)
 	CalculateOrder(context.Context, Actor, int64, CalculationInput) (OrderDetail, error)
 	UpdateOrderStatus(context.Context, Actor, int64, OrderStatusUpdate) (OrderDetail, error)
 	DeleteOrder(context.Context, Actor, int64) error
@@ -99,11 +100,14 @@ type Service struct {
 }
 
 func (service *Service) SabyPriceXLSX(ctx context.Context, orderID int64) ([]byte, string, error) {
-	detail, err := service.store.OrderDetail(ctx, orderID)
+	if orderID <= 0 {
+		return nil, "", ErrInvalidInput
+	}
+	lines, err := service.store.ApprovedSabyPriceExportLines(ctx, orderID)
 	if err != nil {
 		return nil, "", err
 	}
-	content, count, err := BuildSabyPriceXLSX(detail.Lines)
+	content, count, err := BuildSabyPriceXLSX(lines)
 	if err != nil {
 		return nil, "", err
 	}
