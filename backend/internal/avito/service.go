@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -334,6 +335,7 @@ func (s *Service) UpdatePrice(ctx context.Context, itemID string, price float64)
 	// A proposal may have been approved before stock became stale. Recheck at
 	// the last boundary before the external API call.
 	var stockKnown bool
+	var currentMinMinor *int64
 	err := s.pool.QueryRow(ctx, freshStockCTE+` SELECT
 		EXISTS(SELECT 1 FROM procurement_integration_sync_state
 			WHERE channel='saby' AND resource='catalog' AND status<>'error'
@@ -344,12 +346,20 @@ func (s *Service) UpdatePrice(ctx context.Context, itemID string, price float64)
 			WHERE lp.item_id=$1)
 		AND NOT EXISTS(SELECT 1 FROM avito_listing_products lp
 			JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 AND v.archived_at IS NULL
-			WHERE lp.item_id=$1 AND NOT EXISTS(SELECT 1 FROM fresh_stock f WHERE f.variant_id=v.id))`, itemID).Scan(&stockKnown)
+			WHERE lp.item_id=$1 AND NOT EXISTS(SELECT 1 FROM fresh_stock f WHERE f.variant_id=v.id)),
+		(SELECT MIN(f.base_price_minor) FROM avito_listing_products lp
+			JOIN fresh_stock f ON f.product_id=lp.product_id AND f.qty>0
+			WHERE lp.item_id=$1)`, itemID).Scan(&stockKnown, &currentMinMinor)
 	if err != nil {
 		return err
 	}
 	if !stockKnown {
 		return errors.New("остаток СБИС не подтверждён; цена Авито не отправлена")
+	}
+	// An approved proposal can outlive another site's price edit or a size
+	// becoming available. Compare kopecks before Avito rounds to whole rubles.
+	if currentMinMinor == nil || int64(math.Round(price*100)) != *currentMinMinor {
+		return errors.New("минимальная доступная цена сайта изменилась; пересчитайте предложение цены Авито")
 	}
 	token, err := s.tokenFor(ctx)
 	if err != nil {
@@ -373,7 +383,7 @@ func (s *Service) UpdatePrice(ctx context.Context, itemID string, price float64)
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("обновить цену Avito: HTTP %d", resp.StatusCode)
 	}
-	_, err = s.pool.Exec(ctx, `UPDATE avito_listings SET remote_price_minor=$2,last_error='' WHERE item_id=$1`, itemID, int64(price*100))
+	_, err = s.pool.Exec(ctx, `UPDATE avito_listings SET remote_price_minor=$2,last_error='' WHERE item_id=$1`, itemID, int64(math.Round(price*100)))
 	return err
 }
 

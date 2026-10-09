@@ -3,7 +3,10 @@ package avito
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,13 +89,56 @@ func TestAvitoUsesOnlyFreshSabyStockOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	listingFound := false
 	for _, listing := range listings {
 		if listing.ItemID == listingID {
+			listingFound = true
 			if item := find(listing.Products); item.Price != 1500 || item.Stock != 2 {
 				t.Fatalf("listing product=%+v, want price 1500 and stock 2", item)
 			}
-			return
 		}
 	}
-	t.Fatalf("listing %s not found", listingID)
+	if !listingFound {
+		t.Fatalf("listing %s not found", listingID)
+	}
+	// Restore the integration state after this committed-fixture test.
+	var priorStatus string
+	var priorSuccess *time.Time
+	if err = pool.QueryRow(ctx, `SELECT status,last_success_at FROM procurement_integration_sync_state
+		WHERE channel='saby' AND resource='catalog'`).Scan(&priorStatus, &priorSuccess); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `UPDATE procurement_integration_sync_state SET status=$1,last_success_at=$2
+			WHERE channel='saby' AND resource='catalog'`, priorStatus, priorSuccess)
+	}()
+	if _, err = pool.Exec(ctx, `UPDATE procurement_integration_sync_state SET status='ok',last_success_at=CURRENT_TIMESTAMP
+		WHERE channel='saby' AND resource='catalog'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, cheapID); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	sender := New(pool, "client", "secret", "https://ficusin.ru", "", "", "", "", "")
+	sender.baseURL = server.URL
+	sender.client = server.Client()
+	// 1500 was previously the minimum. A newly available 1000-ruble size
+	// makes that approved price obsolete, even though all snapshots are fresh.
+	err = sender.UpdatePrice(ctx, listingID, 1500)
+	if err == nil || !strings.Contains(err.Error(), "пересчитайте предложение") {
+		t.Fatalf("outdated price should require a new proposal, got %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("sent %d external requests for an outdated Avito price", calls)
+	}
+	err = sender.UpdatePrice(ctx, listingID, 1000.01)
+	if err == nil || !strings.Contains(err.Error(), "пересчитайте предложение") || calls != 0 {
+		t.Fatalf("one-kopeck mismatch reached Avito: err=%v calls=%d", err, calls)
+	}
 }
