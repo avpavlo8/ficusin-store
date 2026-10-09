@@ -10,11 +10,13 @@ import (
 
 func TestBuildSabyPriceXLSXUsesOfficialCodeAndHighestPrice(t *testing.T) {
 	first, second, ignored, unchanged := int64(2650), int64(2790), int64(9999), int64(2750)
+	variantID := int64(1)
 	content, count, err := BuildSabyPriceXLSX([]OrderLine{
-		{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &first, PriceChangeNeeded: true},
-		{SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &second, PriceChangeNeeded: true},
-		{SabyID: "77", SabyCode: "X77", MatchStatus: "confirmed", ProposedRetailRUB: &unchanged, PriceChangeNeeded: false},
-		{SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},
+		{CanonicalVariantID: &variantID, SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &first, PriceChangeNeeded: true},
+		{CanonicalVariantID: &variantID, SabyID: "42", SabyCode: "X42", MatchStatus: "confirmed", ProposedRetailRUB: &second, PriceChangeNeeded: true},
+		{CanonicalVariantID: &variantID, SabyID: "77", SabyCode: "X77", MatchStatus: "confirmed", ProposedRetailRUB: &unchanged, PriceChangeNeeded: false},
+		{CanonicalVariantID: &variantID, SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},
+		{SabyID: "100", SabyCode: "X100", MatchStatus: "confirmed", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},
 	})
 	if err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
@@ -46,6 +48,9 @@ func TestBuildSabyPriceXLSXUsesOfficialCodeAndHighestPrice(t *testing.T) {
 	}
 	if strings.Contains(sheet, "X99") {
 		t.Fatalf("ignored product leaked into sheet: %s", sheet)
+	}
+	if strings.Contains(sheet, "X100") {
+		t.Fatalf("unlinked Saby product leaked into sheet: %s", sheet)
 	}
 	if strings.Contains(sheet, "X77") {
 		t.Fatalf("unchanged price leaked into sheet: %s", sheet)

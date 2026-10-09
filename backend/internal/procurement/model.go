@@ -192,6 +192,7 @@ type OrderValidation struct {
 
 type OrderLine struct {
 	ID                           int64      `json:"id"`
+	CanonicalVariantID           *int64     `json:"canonicalVariantId,omitempty"`
 	SabyID                       string     `json:"sabyId"`
 	SabyCode                     string     `json:"sabyCode"`
 	SabyName                     string     `json:"sabyName"`

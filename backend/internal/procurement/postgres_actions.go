@@ -422,14 +422,19 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	if status != "ready_to_receive" {
 		return ActionBatch{}, ErrInvalidInput
 	}
+	batchChannel := ""
+	if kind == "prices" && len(channels) == 1 {
+		batchChannel = channels[0]
+	}
 	var batchID int64
 	var existingID int64
 	var existingStatus string
 	err = tx.QueryRow(ctx, `
 		SELECT id, status FROM procurement_action_batches
 		WHERE procurement_order_id = $1 AND kind = $2 AND status NOT IN ('cancelled', 'completed')
+			AND (channel = $3 OR channel = '' OR $3 = '')
 		ORDER BY id DESC LIMIT 1 FOR UPDATE
-	`, orderID, kind).Scan(&existingID, &existingStatus)
+	`, orderID, kind, batchChannel).Scan(&existingID, &existingStatus)
 	if err == nil && oneOf(existingStatus, "approved", "processing") {
 		return ActionBatch{}, &UserFacingError{Message: "Для этой закупки уже выполняется пакет " + map[string]string{"receipt": "поступления", "prices": "изменения цен"}[kind] + ". Дождитесь его завершения или повторите ошибки в открытом пакете."}
 	}
@@ -443,10 +448,10 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO procurement_action_batches (
-			procurement_order_id, kind, created_by, calculation_version, calculated_at
-		) SELECT id, $2, $3, calculation_version, calculated_at
+			procurement_order_id, kind, channel, created_by, calculation_version, calculated_at
+		) SELECT id, $2, $3, $4, calculation_version, calculated_at
 		FROM procurement_orders WHERE id = $1 RETURNING id
-	`, orderID, kind, actor.CustomerID).Scan(&batchID)
+	`, orderID, kind, batchChannel, actor.CustomerID).Scan(&batchID)
 	if err != nil {
 		return ActionBatch{}, fmt.Errorf("create procurement action batch: %w", err)
 	}
@@ -496,7 +501,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				SELECT MAX(canonical_variant_id) AS canonical_variant_id,saby_id,
 					MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
 					MAX(proposed_marketplace_rub) AS marketplace,
-					MAX(proposed_marketplace_strike_rub) AS strike
+					MAX(proposed_marketplace_strike_rub) AS strike,
+					MAX(baseline_site_price_minor) AS baseline_site_price_minor
 				FROM procurement_order_lines
 				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
 					AND NOT invoice_excluded AND reconciliation_status<>'superseded'
@@ -524,9 +530,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			LEFT JOIN canonical_product_directory directory ON directory.variant_id=p.canonical_variant_id
 			JOIN saby_nomenclature n ON n.saby_id = p.saby_id
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id=p.saby_id
-			LEFT JOIN LATERAL (
-				SELECT MAX(base_price_minor) AS base_price_minor FROM product_variants WHERE saby_id = p.saby_id
-			) pv ON TRUE
+			JOIN product_variants pv ON pv.id = p.canonical_variant_id
 			LEFT JOIN procurement_channel_products wb_product
 				ON wb_product.channel = 'wb'
 				AND wb_product.external_id = COALESCE(pc.wb_nm_id::TEXT, directory.wb_nm_ids[1])
@@ -534,12 +538,11 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				ON ozon_product.channel = 'ozon'
 				AND ozon_product.external_id = COALESCE(NULLIF(pc.ozon_offer_id,''), directory.ozon_articles[1])
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
-			WHERE channel.name = ANY($3::TEXT[])
-				AND (channel.name <> 'site' OR p.canonical_variant_id IS NOT NULL)
-				AND (channel.name IN ('wb','ozon')
-					OR n.price_minor <= 0
-					OR ABS(p.retail::NUMERIC - n.price_minor::NUMERIC / 100)
-						> (n.price_minor::NUMERIC / 100) *
+				WHERE channel.name = ANY($3::TEXT[])
+				AND p.canonical_variant_id IS NOT NULL
+				AND (COALESCE(p.baseline_site_price_minor,pv.base_price_minor,0) <= 0
+					OR ABS(p.retail::NUMERIC - COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100)
+						> (COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100) *
 							(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
 		`, batchID, orderID, channels)
 		if err == nil {
@@ -556,17 +559,23 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		if err == nil && containsString(channels, "saby_price") {
 			_, err = tx.Exec(ctx, `
 				WITH products AS (
-					SELECT MIN(l.id) AS id, l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
-						n.name, n.price_minor::NUMERIC / 100 AS old_price, MAX(l.proposed_retail_rub) AS new_price
+					SELECT MIN(l.id) AS id, l.saby_id, MAX(l.canonical_variant_id) AS variant_id,
+						MAX(l.proposed_retail_rub) AS new_price,
+						MAX(l.baseline_site_price_minor) AS baseline_site_price_minor
 					FROM procurement_order_lines l
-					JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 					WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
 						AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
 						AND l.saby_id IS NOT NULL AND l.proposed_retail_rub IS NOT NULL
-					GROUP BY l.saby_id, n.code, n.name, n.price_minor
-					HAVING n.price_minor <= 0
-						OR ABS(MAX(l.proposed_retail_rub)::NUMERIC - n.price_minor::NUMERIC / 100)
-							> (n.price_minor::NUMERIC / 100) *
+					GROUP BY l.saby_id
+				), eligible AS (
+					SELECT p.id, p.saby_id, COALESCE(NULLIF(n.code, ''), p.saby_id) AS code,
+						n.name, n.price_minor::NUMERIC / 100 AS old_price, p.new_price
+					FROM products p
+					JOIN saby_nomenclature n ON n.saby_id = p.saby_id
+					JOIN product_variants pv ON pv.id = p.variant_id
+					WHERE COALESCE(p.baseline_site_price_minor,pv.base_price_minor) <= 0
+						OR ABS(p.new_price::NUMERIC - COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100)
+							> (COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100) *
 								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
 				)
 				INSERT INTO procurement_action_items (
@@ -581,7 +590,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 							'oldPrice', old_price, 'newPrice', new_price
 						) ORDER BY id)
 					)
-				FROM products
+				FROM eligible
 				HAVING COUNT(*) > 0
 			`, batchID, orderID)
 		}
@@ -592,6 +601,12 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					FROM procurement_order_lines line
 					JOIN product_variants changed_variant ON changed_variant.id=line.canonical_variant_id
 					WHERE line.procurement_order_id=$2 AND line.proposed_retail_rub IS NOT NULL
+						AND line.match_status='confirmed' AND NOT line.invoice_excluded
+						AND line.reconciliation_status<>'superseded'
+						AND (COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor) <= 0
+							OR ABS(line.proposed_retail_rub::NUMERIC - COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100)
+							> (COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100) *
+								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
 					GROUP BY changed_variant.product_id
 				), affected AS (
 					SELECT DISTINCT lp.item_id FROM changed_products c
@@ -599,7 +614,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				), listing_product_prices AS (
 					SELECT a.item_id,lp.product_id,COALESCE(cp.new_price,MIN(v.base_price_minor)::NUMERIC/100) effective_price
 					FROM affected a JOIN avito_listing_products lp ON lp.item_id=a.item_id
-					JOIN product_variants v ON v.product_id=lp.product_id AND v.active
+					JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0
 					JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0
 					LEFT JOIN changed_products cp ON cp.product_id=lp.product_id
 					GROUP BY a.item_id,lp.product_id,cp.new_price
@@ -653,13 +668,28 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	if status != "draft" {
 		return ActionBatch{}, ErrInvalidInput
 	}
+	// A later manual edit must not be overwritten by a stale invoice proposal.
+	var staleSitePrices int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM procurement_action_items item
+		JOIN procurement_order_lines line ON line.id=item.procurement_order_line_id
+		JOIN product_variants pv ON pv.id=line.canonical_variant_id
+		WHERE item.batch_id=$1 AND item.channel='site'
+			AND line.baseline_site_price_minor IS NOT NULL
+			AND pv.base_price_minor IS DISTINCT FROM line.baseline_site_price_minor
+	`, batchID).Scan(&staleSitePrices); err != nil {
+		return ActionBatch{}, fmt.Errorf("check procurement site price baseline: %w", err)
+	}
+	if staleSitePrices > 0 {
+		return ActionBatch{}, &UserFacingError{Message: "Цена на сайте изменилась после расчёта закупки. Пересчитайте закупку перед утверждением цены сайта."}
+	}
 	// The site price is atomic with approval. External calls are queued in the
 	// same transaction and are performed by a restart-safe worker afterwards.
 	if _, err := tx.Exec(ctx, `
 		UPDATE product_variants pv SET base_price_minor = ROUND(item.new_value * 100), updated_at = CURRENT_TIMESTAMP
 		FROM procurement_action_items item
 		JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
-		WHERE item.batch_id = $1 AND item.channel = 'site' AND line.saby_id = pv.saby_id
+		WHERE item.batch_id = $1 AND item.channel = 'site' AND line.canonical_variant_id = pv.id
 	`, batchID); err != nil {
 		return ActionBatch{}, fmt.Errorf("apply procurement site prices: %w", err)
 	}

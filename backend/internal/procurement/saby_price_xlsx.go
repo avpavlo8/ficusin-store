@@ -21,7 +21,7 @@ func BuildSabyPriceXLSX(lines []OrderLine) ([]byte, int, error) {
 	}
 	byProduct := make(map[string]priceRow)
 	for _, line := range lines {
-		if line.MatchStatus != "confirmed" || line.ProposedRetailRUB == nil || *line.ProposedRetailRUB <= 0 {
+		if line.MatchStatus != "confirmed" || line.CanonicalVariantID == nil || line.ProposedRetailRUB == nil || *line.ProposedRetailRUB <= 0 {
 			continue
 		}
 		code := strings.TrimSpace(line.SabyCode)

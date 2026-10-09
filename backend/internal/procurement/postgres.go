@@ -551,7 +551,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 		return OrderDetail{}, fmt.Errorf("load procurement order costs: %w", err)
 	}
 	rows, err := store.pool.Query(ctx, `
-		SELECT l.id, COALESCE(l.saby_id, ''), COALESCE(n.code, ''), COALESCE(n.name, ''), l.raw_name,
+		SELECT l.id, l.canonical_variant_id, COALESCE(l.saby_id, ''), COALESCE(n.code, ''), COALESCE(n.name, ''), l.raw_name,
 			l.supplier_article, l.supplier_category, l.package_count, l.units_per_package,
 			l.invoice_raw_name, l.invoice_supplier_article, l.reconciliation_status,
 			l.invoice_excluded, l.invoice_exclusion_reason, COALESCE(l.invoiced_qty, l.ordered_qty),
@@ -562,7 +562,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			l.purchase_unit_rub::DOUBLE PRECISION, l.trolley_delivery_unit_rub::DOUBLE PRECISION,
 			l.ryazan_delivery_unit_rub::DOUBLE PRECISION, l.unit_cost_rub::DOUBLE PRECISION,
 			pv.current_unit_cost_rub::DOUBLE PRECISION,COALESCE(pv.current_unit_cost_kind,''),pv.current_unit_cost_effective_at,
-			COALESCE(n.price_minor, 0)::DOUBLE PRECISION / 100,
+			COALESCE(l.baseline_site_price_minor, pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			l.proposed_retail_rub, l.proposed_marketplace_rub,
 			l.proposed_marketplace_strike_rub, l.customer_request,
 			l.comparison_accepted, l.comparison_note
@@ -579,7 +579,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	detail.Lines = make([]OrderLine, 0)
 	for rows.Next() {
 		var line OrderLine
-		if err := rows.Scan(&line.ID, &line.SabyID, &line.SabyCode, &line.SabyName, &line.RawName,
+		if err := rows.Scan(&line.ID, &line.CanonicalVariantID, &line.SabyID, &line.SabyCode, &line.SabyName, &line.RawName,
 			&line.SupplierArticle, &line.SupplierCategory, &line.PackageCount, &line.UnitsPerPackage,
 			&line.InvoiceRawName, &line.InvoiceSupplierArticle, &line.ReconciliationStatus,
 			&line.InvoiceExcluded, &line.InvoiceExclusionReason,
@@ -593,7 +593,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
-		if line.ProposedRetailRUB != nil {
+		if line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
 			line.PriceChangeNeeded = priceChangeNeeded(line.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
 		}
 		detail.Lines = append(detail.Lines, line)
@@ -743,7 +743,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,
 			ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
 			proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,
-			proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
+			proposed_marketplace_strike_rub=NULL,baseline_site_price_minor=NULL,updated_at=CURRENT_TIMESTAMP
 		FROM procurement_supplier_aliases alias
 		WHERE line.procurement_order_id=$1
 			AND line.supplier_alias_id=alias.id
@@ -885,6 +885,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 				trolley_delivery_unit_rub = $3, ryazan_delivery_unit_rub = $4,
 				unit_cost_rub = $5, proposed_retail_rub = $6,
 				proposed_marketplace_rub = $7, proposed_marketplace_strike_rub = $8,
+				baseline_site_price_minor = (SELECT pv.base_price_minor FROM product_variants pv WHERE pv.id=procurement_order_lines.canonical_variant_id),
 				updated_at = CURRENT_TIMESTAMP WHERE id = $1
 		`, line.id, calculated.PurchaseUnitRUB, calculated.TrolleyDeliveryUnitRUB,
 			calculated.RyazanDeliveryUnitRUB, calculated.UnitCostRUB,

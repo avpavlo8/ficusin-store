@@ -22,9 +22,15 @@ type ShipmentQuoteService interface {
 }
 
 type PostgresRepository struct {
-	pool     *pgxpool.Pool
-	notifier OrderNotifier
-	shipmentQuotes ShipmentQuoteService
+	pool                    *pgxpool.Pool
+	notifier                OrderNotifier
+	shipmentQuotes          ShipmentQuoteService
+	priceChannelsConfigured map[string]bool
+}
+
+func (repository *PostgresRepository) WithPriceChannelsConfigured(configured map[string]bool) *PostgresRepository {
+	repository.priceChannelsConfigured = configured
+	return repository
 }
 
 func (repository *PostgresRepository) WithShipmentQuotes(service ShipmentQuoteService) *PostgresRepository {
