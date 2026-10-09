@@ -137,6 +137,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
     [cdekAvailable],
   );
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const hasPreorder = cartLines.some((item) => item.stock !== undefined && item.stock < item.quantity);
   const availableDelivery = deliveryOptions;
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
   const cdekQuote =
@@ -243,7 +244,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
-      paymentMethod,
+	  paymentMethod: hasPreorder ? "" : paymentMethod,
 	  attribution: getAttribution(),
     };
 
@@ -259,13 +260,13 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
         throw new Error(data.error || "Не удалось оформить заказ");
       }
 	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
-	  track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
+	  if (!hasPreorder) track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
       trackYandexPurchase(data.orderNumber, subtotal, cartLines.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })));
       setOrderConfirmationPending(needsManagerConfirmation || deliveryFeePending || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
-      if (paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder && !deliveryFeePending) {
+      if (!hasPreorder && paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder && !deliveryFeePending) {
         try {
           const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
             method: "POST",
@@ -338,6 +339,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       cdekRepack,
       setCdekRepack,
       cartCount,
+      hasPreorder,
       cdekQuotes,
       paymentMethods,
       paymentMethod,

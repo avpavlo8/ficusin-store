@@ -313,18 +313,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		return Created{}, invalid("Выберите способ получения")
 	}
 
-	// The browser names a payment method; these rules decide whether it may
-	// have it. Never silently replace an unavailable method with card payment.
-	paymentMethod := strings.TrimSpace(input.PaymentMethod)
-	if !payment.Allowed(
-		paymentMethod,
-		input.Delivery,
-		input.WholesaleApproved,
-		input.OnlinePaymentReady,
-	) {
-		return Created{}, invalid("Выберите доступный способ оплаты")
-	}
-
 	// Availability is a checkout snapshot only. No order reserves stock; availability
 	// must be checked again before payment or fulfilment.
 	hasPreorder := false
@@ -335,6 +323,19 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		}
 		items[index].Preorder = preorder
 		hasPreorder = hasPreorder || preorder
+	}
+	// A missing plant makes the entire order a manager-confirmed request.
+	// The customer need not choose a payment method for an order that cannot be paid yet.
+	paymentMethod := strings.TrimSpace(input.PaymentMethod)
+	if hasPreorder {
+		paymentMethod = payment.MethodManager
+	} else if !payment.Allowed(
+		paymentMethod,
+		input.Delivery,
+		input.WholesaleApproved,
+		input.OnlinePaymentReady,
+	) {
+		return Created{}, invalid("Выберите доступный способ оплаты")
 	}
 
 	orderNumber, err := newOrderNumber(ctx, transaction, input.CustomerID)
