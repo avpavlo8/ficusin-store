@@ -10,13 +10,14 @@ import (
 )
 
 type wbMirrorStoreStub struct {
-	claims   map[string]bool
-	finished map[string]time.Duration
-	products []ChannelProduct
-	linked   []ChannelProduct
-	sales    []SalesRecord
-	states   map[string]string
-	tokens   int64
+	claims         map[string]bool
+	finished       map[string]time.Duration
+	finishedClaims map[string]SyncClaim
+	products       []ChannelProduct
+	linked         []ChannelProduct
+	sales          []SalesRecord
+	states         map[string]string
+	tokens         int64
 }
 
 func (stub *wbMirrorStoreStub) ClaimWBSync(_ context.Context, resource, owner string, _ time.Duration) (*SyncClaim, error) {
@@ -30,6 +31,10 @@ func (stub *wbMirrorStoreStub) ClaimWBSync(_ context.Context, resource, owner st
 
 func (stub *wbMirrorStoreStub) FinishWBSync(_ context.Context, claim SyncClaim, _ int, next time.Duration, _ error) (bool, error) {
 	stub.finished[claim.Resource] = next
+	if stub.finishedClaims == nil {
+		stub.finishedClaims = make(map[string]SyncClaim)
+	}
+	stub.finishedClaims[claim.Resource] = claim
 	return true, nil
 }
 
@@ -98,6 +103,10 @@ func TestWBMirrorOwnsOneHourlyCatalogueAndSalesRefresh(t *testing.T) {
 	}
 	if days := int(source.salesTo.Sub(source.salesFrom).Hours()/24) + 1; days != wbSalesDays {
 		t.Fatalf("sales window = %d days, want %d", days, wbSalesDays)
+	}
+	claim := store.finishedClaims["sales"]
+	if !claim.PeriodFrom.Equal(source.salesFrom) || !claim.PeriodTo.Equal(source.salesTo) || claim.LatestEventAt == nil || !claim.LatestEventAt.Equal(source.salesTo) {
+		t.Fatalf("sales coverage not recorded: %+v", claim)
 	}
 }
 

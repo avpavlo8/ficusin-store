@@ -80,9 +80,13 @@ func (store *PostgresStore) FinishWBSync(
 		UPDATE procurement_integration_sync_state SET status=$2,last_success_at=CASE WHEN $2='ok' THEN CURRENT_TIMESTAMP ELSE last_success_at END,
 			next_attempt_at=CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION),
 			cooldown_until=CASE WHEN $2 IN ('error','pending') THEN CURRENT_TIMESTAMP+make_interval(secs=>$3::DOUBLE PRECISION) ELSE NULL END,
-			rows_synced=CASE WHEN $2='ok' THEN $4 ELSE rows_synced END,last_error=$5,updated_at=CURRENT_TIMESTAMP
+			rows_synced=CASE WHEN $2='ok' THEN $4 ELSE rows_synced END,
+			period_from=CASE WHEN $2='ok' AND $1='sales' THEN $6::DATE ELSE period_from END,
+			period_to=CASE WHEN $2='ok' AND $1='sales' THEN $7::DATE ELSE period_to END,
+			latest_event_at=CASE WHEN $2='ok' AND $1='sales' THEN $8::TIMESTAMPTZ ELSE latest_event_at END,
+			last_error=$5,updated_at=CURRENT_TIMESTAMP
 		WHERE channel='wb' AND resource=$1
-	`, claim.Resource, status, next.Seconds(), rows, message)
+	`, claim.Resource, status, next.Seconds(), rows, message, claim.PeriodFrom, claim.PeriodTo, claim.LatestEventAt)
 	if err != nil {
 		return false, fmt.Errorf("record Wildberries coordinated state: %w", err)
 	}

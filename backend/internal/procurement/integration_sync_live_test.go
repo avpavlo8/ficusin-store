@@ -171,6 +171,25 @@ func TestIntegrationCoordinatorLive(t *testing.T) {
 	if applied, err := store.FinishWBSync(ctx, *wbB, 2, time.Hour, nil); err != nil || !applied {
 		t.Fatalf("current WB finisher=%v %v", applied, err)
 	}
+	_, err = pool.Exec(ctx, `UPDATE procurement_wb_sync_state SET status='pending',next_attempt_at=CURRENT_TIMESTAMP,locked_until=NULL,lease_owner='' WHERE resource='sales'`)
+	if err != nil { t.Fatal(err) }
+	wbSales, err := store.ClaimWBSync(ctx, "sales", "wb-sales-coverage", time.Minute)
+	if err != nil || wbSales == nil { t.Fatalf("WB sales claim=%+v %v", wbSales, err) }
+	wbSales.PeriodFrom = time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	wbSales.PeriodTo = time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	latest := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	wbSales.LatestEventAt = &latest
+	if applied, err := store.FinishWBSync(ctx, *wbSales, 3, time.Hour, nil); err != nil || !applied {
+		t.Fatalf("WB sales coverage finisher=%v %v", applied, err)
+	}
+	var from, to string
+	var event time.Time
+	if err := pool.QueryRow(ctx, `SELECT period_from::TEXT,period_to::TEXT,latest_event_at FROM procurement_integration_sync_state WHERE channel='wb' AND resource='sales'`).Scan(&from, &to, &event); err != nil {
+		t.Fatal(err)
+	}
+	if from != "2026-07-12" || to != "2026-10-09" || !event.Equal(latest) {
+		t.Fatalf("WB sales coverage=%s..%s latest=%s", from, to, event)
+	}
 
 	// Queue state is isolated from unsaved procurement data.
 	var supplierID, orderID int64

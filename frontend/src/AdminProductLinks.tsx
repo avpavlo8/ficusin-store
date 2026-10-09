@@ -3,7 +3,7 @@ import { api, statusLabels } from "./adminShared";
 
 export type LinkChannel = "saby" | "wb" | "ozon" | "avito";
 type ChannelLink = { linked: boolean; externalIds: string[]; listingNames?: string[] };
-type VariantLink = { id: number; sku: string; label: string; channels: Record<"saby" | "wb" | "ozon", { externalIds: string[] }> };
+type VariantLink = { id: number; sku: string; label: string; sitePriceRub: number; channelPricesRub: Partial<Record<"saby" | "wb" | "ozon", number | null>>; channels: Record<"saby" | "wb" | "ozon", { externalIds: string[] }> };
 export type ProductLink = {
   id: number;
   name: string;
@@ -14,6 +14,7 @@ export type ProductLink = {
 };
 
 const channelNames: Record<LinkChannel, string> = { saby: "СБИС", wb: "Wildberries", ozon: "Ozon", avito: "Авито" };
+const rubles = (value: number) => `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽`;
 const fullyLinked = (product: ProductLink, channel: LinkChannel) => channel === "avito"
   ? Boolean(product.channels.avito?.linked)
   : product.variants.length > 0 && product.variants.every((variant) => variant.channels[channel]?.externalIds.length > 0);
@@ -87,7 +88,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSab
   }), [products, channel, filter, query]);
 
   return <section className="admin-product-links" aria-label={`Связи ${channelNames[channel]}`}>
-    <header className="admin-product-links-heading"><div><h2>Связи · {channelNames[channel]}</h2><p>{channel === "avito" ? "Одно объявление может предлагать несколько размеров растения. Связь Авито относится ко всей карточке; сопоставление выполняется в разделе Авито." : "Связи показаны по SKU каждого размера. В «Не связанные» входят карточки, у которых не связан хотя бы один размер."}</p></div></header>
+    <header className="admin-product-links-heading"><div><h2>Связи · {channelNames[channel]}</h2><p>{channel === "avito" ? "Одно объявление может предлагать несколько размеров растения. Связь Авито относится ко всей карточке; сопоставление выполняется в разделе Авито." : "Связи показаны по SKU каждого размера. В «Не связанные» входят карточки, у которых не связан хотя бы один размер. Цены каналов взяты из последнего локального зеркала и не подтверждают отправку новой цены."}</p></div></header>
     <div className="admin-product-links-filters" role="group" aria-label="Состояние связи">
       <button type="button" className={filter === "all" ? "active" : ""} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>Все <b>{products.length}</b></button>
       <button type="button" className={filter === "linked" ? "active" : ""} aria-pressed={filter === "linked"} onClick={() => setFilter("linked")}>Связанные <b>{counts.linked}</b></button>
@@ -103,7 +104,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSab
         <td>{link?.linked ? <>
           {channel === "avito" && (link.listingNames || []).length > 0 && <strong>{link.listingNames?.join(", ")}</strong>}
           <small>Коды: {link.externalIds.join(", ")}</small>
-          {channel !== "avito" && product.variants.map((variant) => <small key={variant.id}>SKU {variant.sku}: {variant.channels[channel]?.externalIds.length ? variant.channels[channel].externalIds.join(", ") : "нет связи"}</small>)}
+          {channel !== "avito" && product.variants.map((variant) => <small key={variant.id}>SKU {variant.sku}: {variant.channels[channel]?.externalIds.length ? variant.channels[channel].externalIds.join(", ") : "нет связи"} · сайт {rubles(variant.sitePriceRub)} · зеркало {channelNames[channel]} {variant.channelPricesRub?.[channel] != null ? rubles(variant.channelPricesRub[channel]!) : "нет цены"}</small>)}
         </> : <small>Внешняя карточка не привязана</small>}</td>
         <td>{channel === "avito" ? canManageAvito ? <a className="text-button" href="/admin?section=avito">Сопоставить в Авито ↗</a> : null : <>{canOpen && <button type="button" className="text-button" onClick={(event) => { event.stopPropagation(); onOpen(product.id); }}>Открыть связи</button>}{channel === "saby" && canLinkSaby && product.variants.filter((variant) => !variant.channels.saby?.externalIds.length).map((variant) => <SabyLinkPicker key={variant.id} product={product} variant={variant} onLinked={() => setRevision((value) => value + 1)} onError={onError} />)}</>}</td>
       </tr>;
