@@ -18,10 +18,44 @@ const fullyLinked = (product: ProductLink, channel: LinkChannel) => channel === 
   ? Boolean(product.channels.avito?.linked)
   : product.variants.length > 0 && product.variants.every((variant) => variant.channels[channel]?.externalIds.length > 0);
 
-export function AdminProductLinks({ channel, canOpen, canManageAvito, onOpen, onError }: {
+type SabyCandidate = { id: string; code: string; article: string; name: string; missing: boolean; linkedVariantId?: number; linkedProductId?: number; mappedProductId?: number };
+
+function SabyLinkPicker({ product, variant, onLinked, onError }: { product: ProductLink; variant: VariantLink; onLinked: () => void; onError: (message: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [candidates, setCandidates] = useState<SabyCandidate[]>([]);
+  const [selected, setSelected] = useState<SabyCandidate | null>(null);
+  const [busy, setBusy] = useState(false);
+  const search = async () => {
+    if (query.trim().length < 2) return;
+    setBusy(true); setSelected(null);
+    try { const data = await api<{ candidates: SabyCandidate[] }>(`/api/v1/admin/saby/link-candidates?q=${encodeURIComponent(query.trim())}`); setCandidates(data.candidates || []); }
+    catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+  const link = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try { await api(`/api/v1/admin/variants/${variant.id}/saby-link`, { method: "POST", body: JSON.stringify({ sabyId: selected.id }) }); setOpen(false); onLinked(); }
+    catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <div onClick={(event) => event.stopPropagation()}>
+    <button type="button" className="text-button" onClick={() => setOpen(!open)}>{open ? "Закрыть поиск" : `Связать SKU ${variant.sku}`}</button>
+    {open && <div className="admin-pim-editor">
+      <p>Карточка сайта: <strong>{product.name}</strong> · SKU {variant.sku}{variant.label ? ` · ${variant.label}` : ""}</p>
+      <div><input aria-label="Поиск номенклатуры СБИС" placeholder="Код, артикул или название в СБИС" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} /> <button type="button" disabled={busy || query.trim().length < 2} onClick={() => void search()}>Найти</button></div>
+      {candidates.map((candidate) => { const occupiedByOther = Boolean((candidate.linkedProductId && candidate.linkedProductId !== product.id) || (candidate.mappedProductId && candidate.mappedProductId !== product.id)); return <label key={candidate.id} className="admin-checkbox"><input type="radio" name={`saby-link-${variant.id}`} disabled={candidate.missing || Boolean(candidate.linkedVariantId) || occupiedByOther || busy} checked={selected?.id === candidate.id} onChange={() => setSelected(candidate)} /><span>{candidate.name} · {candidate.code || candidate.id}{candidate.article ? ` · ${candidate.article}` : ""}{candidate.missing ? " · отсутствует в выгрузке" : candidate.linkedVariantId ? ` · уже связан с SKU #${candidate.linkedVariantId}` : occupiedByOther ? ` · уже связан с карточкой #${candidate.linkedProductId || candidate.mappedProductId}` : ""}</span></label>; })}
+      {selected && <div><p>Подтвердите связь <strong>{variant.sku}</strong> → <strong>{selected.name} ({selected.code || selected.id})</strong>. Перепривязка через этот экран невозможна. Остаток появится после следующей синхронизации СБИС.</p><button type="button" disabled={busy} onClick={() => void link()}>{busy ? "Связываем…" : "Подтвердить связь"}</button></div>}
+    </div>}
+  </div>;
+}
+
+export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSaby, onOpen, onError }: {
   channel: LinkChannel;
   canOpen: boolean;
   canManageAvito: boolean;
+  canLinkSaby: boolean;
   onOpen: (productId: number) => void;
   onError: (message: string) => void;
 }) {
@@ -30,6 +64,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, onOpen, on
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "linked" | "unlinked">("all");
+  const [revision, setRevision] = useState(0);
   useEffect(() => {
     let active = true;
     api<{ products: ProductLink[] }>("/api/v1/admin/products/links")
@@ -37,7 +72,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, onOpen, on
       .catch((caught) => { if (active) { const message = (caught as Error).message; setError(message); onError(message); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [onError]);
+  }, [onError, revision]);
   const counts = useMemo(() => ({
     linked: products.filter((product) => fullyLinked(product, channel)).length,
     unlinked: products.filter((product) => !fullyLinked(product, channel)).length,
@@ -70,7 +105,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, onOpen, on
           <small>Коды: {link.externalIds.join(", ")}</small>
           {channel !== "avito" && product.variants.map((variant) => <small key={variant.id}>SKU {variant.sku}: {variant.channels[channel]?.externalIds.length ? variant.channels[channel].externalIds.join(", ") : "нет связи"}</small>)}
         </> : <small>Внешняя карточка не привязана</small>}</td>
-        <td>{channel === "avito" ? canManageAvito ? <a className="text-button" href="/admin?section=avito">Сопоставить в Авито ↗</a> : null : canOpen ? <button type="button" className="text-button" onClick={(event) => { event.stopPropagation(); onOpen(product.id); }}>Открыть связи</button> : null}</td>
+        <td>{channel === "avito" ? canManageAvito ? <a className="text-button" href="/admin?section=avito">Сопоставить в Авито ↗</a> : null : <>{canOpen && <button type="button" className="text-button" onClick={(event) => { event.stopPropagation(); onOpen(product.id); }}>Открыть связи</button>}{channel === "saby" && canLinkSaby && product.variants.filter((variant) => !variant.channels.saby?.externalIds.length).map((variant) => <SabyLinkPicker key={variant.id} product={product} variant={variant} onLinked={() => setRevision((value) => value + 1)} onError={onError} />)}</>}</td>
       </tr>;
     })}</tbody></table></div>}
   </section>;

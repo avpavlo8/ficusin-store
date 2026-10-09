@@ -243,7 +243,7 @@ export function Products({ can, onError }: { can: (permission: string) => boolea
     {importing && <ImportDialog onClose={() => setImporting(false)} onImported={() => { setImporting(false); reload(); }} onError={onError} />}
     {merging && <MergeProductsDialog products={merging} onClose={() => setMerging(null)} onMerged={() => { setMerging(null); setSelected([]); reload(); }} onError={onError} />}
     {syncing && <SyncDialog count={syncing.length} onClose={() => setSyncing(null)} onSync={async (fields) => { try { await api("/api/v1/admin/products/sync", { method: "POST", body: JSON.stringify({ productIds: syncing, fields }) }); const data = await api<{ products: Product[] }>("/api/v1/admin/products"); setItems(data.products); setSelected([]); setSyncing(null); } catch (error) { onError((error as Error).message); } }} />}
-    </> : <><AdminProductLinks channel={view} canOpen={can("products.edit")} canManageAvito={can("integrations.edit")} onOpen={openLinkedProduct} onError={onError} />
+    </> : <><AdminProductLinks channel={view} canOpen={can("products.edit")} canManageAvito={can("integrations.edit")} canLinkSaby={can("products.manage")} onOpen={openLinkedProduct} onError={onError} />
       {editing && <ProductDialog owner={can("products.manage")} key={editing.id} product={editing} initialSection="relationships" onClose={() => setEditing(null)} onSaved={(product) => { replace(product); setEditing(null); }} onError={onError} />}
     </>}
   </>;
