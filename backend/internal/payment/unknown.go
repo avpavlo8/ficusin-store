@@ -171,13 +171,20 @@ func (service *Service) claimUnknownPayments(ctx context.Context, limit int) ([]
 
 func (service *Service) RecoverUnknown(ctx context.Context, paymentID int64) (string, error) {
 	var orderID int64
-	if err := service.pool.QueryRow(ctx, `SELECT order_id FROM payments WHERE id=$1`, paymentID).Scan(&orderID); err != nil {
+	var offerID *int64
+	if err := service.pool.QueryRow(ctx, `SELECT order_id, shipment_offer_id FROM payments WHERE id=$1`, paymentID).Scan(&orderID, &offerID); err != nil {
 		return "", err
 	}
 	// The first POST may already have succeeded. Avoid repeating it while Saby
 	// cannot confirm stock; leave the attempt pending for provider reconciliation.
-	if err := service.checkOrderStock(ctx, orderID); err != nil {
-		return "", err
+	var stockErr error
+	if offerID != nil {
+		stockErr = service.checkOfferStock(ctx, *offerID)
+	} else {
+		stockErr = service.checkOrderStock(ctx, orderID)
+	}
+	if stockErr != nil {
+		return "", stockErr
 	}
 	created, err := service.attemptPaymentCreation(ctx, paymentID, integration.PaymentRequest{})
 	if err != nil {

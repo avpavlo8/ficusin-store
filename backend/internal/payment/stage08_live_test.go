@@ -53,6 +53,27 @@ func TestStage08ShipmentPaymentIsIdempotentAndHasExactReceipt(t *testing.T) {
 		t.Fatal("expected ambiguous provider timeout")
 	}
 	originalKey := provider.request.IdempotenceKey
+	// The order also contains plants outside this shipment. Their shortage
+	// must not block recovery of the payment for the available shipment item.
+	if _, err = pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty) VALUES($1,$2,$3,$4,'Other plants','D17','{}',2290,10,1,0)`, orderID, productID, variantID, sku); err != nil {
+		t.Fatal(err)
+	}
+	var unknownPaymentID int64
+	if err = pool.QueryRow(ctx, `SELECT id FROM payments WHERE shipment_offer_id=$1 AND status='pending'`, offerID).Scan(&unknownPaymentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.RecoverUnknown(ctx, unknownPaymentID); err == nil || provider.creates != 1 {
+		t.Fatalf("stale shipment stock allowed recovery: err=%v creates=%d", err, provider.creates)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.RecoverUnknown(ctx, unknownPaymentID); err != nil {
+		t.Fatalf("mixed order blocked recovery of available shipment: %v", err)
+	}
 	first, err := service.StartShipmentOffer(ctx, token, customerID)
 	if err != nil {
 		t.Fatal(err)
