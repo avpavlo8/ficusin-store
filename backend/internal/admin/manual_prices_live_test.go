@@ -239,3 +239,128 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 		t.Fatalf("duplicate retry error = %v", err)
 	}
 }
+
+func TestManualAvitoPriceRetryChecksAllSizes(t *testing.T) {
+	databaseURL := os.Getenv("CRM_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("CRM_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var actorID, productID, cheapID, expensiveID, warehouseID, batchID, proposalID int64
+	listingID := fmt.Sprintf("retry-avito-%d", unique)
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
+		VALUES($1,$2,'','Avito retry test',now()) RETURNING id`,
+		fmt.Sprintf("retry-avito-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID) }()
+	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,saby_fields)
+		VALUES('Avito retry test',$1,'published',ARRAY['stock']) RETURNING id`, listingID).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
+		for index := 0; index < 2; index++ {
+			_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, fmt.Sprintf("%s-%d", listingID, index))
+		}
+	}()
+	for index, target := range []*int64{&cheapID, &expensiveID} {
+		sabyID := fmt.Sprintf("%s-%d", listingID, index)
+		if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Avito retry test')`, sabyID, sabyID); err != nil {
+			t.Fatal(err)
+		}
+		if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor)
+			VALUES($1,$2,$3,$4,$5) RETURNING id`, productID, sabyID,
+			fmt.Sprintf("6%017d", unique%100000000000000000+int64(index)), fmt.Sprintf("D%d", 12+index), 100000+index*50000).Scan(target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active=1 LIMIT 1`).Scan(&warehouseID); err != nil {
+		t.Fatal(err)
+	}
+	for _, variantID := range []int64{cheapID, expensiveID} {
+		if _, err = pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,synced_at)
+			VALUES($1,$2,1,now())`, warehouseID, variantID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO avito_listings(item_id,title,status,remote_price_minor)
+		VALUES($1,'Avito retry test','active',100000)`, listingID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM avito_listings WHERE item_id=$1`, listingID) }()
+	if _, err = pool.Exec(ctx, `INSERT INTO avito_listing_products(item_id,product_id) VALUES($1,$2)`, listingID, productID); err != nil {
+		t.Fatal(err)
+	}
+	var priorStatus string
+	var priorSuccess *time.Time
+	if err = pool.QueryRow(ctx, `SELECT status,last_success_at FROM procurement_integration_sync_state
+		WHERE channel='saby' AND resource='catalog'`).Scan(&priorStatus, &priorSuccess); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `UPDATE procurement_integration_sync_state
+		SET status=$1,last_success_at=$2 WHERE channel='saby' AND resource='catalog'`, priorStatus, priorSuccess)
+	}()
+	if _, err = pool.Exec(ctx, `UPDATE procurement_integration_sync_state
+		SET status='ok',last_success_at=now() WHERE channel='saby' AND resource='catalog'`); err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_batches(kind,source,manual_variant_id,manual_site_price_minor,created_by)
+		VALUES('prices','manual',$1,150000,$2) RETURNING id`, expensiveID, actorID).Scan(&batchID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE entity_type='price_proposal' AND entity_id=$1`, fmt.Sprint(proposalID))
+		_, _ = pool.Exec(ctx, `DELETE FROM procurement_action_batches WHERE id=$1`, batchID)
+	}()
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_items(batch_id,channel,external_article,new_value,status,attempts,error_message)
+		VALUES($1,'avito',$2,1000,'failed',5,'temporary failure') RETURNING id`, batchID, listingID).Scan(&proposalID); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewPostgresRepository(pool).WithPriceChannelsConfigured(map[string]bool{"avito": true})
+	actor := Actor{CustomerID: actorID, Role: RoleOwner}
+	proposals, err := repository.ListManualPriceProposals(ctx, expensiveID)
+	if err != nil || len(proposals) != 1 || !proposals[0].CanRetry {
+		t.Fatalf("fresh Avito proposal: %+v, err=%v", proposals, err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET available_qty=0 WHERE variant_id=$1`, cheapID); err != nil {
+		t.Fatal(err)
+	}
+	proposals, err = repository.ListManualPriceProposals(ctx, expensiveID)
+	if err != nil || len(proposals) != 1 || proposals[0].CanRetry || proposals[0].BlockReason != "Минимальная доступная цена сайта изменилась" {
+		t.Fatalf("changed Avito minimum: %+v, err=%v", proposals, err)
+	}
+	if err = repository.RetryManualPriceProposal(ctx, actor, proposalID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("changed Avito minimum retry error = %v", err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET available_qty=1,synced_at=now() WHERE variant_id=$1`, cheapID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=now()-INTERVAL '3 hours' WHERE variant_id=$1`, expensiveID); err != nil {
+		t.Fatal(err)
+	}
+	proposals, err = repository.ListManualPriceProposals(ctx, expensiveID)
+	if err != nil || len(proposals) != 1 || proposals[0].CanRetry || proposals[0].BlockReason != "Нужен свежий остаток СБИС для всех размеров" {
+		t.Fatalf("stale Avito stock: %+v, err=%v", proposals, err)
+	}
+	if err = repository.RetryManualPriceProposal(ctx, actor, proposalID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stale Avito stock retry error = %v", err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=now() WHERE variant_id=$1`, expensiveID); err != nil {
+		t.Fatal(err)
+	}
+	if err = repository.RetryManualPriceProposal(ctx, actor, proposalID); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err = pool.QueryRow(ctx, `SELECT status FROM procurement_action_items WHERE id=$1`, proposalID).Scan(&status); err != nil || status != "queued" {
+		t.Fatalf("Avito retry status=%q err=%v", status, err)
+	}
+}
