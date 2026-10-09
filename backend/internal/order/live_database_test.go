@@ -34,6 +34,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	sabyID := "ci-commerce-saby-" + suffix
 	email := "commerce-" + suffix + "@example.invalid"
 	phone := "+7000" + suffix[len(suffix)-7:]
 	var productID, variantID, warehouseID int64
@@ -47,24 +48,58 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	`, "ci-commerce-"+suffix).Scan(&productID); err != nil {
 		t.Fatalf("seed product: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO product_variants(product_id, label, base_price_minor)
-		VALUES ($1, 'CI variant', 149000)
-		RETURNING id, sku
-	`, productID).Scan(&variantID, &sku); err != nil {
-		t.Fatalf("seed variant: %v", err)
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['stock']::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name,balance) VALUES($1,'CI commerce Saby',5)`, sabyID); err != nil {
+		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO warehouses(saby_id, name, city, address)
-		VALUES ($1, 'CI warehouse', 'Рязань', 'CI only') RETURNING id
-	`, "ci-warehouse-"+suffix).Scan(&warehouseID); err != nil {
+		INSERT INTO product_variants(product_id, saby_id, label, base_price_minor)
+		VALUES ($1, $2, 'CI variant', 149000)
+		RETURNING id, sku
+	`, productID, sabyID).Scan(&variantID, &sku); err != nil {
+		t.Fatalf("seed variant: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO warehouses(saby_id, name, city, address, is_active)
+		VALUES ('saby-ryazan-main', 'Основной склад', 'Рязань', 'CI', 1) ON CONFLICT(saby_id) DO NOTHING`); err != nil {
 		t.Fatalf("seed warehouse: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active=1`).Scan(&warehouseID); err != nil {
+		t.Fatalf("find Saby warehouse: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO inventory(warehouse_id, variant_id, available_qty)
 		VALUES ($1, $2, 5)
 	`, warehouseID, variantID); err != nil {
 		t.Fatalf("seed inventory: %v", err)
+	}
+	stockTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stockTx.Rollback(ctx) }()
+	stockItem := purchasableItem{VariantID: variantID, Quantity: 2}
+	if preorder, err := needsPreorder(ctx, stockTx, stockItem); err != nil || preorder {
+		t.Fatalf("fresh Saby stock unavailable: preorder=%v err=%v", preorder, err)
+	}
+	if _, err := stockTx.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if preorder, err := needsPreorder(ctx, stockTx, stockItem); err != nil || !preorder {
+		t.Fatalf("stale Saby stock must require review: preorder=%v err=%v", preorder, err)
+	}
+	if _, err := stockTx.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stockTx.Exec(ctx, `UPDATE products SET saby_fields=ARRAY[]::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if preorder, err := needsPreorder(ctx, stockTx, stockItem); err != nil || !preorder {
+		t.Fatalf("unconfirmed stock must require review: preorder=%v err=%v", preorder, err)
+	}
+	if err := stockTx.Rollback(ctx); err != nil {
+		t.Fatal(err)
 	}
 
 	var orderID int64
@@ -76,7 +111,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		}
 		_, _ = pool.Exec(ctx, "DELETE FROM outbox WHERE recipient=$1", email)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
-		_, _ = pool.Exec(ctx, "DELETE FROM warehouses WHERE id=$1", warehouseID)
+		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
 	}()
 
 	service := NewService(pool, nil, liveOrderNotifier{}, nil, quietLogger())

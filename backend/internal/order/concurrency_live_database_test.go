@@ -26,6 +26,7 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 	}
 	defer pool.Close()
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	sabyID := "ci-load-saby-" + suffix
 	emailPattern := "ci-load-" + suffix + "-%"
 
 	var productID, variantID, warehouseID int64
@@ -37,17 +38,24 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 	`, "ci-load-"+suffix).Scan(&productID); err != nil {
 		t.Fatalf("seed product: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO product_variants(product_id, label, base_price_minor)
-		VALUES ($1, 'CI load variant', 10000) RETURNING id, sku
-	`, productID).Scan(&variantID, &sku); err != nil {
-		t.Fatalf("seed variant: %v", err)
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['stock']::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name,balance) VALUES($1,'CI load Saby',3)`, sabyID); err != nil {
+		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO warehouses(saby_id, name, city, address)
-		VALUES ($1, 'CI load warehouse', 'CI', 'CI') RETURNING id
-	`, "ci-load-"+suffix).Scan(&warehouseID); err != nil {
+		INSERT INTO product_variants(product_id, saby_id, label, base_price_minor)
+		VALUES ($1, $2, 'CI load variant', 10000) RETURNING id, sku
+	`, productID, sabyID).Scan(&variantID, &sku); err != nil {
+		t.Fatalf("seed variant: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO warehouses(saby_id, name, city, address, is_active)
+		VALUES ('saby-ryazan-main', 'Основной склад', 'Рязань', 'CI', 1) ON CONFLICT(saby_id) DO NOTHING`); err != nil {
 		t.Fatalf("seed warehouse: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active=1`).Scan(&warehouseID); err != nil {
+		t.Fatalf("find Saby warehouse: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO inventory(warehouse_id, variant_id, available_qty)
@@ -62,7 +70,7 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE email LIKE $1`, emailPattern)
 		_, _ = pool.Exec(ctx, `DELETE FROM outbox WHERE recipient LIKE $1`, emailPattern)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
-		_, _ = pool.Exec(ctx, "DELETE FROM warehouses WHERE id=$1", warehouseID)
+		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
 	}()
 
 	service := NewService(pool, nil, liveOrderNotifier{}, nil, quietLogger())

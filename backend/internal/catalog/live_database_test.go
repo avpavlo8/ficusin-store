@@ -141,6 +141,130 @@ func TestCartProductsOnLiveDatabase(t *testing.T) {
 	}
 }
 
+func TestPublicStockUsesFreshSabyInventoryOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	unique := time.Now().UnixNano()
+	sabyID := fmt.Sprintf("catalog-stock-%d", unique)
+	sku := fmt.Sprintf("9%d", unique)
+	var categoryID, productID, variantID, warehouseID int64
+	var productCode string
+	if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES($1,$2) RETURNING id`,
+		"Stock guard fixture", fmt.Sprintf("stock-guard-%d", unique)).Scan(&categoryID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM categories WHERE id=$1`, categoryID) })
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance) VALUES($1,$1,'Stock guard fixture',7)`, sabyID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID)
+	})
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO products(category_id,saby_id,name,slug,status,catalog_section,saby_fields)
+		VALUES($1,$2,'Stock guard fixture',$3,'published','plants',ARRAY['stock']::TEXT[])
+		RETURNING id,product_code::TEXT
+	`, categoryID, sabyID, fmt.Sprintf("stock-guard-%d", unique)).Scan(&productID, &productCode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM products WHERE id=$1`, productID) })
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active)
+		VALUES($1,$2,$3,'D12',100000,1) RETURNING id
+	`, productID, sabyID, sku).Scan(&variantID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main'`).Scan(&warehouseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at)
+		VALUES($1,$2,7,0,CURRENT_TIMESTAMP)
+	`, warehouseID, variantID); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewPostgresRepository(pool)
+	check := func(want int) {
+		t.Helper()
+		cart, err := repository.CartProducts(ctx, []string{sku})
+		if err != nil || len(cart) != 1 || cart[0].Stock != want {
+			t.Fatalf("cart stock=%v, err=%v; want %d", cart, err, want)
+		}
+		detail, err := repository.DetailBySlug(ctx, productCode)
+		if err != nil || len(detail.Variants) != 1 || detail.Variants[0].Stock != want {
+			t.Fatalf("detail stock=%v, err=%v; want %d", detail.Variants, err, want)
+		}
+		products, err := repository.ListAvailable(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, product := range products {
+			if product.ID == productCode {
+				found = true
+				if product.Stock != want {
+					t.Fatalf("catalog stock=%d; want %d", product.Stock, want)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("fixture product disappeared from catalog")
+		}
+		offers, err := repository.ListFeedOffers(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found = false
+		for _, offer := range offers {
+			if offer.SKU == sku {
+				found = true
+				if offer.Stock != want {
+					t.Fatalf("feed stock=%d; want %d", offer.Stock, want)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("fixture product disappeared from feed")
+		}
+		recommendations, err := repository.listRecommendations(ctx, 0, ProductDetail{CategoryID: &categoryID, CatalogSection: "plants"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found = false
+		for _, recommendation := range recommendations {
+			if recommendation.ID == productCode {
+				found = true
+				if recommendation.Stock != want {
+					t.Fatalf("recommendation stock=%d; want %d", recommendation.Stock, want)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("fixture product disappeared from recommendations")
+		}
+	}
+	check(7)
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	check(0)
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE product_variants SET saby_id=NULL WHERE id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	check(0)
+}
+
 func TestLegacySabyProductCodeResolvesOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {

@@ -179,10 +179,10 @@ export function ProductDialog({ owner = false, product, onClose, onSaved, onErro
   </Dialog>;
 }
 
-// Карточка, заведённая здесь, с СБИС не связана вовсе: ни цена, ни остаток
-// оттуда не придут, пока товар не импортируют по коду.
+// Карточку сначала заводят на сайте; продавать из наличия можно после
+// привязки SKU и подтверждённого обновления остатка из СБИС.
 export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: () => void; onError: (value: string) => void }) {
-  const [form, setForm] = useState({ name: "", latinName: "", shortDescription: "", description: "", image: "", price: 0, stock: 0, catalogSection: "plants", heightCm: "", potDiameterCm: "", packageLengthCm: "", packageWidthCm: "", packageHeightCm: "", packageWeightGrams: "" });
+  const [form, setForm] = useState({ name: "", latinName: "", shortDescription: "", description: "", image: "", price: 0, catalogSection: "plants", heightCm: "", potDiameterCm: "", packageLengthCm: "", packageWidthCm: "", packageHeightCm: "", packageWeightGrams: "" });
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [categories, setCategories] = useState<Category[]>([]);
   const [schema, setSchema] = useState<CategoryAttribute[]>([]);
@@ -199,7 +199,7 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
       await api("/api/v1/admin/products", { method: "POST", body: JSON.stringify({
         name: form.name, latinName: plant ? form.latinName : "", shortDescription: form.shortDescription,
         description: form.description, image: form.image, catalogSection: form.catalogSection,
-        categoryId, priceMinor: Math.round(form.price * 100), stock: form.stock,
+        categoryId, priceMinor: Math.round(form.price * 100),
         heightCm: form.heightCm === "" ? null : Number(form.heightCm), potDiameterCm: form.potDiameterCm === "" ? null : Number(form.potDiameterCm),
         packageLengthCm: form.packageLengthCm === "" ? null : Number(form.packageLengthCm), packageWidthCm: form.packageWidthCm === "" ? null : Number(form.packageWidthCm),
         packageHeightCm: form.packageHeightCm === "" ? null : Number(form.packageHeightCm), packageWeightGrams: form.packageWeightGrams === "" ? null : Number(form.packageWeightGrams),
@@ -220,10 +220,9 @@ export function NewProductDialog({ onClose, onCreated, onError }: { onClose: () 
     <AttributeFields schema={schema.filter((item) => item.audience === "customer")} values={attributes} onChange={(code, value) => setAttributes((current) => ({ ...current, [code]: value }))} />
     <h3 className="product-form-heading wide">Продажа</h3>
     <label>Цена, ₽<input type="number" min="0" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
-    <label>Остаток, шт.<input type="number" min="0" value={form.stock} onChange={(event) => setForm({ ...form, stock: Number(event.target.value) })} /></label>
     <h3 className="product-form-heading wide">Упаковка и технические характеристики</h3>
     <AttributeFields schema={schema.filter((item) => item.audience === "technical")} values={attributes} onChange={(code, value) => setAttributes((current) => ({ ...current, [code]: value }))} />
-  </div><p className="admin-hint">Товар появится на витрине сразу. Остатком такого товара распоряжаетесь вы: СБИС о нём ничего не знает.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={saving || form.name.trim() === ""} onClick={save}>Создать</button></div></Dialog>;
+  </div><p className="admin-hint">Карточка создаётся на сайте без остатка. До связи с СБИС и первого обновления склада покупатель сможет оформить её только под заказ, без оплаты.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={saving || form.name.trim() === ""} onClick={save}>Создать</button></div></Dialog>;
 }
 
 // Импорт ищет по справочнику, который приносит обмен, а не ходит в СБИС в

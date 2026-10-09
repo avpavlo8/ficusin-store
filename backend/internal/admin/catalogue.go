@@ -57,6 +57,9 @@ func (repository *PostgresRepository) CreateProduct(
 	if input.PriceMinor < 0 || input.Stock < 0 {
 		return Product{}, fmt.Errorf("%w: цена и остаток не могут быть отрицательными", ErrInvalidInput)
 	}
+	if input.Stock > 0 {
+		return Product{}, fmt.Errorf("%w: остаток появится после связи товара с СБИС и синхронизации склада", ErrInvalidInput)
+	}
 	for label, value := range map[string]*int{
 		"высота": input.HeightCM, "диаметр горшка": input.PotDiameterCM,
 		"длина упаковки": input.PackageLengthCM, "ширина упаковки": input.PackageWidthCM,
@@ -491,9 +494,9 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at)
-		SELECT id, $1, $2, 0, CURRENT_TIMESTAMP FROM warehouses WHERE saby_id = 'saby-ryazan-main'
+		SELECT id, $1, $2, 0, CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE TIMESTAMPTZ '1970-01-01 00:00:00+00' END FROM warehouses WHERE saby_id = 'saby-ryazan-main'
 		ON CONFLICT (warehouse_id, variant_id) DO UPDATE SET available_qty = EXCLUDED.available_qty
-	`, variantID, item.stock); err != nil {
+	`, variantID, item.stock, item.sabyID != ""); err != nil {
 		return 0, fmt.Errorf("create product stock: %w", err)
 	}
 

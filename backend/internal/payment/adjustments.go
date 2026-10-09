@@ -132,7 +132,13 @@ func (service *Service) checkOrderStock(ctx context.Context, orderID int64) erro
 		SELECT COUNT(*) FROM (
 			SELECT oi.variant_id, SUM(oi.quantity) AS wanted,
 				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i WHERE i.variant_id=oi.variant_id),0) AS available
+					FROM inventory i
+					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+					JOIN product_variants v ON v.id=i.variant_id
+					JOIN products p ON p.id=v.product_id
+					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+					WHERE i.variant_id=oi.variant_id AND 'stock'=ANY(p.saby_fields)
+						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
 			FROM order_items oi WHERE oi.order_id=$1 GROUP BY oi.variant_id
 		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
 	`, orderID).Scan(&unavailable)
@@ -301,7 +307,13 @@ func (service *Service) StartShipmentOffer(ctx context.Context, token string, cu
 		SELECT COUNT(*) FROM (
 			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
 				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i WHERE i.variant_id=soi.variant_id),0) AS available
+					FROM inventory i
+					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+					JOIN product_variants v ON v.id=i.variant_id
+					JOIN products p ON p.id=v.product_id
+					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+					WHERE i.variant_id=soi.variant_id AND 'stock'=ANY(p.saby_fields)
+						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
 			FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 GROUP BY soi.variant_id
 		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
 	`, offerID).Scan(&unavailable); err != nil {
@@ -383,7 +395,13 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 		SELECT COUNT(*) FROM (
 			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
 				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i WHERE i.variant_id=soi.variant_id),0) AS available
+					FROM inventory i
+					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+					JOIN product_variants v ON v.id=i.variant_id
+					JOIN products p ON p.id=v.product_id
+					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+					WHERE i.variant_id=soi.variant_id AND 'stock'=ANY(p.saby_fields)
+						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
 			FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 GROUP BY soi.variant_id
 		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
 	`, offerID).Scan(&unavailable)

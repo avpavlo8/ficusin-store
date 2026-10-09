@@ -35,7 +35,11 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 			), '/assets/hero-monstera.webp'),
 			COALESCE((
 				SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0))
-				FROM inventory item WHERE item.variant_id=variant.id
+				FROM inventory item
+				JOIN warehouses warehouse ON warehouse.id=item.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+				WHERE item.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
+					AND item.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 			),0)::INTEGER,
 			(product.status='published' AND variant.is_active=1 AND variant.archived_at IS NULL)
 		FROM product_variants variant
@@ -147,7 +151,11 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 
 	variantRows, err := repository.pool.Query(ctx, `
 		SELECT pv.id, pv.sku, pv.label, pv.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=pv.id),0)::INTEGER,
+			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				JOIN warehouses warehouse ON warehouse.id=i.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+				JOIN saby_nomenclature source ON source.saby_id=pv.saby_id AND source.missing_since IS NULL
+				WHERE i.variant_id=pv.id AND 'stock'=ANY(product.saby_fields)
+					AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER,
 			variant_numeric_attribute(pv.id, 'height_cm')::INTEGER,
 			variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.wholesale_min_qty,
 			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,media.object_key) ORDER BY media.is_primary DESC,media.sort_order,media.id)
@@ -179,6 +187,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 				  AND (e.show_in_summary OR e.show_in_characteristics OR e.is_badge OR e.is_filterable)
 			), '[]'::jsonb)
 		FROM product_variants pv
+		JOIN products product ON product.id=pv.product_id
 		WHERE pv.product_id = $1 AND pv.is_active = 1 AND pv.archived_at IS NULL
 		ORDER BY pv.id
 	`, productID, detail.CategoryID)
@@ -371,11 +380,19 @@ const recommendationsQuery = `
 	JOIN LATERAL (
 		SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
 			COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
-				FROM inventory WHERE inventory.variant_id=variant.id),0)::INTEGER AS stock
+				FROM inventory
+				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+				WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
+					AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER AS stock
 		FROM product_variants variant
 		WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
 		ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
-			FROM inventory WHERE inventory.variant_id=variant.id),0)>0) DESC,variant.id LIMIT 1
+			FROM inventory
+			JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+			JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+			WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
+				AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)>0) DESC,variant.id LIMIT 1
 	) chosen ON TRUE
 	LEFT JOIN categories category ON category.id=product.category_id
 	WHERE product.status='published' AND product.id<>$1
@@ -490,10 +507,18 @@ const catalogListQuery = `
 		FROM products product
 		JOIN LATERAL (
 			SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
-				COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory WHERE inventory.variant_id=variant.id),0)::INTEGER AS stock
+				COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory
+					JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+					JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+					WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
+						AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER AS stock
 			FROM product_variants variant
 			WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
-			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory WHERE inventory.variant_id=variant.id),0)>0) DESC, variant.id
+			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory
+				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+				WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
+					AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)>0) DESC, variant.id
 			LIMIT 1
 		) chosen ON TRUE
 	)
@@ -615,7 +640,11 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 		SELECT product.product_code::TEXT,variant.sku,product.name,variant.label,
 			COALESCE(NULLIF(product.short_description,''),NULLIF(product.description,''),''),
 			variant.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item WHERE item.variant_id=variant.id),0)::INTEGER,
+			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item
+				JOIN warehouses warehouse ON warehouse.id=item.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
+				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
+				WHERE item.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
+					AND item.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER,
 			COALESCE((
 				SELECT COALESCE(mirror.large_url,mirror.card_url,media.object_key)
 				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key

@@ -51,6 +51,7 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	}
 	defer pool.Close()
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	sabyID := "ci-payment-saby-" + suffix
 
 	var productID, variantID, warehouseID, orderID int64
 	var sku string
@@ -61,17 +62,24 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	`, "ci-payment-"+suffix).Scan(&productID); err != nil {
 		t.Fatalf("seed product: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO product_variants(product_id, label, base_price_minor)
-		VALUES ($1, 'CI payment variant', 149000) RETURNING id, sku
-	`, productID).Scan(&variantID, &sku); err != nil {
-		t.Fatalf("seed variant: %v", err)
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['stock']::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name,balance) VALUES($1,'CI payment Saby',1)`, sabyID); err != nil {
+		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO warehouses(saby_id, name, city, address)
-		VALUES ($1, 'CI payment warehouse', 'Рязань', 'CI only') RETURNING id
-	`, "ci-payment-warehouse-"+suffix).Scan(&warehouseID); err != nil {
+		INSERT INTO product_variants(product_id, saby_id, label, base_price_minor)
+		VALUES ($1, $2, 'CI payment variant', 149000) RETURNING id, sku
+	`, productID, sabyID).Scan(&variantID, &sku); err != nil {
+		t.Fatalf("seed variant: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO warehouses(saby_id, name, city, address, is_active)
+		VALUES ('saby-ryazan-main', 'Основной склад', 'Рязань', 'CI', 1) ON CONFLICT(saby_id) DO NOTHING`); err != nil {
 		t.Fatalf("seed warehouse: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active=1`).Scan(&warehouseID); err != nil {
+		t.Fatalf("find Saby warehouse: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO inventory(warehouse_id, variant_id, available_qty)
@@ -98,12 +106,30 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	defer func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", orderID)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
-		_, _ = pool.Exec(ctx, "DELETE FROM warehouses WHERE id=$1", warehouseID)
+		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
 	}()
 
 	provider := &livePaymentProvider{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewService(pool, provider, "https://ficusin.example.invalid", logger)
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(ctx, orderNumber); err == nil || provider.creates != 0 {
+		t.Fatalf("stale Saby stock opened payment: err=%v creates=%d", err, provider.creates)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY[]::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(ctx, orderNumber); err == nil || provider.creates != 0 {
+		t.Fatalf("unconfirmed stock opened payment: err=%v creates=%d", err, provider.creates)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['stock']::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
 	firstURL, err := service.Start(ctx, orderNumber)
 	if err != nil {
 		t.Fatalf("start payment: %v", err)
