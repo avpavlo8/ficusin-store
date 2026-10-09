@@ -128,7 +128,12 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			AND (EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NOT NULL
 					GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=oi.variant_id
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+						JOIN product_variants v ON v.id=i.variant_id
+						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+						JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+						WHERE i.variant_id=oi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 					),0)))
 	`)
 	if err != nil {
@@ -143,7 +148,12 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			AND (EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
 					GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=soi.variant_id
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+						JOIN product_variants v ON v.id=i.variant_id
+						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+						JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+						WHERE i.variant_id=soi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 					),0)))
 	`)
 	if err != nil {
@@ -157,7 +167,12 @@ func (worker *ShippingWorker) orderStockShort(ctx context.Context, orderID int64
 		EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NULL)
 		OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NOT NULL
 			GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
-				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=oi.variant_id
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+				JOIN product_variants v ON v.id=i.variant_id
+				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+				JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+				WHERE i.variant_id=oi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 			),0))`, orderID).Scan(&short)
 	return short, err
 }
@@ -168,7 +183,12 @@ func (worker *ShippingWorker) offerStockShort(ctx context.Context, offerID int64
 		EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NULL)
 		OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NOT NULL
 			GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=soi.variant_id
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+				JOIN product_variants v ON v.id=i.variant_id
+				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+				JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+				WHERE i.variant_id=soi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 			),0))`, offerID).Scan(&short)
 	return short, err
 }
@@ -187,7 +207,12 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 					AND NOT EXISTS (
 						SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
 						GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=soi.variant_id
+							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+							JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+							JOIN product_variants v ON v.id=i.variant_id
+							JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+							JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+							WHERE i.variant_id=soi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 						),0))
 				AND (so.cdek_next_attempt_at IS NULL OR so.cdek_next_attempt_at<=CURRENT_TIMESTAMP)
 				AND o.status NOT IN ('cancelled','completed')
@@ -583,7 +608,12 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 					GROUP BY oi.variant_id
 					HAVING SUM(oi.quantity) > COALESCE((
 						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty, 0))
-						FROM inventory i WHERE i.variant_id = oi.variant_id
+						FROM inventory i
+						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+						JOIN product_variants v ON v.id=i.variant_id
+						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+						JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+						WHERE i.variant_id=oi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 					), 0)
 				)
 				AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status IN ('paid','shipping','shipped','ready','completed'))
