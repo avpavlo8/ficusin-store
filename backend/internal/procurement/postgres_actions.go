@@ -608,23 +608,33 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 							> (COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100) *
 								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
 					GROUP BY line.canonical_variant_id
+				), fresh_stock AS (
+					SELECT v.id variant_id,GREATEST(i.available_qty-i.reserved_qty,0) qty
+					FROM product_variants v
+					JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+					JOIN inventory i ON i.variant_id=v.id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+					WHERE v.is_active<>0 AND v.archived_at IS NULL
 				), affected AS (
 					SELECT DISTINCT lp.item_id FROM changed_variants c
 					JOIN product_variants v ON v.id=c.variant_id AND v.is_active<>0
-					JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0
+					JOIN fresh_stock f ON f.variant_id=v.id AND f.qty>0
 					JOIN avito_listing_products lp ON lp.product_id=v.product_id
 				), prices AS (
-					SELECT a.item_id,MIN(COALESCE(cv.new_price,v.base_price_minor::NUMERIC/100)) new_price,
+					SELECT a.item_id,MIN(CASE WHEN f.qty>0 THEN COALESCE(cv.new_price,v.base_price_minor::NUMERIC/100) END) new_price,
 						(SELECT MIN(id) FROM procurement_order_lines WHERE procurement_order_id=$2) line_id
 					FROM affected a JOIN avito_listing_products lp ON lp.item_id=a.item_id
-					JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0
-					JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0
+					JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 AND v.archived_at IS NULL
+					LEFT JOIN fresh_stock f ON f.variant_id=v.id
 					LEFT JOIN changed_variants cv ON cv.variant_id=v.id
 					GROUP BY a.item_id
+					HAVING COUNT(*)=COUNT(f.variant_id)
 				)
 				INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,old_value,new_value)
 				SELECT $1,p.line_id,'avito',p.item_id,al.remote_price_minor::NUMERIC/100,p.new_price
 				FROM prices p JOIN avito_listings al ON al.item_id=p.item_id
+				WHERE p.new_price IS NOT NULL
 			`, batchID, orderID)
 		}
 	}
