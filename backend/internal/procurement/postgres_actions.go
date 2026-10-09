@@ -1124,7 +1124,8 @@ func (store *PostgresStore) guardClaimedManualPriceActions(ctx context.Context, 
 	if err := tx.QueryRow(ctx, `SELECT batch.id,item.channel,
 		batch.manual_site_price_minor,variant.base_price_minor,item.external_article,
 		CASE item.channel WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
-			ELSE COALESCE(directory.ozon_articles[1],'') END
+			WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1],'')
+			ELSE COALESCE(directory.master_code,'') END
 		FROM procurement_action_items item
 		JOIN procurement_action_batches batch ON batch.id=item.batch_id AND batch.source='manual'
 		JOIN product_variants variant ON variant.id=batch.manual_variant_id
