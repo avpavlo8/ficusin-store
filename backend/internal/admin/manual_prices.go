@@ -29,7 +29,7 @@ var ErrPriceChannelUnavailable = fmt.Errorf("канал изменения це�
 func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, variantID, oldMinor, newMinor int64) error {
 	if _, err := tx.Exec(ctx, `UPDATE procurement_action_items item SET status='skipped',error_message='Заменено новой ручной ценой',updated_at=now()
 		FROM procurement_action_batches batch WHERE batch.id=item.batch_id AND batch.source='manual'
-		AND batch.manual_variant_id=$1 AND item.status IN ('draft','queued')`, variantID); err != nil {
+		AND batch.manual_variant_id=$1 AND item.status IN ('draft','approved','queued','failed','not_configured')`, variantID); err != nil {
 		return err
 	}
 	var batchID int64
@@ -170,7 +170,11 @@ func (repository *PostgresRepository) ManualSabyPriceXLSX(ctx context.Context, p
 		ROUND(item.new_value)::bigint FROM procurement_action_items item
 		JOIN procurement_action_batches batch ON batch.id=item.batch_id
 		JOIN product_variants variant ON variant.id=batch.manual_variant_id
-		WHERE item.id=$1 AND batch.source='manual' AND item.channel='saby_price' AND item.status='approved'`, proposalID).Scan(&variantID, &sabyID, &code, &price)
+		WHERE item.id=$1 AND batch.source='manual' AND item.channel='saby_price' AND item.status='approved'
+			AND variant.base_price_minor=batch.manual_site_price_minor
+			AND EXISTS (SELECT 1 FROM saby_nomenclature current_saby
+				WHERE current_saby.saby_id=variant.saby_id AND current_saby.code=item.external_article
+					AND current_saby.missing_since IS NULL)`, proposalID).Scan(&variantID, &sabyID, &code, &price)
 	if err != nil {
 		return nil, "", err
 	}
