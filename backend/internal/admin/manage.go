@@ -329,15 +329,67 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var before map[string]any
-	var currentStatus string
+	var currentStatus, currentPaymentStatus, paymentMethod, deliveryMethod string
 	if err := tx.QueryRow(ctx, `
-		SELECT jsonb_build_object('status', status, 'paymentStatus', payment_status), status
+		SELECT jsonb_build_object('status', status, 'paymentStatus', payment_status),
+			status, payment_status, payment_method, delivery_method
 		FROM orders WHERE id = $1 FOR UPDATE
-	`, id).Scan(&before, &currentStatus); err != nil {
+	`, id).Scan(&before, &currentStatus, &currentPaymentStatus, &paymentMethod, &deliveryMethod); err != nil {
 		return Order{}, err
 	}
 	if currentStatus == "cancelled" || currentStatus == "completed" {
 		return Order{}, fmt.Errorf("%w: закрытый заказ доступен только для просмотра", ErrInvalidInput)
+	}
+	// The admin endpoint must not be a second way to claim that YooKassa has
+	// captured money. Only the pickup handover can be confirmed by a manager;
+	// the change is included in the order audit below.
+	pickupAtHandover := paymentMethod == "on_delivery" && deliveryMethod == "pickup"
+	if paymentStatus != "" && !(paymentStatus == "paid" && pickupAtHandover && status == "completed" && currentStatus == "ready") {
+		return Order{}, fmt.Errorf("%w: оплату онлайн подтверждает платёжный сервис; оплату при самовывозе отметьте при выдаче заказа", ErrInvalidInput)
+	}
+	if status == "ready" {
+		if currentPaymentStatus != "paid" && !pickupAtHandover {
+			return Order{}, fmt.Errorf("%w: нельзя подготовить неоплаченный заказ", ErrInvalidInput)
+		}
+		var stockReady bool
+		if err := tx.QueryRow(ctx, `
+			WITH lines AS (
+				SELECT variant_id, SUM(quantity)::int AS quantity
+				FROM order_items WHERE order_id=$1 GROUP BY variant_id
+			), available AS (
+				SELECT i.variant_id,
+					SUM(GREATEST(i.available_qty-i.reserved_qty,0))::int AS quantity
+				FROM inventory i
+				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+				JOIN product_variants v ON v.id=i.variant_id
+				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+				JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+				WHERE i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+				GROUP BY i.variant_id
+			)
+			SELECT EXISTS(SELECT 1 FROM lines)
+				AND NOT EXISTS(SELECT 1 FROM lines l LEFT JOIN available a ON a.variant_id=l.variant_id
+					WHERE l.variant_id IS NULL OR COALESCE(a.quantity,0)<l.quantity)
+		`, id).Scan(&stockReady); err != nil {
+			return Order{}, fmt.Errorf("check fresh Saby stock: %w", err)
+		}
+		if !stockReady {
+			return Order{}, fmt.Errorf("%w: нельзя подготовить заказ без подтверждённого остатка СБИС за последние 2 часа", ErrInvalidInput)
+		}
+	}
+	if status == "completed" {
+		// Stock can already be zero after shipment or pickup. Reaching ready
+		// requires the fresh Saby check above; shipped orders pass that point
+		// through the shipping workflow.
+		if currentStatus != "ready" && currentStatus != "shipped" {
+			return Order{}, fmt.Errorf("%w: сначала подтвердите наличие и подготовьте заказ", ErrInvalidInput)
+		}
+		if currentPaymentStatus != "paid" && !(pickupAtHandover && paymentStatus == "paid") {
+			return Order{}, fmt.Errorf("%w: перед завершением подтвердите оплату заказа", ErrInvalidInput)
+		}
+	}
+	if status == "shipped" && (currentStatus != "ready" || currentPaymentStatus != "paid") {
+		return Order{}, fmt.Errorf("%w: отправить можно только подготовленный и оплаченный заказ", ErrInvalidInput)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET status = COALESCE(NULLIF($2, ''), status),

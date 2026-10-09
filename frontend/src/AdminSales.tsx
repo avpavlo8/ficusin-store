@@ -105,7 +105,9 @@ export function Orders({ focusOrder, onError }: { focusOrder?: string; onError: 
     }).catch((error) => { setLoadError(error.message); onError(error.message); }).finally(() => setLoading(false));
   }, [onError, focusOrder]);
   const updateStatus = async (order: Order, status: string) => {
-    try { const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status, paymentStatus: "" }) }); setItems((current) => current.map((item) => item.id === order.id ? result.order : item)); }
+    const confirmPickupPayment = status === "completed" && order.deliveryMethod === "pickup" && order.paymentMethod === "on_delivery" && order.paymentStatus !== "paid";
+    if (confirmPickupPayment && !window.confirm(`Подтвердите, что покупатель оплатил заказ ${order.orderNumber} при выдаче.`)) return;
+    try { const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status, paymentStatus: confirmPickupPayment ? "paid" : "" }) }); setItems((current) => current.map((item) => item.id === order.id ? result.order : item)); }
     catch (error) { onError((error as Error).message); }
   };
   const updateOrder = (value: Order) => setItems((current) => current.map((item) => item.id === value.id ? value : item));

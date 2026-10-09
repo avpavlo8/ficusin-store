@@ -36,7 +36,18 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	largeSKU := fmt.Sprint(600000000 + unique)
 	productName := fmt.Sprintf("Интеграционная аглаонема %d", unique)
 
-	var productID, smallVariant, largeVariant, warehouseID, orderID, staffID int64
+	var productID, smallVariant, largeVariant, warehouseID, orderID, pickupID, staffID, draftCategoryID, draftID int64
+	smallSabyID := fmt.Sprintf("ci-order-status-small-%d", unique)
+	largeSabyID := fmt.Sprintf("ci-order-status-large-%d", unique)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, staffID)
+		_, _ = pool.Exec(ctx, `DELETE FROM stock_movements WHERE order_id IN ($1,$2)`, orderID, pickupID)
+		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id IN ($1,$2)`, orderID, pickupID)
+		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id IN ($1,$2)`, productID, draftID)
+		_, _ = pool.Exec(ctx, `DELETE FROM categories WHERE id=$1`, draftCategoryID)
+		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id IN ($1,$2)`, smallSabyID, largeSabyID)
+		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, staffID)
+	}()
 	// Аудит админки ссылается на карточку сотрудника внешним ключом, поэтому
 	// актёр обязан существовать.
 	if err := pool.QueryRow(ctx,
@@ -51,6 +62,12 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	).Scan(&productID); err != nil {
 		t.Fatalf("завести товар: %v", err)
 	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['stock']::text[] WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name) VALUES($1,$3),($2,$3)`, smallSabyID, largeSabyID, productName); err != nil {
+		t.Fatal(err)
+	}
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'D12',149000,1) RETURNING id`,
 		productID, smallSKU,
@@ -63,10 +80,16 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	).Scan(&largeVariant); err != nil {
 		t.Fatalf("завести большой SKU: %v", err)
 	}
-	if err := pool.QueryRow(ctx,
-		`INSERT INTO warehouses(name,city,address) VALUES('CI','Рязань','') RETURNING id`,
-	).Scan(&warehouseID); err != nil {
-		t.Fatalf("завести склад: %v", err)
+	if _, err := pool.Exec(ctx, `UPDATE product_variants SET saby_id=CASE WHEN id=$1 THEN $3 ELSE $4 END
+		WHERE id IN ($1,$2)`, smallVariant, largeVariant, smallSabyID, largeSabyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO warehouses(saby_id,name,city,address,is_active)
+		VALUES('saby-ryazan-main','Основной склад','Рязань','CI',1) ON CONFLICT(saby_id) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active=1`).Scan(&warehouseID); err != nil {
+		t.Fatalf("найти склад СБИС: %v", err)
 	}
 	for _, variant := range []int64{smallVariant, largeVariant} {
 		if _, err := pool.Exec(ctx,
@@ -114,11 +137,12 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	})
 
 	t.Run("черновик без фотографии можно опубликовать", func(t *testing.T) {
-		var categoryID, draftID int64
+		var categoryID int64
 		if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES($1,$2) RETURNING id`,
 			"Категория без обязательного фото", fmt.Sprintf("no-photo-%d", unique)).Scan(&categoryID); err != nil {
 			t.Fatalf("завести категорию: %v", err)
 		}
+		draftCategoryID = categoryID
 		if err := pool.QueryRow(ctx, `INSERT INTO products(category_id,name,slug,status) VALUES($1,$2,$3,'draft') RETURNING id`,
 			categoryID, "Товар без фотографии", fmt.Sprintf("no-photo-product-%d", unique)).Scan(&draftID); err != nil {
 			t.Fatalf("завести черновик: %v", err)
@@ -182,7 +206,33 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		if reservedBefore != 0 {
 			t.Fatalf("резерв до завершения = %d, ожидали 0", reservedBefore)
 		}
-		if _, err := NewPostgresRepository(pool).UpdateOrderStatus(ctx, Actor{CustomerID: staffID, Role: RoleOwner}, orderID, "completed", ""); err != nil {
+		repository := NewPostgresRepository(pool)
+		actor := Actor{CustomerID: staffID, Role: RoleOwner}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, orderID, "ready", "paid"); err == nil {
+			t.Fatal("админка не должна подтверждать онлайн-оплату")
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, orderID, "ready", ""); err == nil {
+			t.Fatal("неоплаченный заказ не должен стать готовым")
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, orderID, "completed", ""); err == nil {
+			t.Fatal("нельзя завершить заказ до проверки готовности и оплаты")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE orders SET payment_status='paid' WHERE id=$1`, orderID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, orderID, "ready", ""); err == nil {
+			t.Fatal("устаревший остаток СБИС не должен разрешать выдачу")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, orderID, "ready", ""); err != nil {
+			t.Fatalf("подготовить оплаченный заказ с актуальным остатком: %v", err)
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, orderID, "completed", ""); err != nil {
 			t.Fatalf("завершить заказ: %v", err)
 		}
 		var available, reserved, releases int
@@ -197,6 +247,37 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 		if available != 10 || reserved != 0 || !released || releases != 0 {
 			t.Fatalf("после завершения: СБИС=%d резерв=%d закрыт=%v записей=%d", available, reserved, released, releases)
+		}
+	})
+
+	t.Run("самовывоз подтверждает оплату только при выдаче", func(t *testing.T) {
+		if err := pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,
+			delivery_fee,subtotal,total,payment_method,payment_status,status)
+			VALUES($1,'Самовывоз','+70000000000','pickup@example.invalid','pickup',0,2490,2490,
+			'on_delivery','on_delivery','new') RETURNING id`, fmt.Sprintf("CI-PICKUP-%d", unique)).Scan(&pickupID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,
+			unit_price,quantity) VALUES($1,$2,$3,$4,$5,'D25',2490,1)`, pickupID, productID, largeVariant, largeSKU, productName); err != nil {
+			t.Fatal(err)
+		}
+		repository := NewPostgresRepository(pool)
+		actor := Actor{CustomerID: staffID, Role: RoleOwner}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, pickupID, "ready", ""); err != nil {
+			t.Fatalf("готовить самовывоз до оплаты разрешено: %v", err)
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, pickupID, "completed", ""); err == nil {
+			t.Fatal("неоплаченный самовывоз нельзя завершить")
+		}
+		if _, err := repository.UpdateOrderStatus(ctx, actor, pickupID, "completed", "paid"); err != nil {
+			t.Fatalf("подтвердить оплату при выдаче: %v", err)
+		}
+		var status, paymentStatus string
+		if err := pool.QueryRow(ctx, `SELECT status,payment_status FROM orders WHERE id=$1`, pickupID).Scan(&status, &paymentStatus); err != nil {
+			t.Fatal(err)
+		}
+		if status != "completed" || paymentStatus != "paid" {
+			t.Fatalf("после выдачи: status=%q payment=%q", status, paymentStatus)
 		}
 	})
 
