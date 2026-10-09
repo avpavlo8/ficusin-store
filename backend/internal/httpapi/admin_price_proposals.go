@@ -12,7 +12,40 @@ import (
 type manualPriceProposalRepository interface {
 	ListManualPriceProposals(context.Context, int64) ([]admin.PriceProposal, error)
 	ApproveManualPriceProposal(context.Context, admin.Actor, int64) (admin.PriceProposal, error)
+	RetryManualPriceProposal(context.Context, admin.Actor, int64) error
 	ManualSabyPriceXLSX(context.Context, int64) ([]byte, string, error)
+}
+
+func retryManualPriceProposalHandler(adminAPI adminHandlers) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage)
+		if !ok {
+			return
+		}
+		id, ok := pimPathID(response, request, "proposalId")
+		if !ok {
+			return
+		}
+		repository, ok := adminAPI.repository.(manualPriceProposalRepository)
+		if !ok {
+			adminAPI.failed(response, "manual price proposals unavailable", errors.New("manual price proposals unavailable"))
+			return
+		}
+		err := repository.RetryManualPriceProposal(request.Context(), actor, id)
+		if errors.Is(err, admin.ErrPriceChannelUnavailable) {
+			writeJSON(response, http.StatusConflict, errorResponse{Error: "Повтор для этого канала сейчас недоступен"})
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(response, http.StatusConflict, errorResponse{Error: "Предложение устарело или связь товара с каналом изменилась"})
+			return
+		}
+		if err != nil {
+			adminAPI.failed(response, "retry manual price proposal", err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"status": "queued"})
+	}
 }
 
 func manualSabyPriceXLSXHandler(adminAPI adminHandlers) http.HandlerFunc {

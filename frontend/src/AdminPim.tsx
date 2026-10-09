@@ -15,7 +15,7 @@ export type EffectiveAttribute = AttributeDefinition & {
   badge: boolean; sortOrder: number; summaryPosition?: number; showInCharacteristics: boolean;
   excluded: boolean; inherited: boolean; sourceCategoryId?: number; sourceCategoryName: string;
 };
-type PriceProposal = { id: number; channel: string; externalArticle: string; oldValue: number | null; newValue: number; compareAtValue: number | null; status: string; errorMessage: string; canApprove: boolean; blockReason: string; createdAt: string };
+type PriceProposal = { id: number; channel: string; externalArticle: string; oldValue: number | null; newValue: number; compareAtValue: number | null; status: string; errorMessage: string; canApprove: boolean; canRetry: boolean; blockReason: string; createdAt: string };
 const priceChannelNames: Record<string, string> = { saby_price: "СБИС", wb: "Wildberries", ozon: "Ozon", avito: "Авито" };
 
 function VariantPriceProposals({ variantId, onError }: { variantId: number; onError: (value: string) => void }) {
@@ -27,6 +27,14 @@ function VariantPriceProposals({ variantId, onError }: { variantId: number; onEr
     setBusy(proposal.id);
     try {
       await api(`/api/v1/admin/price-proposals/${proposal.id}/approve`, { method: "POST" });
+      load();
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(null); }
+  };
+  const retry = async (proposal: PriceProposal) => {
+    setBusy(proposal.id);
+    try {
+      await api(`/api/v1/admin/price-proposals/${proposal.id}/retry`, { method: "POST" });
       load();
     } catch (error) { onError((error as Error).message); }
     finally { setBusy(null); }
@@ -43,7 +51,7 @@ function VariantPriceProposals({ variantId, onError }: { variantId: number; onEr
     finally { setBusy(null); }
   };
   if (proposals.length === 0) return null;
-  return <section className="wide variant-price-proposals"><h4>Предложения цен для каналов</h4><p className="admin-hint">Цена сайта сохранена. Изменения в каждом канале подтвердите отдельно.</p><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Канал</th><th>Артикул</th><th>Сейчас</th><th>Предложено</th><th>Статус</th><th /></tr></thead><tbody>{proposals.map((proposal) => <tr key={proposal.id}><td>{priceChannelNames[proposal.channel] || proposal.channel}</td><td>{proposal.externalArticle || "—"}</td><td>{proposal.oldValue == null ? "—" : money.format(proposal.oldValue)}</td><td>{money.format(proposal.newValue)}</td><td>{proposal.status === "draft" ? proposal.blockReason || "Ожидает подтверждения" : proposal.status === "approved" && proposal.channel === "saby_price" ? "Нужен импорт файла в СБИС" : proposal.status === "queued" ? "Отправляется" : proposal.status === "completed" ? "Применена" : proposal.status === "skipped" ? "Пропущена" : proposal.status === "failed" ? "Ошибка" : proposal.status === "not_configured" ? "Интеграция не подключена" : proposal.status}{proposal.errorMessage && proposal.errorMessage !== proposal.blockReason && <small>{proposal.errorMessage}</small>}</td><td>{proposal.status === "draft" && proposal.canApprove && <button type="button" disabled={busy !== null} onClick={() => void approve(proposal)}>{busy === proposal.id ? "Подтверждаем…" : "Подтвердить"}</button>}{proposal.status === "approved" && proposal.channel === "saby_price" && <button type="button" disabled={busy !== null} onClick={() => void downloadSaby(proposal)}>Скачать XLSX</button>}</td></tr>)}</tbody></table></div></section>;
+  return <section className="wide variant-price-proposals"><h4>Предложения цен для каналов</h4><p className="admin-hint">Цена сайта сохранена. Изменения в каждом канале подтвердите отдельно.</p><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Канал</th><th>Артикул</th><th>Сейчас</th><th>Предложено</th><th>Статус</th><th /></tr></thead><tbody>{proposals.map((proposal) => <tr key={proposal.id}><td>{priceChannelNames[proposal.channel] || proposal.channel}</td><td>{proposal.externalArticle || "—"}</td><td>{proposal.oldValue == null ? "—" : money.format(proposal.oldValue)}</td><td>{money.format(proposal.newValue)}</td><td>{proposal.status === "draft" ? proposal.blockReason || "Ожидает подтверждения" : proposal.status === "approved" && proposal.channel === "saby_price" ? "Нужен импорт файла в СБИС" : proposal.status === "queued" ? "Отправляется" : proposal.status === "completed" ? "Применена" : proposal.status === "skipped" ? "Пропущена" : proposal.status === "failed" ? "Ошибка" : proposal.status === "not_configured" ? "Интеграция не подключена" : proposal.status}{proposal.errorMessage && proposal.errorMessage !== proposal.blockReason && <small>{proposal.errorMessage}</small>}{proposal.status !== "draft" && proposal.blockReason && <small>{proposal.blockReason}</small>}</td><td>{proposal.status === "draft" && proposal.canApprove && <button type="button" disabled={busy !== null} onClick={() => void approve(proposal)}>{busy === proposal.id ? "Подтверждаем…" : "Подтвердить"}</button>}{proposal.canRetry && <button type="button" disabled={busy !== null} onClick={() => void retry(proposal)}>{busy === proposal.id ? "Повторяем…" : "Повторить"}</button>}{proposal.status === "approved" && proposal.channel === "saby_price" && <button type="button" disabled={busy !== null} onClick={() => void downloadSaby(proposal)}>Скачать XLSX</button>}</td></tr>)}</tbody></table></div></section>;
 }
 
 export type VariantMapping = { provider: string; type: string; externalId: string };

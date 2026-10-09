@@ -35,6 +35,7 @@ func registerAdminCatalogToolRoutes(mux *http.ServeMux, adminAPI adminHandlers, 
 	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/archive", archiveProductVariantHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/price-proposals", manualPriceProposalsHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/price-proposals/{proposalId}/approve", approveManualPriceProposalHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/price-proposals/{proposalId}/retry", retryManualPriceProposalHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/price-proposals/{proposalId}/saby-xlsx", manualSabyPriceXLSXHandler(adminAPI))
 
 	mux.HandleFunc("GET /api/v1/admin/catalog-filters", catalogFiltersHandler(adminAPI))
