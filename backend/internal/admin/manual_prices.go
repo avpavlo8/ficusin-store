@@ -55,6 +55,25 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	if err != nil {
 		return fmt.Errorf("load manual price channels: %w", err)
 	}
+	// Serialize price proposals for sibling variants of one product. They can
+	// share an Avito listing, so both edits must not leave a draft for it.
+	var lockedProductID int64
+	if err = tx.QueryRow(ctx, `SELECT id FROM products WHERE id=$1 FOR UPDATE`, productID).Scan(&lockedProductID); err != nil {
+		return err
+	}
+	// Avito prices belong to a listing, which can contain several sizes of the
+	// same product. An edit to another size invalidates the previous listing
+	// proposal even though it belongs to a different manual variant batch.
+	if _, err = tx.Exec(ctx, `UPDATE procurement_action_items item
+		SET status='skipped',error_message='Заменено новой ценой размера товара',updated_at=now()
+		FROM procurement_action_batches previous
+		WHERE previous.id=item.batch_id AND previous.source='manual' AND item.channel='avito'
+			AND item.status IN ('draft','queued','failed','not_configured')
+			AND item.external_article IN (
+				SELECT listing.item_id FROM avito_listing_products listing WHERE listing.product_id=$1
+			)`, productID); err != nil {
+		return err
+	}
 	retail := float64(newMinor) / 100
 	market := math.Floor((retail + packageRUB + math.Max(height, 0)*math.Max(logisticsRate, 0)) * (1 + returnRate + marketplaceRate + taxRate + reserveRate))
 	strike := math.Floor(market * (1 + strikeRate))
