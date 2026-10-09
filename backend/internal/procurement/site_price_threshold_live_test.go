@@ -2,6 +2,7 @@ package procurement
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -100,13 +101,6 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Simulate site approval before preparing the next destination. The
-			// invoice baseline must remain the same for the Saby suggestion.
-			if tc.wantAction {
-				if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=$2 WHERE id=$1`, variantID, tc.proposed*100); err != nil {
-					t.Fatal(err)
-				}
-			}
 			sabyBatch, err := store.PrepareBatch(ctx, Actor{CustomerID: actorID, Role: "owner"}, orderID, "prices", []string{"saby_price"})
 			if err != nil {
 				t.Fatal(err)
@@ -129,6 +123,50 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 			}
 			if saby := items["saby_price"]; saby.OldValue == nil || *saby.OldValue != float64(sabyPrice) {
 				t.Fatalf("Saby action should retain its own old price: %+v", saby)
+			}
+			actor := Actor{CustomerID: actorID, Role: "owner"}
+			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
+				t.Fatal("external price approved before site price")
+			} else {
+				var userError *UserFacingError
+				if !errors.As(err, &userError) {
+					t.Fatalf("expected actionable error, got %v", err)
+				}
+			}
+			if _, err := store.ApproveBatch(ctx, actor, batch.ID, nil); err != nil {
+				t.Fatalf("approve site price: %v", err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=$2 WHERE id=$1`, variantID, (tc.proposed+1)*100); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
+				t.Fatal("external price approved after site price changed again")
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=$2 WHERE id=$1`, variantID, tc.proposed*100); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=COALESCE(calculation_version,0)+1 WHERE id=$1`, orderID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
+				t.Fatal("external price approved after a newer invoice calculation")
+			}
+			if _, err := pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=NULL WHERE id=$1`, orderID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err != nil {
+				t.Fatalf("approve external price after matching site approval: %v", err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=$2 WHERE id=$1`, variantID, (tc.proposed+2)*100); err != nil {
+				t.Fatal(err)
+			}
+			current, err := store.GuardClaimedPriceActions(ctx, []ActionItem{items["saby_price"]})
+			if err != nil || current {
+				t.Fatalf("queued external price survived a later site edit: current=%v err=%v", current, err)
+			}
+			var actionStatus string
+			if err := pool.QueryRow(ctx, `SELECT status FROM procurement_action_items WHERE id=$1`, items["saby_price"].ID).Scan(&actionStatus); err != nil || actionStatus != "skipped" {
+				t.Fatalf("stale external price status=%s err=%v", actionStatus, err)
 			}
 		})
 	}

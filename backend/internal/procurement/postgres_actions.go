@@ -659,6 +659,40 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	return ActionBatch{}, ErrNotFound
 }
 
+const externalPriceGuardQuery = `
+		WITH expected AS (
+			SELECT line.saby_id, line.canonical_variant_id AS variant_id,
+				MAX(line.proposed_retail_rub) AS proposed_price
+			FROM procurement_order_lines line
+			JOIN product_variants pv ON pv.id=line.canonical_variant_id
+			WHERE line.procurement_order_id=$2 AND line.match_status='confirmed'
+				AND NOT line.invoice_excluded AND line.reconciliation_status<>'superseded'
+				AND line.saby_id IS NOT NULL AND line.proposed_retail_rub IS NOT NULL
+				AND (COALESCE(line.baseline_site_price_minor,pv.base_price_minor) <= 0
+					OR ABS(line.proposed_retail_rub::NUMERIC - COALESCE(line.baseline_site_price_minor,pv.base_price_minor)::NUMERIC/100)
+						> (COALESCE(line.baseline_site_price_minor,pv.base_price_minor)::NUMERIC/100) *
+						(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
+			GROUP BY line.saby_id,line.canonical_variant_id
+		)
+		SELECT COUNT(*) FROM expected e
+		JOIN product_variants pv ON pv.id=e.variant_id
+		WHERE EXISTS (SELECT 1 FROM procurement_action_items external
+			WHERE external.batch_id=$1 AND external.channel IN ('saby_price','wb','ozon')
+				AND (external.channel='saby_price' OR external.procurement_order_line_id IN (
+					SELECT id FROM procurement_order_lines WHERE procurement_order_id=$2 AND saby_id=e.saby_id)))
+			AND (pv.base_price_minor IS DISTINCT FROM ROUND(e.proposed_price*100)::BIGINT
+				OR NOT EXISTS (
+					SELECT 1 FROM procurement_action_items site
+					JOIN procurement_order_lines site_line ON site_line.id=site.procurement_order_line_id
+					JOIN procurement_action_batches site_batch ON site_batch.id=site.batch_id
+					WHERE site.channel='site' AND site.status='completed'
+						AND site_line.canonical_variant_id=e.variant_id
+						AND site_batch.procurement_order_id=$2
+						AND site_batch.calculation_version IS NOT DISTINCT FROM
+							(SELECT calculation_version FROM procurement_action_batches WHERE id=$1)
+						AND site.new_value=e.proposed_price))
+	`
+
 func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batchID int64, configured map[string]bool) (ActionBatch, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -668,14 +702,60 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	var orderID int64
 	var status string
 	if err := tx.QueryRow(ctx, `
-		SELECT procurement_order_id, status FROM procurement_action_batches WHERE id = $1 FOR UPDATE
-	`, batchID).Scan(&orderID, &status); errors.Is(err, pgx.ErrNoRows) {
+		SELECT procurement_order_id FROM procurement_action_batches WHERE id = $1
+	`, batchID).Scan(&orderID); errors.Is(err, pgx.ErrNoRows) {
 		return ActionBatch{}, ErrNotFound
 	} else if err != nil {
+		return ActionBatch{}, fmt.Errorf("load procurement batch: %w", err)
+	}
+	var staleCalculation bool
+	if err := tx.QueryRow(ctx, `
+		SELECT batch.calculation_version IS DISTINCT FROM orders.calculation_version
+		FROM procurement_action_batches batch
+		JOIN procurement_orders orders ON orders.id=batch.procurement_order_id
+		WHERE batch.id=$1 FOR UPDATE OF orders
+	`, batchID).Scan(&staleCalculation); err != nil {
+		return ActionBatch{}, fmt.Errorf("check procurement calculation version: %w", err)
+	}
+	if staleCalculation {
+		return ActionBatch{}, &UserFacingError{Message: "Закупка пересчитана после подготовки цен. Подготовьте предложение заново."}
+	}
+	if err := tx.QueryRow(ctx, `SELECT status FROM procurement_action_batches WHERE id=$1 FOR UPDATE`, batchID).Scan(&status); err != nil {
 		return ActionBatch{}, fmt.Errorf("lock procurement batch: %w", err)
 	}
 	if status != "draft" {
 		return ActionBatch{}, ErrInvalidInput
+	}
+	// A channel button may be pressed only after the matching site proposal
+	// from this calculation was approved. Lock the order and its variants so a
+	// concurrent recalculation or manual site edit cannot pass this check while
+	// the external actions are being queued.
+	rows, err := tx.Query(ctx, `
+		SELECT pv.id FROM product_variants pv
+		WHERE EXISTS (SELECT 1 FROM procurement_order_lines line
+			WHERE line.canonical_variant_id=pv.id AND line.procurement_order_id=$1)
+		ORDER BY pv.id FOR UPDATE OF pv
+	`, orderID)
+	if err != nil {
+		return ActionBatch{}, fmt.Errorf("lock procurement site prices: %w", err)
+	}
+	for rows.Next() {
+		var variantID int64
+		if err := rows.Scan(&variantID); err != nil {
+			rows.Close()
+			return ActionBatch{}, fmt.Errorf("lock procurement site price: %w", err)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return ActionBatch{}, fmt.Errorf("lock procurement site prices: %w", err)
+	}
+	var unapprovedExternalPrices int
+	if err := tx.QueryRow(ctx, externalPriceGuardQuery, batchID, orderID).Scan(&unapprovedExternalPrices); err != nil {
+		return ActionBatch{}, fmt.Errorf("check approved site price before channel publication: %w", err)
+	}
+	if unapprovedExternalPrices > 0 {
+		return ActionBatch{}, &UserFacingError{Message: "Сначала утвердите соответствующую цену сайта, затем отдельно подтвердите цену канала. Если цена сайта изменилась, пересчитайте закупку."}
 	}
 	// A later manual edit must not be overwritten by a stale invoice proposal.
 	var staleSitePrices int
@@ -917,6 +997,84 @@ func (store *PostgresStore) ClaimActionGroup(ctx context.Context, owner string) 
 		return nil, err
 	}
 	return []ActionItem{*item}, nil
+}
+
+// GuardClaimedPriceActions checks the site price once more immediately before
+// the first external upload. Polling an already submitted marketplace upload
+// must continue even if the site price changes afterwards.
+func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items []ActionItem) (bool, error) {
+	if len(items) == 0 || !oneOf(items[0].Channel, "wb", "ozon", "saby_price") || items[0].ExternalOperationID != "" {
+		return true, nil
+	}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin price action guard: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var batchID, orderID int64
+	var channel string
+	var staleCalculation bool
+	var batchStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT batch.id, batch.procurement_order_id, item.channel, batch.status,
+			batch.calculation_version IS DISTINCT FROM orders.calculation_version
+		FROM procurement_action_items item
+		JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		JOIN procurement_orders orders ON orders.id=batch.procurement_order_id
+		WHERE item.id=$1 FOR UPDATE OF orders
+	`, items[0].ID).Scan(&batchID, &orderID, &channel, &batchStatus, &staleCalculation); err != nil {
+		return false, fmt.Errorf("lock price action order: %w", err)
+	}
+	stale := staleCalculation || oneOf(batchStatus, "cancelled", "draft")
+	if !stale {
+		rows, err := tx.Query(ctx, `
+			SELECT pv.id FROM product_variants pv
+			WHERE EXISTS (SELECT 1 FROM procurement_order_lines line
+				WHERE line.canonical_variant_id=pv.id AND line.procurement_order_id=$1)
+			ORDER BY pv.id FOR SHARE OF pv
+		`, orderID)
+		if err != nil {
+			return false, fmt.Errorf("lock current site prices before upload: %w", err)
+		}
+		for rows.Next() {
+			var variantID int64
+			if err := rows.Scan(&variantID); err != nil {
+				rows.Close()
+				return false, fmt.Errorf("read locked site price: %w", err)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return false, fmt.Errorf("read current site prices before upload: %w", err)
+		}
+		var unapproved int
+		if err := tx.QueryRow(ctx, externalPriceGuardQuery, batchID, orderID).Scan(&unapproved); err != nil {
+			return false, fmt.Errorf("check site prices before upload: %w", err)
+		}
+		stale = unapproved > 0
+	}
+	if !stale {
+		return true, tx.Commit(ctx)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_action_items SET status='skipped',
+			error_message='Цена сайта или расчёт закупки изменились после подтверждения канала. Пересчитайте закупку и подтвердите цену снова.',
+			locked_until=NULL,lock_owner='',lock_token=lock_token+1,updated_at=CURRENT_TIMESTAMP
+		WHERE batch_id=$1 AND channel=$2 AND status IN ('queued','processing')
+			AND COALESCE(external_operation_id,'')=''
+	`, batchID, channel); err != nil {
+		return false, fmt.Errorf("skip stale external price actions: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_action_batches SET status='partially_completed',updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1 AND status NOT IN ('cancelled','completed')
+	`, batchID); err != nil {
+		return false, fmt.Errorf("mark stale price batch: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit stale price action guard: %w", err)
+	}
+	return false, nil
 }
 
 func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, owner string, token int64, result ActionExecution, executeErr error) (bool, error) {

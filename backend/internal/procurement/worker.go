@@ -15,6 +15,26 @@ type ActionWorker struct {
 	owner    string
 }
 
+type claimedPriceActionGuard interface {
+	GuardClaimedPriceActions(context.Context, []ActionItem) (bool, error)
+}
+
+func (worker *ActionWorker) priceActionsCurrent(ctx context.Context, items []ActionItem) bool {
+	guard, ok := worker.store.(claimedPriceActionGuard)
+	if !ok {
+		return true
+	}
+	current, err := guard.GuardClaimedPriceActions(ctx, items)
+	if err != nil {
+		worker.logger.Error("check site price before procurement export failed", "error", err)
+		return false
+	}
+	if !current {
+		worker.logger.Warn("skipped stale procurement price export", "action_id", items[0].ID)
+	}
+	return current
+}
+
 func NewActionWorker(store Store, executor Executor, logger *slog.Logger) *ActionWorker {
 	return &ActionWorker{store: store, executor: executor, logger: logger, interval: 3 * time.Second, owner: fmt.Sprintf("actions-%d", time.Now().UnixNano())}
 }
@@ -47,6 +67,9 @@ func (worker *ActionWorker) runOne(ctx context.Context) {
 		if len(items) == 0 {
 			return
 		}
+		if !worker.priceActionsCurrent(ctx, items) {
+			return
+		}
 		for _, outcome := range groupExecutor.ExecuteGroup(ctx, items) {
 			item := items[0]
 			for _, candidate := range items {
@@ -74,6 +97,9 @@ func (worker *ActionWorker) runOne(ctx context.Context) {
 		return
 	}
 	if item == nil {
+		return
+	}
+	if !worker.priceActionsCurrent(ctx, []ActionItem{*item}) {
 		return
 	}
 	result, executeErr := worker.executor.Execute(ctx, *item)
