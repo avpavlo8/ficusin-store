@@ -533,7 +533,7 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 			if err = service.releaseOfferCheckoutReservation(ctx, *shipmentOfferID); err != nil {
 				return err
 			}
-			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *shipmentOfferID)
+			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN status='stale' THEN 'stale' WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *shipmentOfferID)
 		}
 		if err != nil {
 			return err

@@ -39,6 +39,18 @@ func (service *Service) resolveAuthorization(ctx context.Context, payment integr
 		if err := closable.CancelPayment(ctx, payment.ID, fmt.Sprintf("cancel-%d", paymentRowID)); err != nil {
 			return fmt.Errorf("отменить удержание после проверки заказа: %w", err)
 		}
+		if _, err := service.pool.Exec(ctx, `UPDATE payments SET last_error=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentRowID, invalid.Error()); err != nil {
+			return err
+		}
+		if localStatus == StatusPending {
+			if offerID != nil {
+				if _, err := service.pool.Exec(ctx, `UPDATE shipment_offers SET status='stale',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='payment_pending'`, *offerID); err != nil {
+					return err
+				}
+			} else if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_method=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND payment_method=$3 AND status NOT IN ('cancelled','completed')`, orderID, MethodManager, MethodOnline); err != nil {
+				return err
+			}
+		}
 		service.logger.Warn("удержание ЮKassa отменено после повторной проверки", "payment_id", payment.ID, "reason", invalid)
 		return nil
 	}
