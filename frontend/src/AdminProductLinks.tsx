@@ -18,7 +18,7 @@ const fullyLinked = (product: ProductLink, channel: LinkChannel) => channel === 
   ? Boolean(product.channels.avito?.linked)
   : product.variants.length > 0 && product.variants.every((variant) => variant.channels[channel]?.externalIds.length > 0);
 
-type SabyCandidate = { id: string; code: string; article: string; name: string; missing: boolean; linkedVariantId?: number };
+type SabyCandidate = { id: string; code: string; article: string; name: string; missing: boolean; linkedVariantId?: number; linkedProductId?: number; mappedProductId?: number };
 
 function SabyLinkPicker({ product, variant, onLinked, onError }: { product: ProductLink; variant: VariantLink; onLinked: () => void; onError: (message: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -45,7 +45,7 @@ function SabyLinkPicker({ product, variant, onLinked, onError }: { product: Prod
     {open && <div className="admin-pim-editor">
       <p>Карточка сайта: <strong>{product.name}</strong> · SKU {variant.sku}{variant.label ? ` · ${variant.label}` : ""}</p>
       <div><input aria-label="Поиск номенклатуры СБИС" placeholder="Код, артикул или название в СБИС" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} /> <button type="button" disabled={busy || query.trim().length < 2} onClick={() => void search()}>Найти</button></div>
-      {candidates.map((candidate) => <label key={candidate.id} className="admin-checkbox"><input type="radio" name={`saby-link-${variant.id}`} disabled={candidate.missing || Boolean(candidate.linkedVariantId) || busy} checked={selected?.id === candidate.id} onChange={() => setSelected(candidate)} /><span>{candidate.name} · {candidate.code || candidate.id}{candidate.article ? ` · ${candidate.article}` : ""}{candidate.missing ? " · отсутствует в выгрузке" : candidate.linkedVariantId ? ` · уже связан с SKU #${candidate.linkedVariantId}` : ""}</span></label>)}
+      {candidates.map((candidate) => { const occupiedByOther = Boolean((candidate.linkedProductId && candidate.linkedProductId !== product.id) || (candidate.mappedProductId && candidate.mappedProductId !== product.id)); return <label key={candidate.id} className="admin-checkbox"><input type="radio" name={`saby-link-${variant.id}`} disabled={candidate.missing || Boolean(candidate.linkedVariantId) || occupiedByOther || busy} checked={selected?.id === candidate.id} onChange={() => setSelected(candidate)} /><span>{candidate.name} · {candidate.code || candidate.id}{candidate.article ? ` · ${candidate.article}` : ""}{candidate.missing ? " · отсутствует в выгрузке" : candidate.linkedVariantId ? ` · уже связан с SKU #${candidate.linkedVariantId}` : occupiedByOther ? ` · уже связан с карточкой #${candidate.linkedProductId || candidate.mappedProductId}` : ""}</span></label>; })}
       {selected && <div><p>Подтвердите связь <strong>{variant.sku}</strong> → <strong>{selected.name} ({selected.code || selected.id})</strong>. Перепривязка через этот экран невозможна. Остаток появится после следующей синхронизации СБИС.</p><button type="button" disabled={busy} onClick={() => void link()}>{busy ? "Связываем…" : "Подтвердить связь"}</button></div>}
     </div>}
   </div>;

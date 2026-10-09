@@ -25,17 +25,26 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("manual-link-%d", unique)
 	code := fmt.Sprintf("X%d", unique)
-	var productID, variantID int64
+	var productID, variantID, ownerID int64
 	defer func() {
+		if variantID != 0 {
+			_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='variant.saby.link' AND entity_id=$1`, fmt.Sprint(variantID))
+		}
 		if productID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
 		}
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID)
+		if ownerID != 0 {
+			_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, ownerID)
+		}
 	}()
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Saby link owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("saby-link-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Тестовый фикус')`, sabyID, code); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,saby_fields) VALUES('Тестовый фикус',$1,'draft',ARRAY[]::TEXT[]) RETURNING id`, fmt.Sprintf("manual-link-%d", unique)).Scan(&productID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,saby_fields) VALUES('Тестовый фикус',$1,'draft',ARRAY['description']::TEXT[]) RETURNING id`, fmt.Sprintf("manual-link-%d", unique)).Scan(&productID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active) VALUES($1,$2,'12 см',100000,1) RETURNING id`, productID, fmt.Sprintf("9%017d", unique%100000000000000000)).Scan(&variantID); err != nil {
@@ -65,7 +74,7 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleManager}, variantID, sabyID); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("manager link: %v", err)
 	}
-	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner}, variantID, sabyID); err != nil {
+	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner, CustomerID: ownerID}, variantID, sabyID); err != nil {
 		t.Fatal(err)
 	}
 	var variantSabyID, productSabyID string
@@ -78,6 +87,27 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	}
 	if variantSabyID != sabyID || productSabyID != sabyID || qty != 0 || fresh {
 		t.Fatalf("link=%s/%s qty=%d fresh=%v", variantSabyID, productSabyID, qty, fresh)
+	}
+	var fields []string
+	var auditSKU, auditSabyID string
+	if err = pool.QueryRow(ctx, `SELECT saby_fields FROM products WHERE id=$1`, productID).Scan(&fields); err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 2 || fields[0] != "description" || fields[1] != "stock" {
+		t.Fatalf("saby_fields=%v", fields)
+	}
+	if err = pool.QueryRow(ctx, `SELECT after_data->>'sku',after_data->>'sabyId' FROM admin_audit_log WHERE action='variant.saby.link' AND entity_id=$1 ORDER BY id DESC LIMIT 1`, fmt.Sprint(variantID)).Scan(&auditSKU, &auditSabyID); err != nil {
+		t.Fatal(err)
+	}
+	if auditSKU == "" || auditSabyID != sabyID {
+		t.Fatalf("audit sku=%q saby=%q", auditSKU, auditSabyID)
+	}
+	items, err = repository.SearchSabyLinkCandidates(ctx, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].LinkedVariantID == nil || *items[0].LinkedVariantID != variantID || items[0].LinkedProductID == nil || *items[0].LinkedProductID != productID {
+		t.Fatalf("linked candidate=%+v", items)
 	}
 	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner}, variantID, sabyID); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("relink must fail: %v", err)

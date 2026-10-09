@@ -15,6 +15,8 @@ type SabyLinkCandidate struct {
 	Name            string `json:"name"`
 	Missing         bool   `json:"missing"`
 	LinkedVariantID *int64 `json:"linkedVariantId,omitempty"`
+	LinkedProductID *int64 `json:"linkedProductId,omitempty"`
+	MappedProductID *int64 `json:"mappedProductId,omitempty"`
 }
 
 // SearchSabyLinkCandidates reads the last imported Saby directory. The search
@@ -24,8 +26,10 @@ func (repository *PostgresRepository) SearchSabyLinkCandidates(ctx context.Conte
 	if len([]rune(query)) < 2 || len([]rune(query)) > 100 {
 		return nil, fmt.Errorf("%w: введите от 2 до 100 символов", ErrInvalidInput)
 	}
-	rows, err := repository.pool.Query(ctx, `SELECT n.saby_id,n.code,n.article,n.name,n.missing_since IS NOT NULL,v.id
+	rows, err := repository.pool.Query(ctx, `SELECT n.saby_id,n.code,n.article,n.name,n.missing_since IS NOT NULL,v.id,p.id,e.product_id
 		FROM saby_nomenclature n LEFT JOIN product_variants v ON v.saby_id=n.saby_id
+		LEFT JOIN products p ON p.saby_id=n.saby_id
+		LEFT JOIN product_external_ids e ON e.provider='saby' AND e.id_type='id' AND e.external_id=n.saby_id
 		WHERE n.saby_id ILIKE '%' || $1 || '%' OR n.code ILIKE '%' || $1 || '%'
 		   OR n.article ILIKE '%' || $1 || '%' OR n.name ILIKE '%' || $1 || '%'
 		ORDER BY (UPPER(n.code)=UPPER($1)) DESC,(n.saby_id=$1) DESC,(n.missing_since IS NULL) DESC,n.name,n.saby_id LIMIT 30`, query)
@@ -36,7 +40,7 @@ func (repository *PostgresRepository) SearchSabyLinkCandidates(ctx context.Conte
 	items := make([]SabyLinkCandidate, 0)
 	for rows.Next() {
 		var item SabyLinkCandidate
-		if err := rows.Scan(&item.ID, &item.Code, &item.Article, &item.Name, &item.Missing, &item.LinkedVariantID); err != nil {
+		if err := rows.Scan(&item.ID, &item.Code, &item.Article, &item.Name, &item.Missing, &item.LinkedVariantID, &item.LinkedProductID, &item.MappedProductID); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -61,8 +65,9 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 	defer func() { _ = tx.Rollback(ctx) }()
 	var productID int64
 	var currentID string
+	var sku string
 	var archived bool
-	if err = tx.QueryRow(ctx, `SELECT product_id,COALESCE(saby_id,''),archived_at IS NOT NULL FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID, &currentID, &archived); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT product_id,sku,COALESCE(saby_id,''),archived_at IS NOT NULL FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID, &sku, &currentID, &archived); err != nil {
 		return err
 	}
 	if archived || currentID != "" {
@@ -92,7 +97,7 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 		return err
 	}
 	if productSabyID == "" {
-		if _, err = tx.Exec(ctx, `UPDATE products SET saby_id=$2,saby_fields=ARRAY['stock']::TEXT[],updated_at=CURRENT_TIMESTAMP WHERE id=$1`, productID, sabyID); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE products SET saby_id=$2,saby_fields=CASE WHEN 'stock'=ANY(saby_fields) THEN saby_fields ELSE array_append(saby_fields,'stock') END,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, productID, sabyID); err != nil {
 			return err
 		}
 	}
@@ -113,6 +118,9 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 	// Existing local inventory must not become payable merely because the SKU
 	// gained an identity. The Saby worker will replace it with an actual count.
 	if _, err = tx.Exec(ctx, `UPDATE inventory SET available_qty=reserved_qty,synced_at=TIMESTAMPTZ '1970-01-01 00:00:00+00' WHERE variant_id=$1`, variantID); err != nil {
+		return err
+	}
+	if err = insertAudit(ctx, tx, actor, "variant.saby.link", "variant", fmt.Sprint(variantID), map[string]any{"sku": sku, "sabyId": currentID}, map[string]any{"sku": sku, "productId": productID, "sabyId": sabyID}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
