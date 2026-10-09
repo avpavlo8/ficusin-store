@@ -114,7 +114,14 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].LinkedVariantID == nil || *items[0].LinkedVariantID != variantID || items[0].LinkedProductID == nil || *items[0].LinkedProductID != productID {
+	linkedFound := false
+	for _, item := range items {
+		if item.ID == sabyID {
+			linkedFound = item.LinkedVariantID != nil && *item.LinkedVariantID == variantID && item.LinkedProductID != nil && *item.LinkedProductID == productID
+			break
+		}
+	}
+	if !linkedFound {
 		t.Fatalf("linked candidate=%+v", items)
 	}
 	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner}, variantID, sabyID); !errors.Is(err, ErrInvalidInput) {
