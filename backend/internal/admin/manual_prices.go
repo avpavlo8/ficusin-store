@@ -86,13 +86,12 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	var height float64
 	var packageRUB, logisticsRate, returnRate, marketplaceRate, taxRate, reserveRate, strikeRate float64
 	err := tx.QueryRow(ctx, `SELECT v.product_id,COALESCE(v.saby_id,''),COALESCE(n.code,''),
-		COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],''),COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],''),
+		COALESCE(directory.wb_nm_ids[1],''),COALESCE(directory.ozon_articles[1],''),
 		COALESCE(v.height_cm,0),s.package_rub::float8,s.marketplace_logistics_per_cm::float8,
 		s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8
 		FROM product_variants v
 		LEFT JOIN saby_nomenclature n ON n.saby_id=v.saby_id
 		LEFT JOIN canonical_product_directory directory ON directory.variant_id=v.id
-		LEFT JOIN procurement_product_channels pc ON pc.saby_id=v.saby_id
 		CROSS JOIN procurement_pricing_settings s
 		WHERE v.id=$1 AND s.id=1`, variantID).Scan(&productID, &sabyID, &sabyCode, &wbID, &ozonID, &height,
 		&packageRUB, &logisticsRate, &returnRate, &marketplaceRate, &taxRate, &reserveRate, &strikeRate)
@@ -183,13 +182,12 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 		item.compare_at_value::float8,item.status,item.error_message,item.created_at,
 		COALESCE(variant.base_price_minor=batch.manual_site_price_minor,false),
 		CASE item.channel
-			WHEN 'wb' THEN COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],'')
-			WHEN 'ozon' THEN COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'')
+			WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
+			WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1],'')
 			ELSE item.external_article END
 		FROM procurement_action_items item JOIN procurement_action_batches batch ON batch.id=item.batch_id
 		LEFT JOIN product_variants variant ON variant.id=batch.manual_variant_id
 		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
-		LEFT JOIN procurement_product_channels pc ON pc.saby_id=variant.saby_id
 		WHERE batch.source='manual' AND batch.manual_variant_id=$1 ORDER BY item.created_at DESC,item.id DESC`, variantID)
 	if err != nil {
 		return nil, err
@@ -333,13 +331,12 @@ func (repository *PostgresRepository) RetryManualPriceProposal(ctx context.Conte
 		FROM procurement_action_batches batch
 		JOIN product_variants variant ON variant.id=batch.manual_variant_id
 		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
-		LEFT JOIN procurement_product_channels pc ON pc.saby_id=variant.saby_id
 		WHERE item.id=$1 AND item.batch_id=batch.id AND batch.source='manual'
 			AND item.status IN ('failed','not_configured') AND item.channel IN ('wb','ozon')
 			AND item.external_article<>'' AND variant.base_price_minor=batch.manual_site_price_minor
 			AND item.external_article=CASE item.channel
-				WHEN 'wb' THEN COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],'')
-				ELSE COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'') END`, proposalID)
+				WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
+				ELSE COALESCE(directory.ozon_articles[1],'') END`, proposalID)
 	if err != nil {
 		return err
 	}
@@ -395,10 +392,9 @@ func (repository *PostgresRepository) ApproveManualPriceProposal(ctx context.Con
 		AND (item.channel NOT IN ('wb','ozon') OR EXISTS (
 			SELECT 1 FROM product_variants variant
 			LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
-			LEFT JOIN procurement_product_channels pc ON pc.saby_id=variant.saby_id
 			WHERE variant.id=batch.manual_variant_id AND item.external_article=CASE item.channel
-				WHEN 'wb' THEN COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],'')
-				ELSE COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'') END))
+				WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
+				ELSE COALESCE(directory.ozon_articles[1],'') END))
 		RETURNING item.id,item.channel,item.external_article,item.old_value::float8,item.new_value::float8,
 		item.compare_at_value::float8,item.status,item.error_message,item.created_at`, proposalID, actor.CustomerID).Scan(
 		&item.ID, &item.Channel, &item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Status, &item.ErrorMessage, &item.CreatedAt)

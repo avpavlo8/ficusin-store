@@ -103,14 +103,14 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 	rows.Close()
 
 	rows, err = repository.pool.Query(ctx, `SELECT v.id,v.product_id,v.sku,v.label,COALESCE(v.saby_id,''),
-		COALESCE(pc.wb_nm_id::text,''),COALESCE(pc.wb_article,''),
-		COALESCE(pc.ozon_offer_id,''),COALESCE(pc.ozon_article,''),
+		COALESCE(directory.wb_nm_ids[1],''),COALESCE(directory.wb_articles[1],''),
+		COALESCE(directory.ozon_articles[1],''),COALESCE(ozon_product.article,''),
 		v.base_price_minor::DOUBLE PRECISION/100,n.price_minor::DOUBLE PRECISION/100,
 		wb_product.current_price::DOUBLE PRECISION,ozon_product.current_price::DOUBLE PRECISION
-		FROM product_variants v LEFT JOIN procurement_product_channels pc ON pc.saby_id=v.saby_id
+		FROM product_variants v LEFT JOIN canonical_product_directory directory ON directory.variant_id=v.id
 		LEFT JOIN saby_nomenclature n ON n.saby_id=v.saby_id
-		LEFT JOIN procurement_channel_products wb_product ON wb_product.channel='wb' AND wb_product.external_id=pc.wb_nm_id::text
-		LEFT JOIN procurement_channel_products ozon_product ON ozon_product.channel='ozon' AND ozon_product.external_id=pc.ozon_offer_id
+		LEFT JOIN procurement_channel_products wb_product ON wb_product.channel='wb' AND wb_product.external_id=directory.wb_nm_ids[1]
+		LEFT JOIN procurement_channel_products ozon_product ON ozon_product.channel='ozon' AND ozon_product.external_id=directory.ozon_articles[1]
 		WHERE v.is_active<>0 AND v.archived_at IS NULL ORDER BY v.product_id,v.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list active variant links: %w", err)
