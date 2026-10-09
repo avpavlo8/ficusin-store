@@ -31,6 +31,10 @@ func sabyLinkCandidatesHandler(handlers adminHandlers) http.HandlerFunc {
 		}
 		items, err := repository.SearchSabyLinkCandidates(request.Context(), request.URL.Query().Get("q"))
 		if err != nil {
+			if errors.Is(err, admin.ErrInvalidInput) {
+				writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+				return
+			}
 			handlers.failed(response, "search Saby candidates", err)
 			return
 		}
@@ -65,6 +69,10 @@ func linkVariantToSabyHandler(handlers adminHandlers) http.HandlerFunc {
 			return
 		}
 		if err := repository.LinkVariantToSaby(request.Context(), actor, variantID, input.SabyID); err != nil {
+			if errors.Is(err, admin.ErrInvalidInput) {
+				writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+				return
+			}
 			handlers.failed(response, "link variant to Saby", err)
 			return
 		}
