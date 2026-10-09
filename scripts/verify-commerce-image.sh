@@ -10,7 +10,7 @@ db_name="${FICUSIN_TEST_DB_NAME:-ficusin_runtime}"
 db_user="${FICUSIN_TEST_DB_USER:-postgres}"
 suffix="${GITHUB_RUN_ID:-local}-$$"
 slug="ci-commerce-${suffix}"
-warehouse_key="ci-commerce-${suffix}"
+saby_key="ci-commerce-${suffix}"
 email="commerce-${suffix}@example.invalid"
 work="$(mktemp -d)"
 cookie_jar="${work}/cookies"
@@ -20,7 +20,6 @@ psql_ci() {
 }
 
 product_id=""
-warehouse_id=""
 order_number=""
 cleanup() {
   if [[ -n "$order_number" ]]; then
@@ -31,25 +30,31 @@ cleanup() {
   fi
   psql_ci -q -c "DELETE FROM outbox WHERE recipient='${email}'" || true
   if [[ -n "$product_id" ]]; then psql_ci -q -c "DELETE FROM products WHERE id=${product_id}" || true; fi
-  if [[ -n "$warehouse_id" ]]; then psql_ci -q -c "DELETE FROM warehouses WHERE id=${warehouse_id}" || true; fi
+  psql_ci -q -c "DELETE FROM saby_nomenclature WHERE saby_id='${saby_key}'" || true
   rm -rf "$work"
 }
 trap cleanup EXIT
 
+saby_code="CI-${suffix}"
+psql_ci -q -c "
+  INSERT INTO saby_nomenclature(saby_id,code,name,balance)
+  VALUES ('${saby_key}','${saby_code}','CI commerce product',5)"
 product_id="$(psql_ci -Atq -c "
-  INSERT INTO products(name,slug,short_description,description,search_text,status,category_id)
+  INSERT INTO products(name,slug,short_description,description,search_text,status,category_id,saby_id,saby_fields)
   SELECT 'CI commerce product','${slug}','Release test','Release test product',
-         'ci commerce product','published',id
+         'ci commerce product','published',id,'${saby_key}',ARRAY['stock']::text[]
   FROM categories WHERE slug='accessories' RETURNING id")"
 read -r variant_id sku < <(psql_ci -Atq -F ' ' -c "
-  INSERT INTO product_variants(product_id,label,base_price_minor)
-  VALUES (${product_id},'CI variant',149000) RETURNING id,sku")
-warehouse_id="$(psql_ci -Atq -c "
-  INSERT INTO warehouses(saby_id,name,city,address)
-  VALUES ('${warehouse_key}','CI warehouse','Рязань','CI only') RETURNING id")"
+  INSERT INTO product_variants(product_id,label,base_price_minor,saby_id)
+  VALUES (${product_id},'CI variant',149000,'${saby_key}') RETURNING id,sku")
 psql_ci -q -c "
-  INSERT INTO inventory(warehouse_id,variant_id,available_qty)
-  VALUES (${warehouse_id},${variant_id},5)"
+  INSERT INTO warehouses(saby_id,name,city,address)
+  VALUES ('saby-ryazan-main','Основной склад','Рязань','CI only')
+  ON CONFLICT (saby_id) DO NOTHING"
+warehouse_id="$(psql_ci -Atq -c "SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main'")"
+psql_ci -q -c "
+  INSERT INTO inventory(warehouse_id,variant_id,available_qty,synced_at)
+  VALUES (${warehouse_id},${variant_id},5,CURRENT_TIMESTAMP)"
 
 curl --fail --silent --show-error --cookie-jar "$cookie_jar" "$base_url/api/v1/cart" >"${work}/cart-empty.json"
 curl --fail --silent --show-error --cookie "$cookie_jar" --cookie-jar "$cookie_jar" \
