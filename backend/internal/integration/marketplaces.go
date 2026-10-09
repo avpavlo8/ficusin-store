@@ -24,10 +24,14 @@ import (
 const maxMarketplaceResponse = 64 << 20
 
 const (
-	defaultWBBase    = "https://discounts-prices-api.wildberries.ru"
-	defaultWBReports = "https://statistics-api.wildberries.ru"
-	defaultWBContent = "https://content-api.wildberries.ru"
-	defaultOzonBase  = "https://api-seller.ozon.ru"
+	defaultWBBase           = "https://discounts-prices-api.wildberries.ru"
+	defaultWBReports        = "https://statistics-api.wildberries.ru"
+	defaultWBContent        = "https://content-api.wildberries.ru"
+	defaultOzonBase         = "https://api-seller.ozon.ru"
+	wbPriceCheckOperation   = "readback"
+	ozonPriceCheckOperation = "readback"
+	priceCheckDelay         = 25 * time.Second
+	priceCheckMaxAttempts   = 20
 )
 
 type MarketplaceExecutor struct {
@@ -485,19 +489,30 @@ func (executor *MarketplaceExecutor) executeWBGroup(ctx context.Context, items [
 		}
 		if err := executor.request(ctx, http.MethodPost, executor.wbBase+"/api/v2/upload/task", payload,
 			map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
-			// WB reports an idempotent no-op as HTTP 400. The requested prices
-			// are already effective, so the batch is complete rather than failed.
+			// An idempotent no-op still needs a price readback. A transport or
+			// server error may mean the upload succeeded without an ID: do not
+			// submit the same write again automatically.
 			if strings.Contains(strings.ToLower(err.Error()), "already set") || strings.Contains(strings.ToLower(err.Error()), "уже установ") {
-				return sameOutcome(items, procurement.ActionExecution{Completed: true}, nil)
+				return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: wbPriceCheckOperation, RetryAfter: priceCheckDelay}, nil)
+			}
+			var remote *remoteError
+			if !errors.As(err, &remote) || remote.Status >= 500 {
+				return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: wbPriceCheckOperation, RetryAfter: priceCheckDelay}, nil)
 			}
 			return sameOutcome(items, marketplaceRetryExecution(err), err)
 		}
-		if response.Error || response.Data.ID <= 0 {
+		if response.Error {
 			return sameOutcome(items, procurement.ActionExecution{}, fmt.Errorf("Wildberries отклонил загрузку: %s", safeRemoteMessage(response.ErrorText)))
+		}
+		if response.Data.ID <= 0 {
+			return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: wbPriceCheckOperation, RetryAfter: priceCheckDelay}, nil)
 		}
 		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(response.Data.ID, 10), RetryAfter: 5 * time.Second}, nil)
 	}
 
+	if items[0].ExternalOperationID == wbPriceCheckOperation {
+		return executor.verifyWBPrices(ctx, items)
+	}
 	uploadID, err := strconv.ParseInt(items[0].ExternalOperationID, 10, 64)
 	if err != nil || uploadID <= 0 {
 		return sameOutcome(items, procurement.ActionExecution{}, errors.New("повреждён идентификатор загрузки Wildberries"))
@@ -525,12 +540,92 @@ func (executor *MarketplaceExecutor) executeWBGroup(ctx context.Context, items [
 	}
 	switch response.Data.Status {
 	case 3:
-		return sameOutcome(items, procurement.ActionExecution{Completed: true, ExternalOperationID: items[0].ExternalOperationID}, nil)
+		return executor.verifyWBPrices(ctx, items)
 	case 4, 5, 6:
 		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID}, fmt.Errorf("Wildberries завершил загрузку со статусом %d", response.Data.Status))
 	default:
 		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID, RetryAfter: 5 * time.Second}, nil)
 	}
+}
+
+// A processed WB upload is not enough: a task may contain product errors, and
+// integer discounts can yield a seller price different from the proposal.
+func (executor *MarketplaceExecutor) verifyWBPrices(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
+	outcomes := make([]procurement.ActionOutcome, 0, len(items))
+	for index, item := range items {
+		prices, err := executor.readWBProductPrices(ctx, item.ExternalArticle)
+		if err != nil {
+			// A seller-wide API error must not trigger the same failed read for
+			// every nmID in the group (especially after a 429).
+			message := "Не удалось прочитать цену Wildberries: " + safeRemoteMessage(err.Error())
+			for _, remaining := range items[index:] {
+				outcomes = append(outcomes, pendingPriceReadback(remaining, message))
+			}
+			return outcomes
+		}
+		if len(prices) > 0 {
+			matches := true
+			for _, price := range prices {
+				matches = matches && math.Abs(price-item.NewValue) < 0.01
+			}
+			if matches {
+				outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{Completed: true, ExternalOperationID: item.ExternalOperationID}})
+				continue
+			}
+		}
+		message := "Wildberries ещё не показывает подтверждённую цену продавца"
+		if len(prices) > 0 {
+			message = fmt.Sprintf("Цена Wildberries отличается от предложенных %.2f ₽: %v", item.NewValue, prices)
+		}
+		outcomes = append(outcomes, pendingPriceReadback(item, message))
+	}
+	return outcomes
+}
+
+func (executor *MarketplaceExecutor) readWBProductPrices(ctx context.Context, article string) ([]float64, error) {
+	nmID, err := strconv.ParseInt(strings.TrimSpace(article), 10, 64)
+	if err != nil || nmID <= 0 {
+		return nil, errors.New("для проверки цены Wildberries нужен числовой nmID")
+	}
+	endpoint := executor.wbBase + "/api/v2/list/goods/filter?" + url.Values{
+		"limit": {"10"}, "offset": {"0"}, "filterNmID": {strconv.FormatInt(nmID, 10)},
+	}.Encode()
+	var response struct {
+		Data struct {
+			ListGoods []struct {
+				NmID  int64 `json:"nmID"`
+				Sizes []struct {
+					DiscountedPrice marketplaceNumber `json:"discountedPrice"`
+				} `json:"sizes"`
+			} `json:"listGoods"`
+		} `json:"data"`
+	}
+	if err := executor.requestRead(ctx, http.MethodGet, endpoint, nil,
+		map[string]string{"Authorization": executor.wbToken}, &response); err != nil {
+		return nil, err
+	}
+	for _, product := range response.Data.ListGoods {
+		if product.NmID != nmID {
+			continue
+		}
+		prices := make([]float64, 0, len(product.Sizes))
+		for _, size := range product.Sizes {
+			if size.DiscountedPrice <= 0 {
+				return nil, nil
+			}
+			prices = append(prices, float64(size.DiscountedPrice))
+		}
+		return prices, nil
+	}
+	return nil, nil
+}
+
+func pendingPriceReadback(item procurement.ActionItem, message string) procurement.ActionOutcome {
+	if item.Attempts >= priceCheckMaxAttempts {
+		return procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID},
+			Err: errors.New(message + ". Повторная проверка не отправит цену заново; для другой цены создайте новое предложение.")}
+	}
+	return procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID, RetryAfter: priceCheckDelay}}
 }
 
 func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procurement.ActionItem) (procurement.ActionExecution, error) {
@@ -541,6 +636,12 @@ func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procu
 func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
 	if !executor.Configured("ozon") {
 		return sameOutcome(items, procurement.ActionExecution{}, errors.New("ключи Ozon не настроены"))
+	}
+	if items[0].ExternalOperationID == ozonPriceCheckOperation {
+		return executor.verifyOzonPrices(ctx, items)
+	}
+	if items[0].ExternalOperationID != "" {
+		return sameOutcome(items, procurement.ActionExecution{}, errors.New("повреждён идентификатор проверки цены Ozon"))
 	}
 	prices := make([]map[string]any, 0, len(items))
 	for _, item := range items {
@@ -570,10 +671,17 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 	err := executor.request(ctx, http.MethodPost, executor.ozonBase+"/v1/product/import/prices", payload,
 		map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response)
 	if err != nil {
+		var remote *remoteError
+		if !errors.As(err, &remote) || remote.Status >= 500 {
+			// The write may have reached Ozon; read it back instead of sending
+			// a second price mutation after an ambiguous response.
+			return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: ozonPriceCheckOperation, RetryAfter: priceCheckDelay}, nil)
+		}
 		return sameOutcome(items, marketplaceRetryExecution(err), err)
 	}
 	byOffer := make(map[string]struct {
 		updated bool
+		failed  bool
 		message string
 	}, len(response.Result))
 	for _, item := range response.Result {
@@ -583,14 +691,19 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 		}
 		byOffer[item.OfferID] = struct {
 			updated bool
+			failed  bool
 			message string
-		}{item.Updated, message}
+		}{item.Updated, len(item.Errors) > 0, message}
 	}
 	outcomes := make([]procurement.ActionOutcome, 0, len(items))
 	for _, item := range items {
 		remote, found := byOffer[strings.TrimSpace(item.ExternalArticle)]
-		if found && remote.updated {
-			outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{Completed: true}})
+		if !found {
+			outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: ozonPriceCheckOperation, RetryAfter: priceCheckDelay}})
+			continue
+		}
+		if found && remote.updated && !remote.failed {
+			outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: ozonPriceCheckOperation, RetryAfter: priceCheckDelay}})
 			continue
 		}
 		message := "Ozon не подтвердил изменение цены"
@@ -598,6 +711,46 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 			message += ": " + remote.message
 		}
 		outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Err: errors.New(message)})
+	}
+	return outcomes
+}
+
+func (executor *MarketplaceExecutor) verifyOzonPrices(ctx context.Context, items []procurement.ActionItem) []procurement.ActionOutcome {
+	offers := make([]string, 0, len(items))
+	for _, item := range items {
+		offers = append(offers, strings.TrimSpace(item.ExternalArticle))
+	}
+	var response struct {
+		Items []struct {
+			OfferID string `json:"offer_id"`
+			Price   struct {
+				Price marketplaceNumber `json:"price"`
+			} `json:"price"`
+		} `json:"items"`
+	}
+	payload := map[string]any{"filter": map[string]any{"offer_id": offers, "visibility": "ALL"}, "cursor": "", "limit": 1000}
+	err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+"/v5/product/info/prices", payload,
+		map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response)
+	prices := make(map[string]float64, len(response.Items))
+	if err == nil {
+		for _, product := range response.Items {
+			prices[strings.TrimSpace(product.OfferID)] = float64(product.Price.Price)
+		}
+	}
+	outcomes := make([]procurement.ActionOutcome, 0, len(items))
+	for _, item := range items {
+		current, found := prices[strings.TrimSpace(item.ExternalArticle)]
+		if err == nil && found && current > 0 && math.Abs(current-item.NewValue) < 0.01 {
+			outcomes = append(outcomes, procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{Completed: true, ExternalOperationID: item.ExternalOperationID}})
+			continue
+		}
+		message := "Ozon ещё не показывает подтверждённую цену продавца"
+		if err != nil {
+			message = "Не удалось прочитать цену Ozon: " + safeRemoteMessage(err.Error())
+		} else if found {
+			message = fmt.Sprintf("Цена Ozon %.2f ₽ отличается от предложенных %.2f ₽", current, item.NewValue)
+		}
+		outcomes = append(outcomes, pendingPriceReadback(item, message))
 	}
 	return outcomes
 }
@@ -1134,10 +1287,8 @@ func (executor *MarketplaceExecutor) fetchOzonPrices(ctx context.Context) (map[s
 			Items []struct {
 				OfferID string `json:"offer_id"`
 				Price   struct {
-					MarketingSellerPrice marketplaceNumber `json:"marketing_seller_price"`
-					MarketingPrice       marketplaceNumber `json:"marketing_price"`
-					RetailPrice          marketplaceNumber `json:"retail_price"`
-					OldPrice             marketplaceNumber `json:"old_price"`
+					Price    marketplaceNumber `json:"price"`
+					OldPrice marketplaceNumber `json:"old_price"`
 				} `json:"price"`
 			} `json:"items"`
 			Cursor string `json:"cursor"`
@@ -1147,15 +1298,8 @@ func (executor *MarketplaceExecutor) fetchOzonPrices(ctx context.Context) (map[s
 			return nil, err
 		}
 		for _, product := range response.Items {
-			current := product.Price.MarketingSellerPrice
-			if current <= 0 {
-				current = product.Price.MarketingPrice
-			}
-			if current <= 0 {
-				current = product.Price.RetailPrice
-			}
 			result[strings.TrimSpace(product.OfferID)] = channelPrice{
-				current: numberPointer(current), base: numberPointer(product.Price.OldPrice),
+				current: numberPointer(product.Price.Price), base: numberPointer(product.Price.OldPrice),
 			}
 		}
 		if len(response.Items) == 0 || response.Cursor == "" || response.Cursor == cursor {
