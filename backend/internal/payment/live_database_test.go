@@ -15,10 +15,12 @@ import (
 )
 
 type livePaymentProvider struct {
-	creates int
-	refunds int
-	request integration.PaymentRequest
-	status  integration.Payment
+	creates  int
+	captures int
+	cancels  int
+	refunds  int
+	request  integration.PaymentRequest
+	status   integration.Payment
 }
 
 func (*livePaymentProvider) Configured() bool { return true }
@@ -29,6 +31,24 @@ func (provider *livePaymentProvider) CreatePayment(_ context.Context, request in
 }
 func (provider *livePaymentProvider) FetchPayment(context.Context, string) (integration.Payment, error) {
 	return provider.status, nil
+}
+func (provider *livePaymentProvider) CapturePayment(_ context.Context, paymentID, key string) error {
+	if key == "" || paymentID != provider.status.ID {
+		return fmt.Errorf("invalid capture %q %q", paymentID, key)
+	}
+	provider.captures++
+	provider.status.Status = "succeeded"
+	provider.status.Paid = true
+	return nil
+}
+func (provider *livePaymentProvider) CancelPayment(_ context.Context, paymentID, key string) error {
+	if key == "" || paymentID != provider.status.ID {
+		return fmt.Errorf("invalid cancellation %q %q", paymentID, key)
+	}
+	provider.cancels++
+	provider.status.Status = "canceled"
+	provider.status.Paid = false
+	return nil
 }
 func (provider *livePaymentProvider) Refund(_ context.Context, _ string, _ float64, key string) error {
 	if key == "" {
@@ -146,7 +166,13 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 		t.Fatalf("provider received an invalid amount/receipt: %#v", provider.request)
 	}
 
-	provider.status = integration.Payment{ID: "ci-provider-payment", Status: "succeeded", Paid: true, Amount: 1490}
+	provider.status = integration.Payment{ID: "ci-provider-payment", Status: "waiting_for_capture", Paid: true, Amount: 1490}
+	if err := service.SyncOutstanding(ctx, "ci-provider-payment"); err != nil {
+		t.Fatalf("capture authorized payment: %v", err)
+	}
+	if provider.captures != 1 {
+		t.Fatalf("captures=%d, want 1", provider.captures)
+	}
 	if err := service.Sync(ctx, "ci-provider-payment"); err != nil {
 		t.Fatalf("sync paid payment: %v", err)
 	}
@@ -176,6 +202,26 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	}
 	if state != "refunded:refunded" {
 		t.Fatalf("refunded state is inconsistent: %s", state)
+	}
+	// A new authorization after stock freshness expires must be canceled
+	// without charging the customer, even when the provider reports paid=true.
+	var stalePaymentID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO payments(order_id,idempotence_key,provider_payment_id,amount,status)
+		VALUES($1,$2,$3,1490,'pending') RETURNING id`, orderID, "ci-stale-"+suffix, "ci-stale-provider-"+suffix).Scan(&stalePaymentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	provider.status = integration.Payment{ID: "ci-stale-provider-" + suffix, Status: "waiting_for_capture", Paid: true, Amount: 1490}
+	if err := service.SyncOutstanding(ctx, provider.status.ID); err != nil {
+		t.Fatalf("cancel stale authorization: %v", err)
+	}
+	if provider.cancels != 1 || provider.captures != 1 {
+		t.Fatalf("stale stock capture/cancel counts=%d/%d", provider.captures, provider.cancels)
+	}
+	if err := pool.QueryRow(ctx, `SELECT status FROM payments WHERE id=$1`, stalePaymentID).Scan(&state); err != nil || state != "canceled" {
+		t.Fatalf("stale authorization status=%s err=%v", state, err)
 	}
 	// An ambiguous create request must not be retried after the Saby snapshot
 	// expires: a retry could issue a new live provider page for unavailable stock.

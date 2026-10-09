@@ -161,7 +161,7 @@ func (client *YooKassaClient) CapturePayment(ctx context.Context, paymentID, ide
 		return errors.New("не указан ключ идемпотентности подтверждения")
 	}
 	var response yooKassaPayment
-	if err := client.send(ctx, http.MethodPost, "/payments/"+paymentID+"/capture", idempotenceKey, map[string]any{}, &response); err != nil {
+	if err := client.send(ctx, http.MethodPost, "/payments/"+paymentID+"/capture", idempotenceKey, nil, &response); err != nil {
 		return err
 	}
 	if response.Status == "canceled" {

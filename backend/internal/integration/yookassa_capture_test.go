@@ -50,12 +50,9 @@ func TestYooKassaCaptureAndFetchWaitingForCapture(t *testing.T) {
 			if request.Header.Get("Idempotence-Key") != "capture-attempt-1" {
 				t.Fatalf("wrong capture idempotence key: %q", request.Header.Get("Idempotence-Key"))
 			}
-			var body map[string]any
-			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-				t.Fatal(err)
-			}
-			if len(body) != 0 {
-				t.Fatalf("unexpected capture body: %#v", body)
+			body, err := io.ReadAll(request.Body)
+			if err != nil || len(body) != 0 {
+				t.Fatalf("capture must have an empty body: %q %v", body, err)
 			}
 			return yooKassaTestResponse(`{"id":"pay-1","status":"succeeded","paid":true,"amount":{"value":"1000.00"}}`), nil
 		default:

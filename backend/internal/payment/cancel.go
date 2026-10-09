@@ -35,7 +35,8 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 	}
 
 	rows, err := service.pool.Query(ctx, `
-		SELECT id, COALESCE(provider_payment_id, '')
+		SELECT id, COALESCE(provider_payment_id, ''),
+			COALESCE(request_payload->'metadata'->>'ficusin_capture_mode','')
 		FROM payments
 		WHERE order_id = $1 AND status = $2
 		ORDER BY id
@@ -46,11 +47,12 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 	type attempt struct {
 		id         int64
 		providerID string
+		mode       string
 	}
 	attempts := make([]attempt, 0, 2)
 	for rows.Next() {
 		var current attempt
-		if err := rows.Scan(&current.id, &current.providerID); err != nil {
+		if err := rows.Scan(&current.id, &current.providerID, &current.mode); err != nil {
 			rows.Close()
 			return fmt.Errorf("scan pending payment: %w", err)
 		}
@@ -68,12 +70,28 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 		if current.providerID == "" {
 			return ErrPaymentNeedsReview
 		}
-		key, err := idempotenceKey()
+		payment, err := service.provider.FetchPayment(ctx, current.providerID)
 		if err != nil {
 			return err
 		}
-		if err := closable.CancelPayment(ctx, current.providerID, key); err != nil {
-			return fmt.Errorf("платёж %s не отменён: %w", current.providerID, err)
+		if payment.Status == "pending" && current.mode == "two_stage" {
+			// Pending cannot be canceled at YooKassa. Retire the local link;
+			// the reconciliation worker will cancel it if authorization arrives.
+			if _, err := service.pool.Exec(ctx, `UPDATE payments SET status=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status=$3`, current.id, StatusSuperseded, StatusPending); err != nil {
+				return err
+			}
+			continue
+		}
+		if payment.Status == "pending" || payment.Status == "succeeded" {
+			return ErrPaymentNeedsReview
+		}
+		if payment.Status != "canceled" && payment.Status != "cancelled" && payment.Status != "waiting_for_capture" {
+			return fmt.Errorf("неизвестное состояние платежа ЮKassa: %s", payment.Status)
+		}
+		if payment.Status == "waiting_for_capture" {
+			if err := closable.CancelPayment(ctx, current.providerID, fmt.Sprintf("cancel-%d", current.id)); err != nil {
+				return fmt.Errorf("платёж %s не отменён: %w", current.providerID, err)
+			}
 		}
 		if _, err := service.pool.Exec(ctx, `
 			UPDATE payments SET status = $2, updated_at = CURRENT_TIMESTAMP
