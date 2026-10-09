@@ -495,6 +495,20 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 			return fmt.Errorf("load payment: %w", err)
 		}
 	}
+	operation, err := service.lockPaymentOperation(ctx, paymentRowID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = operation.Rollback(ctx) }()
+	// Fetch and inspect again after acquiring the lock: a manager may have
+	// retired the link while the first provider lookup was in flight.
+	if err := operation.QueryRow(ctx, `SELECT order_id,shipment_offer_id,amount::DOUBLE PRECISION,status FROM payments WHERE id=$1`, paymentRowID).Scan(&orderID, &shipmentOfferID, &expected, &localStatus); err != nil {
+		return err
+	}
+	payment, err = service.provider.FetchPayment(ctx, providerPaymentID)
+	if err != nil {
+		return err
+	}
 	if payment.Status == "waiting_for_capture" {
 		if err := service.resolveAuthorization(ctx, payment, paymentRowID, orderID, shipmentOfferID, expected, localStatus); err != nil {
 			return err
@@ -538,6 +552,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		if err != nil {
 			return err
 		}
+	}
+	if err := operation.Commit(ctx); err != nil {
+		return err
 	}
 	_, err = service.Reconcile(ctx, orderID)
 	return err

@@ -14,6 +14,21 @@ type capturer interface {
 	CapturePayment(ctx context.Context, paymentID, idempotenceKey string) error
 }
 
+// Payment operations share one transaction-scoped advisory lock. Order edits
+// retire their old payment before changing the order, so a capture and an edit
+// cannot choose opposite actions for the same attempt concurrently.
+func (service *Service) lockPaymentOperation(ctx context.Context, paymentRowID int64) (pgx.Tx, error) {
+	tx, err := service.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, -paymentRowID); err != nil {
+		_ = tx.Rollback(ctx)
+		return nil, err
+	}
+	return tx, nil
+}
+
 // resolveAuthorization runs before an authorized payment is recorded locally.
 // The provider operation is idempotent, so a timeout leaves the row pending
 // and the next webhook or reconciliation pass can safely fetch/retry it.

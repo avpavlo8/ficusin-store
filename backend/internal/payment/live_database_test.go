@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 )
 
 type livePaymentProvider struct {
+	mu       sync.Mutex
 	creates  int
 	captures int
 	cancels  int
@@ -25,14 +27,20 @@ type livePaymentProvider struct {
 
 func (*livePaymentProvider) Configured() bool { return true }
 func (provider *livePaymentProvider) CreatePayment(_ context.Context, request integration.PaymentRequest) (integration.Payment, error) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
 	provider.creates++
 	provider.request = request
 	return integration.Payment{ID: "ci-provider-payment", Status: StatusPending, Amount: request.Amount, ConfirmationURL: "https://payments.example.invalid/ci"}, nil
 }
 func (provider *livePaymentProvider) FetchPayment(context.Context, string) (integration.Payment, error) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
 	return provider.status, nil
 }
 func (provider *livePaymentProvider) CapturePayment(_ context.Context, paymentID, key string) error {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
 	if key == "" || paymentID != provider.status.ID {
 		return fmt.Errorf("invalid capture %q %q", paymentID, key)
 	}
@@ -42,6 +50,8 @@ func (provider *livePaymentProvider) CapturePayment(_ context.Context, paymentID
 	return nil
 }
 func (provider *livePaymentProvider) CancelPayment(_ context.Context, paymentID, key string) error {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
 	if key == "" || paymentID != provider.status.ID {
 		return fmt.Errorf("invalid cancellation %q %q", paymentID, key)
 	}
@@ -51,6 +61,8 @@ func (provider *livePaymentProvider) CancelPayment(_ context.Context, paymentID,
 	return nil
 }
 func (provider *livePaymentProvider) Refund(_ context.Context, _ string, _ float64, key string) error {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
 	if key == "" {
 		return fmt.Errorf("refund has no idempotence key")
 	}
@@ -167,8 +179,21 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	}
 
 	provider.status = integration.Payment{ID: "ci-provider-payment", Status: "waiting_for_capture", Paid: true, Amount: 1490}
-	if err := service.SyncOutstanding(ctx, "ci-provider-payment"); err != nil {
-		t.Fatalf("capture authorized payment: %v", err)
+	results := make(chan error, 2)
+	var concurrent sync.WaitGroup
+	for range 2 {
+		concurrent.Add(1)
+		go func() {
+			defer concurrent.Done()
+			results <- service.SyncOutstanding(ctx, "ci-provider-payment")
+		}()
+	}
+	concurrent.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Fatalf("concurrent capture: %v", err)
+		}
 	}
 	if provider.captures != 1 {
 		t.Fatalf("captures=%d, want 1", provider.captures)

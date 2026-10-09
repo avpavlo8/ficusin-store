@@ -145,12 +145,9 @@ func (handlers adminHandlers) editOrderContents(response http.ResponseWriter, re
 	}
 	payments, hasPayments := handlers.payments.(adminOrderPaymentService)
 	if hasPayments {
-		// A payment page belongs to the amount that existed when it was
-		// created. YooKassa cannot cancel a normal one-stage payment while it
-		// is still pending confirmation, so provider cancellation must not be
-		// a prerequisite for editing the order. Retire that attempt locally;
-		// its provider id remains recorded and a late webhook can still
-		// reconcile a payment made from the old page.
+		// Retire the old attempt under the same lock used for capture before
+		// editing. A late two-stage authorization is canceled; a legacy
+		// one-stage charge remains visible for reconciliation.
 		if err := payments.SupersedePending(request.Context(), id); err != nil {
 			handlers.failed(response, "supersede old order payment", err)
 			return

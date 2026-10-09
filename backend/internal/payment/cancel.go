@@ -64,6 +64,19 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 	}
 
 	for _, current := range attempts {
+		tx, err := service.lockPaymentOperation(ctx, current.id)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		var localStatus string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_payment_id,''),COALESCE(request_payload->'metadata'->>'ficusin_capture_mode',''),status FROM payments WHERE id=$1`, current.id).Scan(&current.providerID, &current.mode, &localStatus); err != nil {
+			return err
+		}
+		if localStatus != StatusPending {
+			_ = tx.Rollback(ctx)
+			continue
+		}
 		// No provider id after a timeout does not prove that the request failed:
 		// YooKassa may have accepted it and lost only our response. Cancelling the
 		// order here could release stock while the buyer is paying.
@@ -77,7 +90,10 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 		if payment.Status == "pending" && current.mode == "two_stage" {
 			// Pending cannot be canceled at YooKassa. Retire the local link;
 			// the reconciliation worker will cancel it if authorization arrives.
-			if _, err := service.pool.Exec(ctx, `UPDATE payments SET status=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status=$3`, current.id, StatusSuperseded, StatusPending); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE payments SET status=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status=$3`, current.id, StatusSuperseded, StatusPending); err != nil {
+				return err
+			}
+			if err := tx.Commit(ctx); err != nil {
 				return err
 			}
 			continue
@@ -93,11 +109,14 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 				return fmt.Errorf("платёж %s не отменён: %w", current.providerID, err)
 			}
 		}
-		if _, err := service.pool.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 			UPDATE payments SET status = $2, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
 		`, current.id, StatusCancelled); err != nil {
 			return fmt.Errorf("mark payment cancelled: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
 		}
 	}
 	return nil
