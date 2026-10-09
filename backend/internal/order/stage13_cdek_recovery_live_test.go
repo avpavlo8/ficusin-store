@@ -63,7 +63,7 @@ func (client *stage13CDEK) CancelOrder(context.Context, string) error { return n
 type stage13ShippingSettings struct{}
 
 func (stage13ShippingSettings) Enabled(string) bool { return true }
-func (stage13ShippingSettings) Value(string) string  { return "stage13 test" }
+func (stage13ShippingSettings) Value(string) string { return "stage13 test" }
 
 func TestStage13CDEKCreateRecoveryDoesNotDuplicateOrPretendShipment(t *testing.T) {
 	databaseURL := os.Getenv("CRM_TEST_DATABASE_URL")
@@ -150,11 +150,20 @@ func TestStage13CDEKUnknownMovesToManualReviewWithoutAnotherPOST(t *testing.T) {
 
 func seedStage13CDEKOffer(t *testing.T, ctx context.Context, pool *pgxpool.Pool, label string) (int64, int64) {
 	t.Helper()
-	var customerID, productID, variantID, orderID, itemID, offerID int64
+	var customerID, productID, variantID, warehouseID, orderID, itemID, offerID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM customers WHERE email='crm-owner@example.invalid'`).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT p.id,pv.id FROM products p JOIN product_variants pv ON pv.product_id=p.id WHERE p.slug='crm-stage07-a'`).Scan(&productID, &variantID); err != nil {
+		t.Fatal(err)
+	}
+	// Shipment creation now checks the live Saby stock snapshot. Give this
+	// recovery scenario one available plant without changing shared fixtures.
+	if err := pool.QueryRow(ctx, `INSERT INTO warehouses(saby_id,name,city,address) VALUES($1,'Stage 13 CDEK CI','CI','CI') RETURNING id`, fmt.Sprintf("stage13-cdek-%s-%d", label, time.Now().UnixNano())).Scan(&warehouseID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM warehouses WHERE id=$1`, warehouseID) })
+	if _, err := pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty) VALUES($1,$2,1)`, warehouseID, variantID); err != nil {
 		t.Fatal(err)
 	}
 	number := fmt.Sprintf("CRM-S13-CDEK-%s-%d", label, time.Now().UnixNano())
