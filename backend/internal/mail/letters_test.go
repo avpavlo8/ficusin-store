@@ -52,6 +52,18 @@ func TestConfirmationExplainsWhenDeliveryIsNotPricedYet(t *testing.T) {
 	}
 }
 
+func TestConfirmationWithUnavailablePlantWaitsForManager(t *testing.T) {
+	order := sampleOrder()
+	order.HasPreorder = true
+	order.PaymentStatus = "pending"
+	order.PayURL = "https://yoomoney.ru/checkout/pay/123"
+
+	letter := Confirmation(order)
+	if !strings.Contains(letter.Body, "Оплата пока не требуется") || strings.Contains(letter.Body, order.PayURL) {
+		t.Fatalf("заказ с отсутствующим растением не должен предлагать оплату:\n%s", letter.Body)
+	}
+}
+
 // The tracking number is the whole point of the "shipped" letter.
 func TestShippedLetterCarriesTheTrackingNumber(t *testing.T) {
 	order := sampleOrder()

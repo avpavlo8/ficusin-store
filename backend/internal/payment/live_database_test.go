@@ -52,7 +52,7 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	var productID, variantID, orderID int64
+	var productID, variantID, warehouseID, orderID int64
 	var sku string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO products(name, slug, status, category_id)
@@ -66,6 +66,18 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 		VALUES ($1, 'CI payment variant', 149000) RETURNING id, sku
 	`, productID).Scan(&variantID, &sku); err != nil {
 		t.Fatalf("seed variant: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO warehouses(saby_id, name, city, address)
+		VALUES ($1, 'CI payment warehouse', 'Рязань', 'CI only') RETURNING id
+	`, "ci-payment-warehouse-"+suffix).Scan(&warehouseID); err != nil {
+		t.Fatalf("seed warehouse: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO inventory(warehouse_id, variant_id, available_qty)
+		VALUES ($1, $2, 1)
+	`, warehouseID, variantID); err != nil {
+		t.Fatalf("seed inventory: %v", err)
 	}
 	orderNumber := "CI-PAY-" + suffix
 	if err := pool.QueryRow(ctx, `
@@ -86,6 +98,7 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	defer func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", orderID)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
+		_, _ = pool.Exec(ctx, "DELETE FROM warehouses WHERE id=$1", warehouseID)
 	}()
 
 	provider := &livePaymentProvider{}

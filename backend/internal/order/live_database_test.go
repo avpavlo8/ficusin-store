@@ -19,8 +19,8 @@ func (liveOrderNotifier) SendOrder(context.Context, integration.TelegramOrder) e
 // TestCommerceLifecycleOnLiveDatabase is the release-level proof that the
 // migrated schema and the real order service still agree. It deliberately
 // exercises the atomic facts that cannot be inferred from a 201 response:
-// reservation, immutable order snapshots, consent, outbox and idempotent
-// release on cancellation.
+// no reservation, immutable order snapshots, consent, outbox and idempotent
+// cancellation.
 func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -84,12 +84,12 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		Customer: CustomerInput{
 			Name: "CI Commerce", Phone: phone, Email: email,
 		},
-		Delivery:         "pickup",
-		Items:            []ItemInput{{ID: sku, Quantity: 2}},
-		PaymentMethod:    payment.MethodOnDelivery,
-		Consent:          true,
-		ClientIP:         "127.0.0.1",
-		UserAgent:        "ficusin-release-test",
+		Delivery:      "pickup",
+		Items:         []ItemInput{{ID: sku, Quantity: 2}},
+		PaymentMethod: payment.MethodOnDelivery,
+		Consent:       true,
+		ClientIP:      "127.0.0.1",
+		UserAgent:     "ficusin-release-test",
 	})
 	if err != nil {
 		t.Fatalf("create order: %v", err)
@@ -107,7 +107,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		       (SELECT COUNT(*) FROM consent_events c WHERE c.order_id=o.id)::TEXT || ':' ||
 		       (SELECT COUNT(*) FROM outbox x WHERE x.recipient=$2)::TEXT || ':' ||
 		       (SELECT COUNT(*) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve')::TEXT || ':' ||
-		       (SELECT SUM(quantity) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve')::TEXT
+		       COALESCE((SELECT SUM(quantity) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve'),0)::TEXT
 		FROM orders o
 		JOIN order_items oi ON oi.order_id=o.id
 		JOIN inventory i ON i.variant_id=oi.variant_id
@@ -115,7 +115,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	`, created.OrderNumber, email).Scan(&orderID, &facts); err != nil {
 		t.Fatalf("read order facts: %v", err)
 	}
-	if facts != payment.StatusOnDelivery+":2980.00:"+sku+":2:2:2:1:1:1:2" {
+	if facts != payment.StatusOnDelivery+":2980.00:"+sku+":2:0:0:1:1:0:0" {
 		t.Fatalf("commerce transaction is incomplete: %s", facts)
 	}
 
@@ -138,7 +138,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	`, orderID).Scan(&cancelled); err != nil {
 		t.Fatalf("read cancellation facts: %v", err)
 	}
-	if cancelled != "cancelled:cancelled:true:0:1" {
+	if cancelled != "cancelled:cancelled:true:0:0" {
 		t.Fatalf("cancellation is not atomic/idempotent: %s", cancelled)
 	}
 }

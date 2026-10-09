@@ -24,9 +24,8 @@ type paymentCanceller interface {
 
 // ExpiryWorker cancels orders nobody paid for.
 //
-// An order holds its plants in reserve from the moment it is placed. Without
-// this the shop slowly fills with abandoned baskets holding the last copy of
-// something, and a customer who would have paid is told it is out of stock.
+// Checkout no longer reserves plants. Expiry still closes abandoned online
+// payments so customers cannot pay from an old payment link indefinitely.
 type ExpiryWorker struct {
 	pool     *pgxpool.Pool
 	settings settingsReader

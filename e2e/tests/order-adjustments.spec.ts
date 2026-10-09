@@ -7,6 +7,7 @@ test("@desktop кабинет показывает возврат и оплач�
     json: {
       order: {
         orderNumber: "0001-7",
+        deliveryPayee: "shop",
         deliveryMethod: "cdek",
         address: "Рязань, пункт СДЭК",
         comment: "",
@@ -40,16 +41,17 @@ test("@desktop кабинет показывает возврат и оплач�
   await expect(page.getByText("Оплачено", { exact: true })).toBeVisible();
   await expect(page.getByText("Возвращено", { exact: true })).toBeVisible();
   await expect(page.getByText("К доплате", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Оплатить 1.?500/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Оплатить заказ 1.?500/ })).toBeVisible();
 });
 
-test("@desktop кабинет не предлагает оплату до подтверждения менеджером", async ({ page }) => {
+test("@desktop кабинет не предлагает оплату до расчёта доставки", async ({ page }) => {
   await mockApi(page, owner);
   await page.route("**/api/v1/account/orders/0001-8", (route) => route.fulfill({
     json: {
       order: {
         orderNumber: "0001-8",
-        deliveryMethod: "post",
+        deliveryPayee: "shop",
+        deliveryMethod: "cdek",
         address: "Адрес требует проверки",
         comment: "",
         customerName: "Александр",
@@ -67,7 +69,7 @@ test("@desktop кабинет не предлагает оплату до под
         paidAmount: 0,
         refundedAmount: 0,
         amountDue: 2500,
-        paymentReady: false,
+        paymentReady: true,
         createdAt: "2026-08-20T12:00:00Z",
         items: [{ productName: "Апельсин", unitPrice: 2500, quantity: 1 }],
       },
@@ -76,7 +78,7 @@ test("@desktop кабинет не предлагает оплату до под
 
   await page.goto("/account/orders/0001-8");
 
-  await expect(page.getByText(/Менеджер проверит состав и доставку/)).toBeVisible();
+  await expect(page.getByText(/Менеджер уточнит стоимость доставки/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 });
 
@@ -87,6 +89,7 @@ test("@desktop открытая карточка сама показывает �
     json: {
       order: {
         orderNumber: "0001-9",
+        deliveryPayee: "shop",
         deliveryMethod: "cdek",
         address: "Москва, пункт СДЭК",
         comment: "",
@@ -113,7 +116,7 @@ test("@desktop открытая карточка сама показывает �
   }));
 
   await page.goto("/account/orders/0001-9");
-  await expect(page.getByText(/Менеджер проверит состав и доставку/)).toBeVisible();
+  await expect(page.getByText(/Менеджер проверит детали заказа/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 
   // Имитируем сохранение заказа менеджером, пока клиент не закрывал вкладку.
@@ -123,6 +126,6 @@ test("@desktop открытая карточка сама показывает �
   await page.waitForTimeout(100);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
-  await expect(page.getByRole("button", { name: /Оплатить 3.?970/ })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: /Оплатить заказ 3.?970/ })).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".order-totals")).toContainText(/Доставка\s*1.?000/);
 });

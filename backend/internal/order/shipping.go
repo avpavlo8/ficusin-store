@@ -33,18 +33,18 @@ type shippingSettings interface {
 // CDEK has dozens of internal states, and echoing all of them would turn
 // the order page into a logistics log.
 var cdekStatusToOrder = map[string]string{
-	"RECEIVED_AT_SHIPMENT_WAREHOUSE": "shipped",
-	"READY_FOR_SHIPMENT_IN_SENDER_CITY": "shipped",
+	"RECEIVED_AT_SHIPMENT_WAREHOUSE":        "shipped",
+	"READY_FOR_SHIPMENT_IN_SENDER_CITY":     "shipped",
 	"TAKEN_BY_TRANSPORTER_FROM_SENDER_CITY": "shipped",
-	"SENT_TO_RECIPIENT_CITY":          "shipped",
-	"IN_TRANSIT":                     "shipped",
-	"ACCEPTED_IN_TRANSIT_CITY":        "shipped",
-	"ACCEPTED_AT_TRANSIT_WAREHOUSE":  "shipped",
-	"RECEIVED_AT_DELIVERY_WAREHOUSE": "ready",
-	"ACCEPTED_AT_PICK_UP_POINT":       "ready",
-	"POSTOMAT_POSTED":                 "ready",
-	"READY_FOR_RECIPIENT":            "ready",
-	"DELIVERED":                      "completed",
+	"SENT_TO_RECIPIENT_CITY":                "shipped",
+	"IN_TRANSIT":                            "shipped",
+	"ACCEPTED_IN_TRANSIT_CITY":              "shipped",
+	"ACCEPTED_AT_TRANSIT_WAREHOUSE":         "shipped",
+	"RECEIVED_AT_DELIVERY_WAREHOUSE":        "ready",
+	"ACCEPTED_AT_PICK_UP_POINT":             "ready",
+	"POSTOMAT_POSTED":                       "ready",
+	"READY_FOR_RECIPIENT":                   "ready",
+	"DELIVERED":                             "completed",
 }
 
 // ShippingWorker hands paid orders to CDEK and keeps their status current.
@@ -102,6 +102,7 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	// The switch controls creation of real shipments only. Existing parcels
 	// must keep being tracked even if a manager pauses automatic hand-off.
 	worker.reconcileUnknownShipments(ctx)
+	worker.markStockShortages(ctx)
 	if worker.settings.Enabled(settings.CDEKOrdersEnabled) {
 		worker.createOfferShipments(ctx)
 		worker.createShipments(ctx)
@@ -109,6 +110,67 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	worker.cancelShipments(ctx)
 	worker.refreshStatuses(ctx)
 	worker.refreshOfferStatuses(ctx)
+}
+
+// A paid shipment is never handed to CDEK when Saby's latest stock snapshot
+// cannot cover it. Record the hold where managers and operations health can
+// see it; automatic retries must wait for a manager to resolve the order.
+func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
+	_, err := worker.pool.Exec(ctx, `
+		UPDATE orders o SET cdek_create_state='manual_review',
+			cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',
+			cdek_next_attempt_at=NULL, updated_at=CURRENT_TIMESTAMP
+		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
+			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
+			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
+			AND o.payment_status IN ('paid','on_delivery')
+			AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status IN ('paid','shipping','shipped','ready','completed'))
+			AND (EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NULL)
+				OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NOT NULL
+					GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=oi.variant_id
+					),0)))
+	`)
+	if err != nil {
+		worker.logger.Error("mark paid cdek orders short of stock failed", "error", err)
+	}
+	_, err = worker.pool.Exec(ctx, `
+		UPDATE shipment_offers so SET cdek_create_state='manual_review',
+			cdek_last_error='Оплаченная отправка: остатка растений недостаточно. Проверьте наличие и решите вручную.',
+			cdek_next_attempt_at=NULL, updated_at=CURRENT_TIMESTAMP
+		WHERE so.status='paid' AND so.delivery_method='cdek' AND so.delivery_payee='shop'
+			AND so.cdek_uuid='' AND so.cdek_create_state NOT IN ('unknown','manual_review','registered')
+			AND (EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
+				OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
+					GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=soi.variant_id
+					),0)))
+	`)
+	if err != nil {
+		worker.logger.Error("mark paid cdek offers short of stock failed", "error", err)
+	}
+}
+
+func (worker *ShippingWorker) orderStockShort(ctx context.Context, orderID int64) (bool, error) {
+	var short bool
+	err := worker.pool.QueryRow(ctx, `SELECT
+		EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NULL)
+		OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NOT NULL
+			GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=oi.variant_id
+			),0))`, orderID).Scan(&short)
+	return short, err
+}
+
+func (worker *ShippingWorker) offerStockShort(ctx context.Context, offerID int64) (bool, error) {
+	var short bool
+	err := worker.pool.QueryRow(ctx, `SELECT
+		EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NULL)
+		OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NOT NULL
+			GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=soi.variant_id
+			),0))`, offerID).Scan(&short)
+	return short, err
 }
 
 // createOfferShipments sends the immutable offer packing to CDEK. The parent
@@ -119,7 +181,14 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 		WITH candidates AS (
 			SELECT so.id FROM shipment_offers so JOIN orders o ON o.id=so.order_id
 				WHERE so.status='paid' AND so.delivery_method='cdek' AND so.cdek_uuid=''
+					AND so.delivery_payee='shop'
 					AND so.cdek_create_state NOT IN ('unknown','manual_review')
+					AND NOT EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
+					AND NOT EXISTS (
+						SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
+						GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
+							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=soi.variant_id
+						),0))
 				AND (so.cdek_next_attempt_at IS NULL OR so.cdek_next_attempt_at<=CURRENT_TIMESTAMP)
 				AND o.status NOT IN ('cancelled','completed')
 			ORDER BY so.cdek_next_attempt_at ASC NULLS FIRST,so.id FOR UPDATE OF so SKIP LOCKED LIMIT 20
@@ -136,9 +205,9 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 		return
 	}
 	type pending struct {
-		offerID, orderID          int64
+		offerID, orderID            int64
 		number, name, phone, office string
-		tariff, city, attempts     int
+		tariff, city, attempts      int
 	}
 	waiting := make([]pending, 0)
 	for rows.Next() {
@@ -151,6 +220,17 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 	}
 	rows.Close()
 	for _, item := range waiting {
+		short, checkErr := worker.offerStockShort(ctx, item.offerID)
+		if checkErr != nil {
+			worker.recordOfferCreateFailure(ctx, item.offerID, item.number, item.attempts, checkErr)
+			continue
+		}
+		if short {
+			if _, err := worker.pool.Exec(ctx, `UPDATE shipment_offers SET status='paid',cdek_create_state='manual_review',cdek_last_error='Оплаченная отправка: остатка растений недостаточно. Проверьте наличие и решите вручную.',cdek_next_attempt_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND cdek_uuid=''`, item.offerID); err != nil {
+				worker.logger.Error("hold cdek offer short of stock failed", "error", err, "offer_id", item.offerID)
+			}
+			continue
+		}
 		packages, err := worker.offerPackages(ctx, item.offerID, item.number)
 		if err == nil && len(packages) == 0 {
 			err = errors.New("у предложения нет коробок")
@@ -160,16 +240,16 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 			continue
 		}
 		shipment, err := worker.cdek.CreateOrder(ctx, integration.ShipmentRequest{
-			OrderNumber:     fmt.Sprintf("%s-%d", item.number, item.offerID),
-			TariffCode:      item.tariff,
-			OfficeCode:      item.office,
-			CityCode:        item.city,
-			Packages:        packages,
-			SenderName:      worker.settings.Value(settings.CDEKSenderName),
-			SenderPhone:     worker.settings.Value(settings.CDEKSenderPhone),
-			SenderAddress:   worker.settings.Value(settings.CDEKSenderAddress),
-			RecipientName:   item.name,
-			RecipientPhone:  item.phone,
+			OrderNumber:    fmt.Sprintf("%s-%d", item.number, item.offerID),
+			TariffCode:     item.tariff,
+			OfficeCode:     item.office,
+			CityCode:       item.city,
+			Packages:       packages,
+			SenderName:     worker.settings.Value(settings.CDEKSenderName),
+			SenderPhone:    worker.settings.Value(settings.CDEKSenderPhone),
+			SenderAddress:  worker.settings.Value(settings.CDEKSenderAddress),
+			RecipientName:  item.name,
+			RecipientPhone: item.phone,
 		})
 		if err != nil {
 			worker.recordOfferCreateFailure(ctx, item.offerID, item.number, item.attempts, err)
@@ -186,15 +266,76 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 	}
 }
 
-func (worker *ShippingWorker) offerPackages(ctx context.Context,offerID int64,number string)([]integration.ShipmentPackage,error){
-	itemRows,err:=worker.pool.Query(ctx,`SELECT order_item_id,product_name,unit_price::DOUBLE PRECISION,quantity,COALESCE(variant_numeric_attribute(variant_id,'package_weight_grams'),0)::INTEGER FROM shipment_offer_items WHERE shipment_offer_id=$1 ORDER BY id`,offerID);if err!=nil{return nil,err}
-	items:=map[int64]integration.ShipmentItem{};for itemRows.Next(){var id int64;var item integration.ShipmentItem;if err:=itemRows.Scan(&id,&item.Name,&item.Price,&item.Quantity,&item.WeightGrams);err!=nil{itemRows.Close();return nil,err};items[id]=item};itemRows.Close();if err:=itemRows.Err();err!=nil{return nil,err}
-	boxRows,err:=worker.pool.Query(ctx,`SELECT box_no,length_cm,width_cm,height_cm,weight_grams,contents FROM shipment_offer_boxes WHERE shipment_offer_id=$1 ORDER BY box_no`,offerID);if err!=nil{return nil,err};defer boxRows.Close()
-	result:=[]integration.ShipmentPackage{};used:=map[int64]bool{}
-		type boxContent struct{OrderItemID int64 `json:"orderItemId"`;Quantity int `json:"quantity"`}
-		packed:=map[int64]int{}
-		for boxRows.Next(){var boxNo int;var box integration.Parcel;var raw []byte;if err:=boxRows.Scan(&boxNo,&box.LengthCM,&box.WidthCM,&box.HeightCM,&box.WeightGrams,&raw);err!=nil{return nil,err};var assigned []boxContent;if err:=json.Unmarshal(raw,&assigned);err!=nil{return nil,err};contents:=[]integration.ShipmentItem{};for _,content:=range assigned{item,ok:=items[content.OrderItemID];if !ok||content.Quantity<=0{return nil,fmt.Errorf("некорректный состав коробки %d",boxNo)};item.Quantity=content.Quantity;packed[content.OrderItemID]+=content.Quantity;used[content.OrderItemID]=true;contents=append(contents,item)};if len(contents)==0{return nil,fmt.Errorf("коробка %d пуста",boxNo)};result=append(result,integration.ShipmentPackage{Number:fmt.Sprintf("%s-%d",number,boxNo),Box:box,Items:contents})}
-	if err:=boxRows.Err();err!=nil{return nil,err};if len(used)!=len(items){return nil,errors.New("не все позиции распределены по коробкам")};for id,item:=range items{if packed[id]!=item.Quantity{return nil,errors.New("количество товара в коробках не совпадает с предложением")}};return result,nil
+func (worker *ShippingWorker) offerPackages(ctx context.Context, offerID int64, number string) ([]integration.ShipmentPackage, error) {
+	itemRows, err := worker.pool.Query(ctx, `SELECT order_item_id,product_name,unit_price::DOUBLE PRECISION,quantity,COALESCE(variant_numeric_attribute(variant_id,'package_weight_grams'),0)::INTEGER FROM shipment_offer_items WHERE shipment_offer_id=$1 ORDER BY id`, offerID)
+	if err != nil {
+		return nil, err
+	}
+	items := map[int64]integration.ShipmentItem{}
+	for itemRows.Next() {
+		var id int64
+		var item integration.ShipmentItem
+		if err := itemRows.Scan(&id, &item.Name, &item.Price, &item.Quantity, &item.WeightGrams); err != nil {
+			itemRows.Close()
+			return nil, err
+		}
+		items[id] = item
+	}
+	itemRows.Close()
+	if err := itemRows.Err(); err != nil {
+		return nil, err
+	}
+	boxRows, err := worker.pool.Query(ctx, `SELECT box_no,length_cm,width_cm,height_cm,weight_grams,contents FROM shipment_offer_boxes WHERE shipment_offer_id=$1 ORDER BY box_no`, offerID)
+	if err != nil {
+		return nil, err
+	}
+	defer boxRows.Close()
+	result := []integration.ShipmentPackage{}
+	used := map[int64]bool{}
+	type boxContent struct {
+		OrderItemID int64 `json:"orderItemId"`
+		Quantity    int   `json:"quantity"`
+	}
+	packed := map[int64]int{}
+	for boxRows.Next() {
+		var boxNo int
+		var box integration.Parcel
+		var raw []byte
+		if err := boxRows.Scan(&boxNo, &box.LengthCM, &box.WidthCM, &box.HeightCM, &box.WeightGrams, &raw); err != nil {
+			return nil, err
+		}
+		var assigned []boxContent
+		if err := json.Unmarshal(raw, &assigned); err != nil {
+			return nil, err
+		}
+		contents := []integration.ShipmentItem{}
+		for _, content := range assigned {
+			item, ok := items[content.OrderItemID]
+			if !ok || content.Quantity <= 0 {
+				return nil, fmt.Errorf("некорректный состав коробки %d", boxNo)
+			}
+			item.Quantity = content.Quantity
+			packed[content.OrderItemID] += content.Quantity
+			used[content.OrderItemID] = true
+			contents = append(contents, item)
+		}
+		if len(contents) == 0 {
+			return nil, fmt.Errorf("коробка %d пуста", boxNo)
+		}
+		result = append(result, integration.ShipmentPackage{Number: fmt.Sprintf("%s-%d", number, boxNo), Box: box, Items: contents})
+	}
+	if err := boxRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(used) != len(items) {
+		return nil, errors.New("не все позиции распределены по коробкам")
+	}
+	for id, item := range items {
+		if packed[id] != item.Quantity {
+			return nil, errors.New("количество товара в коробках не совпадает с предложением")
+		}
+	}
+	return result, nil
 }
 
 func (worker *ShippingWorker) recordOfferCreateFailure(ctx context.Context, offerID int64, number string, attempts int, failure error) {
@@ -235,9 +376,9 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 		return
 	}
 	type pendingOrder struct {
-		id               int64
-		number, status   string
-		attempts         int
+		id             int64
+		number, status string
+		attempts       int
 	}
 	orders := []pendingOrder{}
 	for rows.Next() {
@@ -368,7 +509,11 @@ func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 		worker.logger.Error("find cdek cancellations failed", "error", err)
 		return
 	}
-	type cancellation struct { id int64; number, uuid string; attempts int }
+	type cancellation struct {
+		id           int64
+		number, uuid string
+		attempts     int
+	}
 	items := make([]cancellation, 0)
 	for rows.Next() {
 		var item cancellation
@@ -382,16 +527,22 @@ func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 	for _, item := range items {
 		if err := worker.cdek.CancelOrder(ctx, item.uuid); err != nil {
 			state := "retry"
-			if item.attempts >= 8 { state = "manual_review" }
+			if item.attempts >= 8 {
+				state = "manual_review"
+			}
 			delay := time.Minute * time.Duration(1<<min(6, max(0, item.attempts-1)))
 			message := err.Error()
-			if len(message) > 1000 { message = message[:1000] }
+			if len(message) > 1000 {
+				message = message[:1000]
+			}
 			_, saveErr := worker.pool.Exec(ctx, `
 				UPDATE orders SET cdek_cancel_state = $2, cdek_last_error = $3,
 					cdek_cancel_next_attempt_at = CURRENT_TIMESTAMP + ($4 * INTERVAL '1 second')
 				WHERE id = $1
 			`, item.id, state, message, int(delay/time.Second))
-			if saveErr != nil { worker.logger.Error("store cdek cancellation failure failed", "error", saveErr, "order", item.number) }
+			if saveErr != nil {
+				worker.logger.Error("store cdek cancellation failure failed", "error", saveErr, "order", item.number)
+			}
 			continue
 		}
 		if _, err := worker.pool.Exec(ctx, `
@@ -414,11 +565,27 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			SELECT o.id
 			FROM orders o
 				WHERE o.delivery_method = 'cdek'
+					-- The shop already collected delivery; do not collect it again.
+					AND o.delivery_payee = 'shop'
 					AND o.cdek_uuid = ''
 					AND o.cdek_create_state NOT IN ('unknown','manual_review')
 				AND o.delivery_fee_pending = 0
+				AND o.has_preorder = 0
 				AND o.status NOT IN ('cancelled', 'completed')
 				AND o.payment_status IN ('paid', 'on_delivery')
+				AND NOT EXISTS (
+					SELECT 1 FROM order_items oi
+					WHERE oi.order_id = o.id AND oi.variant_id IS NULL
+				)
+				AND NOT EXISTS (
+					SELECT 1 FROM order_items oi
+					WHERE oi.order_id = o.id AND oi.variant_id IS NOT NULL
+					GROUP BY oi.variant_id
+					HAVING SUM(oi.quantity) > COALESCE((
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty, 0))
+						FROM inventory i WHERE i.variant_id = oi.variant_id
+					), 0)
+				)
 				AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status IN ('paid','shipping','shipped','ready','completed'))
 				AND (o.cdek_next_attempt_at IS NULL OR o.cdek_next_attempt_at <= CURRENT_TIMESTAMP)
 			ORDER BY o.cdek_next_attempt_at ASC NULLS FIRST, o.id
@@ -467,16 +634,27 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 	rows.Close()
 
 	for _, item := range waiting {
+		short, checkErr := worker.orderStockShort(ctx, item.id)
+		if checkErr != nil {
+			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, checkErr)
+			continue
+		}
+		if short {
+			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='manual_review',cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',cdek_next_attempt_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND cdek_uuid=''`, item.id); err != nil {
+				worker.logger.Error("hold cdek order short of stock failed", "error", err, "order_id", item.id)
+			}
+			continue
+		}
 		items, box, err := worker.shipmentContents(ctx, item.id)
 		if err != nil {
 			worker.logger.Error("load shipment contents failed", "error", err, "order_id", item.id)
 			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, err)
 			continue
 		}
+		// delivery_recipient_cost is an *additional shop collection* in the
+		// CDEK API, not the carrier's own transport tariff. Recipient payment
+		// for transport must be configured in the CDEK contract separately.
 		cash := 0.0
-		if item.payStatus == "on_delivery" {
-			cash = item.total
-		}
 		shipment, err := worker.cdek.CreateOrder(ctx, integration.ShipmentRequest{
 			OrderNumber:       item.number,
 			TariffCode:        item.tariff,
@@ -525,7 +703,10 @@ func (worker *ShippingWorker) recordCreateFailure(
 		message = message[:1000]
 	}
 	state := "retry"
-	if errors.Is(failure,integration.ErrCDEKOutcomeUnknown) { state="unknown"; delay=2*time.Minute }
+	if errors.Is(failure, integration.ErrCDEKOutcomeUnknown) {
+		state = "unknown"
+		delay = 2 * time.Minute
+	}
 	if _, err := worker.pool.Exec(ctx, `
 			UPDATE orders
 			SET cdek_create_state = $2, cdek_last_error = $3,
@@ -611,10 +792,40 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 	}
 }
 
-func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context){
-	rows,err:=worker.pool.Query(ctx,`SELECT id,cdek_uuid,cdek_track_number,cdek_status,status FROM shipment_offers WHERE cdek_uuid<>'' AND status NOT IN ('cancelled','completed','expired') ORDER BY cdek_synced_at ASC NULLS FIRST,id LIMIT 50`);if err!=nil{worker.logger.Error("find shipment offers to refresh failed","error",err);return}
-	type tracked struct{id int64;uuid,track,cdekStatus,status string};items:=[]tracked{};for rows.Next(){var item tracked;if err:=rows.Scan(&item.id,&item.uuid,&item.track,&item.cdekStatus,&item.status);err!=nil{rows.Close();return};items=append(items,item)};rows.Close()
-	for _,item:=range items{shipment,err:=worker.cdek.FetchOrder(ctx,item.uuid);if err!=nil{worker.logger.Error("fetch cdek shipment offer failed","error",err,"offer_id",item.id);continue};next:=item.status;if mapped,ok:=cdekStatusToOrder[strings.ToUpper(shipment.Status)];ok{next=mapped};if _,err:=worker.pool.Exec(ctx,`UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,item.id,shipment.TrackNumber,shipment.Status,shipment.StatusReason,next);err!=nil{worker.logger.Error("store cdek shipment offer status failed","error",err,"offer_id",item.id)}}
+func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context) {
+	rows, err := worker.pool.Query(ctx, `SELECT id,cdek_uuid,cdek_track_number,cdek_status,status FROM shipment_offers WHERE cdek_uuid<>'' AND status NOT IN ('cancelled','completed','expired') ORDER BY cdek_synced_at ASC NULLS FIRST,id LIMIT 50`)
+	if err != nil {
+		worker.logger.Error("find shipment offers to refresh failed", "error", err)
+		return
+	}
+	type tracked struct {
+		id                              int64
+		uuid, track, cdekStatus, status string
+	}
+	items := []tracked{}
+	for rows.Next() {
+		var item tracked
+		if err := rows.Scan(&item.id, &item.uuid, &item.track, &item.cdekStatus, &item.status); err != nil {
+			rows.Close()
+			return
+		}
+		items = append(items, item)
+	}
+	rows.Close()
+	for _, item := range items {
+		shipment, err := worker.cdek.FetchOrder(ctx, item.uuid)
+		if err != nil {
+			worker.logger.Error("fetch cdek shipment offer failed", "error", err, "offer_id", item.id)
+			continue
+		}
+		next := item.status
+		if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
+			next = mapped
+		}
+		if _, err := worker.pool.Exec(ctx, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next); err != nil {
+			worker.logger.Error("store cdek shipment offer status failed", "error", err, "offer_id", item.id)
+		}
+	}
 }
 
 func (worker *ShippingWorker) shipmentContents(

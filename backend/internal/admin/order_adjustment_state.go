@@ -10,6 +10,7 @@ type OrderAdjustmentState struct {
 	OrderNumber        string      `json:"orderNumber"`
 	Subtotal           float64     `json:"subtotal"`
 	DeliveryFee        float64     `json:"deliveryFee"`
+	DeliveryPayee      string      `json:"deliveryPayee"`
 	DeliveryFeePending bool        `json:"deliveryFeePending"`
 	HasPreorder        bool        `json:"hasPreorder"`
 	Status             string      `json:"status"`
@@ -26,11 +27,11 @@ type OrderAdjustmentState struct {
 func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id int64) (OrderAdjustmentState,error){
 	var state OrderAdjustmentState
 	if err:=repository.pool.QueryRow(ctx,`
-		SELECT id,order_number,subtotal::DOUBLE PRECISION,delivery_fee::DOUBLE PRECISION,
+		SELECT id,order_number,subtotal::DOUBLE PRECISION,delivery_fee::DOUBLE PRECISION,delivery_payee,
 			delivery_fee_pending=1,has_preorder=1,status,delivery_method,cdek_tariff_code,
 			cdek_create_state,cdek_status,cdek_status_reason,cdek_last_error
 		FROM orders WHERE id=$1
-	`,id).Scan(&state.ID,&state.OrderNumber,&state.Subtotal,&state.DeliveryFee,&state.DeliveryFeePending,&state.HasPreorder,&state.Status,&state.DeliveryMethod,&state.CDEKTariffCode,&state.CDEKCreateState,&state.CDEKStatus,&state.CDEKStatusReason,&state.CDEKLastError);err!=nil{return state,err}
+	`,id).Scan(&state.ID,&state.OrderNumber,&state.Subtotal,&state.DeliveryFee,&state.DeliveryPayee,&state.DeliveryFeePending,&state.HasPreorder,&state.Status,&state.DeliveryMethod,&state.CDEKTariffCode,&state.CDEKCreateState,&state.CDEKStatus,&state.CDEKStatusReason,&state.CDEKLastError);err!=nil{return state,err}
 	// Редактор правит SKU, а не карточку товара, поэтому состояние обязано
 	// нести sku и название варианта: иначе менеджер не видит, какой размер
 	// лежит в заказе, а сохранение уходит без идентичности строки.

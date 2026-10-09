@@ -21,11 +21,6 @@ type CDEK interface {
 	CalculatePVZ(context.Context, int, integration.Parcel) ([]integration.CDEKQuote, error)
 }
 
-type DeliveryPricer interface {
-	Configured() bool
-	Calculate(context.Context, string, integration.Parcel) (integration.DeliveryQuote, error)
-}
-
 type Notifier interface {
 	SendOrder(context.Context, integration.TelegramOrder) error
 }
@@ -33,8 +28,6 @@ type Notifier interface {
 type Service struct {
 	pool     *pgxpool.Pool
 	cdek     CDEK
-	post     DeliveryPricer
-	courier  DeliveryPricer
 	notifier Notifier
 	settings settingsReader
 	logger   *slog.Logger
@@ -93,6 +86,7 @@ type CDEKInput struct {
 type Created struct {
 	OrderNumber   string  `json:"orderNumber"`
 	PaymentStatus string  `json:"paymentStatus"`
+	HasPreorder   bool    `json:"hasPreorder"`
 	Total         float64 `json:"-"`
 }
 
@@ -130,8 +124,7 @@ type purchasableItem struct {
 	// Preorder means the shelf could not cover this line. The order still
 	// goes through; the manager names the date.
 	Preorder bool
-	// Reserved — сколько штук реально снято со склада. У предзаказа меньше
-	// количества, и вернуть при отмене нужно именно столько.
+	// Checkout currently does not reserve any stock. This remains zero for new orders.
 	Reserved int
 }
 
@@ -186,19 +179,12 @@ func NewService(
 	}
 }
 
-// WithDeliveryPricers wires the two address-delivery providers without
-// changing the old constructor used by focused unit tests. Production always
-// supplies real clients; empty credentials leave the corresponding method
-// unavailable instead of silently falling back to a made-up fixed price.
-func (service *Service) WithDeliveryPricers(post, courier DeliveryPricer) *Service {
-	service.post = post
-	service.courier = courier
-	return service
-}
-
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
 	if !input.Consent {
 		return Created{}, invalid("Подтвердите согласие на обработку персональных данных")
+	}
+	if input.Delivery != "pickup" && input.Delivery != "cdek" {
+		return Created{}, invalid("Выберите доступный способ получения")
 	}
 
 	transaction, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -323,33 +309,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			}
 		}
 		cityName = &resolvedCityName
-	} else if input.Delivery == "post" || input.Delivery == "courier" {
-		regularDelivery = true
-		pricer := service.post
-		providerName := "Почта России"
-		if input.Delivery == "courier" {
-			pricer = service.courier
-			providerName = "Яндекс Доставка"
-		}
-		if pricer == nil || !pricer.Configured() {
-			return Created{}, invalid(providerName + " временно недоступна. Выберите другой способ доставки")
-		}
-		box, measured := shippingBox(items)
-		if !measured {
-			feePending = true
-		} else if quote, quoteErr := pricer.Calculate(ctx, deliveryAddress, box); errors.Is(quoteErr, integration.ErrRussianPostAddress) {
-			return Created{}, invalid("Почта России не смогла определить адрес. Укажите его точнее")
-		} else if errors.Is(quoteErr, integration.ErrYandexOutsideRyazan) {
-			return Created{}, invalid("Курьер Яндекс Доставки доступен только по Рязани")
-		} else if quoteErr != nil {
-			service.logger.Error("delivery quote failed at checkout", "provider", providerName, "error", quoteErr)
-			feePending = true
-		} else if quote.Price <= 0 {
-			service.logger.Error("delivery provider returned empty price", "provider", providerName)
-			feePending = true
-		} else {
-			deliveryFee = quote.Price
-		}
 	} else if !regularDelivery {
 		return Created{}, invalid("Выберите способ получения")
 	}
@@ -366,16 +325,14 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		return Created{}, invalid("Выберите доступный способ оплаты")
 	}
 
-	// Резерв — последним действием перед записью заказа, и намеренно после
-	// разговора с перевозчиком. Он блокирует строки склада до конца транзакции,
-	// и пока блокировка держится, никто другой не может купить то же растение.
+	// Availability is a checkout snapshot only. No order reserves stock; availability
+	// must be checked again before payment or fulfilment.
 	hasPreorder := false
 	for index := range items {
-		reserved, preorder, err := reserveStock(ctx, transaction, items[index])
+		preorder, err := needsPreorder(ctx, transaction, items[index])
 		if err != nil {
 			return Created{}, err
 		}
-		items[index].Reserved = reserved
 		items[index].Preorder = preorder
 		hasPreorder = hasPreorder || preorder
 	}
@@ -384,6 +341,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if err != nil {
 		return Created{}, err
 	}
+	// The shop collects the delivery charge together with the plants. If the
+	// quote is pending, payment stays unavailable until a manager sets it.
 	total := subtotal + deliveryFee
 	var customerID any
 	if input.CustomerID != nil {
@@ -396,11 +355,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
 			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total,
-			payment_method, payment_status, has_preorder, status
+			payment_method, payment_status, has_preorder, status, delivery_payee
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop'
 		)
 		RETURNING id
 	`,
@@ -427,9 +386,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}
-	if err := RecordMovement(ctx, transaction, orderID, MovementReserve); err != nil {
-		return Created{}, err
-	}
 	if err := recordPreorderRequests(ctx, transaction, orderID); err != nil {
 		return Created{}, err
 	}
@@ -450,6 +406,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		Subtotal:      subtotal,
 		DeliveryFee:   deliveryFee,
 		FeePending:    feePending,
+		HasPreorder:   hasPreorder,
 		Total:         total,
 		Delivery:      input.Delivery,
 		Address:       deliveryAddress,
@@ -491,7 +448,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		)
 	}
 
-	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), Total: total}, nil
+	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), HasPreorder: hasPreorder, Total: total}, nil
 }
 
 // deliveryFee is retained for old settings tests and existing installations.
@@ -505,57 +462,16 @@ func (service *Service) deliveryFee(key string) float64 {
 	return float64(settings.NonNegative(value))
 }
 
-func reserveStock(ctx context.Context, transaction pgx.Tx, item purchasableItem) (int, bool, error) {
-	rows, err := transaction.Query(ctx, `
-		SELECT id, GREATEST(available_qty - reserved_qty, 0)
-		FROM inventory
-		WHERE variant_id = $1
-		ORDER BY id
-		FOR UPDATE
-	`, item.VariantID)
+func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {
+	var available int
+	err := transaction.QueryRow(ctx, `
+		SELECT COALESCE(SUM(GREATEST(available_qty - reserved_qty, 0)), 0)::INTEGER
+		FROM inventory WHERE variant_id = $1
+	`, item.VariantID).Scan(&available)
 	if err != nil {
-		return 0, false, fmt.Errorf("lock inventory: %w", err)
+		return false, fmt.Errorf("read inventory availability: %w", err)
 	}
-	type slot struct {
-		id   int64
-		free int
-	}
-	slots := make([]slot, 0, 4)
-	available := 0
-	for rows.Next() {
-		var current slot
-		if err := rows.Scan(&current.id, &current.free); err != nil {
-			rows.Close()
-			return 0, false, fmt.Errorf("scan inventory: %w", err)
-		}
-		available += current.free
-		slots = append(slots, current)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, false, fmt.Errorf("read inventory: %w", err)
-	}
-	if available == 0 {
-		return 0, true, nil
-	}
-	preorder := available < item.Quantity
-	remaining := min(item.Quantity, available)
-	for _, current := range slots {
-		if remaining == 0 {
-			break
-		}
-		take := min(current.free, remaining)
-		if take == 0 {
-			continue
-		}
-		if _, err := transaction.Exec(ctx, `
-			UPDATE inventory SET reserved_qty = reserved_qty + $2 WHERE id = $1
-		`, current.id, take); err != nil {
-			return 0, false, fmt.Errorf("reserve inventory: %w", err)
-		}
-		remaining -= take
-	}
-	return min(item.Quantity, available), preorder, nil
+	return available < item.Quantity, nil
 }
 
 func retailDiscountBPS(ctx context.Context, transaction pgx.Tx, customerID *int64) (int, error) {

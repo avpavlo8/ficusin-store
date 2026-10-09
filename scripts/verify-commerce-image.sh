@@ -95,7 +95,7 @@ fi
 order_number="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["orderNumber"])' "${work}/order.json")"
 
 facts="$(psql_ci -Atq -F ':' -c "
-  SELECT o.payment_status,o.total,oi.sku,oi.quantity,oi.reserved_qty,i.reserved_qty,
+  SELECT o.payment_status,o.total,o.delivery_payee,oi.sku,oi.quantity,oi.reserved_qty,i.reserved_qty,
          (SELECT COUNT(*) FROM consent_events c WHERE c.order_id=o.id),
          (SELECT COUNT(*) FROM outbox x WHERE x.recipient='${email}'),
          (SELECT COUNT(*) FROM stock_movements m WHERE m.order_id=o.id AND m.kind='reserve')
@@ -103,7 +103,7 @@ facts="$(psql_ci -Atq -F ':' -c "
   JOIN order_items oi ON oi.order_id=o.id
   JOIN inventory i ON i.variant_id=oi.variant_id
   WHERE o.order_number='${order_number}'")"
-expected="on_delivery:2980.00:${sku}:2:2:2:1:1:1"
+expected="on_delivery:2980.00:shop:${sku}:2:0:0:1:1:0"
 if [[ "$facts" != "$expected" ]]; then
   echo "Incomplete commerce transaction: ${facts}; expected ${expected}." >&2
   exit 1

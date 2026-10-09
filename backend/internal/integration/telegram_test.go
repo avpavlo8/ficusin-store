@@ -137,3 +137,16 @@ func TestTelegramMessageShowsWhetherTheOrderIsPaid(t *testing.T) {
 		}
 	}
 }
+
+func TestTelegramMessageIncludesShopPaidDelivery(t *testing.T) {
+	t.Parallel()
+	message := orderMessage(TelegramOrder{
+		OrderNumber: "0001-16", Subtotal: 1000, DeliveryFee: 300, Total: 1300,
+		Items: []TelegramOrderItem{{Name: "Фикус", Price: 1000, Quantity: 1}},
+	})
+	if !strings.Contains(message, "Итого к оплате магазину:") ||
+		!strings.Contains(message, "1300 ₽") ||
+		strings.Contains(message, "к оплате перевозчику") {
+		t.Fatalf("неверная стоимость доставки в уведомлении: %s", message)
+	}
+}

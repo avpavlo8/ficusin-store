@@ -110,12 +110,10 @@ func orderMessage(order TelegramOrder) string {
 		receiving += ", " + order.DeliveryCity
 	}
 	deliveryLine := money(order.DeliveryFee)
-	totalLine := money(order.Total) + " без доставки"
-	if !order.DeliveryFeePending {
-		totalLine = money(order.Total)
-	} else if order.RepackRequested {
+	totalLine := money(order.Total)
+	if order.RepackRequested {
 		deliveryLine = "покупатель просит упаковать в одну коробку — рассчитайте и сообщите"
-	} else {
+	} else if order.DeliveryFeePending {
 		deliveryLine = "рассчитайте вручную и сообщите покупателю"
 	}
 	payment := "❗️ НЕ ОПЛАЧЕН — ждём оплату"
@@ -137,7 +135,7 @@ func orderMessage(order TelegramOrder) string {
 		"<b>Оплата:</b> "+html.EscapeString(payment),
 		"<b>Товары:</b> "+html.EscapeString(money(order.Subtotal)),
 		"<b>Доставка:</b> "+html.EscapeString(deliveryLine),
-		"<b>Итого:</b> "+html.EscapeString(totalLine),
+		"<b>Итого к оплате магазину:</b> "+html.EscapeString(totalLine),
 		"<b>Получение:</b> "+html.EscapeString(receiving),
 		"",
 		"Контакты покупателя — в панели управления.",
