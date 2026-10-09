@@ -19,6 +19,8 @@ type PriceProposal struct {
 	CompareAtValue  *float64  `json:"compareAtValue"`
 	Status          string    `json:"status"`
 	ErrorMessage    string    `json:"errorMessage"`
+	CanApprove      bool      `json:"canApprove"`
+	BlockReason     string    `json:"blockReason"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
@@ -136,8 +138,10 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 
 func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Context, variantID int64) ([]PriceProposal, error) {
 	rows, err := repository.pool.Query(ctx, `SELECT item.id,item.channel,item.external_article,item.old_value::float8,item.new_value::float8,
-		item.compare_at_value::float8,item.status,item.error_message,item.created_at
+		item.compare_at_value::float8,item.status,item.error_message,item.created_at,
+		COALESCE(variant.base_price_minor=batch.manual_site_price_minor,false)
 		FROM procurement_action_items item JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		LEFT JOIN product_variants variant ON variant.id=batch.manual_variant_id
 		WHERE batch.source='manual' AND batch.manual_variant_id=$1 ORDER BY item.created_at DESC,item.id DESC`, variantID)
 	if err != nil {
 		return nil, err
@@ -146,8 +150,21 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 	items := []PriceProposal{}
 	for rows.Next() {
 		var item PriceProposal
-		if err = rows.Scan(&item.ID, &item.Channel, &item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Status, &item.ErrorMessage, &item.CreatedAt); err != nil {
+		var currentPrice bool
+		if err = rows.Scan(&item.ID, &item.Channel, &item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Status, &item.ErrorMessage, &item.CreatedAt, &currentPrice); err != nil {
 			return nil, err
+		}
+		if item.Status == "draft" {
+			switch {
+			case item.ExternalArticle == "":
+				item.BlockReason = "Нет связи с каналом"
+			case !currentPrice:
+				item.BlockReason = "Цена сайта изменилась; предложение устарело"
+			case item.Channel != "saby_price" && !repository.priceChannelsConfigured[item.Channel]:
+				item.BlockReason = "Интеграция не подключена"
+			default:
+				item.CanApprove = true
+			}
 		}
 		items = append(items, item)
 	}
