@@ -20,6 +20,7 @@ type PriceProposal struct {
 	Status          string    `json:"status"`
 	ErrorMessage    string    `json:"errorMessage"`
 	CanApprove      bool      `json:"canApprove"`
+	CanRetry        bool      `json:"canRetry"`
 	BlockReason     string    `json:"blockReason"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
@@ -139,9 +140,15 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Context, variantID int64) ([]PriceProposal, error) {
 	rows, err := repository.pool.Query(ctx, `SELECT item.id,item.channel,item.external_article,item.old_value::float8,item.new_value::float8,
 		item.compare_at_value::float8,item.status,item.error_message,item.created_at,
-		COALESCE(variant.base_price_minor=batch.manual_site_price_minor,false)
+		COALESCE(variant.base_price_minor=batch.manual_site_price_minor,false),
+		CASE item.channel
+			WHEN 'wb' THEN COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],'')
+			WHEN 'ozon' THEN COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'')
+			ELSE item.external_article END
 		FROM procurement_action_items item JOIN procurement_action_batches batch ON batch.id=item.batch_id
 		LEFT JOIN product_variants variant ON variant.id=batch.manual_variant_id
+		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
+		LEFT JOIN procurement_product_channels pc ON pc.saby_id=variant.saby_id
 		WHERE batch.source='manual' AND batch.manual_variant_id=$1 ORDER BY item.created_at DESC,item.id DESC`, variantID)
 	if err != nil {
 		return nil, err
@@ -151,7 +158,8 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 	for rows.Next() {
 		var item PriceProposal
 		var currentPrice bool
-		if err = rows.Scan(&item.ID, &item.Channel, &item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Status, &item.ErrorMessage, &item.CreatedAt, &currentPrice); err != nil {
+		var currentArticle string
+		if err = rows.Scan(&item.ID, &item.Channel, &item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Status, &item.ErrorMessage, &item.CreatedAt, &currentPrice, &currentArticle); err != nil {
 			return nil, err
 		}
 		if item.Status == "draft" {
@@ -160,15 +168,82 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 				item.BlockReason = "Нет связи с каналом"
 			case !currentPrice:
 				item.BlockReason = "Цена сайта изменилась; предложение устарело"
+			case (item.Channel == "wb" || item.Channel == "ozon") && item.ExternalArticle != currentArticle:
+				item.BlockReason = "Связь с каналом изменилась"
 			case item.Channel != "saby_price" && !repository.priceChannelsConfigured[item.Channel]:
 				item.BlockReason = "Интеграция не подключена"
 			default:
 				item.CanApprove = true
 			}
 		}
+		if item.Status == "failed" || item.Status == "not_configured" {
+			switch {
+			case item.Channel != "wb" && item.Channel != "ozon":
+				item.BlockReason = "Повтор этой отправки недоступен"
+			case !currentPrice:
+				item.BlockReason = "Цена сайта изменилась; предложение устарело"
+			case item.ExternalArticle == "" || item.ExternalArticle != currentArticle:
+				item.BlockReason = "Связь с каналом изменилась"
+			case !repository.priceChannelsConfigured[item.Channel]:
+				item.BlockReason = "Интеграция не подключена"
+			default:
+				item.CanRetry = true
+			}
+		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// RetryManualPriceProposal requeues only the exact failed marketplace price
+// that still matches the site's price and the product's current channel link.
+func (repository *PostgresRepository) RetryManualPriceProposal(ctx context.Context, actor Actor, proposalID int64) error {
+	if !Can(actor.Role, PermissionProductsManage) {
+		return ErrForbidden
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var channel string
+	err = tx.QueryRow(ctx, `SELECT item.channel FROM procurement_action_items item
+		JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		WHERE item.id=$1 AND batch.source='manual' AND item.status IN ('failed','not_configured')
+		FOR UPDATE OF item`, proposalID).Scan(&channel)
+	if err != nil {
+		return err
+	}
+	if channel != "wb" && channel != "ozon" {
+		return ErrPriceChannelUnavailable
+	}
+	if !repository.priceChannelsConfigured[channel] {
+		return ErrPriceChannelUnavailable
+	}
+	command, err := tx.Exec(ctx, `UPDATE procurement_action_items item SET
+		status='queued',attempts=0,error_message='',next_attempt_at=now(),
+		locked_until=NULL,lock_owner='',priority='interactive',updated_at=now()
+		FROM procurement_action_batches batch
+		JOIN product_variants variant ON variant.id=batch.manual_variant_id
+		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
+		LEFT JOIN procurement_product_channels pc ON pc.saby_id=variant.saby_id
+		WHERE item.id=$1 AND item.batch_id=batch.id AND batch.source='manual'
+			AND item.status IN ('failed','not_configured') AND item.channel IN ('wb','ozon')
+			AND item.external_article<>'' AND variant.base_price_minor=batch.manual_site_price_minor
+			AND item.external_article=CASE item.channel
+				WHEN 'wb' THEN COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],'')
+				ELSE COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'') END`, proposalID)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	if err = insertAudit(ctx, tx, actor, "manual_price.retry", "price_proposal", fmt.Sprint(proposalID),
+		map[string]any{"status": "failed"}, map[string]any{"status": "queued", "channel": channel}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) ApproveManualPriceProposal(ctx context.Context, actor Actor, proposalID int64) (PriceProposal, error) {
@@ -192,6 +267,13 @@ func (repository *PostgresRepository) ApproveManualPriceProposal(ctx context.Con
 		AND item.id=$1 AND item.status='draft' AND item.external_article<>''
 		AND EXISTS (SELECT 1 FROM product_variants variant WHERE variant.id=batch.manual_variant_id
 			AND variant.base_price_minor=batch.manual_site_price_minor)
+		AND (item.channel NOT IN ('wb','ozon') OR EXISTS (
+			SELECT 1 FROM product_variants variant
+			LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
+			LEFT JOIN procurement_product_channels pc ON pc.saby_id=variant.saby_id
+			WHERE variant.id=batch.manual_variant_id AND item.external_article=CASE item.channel
+				WHEN 'wb' THEN COALESCE(pc.wb_nm_id::text,directory.wb_nm_ids[1],'')
+				ELSE COALESCE(NULLIF(pc.ozon_offer_id,''),directory.ozon_articles[1],'') END))
 		RETURNING item.id,item.channel,item.external_article,item.old_value::float8,item.new_value::float8,
 		item.compare_at_value::float8,item.status,item.error_message,item.created_at`, proposalID, actor.CustomerID).Scan(
 		&item.ID, &item.Channel, &item.ExternalArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Status, &item.ErrorMessage, &item.CreatedAt)
