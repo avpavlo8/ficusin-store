@@ -87,13 +87,13 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO procurement_action_items(batch_id,channel,external_article,old_value,new_value)
 		SELECT $1,'avito',listing.item_id,listing.remote_price_minor::numeric/100,
-			MIN(CASE WHEN lp.product_id=$2 THEN $3::numeric/100 ELSE variant.base_price_minor::numeric/100 END)
+			MIN(CASE WHEN variant.id=$4 THEN $3::numeric/100 ELSE variant.base_price_minor::numeric/100 END)
 		FROM avito_listing_products target
 		JOIN avito_listings listing ON listing.item_id=target.item_id
 		JOIN avito_listing_products lp ON lp.item_id=listing.item_id
 		JOIN product_variants variant ON variant.product_id=lp.product_id AND variant.is_active<>0
 		JOIN inventory stock ON stock.variant_id=variant.id AND GREATEST(stock.available_qty-stock.reserved_qty,0)>0
-		WHERE target.product_id=$2 GROUP BY listing.item_id,listing.remote_price_minor`, batchID, productID, newMinor)
+		WHERE target.product_id=$2 GROUP BY listing.item_id,listing.remote_price_minor`, batchID, productID, newMinor, variantID)
 	return err
 }
 
