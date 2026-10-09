@@ -12,8 +12,10 @@ RUN npm run build
 FROM scratch AS frontend-dist
 COPY --from=frontend /src/frontend/dist /
 
-FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS backend
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+FROM golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS backend
+RUN apk add --no-cache font-dejavu && \
+    mkdir -p /out/fonts && \
+    cp "$(find /usr/share/fonts -name DejaVuSans.ttf -print -quit)" /out/fonts/DejaVuSans.ttf
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -36,7 +38,7 @@ FROM minidocks/poppler:latest@sha256:fc646c55459b604e8b47262bb8b45ac27cd35caadde
 LABEL org.opencontainers.image.title="ficusin-store"
 WORKDIR /app
 COPY --from=backend /out/ficusin-api /app/ficusin-api
-COPY --from=backend /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /app/fonts/DejaVuSans.ttf
+COPY --from=backend /out/fonts/DejaVuSans.ttf /app/fonts/DejaVuSans.ttf
 COPY --from=frontend /src/frontend/dist /app/web
 COPY timeweb/migrations /app/migrations
 ENV PORT=3000
