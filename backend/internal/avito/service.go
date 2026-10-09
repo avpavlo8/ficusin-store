@@ -20,6 +20,17 @@ import (
 
 const defaultBaseURL = "https://api.avito.ru"
 
+// Keep Avito availability aligned with the storefront's two-hour Saby stock rule.
+// All read and publication paths below use this same snapshot.
+const freshStockCTE = `WITH fresh_stock AS (
+ SELECT v.id variant_id,p.id product_id,v.base_price_minor,GREATEST(i.available_qty-i.reserved_qty,0) qty
+ FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL
+ JOIN inventory i ON i.variant_id=v.id
+ JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+ JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+ WHERE 'stock'=ANY(p.saby_fields) AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+)`
+
 type Product struct {
 	ID    int64   `json:"id"`
 	Name  string  `json:"name"`
@@ -164,7 +175,7 @@ func (s *Service) List(ctx context.Context) ([]Listing, State, error) {
 	if err != nil {
 		return nil, state, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT l.item_id,l.title,l.status,l.url,l.remote_price_minor,l.desired_published,l.last_reconciled_at,l.last_error,p.id,p.name,p.slug,COALESCE((SELECT MIN(v.base_price_minor) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0 AND GREATEST(i.available_qty-i.reserved_qty,0)>0),0),COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l LEFT JOIN avito_listing_products lp ON lp.item_id=l.item_id LEFT JOIN products p ON p.id=lp.product_id WHERE LOWER(l.status)<>'removed' ORDER BY l.last_seen_at DESC,l.item_id,p.name`)
+	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,l.status,l.url,l.remote_price_minor,l.desired_published,l.last_reconciled_at,l.last_error,p.id,p.name,p.slug,COALESCE((SELECT MIN(f.base_price_minor) FROM fresh_stock f WHERE f.product_id=p.id AND f.qty>0),0),COALESCE((SELECT SUM(f.qty) FROM fresh_stock f WHERE f.product_id=p.id),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l LEFT JOIN avito_listing_products lp ON lp.item_id=l.item_id LEFT JOIN products p ON p.id=lp.product_id WHERE LOWER(l.status)<>'removed' ORDER BY l.last_seen_at DESC,l.item_id,p.name`)
 	if err != nil {
 		return nil, state, err
 	}
@@ -270,7 +281,26 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	if !enabled || token != expected {
 		return pgx.ErrNoRows
 	}
-	rows, err := s.pool.Query(ctx, `SELECT l.item_id,l.title,MIN(p.description),l.remote_price_minor,MIN(COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'')) FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id JOIN products p ON p.id=lp.product_id JOIN product_variants v ON v.product_id=p.id AND v.is_active<>0 JOIN inventory i ON i.variant_id=v.id AND GREATEST(i.available_qty-i.reserved_qty,0)>0 WHERE l.desired_published IS TRUE AND LOWER(l.status) NOT IN ('blocked','rejected') GROUP BY l.item_id,l.title,l.remote_price_minor ORDER BY l.item_id`)
+	// An incomplete/stale snapshot must not make a previously published ad
+	// disappear from the feed that Avito may consume automatically.
+	var uncertain bool
+	err := s.pool.QueryRow(ctx, freshStockCTE+` SELECT
+		NOT EXISTS(SELECT 1 FROM procurement_integration_sync_state
+			WHERE channel='saby' AND resource='catalog' AND status<>'error'
+				AND last_success_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours')
+		OR EXISTS(
+		SELECT 1 FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id
+		JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 AND v.archived_at IS NULL
+		WHERE l.desired_published IS TRUE AND LOWER(l.status) NOT IN ('blocked','rejected')
+		  AND NOT EXISTS(SELECT 1 FROM fresh_stock f WHERE f.variant_id=v.id)
+	)`).Scan(&uncertain)
+	if err != nil {
+		return err
+	}
+	if uncertain {
+		return errors.New("остаток СБИС не подтверждён для всех размеров; выгрузка Авито временно недоступна")
+	}
+	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,MIN(p.description),l.remote_price_minor,MIN(COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'')) FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id JOIN products p ON p.id=lp.product_id JOIN fresh_stock f ON f.product_id=p.id AND f.qty>0 WHERE l.desired_published IS TRUE AND LOWER(l.status) NOT IN ('blocked','rejected') GROUP BY l.item_id,l.title,l.remote_price_minor ORDER BY l.item_id`)
 	if err != nil {
 		return err
 	}
@@ -331,14 +361,24 @@ func (s *Service) UpdatePrice(ctx context.Context, itemID string, price float64)
 // inventory never forces an ad down: only a successful site inventory snapshot does.
 func (s *Service) Reconcile(ctx context.Context) error {
 	var stockKnown bool
-	if err := s.pool.QueryRow(ctx, `SELECT status<>'error' AND last_success_at IS NOT NULL FROM procurement_integration_sync_state WHERE channel='saby' AND resource='catalog'`).Scan(&stockKnown); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT status<>'error' AND last_success_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours' FROM procurement_integration_sync_state WHERE channel='saby' AND resource='catalog'`).Scan(&stockKnown); err != nil {
 		return err
 	}
 	if !stockKnown {
 		_, _ = s.pool.Exec(ctx, `UPDATE avito_integration_state SET last_worker_at=CURRENT_TIMESTAMP,last_error='Остаток СБИС не подтверждён; состояние объявлений сохранено' WHERE id=1`)
 		return nil
 	}
-	_, err := s.pool.Exec(ctx, `UPDATE avito_listings l SET desired_published=CASE WHEN LOWER(l.status) IN ('blocked','rejected') THEN NULL ELSE x.in_stock END,last_reconciled_at=CURRENT_TIMESTAMP,last_error='' FROM (SELECT lp.item_id,BOOL_OR(GREATEST(i.available_qty-i.reserved_qty,0)>0) in_stock FROM avito_listing_products lp JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 JOIN inventory i ON i.variant_id=v.id GROUP BY lp.item_id) x WHERE x.item_id=l.item_id`)
+	_, err := s.pool.Exec(ctx, freshStockCTE+` UPDATE avito_listings l
+		SET desired_published=CASE WHEN LOWER(l.status) IN ('blocked','rejected') THEN NULL ELSE x.in_stock END,
+			last_reconciled_at=CURRENT_TIMESTAMP,last_error=''
+		FROM (
+			SELECT lp.item_id,BOOL_OR(f.qty>0) in_stock
+			FROM avito_listing_products lp
+			JOIN product_variants v ON v.product_id=lp.product_id AND v.is_active<>0 AND v.archived_at IS NULL
+			LEFT JOIN fresh_stock f ON f.variant_id=v.id
+			GROUP BY lp.item_id
+			HAVING COUNT(*)=COUNT(f.variant_id)
+		) x WHERE x.item_id=l.item_id`)
 	if err == nil {
 		_, _ = s.pool.Exec(ctx, `UPDATE avito_integration_state SET last_worker_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_error='' WHERE id=1`)
 	} else {
@@ -366,7 +406,7 @@ func (s *Service) Run(ctx context.Context) {
 }
 
 func (s *Service) SearchProducts(ctx context.Context, q string) ([]Product, error) {
-	rows, err := s.pool.Query(ctx, `SELECT p.id,p.name,p.slug,COALESCE(MIN(CASE WHEN GREATEST(i.available_qty-i.reserved_qty,0)>0 THEN v.base_price_minor END),0),COALESCE(SUM(GREATEST(i.available_qty-i.reserved_qty,0)),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active<>0 JOIN inventory i ON i.variant_id=v.id WHERE p.name ILIKE '%'||$1||'%' OR p.slug ILIKE '%'||$1||'%' GROUP BY p.id ORDER BY p.name LIMIT 30`, strings.TrimSpace(q))
+	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT p.id,p.name,p.slug,COALESCE(MIN(CASE WHEN f.qty>0 THEN f.base_price_minor END),0),COALESCE(SUM(f.qty),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM products p LEFT JOIN fresh_stock f ON f.product_id=p.id WHERE p.name ILIKE '%'||$1||'%' OR p.slug ILIKE '%'||$1||'%' GROUP BY p.id ORDER BY p.name LIMIT 30`, strings.TrimSpace(q))
 	if err != nil {
 		return nil, err
 	}
