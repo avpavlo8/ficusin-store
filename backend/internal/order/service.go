@@ -11,7 +11,6 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
-	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -313,18 +312,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		return Created{}, invalid("Выберите способ получения")
 	}
 
-	// The browser names a payment method; these rules decide whether it may
-	// have it. Never silently replace an unavailable method with card payment.
-	paymentMethod := strings.TrimSpace(input.PaymentMethod)
-	if !payment.Allowed(
-		paymentMethod,
-		input.Delivery,
-		input.WholesaleApproved,
-		input.OnlinePaymentReady,
-	) {
-		return Created{}, invalid("Выберите доступный способ оплаты")
-	}
-
 	// Availability is a checkout snapshot only. No order reserves stock; availability
 	// must be checked again before payment or fulfilment.
 	hasPreorder := false
@@ -335,6 +322,23 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		}
 		items[index].Preorder = preorder
 		hasPreorder = hasPreorder || preorder
+	}
+	// A missing plant prevents payment now. Keep online as the future payment
+	// method when configured, so the customer can pay after manager confirmation.
+	paymentMethod := strings.TrimSpace(input.PaymentMethod)
+	if hasPreorder {
+		if input.OnlinePaymentReady {
+			paymentMethod = payment.MethodOnline
+		} else {
+			paymentMethod = payment.MethodManager
+		}
+	} else if !payment.Allowed(
+		paymentMethod,
+		input.Delivery,
+		input.WholesaleApproved,
+		input.OnlinePaymentReady,
+	) {
+		return Created{}, invalid("Выберите доступный способ оплаты")
 	}
 
 	orderNumber, err := newOrderNumber(ctx, transaction, input.CustomerID)
@@ -449,17 +453,6 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 
 	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), HasPreorder: hasPreorder, Total: total}, nil
-}
-
-// deliveryFee is retained for old settings tests and existing installations.
-// New customer-facing courier and post prices are authoritative provider
-// quotes; these fixed numbers are no longer used to create new orders.
-func (service *Service) deliveryFee(key string) float64 {
-	value := settings.DefaultNumber(key)
-	if service.settings != nil {
-		value = service.settings.Number(key)
-	}
-	return float64(settings.NonNegative(value))
 }
 
 func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {

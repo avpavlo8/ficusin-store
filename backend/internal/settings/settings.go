@@ -29,8 +29,6 @@ const (
 	TelegramEnabled    = "telegram.enabled"
 	AutoCancelHours    = "orders.auto_cancel_hours"
 	SabyStockEnabled   = "saby.stock_enabled"
-	CourierFee         = "delivery.courier_fee"
-	PostFee            = "delivery.post_fee"
 	MetrikaID          = "analytics.metrika_id"
 	YandexVerification = "seo.yandex_verification"
 	GoogleVerification = "seo.google_verification"
@@ -74,18 +72,6 @@ var Definitions = []Definition{
 		Key:   AutoCancelHours,
 		Title: "Отменять неоплаченный заказ через, часов",
 		Note:  "Заказ освобождает товар обратно на склад. 0 — не отменять автоматически.",
-		Kind:  "number",
-	},
-	{
-		Key:   CourierFee,
-		Title: "Курьер по городу, ₽",
-		Note:  "Сколько покупатель платит за доставку курьером. 0 — возим бесплатно.",
-		Kind:  "number",
-	},
-	{
-		Key:   PostFee,
-		Title: "Почта России, ₽",
-		Note:  "Сколько покупатель платит за отправку почтой. 0 — возим бесплатно.",
 		Kind:  "number",
 	},
 	{
@@ -135,8 +121,6 @@ var defaults = map[string]string{
 	TelegramEnabled:   "1",
 	AutoCancelHours:   "24",
 	SabyStockEnabled:  "0",
-	CourierFee:        "490",
-	PostFee:           "590",
 	CDEKSenderName:    "",
 	CDEKSenderPhone:   "",
 	CDEKSenderAddress: "",

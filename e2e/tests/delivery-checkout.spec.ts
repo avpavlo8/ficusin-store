@@ -49,3 +49,27 @@ test("@desktop стоимость СДЭК входит в сумму онлай
   await expect(summary).toContainText(/Доставка\s*590/);
   await expect(summary).toContainText(/Итого к оплате\s*2.?080/);
 });
+
+test("@desktop растение под заказ оформляется без выбора оплаты", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/payments/methods?*", (route) =>
+    route.fulfill({ json: { methods: [] } }));
+  let submittedPayment: string | undefined;
+  await page.route("**/api/v1/orders", (route) => {
+    submittedPayment = (route.request().postDataJSON() as { paymentMethod?: string }).paymentMethod;
+    return route.fulfill({ json: { orderNumber: "PRE-TEST", hasPreorder: true, paymentStatus: "pending" } });
+  });
+  await setStoredCounts(page, [], { "3": 1 });
+  await page.goto("/checkout");
+  await page.locator('[data-checkout-step="1"]').getByLabel("Имя").fill("Александр");
+  await page.locator('[data-checkout-step="1"]').getByLabel("Телефон").fill("9151234567");
+  await page.locator('[data-checkout-step="1"]').getByLabel("Email для чека").fill("client@example.com");
+  await page.locator('[data-checkout-step="1"]').getByRole("button", { name: /Продолжить/ }).click();
+  await page.locator('[data-checkout-step="2"]').getByRole("button", { name: /Продолжить/ }).click();
+  await expect(page.locator('[data-checkout-step="3"]')).toContainText("Сейчас платить не нужно");
+  await expect(page.getByText("Способ оплаты заказа")).toHaveCount(0);
+  await page.locator('[data-checkout-step="3"] input[name="consent"]').check();
+  await page.getByRole("button", { name: "Отправить заказ" }).click();
+  await expect(page.getByText("Заказ отправлен менеджеру")).toBeVisible();
+  expect(submittedPayment).toBe("");
+});

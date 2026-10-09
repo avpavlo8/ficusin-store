@@ -102,8 +102,12 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var orderID int64
+	var orderID, preorderID int64
 	defer func() {
+		if preorderID != 0 {
+			_, _ = pool.Exec(ctx, "DELETE FROM consent_events WHERE order_id=$1", preorderID)
+			_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", preorderID)
+		}
 		if orderID != 0 {
 			_, _ = pool.Exec(ctx, "DELETE FROM stock_movements WHERE order_id=$1", orderID)
 			_, _ = pool.Exec(ctx, "DELETE FROM consent_events WHERE order_id=$1", orderID)
@@ -175,5 +179,27 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	}
 	if cancelled != "cancelled:cancelled:true:0:0" {
 		t.Fatalf("cancellation is not atomic/idempotent: %s", cancelled)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	preorder, err := service.Create(ctx, CreateInput{
+		Customer: CustomerInput{Name: "CI Preorder", Phone: phone, Email: email},
+		Delivery: "pickup", Items: []ItemInput{{ID: sku, Quantity: 1}},
+		Consent: true, OnlinePaymentReady: true,
+		ClientIP: "127.0.0.1", UserAgent: "ficusin-release-test",
+	})
+	if err != nil {
+		t.Fatalf("create preorder without payment choice: %v", err)
+	}
+	if !preorder.HasPreorder || preorder.PaymentStatus != payment.StatusPending {
+		t.Fatalf("preorder must wait for manager without payment: %#v", preorder)
+	}
+	var preorderMethod string
+	if err := pool.QueryRow(ctx, `SELECT id, payment_method FROM orders WHERE order_number=$1`, preorder.OrderNumber).Scan(&preorderID, &preorderMethod); err != nil {
+		t.Fatal(err)
+	}
+	if preorderMethod != payment.MethodOnline {
+		t.Fatalf("preorder payment method = %q, want future online payment", preorderMethod)
 	}
 }
