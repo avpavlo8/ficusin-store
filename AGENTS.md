@@ -77,7 +77,7 @@ internal/store/          общий пул PostgreSQL
 internal/auth/           сессии, профиль, вход по звонку
 internal/cart/           корзины покупателей и гостей в PostgreSQL
 internal/catalog/        витрина, карточка товара, популярность
-internal/order/          оформление заказа, резерв остатка, доставка
+internal/order/          оформление заказа, проверка остатка, доставка
 internal/payment/        способы оплаты и ЮKassa
 internal/mail/           письма покупателю через очередь outbox
 internal/consent/        фиксация согласий на обработку данных
