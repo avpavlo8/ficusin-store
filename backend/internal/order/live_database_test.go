@@ -186,7 +186,8 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	preorder, err := service.Create(ctx, CreateInput{
 		Customer: CustomerInput{Name: "CI Preorder", Phone: phone, Email: email},
 		Delivery: "pickup", Items: []ItemInput{{ID: sku, Quantity: 1}},
-		Consent: true, ClientIP: "127.0.0.1", UserAgent: "ficusin-release-test",
+		Consent: true, OnlinePaymentReady: true,
+		ClientIP: "127.0.0.1", UserAgent: "ficusin-release-test",
 	})
 	if err != nil {
 		t.Fatalf("create preorder without payment choice: %v", err)
@@ -198,7 +199,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT id, payment_method FROM orders WHERE order_number=$1`, preorder.OrderNumber).Scan(&preorderID, &preorderMethod); err != nil {
 		t.Fatal(err)
 	}
-	if preorderMethod != payment.MethodManager {
-		t.Fatalf("preorder payment method = %q, want manager confirmation", preorderMethod)
+	if preorderMethod != payment.MethodOnline {
+		t.Fatalf("preorder payment method = %q, want future online payment", preorderMethod)
 	}
 }
