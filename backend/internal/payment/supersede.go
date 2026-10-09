@@ -17,21 +17,55 @@ const StatusSuperseded = "superseded"
 // a prerequisite therefore made every order edit roll back while an unpaid
 // link existed.
 //
-// We retire the attempt locally instead. It will no longer be reused and the
-// partial unique index immediately allows a new payment attempt for the new
-// amount. The provider id stays on the row: if the buyer manages to finish an
-// old page, the webhook can still find that exact attempt and reconcile the
-// money against the current order.
+// We retire the attempt locally under the same payment lock used by capture.
+// A later authorization on a two-stage attempt will be canceled by the worker.
+// The provider id stays on the row so a late legacy one-stage charge remains
+// visible and can be reconciled against the current order.
 func (service *Service) SupersedePending(ctx context.Context, orderID int64) error {
 	if service == nil || service.pool == nil {
 		return nil
 	}
-	if _, err := service.pool.Exec(ctx, `
-		UPDATE payments
-		SET status=$2, updated_at=CURRENT_TIMESTAMP
-		WHERE order_id=$1 AND status=$3
-	`, orderID, StatusSuperseded, StatusPending); err != nil {
-		return fmt.Errorf("supersede pending payment: %w", err)
+	rows, err := service.pool.Query(ctx, `SELECT id FROM payments WHERE order_id=$1 AND status=$2 ORDER BY id`, orderID, StatusPending)
+	if err != nil {
+		return err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		tx, err := service.lockPaymentOperation(ctx, id)
+		if err != nil {
+			return err
+		}
+		result, err := tx.Exec(ctx, `UPDATE payments SET status=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status=$3`, id, StatusSuperseded, StatusPending)
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("supersede pending payment: %w", err)
+		}
+		if result.RowsAffected() == 0 {
+			var status string
+			if err := tx.QueryRow(ctx, `SELECT status FROM payments WHERE id=$1`, id).Scan(&status); err != nil {
+				_ = tx.Rollback(ctx)
+				return err
+			}
+			if status == StatusPaid {
+				_ = tx.Rollback(ctx)
+				return ErrPaymentNeedsReview
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
 	}
 	return nil
 }

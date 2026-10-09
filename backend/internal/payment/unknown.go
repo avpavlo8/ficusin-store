@@ -57,6 +57,9 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 			proposed.Metadata = map[string]string{}
 		}
 		proposed.Metadata["ficusin_payment_id"] = strconv.FormatInt(paymentID, 10)
+		// Persist the mode with the exact request. Legacy one-stage links lack
+		// this marker and cannot be treated as cancellable authorizations.
+		proposed.Metadata["ficusin_capture_mode"] = "two_stage"
 		encoded, err := json.Marshal(proposed)
 		if err != nil {
 			return integration.Payment{}, fmt.Errorf("encode payment request: %w", err)
@@ -107,15 +110,17 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 	}
 	created, err := service.provider.CreatePayment(ctx, request)
 	if err != nil {
-		if !errors.Is(err,integration.ErrPaymentOutcomeUnknown) {
+		if !errors.Is(err, integration.ErrPaymentOutcomeUnknown) {
 			var offerID *int64
-			_ = service.pool.QueryRow(ctx,`SELECT shipment_offer_id FROM payments WHERE id=$1`,paymentID).Scan(&offerID)
-			_,_ = service.pool.Exec(ctx,`UPDATE payments SET status='cancelled',last_error=$2,next_recovery_at=NULL,recovery_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,paymentID,err.Error())
-			if offerID!=nil {
-				if releaseErr:=service.releaseOfferCheckoutReservation(ctx,*offerID);releaseErr!=nil{return integration.Payment{},releaseErr}
-				_,_ = service.pool.Exec(ctx,`UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,*offerID)
+			_ = service.pool.QueryRow(ctx, `SELECT shipment_offer_id FROM payments WHERE id=$1`, paymentID).Scan(&offerID)
+			_, _ = service.pool.Exec(ctx, `UPDATE payments SET status='cancelled',last_error=$2,next_recovery_at=NULL,recovery_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentID, err.Error())
+			if offerID != nil {
+				if releaseErr := service.releaseOfferCheckoutReservation(ctx, *offerID); releaseErr != nil {
+					return integration.Payment{}, releaseErr
+				}
+				_, _ = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *offerID)
 			}
-			return integration.Payment{},err
+			return integration.Payment{}, err
 		}
 		next := time.Now().Add(paymentRetryDelay(attempt))
 		if !next.Before(createdAt.Add(automaticRecoveryWindow)) {
@@ -134,7 +139,9 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 		return integration.Payment{}, errors.New("ЮKassa вернула платёж с другой суммой")
 	}
 	status := strings.TrimSpace(created.Status)
-	if status == "" {
+	if status == "" || status == "waiting_for_capture" {
+		// Keep the partial unique index and reconciliation worker active until
+		// the hold is captured or canceled. Authorization is not a charge.
 		status = StatusPending
 	}
 	if _, err := service.pool.Exec(ctx, `
@@ -162,10 +169,18 @@ func (service *Service) claimUnknownPayments(ctx context.Context, limit int) ([]
 		UPDATE payments p SET recovery_locked_until=CURRENT_TIMESTAMP+INTERVAL '2 minutes'
 		FROM candidates c WHERE p.id=c.id RETURNING p.id
 	`, automaticRecoveryWindow.String(), limit)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	ids := []int64{}
-	for rows.Next() { var id int64; if err := rows.Scan(&id); err != nil { return nil, err }; ids = append(ids,id) }
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
 	return ids, rows.Err()
 }
 
@@ -195,23 +210,41 @@ func (service *Service) RecoverUnknown(ctx context.Context, paymentID int64) (st
 
 func (service *Service) RecoverUnknownForOrder(ctx context.Context, orderID, paymentID int64) (string, error) {
 	var belongs bool
-	if err := service.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments WHERE id=$1 AND order_id=$2)`,paymentID,orderID).Scan(&belongs); err != nil { return "",err }
-	if !belongs { return "",errors.New("попытка оплаты не относится к этому заказу") }
-	return service.RecoverUnknown(ctx,paymentID)
+	if err := service.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments WHERE id=$1 AND order_id=$2)`, paymentID, orderID).Scan(&belongs); err != nil {
+		return "", err
+	}
+	if !belongs {
+		return "", errors.New("попытка оплаты не относится к этому заказу")
+	}
+	return service.RecoverUnknown(ctx, paymentID)
 }
 
-func (service *Service) adoptUnknownFromMetadata(ctx context.Context, payment integration.Payment) (int64,int64,*int64,float64,bool,error) {
-	localID,err:=strconv.ParseInt(payment.Metadata["ficusin_payment_id"],10,64)
-	if err!=nil||localID<=0{return 0,0,nil,0,false,nil}
-	var orderID int64;var offerID *int64;var expected float64
-	err=service.pool.QueryRow(ctx,`SELECT order_id,shipment_offer_id,amount::DOUBLE PRECISION FROM payments WHERE id=$1 AND status='pending' AND provider_payment_id=''`,localID).Scan(&orderID,&offerID,&expected)
-	if errors.Is(err,pgx.ErrNoRows){return 0,0,nil,0,false,nil}
-	if err!=nil{return 0,0,nil,0,false,err}
-	if cents(payment.Amount)!=cents(expected){return 0,0,nil,0,false,errors.New("ЮKassa вернула неизвестный платёж с другой суммой")}
-	command,err:=service.pool.Exec(ctx,`UPDATE payments SET provider_payment_id=$2,last_error='',next_recovery_at=NULL,recovery_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND provider_payment_id=''`,localID,payment.ID)
-	if err!=nil{return 0,0,nil,0,false,err}
-	if command.RowsAffected()!=1{return 0,0,nil,0,false,nil}
-	return localID,orderID,offerID,expected,true,nil
+func (service *Service) adoptUnknownFromMetadata(ctx context.Context, payment integration.Payment) (int64, int64, *int64, float64, bool, error) {
+	localID, err := strconv.ParseInt(payment.Metadata["ficusin_payment_id"], 10, 64)
+	if err != nil || localID <= 0 {
+		return 0, 0, nil, 0, false, nil
+	}
+	var orderID int64
+	var offerID *int64
+	var expected float64
+	err = service.pool.QueryRow(ctx, `SELECT order_id,shipment_offer_id,amount::DOUBLE PRECISION FROM payments WHERE id=$1 AND status='pending' AND provider_payment_id=''`, localID).Scan(&orderID, &offerID, &expected)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, 0, nil, 0, false, nil
+	}
+	if err != nil {
+		return 0, 0, nil, 0, false, err
+	}
+	if cents(payment.Amount) != cents(expected) {
+		return 0, 0, nil, 0, false, errors.New("ЮKassa вернула неизвестный платёж с другой суммой")
+	}
+	command, err := service.pool.Exec(ctx, `UPDATE payments SET provider_payment_id=$2,last_error='',next_recovery_at=NULL,recovery_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND provider_payment_id=''`, localID, payment.ID)
+	if err != nil {
+		return 0, 0, nil, 0, false, err
+	}
+	if command.RowsAffected() != 1 {
+		return 0, 0, nil, 0, false, nil
+	}
+	return localID, orderID, offerID, expected, true, nil
 }
 
 func (service *Service) paymentIssues(ctx context.Context, orderID int64) ([]Issue, error) {
@@ -291,21 +324,29 @@ func (service *Service) ResolveUnknown(ctx context.Context, orderID, paymentID i
 // DismissUnknown is deliberately manual and only available after automatic
 // recovery has stopped. The operator has checked YooKassa and confirmed that
 // no provider object exists; only then may a new payment attempt be opened.
-func (service *Service) DismissUnknown(ctx context.Context, orderID, paymentID int64) (Balance,error) {
+func (service *Service) DismissUnknown(ctx context.Context, orderID, paymentID int64) (Balance, error) {
 	var offerID *int64
-	err:=service.pool.QueryRow(ctx,`
+	err := service.pool.QueryRow(ctx, `
 		UPDATE payments SET status='cancelled',last_error='Оператор подтвердил отсутствие платежа в ЮKassa',
 			next_recovery_at=NULL,recovery_locked_until=NULL,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1 AND order_id=$2 AND status='pending' AND provider_payment_id=''
 			AND created_at+$3::INTERVAL<=CURRENT_TIMESTAMP
 		RETURNING shipment_offer_id
-	`,paymentID,orderID,automaticRecoveryWindow.String()).Scan(&offerID)
-	if errors.Is(err,pgx.ErrNoRows){return Balance{},errors.New("попытку ещё нельзя закрыть: сначала дождитесь окончания безопасной автопроверки")}
-	if err!=nil{return Balance{},err}
-	if offerID!=nil {
-		if err:=service.releaseOfferCheckoutReservation(ctx,*offerID);err!=nil{return Balance{},err}
-		_,err=service.pool.Exec(ctx,`UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,*offerID)
-		if err!=nil{return Balance{},err}
+	`, paymentID, orderID, automaticRecoveryWindow.String()).Scan(&offerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Balance{}, errors.New("попытку ещё нельзя закрыть: сначала дождитесь окончания безопасной автопроверки")
 	}
-	return service.BalanceForOrder(ctx,orderID)
+	if err != nil {
+		return Balance{}, err
+	}
+	if offerID != nil {
+		if err := service.releaseOfferCheckoutReservation(ctx, *offerID); err != nil {
+			return Balance{}, err
+		}
+		_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *offerID)
+		if err != nil {
+			return Balance{}, err
+		}
+	}
+	return service.BalanceForOrder(ctx, orderID)
 }

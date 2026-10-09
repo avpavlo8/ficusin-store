@@ -83,8 +83,8 @@ type Payment struct {
 	Metadata        map[string]string
 }
 
-// CreatePayment starts a payment and returns the page to send the customer
-// to. Nothing is captured until the customer actually pays.
+// CreatePayment starts a two-stage payment and returns the page to send the
+// customer to. The customer's money is held until CapturePayment succeeds.
 func (client *YooKassaClient) CreatePayment(
 	ctx context.Context,
 	request PaymentRequest,
@@ -100,9 +100,7 @@ func (client *YooKassaClient) CreatePayment(
 			"value":    rubles(request.Amount),
 			"currency": "RUB",
 		},
-		// capture: true takes the money in one step. A two-step hold would
-		// need someone to confirm every payment by hand.
-		"capture":     true,
+		"capture":     false,
 		"description": truncateRunes(request.Description, 128),
 		"confirmation": map[string]string{
 			"type":       "redirect",
@@ -145,6 +143,34 @@ func (client *YooKassaClient) FetchPayment(ctx context.Context, id string) (Paym
 		return Payment{}, err
 	}
 	return response.toPayment(), nil
+}
+
+// CapturePayment confirms a customer's hold after the shop has checked the
+// current stock. A stable idempotence key is mandatory because a lost response
+// does not prove that the capture failed. The caller must fetch the payment to
+// verify the final succeeded status, including after an ambiguous outcome.
+func (client *YooKassaClient) CapturePayment(ctx context.Context, paymentID, idempotenceKey string) error {
+	if !client.Configured() {
+		return errors.New("оплата не настроена")
+	}
+	paymentID = strings.TrimSpace(paymentID)
+	if paymentID == "" {
+		return errors.New("не указан платёж")
+	}
+	if strings.TrimSpace(idempotenceKey) == "" {
+		return errors.New("не указан ключ идемпотентности подтверждения")
+	}
+	var response yooKassaPayment
+	if err := client.send(ctx, http.MethodPost, "/payments/"+paymentID+"/capture", idempotenceKey, nil, &response); err != nil {
+		return err
+	}
+	if response.Status == "canceled" {
+		return errors.New("ЮKassa отменила платёж")
+	}
+	if response.Status != "succeeded" && response.Status != "pending" && response.Status != "waiting_for_capture" {
+		return fmt.Errorf("неожиданный статус подтверждения ЮKassa: %q", response.Status)
+	}
+	return nil
 }
 
 func (client *YooKassaClient) receipt(request PaymentRequest) map[string]any {
@@ -228,12 +254,12 @@ func (client *YooKassaClient) send(
 }
 
 type yooKassaPayment struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Paid   bool   `json:"paid"`
-	Description string `json:"description"`
-	Metadata map[string]string `json:"metadata"`
-	Amount struct {
+	ID          string            `json:"id"`
+	Status      string            `json:"status"`
+	Paid        bool              `json:"paid"`
+	Description string            `json:"description"`
+	Metadata    map[string]string `json:"metadata"`
+	Amount      struct {
 		Value string `json:"value"`
 	} `json:"amount"`
 	Confirmation struct {

@@ -474,9 +474,10 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 	var paymentRowID, orderID int64
 	var shipmentOfferID *int64
 	var expected float64
+	var localStatus string
 	if err := service.pool.QueryRow(ctx, `
-		SELECT id,order_id,shipment_offer_id,amount::DOUBLE PRECISION FROM payments WHERE provider_payment_id=$1
-	`, providerPaymentID).Scan(&paymentRowID, &orderID, &shipmentOfferID, &expected); err != nil {
+		SELECT id,order_id,shipment_offer_id,amount::DOUBLE PRECISION,status FROM payments WHERE provider_payment_id=$1
+	`, providerPaymentID).Scan(&paymentRowID, &orderID, &shipmentOfferID, &expected, &localStatus); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			var adopted bool
 			paymentRowID, orderID, shipmentOfferID, expected, adopted, err = service.adoptUnknownFromMetadata(ctx, payment)
@@ -489,9 +490,43 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 				service.logger.Warn("unknown payment notified", "payment_id", safePaymentID)
 				return nil
 			}
+			localStatus = StatusPending
 		} else {
 			return fmt.Errorf("load payment: %w", err)
 		}
+	}
+	operation, err := service.lockPaymentOperation(ctx, paymentRowID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = operation.Rollback(ctx) }()
+	// Fetch and inspect again after acquiring the lock: a manager may have
+	// retired the link while the first provider lookup was in flight.
+	if err := operation.QueryRow(ctx, `SELECT order_id,shipment_offer_id,amount::DOUBLE PRECISION,status FROM payments WHERE id=$1`, paymentRowID).Scan(&orderID, &shipmentOfferID, &expected, &localStatus); err != nil {
+		return err
+	}
+	payment, err = service.provider.FetchPayment(ctx, providerPaymentID)
+	if err != nil {
+		return err
+	}
+	if payment.Status == "waiting_for_capture" {
+		if err := service.resolveAuthorization(ctx, payment, paymentRowID, orderID, shipmentOfferID, expected, localStatus); err != nil {
+			return err
+		}
+		payment, err = service.provider.FetchPayment(ctx, providerPaymentID)
+		if err != nil {
+			return err
+		}
+		// The provider may still be processing the idempotent capture/cancel.
+		// Keep the local row pending so the worker checks it again.
+		if payment.Status == "waiting_for_capture" {
+			_, _ = service.pool.Exec(ctx, `UPDATE payments SET updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentRowID)
+			return nil
+		}
+	}
+	if localStatus == StatusSuperseded && payment.Status == StatusPending {
+		_, _ = service.pool.Exec(ctx, `UPDATE payments SET updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentRowID)
+		return nil
 	}
 	paid := payment.Paid && payment.Status == "succeeded" && cents(payment.Amount) >= cents(expected)
 	status := payment.Status
@@ -512,11 +547,14 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 			if err = service.releaseOfferCheckoutReservation(ctx, *shipmentOfferID); err != nil {
 				return err
 			}
-			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *shipmentOfferID)
+			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN status='stale' THEN 'stale' WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *shipmentOfferID)
 		}
 		if err != nil {
 			return err
 		}
+	}
+	if err := operation.Commit(ctx); err != nil {
+		return err
 	}
 	_, err = service.Reconcile(ctx, orderID)
 	return err
