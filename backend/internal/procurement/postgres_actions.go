@@ -1238,11 +1238,19 @@ func (store *PostgresStore) RetryBatch(ctx context.Context, actor Actor, batchID
 	} else if err != nil {
 		return ActionBatch{}, fmt.Errorf("lock retry procurement batch: %w", err)
 	}
+	var failedReceipt bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM procurement_action_items
+		WHERE batch_id=$1 AND channel='saby_receipt' AND status='failed')`, batchID).Scan(&failedReceipt); err != nil {
+		return ActionBatch{}, fmt.Errorf("check failed Saby receipt before retry: %w", err)
+	}
+	if failedReceipt {
+		return ActionBatch{}, &UserFacingError{Message: "Поступление СБИС уже завершилось ошибкой. Сверьте фактический документ и товары в СБИС перед созданием нового поступления; повторная отправка этого пакета заблокирована."}
+	}
 	command, err := tx.Exec(ctx, `
 		UPDATE procurement_action_items SET status = 'queued', attempts = 0, error_message = '',
 			next_attempt_at = CURRENT_TIMESTAMP, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE batch_id = $1 AND external_article <> '' AND (
-			(status = 'failed' AND channel IN ('wb', 'ozon', 'avito', 'saby_receipt', 'saby_price')) OR
+			(status = 'failed' AND channel IN ('wb', 'ozon', 'avito', 'saby_price')) OR
 			(status = 'not_configured' AND ((channel = 'wb' AND $2) OR (channel = 'ozon' AND $3)
 				OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) OR (channel = 'avito' AND $6)))
 		)
