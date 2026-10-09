@@ -196,9 +196,8 @@
 .procurement-batch-buttons .admin-primary { border-color: var(--green); background: var(--green); color: white; }
 .procurement-price-channels { margin: 18px 0 0; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px 22px; border: 1px solid var(--line); border-radius: 12px; }
 .procurement-price-channels legend { padding: 0 7px; color: var(--green); font-size: 12px; font-weight: 800; }
-.procurement-price-channels label { display: inline-flex; align-items: center; gap: 7px; color: #526058; font-size: 13px; font-weight: 700; }
-.procurement-price-channels input { width: auto; margin: 0; }
-.procurement-price-channels label.disabled { color: #929990; cursor: not-allowed; }
+.procurement-price-channels button { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--green); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.procurement-price-channels button:disabled { opacity: .55; cursor: not-allowed; }
 .procurement-batch { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 13px; }
 .procurement-batch h3 { margin: 0; color: var(--green); font: 400 22px Georgia, serif; }
 .procurement-batch-list { display: grid; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }

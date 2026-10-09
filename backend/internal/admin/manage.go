@@ -562,6 +562,12 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, err
 	}
+	var manualPriceVariantID, manualOldPrice int64
+	if update.PriceMinor != nil {
+		if err := tx.QueryRow(ctx, `SELECT id,base_price_minor FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1 FOR UPDATE`, id).Scan(&manualPriceVariantID, &manualOldPrice); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return Product{}, err
+		}
+	}
 	if err := validateManagerAttributes(ctx, tx, actor, update.Attributes); err != nil {
 		return Product{}, err
 	}
@@ -724,6 +730,17 @@ func (repository *PostgresRepository) UpdateProduct(
 	after, err := productAuditData(ctx, tx, id)
 	if err != nil {
 		return Product{}, err
+	}
+	if update.PriceMinor != nil && manualPriceVariantID > 0 {
+		var actualPrice int64
+		if err := tx.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, manualPriceVariantID).Scan(&actualPrice); err != nil {
+			return Product{}, err
+		}
+		if actualPrice != manualOldPrice {
+			if err := createManualPriceProposals(ctx, tx, actor, manualPriceVariantID, manualOldPrice, actualPrice); err != nil {
+				return Product{}, err
+			}
+		}
 	}
 	if err := insertAudit(ctx, tx, actor, "product.update", "product", fmt.Sprint(id), before, after); err != nil {
 		return Product{}, err

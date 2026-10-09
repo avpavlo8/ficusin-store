@@ -164,7 +164,11 @@ func main() {
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
-	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient)
+	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient).WithPriceChannelsConfigured(map[string]bool{
+		"wb":    cfg.Marketplaces.WBToken != "",
+		"ozon":  cfg.Marketplaces.OzonClientID != "" && cfg.Marketplaces.OzonAPIKey != "",
+		"avito": cfg.Marketplaces.AvitoClientID != "" && cfg.Marketplaces.AvitoClientSecret != "",
+	})
 	paymentService := payment.NewService(
 		pool,
 		integration.NewYooKassaClient(

@@ -418,8 +418,61 @@ func (repository *PostgresRepository) CreateProductVariant(ctx context.Context, 
 	var id int64;err=tx.QueryRow(ctx,`INSERT INTO product_variants(product_id,label,base_price_minor,wholesale_min_qty,is_active,updated_at) SELECT $1,BTRIM($2),$3,$4,$5,CURRENT_TIMESTAMP WHERE EXISTS(SELECT 1 FROM products WHERE id=$1) RETURNING id`,productID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active)).Scan(&id);if err!=nil{return AdminVariant{},err};if err:=setVariantStock(ctx,tx,id,input.Stock);err!=nil{return AdminVariant{},err};if err:=saveVariantPIMValues(ctx,tx,productID,id,input.Attributes);err!=nil{return AdminVariant{},err};if input.Active { if err:=validateRequiredVariantAttributes(ctx,tx,productID,id);err!=nil{return AdminVariant{},err} };if err:=replaceVariantExternalIDs(ctx,tx,productID,id,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==id{return item,nil}};return AdminVariant{},pgx.ErrNoRows
 }
 
-func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, actor Actor, variantID int64, input VariantInput) (AdminVariant,error) {
-	if !Can(actor.Role,PermissionProductsManage){return AdminVariant{},ErrForbidden};if err:=validateVariantInput(input);err!=nil{return AdminVariant{},err};tx,err:=repository.pool.Begin(ctx);if err!=nil{return AdminVariant{},err};defer func(){_ = tx.Rollback(ctx)}();var productID int64;var sabyPrice,sabyStock bool;if err=tx.QueryRow(ctx,`SELECT v.product_id,'price'=ANY(p.saby_fields),'stock'=ANY(p.saby_fields) FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1 FOR UPDATE OF v`,variantID).Scan(&productID,&sabyPrice,&sabyStock);err!=nil{return AdminVariant{},err};err=tx.QueryRow(ctx,`UPDATE product_variants SET label=BTRIM($2),base_price_minor=CASE WHEN $6 THEN base_price_minor ELSE $3 END,wholesale_min_qty=$4,is_active=$5,archived_at=CASE WHEN $5=1 THEN NULL ELSE archived_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING product_id`,variantID,input.Label,input.PriceMinor,input.WholesaleMinQty,boolToSmallInt(input.Active),sabyPrice).Scan(&productID);if err!=nil{return AdminVariant{},err};if !sabyStock { if err:=setVariantStock(ctx,tx,variantID,input.Stock);err!=nil{return AdminVariant{},err} };if err:=saveVariantPIMValues(ctx,tx,productID,variantID,input.Attributes);err!=nil{return AdminVariant{},err};if input.Active { if err:=validateRequiredVariantAttributes(ctx,tx,productID,variantID);err!=nil{return AdminVariant{},err} };if err:=replaceVariantExternalIDs(ctx,tx,productID,variantID,input.ExternalIDs);err!=nil{return AdminVariant{},err};if err:=tx.Commit(ctx);err!=nil{return AdminVariant{},err};items,err:=repository.ListProductVariants(ctx,productID);if err!=nil{return AdminVariant{},err};for _,item:=range items{if item.ID==variantID{return item,nil}};return AdminVariant{},pgx.ErrNoRows
+func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, actor Actor, variantID int64, input VariantInput) (AdminVariant, error) {
+	if !Can(actor.Role, PermissionProductsManage) {
+		return AdminVariant{}, ErrForbidden
+	}
+	if err := validateVariantInput(input); err != nil {
+		return AdminVariant{}, err
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return AdminVariant{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var productID, oldPrice int64
+	var sabyStock bool
+	if err = tx.QueryRow(ctx, `SELECT v.product_id,v.base_price_minor,'stock'=ANY(p.saby_fields) FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1 FOR UPDATE OF v`, variantID).Scan(&productID, &oldPrice, &sabyStock); err != nil {
+		return AdminVariant{}, err
+	}
+	err = tx.QueryRow(ctx, `UPDATE product_variants SET label=BTRIM($2),base_price_minor=$3,wholesale_min_qty=$4,is_active=$5,archived_at=CASE WHEN $5=1 THEN NULL ELSE archived_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING product_id`, variantID, input.Label, input.PriceMinor, input.WholesaleMinQty, boolToSmallInt(input.Active)).Scan(&productID)
+	if err != nil {
+		return AdminVariant{}, err
+	}
+	if !sabyStock {
+		if err := setVariantStock(ctx, tx, variantID, input.Stock); err != nil {
+			return AdminVariant{}, err
+		}
+	}
+	if err := saveVariantPIMValues(ctx, tx, productID, variantID, input.Attributes); err != nil {
+		return AdminVariant{}, err
+	}
+	if input.Active {
+		if err := validateRequiredVariantAttributes(ctx, tx, productID, variantID); err != nil {
+			return AdminVariant{}, err
+		}
+	}
+	if err := replaceVariantExternalIDs(ctx, tx, productID, variantID, input.ExternalIDs); err != nil {
+		return AdminVariant{}, err
+	}
+	if oldPrice != input.PriceMinor {
+		if err := createManualPriceProposals(ctx, tx, actor, variantID, oldPrice, input.PriceMinor); err != nil {
+			return AdminVariant{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AdminVariant{}, err
+	}
+	items, err := repository.ListProductVariants(ctx, productID)
+	if err != nil {
+		return AdminVariant{}, err
+	}
+	for _, item := range items {
+		if item.ID == variantID {
+			return item, nil
+		}
+	}
+	return AdminVariant{}, pgx.ErrNoRows
 }
 
 // CopyProductVariant отдаёт копию выключенной: активный SKU обязан иметь

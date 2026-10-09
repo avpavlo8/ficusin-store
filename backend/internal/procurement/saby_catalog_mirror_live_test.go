@@ -90,7 +90,6 @@ func TestStage13SabyCatalogueMirrorIncludesUnimportedProductsOnLiveDatabase(t *t
 	}
 }
 
-
 func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T) {
 	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -190,18 +189,8 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch.Items) != 2 {
-		t.Fatalf("price batch items=%d, want 2: %+v", len(batch.Items), batch.Items)
-	}
-	seen := map[string]ActionItem{}
-	for _, action := range batch.Items {
-		seen[action.Channel] = action
-	}
-	if seen["wb"].ExternalArticle != fmt.Sprint(wbNmID) || seen["wb"].NewValue != 3990 {
-		t.Fatalf("WB initial price action wrong: %+v", seen["wb"])
-	}
-	if seen["ozon"].ExternalArticle != ozonOffer || seen["ozon"].NewValue != 3990 {
-		t.Fatalf("Ozon initial price action wrong: %+v", seen["ozon"])
+	if len(batch.Items) != 0 {
+		t.Fatalf("unlinked Saby product cannot set channel prices without a site price: %+v", batch.Items)
 	}
 
 	// The calculated marketplace price is product-level information. It must
@@ -230,10 +219,8 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(missingBatch.Items) != 1 || missingBatch.Items[0].Channel != "wb" ||
-		missingBatch.Items[0].ExternalArticle != "" || missingBatch.Items[0].NewValue != 3990 ||
-		missingBatch.Items[0].ErrorMessage == "" {
-		t.Fatalf("unlinked WB price was hidden instead of explained: %+v", missingBatch.Items)
+	if len(missingBatch.Items) != 0 {
+		t.Fatalf("unlinked Saby product cannot create a WB price action: %+v", missingBatch.Items)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE procurement_action_batches SET status='cancelled' WHERE id=$1`, missingBatch.ID); err != nil {
 		t.Fatal(err)

@@ -79,7 +79,6 @@ func TestStage13ResolveAliasAllowsSabyItemWithoutStoreVariantOnLiveDatabase(t *t
 	}
 }
 
-
 func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDatabase(t *testing.T) {
 	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -188,8 +187,7 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch.Items) != 1 || batch.Items[0].ProductCode != targetCode ||
-		batch.Items[0].ExternalArticle != "987654321" || batch.Items[0].NewValue <= 0 {
-		t.Fatalf("remapped product missing from WB price draft: %+v", batch.Items)
+	if len(batch.Items) != 0 {
+		t.Fatalf("Saby alias without a linked site variant cannot create a WB price action: %+v", batch.Items)
 	}
 }
