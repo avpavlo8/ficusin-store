@@ -105,11 +105,18 @@ func (worker *WBMirrorWorker) syncSales(ctx context.Context) {
 	}
 	to := day(worker.now().UTC())
 	from := to.AddDate(0, 0, -(wbSalesDays - 1))
+	claim.PeriodFrom, claim.PeriodTo = from, to
 	_ = worker.store.MarkSalesSync(ctx, "wb", "running", nil)
 	records, syncErr := worker.source.FetchSales(ctx, "wb", from, to)
 	rows := 0
 	if syncErr == nil {
 		rows, syncErr = worker.store.ReplaceSales(ctx, "wb", from, to, records)
+		for _, record := range records {
+			if claim.LatestEventAt == nil || record.Date.After(*claim.LatestEventAt) {
+				date := record.Date
+				claim.LatestEventAt = &date
+			}
+		}
 	}
 	if syncErr != nil {
 		status := "error"

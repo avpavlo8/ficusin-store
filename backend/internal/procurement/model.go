@@ -435,12 +435,15 @@ type IntegrationSyncStatus struct {
 }
 
 type SyncClaim struct {
-	Channel    string
-	Resource   string
-	Mode       string
-	Owner      string
-	Token      int64
-	Generation int64
+	Channel       string
+	Resource      string
+	Mode          string
+	Owner         string
+	Token         int64
+	Generation    int64
+	PeriodFrom    time.Time
+	PeriodTo      time.Time
+	LatestEventAt *time.Time
 }
 
 type SabyCatalogFolder struct {
