@@ -154,7 +154,7 @@ func TestPublicStockUsesFreshSabyInventoryOnLiveDatabase(t *testing.T) {
 	t.Cleanup(pool.Close)
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("catalog-stock-%d", unique)
-	sku := fmt.Sprintf("stock-%d", unique)
+	sku := fmt.Sprintf("9%d", unique)
 	var categoryID, productID, variantID, warehouseID int64
 	var productCode string
 	if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES($1,$2) RETURNING id`,
