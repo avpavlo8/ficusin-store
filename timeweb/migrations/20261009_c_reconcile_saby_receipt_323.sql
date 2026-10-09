@@ -37,7 +37,7 @@ BEGIN
     RETURN;
   END IF;
   SELECT ARRAY(
-    SELECT line->>'sabyId' || ':' || line->>'quantity'
+    SELECT (line->>'sabyId') || ':' || (line->>'quantity')
     FROM jsonb_array_elements(COALESCE(target.payload->'lines', '[]'::jsonb)) line
     ORDER BY line->>'sabyId'
   ) INTO actual_lines;
