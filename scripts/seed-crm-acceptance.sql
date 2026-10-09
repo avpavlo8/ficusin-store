@@ -110,9 +110,9 @@ UNION ALL SELECT orders.id,documents.id,NULL,'Calathea supplier addition','NL-NE
 INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance) VALUES
 ('crm-stage07-a','CRM-S07-A','Антуриум Stage 07',189000,5),
 ('crm-stage07-b','CRM-S07-B','Фикус Stage 07',179000,7);
-INSERT INTO products(name,slug,status,category_id,saby_id)
-SELECT 'Антуриум Stage 07','crm-stage07-a','draft',id,'crm-stage07-a' FROM categories WHERE slug='plants'
-UNION ALL SELECT 'Фикус Stage 07','crm-stage07-b','draft',id,'crm-stage07-b' FROM categories WHERE slug='plants';
+INSERT INTO products(name,slug,status,category_id,saby_id,saby_fields)
+SELECT 'Антуриум Stage 07','crm-stage07-a','draft',id,'crm-stage07-a',ARRAY['stock']::text[] FROM categories WHERE slug='plants'
+UNION ALL SELECT 'Фикус Stage 07','crm-stage07-b','draft',id,'crm-stage07-b',ARRAY['stock']::text[] FROM categories WHERE slug='plants';
 INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active,saby_id,current_unit_cost_rub,current_unit_cost_kind,current_unit_cost_effective_at)
 SELECT id,'99999107','D17',189000,0,'crm-stage07-a',945,'estimated',CURRENT_TIMESTAMP FROM products WHERE slug='crm-stage07-a'
 UNION ALL SELECT id,'99999108','D12',179000,0,'crm-stage07-b',895,'estimated',CURRENT_TIMESTAMP FROM products WHERE slug='crm-stage07-b';

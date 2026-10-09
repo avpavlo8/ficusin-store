@@ -668,15 +668,24 @@ func (repository *PostgresRepository) UpdateProduct(
 	// Остаток правим руками только у товаров, которым СБИС его не приносит:
 	// иначе ближайший обмен молча вернёт прежнее число, и правка исчезнет.
 	if update.Stock != nil {
+		if *update.Stock > 0 {
+			var unlinked bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE product_id=$1 AND NULLIF(BTRIM(saby_id),'') IS NULL)`, id).Scan(&unlinked); err != nil {
+				return Product{}, err
+			}
+			if unlinked {
+				return Product{}, fmt.Errorf("%w: остаток появится после связи варианта с СБИС и синхронизации склада", ErrInvalidInput)
+			}
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at)
-			SELECT w.id, pv.id, $2, 0, CURRENT_TIMESTAMP
+			SELECT w.id, pv.id, $2, 0, TIMESTAMPTZ '1970-01-01 00:00:00+00'
 			FROM product_variants pv
 			JOIN products p ON p.id = pv.product_id
 			CROSS JOIN (SELECT id FROM warehouses WHERE saby_id = 'saby-ryazan-main') w
 			WHERE pv.product_id = $1 AND NOT ('stock' = ANY(p.saby_fields))
 			ON CONFLICT (warehouse_id, variant_id) DO UPDATE SET
-				available_qty = EXCLUDED.available_qty, synced_at = CURRENT_TIMESTAMP
+				available_qty = EXCLUDED.available_qty
 		`, id, *update.Stock); err != nil {
 			return Product{}, fmt.Errorf("update product stock: %w", err)
 		}

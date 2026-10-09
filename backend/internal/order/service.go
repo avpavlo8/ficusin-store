@@ -465,8 +465,14 @@ func (service *Service) deliveryFee(key string) float64 {
 func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {
 	var available int
 	err := transaction.QueryRow(ctx, `
-		SELECT COALESCE(SUM(GREATEST(available_qty - reserved_qty, 0)), 0)::INTEGER
-		FROM inventory WHERE variant_id = $1
+		SELECT COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0)::INTEGER
+		FROM inventory i
+		JOIN warehouses w ON w.id = i.warehouse_id AND w.saby_id = 'saby-ryazan-main' AND w.is_active = 1
+		JOIN product_variants v ON v.id = i.variant_id
+		JOIN products p ON p.id = v.product_id
+		JOIN saby_nomenclature n ON n.saby_id = v.saby_id AND n.missing_since IS NULL
+		WHERE i.variant_id = $1 AND 'stock' = ANY(p.saby_fields)
+			AND i.synced_at >= CURRENT_TIMESTAMP - INTERVAL '2 hours'
 	`, item.VariantID).Scan(&available)
 	if err != nil {
 		return false, fmt.Errorf("read inventory availability: %w", err)
