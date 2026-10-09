@@ -16,10 +16,12 @@ type ChannelLink struct {
 }
 
 type VariantLinks struct {
-	ID       int64                  `json:"id"`
-	SKU      string                 `json:"sku"`
-	Label    string                 `json:"label"`
-	Channels map[string]ChannelLink `json:"channels"`
+	ID               int64                  `json:"id"`
+	SKU              string                 `json:"sku"`
+	Label            string                 `json:"label"`
+	SitePriceRub     float64                `json:"sitePriceRub"`
+	ChannelPricesRub map[string]*float64    `json:"channelPricesRub"`
+	Channels         map[string]ChannelLink `json:"channels"`
 }
 
 type ProductLinks struct {
@@ -102,8 +104,13 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 
 	rows, err = repository.pool.Query(ctx, `SELECT v.id,v.product_id,v.sku,v.label,COALESCE(v.saby_id,''),
 		COALESCE(pc.wb_nm_id::text,''),COALESCE(pc.wb_article,''),
-		COALESCE(pc.ozon_offer_id,''),COALESCE(pc.ozon_article,'')
+		COALESCE(pc.ozon_offer_id,''),COALESCE(pc.ozon_article,''),
+		v.base_price_minor::DOUBLE PRECISION/100,n.price_minor::DOUBLE PRECISION/100,
+		wb_product.current_price::DOUBLE PRECISION,ozon_product.current_price::DOUBLE PRECISION
 		FROM product_variants v LEFT JOIN procurement_product_channels pc ON pc.saby_id=v.saby_id
+		LEFT JOIN saby_nomenclature n ON n.saby_id=v.saby_id
+		LEFT JOIN procurement_channel_products wb_product ON wb_product.channel='wb' AND wb_product.external_id=pc.wb_nm_id::text
+		LEFT JOIN procurement_channel_products ozon_product ON ozon_product.channel='ozon' AND ozon_product.external_id=pc.ozon_offer_id
 		WHERE v.is_active<>0 AND v.archived_at IS NULL ORDER BY v.product_id,v.id`)
 	if err != nil {
 		return nil, fmt.Errorf("list active variant links: %w", err)
@@ -113,7 +120,9 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 		var variant VariantLinks
 		var productID int64
 		var sabyID, wbID, wbArticle, ozonID, ozonArticle string
-		if err := rows.Scan(&variant.ID, &productID, &variant.SKU, &variant.Label, &sabyID, &wbID, &wbArticle, &ozonID, &ozonArticle); err != nil {
+		var sabyPrice, wbPrice, ozonPrice *float64
+		if err := rows.Scan(&variant.ID, &productID, &variant.SKU, &variant.Label, &sabyID, &wbID, &wbArticle, &ozonID, &ozonArticle,
+			&variant.SitePriceRub, &sabyPrice, &wbPrice, &ozonPrice); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -122,6 +131,7 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 			continue
 		}
 		variant.Channels = emptyChannelLinks()
+		variant.ChannelPricesRub = map[string]*float64{"saby": sabyPrice, "wb": wbPrice, "ozon": ozonPrice}
 		for _, item := range [][2]string{{"saby", sabyID}, {"wb", wbID}, {"wb", wbArticle}, {"ozon", ozonID}, {"ozon", ozonArticle}} {
 			appendLink(variant.Channels, item[0], item[1], "")
 			appendLink(products[productIndex].Channels, item[0], item[1], "")

@@ -26,11 +26,14 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("links-saby-%d", unique)
+	wbID := fmt.Sprintf("%d", unique%1000000000)
+	ozonID := fmt.Sprintf("ozon-%d", unique)
 	listingID := fmt.Sprintf("links-avito-%d", unique)
 	var productID, firstID, secondID int64
 	// ListProductLinks uses a pool, so fixtures must be committed and cleaned up
 	// after the assertion rather than hidden in an uncommitted transaction.
 	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM procurement_channel_products WHERE (channel='wb' AND external_id=$1) OR (channel='ozon' AND external_id=$2)`, wbID, ozonID)
 		if listingID != "" {
 			_, _ = pool.Exec(ctx, `DELETE FROM avito_listings WHERE item_id=$1`, listingID)
 		}
@@ -39,7 +42,7 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 		}
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID)
 	}()
-	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Links test')`, sabyID, fmt.Sprintf("X%d", unique)); err != nil {
+	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,price_minor) VALUES($1,$2,'Links test',90000)`, sabyID, fmt.Sprintf("X%d", unique)); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,status) VALUES('Links test',$1,'draft') RETURNING id`, fmt.Sprintf("links-test-%d", unique)).Scan(&productID); err != nil {
@@ -53,7 +56,11 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 		VALUES($1,$2,'18 см',150000,1) RETURNING id`, productID, fmt.Sprintf("6%017d", unique%100000000000000000)).Scan(&secondID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO procurement_product_channels(saby_id,wb_nm_id,ozon_offer_id) VALUES($1,$2,$3)`, sabyID, unique%1000000000, fmt.Sprintf("ozon-%d", unique)); err != nil {
+	if _, err = pool.Exec(ctx, `INSERT INTO procurement_product_channels(saby_id,wb_nm_id,ozon_offer_id) VALUES($1,$2,$3)`, sabyID, unique%1000000000, ozonID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO procurement_channel_products(channel,external_id,article,name,current_price,seen_at)
+		VALUES('wb',$1,'','Links test',1900,CURRENT_TIMESTAMP),('ozon',$2,'','Links test',1800,CURRENT_TIMESTAMP)`, wbID, ozonID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source)
@@ -93,6 +100,9 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 		byID[variant.ID] = variant
 	}
 	first, second := byID[firstID], byID[secondID]
+	if first.SitePriceRub != 1000 || second.SitePriceRub != 1500 || first.ChannelPricesRub["saby"] == nil || *first.ChannelPricesRub["saby"] != 900 || first.ChannelPricesRub["wb"] == nil || *first.ChannelPricesRub["wb"] != 1900 || first.ChannelPricesRub["ozon"] == nil || *first.ChannelPricesRub["ozon"] != 1800 {
+		t.Fatalf("unexpected price overview: first=%+v second=%+v", first, second)
+	}
 	for _, channel := range []string{"saby", "wb", "ozon"} {
 		if !first.Channels[channel].Linked || !found.Channels[channel].Linked {
 			t.Fatalf("first size/card missing %s link", channel)
