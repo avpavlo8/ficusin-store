@@ -151,6 +151,32 @@ func (service *Service) checkOrderStock(ctx context.Context, orderID int64) erro
 	return nil
 }
 
+// checkOfferStock checks only plants in the shipment being paid for. Other
+// unavailable positions in a mixed order must not block this payment.
+func (service *Service) checkOfferStock(ctx context.Context, offerID int64) error {
+	var unavailable int
+	if err := service.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM (
+			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
+					FROM inventory i
+					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+					JOIN product_variants v ON v.id=i.variant_id
+					JOIN products p ON p.id=v.product_id
+					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+					WHERE i.variant_id=soi.variant_id AND 'stock'=ANY(p.saby_fields)
+						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
+			FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 GROUP BY soi.variant_id
+		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
+	`, offerID).Scan(&unavailable); err != nil {
+		return fmt.Errorf("проверка наличия перед оплатой отправки: %w", err)
+	}
+	if unavailable > 0 {
+		return errors.New("товар уже закончился: обновите предложение")
+	}
+	return nil
+}
+
 // Reconcile rebuilds the order payment status from immutable money facts.
 // It is safe after a payment, refund, delivery change or composition edit.
 func (service *Service) Reconcile(ctx context.Context, orderID int64) (Balance, error) {
@@ -302,25 +328,8 @@ func (service *Service) StartShipmentOffer(ctx context.Context, token string, cu
 	}
 	// Recheck before returning an existing provider link as well as before
 	// creating a new one: without reservations stock can change at any time.
-	var unavailable int
-	if err := service.pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM (
-			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
-					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
-					JOIN product_variants v ON v.id=i.variant_id
-					JOIN products p ON p.id=v.product_id
-					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
-					WHERE i.variant_id=soi.variant_id AND 'stock'=ANY(p.saby_fields)
-						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
-			FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 GROUP BY soi.variant_id
-		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
-	`, offerID).Scan(&unavailable); err != nil {
+	if err := service.checkOfferStock(ctx, offerID); err != nil {
 		return "", err
-	}
-	if unavailable > 0 {
-		return "", errors.New("товар уже закончился: обновите предложение")
 	}
 	var paymentID int64
 	var key, existingURL string
