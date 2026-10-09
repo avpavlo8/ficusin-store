@@ -198,7 +198,13 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 	if err != nil || len(proposals) != 1 || !proposals[0].CanRetry {
 		t.Fatalf("current proposal: %+v, err=%v", proposals, err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE procurement_product_channels SET wb_nm_id=987654321 WHERE saby_id=$1`, sabyID); err != nil {
+	// A link edited in the site catalogue must win over the unchanged legacy channel row.
+	if _, err = pool.Exec(ctx, `UPDATE product_external_ids SET status='legacy',is_primary=false
+		WHERE variant_id=$1 AND provider='wildberries' AND external_id='123456789'`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source)
+		VALUES($1,$2,'wildberries','sku','987654321','active',true,'manual')`, productID, variantID); err != nil {
 		t.Fatal(err)
 	}
 	proposals, err = repository.ListManualPriceProposals(ctx, variantID)
@@ -208,7 +214,11 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 	if err = repository.RetryManualPriceProposal(ctx, actor, proposalID); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("changed link retry error = %v", err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE procurement_product_channels SET wb_nm_id=123456789 WHERE saby_id=$1`, sabyID); err != nil {
+	if _, err = pool.Exec(ctx, `DELETE FROM product_external_ids WHERE variant_id=$1 AND provider='wildberries' AND external_id='987654321'`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE product_external_ids SET status='active',is_primary=true
+		WHERE variant_id=$1 AND provider='wildberries' AND external_id='123456789'`, variantID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=160000 WHERE id=$1`, variantID); err != nil {

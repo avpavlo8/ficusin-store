@@ -70,14 +70,15 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE(n.balance,0), COALESCE(n.price_minor,0)::DOUBLE PRECISION / 100,
 			s.id, s.name, COALESCE(sp.supplier_article,''), COALESCE(sp.availability_status,'unknown'),
 			COALESCE(sp.check_after::TEXT, ''), COALESCE(pc.holland_article, ''),
-			COALESCE(pc.wb_nm_id, CASE WHEN COALESCE(directory.wb_nm_ids[1], '') ~ '^[0-9]+$' THEN directory.wb_nm_ids[1]::BIGINT END),
-			COALESCE(NULLIF(pc.wb_vendor_code, ''), directory.wb_articles[1], ''),
-			COALESCE(NULLIF(pc.ozon_offer_id, ''), directory.ozon_articles[1], ''),
-			CASE WHEN COALESCE(array_length(directory.wb_articles,1),0)>0 THEN directory.wb_articles
-				WHEN NULLIF(pc.wb_vendor_code,'') IS NOT NULL THEN ARRAY[pc.wb_vendor_code] ELSE ARRAY[]::TEXT[] END,
+			CASE WHEN directory.variant_id IS NULL THEN pc.wb_nm_id
+				WHEN COALESCE(directory.wb_nm_ids[1], '') ~ '^[0-9]+$' THEN directory.wb_nm_ids[1]::BIGINT END,
+			CASE WHEN directory.variant_id IS NULL THEN COALESCE(pc.wb_vendor_code,'') ELSE COALESCE(directory.wb_articles[1], '') END,
+			CASE WHEN directory.variant_id IS NULL THEN COALESCE(pc.ozon_offer_id,'') ELSE COALESCE(directory.ozon_articles[1], '') END,
+			CASE WHEN directory.variant_id IS NULL AND NULLIF(pc.wb_vendor_code,'') IS NOT NULL THEN ARRAY[pc.wb_vendor_code]
+				ELSE COALESCE(directory.wb_articles,ARRAY[]::TEXT[]) END,
 			COALESCE(directory.wb_legacy_articles,ARRAY[]::TEXT[]),
-			CASE WHEN COALESCE(array_length(directory.ozon_articles,1),0)>0 THEN directory.ozon_articles
-				WHEN NULLIF(pc.ozon_offer_id,'') IS NOT NULL THEN ARRAY[pc.ozon_offer_id] ELSE ARRAY[]::TEXT[] END,
+			CASE WHEN directory.variant_id IS NULL AND NULLIF(pc.ozon_offer_id,'') IS NOT NULL THEN ARRAY[pc.ozon_offer_id]
+				ELSE COALESCE(directory.ozon_articles,ARRAY[]::TEXT[]) END,
 			COALESCE(directory.ozon_legacy_articles,ARRAY[]::TEXT[]),
 			COALESCE(sp.minimum_order_qty,1), COALESCE(sp.order_multiple,1),
 			COALESCE((SELECT ARRAY_AGG(a.raw_name ORDER BY a.last_seen_at DESC NULLS LAST, a.id DESC)
@@ -514,8 +515,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			)
 			SELECT $1, p.line_id, channel.name,
 				CASE channel.name
-					WHEN 'wb' THEN COALESCE(pc.wb_nm_id::TEXT, directory.wb_nm_ids[1], '')
-					WHEN 'ozon' THEN COALESCE(NULLIF(pc.ozon_offer_id,''), directory.ozon_articles[1], '')
+					WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1], '')
+					WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1], '')
 					ELSE p.saby_id END,
 				CASE channel.name
 					WHEN 'site' THEN COALESCE(pv.base_price_minor, 0)::NUMERIC / 100
@@ -529,14 +530,13 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			FROM products p
 			LEFT JOIN canonical_product_directory directory ON directory.variant_id=p.canonical_variant_id
 			JOIN saby_nomenclature n ON n.saby_id = p.saby_id
-			LEFT JOIN procurement_product_channels pc ON pc.saby_id=p.saby_id
 			JOIN product_variants pv ON pv.id = p.canonical_variant_id
 			LEFT JOIN procurement_channel_products wb_product
 				ON wb_product.channel = 'wb'
-				AND wb_product.external_id = COALESCE(pc.wb_nm_id::TEXT, directory.wb_nm_ids[1])
+				AND wb_product.external_id = directory.wb_nm_ids[1]
 			LEFT JOIN procurement_channel_products ozon_product
 				ON ozon_product.channel = 'ozon'
-				AND ozon_product.external_id = COALESCE(NULLIF(pc.ozon_offer_id,''), directory.ozon_articles[1])
+				AND ozon_product.external_id = directory.ozon_articles[1]
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 				WHERE channel.name = ANY($3::TEXT[])
 				AND p.canonical_variant_id IS NOT NULL
@@ -756,6 +756,19 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	}
 	if unapprovedExternalPrices > 0 {
 		return ActionBatch{}, &UserFacingError{Message: "Сначала утвердите соответствующую цену сайта, затем отдельно подтвердите цену канала. Если цена сайта изменилась, пересчитайте закупку."}
+	}
+	var changedMarketplaceLinks int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_action_items item
+		JOIN procurement_order_lines line ON line.id=item.procurement_order_line_id
+		LEFT JOIN canonical_product_directory directory ON directory.variant_id=line.canonical_variant_id
+		WHERE item.batch_id=$1 AND item.channel IN ('wb','ozon') AND item.external_article<>''
+			AND item.external_article IS DISTINCT FROM CASE item.channel
+				WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
+				ELSE COALESCE(directory.ozon_articles[1],'') END`, batchID).Scan(&changedMarketplaceLinks); err != nil {
+		return ActionBatch{}, fmt.Errorf("check marketplace link before price approval: %w", err)
+	}
+	if changedMarketplaceLinks > 0 {
+		return ActionBatch{}, &UserFacingError{Message: "Связь товара с площадкой изменилась. Подготовьте предложение цены заново."}
 	}
 	// A later manual edit must not be overwritten by a stale invoice proposal.
 	var staleSitePrices int
@@ -1006,6 +1019,14 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 	if len(items) == 0 || !oneOf(items[0].Channel, "wb", "ozon", "saby_price") || items[0].ExternalOperationID != "" {
 		return true, nil
 	}
+	var source string
+	if err := store.pool.QueryRow(ctx, `SELECT batch.source FROM procurement_action_batches batch
+		JOIN procurement_action_items item ON item.batch_id=batch.id WHERE item.id=$1`, items[0].ID).Scan(&source); err != nil {
+		return false, fmt.Errorf("read price action source: %w", err)
+	}
+	if source == "manual" {
+		return store.guardClaimedManualPriceActions(ctx, items[0])
+	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin price action guard: %w", err)
@@ -1052,13 +1073,26 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 			return false, fmt.Errorf("check site prices before upload: %w", err)
 		}
 		stale = unapproved > 0
+		if !stale && oneOf(channel, "wb", "ozon") {
+			var changedLinks int
+			if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_action_items item
+				JOIN procurement_order_lines line ON line.id=item.procurement_order_line_id
+				LEFT JOIN canonical_product_directory directory ON directory.variant_id=line.canonical_variant_id
+				WHERE item.batch_id=$1 AND item.channel=$2 AND item.status IN ('queued','processing')
+					AND item.external_article IS DISTINCT FROM CASE item.channel
+						WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
+						ELSE COALESCE(directory.ozon_articles[1],'') END`, batchID, channel).Scan(&changedLinks); err != nil {
+				return false, fmt.Errorf("check marketplace link before upload: %w", err)
+			}
+			stale = changedLinks > 0
+		}
 	}
 	if !stale {
 		return true, tx.Commit(ctx)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_items SET status='skipped',
-			error_message='Цена сайта или расчёт закупки изменились после подтверждения канала. Пересчитайте закупку и подтвердите цену снова.',
+			error_message='Цена сайта, расчёт закупки или связь с каналом изменились после подтверждения. Проверьте товар и подготовьте цену снова.',
 			locked_until=NULL,lock_owner='',lock_token=lock_token+1,updated_at=CURRENT_TIMESTAMP
 		WHERE batch_id=$1 AND channel=$2 AND status IN ('queued','processing')
 			AND COALESCE(external_operation_id,'')=''
@@ -1073,6 +1107,48 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit stale price action guard: %w", err)
+	}
+	return false, nil
+}
+
+func (store *PostgresStore) guardClaimedManualPriceActions(ctx context.Context, item ActionItem) (bool, error) {
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin manual price guard: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var batchID int64
+	var channel string
+	var expectedSitePrice, currentSitePrice int64
+	var externalArticle, currentArticle string
+	if err := tx.QueryRow(ctx, `SELECT batch.id,item.channel,
+		batch.manual_site_price_minor,variant.base_price_minor,item.external_article,
+		CASE item.channel WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
+			ELSE COALESCE(directory.ozon_articles[1],'') END
+		FROM procurement_action_items item
+		JOIN procurement_action_batches batch ON batch.id=item.batch_id AND batch.source='manual'
+		JOIN product_variants variant ON variant.id=batch.manual_variant_id
+		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
+		WHERE item.id=$1 FOR SHARE OF variant`, item.ID).Scan(&batchID, &channel,
+		&expectedSitePrice, &currentSitePrice, &externalArticle, &currentArticle); err != nil {
+		return false, fmt.Errorf("check manual price and link before upload: %w", err)
+	}
+	if expectedSitePrice == currentSitePrice && externalArticle != "" && externalArticle == currentArticle {
+		return true, tx.Commit(ctx)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_action_items SET status='skipped',
+		error_message='Цена сайта или связь с каналом изменились после подтверждения. Подготовьте предложение снова.',
+		locked_until=NULL,lock_owner='',lock_token=lock_token+1,updated_at=CURRENT_TIMESTAMP
+		WHERE batch_id=$1 AND channel=$2 AND status IN ('queued','processing')
+			AND COALESCE(external_operation_id,'')=''`, batchID, channel); err != nil {
+		return false, fmt.Errorf("skip stale manual price: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE procurement_action_batches SET status='partially_completed',updated_at=CURRENT_TIMESTAMP
+		WHERE id=$1 AND status NOT IN ('cancelled','completed')`, batchID); err != nil {
+		return false, fmt.Errorf("mark stale manual price batch: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit stale manual price guard: %w", err)
 	}
 	return false, nil
 }
