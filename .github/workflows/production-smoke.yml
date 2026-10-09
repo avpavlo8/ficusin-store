@@ -22,7 +22,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 18
     environment:
       name: ${{ github.event_name == 'push' && 'production' || 'staging-verification' }}
       url: ${{ github.event_name == 'push' && 'https://ficusin.ru' || inputs.base_url }}
@@ -80,8 +80,8 @@ jobs:
           echo "expected_js=${expected_js}"
           echo "expected_css=${expected_css}"
 
-          deadline=$((SECONDS + 1200))
-          for attempt in $(seq 1 72); do
+          deadline=$((SECONDS + 600))
+          for attempt in $(seq 1 36); do
             health="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/health?deploy=${GITHUB_SHA}" || true)"
             readiness="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/ready?deploy=${GITHUB_SHA}" || true)"
             # operations/health returns HTTP 503 when a critical commerce
