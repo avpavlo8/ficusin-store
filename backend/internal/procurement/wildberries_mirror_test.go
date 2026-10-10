@@ -117,13 +117,13 @@ func (err retryAfterStub) RetryDelay() time.Duration { return err.delay }
 
 func TestWBMirrorPublishesExactRateLimitDelay(t *testing.T) {
 	store := &wbMirrorStoreStub{
-		claims: map[string]bool{"catalog": true}, finished: map[string]time.Duration{}, states: map[string]string{},
+		claims: map[string]bool{"catalog": true, "sales": true}, finished: map[string]time.Duration{}, states: map[string]string{},
 	}
 	source := &wbMirrorSourceStub{err: fmtWrap(retryAfterStub{delay: 137 * time.Second})}
 	worker := NewWBMirrorWorker(store, source, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	worker.run(context.Background())
-	if store.finished["catalog"] != 137*time.Second {
-		t.Fatalf("retry = %v, want 137s", store.finished["catalog"])
+	if store.finished["catalog"] != 137*time.Second || store.finished["sales"] != 137*time.Second || source.salesCalls != 1 {
+		t.Fatalf("retry was not persisted for both lanes: finished=%v sales_calls=%d", store.finished, source.salesCalls)
 	}
 }
 
