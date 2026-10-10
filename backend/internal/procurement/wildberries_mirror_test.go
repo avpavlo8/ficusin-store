@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,6 +115,17 @@ type retryAfterStub struct{ delay time.Duration }
 
 func (err retryAfterStub) Error() string             { return "rate limited" }
 func (err retryAfterStub) RetryDelay() time.Duration { return err.delay }
+
+type retryCauseStub struct{ retryAfterStub }
+
+func (retryCauseStub) RateLimitCause() string { return "ответ 429 от /api/v1/supplier/sales" }
+
+func TestWBMirrorResultShowsSafeRateLimitOrigin(t *testing.T) {
+	status, message := wbMirrorResult(fmtWrap(retryCauseStub{retryAfterStub{delay: 137 * time.Second}}), 137*time.Second)
+	if status != "pending" || !strings.Contains(message, "2m17s") || !strings.Contains(message, "ответ 429 от /api/v1/supplier/sales") {
+		t.Fatalf("result = %s: %s", status, message)
+	}
+}
 
 func TestWBMirrorPublishesExactRateLimitDelay(t *testing.T) {
 	store := &wbMirrorStoreStub{

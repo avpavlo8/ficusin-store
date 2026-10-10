@@ -50,15 +50,7 @@ func (store *PostgresStore) FinishWBSync(
 	if claim.Channel != "wb" || !validWBResource(claim.Resource) || claim.Owner == "" || claim.Token <= 0 || rows < 0 || next <= 0 {
 		return false, ErrInvalidInput
 	}
-	status, message := "ok", ""
-	if syncErr != nil {
-		status, message = "error", safeError(syncErr.Error())
-		var retryable interface{ RetryDelay() time.Duration }
-		if errors.As(syncErr, &retryable) && retryable.RetryDelay() > 0 {
-			status = "pending"
-			message = fmt.Sprintf("Wildberries временно ограничил частоту API; повтор запланирован не раньше чем через %s", next.Round(time.Second))
-		}
-	}
+	status, message := wbMirrorResult(syncErr, next)
 	var applied bool
 	err := store.pool.QueryRow(ctx, `
 		UPDATE procurement_wb_sync_state SET status = $2,
@@ -108,6 +100,24 @@ func (store *PostgresStore) FinishWBSync(
 		return false, fmt.Errorf("record Wildberries mirror health: %w", err)
 	}
 	return true, nil
+}
+
+func wbMirrorResult(syncErr error, next time.Duration) (string, string) {
+	if syncErr == nil {
+		return "ok", ""
+	}
+	var retryable interface{ RetryDelay() time.Duration }
+	if !errors.As(syncErr, &retryable) || retryable.RetryDelay() <= 0 {
+		return "error", safeError(syncErr.Error())
+	}
+	message := fmt.Sprintf("Wildberries временно ограничил частоту API; повтор запланирован не раньше чем через %s", next.Round(time.Second))
+	var diagnostic interface{ RateLimitCause() string }
+	if errors.As(syncErr, &diagnostic) {
+		if cause := diagnostic.RateLimitCause(); cause != "" {
+			message += " (" + safeError(cause) + ")"
+		}
+	}
+	return "pending", message
 }
 
 func validWBResource(value string) bool {

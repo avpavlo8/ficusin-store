@@ -759,9 +759,23 @@ type remoteError struct {
 	Status     int
 	Message    string
 	RetryAfter time.Duration
+	Path       string
+	Deferred   bool
 }
 
 func (err *remoteError) RetryDelay() time.Duration { return err.RetryAfter }
+
+// RateLimitCause exposes only the method and whether we sent a request. The
+// marketplace response body is intentionally kept out of operator screens.
+func (err *remoteError) RateLimitCause() string {
+	if err.Status != http.StatusTooManyRequests || err.Path == "" {
+		return ""
+	}
+	if err.Deferred {
+		return fmt.Sprintf("общая пауза API: %s не запрашивался", err.Path)
+	}
+	return fmt.Sprintf("ответ 429 от %s", err.Path)
+}
 
 // A 429 response means the marketplace rejected the mutation before applying
 // it, so retrying after its advertised window is safe. Network and 5xx errors
@@ -839,7 +853,7 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 			return fmt.Errorf("check Wildberries API pause: %w", err)
 		}
 		if wait > 30*time.Second {
-			return &remoteError{Status: http.StatusTooManyRequests, Message: "ожидание после ограничения Wildberries", RetryAfter: wait}
+			return &remoteError{Status: http.StatusTooManyRequests, Message: "ожидание после ограничения Wildberries", RetryAfter: wait, Path: requestPath(endpoint), Deferred: true}
 		}
 		wait, err = executor.wbLimiter.ReserveWBRequest(ctx, bucket, marketplacePace(request.URL.Hostname()))
 		if err != nil {
@@ -856,7 +870,7 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 			return fmt.Errorf("check Wildberries API pause: %w", err)
 		}
 		if wait > 30*time.Second {
-			return &remoteError{Status: http.StatusTooManyRequests, Message: "ожидание после ограничения Wildberries", RetryAfter: wait}
+			return &remoteError{Status: http.StatusTooManyRequests, Message: "ожидание после ограничения Wildberries", RetryAfter: wait, Path: requestPath(endpoint), Deferred: true}
 		}
 		if err := waitForContext(ctx, wait); err != nil {
 			return err
@@ -883,7 +897,7 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		return fmt.Errorf("read marketplace response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		remote := &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response)}
+		remote := &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response), Path: requestPath(endpoint)}
 		if remote.Status == http.StatusTooManyRequests && executor.requestLimiter != nil {
 			if channel, bucket := integrationRequestLane(endpoint); channel != "" {
 				delay := remote.RetryAfter

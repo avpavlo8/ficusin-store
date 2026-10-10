@@ -48,6 +48,10 @@ func TestWildberriesLongCooldownReleasesWorkerWithoutRequest(t *testing.T) {
 	if !errors.As(err, &retryable) || retryable.RetryDelay() != 90*time.Minute {
 		t.Fatalf("retry error = %v", err)
 	}
+	var diagnostic interface{ RateLimitCause() string }
+	if !errors.As(err, &diagnostic) || diagnostic.RateLimitCause() != "общая пауза API: /api/v1/supplier/sales не запрашивался" {
+		t.Fatalf("cooldown cause = %v", err)
+	}
 	if called || len(limiter.reserved) != 0 {
 		t.Fatalf("cooldown sent a request or reserved a slot: called=%v slots=%v", called, limiter.reserved)
 	}
@@ -535,6 +539,10 @@ func TestWildberries429StopsImmediatelyAndPublishesRetryWindow(t *testing.T) {
 	var retryable interface{ RetryDelay() time.Duration }
 	if !errors.As(err, &retryable) || retryable.RetryDelay() != 137*time.Second {
 		t.Fatalf("retry error = %v", err)
+	}
+	var diagnostic interface{ RateLimitCause() string }
+	if !errors.As(err, &diagnostic) || diagnostic.RateLimitCause() != "ответ 429 от /api/v1/supplier/sales" {
+		t.Fatalf("remote rate limit cause = %v", err)
 	}
 	if limiter.deferred["sales"] != 137*time.Second {
 		t.Fatalf("published delay = %v", limiter.deferred["sales"])
