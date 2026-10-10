@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (store *PostgresStore) listSuppliers(ctx context.Context) ([]Supplier, error) {
@@ -569,11 +570,24 @@ func (store *PostgresStore) ReplaceSales(
 	if !validSalesChannel(channel) || from.After(to) {
 		return 0, ErrInvalidInput
 	}
+	return retrySalesTransaction(ctx, func() (int, error) {
+		return store.replaceSalesOnce(ctx, channel, from, to, records)
+	})
+}
+
+func (store *PostgresStore) replaceSalesOnce(
+	ctx context.Context, channel string, from, to time.Time, records []SalesRecord,
+) (int, error) {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin replace sales: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	// Reconciliation touches every channel, so imports from different workers
+	// must not acquire sales_events row locks in competing orders.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(20261010, 1)`); err != nil {
+		return 0, fmt.Errorf("lock sales import: %w", err)
+	}
 	inserted, err := replaceSalesEvents(ctx, tx, channel, from, to, records)
 	if err != nil {
 		return 0, err
@@ -585,6 +599,31 @@ func (store *PostgresStore) ReplaceSales(
 		return 0, fmt.Errorf("commit replace sales: %w", err)
 	}
 	return inserted, nil
+}
+
+// PostgreSQL rolls back the whole transaction on a deadlock. Replaying this
+// snapshot is safe: each event has a stable source key and the batch commits
+// atomically. Retry only transaction conflicts, with a small bounded delay.
+func retrySalesTransaction(ctx context.Context, run func() (int, error)) (int, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		count, err := run()
+		if err == nil || attempt == 2 {
+			return count, err
+		}
+		var postgresError *pgconn.PgError
+		if !errors.As(err, &postgresError) ||
+			(postgresError.Code != "40P01" && postgresError.Code != "40001") {
+			return count, err
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 150 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return 0, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	panic("unreachable sales retry")
 }
 
 func finishSalesSync(ctx context.Context, tx pgx.Tx, channel string, from, to time.Time, count int) error {
