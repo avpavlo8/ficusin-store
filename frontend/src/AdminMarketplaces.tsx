@@ -28,12 +28,13 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
       const channelLanes = lanes.filter((item) => item.channel === channel);
       const enabledLanes = channelLanes.filter((item) => item.status !== "disabled");
       const running = enabledLanes.some((item) => item.status === "running");
-      const hasError = Boolean(health?.lastError || enabledLanes.some((item) => item.status === "error"));
+      const pending = enabledLanes.some((item) => item.status === "pending");
+      const hasError = enabledLanes.some((item) => item.status === "error") || (Boolean(health?.lastError) && !pending);
       const partial = Boolean(health?.configured && (channelLanes.length < 2 || channelLanes.some((item) => item.status === "disabled")));
       const successes = enabledLanes.map((item) => item.lastSuccessAt).filter((item): item is string => Boolean(item)).sort();
       const retries = enabledLanes.map((item) => item.cooldownUntil || item.nextAttemptAt).filter((item): item is string => Boolean(item)).sort();
       return <article key={channel} className={hasError ? "attention" : health?.configured ? "connected" : ""}>
-        <div><strong>{channelName(channel)}</strong><span>{!health?.configured ? "Не подключён" : running ? "Обновляется" : hasError ? "Есть ошибка" : partial ? "Частично" : "Подключён"}</span></div>
+        <div><strong>{channelName(channel)}</strong><span>{!health?.configured ? "Не подключён" : running ? "Обновляется" : hasError ? "Есть ошибка" : pending ? "Ожидает обновления" : partial ? "Частично" : "Подключён"}</span></div>
         <small>Последний успешный обмен: {when(successes.at(-1))}</small>
         {retries[0] && <small>Следующая попытка: {when(retries[0])}</small>}
         <button className="secondary-button" disabled={!health?.configured || queued.includes(channel)} onClick={() => void request(channel)}>{queued.includes(channel) ? "Добавляем в очередь…" : channel === "wb" ? "Сопоставить из зеркала" : "Обновить данные"}</button>
@@ -45,9 +46,9 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
         <td><span className={`sync-status sync-${item.status}`}>{statusName(item.status)}</span>{item.lastError && <small className="sync-error">{item.lastError}</small>}</td>
         <td><small>Попытка: {when(item.lastAttemptAt)}</small><small>Успех: {when(item.lastSuccessAt)}</small></td>
         <td>{item.periodFrom && item.periodTo ? `${item.periodFrom} — ${item.periodTo}` : "Граница пока неизвестна"}<small>{item.latestEventAt ? `Последнее событие: ${when(item.latestEventAt)}` : "Последнее событие неизвестно"}</small></td>
-        <td>{when(item.cooldownUntil || item.nextAttemptAt)}<small>{item.cooldownUntil ? "Пауза площадки" : item.nextDeepAt ? `Глубокая сверка: ${when(item.nextDeepAt)}` : ""}</small></td>
+        <td>{when(item.cooldownUntil || item.nextAttemptAt)}<small>{item.cooldownUntil ? "Пауза площадки" : item.channel !== "wb" && item.nextDeepAt ? `Глубокая сверка: ${when(item.nextDeepAt)}` : ""}</small></td>
       </tr>)}</tbody></table></div> : <WorkspaceState kind="unknown" title="Состояние обмена ещё не создано" detail="Оно появится после применения миграции." />}
     </section>
-    <p className="admin-hint procurement-note">Ноль новых строк означает только, что в полученном окне изменений не найдено. Полнота определяется границами периода, датой последнего события и отдельной глубокой сверкой.</p>
+    <p className="admin-hint procurement-note">Ноль новых строк означает только, что в полученном окне изменений не найдено. Следите за границами периода и датой последнего события. СБИС и Ozon дополнительно проводят глубокую сверку; Wildberries перечитывает 90-дневное окно продаж при каждом обмене.</p>
   </>;
 }
