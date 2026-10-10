@@ -135,6 +135,34 @@ func TestWBSalesIncludeSalesAndSubtractReturns(t *testing.T) {
 	}
 }
 
+func TestWBSalesInterpretUnzonedDatesAsMoscowAndSendExplicitWindowZone(t *testing.T) {
+	reports := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if got := request.URL.Query().Get("dateFrom"); got != "2026-08-01T03:00:00+03:00" {
+			t.Errorf("dateFrom=%q, want Moscow time at the UTC window boundary", got)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`[
+			{"nmId":123,"saleID":"S1","date":"2026-08-05T12:00:00","finishedPrice":1500},
+			{"nmId":124,"saleID":"S2","date":"2026-08-05T12:00:00Z","finishedPrice":1200}
+		]`))
+	}))
+	defer reports.Close()
+	executor := NewMarketplaceExecutor("token", "", "")
+	executor.wbReportsBase, executor.client = reports.URL, reports.Client()
+	from := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)
+	records, err := executor.FetchSales(context.Background(), "wb", from, to)
+	if err != nil || len(records) != 2 {
+		t.Fatalf("records=%+v, err=%v", records, err)
+	}
+	if want := time.Date(2026, 8, 5, 9, 0, 0, 0, time.UTC); !records[0].Date.Equal(want) {
+		t.Errorf("Moscow sale date=%s, want %s", records[0].Date, want)
+	}
+	if want := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC); !records[1].Date.Equal(want) {
+		t.Errorf("explicit UTC sale date=%s, want %s", records[1].Date, want)
+	}
+}
+
 func TestWBSalesUseOnlyOperationalReport(t *testing.T) {
 	calls := 0
 	reports := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -514,6 +542,16 @@ func TestMarketplaceRetryAfterAcceptsWildberriesDecimalSeconds(t *testing.T) {
 	response := &http.Response{Header: http.Header{"X-Ratelimit-Retry": []string{"2.5s"}}}
 	if got := marketplaceRetryAfter(response); got != 2500*time.Millisecond {
 		t.Fatalf("retry delay = %v, want 2.5s", got)
+	}
+}
+
+func TestMarketplaceRetryAfterPrefersWildberriesHeaderOverMalformedGenericHeader(t *testing.T) {
+	response := &http.Response{Header: http.Header{
+		"X-Ratelimit-Retry": []string{"3600"},
+		"Retry-After":       []string{"invalid"},
+	}}
+	if got := marketplaceRetryAfter(response); got != time.Hour {
+		t.Fatalf("retry delay = %v, want one hour from WB header", got)
 	}
 }
 
