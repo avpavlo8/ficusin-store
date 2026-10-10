@@ -119,7 +119,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 	_, err := worker.pool.Exec(ctx, `
 		UPDATE orders o SET cdek_create_state='manual_review',
 			cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',
-			cdek_next_attempt_at=NULL, updated_at=CURRENT_TIMESTAMP
+			cdek_next_attempt_at=NULL
 		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
 			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
@@ -670,7 +670,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			continue
 		}
 		if short {
-			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='manual_review',cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',cdek_next_attempt_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND cdek_uuid=''`, item.id); err != nil {
+			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='manual_review',cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',cdek_next_attempt_at=NULL WHERE id=$1 AND cdek_uuid=''`, item.id); err != nil {
 				worker.logger.Error("hold cdek order short of stock failed", "error", err, "order_id", item.id)
 			}
 			continue
