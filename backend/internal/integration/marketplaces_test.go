@@ -545,6 +545,16 @@ func TestMarketplaceRetryAfterAcceptsWildberriesDecimalSeconds(t *testing.T) {
 	}
 }
 
+func TestMarketplaceRetryAfterPrefersWildberriesHeaderOverMalformedGenericHeader(t *testing.T) {
+	response := &http.Response{Header: http.Header{
+		"X-Ratelimit-Retry": []string{"3600"},
+		"Retry-After":       []string{"invalid"},
+	}}
+	if got := marketplaceRetryAfter(response); got != time.Hour {
+		t.Fatalf("retry delay = %v, want one hour from WB header", got)
+	}
+}
+
 func TestWildberries429StopsImmediatelyAndPublishesRetryWindow(t *testing.T) {
 	calls := 0
 	limiter := &wbLimiterStub{deferred: map[string]time.Duration{}}

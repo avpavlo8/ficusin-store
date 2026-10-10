@@ -1043,11 +1043,14 @@ func integrationRequestLane(endpoint string) (string, string) {
 }
 
 func marketplaceRetryAfter(response *http.Response) time.Duration {
-	value := firstNonEmpty(response.Header.Get("Retry-After"), response.Header.Get("X-Ratelimit-Retry"))
-	value = strings.TrimSpace(strings.TrimSuffix(value, "s"))
-	seconds, err := strconv.ParseFloat(value, 64)
-	if err == nil && seconds > 0 {
-		return time.Duration(seconds * float64(time.Second))
+	// WB documents X-Ratelimit-Retry as the authoritative wait. A malformed
+	// generic Retry-After must not hide a usable WB window.
+	for _, value := range []string{response.Header.Get("X-Ratelimit-Retry"), response.Header.Get("Retry-After")} {
+		value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), "s"))
+		seconds, err := strconv.ParseFloat(value, 64)
+		if err == nil && seconds > 0 {
+			return time.Duration(seconds * float64(time.Second))
+		}
 	}
 	return 0
 }
