@@ -148,7 +148,9 @@ func (executor *MarketplaceExecutor) fetchWBOperationalSalesPaged(ctx context.Co
 		FinishedPrice marketplaceNumber `json:"finishedPrice"`
 		PriceWithDisc marketplaceNumber `json:"priceWithDisc"`
 	}
-	cursor := from.Format(time.RFC3339)
+	// WB documents statistics timestamps in Moscow time. Keep the same
+	// instant as the UTC window boundary, but make its zone explicit to WB.
+	cursor := from.In(wbMoscow).Format(time.RFC3339)
 	records := make([]procurement.SalesRecord, 0, 4096)
 	seen := make(map[string]struct{})
 	for page := 0; page < maxPages; page++ {
@@ -166,7 +168,7 @@ func (executor *MarketplaceExecutor) fetchWBOperationalSalesPaged(ctx context.Co
 			return nil, fmt.Errorf("получить оперативные продажи Wildberries: %w", err)
 		}
 		for _, row := range rows {
-			date, err := parseMarketplaceDate(firstNonEmpty(row.Date, row.LastChange))
+			date, err := parseWBDate(firstNonEmpty(row.Date, row.LastChange))
 			if err != nil || date.Before(from) || date.After(to.Add(24*time.Hour-time.Second)) || row.NmID <= 0 {
 				continue
 			}
@@ -357,6 +359,25 @@ func parseMarketplaceDate(value string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, errors.New("некорректная дата продажи")
+}
+
+var wbMoscow = time.FixedZone("MSK", 3*60*60)
+
+// WB statistics often omit the zone in sale dates while documenting Moscow
+// time. Zoned timestamps remain authoritative when the API supplies one.
+func parseWBDate(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC(), nil
+		}
+	}
+	for _, layout := range []string{"2006-01-02T15:04:05.999999999", "2006-01-02T15:04:05", "2006-01-02"} {
+		if parsed, err := time.ParseInLocation(layout, value, wbMoscow); err == nil {
+			return parsed.UTC(), nil
+		}
+	}
+	return time.Time{}, errors.New("некорректная дата продажи Wildberries")
 }
 
 func firstNonEmpty(values ...string) string {
