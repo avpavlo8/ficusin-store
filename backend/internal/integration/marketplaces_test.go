@@ -23,6 +23,7 @@ func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 type wbLimiterStub struct {
 	reserved []string
 	deferred map[string]time.Duration
+	delay    time.Duration
 }
 
 func (stub *wbLimiterStub) ReserveWBRequest(_ context.Context, bucket string, _ time.Duration) (time.Duration, error) {
@@ -31,7 +32,25 @@ func (stub *wbLimiterStub) ReserveWBRequest(_ context.Context, bucket string, _ 
 }
 
 func (stub *wbLimiterStub) WBRequestDelay(_ context.Context, _ string) (time.Duration, error) {
-	return 0, nil
+	return stub.delay, nil
+}
+
+func TestWildberriesLongCooldownReleasesWorkerWithoutRequest(t *testing.T) {
+	called := false
+	limiter := &wbLimiterStub{delay: 90 * time.Minute}
+	executor := NewMarketplaceExecutor("token", "", "").WithWBRequestLimiter(limiter)
+	executor.client = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("request should not be sent during cooldown")
+	})}
+	_, err := executor.FetchSales(context.Background(), "wb", time.Now().AddDate(0, 0, -30), time.Now())
+	var retryable interface{ RetryDelay() time.Duration }
+	if !errors.As(err, &retryable) || retryable.RetryDelay() != 90*time.Minute {
+		t.Fatalf("retry error = %v", err)
+	}
+	if called || len(limiter.reserved) != 0 {
+		t.Fatalf("cooldown sent a request or reserved a slot: called=%v slots=%v", called, limiter.reserved)
+	}
 }
 
 func (stub *wbLimiterStub) DeferWBRequests(_ context.Context, bucket string, delay time.Duration) error {

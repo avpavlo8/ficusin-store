@@ -831,7 +831,17 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		}
 	}
 	if bucket := wbRequestBucket(endpoint); bucket != "" && executor.wbLimiter != nil {
-		wait, err := executor.wbLimiter.ReserveWBRequest(ctx, bucket, marketplacePace(request.URL.Hostname()))
+		// A seller-wide 429 can pause WB for hours. Do not hold a mirror lease
+		// (or a price action worker) asleep through that window: its owner must
+		// persist the retry time and release the claim instead.
+		wait, err := executor.wbLimiter.WBRequestDelay(ctx, bucket)
+		if err != nil {
+			return fmt.Errorf("check Wildberries API pause: %w", err)
+		}
+		if wait > 30*time.Second {
+			return &remoteError{Status: http.StatusTooManyRequests, Message: "ожидание после ограничения Wildberries", RetryAfter: wait}
+		}
+		wait, err = executor.wbLimiter.ReserveWBRequest(ctx, bucket, marketplacePace(request.URL.Hostname()))
 		if err != nil {
 			return fmt.Errorf("reserve Wildberries API request: %w", err)
 		}
@@ -844,6 +854,9 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		wait, err = executor.wbLimiter.WBRequestDelay(ctx, bucket)
 		if err != nil {
 			return fmt.Errorf("check Wildberries API pause: %w", err)
+		}
+		if wait > 30*time.Second {
+			return &remoteError{Status: http.StatusTooManyRequests, Message: "ожидание после ограничения Wildberries", RetryAfter: wait}
 		}
 		if err := waitForContext(ctx, wait); err != nil {
 			return err
