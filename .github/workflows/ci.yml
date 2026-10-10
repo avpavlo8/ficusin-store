@@ -72,6 +72,27 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  layout-check:
+    name: layout
+    needs: [layout]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both browser test shards
+        env:
+          LAYOUT_RESULT: ${{ needs.layout.result }}
+        run: test "$LAYOUT_RESULT" = success
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+
   backend:
     runs-on: ubuntu-latest
     defaults:
