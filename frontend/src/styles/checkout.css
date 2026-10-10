@@ -1192,21 +1192,6 @@
   grid-template-columns: 1fr 1fr;
   gap: 18px;
 }
-.checkout-care-optin {
-  margin-top: 28px;
-  display: flex !important;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px !important;
-}
-.checkout-care-optin input {
-  width: 24px !important;
-  min-width: 24px !important;
-  height: 24px !important;
-  min-height: 24px !important;
-  margin: 0;
-  accent-color: var(--co-orange);
-}
 .checkout-page-panel [data-checkout-step="1"] .checkout-navigation {
   margin: 38px -34px -34px;
   padding: 22px 34px;
