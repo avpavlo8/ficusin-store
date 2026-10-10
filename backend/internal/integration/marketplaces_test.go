@@ -563,8 +563,12 @@ func TestWildberries429StopsImmediatelyAndPublishesRetryWindow(t *testing.T) {
 		calls++
 		return &http.Response{
 			StatusCode: http.StatusTooManyRequests,
-			Header:     http.Header{"X-Ratelimit-Retry": []string{"137"}},
-			Body:       io.NopCloser(strings.NewReader(`{"status":429,"detail":"rate limit exceeded"}`)),
+			Header: http.Header{
+				"X-Ratelimit-Retry": []string{"137"},
+				"X-Ratelimit-Limit": []string{"1"},
+				"X-Ratelimit-Reset": []string{"138"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"status":429,"details":"rate limit exceeded","requestId":"a7b81234abcd5678"}`)),
 		}, nil
 	})}
 	_, err := executor.FetchSales(context.Background(), "wb", time.Now().AddDate(0, 0, -30), time.Now())
@@ -579,11 +583,29 @@ func TestWildberries429StopsImmediatelyAndPublishesRetryWindow(t *testing.T) {
 		t.Fatalf("retry error = %v", err)
 	}
 	var diagnostic interface{ RateLimitCause() string }
-	if !errors.As(err, &diagnostic) || diagnostic.RateLimitCause() != "ответ 429 от /api/v1/supplier/sales" {
+	if !errors.As(err, &diagnostic) || diagnostic.RateLimitCause() != "ответ 429 от /api/v1/supplier/sales; ID запроса WB a7b81234abcd5678; лимит 1; сброс через 2m18s" {
 		t.Fatalf("remote rate limit cause = %v", err)
 	}
 	if limiter.deferred["sales"] != 137*time.Second {
 		t.Fatalf("published delay = %v", limiter.deferred["sales"])
+	}
+}
+
+func TestWildberries429DiagnosticRejectsUntrustedIdentifiers(t *testing.T) {
+	for _, body := range []string{
+		`{"requestId":"token=secret"}`,
+		`{"requestId":"https://example.invalid/key"}`,
+		`{"requestId":"short"}`,
+		`not json`,
+	} {
+		if got := wbRateLimitRequestID([]byte(body)); got != "" {
+			t.Fatalf("untrusted request ID %q reached operator message: %q", body, got)
+		}
+	}
+	for _, header := range []string{"-1", "not-a-number", "999999999"} {
+		if got := positiveHeaderInt(header); got != 0 {
+			t.Fatalf("invalid rate header %q = %d", header, got)
+		}
 	}
 }
 
