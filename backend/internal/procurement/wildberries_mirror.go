@@ -137,7 +137,11 @@ func (worker *WBMirrorWorker) finish(ctx context.Context, claim SyncClaim, rows 
 		if errors.As(syncErr, &retryable) && retryable.RetryDelay() > 0 {
 			next = retryable.RetryDelay()
 		}
-		worker.logger.Warn("Wildberries mirror failed", "resource", claim.Resource, "retry_after", next, "error", syncErr)
+		// Timeweb's log viewer displays the message but hides structured fields.
+		// Keep the sanitized reason in that visible message as well.
+		_, message := wbMirrorResult(syncErr, next)
+		worker.logger.Warn(fmt.Sprintf("Wildberries %s mirror failed: %s", claim.Resource, message),
+			"resource", claim.Resource, "retry_after", next, "error", syncErr)
 	}
 	applied, err := worker.store.FinishWBSync(ctx, claim, rows, next, syncErr)
 	if err != nil {
