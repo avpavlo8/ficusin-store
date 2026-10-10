@@ -185,6 +185,39 @@ func TestCDEKDoesNotCreateShipmentWithStaleSabyStock(t *testing.T) {
 	}
 }
 
+func TestCDEKMarksPaidOrderWithStaleStockForManualReview(t *testing.T) {
+	databaseURL := os.Getenv("CRM_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("CRM_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	worker := NewShippingWorker(pool, &stage13CDEK{}, stage13ShippingSettings{}, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	orderID, offerID := seedStage13CDEKOffer(t, ctx, pool, "paid-order-shortage")
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID) }()
+	if _, err := pool.Exec(ctx, `DELETE FROM shipment_offers WHERE id=$1`, offerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE orders SET has_preorder=0 WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=(SELECT variant_id FROM order_items WHERE order_id=$1 LIMIT 1)`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	worker.markStockShortages(ctx)
+	var state string
+	if err := pool.QueryRow(ctx, `SELECT cdek_create_state FROM orders WHERE id=$1`, orderID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "manual_review" {
+		t.Fatalf("paid order with stale stock must require manual review, got %q", state)
+	}
+}
+
 func seedStage13CDEKOffer(t *testing.T, ctx context.Context, pool *pgxpool.Pool, label string) (int64, int64) {
 	t.Helper()
 	var customerID, productID, variantID, warehouseID, orderID, itemID, offerID int64
