@@ -782,12 +782,15 @@ type remoteError struct {
 	RetryAfter time.Duration
 	Path       string
 	Deferred   bool
+	RequestID  string
+	RateLimit  int
+	RateReset  time.Duration
 }
 
 func (err *remoteError) RetryDelay() time.Duration { return err.RetryAfter }
 
-// RateLimitCause exposes only the method and whether we sent a request. The
-// marketplace response body is intentionally kept out of operator screens.
+// RateLimitCause exposes the method, safe WB rate headers and an opaque request
+// ID for support. The response body stays out of operator screens.
 func (err *remoteError) RateLimitCause() string {
 	if err.Status != http.StatusTooManyRequests || err.Path == "" {
 		return ""
@@ -795,7 +798,17 @@ func (err *remoteError) RateLimitCause() string {
 	if err.Deferred {
 		return fmt.Sprintf("общая пауза API: %s не запрашивался", err.Path)
 	}
-	return fmt.Sprintf("ответ 429 от %s", err.Path)
+	cause := fmt.Sprintf("ответ 429 от %s", err.Path)
+	if err.RequestID != "" {
+		cause += "; ID запроса WB " + err.RequestID
+	}
+	if err.RateLimit > 0 {
+		cause += fmt.Sprintf("; лимит %d", err.RateLimit)
+	}
+	if err.RateReset > 0 {
+		cause += "; сброс через " + err.RateReset.Round(time.Second).String()
+	}
+	return cause
 }
 
 // A 429 response means the marketplace rejected the mutation before applying
@@ -919,6 +932,11 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		remote := &remoteError{Status: response.StatusCode, Message: safeRemoteMessage(string(content)), RetryAfter: marketplaceRetryAfter(response), Path: requestPath(endpoint)}
+		if remote.Status == http.StatusTooManyRequests && wbRequestBucket(endpoint) != "" {
+			remote.RequestID = wbRateLimitRequestID(content)
+			remote.RateLimit = positiveHeaderInt(response.Header.Get("X-Ratelimit-Limit"))
+			remote.RateReset = time.Duration(positiveHeaderInt(response.Header.Get("X-Ratelimit-Reset"))) * time.Second
+		}
 		if remote.Status == http.StatusTooManyRequests && executor.requestLimiter != nil {
 			if channel, bucket := integrationRequestLane(endpoint); channel != "" {
 				delay := remote.RetryAfter
@@ -1053,6 +1071,37 @@ func marketplaceRetryAfter(response *http.Response) time.Duration {
 		}
 	}
 	return 0
+}
+
+// Keep only WB's opaque request identifier and numeric rate limit headers in
+// the operator message. Its free-form details may contain data we must not
+// copy from an external response into the admin screen or public logs.
+func wbRateLimitRequestID(content []byte) string {
+	var payload struct {
+		RequestID string `json:"requestId"`
+	}
+	if json.Unmarshal(content, &payload) != nil {
+		return ""
+	}
+	id := payload.RequestID
+	if len(id) < 8 || len(id) > 64 {
+		return ""
+	}
+	for _, char := range id {
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '-') {
+			return ""
+		}
+	}
+	return id
+}
+
+func positiveHeaderInt(value string) int {
+	number, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || number <= 0 || number > 86400 {
+		return 0
+	}
+	return number
 }
 
 // requestPath оставляет от адреса только путь: хост площадки в сообщении
