@@ -162,23 +162,6 @@ export function track(name: CommerceEventName, input: EventInput = {}) {
   else { window.clearTimeout(flushTimer); flushTimer = window.setTimeout(() => flush(), 900); }
 }
 
-export function trackYandexPurchase(orderNumber: string, total: number, items: Array<{ id: string; name: string; price: number; quantity: number }>) {
-  if (isInternalPath() || !orderNumber || !items.length) return;
-  const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
-  if (privacy.globalPrivacyControl || navigator.doNotTrack === "1") return;
-  const layerWindow = window as DataLayerWindow;
-  layerWindow.dataLayer = layerWindow.dataLayer || [];
-  layerWindow.dataLayer.push({
-    ecommerce: {
-      currencyCode: "RUB",
-      purchase: {
-        actionField: { id: orderNumber, revenue: total },
-        products: items.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })),
-      },
-    },
-  });
-}
-
 export function initAnalytics() {
   if (isInternalPath()) return;
   captureTouch();

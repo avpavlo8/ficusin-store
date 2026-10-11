@@ -19,8 +19,14 @@ orders or revenue.
 
 Browser events are allow-listed and idempotent by `event_id`. The public API
 cannot submit trusted revenue events. `order_created` and
-`order_item_purchased` are emitted only by the Go backend after the order
+`order_item_requested` are emitted only by the Go backend after the order
 transaction has committed, using the server-calculated total and order lines.
+These events include unpaid orders and are not sales. Historical
+`order_item_purchased` events had the same meaning and must not be counted as
+paid purchases. Revenue and paid conversion come from confirmed sales and
+payment status. Yandex Metrika does not receive a `purchase` ecommerce event
+when checkout merely creates an order; the first-party sales ledger remains
+the source for paid revenue.
 
 Main funnel:
 
