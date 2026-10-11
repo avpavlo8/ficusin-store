@@ -20,6 +20,7 @@ type VariantLinks struct {
 	SKU              string                 `json:"sku"`
 	Label            string                 `json:"label"`
 	SabyID           string                 `json:"sabyId"`
+	MarketplaceScope string                 `json:"marketplaceScope"`
 	SitePriceRub     float64                `json:"sitePriceRub"`
 	ChannelPricesRub map[string]*float64    `json:"channelPricesRub"`
 	Channels         map[string]ChannelLink `json:"channels"`
@@ -103,7 +104,7 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 	}
 	rows.Close()
 
-	rows, err = repository.pool.Query(ctx, `SELECT v.id,v.product_id,v.sku,v.label,COALESCE(v.saby_id,''),
+	rows, err = repository.pool.Query(ctx, `SELECT v.id,v.product_id,v.sku,v.label,COALESCE(v.saby_id,''),v.marketplace_scope,
 		COALESCE(directory.wb_nm_ids[1],''),COALESCE(directory.wb_articles[1],''),
 		COALESCE(directory.ozon_articles[1],''),COALESCE(ozon_product.article,''),
 		v.base_price_minor::DOUBLE PRECISION/100,n.price_minor::DOUBLE PRECISION/100,
@@ -122,7 +123,7 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 		var productID int64
 		var sabyID, wbID, wbArticle, ozonID, ozonArticle string
 		var sabyPrice, wbPrice, ozonPrice *float64
-		if err := rows.Scan(&variant.ID, &productID, &variant.SKU, &variant.Label, &sabyID, &wbID, &wbArticle, &ozonID, &ozonArticle,
+		if err := rows.Scan(&variant.ID, &productID, &variant.SKU, &variant.Label, &sabyID, &variant.MarketplaceScope, &wbID, &wbArticle, &ozonID, &ozonArticle,
 			&variant.SitePriceRub, &sabyPrice, &wbPrice, &ozonPrice); err != nil {
 			rows.Close()
 			return nil, err

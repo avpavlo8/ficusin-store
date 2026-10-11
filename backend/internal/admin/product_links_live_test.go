@@ -56,6 +56,12 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 		VALUES($1,$2,'18 см',150000,1) RETURNING id`, productID, fmt.Sprintf("6%017d", unique%100000000000000000)).Scan(&secondID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = pool.Exec(ctx, `UPDATE product_variants SET marketplace_scope='marketplaces' WHERE id=$1`, firstID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE product_variants SET marketplace_scope='site_only' WHERE id=$1`, secondID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = pool.Exec(ctx, `INSERT INTO procurement_product_channels(saby_id,wb_nm_id,ozon_offer_id) VALUES($1,$2,$3)`, sabyID, unique%1000000000, ozonID); err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +109,9 @@ func TestProductLinksAcrossCardAndSizesOnLiveDatabase(t *testing.T) {
 		byID[variant.ID] = variant
 	}
 	first, second := byID[firstID], byID[secondID]
+	if first.MarketplaceScope != "marketplaces" || second.MarketplaceScope != "site_only" {
+		t.Fatalf("marketplace scopes first=%q second=%q", first.MarketplaceScope, second.MarketplaceScope)
+	}
 	if first.SitePriceRub != 1000 || second.SitePriceRub != 1500 || first.ChannelPricesRub["saby"] == nil || *first.ChannelPricesRub["saby"] != 900 || first.ChannelPricesRub["wb"] == nil || *first.ChannelPricesRub["wb"] != 1900 || first.ChannelPricesRub["ozon"] == nil || *first.ChannelPricesRub["ozon"] != 1800 {
 		t.Fatalf("unexpected price overview: first=%+v second=%+v", first, second)
 	}
