@@ -157,6 +157,8 @@ type CheckoutPanelProps = {
   orderConfirmationPending: boolean;
   submitOrder: FormEventHandler<HTMLFormElement>;
   user: boolean;
+  pricingReady: boolean;
+  pricingError: boolean;
   checkoutProfile: CheckoutProfile;
   setCheckoutProfile: Dispatch<SetStateAction<CheckoutProfile>>;
   availableDelivery: DeliveryOption[];
@@ -193,6 +195,9 @@ type CheckoutPanelProps = {
   paymentMethod: string;
   setPaymentMethod: Dispatch<SetStateAction<string>>;
   subtotal: number;
+  originalSubtotal: number;
+  discountAmount: number;
+  discountBps: number;
   deliveryFee: number;
   total: number;
   submitting: boolean;
@@ -201,7 +206,7 @@ type CheckoutPanelProps = {
 
 export function CheckoutPanel(props: CheckoutPanelProps) {
   const {
-    page = false, checkoutOpen, setCheckoutOpen, orderNumber, orderConfirmationPending, submitOrder, user,
+    page = false, checkoutOpen, setCheckoutOpen, orderNumber, orderConfirmationPending, submitOrder, user, pricingReady, pricingError,
     checkoutProfile, setCheckoutProfile, availableDelivery, delivery, setDelivery,
     cdekQuote, cdekCityQuery, setCdekCityQuery, setCdekCity, setCdekCities,
     setCdekOffices, cdekOfficeCode, setCdekOfficeCode, cdekOfficeQuery,
@@ -209,7 +214,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     cdekLoading, cdekError, cdekOffices, setCdekOfficeListOpen, cdekOfficeListOpen,
     cdekOfficeMatches, selectedOffice, cdekFeePending, cdekRepack, setCdekRepack,
     cartCount, hasPreorder, cdekQuotes, paymentMethods, paymentMethod, setPaymentMethod, subtotal,
-    deliveryFee, total, submitting, deliveryFeePending,
+    deliveryFee, total, submitting, deliveryFeePending, originalSubtotal, discountAmount, discountBps,
   } = props;
   const [step, setStep] = useState<1|2|3>(1);
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
@@ -311,9 +316,9 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           <div data-checkout-step="3" hidden={step!==3}>
             {hasPreorder ? <div className="payment-note"><b>Оформить без оплаты</b><p>Одного из растений сейчас нет в наличии. Мы примем заказ, менеджер уточнит поставку и свяжется с вами. Сейчас платить не нужно.</p></div> : paymentMethods.length > 0 ? <fieldset><legend>Способ оплаты заказа</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => { setPaymentMethod(option.id); track("add_payment_info",{value:total,quantity:cartCount,properties:{paymentMethod:option.id}}); }} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{option.note}</small></span></label>)}</div><p className="cdek-status">Растения и доставка оплачиваются на сайте. Если какого-либо растения нет в наличии или доставка требует уточнения, менеджер свяжется с вами до оплаты.</p></fieldset> : <div className="payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
-            <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || (!hasPreorder && !paymentMethods.length) || deliveryBlocked}>{submitting ? "Оформляем…" : hasPreorder ? "Отправить заказ →" : "Продолжить →"}</button></div>
+            <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !pricingReady || pricingError || (!hasPreorder && !paymentMethods.length) || deliveryBlocked}>{submitting ? "Оформляем…" : hasPreorder ? "Отправить заказ →" : "Продолжить →"}</button></div>
           </div>
-        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFeePending ? "уточняется" : money(deliveryFee)}</dd></div></dl><div><span>{hasPreorder ? "Предварительная сумма" : deliveryFeePending ? "Растения, без доставки" : "Итого к оплате"}</span><strong>{money(total)}</strong></div>{hasPreorder ? <p>Сейчас платить не нужно. Менеджер проверит наличие и подтвердит итог заказа.</p> : deliveryFeePending && <p>Менеджер уточнит доставку и сообщит итог до оплаты.</p>}</aside></div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div>{discountAmount > 0 && <><div><dt>Растения без скидки</dt><dd>{money(originalSubtotal)}</dd></div><div><dt>Персональная скидка {discountBps / 100}%</dt><dd>−{money(discountAmount)}</dd></div></>}<div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFeePending ? "уточняется" : money(deliveryFee)}</dd></div></dl><div><span>{hasPreorder ? "Предварительная сумма" : deliveryFeePending ? "Растения, без доставки" : "Итого к оплате"}</span><strong>{pricingReady ? money(total) : "Проверяем цену…"}</strong></div>{pricingError && <p role="alert">Не удалось проверить персональную скидку. Обновите страницу перед оформлением.</p>}{hasPreorder ? <p>Сейчас платить не нужно. Менеджер проверит наличие и подтвердит итог заказа.</p> : deliveryFeePending && <p>Менеджер уточнит доставку и сообщит итог до оплаты.</p>}</aside></div>
       )}
     </aside>
   );

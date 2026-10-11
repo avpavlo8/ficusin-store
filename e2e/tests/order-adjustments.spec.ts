@@ -82,6 +82,29 @@ test("@desktop кабинет не предлагает оплату до рас
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 });
 
+test("@desktop отменённый предзаказ не обещает будущую оплату", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.route("**/api/v1/account/orders/0001-34", (route) => route.fulfill({ json: {
+    order: {
+      orderNumber: "0001-34", deliveryMethod: "pickup", address: "", comment: "",
+      customerName: "Александр", phone: "+79990000000", email: "test@example.com",
+      status: "cancelled", paymentStatus: "pending", paymentMethod: "online",
+      deliveryFee: 0, hasPreorder: true, deliveryFeePending: false,
+      subtotal: 3890.7, total: 3890.7, paidAmount: 0, refundedAmount: 0,
+      amountDue: 3890.7, paymentReady: false, createdAt: "2026-10-11T07:39:01Z",
+      items: [{ productName: "Аглаонема", unitPrice: 3890.7, quantity: 1 }],
+      shipmentOffers: [],
+    },
+  } }));
+  await page.goto("/account/orders/0001-34");
+
+  await expect(page.getByText("Заказ отменён. Если растения ещё нужны, оформите новый заказ по актуальным цене и наличию.")).toBeVisible();
+  await expect(page.getByText("Сумма отменённого заказа")).toBeVisible();
+  await expect(page.getByText("К доплате")).toHaveCount(0);
+  await expect(page.getByText(/Оплата откроется после подтверждения/)).toHaveCount(0);
+  await expect(page.getByText(/после его решения здесь появится кнопка оплаты/)).toHaveCount(0);
+});
+
 test("@desktop открытая карточка сама показывает оплату после подтверждения менеджером", async ({ page }) => {
   await mockApi(page, owner);
   let confirmed = false;

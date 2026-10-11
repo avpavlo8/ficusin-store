@@ -23,6 +23,7 @@ type StoreUser = {
   lastName: string;
   patronymic: string;
   deliveryAddress: string;
+  retailDiscountBps: number;
 };
 
 type CheckoutHostProps = {
@@ -62,13 +63,15 @@ export default function CheckoutHost({
     () => new URLSearchParams(window.location.search).get("paid") || "",
   );
   const [user, setUser] = useState<StoreUser | null>(null);
+  const [pricingReady, setPricingReady] = useState(false);
+  const [pricingError, setPricingError] = useState(false);
 
   const cartLines = products
     .filter((product) => cart[product.sku])
     .map((product) => ({ ...product, id: product.sku, quantity: cart[product.sku] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen: checkoutPage });
+  const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps: user?.retailDiscountBps ?? 0, initialOpen: checkoutPage });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
 
   useEffect(() => {
@@ -89,7 +92,9 @@ export default function CheckoutHost({
         return (await response.json()) as { user: StoreUser };
       })
       .then((result) => {
-        if (cancelled || !result?.user) return;
+        if (cancelled) return;
+        setPricingReady(true);
+        if (!result?.user) return;
         const profile = result.user;
         setUser(profile);
         setCheckoutProfile({
@@ -100,7 +105,7 @@ export default function CheckoutHost({
         });
       })
       .catch(() => {
-        // Guests can still place an order when profile loading fails.
+        if (!cancelled) setPricingError(true);
       });
     return () => {
       cancelled = true;
@@ -182,7 +187,7 @@ export default function CheckoutHost({
         : checkoutPage && cartStatus === "error" ? <section className="checkout-load-state error" role="alert"><h1>Не удалось открыть оформление</h1><p>{cartError}</p>{onCartRetry && <button type="button" className="primary-button" onClick={onCartRetry}>Повторить</button>}</section>
           : checkoutPage && (missingCartItems > 0 || cartLines.some((item) => item.available === false)) ? <section className="checkout-load-state error" role="alert"><h1>Состав корзины изменился</h1><p>Вернитесь в корзину и удалите недоступные товары.</p><a className="primary-button" href="/cart">Вернуться в корзину</a></section>
             : checkoutPage && cartStatus === "ready" && !cartLines.length && !checkout.panelProps.orderNumber ? <section className="checkout-load-state"><h1>Корзина пуста</h1><p>Перед оформлением добавьте товары.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></section>
-              : <CheckoutPanel user={!!user} page={checkoutPage} {...checkout.panelProps} />}
+              : <CheckoutPanel user={!!user} page={checkoutPage} pricingReady={pricingReady} pricingError={pricingError} {...checkout.panelProps} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockApi, setStoredCounts } from "./helpers";
+import { mockApi, owner, setStoredCounts } from "./helpers";
 
 async function openDeliveryStep(page: Page) {
   await setStoredCounts(page, [], { "1": 1 });
@@ -24,6 +24,20 @@ test("@desktop покупателю доступны только самовыв
   await expect(methods.nth(1)).toHaveValue("cdek");
   await expect(page.getByLabel("Курьер по Рязани")).toHaveCount(0);
   await expect(page.getByLabel("Почта России")).toHaveCount(0);
+});
+
+test("@desktop оформление показывает персональную скидку до отправки", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.route("**/api/v1/auth/me", (route) => route.fulfill({
+    json: { user: { ...owner.user, retailDiscountBps: 100 } },
+  }));
+  await setStoredCounts(page, [], { "1": 1 });
+  await page.goto("/checkout");
+
+  const summary = page.locator(".checkout-order-summary");
+  await expect(summary).toContainText(/Растения без скидки\s*1.?490/);
+  await expect(summary).toContainText(/Персональная скидка 1%\s*−15/);
+  await expect(summary).toContainText(/Итого к оплате\s*1.?475/);
 });
 
 test("@desktop стоимость СДЭК входит в сумму онлайн-заказа", async ({ page }) => {

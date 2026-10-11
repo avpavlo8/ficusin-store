@@ -88,7 +88,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
 
-  const payOffer=async(offer:ShipmentOffer)=>{if(!offer.paymentToken)return;setPaying(true);setError("");try{const response=await fetch(`/api/v1/payments/shipment-offers/${encodeURIComponent(offer.paymentToken)}`,{method:"POST",credentials:"same-origin"});const body=await response.json() as {confirmationUrl?:string;error?:string};if(!response.ok||!body.confirmationUrl)throw new Error(body.error||"Не удалось начать оплату растений");window.location.assign(body.confirmationUrl);}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось начать оплату растений");setPaying(false)}};
+  const payOffer=async(offer:ShipmentOffer)=>{if(order?.status === "cancelled" || !offer.paymentToken)return;setPaying(true);setError("");try{const response=await fetch(`/api/v1/payments/shipment-offers/${encodeURIComponent(offer.paymentToken)}`,{method:"POST",credentials:"same-origin"});const body=await response.json() as {confirmationUrl?:string;error?:string};if(!response.ok||!body.confirmationUrl)throw new Error(body.error||"Не удалось начать оплату растений");window.location.assign(body.confirmationUrl);}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось начать оплату растений");setPaying(false)}};
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -146,7 +146,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   // появляется без ручного F5. Фокус окна даёт мгновенную проверку, таймер —
   // запасной путь, если вкладка всё время открыта.
   useEffect(() => {
-    if (!order || (order.paymentReady && !order.hasPreorder && !order.deliveryFeePending) || order.amountDue <= 0) return;
+    if (!order || order.status === "cancelled" || (order.paymentReady && !order.hasPreorder && !order.deliveryFeePending) || order.amountDue <= 0) return;
     const timer = window.setInterval(() => { void refreshOrder(); }, 8_000);
     const refreshOnFocus = () => { void refreshOrder(); };
     window.addEventListener("focus", refreshOnFocus);
@@ -157,7 +157,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   }, [order, refreshOrder]);
 
   const pay = async () => {
-    if (!order || !order.paymentReady || order.hasPreorder || order.deliveryFeePending || order.amountDue <= 0) return;
+    if (!order || order.status === "cancelled" || !order.paymentReady || order.hasPreorder || order.deliveryFeePending || order.amountDue <= 0) return;
     setPaying(true);
     setError("");
     try {
@@ -201,7 +201,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             </div>
             <span>{orderStatusLabels[order.status] ?? order.status}</span>
           </div>
-          {order.status==="cancelled"&&order.cancellationReason&&<p className="order-note">{order.cancellationReason}. Можно оформить новый заказ по актуальным цене и наличию.</p>}
+          {order.status === "cancelled" && <p className="order-note">{order.cancellationReason ? `${order.cancellationReason}. ` : ""}Заказ отменён. Если растения ещё нужны, оформите новый заказ по актуальным цене и наличию.</p>}
 
           <section className="order-items">
             {order.items.map((item, index) => <div className="order-item" key={`${item.productName}-${index}`}>
@@ -217,37 +217,37 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
               <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span>{item.originalUnitPrice!=null&&item.originalUnitPrice!==item.unitPrice&&<small>При оформлении: {money.format(item.originalUnitPrice)} · цена обновлена при поступлении</small>}</p>)}</div>
               <div><span>Растения</span><strong>{money.format(offer.subtotal)}</strong><span>{offer.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"} · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>{offer.deliveryPayee === "carrier" ? "К оплате за растения" : "К оплате"}</span><strong>{money.format(offer.total)}</strong></div>
               {offer.deliveryPayee === "carrier"&&<p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
-              {offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`${offer.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить отправку"} ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
+              {order.status !== "cancelled" && offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`${offer.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить отправку"} ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
               {offer.status==="payment_pending"&&<p className="order-note">Платёж проверяется. Повторная ссылка не создаётся.</p>}
               {offer.status==="paid"&&<p className="order-note">Эта отправка оплачена.</p>}
               {offer.status==="expired"&&<p className="order-note">Срок предложения истёк. Ожидаемые растения остались в исходном заказе.</p>}
               {offer.status==="stale"&&<p className="order-note">Состав или адрес изменился. Менеджер подготовит новое предложение.</p>}
             </article>)}
-            {order.hasPreorder&&<p className="order-note">Ожидаем поступления остальных растений. Они сохраняются в исходном заказе и будут предложены отдельно.</p>}
+            {order.status !== "cancelled" && order.hasPreorder&&<p className="order-note">Ожидаем поступления остальных растений. Они сохраняются в исходном заказе и будут предложены отдельно.</p>}
           </section>}
 
           <section className="order-totals">
             <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>
             <div><span>{order.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"}</span><span>{order.deliveryFeePending ? "уточняет менеджер" : money.format(order.deliveryFee)}</span></div>
-            <div className="total"><span>{order.deliveryPayee === "carrier" ? "К оплате за растения" : "Итого к оплате"}</span><span>{money.format(order.total)}</span></div>
+            <div className="total"><span>{order.status === "cancelled" ? "Сумма отменённого заказа" : order.deliveryPayee === "carrier" ? "К оплате за растения" : "Итого к оплате"}</span><span>{money.format(order.total)}</span></div>
             {order.paidAmount > 0 && <div><span>Оплачено</span><span>{money.format(order.paidAmount)}</span></div>}
             {order.refundedAmount > 0 && <div><span>Возвращено</span><span>{money.format(order.refundedAmount)}</span></div>}
-            {order.amountDue > 0 && <div className="total"><span>К доплате</span><span>{money.format(order.amountDue)}</span></div>}
-            {order.hasPreorder && <p className="order-note">В заказе есть товар, наличие которого должен подтвердить менеджер. Оплата откроется после подтверждения.</p>}
-            {order.deliveryFeePending && <p className="order-note">{deliveryPendingText(order)}</p>}
-            {!order.deliveryFeePending && order.deliveryPayee === "carrier" && <p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
+            {order.status !== "cancelled" && order.amountDue > 0 && <div className="total"><span>К доплате</span><span>{money.format(order.amountDue)}</span></div>}
+            {order.status !== "cancelled" && order.hasPreorder && <p className="order-note">В заказе есть товар, наличие которого должен подтвердить менеджер. Оплата откроется после подтверждения.</p>}
+            {order.status !== "cancelled" && order.deliveryFeePending && <p className="order-note">{deliveryPendingText(order)}</p>}
+            {order.status !== "cancelled" && !order.deliveryFeePending && order.deliveryPayee === "carrier" && <p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
           </section>
 
           <section className="order-facts">
             <div><small>Способ получения</small><span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span></div>
             {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
             {order.trackNumber && <div><small>Трек-номер СДЭК</small><span>{order.trackNumber}</span></div>}
-            <div><small>Оплата</small><span className={order.amountDue === 0 ? "payment-state paid" : "payment-state unpaid"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
-            {order.paymentReady && !order.hasPreorder && !order.deliveryFeePending && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
+            <div><small>Оплата</small><span className={order.amountDue === 0 ? "payment-state paid" : "payment-state unpaid"}>{order.status === "cancelled" ? "Заказ отменён" : paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
+            {order.status !== "cancelled" && order.paymentReady && !order.hasPreorder && !order.deliveryFeePending && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
               {paying ? "Открываем оплату…" : `${order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"} ${money.format(order.amountDue)}`}
             </button>}
-            {!order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит {order.hasPreorder ? "наличие растений" : "детали заказа"}; после его решения здесь появится кнопка оплаты.</p>}
-            {order.amountDue === 0 && order.paymentStatus === "paid" && <p className="order-note">Заказ полностью оплачен.</p>}
+            {order.status !== "cancelled" && !order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит {order.hasPreorder ? "наличие растений" : "детали заказа"}; после его решения здесь появится кнопка оплаты.</p>}
+            {order.status !== "cancelled" && order.amountDue === 0 && order.paymentStatus === "paid" && <p className="order-note">Заказ полностью оплачен.</p>}
             <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
             {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
           </section>
