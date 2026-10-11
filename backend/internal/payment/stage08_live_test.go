@@ -115,6 +115,45 @@ func TestStage08ShipmentPaymentIsIdempotentAndHasExactReceipt(t *testing.T) {
 	}
 }
 
+func TestCancelledOrderRejectsShipmentOfferPayment(t *testing.T) {
+	databaseURL := os.Getenv("CRM_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("CRM_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var customerID, orderID, offerID int64
+	if err := pool.QueryRow(ctx, `SELECT id FROM customers WHERE email='crm-owner@example.invalid'`).Scan(&customerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_method,subtotal,total,payment_method,payment_status,status)
+		VALUES($1,$2,'Отменённый заказ','+70000000000','cancelled-offer@example.invalid','pickup',100,100,'online','cancelled','cancelled') RETURNING id`, fmt.Sprintf("CRM-CANCEL-OFFER-%d", unique), customerID).Scan(&orderID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID) }()
+	token := fmt.Sprintf("cancelled-offer-%d", unique)
+	if err := pool.QueryRow(ctx, `INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,subtotal,total,expires_at,created_by)
+		VALUES($1,$2,1,'offered','pickup',100,100,CURRENT_TIMESTAMP+INTERVAL '48 hours',$3) RETURNING id`, orderID, token, customerID).Scan(&offerID); err != nil {
+		t.Fatal(err)
+	}
+	provider := &livePaymentProvider{}
+	service := NewService(pool, provider, "https://ficusin.example.invalid", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := service.StartShipmentOffer(ctx, token, customerID); err == nil {
+		t.Fatal("ссылка отменённого заказа открыла оплату")
+	}
+	if _, err := service.reserveOfferAndCreatePayment(ctx, offerID, orderID, "cancelled-order-test", 100); err == nil {
+		t.Fatal("транзакция создала платёж после отмены заказа")
+	}
+	if provider.creates != 0 {
+		t.Fatalf("провайдер получил %d запросов после отмены", provider.creates)
+	}
+}
+
 type stage13TimeoutProvider struct{ livePaymentProvider }
 
 func (provider *stage13TimeoutProvider) CreatePayment(ctx context.Context, request integration.PaymentRequest) (integration.Payment, error) {

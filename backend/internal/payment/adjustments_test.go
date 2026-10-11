@@ -47,3 +47,10 @@ func TestBalanceFromStateFindsOverpaymentBeforeRefund(t *testing.T) {
 		t.Fatalf("переплата рассчитана неверно: %+v", balance)
 	}
 }
+
+func TestCancelledPickupDoesNotPromisePaymentAtHandover(t *testing.T) {
+	balance := balanceFromState(orderMoneyState{total: 1490, method: MethodOnDelivery, status: "cancelled"})
+	if balance.Ready || balance.PaymentStatus != StatusCancelled {
+		t.Fatalf("отменённый самовывоз не должен ожидать оплаты при выдаче: %+v", balance)
+	}
+}

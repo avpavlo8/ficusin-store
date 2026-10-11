@@ -198,6 +198,80 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 	})
 
+	t.Run("редактор учитывает только свежий остаток основного склада СБИС", func(t *testing.T) {
+		if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		items := []OrderEditLine{{SKU: largeSKU, Quantity: 2}}
+		repository := NewPostgresRepository(pool)
+		actor := Actor{CustomerID: staffID, Role: RoleOwner}
+		edited, err := repository.EditOrder(ctx, actor, orderID, OrderEdit{Items: &items})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !edited.HasPreorder {
+			t.Fatal("устаревший остаток нельзя считать подтверждённым наличием")
+		}
+		var reserved int
+		if err := pool.QueryRow(ctx, `SELECT reserved_qty FROM order_items WHERE order_id=$1`, orderID).Scan(&reserved); err != nil {
+			t.Fatal(err)
+		}
+		if reserved != 0 {
+			t.Fatalf("редактор создал резерв %d, ожидали 0", reserved)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		edited, err = repository.EditOrder(ctx, actor, orderID, OrderEdit{Items: &items})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if edited.HasPreorder {
+			t.Fatal("после свежей сверки достаточный остаток должен разрешить обычный заказ")
+		}
+	})
+
+	t.Run("отмена закрывает неоплаченную отправку и её письмо", func(t *testing.T) {
+		var cancelID, offerID, paidOfferID int64
+		if err := pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,subtotal,delivery_fee,total,status)
+			VALUES($1,'Отмена отправки','+70000000000','offer-cancel@example.invalid','pickup',100,0,100,'new') RETURNING id`, fmt.Sprintf("CI-OFFER-CANCEL-%d", unique)).Scan(&cancelID); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM outbox WHERE recipient='offer-cancel@example.invalid'`)
+			_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, cancelID)
+		}()
+		if err := pool.QueryRow(ctx, `INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,subtotal,total,created_by)
+			VALUES($1,$2,1,'offered','pickup',100,100,$3) RETURNING id`, cancelID, fmt.Sprintf("ci-cancel-offer-%d", unique), staffID).Scan(&offerID); err != nil {
+			t.Fatal(err)
+		}
+		if err := pool.QueryRow(ctx, `INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,subtotal,total,created_by)
+			VALUES($1,$2,1,'paid','pickup',100,100,$3) RETURNING id`, cancelID, fmt.Sprintf("ci-paid-offer-%d", unique), staffID).Scan(&paidOfferID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO outbox(recipient,subject,body,shipment_offer_id)
+			VALUES('offer-cancel@example.invalid','Предложение','Оплатите отправку',$1)`, offerID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewPostgresRepository(pool).UpdateOrderStatus(ctx, Actor{CustomerID: staffID, Role: RoleOwner}, cancelID, "cancelled", ""); err != nil {
+			t.Fatal(err)
+		}
+		var offerStatus, paidStatus string
+		var letterCancelled bool
+		if err := pool.QueryRow(ctx, `SELECT status FROM shipment_offers WHERE id=$1`, offerID).Scan(&offerStatus); err != nil {
+			t.Fatal(err)
+		}
+		if err := pool.QueryRow(ctx, `SELECT status FROM shipment_offers WHERE id=$1`, paidOfferID).Scan(&paidStatus); err != nil {
+			t.Fatal(err)
+		}
+		if err := pool.QueryRow(ctx, `SELECT cancelled_at IS NOT NULL FROM outbox WHERE shipment_offer_id=$1`, offerID).Scan(&letterCancelled); err != nil {
+			t.Fatal(err)
+		}
+		if offerStatus != "cancelled" || paidStatus != "paid" || !letterCancelled {
+			t.Fatalf("после отмены: предложение=%s оплаченное=%s письмо отменено=%v", offerStatus, paidStatus, letterCancelled)
+		}
+	})
+
 	t.Run("завершение заказа без резерва не меняет остаток СБИС", func(t *testing.T) {
 		var reservedBefore int
 		if err := pool.QueryRow(ctx, `SELECT reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant).Scan(&reservedBefore); err != nil {

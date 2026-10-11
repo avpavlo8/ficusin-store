@@ -206,9 +206,9 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             </div>)}
           </section>
 
-          {!!order.shipmentOffers?.length&&<section className="account-shipment-offers">
+          {!!order.shipmentOffers?.some((offer) => order.status !== "cancelled" || ["paid", "shipping", "shipped", "ready", "completed"].includes(offer.status))&&<section className="account-shipment-offers">
             <div><p className="eyebrow">Частичная отправка</p><h3>Готовы к отправке</h3></div>
-            {order.shipmentOffers.map(offer=><article className={`account-shipment-offer account-shipment-offer-${offer.status}`} key={offer.id}>
+            {order.shipmentOffers.filter((offer) => order.status !== "cancelled" || ["paid", "shipping", "shipped", "ready", "completed"].includes(offer.status)).map(offer=><article className={`account-shipment-offer account-shipment-offer-${offer.status}`} key={offer.id}>
               <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span>{item.originalUnitPrice!=null&&item.originalUnitPrice!==item.unitPrice&&<small>При оформлении: {money.format(item.originalUnitPrice)} · цена обновлена при поступлении</small>}</p>)}</div>
               <div><span>Растения</span><strong>{money.format(offer.subtotal)}</strong><span>{offer.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"} · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>{offer.deliveryPayee === "carrier" ? "К оплате за растения" : "К оплате"}</span><strong>{money.format(offer.total)}</strong></div>
               {offer.deliveryPayee === "carrier"&&<p className="order-note">Доставка оплачивается перевозчику при получении.</p>}

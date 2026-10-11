@@ -138,6 +138,9 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 	if err := ReleaseStock(ctx, transaction, orderID); err != nil {
 		return err
 	}
+	if err := CancelOpenShipmentOffers(ctx, transaction, orderID); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(ctx, `
 		UPDATE payments SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
 		WHERE order_id = $1 AND status = 'pending'
