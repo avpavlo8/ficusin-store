@@ -31,6 +31,14 @@ const marketplaceState = (product: ProductLink, channel: "wb" | "ozon"): LinkSta
 const linkState = (product: ProductLink, channel: LinkChannel): LinkState => channel === "wb" || channel === "ozon"
   ? marketplaceState(product, channel) : fullyLinked(product, channel) ? "linked" : "unlinked";
 const stateLabels: Record<LinkState, string> = { linked: "Связан", unlinked: "Нужна связь", site_only: "Только сайт и Авито", unknown: "Каналы не определены", conflict: "Лишняя связь" };
+const potSize = (value: string) => value.match(/(?:^|\s|[,(])(?:d|д)\s*(\d{1,2})(?=$|\D)/i)?.[1];
+const sizeMismatch = (product: ProductLink, channel: "wb" | "ozon") => product.variants.some((variant) => {
+  const siteSize = potSize(variant.label);
+  return siteSize && variant.channels[channel]?.externalIds.some((externalId) => {
+    const externalSize = potSize(externalId);
+    return externalSize && Number(externalSize) !== Number(siteSize);
+  });
+});
 
 type SabyCandidate = { id: string; code: string; article: string; name: string; missing: boolean; linkedVariantId?: number; linkedProductId?: number; mappedProductId?: number };
 
@@ -83,7 +91,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSab
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<{ channel: LinkChannel; value: "all" | LinkState }>({ channel, value: "all" });
+  const [filter, setFilter] = useState<{ channel: LinkChannel; value: "all" | LinkState | "size_mismatch" }>({ channel, value: "all" });
   const activeFilter = filter.channel === channel ? filter.value : "all";
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -100,9 +108,10 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSab
     site_only: products.filter((product) => linkState(product, channel) === "site_only").length,
     unknown: products.filter((product) => linkState(product, channel) === "unknown").length,
     conflict: products.filter((product) => linkState(product, channel) === "conflict").length,
+    size_mismatch: channel === "wb" || channel === "ozon" ? products.filter((product) => sizeMismatch(product, channel)).length : 0,
   }), [products, channel]);
   const visible = useMemo(() => products.filter((product) => {
-    if (activeFilter !== "all" && linkState(product, channel) !== activeFilter) return false;
+    if (activeFilter === "size_mismatch" ? (channel !== "wb" && channel !== "ozon" || !sizeMismatch(product, channel)) : activeFilter !== "all" && linkState(product, channel) !== activeFilter) return false;
     const channelIds = product.channels[channel]?.externalIds || [];
     const names = product.channels[channel]?.listingNames || [];
     const searchable = [product.name, product.id, product.slug, ...channelIds, ...names, ...product.variants.flatMap((variant) => [variant.sku, variant.label])].join(" ").toLowerCase();
@@ -115,7 +124,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSab
       <button type="button" className={activeFilter === "all" ? "active" : ""} aria-pressed={activeFilter === "all"} onClick={() => setFilter({ channel, value: "all" })}>Все <b>{products.length}</b></button>
       <button type="button" className={activeFilter === "linked" ? "active" : ""} aria-pressed={activeFilter === "linked"} onClick={() => setFilter({ channel, value: "linked" })}>Связанные <b>{counts.linked}</b></button>
       <button type="button" className={activeFilter === "unlinked" ? "active" : ""} aria-pressed={activeFilter === "unlinked"} onClick={() => setFilter({ channel, value: "unlinked" })}>{channel === "wb" || channel === "ozon" ? "Нужна связь" : "Не связанные"} <b>{counts.unlinked}</b></button>
-      {(channel === "wb" || channel === "ozon") && <><button type="button" className={activeFilter === "site_only" ? "active" : ""} aria-pressed={activeFilter === "site_only"} onClick={() => setFilter({ channel, value: "site_only" })}>Только сайт и Авито <b>{counts.site_only}</b></button><button type="button" className={activeFilter === "conflict" ? "active" : ""} aria-pressed={activeFilter === "conflict"} onClick={() => setFilter({ channel, value: "conflict" })}>Лишняя связь <b>{counts.conflict}</b></button><button type="button" className={activeFilter === "unknown" ? "active" : ""} aria-pressed={activeFilter === "unknown"} onClick={() => setFilter({ channel, value: "unknown" })}>Не определены <b>{counts.unknown}</b></button></>}
+      {(channel === "wb" || channel === "ozon") && <><button type="button" className={activeFilter === "site_only" ? "active" : ""} aria-pressed={activeFilter === "site_only"} onClick={() => setFilter({ channel, value: "site_only" })}>Только сайт и Авито <b>{counts.site_only}</b></button><button type="button" className={activeFilter === "conflict" ? "active" : ""} aria-pressed={activeFilter === "conflict"} onClick={() => setFilter({ channel, value: "conflict" })}>Лишняя связь <b>{counts.conflict}</b></button><button type="button" className={activeFilter === "size_mismatch" ? "active" : ""} aria-pressed={activeFilter === "size_mismatch"} onClick={() => setFilter({ channel, value: "size_mismatch" })}>Проверить размер <b>{counts.size_mismatch}</b></button><button type="button" className={activeFilter === "unknown" ? "active" : ""} aria-pressed={activeFilter === "unknown"} onClick={() => setFilter({ channel, value: "unknown" })}>Не определены <b>{counts.unknown}</b></button></>}
       <input aria-label="Поиск по товару или внешнему коду" placeholder="Название, SKU или внешний код" value={query} onChange={(event) => setQuery(event.target.value)} />
     </div>
     {loading ? <p className="admin-hint">Загружаем связи…</p> : error ? <p className="admin-inline-error" role="alert">Не удалось загрузить связи: {error}</p> : visible.length === 0 ? <p className="admin-hint">По выбранному фильтру товаров нет.</p> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар сайта</th><th>Состояние</th><th>Связь с {channelNames[channel]}</th><th /></tr></thead><tbody>{visible.map((product) => {
@@ -124,7 +133,7 @@ export function AdminProductLinks({ channel, canOpen, canManageAvito, canLinkSab
       const partiallyLinked = channel !== "avito" && channel !== "wb" && channel !== "ozon" && link?.linked && product.variants.some((variant) => !variant.channels[channel]?.externalIds.length);
       return <tr key={product.id} className={channel === "avito" || !canOpen ? "" : "clickable"} onClick={channel === "avito" || !canOpen ? undefined : () => onOpen(product.id)}>
         <td><strong>{product.name}</strong><small>Карточка #{product.id} · {statusLabels[product.status as keyof typeof statusLabels] || product.status}</small><small>{product.variants.length} {product.variants.length === 1 ? "размер" : "размеров"}: {product.variants.map((variant) => `${variant.sku}${variant.label ? ` (${variant.label})` : ""}`).join(", ")}</small></td>
-        <td><span className={`admin-pill ${state === "linked" ? "published" : "draft"}`}>{partiallyLinked ? "Часть размеров связана" : stateLabels[state]}</span>{(channel === "wb" || channel === "ozon") && product.variants.map((variant) => <small key={variant.id}>SKU {variant.sku}: {variant.marketplaceScope === "marketplaces" ? "WB и Ozon разрешены" : variant.marketplaceScope === "site_only" ? "только сайт и Авито" : "каналы не определены"}</small>)}</td>
+        <td><span className={`admin-pill ${state === "linked" ? "published" : "draft"}`}>{partiallyLinked ? "Часть размеров связана" : stateLabels[state]}</span>{(channel === "wb" || channel === "ozon") && sizeMismatch(product, channel) && <small role="alert">Размер в артикуле площадки не совпадает с SKU</small>}{(channel === "wb" || channel === "ozon") && product.variants.map((variant) => <small key={variant.id}>SKU {variant.sku}: {variant.marketplaceScope === "marketplaces" ? "WB и Ozon разрешены" : variant.marketplaceScope === "site_only" ? "только сайт и Авито" : "каналы не определены"}</small>)}</td>
         <td>{link?.linked ? <>
           {channel === "avito" && (link.listingNames || []).length > 0 && <strong>{link.listingNames?.join(", ")}</strong>}
           <small>Коды: {link.externalIds.join(", ")}</small>
