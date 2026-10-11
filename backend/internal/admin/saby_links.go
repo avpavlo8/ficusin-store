@@ -123,3 +123,105 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 	}
 	return tx.Commit(ctx)
 }
+
+// RebindVariantToSaby replaces a vanished Saby stock identity while retaining
+// the site's product, SKU, content and historical external identifiers.
+// Stock stays unavailable until the next confirmed Saby snapshot.
+func (repository *PostgresRepository) RebindVariantToSaby(ctx context.Context, actor Actor, variantID int64, oldID, newID string) error {
+	if actor.Role != RoleOwner {
+		return ErrForbidden
+	}
+	oldID, newID = strings.TrimSpace(oldID), strings.TrimSpace(newID)
+	if variantID < 1 || oldID == "" || newID == "" || oldID == newID {
+		return fmt.Errorf("%w: укажите вариант, старую и новую записи СБИС", ErrInvalidInput)
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var productID int64
+	var sku, currentID string
+	var archived bool
+	if err = tx.QueryRow(ctx, `SELECT product_id,sku,COALESCE(saby_id,''),archived_at IS NOT NULL FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID, &sku, &currentID, &archived); err != nil {
+		return err
+	}
+	if archived || currentID != oldID {
+		return fmt.Errorf("%w: текущая связь варианта изменилась", ErrInvalidInput)
+	}
+	var oldStillCurrent, otherUsesOld bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM saby_nomenclature WHERE saby_id=$1 AND missing_since IS NULL),
+		EXISTS(SELECT 1 FROM product_variants WHERE saby_id=$1 AND id<>$2)`, oldID, variantID).Scan(&oldStillCurrent, &otherUsesOld); err != nil {
+		return err
+	}
+	if oldStillCurrent || otherUsesOld {
+		return fmt.Errorf("%w: старая запись ещё актуальна или используется другим размером", ErrInvalidInput)
+	}
+	var newCode string
+	var missing bool
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(code,''),missing_since IS NOT NULL FROM saby_nomenclature WHERE saby_id=$1 FOR UPDATE`, newID).Scan(&newCode, &missing); err != nil {
+		return err
+	}
+	if missing {
+		return fmt.Errorf("%w: новая запись отсутствует в последней выгрузке СБИС", ErrInvalidInput)
+	}
+	var occupied, reserved bool
+	if err = tx.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM products WHERE saby_id=$1 AND id<>$2)
+		OR EXISTS(SELECT 1 FROM product_variants WHERE saby_id=$1 AND id<>$3)
+		OR EXISTS(SELECT 1 FROM product_external_ids WHERE provider='saby' AND id_type='id' AND external_id=$1 AND (product_id<>$2 OR variant_id IS NOT NULL AND variant_id<>$3)),
+		EXISTS(SELECT 1 FROM inventory WHERE variant_id=$3 AND reserved_qty>0)`, newID, productID, variantID).Scan(&occupied, &reserved); err != nil {
+		return err
+	}
+	if occupied || reserved {
+		return fmt.Errorf("%w: новая запись уже связана или по варианту есть резерв", ErrInvalidInput)
+	}
+	if newCode != "" {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_external_ids WHERE provider='saby' AND id_type='code' AND external_id=$1 AND (product_id<>$2 OR variant_id IS NOT NULL AND variant_id<>$3))`, newCode, productID, variantID).Scan(&occupied); err != nil {
+			return err
+		}
+		if occupied {
+			return fmt.Errorf("%w: новый X-код уже связан с другой карточкой", ErrInvalidInput)
+		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP
+		WHERE product_id=$1 AND provider='saby' AND id_type IN ('id','code') AND
+		(variant_id=$2 OR variant_id IS NULL AND id_type='id' AND external_id=$3)`, productID, variantID, oldID); err != nil {
+		return err
+	}
+	// A single-size legacy card may also have its old X-code on the product.
+	if _, err = tx.Exec(ctx, `UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP
+		WHERE product_id=$1 AND variant_id IS NULL AND provider='saby' AND id_type='code'
+		AND (SELECT COUNT(*) FROM product_variants WHERE product_id=$1 AND archived_at IS NULL)=1`, productID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE product_variants SET saby_id=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, variantID, newID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE products SET saby_id=CASE WHEN saby_id=$2 THEN $3 ELSE saby_id END,
+		updated_at=CURRENT_TIMESTAMP WHERE id=$1`, productID, oldID, newID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,linked_by,confirmed_at)
+		VALUES($1,$2,'saby','id',$3,'active',TRUE,'manual',$4,CURRENT_TIMESTAMP)
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET variant_id=EXCLUDED.variant_id,status='active',is_primary=TRUE,
+			source='manual',linked_by=EXCLUDED.linked_by,confirmed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`, productID, variantID, newID, actor.CustomerID); err != nil {
+		return err
+	}
+	if newCode != "" {
+		if _, err = tx.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,linked_by,confirmed_at)
+			VALUES($1,$2,'saby','code',$3,'active',TRUE,'manual',$4,CURRENT_TIMESTAMP)
+			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET variant_id=EXCLUDED.variant_id,status='active',is_primary=TRUE,
+				source='manual',linked_by=EXCLUDED.linked_by,confirmed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`, productID, variantID, newCode, actor.CustomerID); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE inventory SET available_qty=0,synced_at=TIMESTAMPTZ '1970-01-01 00:00:00+00' WHERE variant_id=$1`, variantID); err != nil {
+		return err
+	}
+	if err = insertAudit(ctx, tx, actor, "variant.saby.relink", "variant", fmt.Sprint(variantID),
+		map[string]any{"sku": sku, "sabyId": oldID}, map[string]any{"sku": sku, "productId": productID, "sabyId": newID, "code": newCode}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
