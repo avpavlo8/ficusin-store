@@ -93,8 +93,8 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 				t.Fatal(err)
 			}
 			if _, err := pool.Exec(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,saby_id,canonical_variant_id,raw_name,
-				ordered_qty,invoiced_qty,unit_price,match_status,reconciliation_status,proposed_retail_rub,baseline_site_price_minor)
-				VALUES($1,$2,$3,'Threshold plant',1,1,100,'confirmed','matched',$4,$5)`, orderID, sabyID, variantID, tc.proposed, sitePrice*100); err != nil {
+				ordered_qty,invoiced_qty,unit_price,match_status,reconciliation_status,proposed_retail_rub,proposed_marketplace_rub,proposed_marketplace_strike_rub,baseline_site_price_minor)
+				VALUES($1,$2,$3,'Threshold plant',1,1,100,'confirmed','matched',$4,$4,$4,$5)`, orderID, sabyID, variantID, tc.proposed, sitePrice*100); err != nil {
 				t.Fatal(err)
 			}
 			batch, err := store.PrepareBatch(ctx, Actor{CustomerID: actorID, Role: "owner"}, orderID, "prices", []string{"site"})
@@ -192,6 +192,20 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 			var actionStatus string
 			if err := pool.QueryRow(ctx, `SELECT status FROM procurement_action_items WHERE id=$1`, items["saby_price"].ID).Scan(&actionStatus); err != nil || actionStatus != "skipped" {
 				t.Fatalf("stale external price status=%s err=%v", actionStatus, err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=$2,marketplace_scope='marketplaces' WHERE id=$1`, variantID, sitePrice*100); err != nil {
+				t.Fatal(err)
+			}
+			allowedBatch, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb", "ozon"})
+			if err != nil || len(allowedBatch.Items) != 2 {
+				t.Fatalf("allowed marketplace preview: items=%+v err=%v", allowedBatch.Items, err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE product_variants SET marketplace_scope='site_only' WHERE id=$1`, variantID); err != nil {
+				t.Fatal(err)
+			}
+			blockedBatch, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb", "ozon"})
+			if err != nil || len(blockedBatch.Items) != 0 {
+				t.Fatalf("site-only SKU must have no marketplace proposals: items=%+v err=%v", blockedBatch.Items, err)
 			}
 		})
 	}

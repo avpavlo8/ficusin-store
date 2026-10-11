@@ -539,6 +539,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				AND ozon_product.external_id = directory.ozon_articles[1]
 			CROSS JOIN (VALUES ('site'), ('wb'), ('ozon')) AS channel(name)
 				WHERE channel.name = ANY($3::TEXT[])
+				AND (channel.name='site' OR pv.marketplace_scope<>'site_only')
 				AND p.canonical_variant_id IS NOT NULL
 				AND (COALESCE(p.baseline_site_price_minor,pv.base_price_minor,0) <= 0
 					OR ABS(p.retail::NUMERIC - COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100)
@@ -798,6 +799,9 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_items SET status = CASE
 				WHEN channel = 'site' THEN 'completed'
+				WHEN channel IN ('wb','ozon') AND EXISTS (
+					SELECT 1 FROM procurement_order_lines line JOIN product_variants pv ON pv.id=line.canonical_variant_id
+					WHERE line.id=procurement_action_items.procurement_order_line_id AND pv.marketplace_scope='site_only') THEN 'skipped'
 				WHEN channel = 'wb' AND $2 AND external_article <> '' THEN 'queued'
 				WHEN channel = 'ozon' AND $3 AND external_article <> '' THEN 'queued'
 				WHEN channel = 'saby_receipt' AND $4 THEN 'queued'
@@ -806,6 +810,9 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 				WHEN channel IN ('wb', 'ozon', 'avito') AND external_article = '' THEN 'skipped'
 				ELSE 'not_configured' END,
 			error_message = CASE
+				WHEN channel IN ('wb','ozon') AND EXISTS (
+					SELECT 1 FROM procurement_order_lines line JOIN product_variants pv ON pv.id=line.canonical_variant_id
+					WHERE line.id=procurement_action_items.procurement_order_line_id AND pv.marketplace_scope='site_only') THEN 'Маркетплейсы отключены для SKU на сайте.'
 				WHEN channel = 'site' OR (channel = 'wb' AND $2 AND external_article <> '') OR (channel = 'ozon' AND $3 AND external_article <> '')
 					OR (channel = 'saby_receipt' AND $4) OR (channel = 'saby_price' AND $5) OR (channel = 'avito' AND $6 AND external_article <> '') THEN ''
 				WHEN channel = 'wb' AND external_article = '' THEN 'Не заполнен WB nmID. Укажите его в справочнике закупок или нажмите «Сопоставить из зеркала».'
@@ -1087,6 +1094,17 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 				return false, fmt.Errorf("check marketplace link before upload: %w", err)
 			}
 			stale = changedLinks > 0
+			if !stale {
+				var disallowed int
+				if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_action_items item
+					JOIN procurement_order_lines line ON line.id=item.procurement_order_line_id
+					JOIN product_variants variant ON variant.id=line.canonical_variant_id
+					WHERE item.batch_id=$1 AND item.channel=$2 AND item.status IN ('queued','processing')
+					AND variant.marketplace_scope='site_only'`, batchID, channel).Scan(&disallowed); err != nil {
+					return false, fmt.Errorf("check marketplace scope before upload: %w", err)
+				}
+				stale = disallowed > 0
+			}
 		}
 	}
 	if !stale {
@@ -1094,7 +1112,7 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_items SET status='skipped',
-			error_message='Цена сайта, расчёт закупки или связь с каналом изменились после подтверждения. Проверьте товар и подготовьте цену снова.',
+		error_message='Цена сайта, расчёт закупки, связь или разрешённые каналы изменились после подтверждения. Проверьте товар и подготовьте цену снова.',
 			locked_until=NULL,lock_owner='',lock_token=lock_token+1,updated_at=CURRENT_TIMESTAMP
 		WHERE batch_id=$1 AND channel=$2 AND status IN ('queued','processing')
 			AND COALESCE(external_operation_id,'')=''
@@ -1122,9 +1140,9 @@ func (store *PostgresStore) guardClaimedManualPriceActions(ctx context.Context, 
 	var batchID int64
 	var channel string
 	var expectedSitePrice, currentSitePrice int64
-	var externalArticle, currentArticle string
+	var externalArticle, currentArticle, marketplaceScope string
 	if err := tx.QueryRow(ctx, `SELECT batch.id,item.channel,
-		batch.manual_site_price_minor,variant.base_price_minor,item.external_article,
+		batch.manual_site_price_minor,variant.base_price_minor,item.external_article,variant.marketplace_scope,
 		CASE item.channel WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
 			WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1],'')
 			ELSE COALESCE(directory.master_code,'') END
@@ -1133,14 +1151,14 @@ func (store *PostgresStore) guardClaimedManualPriceActions(ctx context.Context, 
 		JOIN product_variants variant ON variant.id=batch.manual_variant_id
 		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
 		WHERE item.id=$1 FOR SHARE OF variant`, item.ID).Scan(&batchID, &channel,
-		&expectedSitePrice, &currentSitePrice, &externalArticle, &currentArticle); err != nil {
+		&expectedSitePrice, &currentSitePrice, &externalArticle, &marketplaceScope, &currentArticle); err != nil {
 		return false, fmt.Errorf("check manual price and link before upload: %w", err)
 	}
-	if expectedSitePrice == currentSitePrice && externalArticle != "" && externalArticle == currentArticle {
+	if expectedSitePrice == currentSitePrice && externalArticle != "" && externalArticle == currentArticle && (!oneOf(channel, "wb", "ozon") || marketplaceScope != "site_only") {
 		return true, tx.Commit(ctx)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE procurement_action_items SET status='skipped',
-		error_message='Цена сайта или связь с каналом изменились после подтверждения. Подготовьте предложение снова.',
+		error_message='Цена сайта, связь или разрешённые каналы изменились после подтверждения. Подготовьте предложение снова.',
 		locked_until=NULL,lock_owner='',lock_token=lock_token+1,updated_at=CURRENT_TIMESTAMP
 		WHERE batch_id=$1 AND channel=$2 AND status IN ('queued','processing')
 			AND COALESCE(external_operation_id,'')=''`, batchID, channel); err != nil {
