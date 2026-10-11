@@ -3,6 +3,7 @@ import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
 import { PushToggle } from "./PushToggle";
 import { useSharedCart } from "./lib/cart";
 import { sharedAPIJSON } from "./lib/api";
+import { money } from "./lib/money";
 
 export type StoreUser = {
   id: number;
@@ -86,12 +87,6 @@ const paymentLabels: Record<string, string> = {
   cancelled: "Оплата отменена",
   refunded: "Возвращён",
 };
-
-const money = new Intl.NumberFormat("ru-RU", {
-  style: "currency",
-  currency: "RUB",
-  maximumFractionDigits: 0,
-});
 
 // Ступени скидки повторяют backend/internal/order/loyalty.go: каждые
 // 10 000 ₽ выполненных заказов — один процент, потолок — десять процентов.

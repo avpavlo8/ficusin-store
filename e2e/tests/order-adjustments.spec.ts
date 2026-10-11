@@ -100,6 +100,7 @@ test("@desktop отменённый предзаказ не обещает бу�
 
   await expect(page.getByText("Заказ отменён. Если растения ещё нужны, оформите новый заказ по актуальным цене и наличию.")).toBeVisible();
   await expect(page.getByText("Сумма отменённого заказа")).toBeVisible();
+  await expect(page.locator(".order-totals")).toContainText("3 890,70 ₽");
   await expect(page.getByText("К доплате")).toHaveCount(0);
   await expect(page.getByText(/Оплата откроется после подтверждения/)).toHaveCount(0);
   await expect(page.getByText(/после его решения здесь появится кнопка оплаты/)).toHaveCount(0);
