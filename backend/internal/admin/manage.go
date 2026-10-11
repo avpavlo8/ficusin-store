@@ -406,6 +406,9 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 		}
 	}
 	if status == "cancelled" {
+		if err := order.CancelOpenShipmentOffers(ctx, tx, id); err != nil {
+			return Order{}, err
+		}
 		// An unfinished payment for a cancelled order is over. Left open it
 		// would keep the reconciliation loop asking YooKassa about it every
 		// minute for nothing.

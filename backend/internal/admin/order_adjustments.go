@@ -102,11 +102,17 @@ func releaseOrderReservationsForEdit(ctx context.Context, tx pgx.Tx, orderID int
 
 func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quantity int) (int, bool, error) {
 	// The availability snapshot decides whether manager review is needed.
-	// Editing an order no longer creates any local inventory reservation.
+	// Use confirmed Saby stock: other warehouses and stale local values cannot
+	// turn a request into an immediately payable order. No reservation is made.
 	var available int
 	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(SUM(GREATEST(available_qty-reserved_qty,0)),0)::INTEGER
-		FROM inventory WHERE variant_id=$1
+		SELECT COALESCE(SUM(GREATEST(i.available_qty-i.reserved_qty,0)),0)::INTEGER
+		FROM inventory i
+		JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+		JOIN product_variants v ON v.id=i.variant_id
+		JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
+		JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
+		WHERE i.variant_id=$1 AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 	`, variantID).Scan(&available); err != nil {
 		return 0, false, err
 	}
@@ -155,8 +161,8 @@ func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id i
 // EditOrder replaces the requested composition transactionally. Existing
 // lines keep the price agreed when the order was placed; newly added lines
 // use today's storefront price and the customer's current retail discount.
-// Stock reservations are released and rebuilt in the same transaction, so an
-// edit can never silently sell more than the shelf contains.
+// Historical stock reservations are released. Editing does not create a new
+// reservation; the stock snapshot only decides whether manager review is needed.
 func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor, id int64, edit OrderEdit) (Order, error) {
 	if !Can(actor.Role, PermissionOrdersEdit) {
 		return Order{}, ErrForbidden

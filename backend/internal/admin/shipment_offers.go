@@ -184,7 +184,10 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 func (repository *PostgresRepository) SendShipmentOffer(ctx context.Context,actor Actor,offerID int64)(ShipmentOffer,error){
 	if !Can(actor.Role,PermissionOrdersEdit){return ShipmentOffer{},ErrForbidden}
 	tx,err:=repository.pool.BeginTx(ctx,pgx.TxOptions{});if err!=nil{return ShipmentOffer{},err};defer func(){_ = tx.Rollback(ctx)}()
-	var orderID int64;var offerStatus,email,number,addressSnapshot,address string;var revision,offerRevision,boxes int
+	var orderID int64;var offerStatus,email,number,addressSnapshot,address,orderStatus string;var revision,offerRevision,boxes int
+	if err:=tx.QueryRow(ctx,`SELECT order_id FROM shipment_offers WHERE id=$1`,offerID).Scan(&orderID);err!=nil{return ShipmentOffer{},err}
+	if err:=tx.QueryRow(ctx,`SELECT status FROM orders WHERE id=$1 FOR UPDATE`,orderID).Scan(&orderStatus);err!=nil{return ShipmentOffer{},err}
+	if orderStatus=="cancelled"||orderStatus=="completed"||orderStatus=="shipped"{return ShipmentOffer{},errors.New("для закрытого или отправленного заказа нельзя отправить предложение")}
 	if err:=tx.QueryRow(ctx,`SELECT so.order_id,so.status,COALESCE(o.email,''),o.order_number,so.address_snapshot,o.address,so.order_revision,o.shipment_revision,(SELECT COUNT(*) FROM shipment_offer_boxes WHERE shipment_offer_id=so.id) FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.id=$1 FOR UPDATE`,offerID).Scan(&orderID,&offerStatus,&email,&number,&addressSnapshot,&address,&offerRevision,&revision,&boxes);err!=nil{return ShipmentOffer{},err}
 	if offerStatus=="offered"||offerStatus=="payment_pending"||offerStatus=="paid"{if err:=tx.Commit(ctx);err!=nil{return ShipmentOffer{},err};return repository.ShipmentOffer(ctx,offerID)}
 	if offerStatus!="draft"{return ShipmentOffer{},errors.New("сначала завершите упаковку и пересчитайте доставку")}

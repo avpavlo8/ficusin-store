@@ -64,14 +64,14 @@ func balanceFromState(state orderMoneyState) Balance {
 
 	status := StatusPending
 	switch {
-	case state.method == MethodOnDelivery:
-		status = StatusOnDelivery
-	case state.method == MethodInvoice:
-		status = StatusInvoice
 	case state.status == "cancelled" && net == 0 && refunded > 0:
 		status = "refunded"
 	case state.status == "cancelled":
 		status = StatusCancelled
+	case state.method == MethodOnDelivery:
+		status = StatusOnDelivery
+	case state.method == MethodInvoice:
+		status = StatusInvoice
 	case total > 0 && due == 0 && overpaid == 0:
 		status = StatusPaid
 	case net > 0:
@@ -300,17 +300,20 @@ func (service *Service) StartShipmentOffer(ctx context.Context, token string, cu
 	}
 	token = strings.TrimSpace(token)
 	var offerID, orderID int64
-	var number, email, phone, status, addressSnapshot, address string
+	var number, email, phone, status, orderStatus, addressSnapshot, address string
 	var amount float64
 	var expires time.Time
 	var offerRevision, revision int
 	var deliveryPayee string
-	err := service.pool.QueryRow(ctx, `SELECT so.id,o.id,o.order_number,COALESCE(o.email,''),o.phone,so.status,(CASE WHEN so.delivery_payee='carrier' THEN so.subtotal ELSE so.total END)::DOUBLE PRECISION,so.delivery_payee,so.expires_at,so.address_snapshot,o.address,so.order_revision,o.shipment_revision FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.public_token=$1 AND o.customer_id=$2`, token, customerID).Scan(&offerID, &orderID, &number, &email, &phone, &status, &amount, &deliveryPayee, &expires, &addressSnapshot, &address, &offerRevision, &revision)
+	err := service.pool.QueryRow(ctx, `SELECT so.id,o.id,o.order_number,COALESCE(o.email,''),o.phone,so.status,o.status,(CASE WHEN so.delivery_payee='carrier' THEN so.subtotal ELSE so.total END)::DOUBLE PRECISION,so.delivery_payee,so.expires_at,so.address_snapshot,o.address,so.order_revision,o.shipment_revision FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.public_token=$1 AND o.customer_id=$2`, token, customerID).Scan(&offerID, &orderID, &number, &email, &phone, &status, &orderStatus, &amount, &deliveryPayee, &expires, &addressSnapshot, &address, &offerRevision, &revision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", errors.New("предложение отправки не найдено")
 	}
 	if err != nil {
 		return "", err
+	}
+	if orderStatus == "cancelled" || orderStatus == "completed" || orderStatus == "shipped" {
+		return "", errors.New("заказ закрыт — оплатить отправку нельзя")
 	}
 	if status == "paid" {
 		return "", errors.New("эта отправка уже оплачена")
@@ -391,6 +394,13 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var orderStatus string
+	if err := tx.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1 FOR UPDATE`, orderID).Scan(&orderStatus); err != nil {
+		return 0, err
+	}
+	if orderStatus == "cancelled" || orderStatus == "completed" || orderStatus == "shipped" {
+		return 0, errors.New("заказ закрыт — оплатить отправку нельзя")
+	}
 	var status string
 	if err := tx.QueryRow(ctx, `SELECT status FROM shipment_offers WHERE id=$1 FOR UPDATE`, offerID).Scan(&status); err != nil {
 		return 0, err
