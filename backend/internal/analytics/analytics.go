@@ -267,10 +267,10 @@ func (store *Store) RecordOrder(ctx context.Context, orderNumber string, total f
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO analytics_events(event_id,event_name,visitor_id,session_id,occurred_at,page_path,source,medium,campaign,content,term,product_code,sku,order_number,value,quantity,properties,trusted)
-		SELECT gen_random_uuid(),'order_item_purchased',$2,$3,CURRENT_TIMESTAMP,'/checkout',$4,$5,$6,$7,$8,p.product_code::text,oi.sku,$1,(oi.unit_price*oi.quantity),oi.quantity,jsonb_build_object('name',oi.product_name),1
+		SELECT gen_random_uuid(),'order_item_requested',$2,$3,CURRENT_TIMESTAMP,'/checkout',$4,$5,$6,$7,$8,p.product_code::text,oi.sku,$1,(oi.unit_price*oi.quantity),oi.quantity,jsonb_build_object('name',oi.product_name),1
 		FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN products p ON p.id=oi.product_id WHERE o.order_number=$1`, orderNumber, visitor, session, clean(attribution.Source, 120), clean(attribution.Medium, 120), clean(attribution.Campaign, 200), clean(attribution.Content, 200), clean(attribution.Term, 200))
 	if err != nil {
-		return fmt.Errorf("record purchased items: %w", err)
+		return fmt.Errorf("record requested items: %w", err)
 	}
 	return tx.Commit(ctx)
 }

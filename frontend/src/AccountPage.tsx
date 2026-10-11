@@ -277,8 +277,8 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
       <div><small>Способ получения</small><span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span></div>
       {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
       {order.trackNumber && <div><small>Трек-номер СДЭК</small><span><a href={`https://www.cdek.ru/ru/tracking?order_id=${encodeURIComponent(order.trackNumber)}`} target="_blank" rel="noreferrer">{order.trackNumber}</a></span></div>}
-      <div><small>Оплата</small><span className={order.paymentStatus === "paid" ? "payment-state paid" : order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
-      {order.paymentStatus === "pending" && order.paymentReady === true && !order.hasPreorder && !order.deliveryFeePending && <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>{order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"}: {money.format(order.total)}</button>}
+      <div><small>Оплата</small><span className={order.paymentStatus === "paid" ? "payment-state paid" : order.status !== "cancelled" && order.paymentStatus === "pending" ? "payment-state unpaid" : "payment-state"}>{order.status === "cancelled" && ["pending", "manager_confirmation", "payment_provider_pending"].includes(order.paymentStatus) ? "Оплата не требуется" : paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
+      {order.status !== "cancelled" && order.paymentStatus === "pending" && order.paymentReady === true && !order.hasPreorder && !order.deliveryFeePending && <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>{order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"}: {money.format(order.total)}</button>}
       <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
       {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
     </section>
