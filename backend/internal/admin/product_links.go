@@ -19,6 +19,7 @@ type VariantLinks struct {
 	ID               int64                  `json:"id"`
 	SKU              string                 `json:"sku"`
 	Label            string                 `json:"label"`
+	SabyID           string                 `json:"sabyId"`
 	SitePriceRub     float64                `json:"sitePriceRub"`
 	ChannelPricesRub map[string]*float64    `json:"channelPricesRub"`
 	Channels         map[string]ChannelLink `json:"channels"`
@@ -131,6 +132,7 @@ func (repository *PostgresRepository) ListProductLinks(ctx context.Context) ([]P
 			continue
 		}
 		variant.Channels = emptyChannelLinks()
+		variant.SabyID = sabyID
 		variant.ChannelPricesRub = map[string]*float64{"saby": sabyPrice, "wb": wbPrice, "ozon": ozonPrice}
 		for _, item := range [][2]string{{"saby", sabyID}, {"wb", wbID}, {"wb", wbArticle}, {"ozon", ozonID}, {"ozon", ozonArticle}} {
 			appendLink(variant.Channels, item[0], item[1], "")

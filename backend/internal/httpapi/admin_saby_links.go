@@ -12,6 +12,7 @@ import (
 type sabyLinkRepository interface {
 	SearchSabyLinkCandidates(context.Context, string) ([]admin.SabyLinkCandidate, error)
 	LinkVariantToSaby(context.Context, admin.Actor, int64, string) error
+	RebindVariantToSaby(context.Context, admin.Actor, int64, string, string) error
 }
 
 func sabyLinkCandidatesHandler(handlers adminHandlers) http.HandlerFunc {
@@ -77,5 +78,44 @@ func linkVariantToSabyHandler(handlers adminHandlers) http.HandlerFunc {
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{"linked": true})
+	}
+}
+
+func rebindVariantToSabyHandler(handlers adminHandlers) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+		if !ok {
+			return
+		}
+		if actor.Role != admin.RoleOwner {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять связь со СБИС"})
+			return
+		}
+		variantID, ok := pimPathID(response, request, "variantId")
+		if !ok {
+			return
+		}
+		var input struct {
+			OldSabyID string `json:"oldSabyId"`
+			NewSabyID string `json:"newSabyId"`
+		}
+		if decodeJSON(request, &input) != nil || strings.TrimSpace(input.OldSabyID) == "" || strings.TrimSpace(input.NewSabyID) == "" {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите старую и новую записи СБИС"})
+			return
+		}
+		repository, ok := handlers.repository.(sabyLinkRepository)
+		if !ok {
+			handlers.failed(response, "Saby links unavailable", errors.New("Saby links unavailable"))
+			return
+		}
+		if err := repository.RebindVariantToSaby(request.Context(), actor, variantID, input.OldSabyID, input.NewSabyID); err != nil {
+			if errors.Is(err, admin.ErrInvalidInput) {
+				writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+				return
+			}
+			handlers.failed(response, "rebind variant to Saby", err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"relinked": true})
 	}
 }

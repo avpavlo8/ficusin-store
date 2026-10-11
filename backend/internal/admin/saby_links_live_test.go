@@ -25,11 +25,13 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("manual-link-%d", unique)
 	secondSabyID := fmt.Sprintf("manual-link-second-%d", unique)
+	replacementSabyID := fmt.Sprintf("manual-link-replacement-%d", unique)
 	code := fmt.Sprintf("X%d", unique)
 	var productID, variantID, secondVariantID, ownerID int64
 	defer func() {
 		if variantID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='variant.saby.link' AND entity_id=$1`, fmt.Sprint(variantID))
+			_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='variant.saby.relink' AND entity_id=$1`, fmt.Sprint(variantID))
 		}
 		if secondVariantID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='variant.saby.link' AND entity_id=$1`, fmt.Sprint(secondVariantID))
@@ -39,6 +41,7 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 		}
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID)
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, secondSabyID)
+		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, replacementSabyID)
 		if ownerID != 0 {
 			_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, ownerID)
 		}
@@ -141,5 +144,35 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	}
 	if productSabyID != sabyID || len(fields) != 2 || fields[0] != "description" || fields[1] != "stock" {
 		t.Fatalf("second link product saby=%q fields=%v", productSabyID, fields)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Тестовый фикус замена')`, replacementSabyID, code+"-replacement"); err != nil {
+		t.Fatal(err)
+	}
+	owner := Actor{Role: RoleOwner, CustomerID: ownerID}
+	if err = repository.RebindVariantToSaby(ctx, owner, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("current Saby record must block rebind: %v", err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE saby_nomenclature SET missing_since=CURRENT_TIMESTAMP WHERE saby_id=$1`, sabyID); err != nil {
+		t.Fatal(err)
+	}
+	if err = repository.RebindVariantToSaby(ctx, Actor{Role: RoleManager}, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("manager rebind: %v", err)
+	}
+	if err = repository.RebindVariantToSaby(ctx, owner, variantID, sabyID, replacementSabyID); err != nil {
+		t.Fatal(err)
+	}
+	var oldStatus, newStatus, activeCode string
+	if err = pool.QueryRow(ctx, `SELECT v.saby_id,p.saby_id,
+		(SELECT status FROM product_external_ids WHERE provider='saby' AND id_type='id' AND external_id=$2),
+		(SELECT status FROM product_external_ids WHERE provider='saby' AND id_type='id' AND external_id=$3),
+		(SELECT external_id FROM product_external_ids WHERE variant_id=$1 AND provider='saby' AND id_type='code' AND status='active')
+		FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1`, variantID, sabyID, replacementSabyID).Scan(&variantSabyID, &productSabyID, &oldStatus, &newStatus, &activeCode); err != nil {
+		t.Fatal(err)
+	}
+	if variantSabyID != replacementSabyID || productSabyID != replacementSabyID || oldStatus != "legacy" || newStatus != "active" || activeCode != code+"-replacement" {
+		t.Fatalf("rebind=%q/%q old=%q new=%q code=%q", variantSabyID, productSabyID, oldStatus, newStatus, activeCode)
+	}
+	if err = repository.RebindVariantToSaby(ctx, owner, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("stale expected identity must block rebind: %v", err)
 	}
 }
