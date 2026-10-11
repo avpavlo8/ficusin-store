@@ -233,8 +233,8 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 
 	t.Run("отмена закрывает неоплаченную отправку и её письмо", func(t *testing.T) {
 		var cancelID, offerID, paidOfferID int64
-		if err := pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,subtotal,total,status)
-			VALUES($1,'Отмена отправки','+70000000000','offer-cancel@example.invalid','pickup',100,100,'new') RETURNING id`, fmt.Sprintf("CI-OFFER-CANCEL-%d", unique)).Scan(&cancelID); err != nil {
+		if err := pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,subtotal,delivery_fee,total,status)
+			VALUES($1,'Отмена отправки','+70000000000','offer-cancel@example.invalid','pickup',100,0,100,'new') RETURNING id`, fmt.Sprintf("CI-OFFER-CANCEL-%d", unique)).Scan(&cancelID); err != nil {
 			t.Fatal(err)
 		}
 		defer func() {
