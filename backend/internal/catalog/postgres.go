@@ -316,15 +316,11 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	return detail, nil
 }
 
-// resolveLegacyCode preserves indexed links from the catalogue before the
-// immutable numeric Ficusin codes were introduced. An alias is accepted only
-// when the surviving Saby identifier points to exactly one published product;
-// ambiguity deliberately remains a 404 instead of redirecting to a wrong item.
+// resolveLegacyCode preserves old product URLs. Explicit aliases also cover
+// numeric codes of published cards consolidated into a surviving product.
+// Unmapped Saby identifiers resolve only when they identify one product.
 func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, code string) (string, error) {
 	const prefix = "saby-"
-	if !strings.HasPrefix(strings.ToLower(code), prefix) {
-		return code, nil
-	}
 	var resolved string
 	err := repository.pool.QueryRow(ctx, `
 		SELECT product.product_code::TEXT
@@ -337,6 +333,9 @@ func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, cod
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", fmt.Errorf("resolve product URL alias: %w", err)
+	}
+	if !strings.HasPrefix(strings.ToLower(code), prefix) {
+		return code, nil
 	}
 	externalID := strings.TrimSpace(code[len(prefix):])
 	if externalID == "" {

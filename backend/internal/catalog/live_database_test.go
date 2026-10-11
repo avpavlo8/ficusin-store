@@ -321,3 +321,37 @@ func TestDocumentedLegacyURLAliasResolvesOnLiveDatabase(t *testing.T) {
 		t.Fatalf("resolved=%q want=%q", resolved, expected)
 	}
 }
+
+func TestNumericProductURLAliasResolvesOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	unique := time.Now().UnixNano()
+	var productID, productCode int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO products(name,slug,status,catalog_section)
+		VALUES($1,$2,'published','plants') RETURNING id,product_code
+	`, "Numeric alias fixture", fmt.Sprintf("numeric-alias-%d", unique)).Scan(&productID, &productCode); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	oldCode := fmt.Sprint(unique)
+	if _, err := pool.Exec(ctx, `INSERT INTO product_url_aliases(alias,product_id) VALUES($1,$2)`, oldCode, productID); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := NewPostgresRepository(pool).resolveLegacyCode(ctx, oldCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != fmt.Sprint(productCode) {
+		t.Fatalf("resolved=%q want=%d", resolved, productCode)
+	}
+}
