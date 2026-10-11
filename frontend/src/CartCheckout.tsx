@@ -1,6 +1,7 @@
 import type { Dispatch, FormEventHandler, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput } from "./lib/phone";
+import { formatMoney } from "./lib/money";
 import { track } from "./lib/analytics";
 
 export type CartLine = {
@@ -28,12 +29,7 @@ type CartDrawerProps = {
   onRetry?: () => void;
 };
 
-const money = (value: number) =>
-  new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    maximumFractionDigits: 0,
-  }).format(value);
+const money = formatMoney;
 
 function LineIcon({ name }: { name: "close" | "trash" }) {
   const paths = {

@@ -1,10 +1,9 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Role } from "./adminTypes";
+export { money } from "./lib/money";
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
 export const sabyFieldLabels: Record<string, string> = { stock: "остаток", price: "цена", name: "название", description: "описание", photo: "фото" };
-
-export const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 });
 
 export const roles: Array<{ value: Role; label: string }> = [
   { value: "", label: "Без доступа" }, { value: "manager", label: "Менеджер" }, { value: "administrator", label: "Администратор" },

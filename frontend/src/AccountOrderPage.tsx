@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
+import { money } from "./lib/money";
 
 type StoreUser = {
   fullName: string;
@@ -38,12 +39,6 @@ type OrderDetail = {
 };
 
 type ShipmentOffer = { id:number;paymentToken?:string;status:string;deliveryFee:number;deliveryPayee?:"shop"|"carrier";subtotal:number;total:number;notifiedAt?:string;expiresAt?:string;boxes:number;items:Array<{productName:string;unitPrice:number;originalUnitPrice?:number;quantity:number}> };
-
-const money = new Intl.NumberFormat("ru-RU", {
-  style: "currency",
-  currency: "RUB",
-  maximumFractionDigits: 0,
-});
 
 const orderStatusLabels: Record<string, string> = {
   new: "Новый",

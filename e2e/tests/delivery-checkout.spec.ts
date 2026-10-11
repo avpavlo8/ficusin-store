@@ -36,8 +36,8 @@ test("@desktop оформление показывает персональну�
 
   const summary = page.locator(".checkout-order-summary");
   await expect(summary).toContainText(/Растения без скидки\s*1.?490/);
-  await expect(summary).toContainText(/Персональная скидка 1%\s*−15/);
-  await expect(summary).toContainText(/Итого к оплате\s*1.?475/);
+  await expect(summary).toContainText(/Персональная скидка 1%\s*−14,90/);
+  await expect(summary).toContainText(/Итого к оплате\s*1.?475,10/);
 });
 
 test("@desktop стоимость СДЭК входит в сумму онлайн-заказа", async ({ page }) => {
