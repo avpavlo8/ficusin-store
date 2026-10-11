@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
 import { normalizeRussianPhone } from "./lib/phone";
+import { discountedPrice } from "./lib/checkoutPrice";
 import { getAttribution, track, trackYandexPurchase } from "./lib/analytics";
 
 type Cart = Record<string, number>;
@@ -36,10 +37,11 @@ type UseCheckoutArgs = {
   cartCount: number;
   setCart: Dispatch<SetStateAction<Cart>>;
   setNotice: Dispatch<SetStateAction<string>>;
+  discountBps: number;
   initialOpen?: boolean;
 };
 
-export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialOpen = false }: UseCheckoutArgs) {
+export function useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps, initialOpen = false }: UseCheckoutArgs) {
   const [checkoutOpen, setCheckoutOpen] = useState(initialOpen);
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
@@ -136,7 +138,9 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
     () => baseDeliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable),
     [cdekAvailable],
   );
-  const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const originalSubtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cartLines.reduce((sum, item) => sum + discountedPrice(item.price, discountBps) * item.quantity, 0);
+  const discountAmount = Math.round((originalSubtotal - subtotal) * 100) / 100;
   const hasPreorder = cartLines.some((item) => item.stock !== undefined && item.stock < item.quantity);
   const availableDelivery = deliveryOptions;
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
@@ -261,7 +265,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       }
 	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
 	  if (!hasPreorder) track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
-      trackYandexPurchase(data.orderNumber, subtotal, cartLines.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity })));
+      trackYandexPurchase(data.orderNumber, subtotal, cartLines.map((item) => ({ id: item.id, name: item.name, price: discountedPrice(item.price, discountBps), quantity: item.quantity })));
       setOrderConfirmationPending(needsManagerConfirmation || deliveryFeePending || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
       setOrderNumber(data.orderNumber);
       setCart({});
@@ -345,6 +349,9 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, initialO
       paymentMethod,
       setPaymentMethod,
       subtotal,
+      originalSubtotal,
+      discountAmount,
+      discountBps,
       deliveryFee,
       total,
       submitting,
