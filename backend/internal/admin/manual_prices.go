@@ -83,9 +83,10 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	}
 	var productID int64
 	var sabyID, sabyCode, wbID, ozonID string
+	var marketplaceScope string
 	var height float64
 	var packageRUB, logisticsRate, returnRate, marketplaceRate, taxRate, reserveRate, strikeRate float64
-	err := tx.QueryRow(ctx, `SELECT v.product_id,COALESCE(v.saby_id,''),COALESCE(n.code,''),
+	err := tx.QueryRow(ctx, `SELECT v.product_id,COALESCE(v.saby_id,''),COALESCE(n.code,''),v.marketplace_scope,
 		COALESCE(directory.wb_nm_ids[1],''),COALESCE(directory.ozon_articles[1],''),
 		COALESCE(v.height_cm,0),s.package_rub::float8,s.marketplace_logistics_per_cm::float8,
 		s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8
@@ -93,7 +94,7 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 		LEFT JOIN saby_nomenclature n ON n.saby_id=v.saby_id
 		LEFT JOIN canonical_product_directory directory ON directory.variant_id=v.id
 		CROSS JOIN procurement_pricing_settings s
-		WHERE v.id=$1 AND s.id=1`, variantID).Scan(&productID, &sabyID, &sabyCode, &wbID, &ozonID, &height,
+		WHERE v.id=$1 AND s.id=1`, variantID).Scan(&productID, &sabyID, &sabyCode, &marketplaceScope, &wbID, &ozonID, &height,
 		&packageRUB, &logisticsRate, &returnRate, &marketplaceRate, &taxRate, &reserveRate, &strikeRate)
 	if err != nil {
 		return fmt.Errorf("load manual price channels: %w", err)
@@ -127,6 +128,9 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	}{
 		{"wb", wbID, market, &strike}, {"ozon", ozonID, market, &strike},
 	} {
+		if marketplaceScope == "site_only" {
+			continue
+		}
 		var old *float64
 		message := ""
 		if channel.article == "" {
@@ -334,6 +338,7 @@ func (repository *PostgresRepository) RetryManualPriceProposal(ctx context.Conte
 		WHERE item.id=$1 AND item.batch_id=batch.id AND batch.source='manual'
 			AND item.status IN ('failed','not_configured') AND item.channel IN ('wb','ozon')
 			AND item.external_article<>'' AND variant.base_price_minor=batch.manual_site_price_minor
+			AND variant.marketplace_scope<>'site_only'
 			AND item.external_article=CASE item.channel
 				WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
 				ELSE COALESCE(directory.ozon_articles[1],'') END`, proposalID)
@@ -392,7 +397,7 @@ func (repository *PostgresRepository) ApproveManualPriceProposal(ctx context.Con
 		AND (item.channel NOT IN ('wb','ozon') OR EXISTS (
 			SELECT 1 FROM product_variants variant
 			LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
-			WHERE variant.id=batch.manual_variant_id AND item.external_article=CASE item.channel
+			WHERE variant.id=batch.manual_variant_id AND variant.marketplace_scope<>'site_only' AND item.external_article=CASE item.channel
 				WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
 				ELSE COALESCE(directory.ozon_articles[1],'') END))
 		RETURNING item.id,item.channel,item.external_article,item.old_value::float8,item.new_value::float8,
