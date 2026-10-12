@@ -198,7 +198,10 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 			return fmt.Errorf("preserve Avito links: %w", err)
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO product_attribute_values(product_id,attribute_id,value,source,updated_at)
-			SELECT $1,attribute_id,value,source,CURRENT_TIMESTAMP FROM product_attribute_values WHERE product_id=$2
+			SELECT $1,value.attribute_id,value.value,value.source,CURRENT_TIMESTAMP
+			FROM product_attribute_values value
+			JOIN attribute_definitions definition ON definition.id=value.attribute_id AND definition.value_scope='product'
+			WHERE value.product_id=$2
 			ON CONFLICT(product_id,attribute_id) DO NOTHING`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("preserve product attributes: %w", err)
 		}
@@ -486,7 +489,7 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 			ORDER BY value.product_id)
 		FROM product_attribute_values value
 		JOIN attribute_definitions definition ON definition.id=value.attribute_id
-		WHERE value.product_id=ANY($1)
+		WHERE value.product_id=ANY($1) AND definition.value_scope='product'
 		GROUP BY definition.id, definition.code
 		HAVING count(DISTINCT value.value)>1
 		ORDER BY definition.code LIMIT 1`, ids).Scan(&conflictingAttributeCode, &conflictingAttributeValues)
