@@ -91,6 +91,14 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 			short_description=COALESCE(NULLIF(target.short_description,''),source.short_description),
 			description=COALESCE(NULLIF(target.description,''),source.description),
 			care_instructions=COALESCE(NULLIF(target.care_instructions,''),source.care_instructions),
+			plant_kind=COALESCE(NULLIF(target.plant_kind,''),source.plant_kind),
+			light_level=COALESCE(NULLIF(target.light_level,''),source.light_level),
+			watering=COALESCE(NULLIF(target.watering,''),source.watering),
+			height_class=COALESCE(NULLIF(target.height_class,''),source.height_class),
+			care_level=COALESCE(NULLIF(target.care_level,''),source.care_level),
+			placement=COALESCE(NULLIF(target.placement,''),source.placement),
+			pet_safety=COALESCE(NULLIF(target.pet_safety,''),source.pet_safety),
+			growth_habit=COALESCE(NULLIF(target.growth_habit,''),source.growth_habit),
 			plant_passport=CASE WHEN target.plant_passport='{}'::jsonb THEN source.plant_passport ELSE target.plant_passport END,
 			important_warnings=CASE WHEN cardinality(target.important_warnings)=0 THEN source.important_warnings ELSE target.important_warnings END
 			FROM products source WHERE target.id=$1 AND source.id=$2`, target.ID, sourceID); err != nil {
@@ -153,6 +161,20 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 		}
 		if _, err = tx.Exec(ctx, `UPDATE product_variants SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move SKU variants: %w", err)
+		}
+		// A product-level primary ID from each source cannot remain product-level:
+		// one merged card may have only one primary per provider/type. A source
+		// with one SKU has an unambiguous owner, so scope its IDs to that SKU.
+		if len(source.VariantIDs) == 1 {
+			if _, err = tx.Exec(ctx, `UPDATE product_external_ids external SET
+				is_primary=CASE WHEN EXISTS(SELECT 1 FROM product_external_ids current
+					WHERE current.variant_id=$1 AND current.provider=external.provider
+					AND current.id_type=external.id_type AND current.status='active' AND current.is_primary)
+					THEN FALSE ELSE external.is_primary END,
+				variant_id=$1,updated_at=CURRENT_TIMESTAMP
+				WHERE external.product_id=$2 AND external.variant_id IS NULL`, source.VariantIDs[0], sourceID); err != nil {
+				return fmt.Errorf("scope external IDs to SKU: %w", err)
+			}
 		}
 		if _, err = tx.Exec(ctx, `UPDATE product_external_ids SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move external IDs: %w", err)
@@ -350,6 +372,12 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 			if count > 0 {
 				return fmt.Errorf("%w: фото карточки %s с несколькими SKU не привязаны к размеру", ErrInvalidInput, source.Code)
 			}
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM product_external_ids WHERE product_id=$1 AND variant_id IS NULL`, sourceID).Scan(&count); err != nil {
+				return err
+			}
+			if unscopedIDsAmbiguous(len(source.VariantIDs), count) {
+				return fmt.Errorf("%w: внешние ID карточки %s с несколькими SKU не привязаны к размеру", ErrInvalidInput, source.Code)
+			}
 		}
 	}
 	ids := make([]int64, 0, len(products))
@@ -385,6 +413,14 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 			(a.short_description<>'' AND b.short_description<>'' AND a.short_description<>b.short_description) OR
 			(a.description<>'' AND b.description<>'' AND a.description<>b.description) OR
 			(a.care_instructions<>'' AND b.care_instructions<>'' AND a.care_instructions<>b.care_instructions) OR
+			(NULLIF(a.plant_kind,'') IS NOT NULL AND NULLIF(b.plant_kind,'') IS NOT NULL AND a.plant_kind<>b.plant_kind) OR
+			(NULLIF(a.light_level,'') IS NOT NULL AND NULLIF(b.light_level,'') IS NOT NULL AND a.light_level<>b.light_level) OR
+			(NULLIF(a.watering,'') IS NOT NULL AND NULLIF(b.watering,'') IS NOT NULL AND a.watering<>b.watering) OR
+			(NULLIF(a.height_class,'') IS NOT NULL AND NULLIF(b.height_class,'') IS NOT NULL AND a.height_class<>b.height_class) OR
+			(NULLIF(a.care_level,'') IS NOT NULL AND NULLIF(b.care_level,'') IS NOT NULL AND a.care_level<>b.care_level) OR
+			(NULLIF(a.placement,'') IS NOT NULL AND NULLIF(b.placement,'') IS NOT NULL AND a.placement<>b.placement) OR
+			(NULLIF(a.pet_safety,'') IS NOT NULL AND NULLIF(b.pet_safety,'') IS NOT NULL AND a.pet_safety<>b.pet_safety) OR
+			(NULLIF(a.growth_habit,'') IS NOT NULL AND NULLIF(b.growth_habit,'') IS NOT NULL AND a.growth_habit<>b.growth_habit) OR
 			(a.plant_passport<>'{}'::jsonb AND b.plant_passport<>'{}'::jsonb AND a.plant_passport<>b.plant_passport) OR
 			(cardinality(a.important_warnings)>0 AND cardinality(b.important_warnings)>0 AND a.important_warnings<>b.important_warnings)
 		)
@@ -449,6 +485,10 @@ func sameUniqueStrings(actual, expected []string) bool {
 		delete(seen, value)
 	}
 	return len(seen) == 0
+}
+
+func unscopedIDsAmbiguous(variantCount, unscopedIDCount int) bool {
+	return variantCount > 1 && unscopedIDCount > 0
 }
 
 // A new direct FK to PRODUCT must be handled before enabling this operation;

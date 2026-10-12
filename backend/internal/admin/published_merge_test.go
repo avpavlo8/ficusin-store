@@ -51,3 +51,19 @@ func TestPublishedMergeNameAndSKUComparison(t *testing.T) {
 		}
 	}
 }
+
+func TestPublishedMergeRequiresExternalIDsScopedToSKU(t *testing.T) {
+	for _, test := range []struct {
+		variants, unscoped int
+		reject             bool
+	}{
+		{1, 2, false}, // All product-level IDs can be assigned to the only SKU.
+		{2, 0, false}, // Every ID is already assigned to a specific size.
+		{2, 1, true},  // A product-level ID cannot be guessed among sizes.
+		{3, 4, true},
+	} {
+		if got := unscopedIDsAmbiguous(test.variants, test.unscoped); got != test.reject {
+			t.Fatalf("variants=%d unscoped=%d: reject=%v want %v", test.variants, test.unscoped, got, test.reject)
+		}
+	}
+}
