@@ -19,6 +19,34 @@ FROM categories child,categories citrus
 WHERE product.category_id=child.id AND child.parent_id=citrus.id
   AND citrus.slug='citrus';
 
+-- Keep category-specific PDP settings and filters before dropping their old
+-- leaves. Existing settings on the destination category take precedence.
+WITH moved(source_id,target_id) AS (
+  SELECT source.id,target.id FROM categories source,categories target
+  WHERE (source.slug IN ('venus-flytrap','nepenthes') AND target.slug='carnivorous-plants')
+     OR (source.parent_id=target.id AND target.slug='citrus')
+)
+INSERT INTO category_attributes(
+  category_id,attribute_id,is_required,is_filterable,show_on_pdp,is_badge,
+  sort_order,show_in_summary,summary_position,show_in_characteristics,is_excluded
+)
+SELECT DISTINCT ON (moved.target_id,assignment.attribute_id)
+  moved.target_id,assignment.attribute_id,assignment.is_required,
+  assignment.is_filterable,assignment.show_on_pdp,assignment.is_badge,
+  assignment.sort_order,assignment.show_in_summary,assignment.summary_position,
+  assignment.show_in_characteristics,assignment.is_excluded
+FROM category_attributes assignment
+JOIN moved ON moved.source_id=assignment.category_id
+ORDER BY moved.target_id,assignment.attribute_id,moved.source_id
+ON CONFLICT(category_id,attribute_id) DO NOTHING;
+
+UPDATE catalog_filters filter SET category_id=destination.id,
+  updated_at=CURRENT_TIMESTAMP
+FROM categories source,categories destination
+WHERE filter.category_id=source.id
+  AND ((source.slug IN ('venus-flytrap','nepenthes') AND destination.slug='carnivorous-plants')
+    OR (source.parent_id=destination.id AND destination.slug='citrus'));
+
 -- A few flower cards had been placed at the plant root rather than at a
 -- visible species category. Keep outdoor plants together; the rest use the
 -- existing indoor taxonomy.

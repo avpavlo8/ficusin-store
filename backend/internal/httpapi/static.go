@@ -107,6 +107,21 @@ func spaFallback(
 		// принимает опечатку в ссылке за настоящую страницу магазина.
 		status := http.StatusOK
 		base := canonicalBase(configuredBase)
+		// The launch taxonomy folds these former leaves into a single visible
+		// category. Preserve existing search and customer links.
+		if replacement, ok := map[string]string{
+			"calamondin": "citrus", "kumquat": "citrus", "limequat": "citrus",
+			"limetta": "citrus", "lemon": "citrus", "lime": "citrus",
+			"lemonella": "citrus", "venus-flytrap": "carnivorous-plants",
+			"nepenthes": "carnivorous-plants",
+		}[landingSlug(request.URL.Path, "/catalog/")]; ok {
+			target := base + "/catalog/" + replacement
+			if request.URL.RawQuery != "" {
+				target += "?" + request.URL.RawQuery
+			}
+			http.Redirect(response, request, target, http.StatusMovedPermanently)
+			return
+		}
 		if !knownAppRoute(request.URL.Path) {
 			status = http.StatusNotFound
 		}

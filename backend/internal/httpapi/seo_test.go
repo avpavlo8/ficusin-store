@@ -216,6 +216,22 @@ func TestSPAFallbackRedirectsResolvedLegacyProduct(t *testing.T) {
 	}
 }
 
+func TestSPAFallbackRedirectsConsolidatedPlantCategory(t *testing.T) {
+	staticDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte("<html><head></head><body></body></html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for old, newSlug := range map[string]string{"limetta": "citrus", "venus-flytrap": "carnivorous-plants"} {
+		request := httptest.NewRequest(http.MethodGet, "https://ficusin.ru/catalog/"+old+"?sort=price", nil)
+		response := httptest.NewRecorder()
+		spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)
+		want := "https://ficusin.ru/catalog/" + newSlug + "?sort=price"
+		if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != want {
+			t.Errorf("old=%s status=%d location=%q want=%q", old, response.Code, response.Header().Get("Location"), want)
+		}
+	}
+}
+
 func TestSPAFallbackReturns404AndNoIndexForMissingProduct(t *testing.T) {
 	staticDir := t.TempDir()
 	shell := `<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body><div id="root"></div></body></html>`
