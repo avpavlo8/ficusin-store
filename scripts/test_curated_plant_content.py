@@ -15,7 +15,10 @@ class CuratedContentTest(unittest.TestCase):
   self.assertEqual(len(set(ids)),len(names))
   self.assertEqual(set(map(str,ids)),set(names))
   sql=module.MIGRATION.read_text()
+  preview=module.PREVIEW.read_text()
   self.assertEqual(len(re.findall(r'^  \(\d+,',sql,re.M)),len(names))
+  self.assertEqual(len(re.findall(r'^  \(\d+,',preview,re.M)),len(names))
+  self.assertIn("THEN 'will_update' ELSE 'already_complete'",preview)
   for id,name in names.items():
    self.assertIn(f"({id},'{name.replace(chr(39),chr(39)*2)}'",sql)
  def test_every_profile_has_primary_source_and_specific_copy(self):
@@ -38,6 +41,8 @@ class CuratedContentTest(unittest.TestCase):
    self.assertNotIn(forbidden,sql)
  def test_regeneration_is_stable(self):
   before=module.MIGRATION.read_bytes()
+  preview_before=module.PREVIEW.read_bytes()
   module.main()
   self.assertEqual(module.MIGRATION.read_bytes(),before)
+  self.assertEqual(module.PREVIEW.read_bytes(),preview_before)
 if __name__=='__main__':unittest.main()

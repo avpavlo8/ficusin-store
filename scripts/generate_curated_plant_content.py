@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LIVE = ROOT / 'docs/catalog-curated-content-snapshot-2026-10-12.json'
 MIGRATION = ROOT / 'timeweb/migrations/20261012_z_curated_plant_content.sql'
+PREVIEW = ROOT / 'scripts/catalog_curated_content_preview.sql'
 
 # source, Latin name (empty = preserve existing), short, description, care,
 # light enum, watering enum. Do not claim cultivars not verified by the label.
@@ -92,7 +93,7 @@ PROFILES = {
     'phalaenopsis': (
         'https://www.rhs.org.uk/plants/phalaenopsis/growing-guide', 'Phalaenopsis',
         'Фаленопсис с дуговидными цветоносами и длительно сохраняющимися цветками.',
-        'Фаленопсис — эпифитная орхидея; её корням нужен воздухопроницаемый субстрат из коры. Количество цветоносов указано в названии конкретной карточки и не относится к будущему цветению.',
+        'Фаленопсис — эпифитная орхидея; её корням нужен воздухопроницаемый субстрат из коры. Если в названии указано число цветоносов, это характеристика текущей партии, а не обещание будущего цветения.',
         'Поставьте в яркий рассеянный свет без сильного солнца. Поливайте тёплой водой, когда субстрат приближается к сухому состоянию; дайте воде полностью стечь. Не оставляйте воду в центре розетки или кашпо.',
         'diffused', 'moderate'),
     'dionaea': (
@@ -121,7 +122,7 @@ PROFILES = {
         'sunny', 'rare'),
     'alocasia': (
         'https://www.rhs.org.uk/plants/alocasia/growing-guide', 'Alocasia',
-        'Алоказия с крупными выразительными листьями на длинных черешках.',
+        'Алоказия с выразительной листвой на длинных черешках.',
         'Алоказии выращивают ради листьев: рисунок, фактура и форма пластинки различаются между видами и сортами. Это тропическое растение особенно чувствительно к холодному воздуху и сырому грунту.',
         'Поставьте в яркий рассеянный свет и тепло. В период роста поливайте, когда верхний слой грунта слегка подсохнет; зимой полив сокращайте по состоянию растения. Не держите корни в воде и защищайте листья от холодных сквозняков.',
         'diffused', 'moderate'),
@@ -143,6 +144,18 @@ PROFILES = {
         'Цитрусовые выращивают в горшках ради глянцевых вечнозелёных листьев, ароматных цветков и, при подходящих условиях, плодов. Название «Пурша» сохранено как торговое: точный вид или гибрид без данных поставщика не утверждается.',
         'Поставьте в максимально светлое место. В тёплый сезон поливайте по мере подсыхания верхнего слоя грунта; зимой при прохладном содержании полив сокращайте. Берегите от мороза, сухого горячего воздуха и застоя воды.',
         'sunny', 'moderate'),
+    'citrus_other': (
+        'https://www.rhs.org.uk/fruit/citrus/grow-your-own', 'Citrus',
+        'Горшечное цитрусовое дерево с вечнозелёной листвой и возможными ароматными цветками.',
+        'Цитрусовые выращивают в контейнерах ради глянцевой листвы, душистого цветения и плодов. Урожай зависит от освещения, зимовки и возраста растения; сортовые особенности не следует выводить только из торгового названия.',
+        'Дайте как можно больше света и защитите от мороза. В тёплый сезон поливайте после лёгкого подсыхания поверхности грунта, не оставляя воду в поддоне. Для зимовки выберите светлое прохладное место и сократите полив.',
+        'sunny', 'moderate'),
+    'schlumbergera': (
+        'https://www.rhs.org.uk/plants/christmas-cactus/how-to-grow', 'Schlumbergera',
+        'Шлюмбергера с плоскими членистыми побегами и яркими цветками на концах сегментов.',
+        '«Декабрист» — эпифитный лесной кактус: его побеги состоят из плоских сегментов, а цветки появляются на их концах. Для закладки бутонов важны сезонный ритм света и прохлады; окраска цветков зависит от экземпляра.',
+        'Разместите в ярком рассеянном свете. Поливайте после лёгкого подсыхания верхнего слоя, сливая лишнюю воду. После цветения уменьшите полив; при появлении бутонов не переставляйте горшок резко и берегите от холодных сквозняков.',
+        'diffused', 'moderate'),
 }
 
 # Exact product codes from the live admin, 12 Oct 2026. Other products stay untouched.
@@ -152,22 +165,24 @@ ASSIGNMENTS = {
     'dieffenbachia_reflector': [856],
     'zamioculcas': [857, 566],
     'cordyline_kiwi': [865],
-    'nephrolepis': [859, 860],
+    'nephrolepis': [859, 860, 506, 155, 156, 157, 158],
     'tradescantia_zebrina': [867],
-    'chlorophytum': [861],
-    'aglaonema': [2, 12],
+    'chlorophytum': [861, 807, 233],
+    'aglaonema': [2, 12, 753, 3, 4, 5, 6, 7, 8, 9, 10, 11],
     'monstera_deliciosa': [149, 815],
-    'ficus_elastica': [740, 685],
-    'spathiphyllum': [738],
-    'phalaenopsis': [161],
+    'ficus_elastica': [740, 685, 215, 216, 684, 217],
+    'spathiphyllum': [738, 183, 184],
+    'phalaenopsis': [161, 162, 163],
     'dionaea': [87],
     'nepenthes': [154],
     'poinsettia': [168],
     'adenium': [854],
-    'alocasia': [862, 847, 16],
+    'alocasia': [862, 847, 16, 736, 598, 19, 20, 21, 22, 23, 24, 25, 535, 17, 483, 26, 27, 28, 29, 30, 31],
     'sansevieria': [174, 175, 177, 178, 749],
     'ficus_benjamina': [486, 755, 198, 199, 200, 201, 202, 203, 197],
     'citrus': [866],
+    'citrus_other': [117, 118, 127, 129, 128, 133, 132, 246, 135, 137, 136, 648, 138],
+    'schlumbergera': [90, 610],
 }
 
 def q(value: str) -> str:
@@ -223,6 +238,21 @@ def main() -> None:
         '  AND NOT EXISTS (SELECT 1 FROM catalog_filters AS filter WHERE filter.category_id = category.id);',
     ])
     MIGRATION.write_text('\n'.join(lines) + '\n')
+    preview_rows = ',\n'.join(f'  ({code},{q(name)},{q(key)})' for code, name, latin, short, description, care, light, watering, key, source in rows)
+    PREVIEW.write_text(
+        '-- Read-only preview against the target database immediately before release.\n'
+        'WITH target(product_code,expected_name,profile) AS (VALUES\n'
+        + preview_rows + '\n)\n'
+        'SELECT target.product_code, target.expected_name, target.profile,\n'
+        '  CASE WHEN product.id IS NULL THEN \'guard_skip\'\n'
+        "       WHEN BTRIM(product.latin_name) = '' OR BTRIM(product.short_description) = ''\n"
+        "         OR BTRIM(product.description) = '' OR BTRIM(product.care_instructions) = ''\n"
+        "         OR COALESCE(BTRIM(product.light_level),'') = '' OR COALESCE(BTRIM(product.watering),'') = ''\n"
+        "       THEN 'will_update' ELSE 'already_complete' END AS result\n"
+        'FROM target LEFT JOIN products AS product\n'
+        "  ON product.product_code = target.product_code AND product.name = target.expected_name AND product.catalog_section = 'plants'\n"
+        'ORDER BY target.product_code;\n'
+    )
     print(f'Wrote {MIGRATION}: {len(rows)} curated cards')
 
 if __name__ == '__main__':
