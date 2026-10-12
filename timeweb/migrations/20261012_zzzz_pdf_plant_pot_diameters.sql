@@ -16,9 +16,17 @@ INSERT INTO curated_pdf_pot_diameter(product_code,expected_name,saby_code,diamet
   (853,'Араукария 20 см D10','X922724685',10),
   (864,'Бонсай Фисташка D15','X431642354',15),
   (866,'Лиметта Пурша на штамбе D15','X1140710',15);
-UPDATE product_variants AS variant SET pot_diameter_cm=pdf.diameter_cm,updated_at=CURRENT_TIMESTAMP
-FROM curated_pdf_pot_diameter AS pdf JOIN products AS product ON product.product_code=pdf.product_code
-WHERE variant.product_id=product.id AND product.catalog_section='plants' AND product.name=pdf.expected_name
-  AND variant.pot_diameter_cm IS NULL AND variant.is_active<>0 AND variant.archived_at IS NULL
+INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source,updated_at)
+SELECT variant.id,definition.id,to_jsonb(pdf.diameter_cm),'import',CURRENT_TIMESTAMP
+FROM curated_pdf_pot_diameter AS pdf
+JOIN products AS product ON product.product_code=pdf.product_code
+JOIN product_variants AS variant ON variant.product_id=product.id
+JOIN attribute_definitions AS definition ON definition.code='pot_diameter_cm' AND definition.value_scope='variant'
+WHERE product.catalog_section='plants' AND product.name=pdf.expected_name
+  AND variant_numeric_attribute(variant.id,'pot_diameter_cm') IS NULL
+  AND variant.is_active<>0 AND variant.archived_at IS NULL
   AND (SELECT count(*) FROM product_variants AS sibling WHERE sibling.product_id=product.id AND sibling.is_active<>0 AND sibling.archived_at IS NULL)=1
-  AND EXISTS (SELECT 1 FROM product_external_ids AS external WHERE external.product_id=product.id AND external.provider='saby' AND external.id_type='code' AND external.external_id=pdf.saby_code);
+  AND EXISTS (SELECT 1 FROM product_external_ids AS external WHERE external.product_id=product.id AND external.provider='saby' AND external.id_type='code' AND external.external_id=pdf.saby_code)
+ON CONFLICT(variant_id,attribute_id) DO UPDATE
+SET value=EXCLUDED.value,source='import',updated_at=CURRENT_TIMESTAMP
+WHERE variant_attribute_values.value IN ('null'::jsonb,'""'::jsonb);

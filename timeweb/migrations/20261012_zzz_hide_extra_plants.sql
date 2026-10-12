@@ -40,8 +40,12 @@ INSERT INTO launch_extra_plant_expected(product_id, excluded_sku, expected_name,
 DO $$
 DECLARE matched_count INTEGER;
 BEGIN
-  -- A fresh test or installation database has no launch catalog to adjust.
-  IF NOT EXISTS (SELECT 1 FROM products) THEN
+  -- A fresh test or installation database may have products, but no target
+  -- launch identities. A partial target set must still fail closed.
+  IF NOT EXISTS (
+    SELECT 1 FROM launch_extra_plant_expected e
+    JOIN products p ON p.id=e.product_id
+  ) THEN
     RETURN;
   END IF;
   SELECT COUNT(*) INTO matched_count

@@ -62,7 +62,10 @@ class CuratedThirdTest(unittest.TestCase):
             self.assertIn(f"({row['product_code']},'{row['expected_name'].replace(chr(39), chr(39)*2)}','{row['saby_code']}',{row['pot_diameter_cm']})", sql)
         self.assertIn("external.provider='saby' AND external.id_type='code'", sql)
         self.assertIn('sibling.is_active<>0 AND sibling.archived_at IS NULL)=1', sql)
-        self.assertIn('variant.pot_diameter_cm IS NULL', sql)
+        self.assertIn('INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source,updated_at)', sql)
+        self.assertIn("variant_numeric_attribute(variant.id,'pot_diameter_cm') IS NULL", sql)
+        self.assertIn("variant_attribute_values.value IN ('null'::jsonb,'\"\"'::jsonb)", sql)
+        self.assertNotIn('SET pot_diameter_cm=', sql)
         for forbidden in ('height_cm=', 'base_price_minor', 'stock_quantity=', 'status=', 'image_url='):
             self.assertNotIn(forbidden, sql)
 
