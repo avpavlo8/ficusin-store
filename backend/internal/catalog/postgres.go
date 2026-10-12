@@ -316,15 +316,11 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 	return detail, nil
 }
 
-// resolveLegacyCode preserves indexed links from the catalogue before the
-// immutable numeric Ficusin codes were introduced. An alias is accepted only
-// when the surviving Saby identifier points to exactly one published product;
-// ambiguity deliberately remains a 404 instead of redirecting to a wrong item.
+// resolveLegacyCode preserves old product URLs. Explicit aliases also cover
+// numeric codes of published cards consolidated into a surviving product.
+// Unmapped Saby identifiers resolve only when they identify one product.
 func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, code string) (string, error) {
 	const prefix = "saby-"
-	if !strings.HasPrefix(strings.ToLower(code), prefix) {
-		return code, nil
-	}
 	var resolved string
 	err := repository.pool.QueryRow(ctx, `
 		SELECT product.product_code::TEXT
@@ -337,6 +333,9 @@ func (repository *PostgresRepository) resolveLegacyCode(ctx context.Context, cod
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", fmt.Errorf("resolve product URL alias: %w", err)
+	}
+	if !strings.HasPrefix(strings.ToLower(code), prefix) {
+		return code, nil
 	}
 	externalID := strings.TrimSpace(code[len(prefix):])
 	if externalID == "" {
@@ -474,7 +473,24 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 }
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT id,parent_id,name,slug,sort_order,icon FROM categories WHERE active=1 ORDER BY sort_order,name`)
+	rows, err := repository.pool.Query(ctx, `
+		WITH RECURSIVE occupied(id) AS (
+			SELECT DISTINCT product.category_id
+			FROM products product
+			WHERE product.status='published' AND product.category_id IS NOT NULL
+			  AND EXISTS(SELECT 1 FROM product_variants variant
+			    WHERE variant.product_id=product.id AND variant.is_active=1
+			      AND variant.archived_at IS NULL AND variant.base_price_minor>0)
+			UNION
+			SELECT category.parent_id FROM categories category
+			JOIN occupied ON occupied.id=category.id
+			WHERE category.parent_id IS NOT NULL
+		)
+		SELECT category.id,category.parent_id,category.name,category.slug,category.sort_order,category.icon
+		FROM categories category
+		WHERE category.active=1 AND category.id IN (SELECT id FROM occupied)
+		ORDER BY category.sort_order,category.name
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("query categories: %w", err)
 	}
