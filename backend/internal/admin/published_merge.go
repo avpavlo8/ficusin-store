@@ -455,6 +455,18 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 	if hiddenLaunchPlant {
 		return fmt.Errorf("%w: у растения есть запись в таблице отката скрытия непродуктовых товаров", ErrInvalidInput)
 	}
+	// The two mixed-card variants remain active for external channels, but
+	// merging any related product would cascade-delete their site visibility
+	// audit row. Require an explicit assortment decision before such a merge.
+	var hiddenExtraPlant bool
+	if err := tx.QueryRow(ctx, `SELECT
+		EXISTS(SELECT 1 FROM launch_hidden_extra_plant_products WHERE product_id=ANY($1))
+		OR EXISTS(SELECT 1 FROM launch_hidden_extra_plant_variants WHERE product_id=ANY($1))`, ids).Scan(&hiddenExtraPlant); err != nil {
+		return err
+	}
+	if hiddenExtraPlant {
+		return fmt.Errorf("%w: у растения есть запись о скрытии из каталога; сначала проверьте ассортимент", ErrInvalidInput)
+	}
 	var missingSabyCode bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM product_variants variant
@@ -587,7 +599,8 @@ func checkKnownProductReferences(ctx context.Context, tx pgx.Tx) error {
 		"product_attribute_values": true, "collection_products": true, "product_media": true,
 		"product_reviews": true, "order_items": true, "catalog_ai_enrichment_jobs": true,
 		"product_url_aliases": true, "avito_listing_products": true,
-		"launch_hidden_nonplant_products": true,
+		"launch_hidden_nonplant_products":    true,
+		"launch_hidden_extra_plant_products": true, "launch_hidden_extra_plant_variants": true,
 	}
 	rows, err := tx.Query(ctx, `SELECT conrelid::regclass::TEXT FROM pg_constraint
 		WHERE contype='f' AND confrelid='products'::regclass`)

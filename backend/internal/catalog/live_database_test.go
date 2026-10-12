@@ -12,6 +12,85 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// A card can contain one launch-approved size and one excluded size. The
+// excluded SKU must disappear from all public discovery paths while remaining
+// a known, unavailable cart item; its sibling must remain buyable.
+func TestStorefrontHiddenVariantKeepsIncludedSibling(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var productID, hiddenID int64
+	var code string
+	err = pool.QueryRow(ctx, `
+		INSERT INTO products(name,slug,status,catalog_section)
+		VALUES($1,$2,'published','plants') RETURNING id,product_code::TEXT
+	`, "Контроль двух размеров", fmt.Sprintf("storefront-hidden-%d", unique)).Scan(&productID, &code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	hiddenSKU := fmt.Sprintf("8%017d", unique%100000000000000000)
+	includedSKU := fmt.Sprintf("9%017d", unique%100000000000000000)
+	err = pool.QueryRow(ctx, `
+		INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active)
+		VALUES($1,$2,'D8',39000,1) RETURNING id
+	`, productID, hiddenSKU).Scan(&hiddenID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active)
+		VALUES($1,$2,'D30',929000,1)
+	`, productID, includedSKU); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO launch_hidden_extra_plant_variants(variant_id,product_id,excluded_sku)
+		VALUES($1,$2,$3)
+	`, hiddenID, productID, hiddenSKU); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewPostgresRepository(pool)
+	detail, err := repository.DetailBySlug(ctx, code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Variants) != 1 || detail.Variants[0].SKU != includedSKU {
+		t.Fatalf("public detail variants: %+v", detail.Variants)
+	}
+	cart, err := repository.CartProducts(ctx, []string{hiddenSKU, includedSKU})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cart) != 2 || cart[0].SKU != hiddenSKU || cart[0].Available || cart[1].SKU != includedSKU || !cart[1].Available {
+		t.Fatalf("cart availability: %+v", cart)
+	}
+	offers, err := repository.ListFeedOffers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundIncluded := false
+	for _, offer := range offers {
+		if offer.SKU == hiddenSKU {
+			t.Fatal("excluded SKU leaked into public feed")
+		}
+		if offer.SKU == includedSKU {
+			foundIncluded = true
+		}
+	}
+	if !foundIncluded {
+		t.Fatal("included sibling missing from public feed")
+	}
+}
+
 func TestRecommendationsQueryOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {

@@ -41,7 +41,8 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 				WHERE item.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
 					AND item.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 			),0)::INTEGER,
-			(product.status='published' AND variant.is_active=1 AND variant.archived_at IS NULL)
+			(product.status='published' AND variant.is_active=1 AND variant.archived_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id))
 		FROM product_variants variant
 		JOIN products product ON product.id=variant.product_id
 		WHERE variant.sku=ANY($1)
@@ -189,6 +190,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		FROM product_variants pv
 		JOIN products product ON product.id=pv.product_id
 		WHERE pv.product_id = $1 AND pv.is_active = 1 AND pv.archived_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=pv.id)
 		ORDER BY pv.id
 	`, productID, detail.CategoryID)
 	if err != nil {
@@ -386,6 +388,7 @@ const recommendationsQuery = `
 					AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER AS stock
 		FROM product_variants variant
 		WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 		ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
 			FROM inventory
 			JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
@@ -480,7 +483,8 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 			WHERE product.status='published' AND product.category_id IS NOT NULL
 			  AND EXISTS(SELECT 1 FROM product_variants variant
 			    WHERE variant.product_id=product.id AND variant.is_active=1
-			      AND variant.archived_at IS NULL AND variant.base_price_minor>0)
+			      AND variant.archived_at IS NULL AND variant.base_price_minor>0
+                AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id))
 			UNION
 			SELECT category.parent_id FROM categories category
 			JOIN occupied ON occupied.id=category.id
@@ -530,6 +534,7 @@ const catalogListQuery = `
 						AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER AS stock
 			FROM product_variants variant
 			WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory
 				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
@@ -585,6 +590,7 @@ const catalogListQuery = `
 					effective.sort_order,effective.is_filterable,effective.is_badge,value.value
 				FROM effective JOIN variant_attribute_values value ON value.attribute_id=effective.id
 				JOIN product_variants variant ON variant.id=value.variant_id AND variant.product_id=product.id AND variant.is_active=1
+                  AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 			)
 			SELECT jsonb_agg(jsonb_build_object('code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
@@ -684,6 +690,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 			COUNT(*) OVER (PARTITION BY product.id)::INTEGER
 		FROM products product
 		JOIN product_variants variant ON variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 		LEFT JOIN category_paths category ON category.id=product.category_id
 		WHERE product.status='published'
 		ORDER BY product.product_code,variant.id
@@ -736,6 +743,7 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 		FROM product_variants variant
 		JOIN products product ON product.id=variant.product_id AND product.status='published'
 		WHERE variant.sku=ANY($1) AND variant.is_active=1
+          AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 	`, skus)
 	if err != nil {
 		return nil, fmt.Errorf("load package sizes: %w", err)
