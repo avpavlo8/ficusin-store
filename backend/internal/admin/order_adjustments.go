@@ -244,7 +244,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			// первый вариант карточки, то есть мог поставить в заказ не тот размер
 			// и не ту цену, которые выбрал покупатель.
 			if err := tx.QueryRow(ctx, `
-				SELECT pv.sku,pv.id,p.id,p.name,pv.label,pv.base_price_minor,COALESCE(p.saby_id,''),
+				SELECT pv.sku,pv.id,p.id,p.name,pv.label,pv.base_price_minor,COALESCE(pv.saby_id,''),
 					variant_numeric_attribute(pv.id,'height_cm')::INTEGER,
 					variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER
 				FROM product_variants pv JOIN products p ON p.id=pv.product_id

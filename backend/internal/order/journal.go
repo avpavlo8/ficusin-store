@@ -60,8 +60,7 @@ const recordPreorderRequestsSQL = `
 		FROM order_items oi
 		JOIN orders o ON o.id = oi.order_id
 		JOIN product_variants pv ON pv.id = oi.variant_id
-		LEFT JOIN products p ON p.id = oi.product_id
-		LEFT JOIN saby_nomenclature n ON n.saby_id = p.saby_id
+		LEFT JOIN saby_nomenclature n ON n.saby_id = pv.saby_id
 		WHERE oi.order_id = $1 AND oi.is_preorder = 1
 		GROUP BY n.saby_id, oi.product_name, o.id, o.order_number
 `
