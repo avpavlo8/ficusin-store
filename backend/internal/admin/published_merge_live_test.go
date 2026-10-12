@@ -132,6 +132,26 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE products SET care_level='easy' WHERE id=$1`, sourceID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO launch_hidden_extra_plant_products(product_id,excluded_sku,previous_status)
+		VALUES($1,$2,'published')`, sourceID, sourceSKU); err != nil {
+		t.Fatal(err)
+	}
+	if preview, err := repository.PreviewPublishedMerge(ctx, actor, request); err != nil || preview.Ready || len(preview.Blockers) == 0 {
+		t.Fatalf("hidden-card audit must block merge: %+v, %v", preview, err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM launch_hidden_extra_plant_products WHERE product_id=$1`, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO launch_hidden_extra_plant_variants(variant_id,product_id,excluded_sku)
+		VALUES($1,$2,$3)`, sourceVariantID, sourceID, sourceSKU); err != nil {
+		t.Fatal(err)
+	}
+	if preview, err := repository.PreviewPublishedMerge(ctx, actor, request); err != nil || preview.Ready || len(preview.Blockers) == 0 {
+		t.Fatalf("hidden-variant audit must block merge: %+v, %v", preview, err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM launch_hidden_extra_plant_variants WHERE variant_id=$1`, sourceVariantID); err != nil {
+		t.Fatal(err)
+	}
 	readyPreview, err := repository.PreviewPublishedMerge(ctx, actor, request)
 	if err != nil || !readyPreview.Ready || len(readyPreview.Blockers) != 0 {
 		t.Fatalf("valid group should pass read-only preview: %+v, %v", readyPreview, err)
