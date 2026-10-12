@@ -212,6 +212,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 				COALESCE(variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
 			FROM products p
 			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND pv.archived_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=pv.id)
 			WHERE pv.sku = $1 AND p.status = 'published'
 			LIMIT 1
 		`, requested.ID).Scan(
