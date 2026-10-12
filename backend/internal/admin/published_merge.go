@@ -326,6 +326,9 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 	if normalizeMergeName(request.ReviewedIdentity) != identity {
 		return fmt.Errorf("%w: подтверждённый вид/сорт не совпадает с названием основной карточки", ErrInvalidInput)
 	}
+	if !completeMergeLatinIdentity(target.Latin) {
+		return fmt.Errorf("%w: нужен подтверждённый вид или именованный сорт в латинском названии, одного рода недостаточно", ErrInvalidInput)
+	}
 	allSKUs := make([]string, 0)
 	labels := make(map[string]bool)
 	for _, item := range products {
@@ -458,6 +461,23 @@ func normalizeMergeName(value string) string {
 	value = strings.ToLower(stripVariantSize(value))
 	value = strings.NewReplacer("«", "", "»", "", "\"", "", "„", "", "“", "", "”", "", "(", "", ")", "").Replace(value)
 	return strings.Join(strings.Fields(value), " ")
+}
+
+// A genus-only Latin label is not enough to prove two published plants are
+// the same taxon. A binomial or an explicitly named cultivar is required;
+// final identity still has to be reviewed by the owner before the merge.
+func completeMergeLatinIdentity(value string) bool {
+	value = strings.TrimSpace(value)
+	parts := strings.Fields(value)
+	if len(parts) < 2 {
+		return false
+	}
+	remainder := strings.TrimSpace(strings.TrimPrefix(value, parts[0]))
+	if strings.HasPrefix(remainder, "'") && strings.HasSuffix(remainder, "'") && len(remainder) > 2 {
+		return true
+	}
+	species := strings.ToLower(strings.Trim(parts[1], "."))
+	return species != "sp" && species != "spp" && len(parts[1]) > 1 && parts[1][0] >= 'a' && parts[1][0] <= 'z'
 }
 
 var mergePotSize = regexp.MustCompile(`(?i)(?:^|[[:space:]])[dд][[:space:]]*[0-9]+(?:[.,][0-9]+)?`)

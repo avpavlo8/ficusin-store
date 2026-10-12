@@ -67,3 +67,21 @@ func TestPublishedMergeRequiresExternalIDsScopedToSKU(t *testing.T) {
 		}
 	}
 }
+
+func TestPublishedMergeRejectsGenusOnlyLatinIdentity(t *testing.T) {
+	for _, item := range []struct {
+		latin string
+		valid bool
+	}{
+		{"Zamioculcas", false},
+		{"Ficus", false},
+		{"Ficus sp.", false},
+		{"Zamioculcas zamiifolia 'Raven'", true},
+		{"Ficus benjamina", true},
+		{"Nephrolepis 'Green Lady'", true},
+	} {
+		if got := completeMergeLatinIdentity(item.latin); got != item.valid {
+			t.Fatalf("latin=%q: valid=%v, want %v", item.latin, got, item.valid)
+		}
+	}
+}
