@@ -76,6 +76,26 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 		VALUES($1,$2,$3,'D17',170000,1) RETURNING id`, sourceID, sourceSaby, sourceSKU).Scan(&sourceVariantID); err != nil {
 		t.Fatal(err)
 	}
+	// Older cards also retain size values at product scope. Distinct SKU sizes
+	// must not masquerade as a conflict in shared botanical attributes.
+	for _, size := range []struct {
+		productID, variantID int64
+		diameter             int
+	}{
+		{targetID, targetVariantID, 12}, {sourceID, sourceVariantID, 17},
+	} {
+		if _, err := pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value)
+			SELECT $1,id,to_jsonb($2::int) FROM attribute_definitions WHERE code='pot_diameter_cm'`,
+			size.variantID, size.diameter); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO product_attribute_values(product_id,attribute_id,value)
+			SELECT $1,id,to_jsonb($2::int) FROM attribute_definitions WHERE code='pot_diameter_cm'
+			ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`,
+			size.productID, size.diameter); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, item := range []struct {
 		productID  int64
 		externalID string
@@ -159,7 +179,7 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	}
 	readyPreview, err := repository.PreviewPublishedMerge(ctx, actor, request)
 	if err != nil || !readyPreview.Ready || len(readyPreview.Blockers) != 0 {
-		t.Fatalf("valid group should pass read-only preview: %+v, %v", readyPreview, err)
+		t.Fatalf("distinct pot sizes with matching botanical data should pass read-only preview: %+v, %v", readyPreview, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1`, sourceVariantID).Scan(&stillSource); err != nil || stillSource != sourceID {
 		t.Fatalf("preview changed variant owner: %d, %v", stillSource, err)
@@ -194,6 +214,22 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	}
 	if variantCount != 2 || sourceCount != 0 || aliasCount != 2 || collectionCount != 1 || avitoCount != 1 || photoCount != 1 || externalCount != 1 || auditCount != 1 {
 		t.Fatalf("lost merged data: variants=%d source=%d aliases=%d collection=%d avito=%d photo=%d external=%d audit=%d", variantCount, sourceCount, aliasCount, collectionCount, avitoCount, photoCount, externalCount, auditCount)
+	}
+	for _, size := range []struct {
+		variantID int64
+		diameter  int
+	}{
+		{targetVariantID, 12}, {sourceVariantID, 17},
+	} {
+		var owner int64
+		var diameter int
+		if err := pool.QueryRow(ctx, `SELECT variant.product_id, variant_numeric_attribute(variant.id,'pot_diameter_cm')::int
+			FROM product_variants variant WHERE variant.id=$1`, size.variantID).Scan(&owner, &diameter); err != nil {
+			t.Fatal(err)
+		}
+		if owner != targetID || diameter != size.diameter {
+			t.Fatalf("variant size changed during merge: variant=%d owner=%d diameter=%d", size.variantID, owner, diameter)
+		}
 	}
 	var name, plantKind, light, description string
 	if err := pool.QueryRow(ctx, `SELECT name,plant_kind,light_level,short_description FROM products WHERE id=$1`, targetID).Scan(&name, &plantKind, &light, &description); err != nil {
