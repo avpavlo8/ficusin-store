@@ -113,7 +113,7 @@ func spaFallback(
 			"calamondin": "citrus", "kumquat": "citrus", "limequat": "citrus",
 			"limetta": "citrus", "lemon": "citrus", "lime": "citrus",
 			"lemonella": "citrus", "venus-flytrap": "carnivorous-plants",
-			"nepenthes": "carnivorous-plants",
+			"nepenthes": "carnivorous-plants", "paml": "soil",
 		}[landingSlug(request.URL.Path, "/catalog/")]; ok {
 			target := base + "/catalog/" + replacement
 			if request.URL.RawQuery != "" {

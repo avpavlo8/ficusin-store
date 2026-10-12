@@ -221,7 +221,7 @@ func TestSPAFallbackRedirectsConsolidatedPlantCategory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte("<html><head></head><body></body></html>"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for old, newSlug := range map[string]string{"limetta": "citrus", "venus-flytrap": "carnivorous-plants"} {
+	for old, newSlug := range map[string]string{"limetta": "citrus", "venus-flytrap": "carnivorous-plants", "paml": "soil"} {
 		request := httptest.NewRequest(http.MethodGet, "https://ficusin.ru/catalog/"+old+"?sort=price", nil)
 		response := httptest.NewRecorder()
 		spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)

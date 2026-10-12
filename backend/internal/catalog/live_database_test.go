@@ -407,3 +407,53 @@ func TestPublicCategoriesShowOnlyPublishedAssortmentOnLiveDatabase(t *testing.T)
 		t.Fatal("category remained visible after its only product became a draft")
 	}
 }
+
+func TestCatalogCollectionFieldsUsePIMOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var productID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO products(name,slug,status,catalog_section)
+		VALUES('PIM collection fixture',$1,'published','plants') RETURNING id
+	`, fmt.Sprintf("pim-collection-%d", unique)).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO product_variants(product_id,label,base_price_minor,is_active)
+		VALUES($1,'D10',10000,1)
+	`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO product_attribute_values(product_id,attribute_id,value,source)
+		SELECT $1,id,'"low_light"'::jsonb,'local'
+		FROM attribute_definitions WHERE code='light_level'
+		ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value
+	`, productID); err != nil {
+		t.Fatal(err)
+	}
+	products, err := NewPostgresRepository(pool).ListAvailable(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, product := range products {
+		if product.ID != fmt.Sprint(productID) {
+			continue
+		}
+		if product.LightLevel != "low_light" {
+			t.Fatalf("public lightLevel=%q, want PIM value low_light", product.LightLevel)
+		}
+		return
+	}
+	t.Fatal("published PIM fixture is absent from catalog")
+}

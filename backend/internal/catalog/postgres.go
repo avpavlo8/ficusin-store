@@ -548,9 +548,9 @@ const catalogListQuery = `
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 		),'/assets/hero-monstera.webp'),
 		default_variant.label, default_variant.stock,
-		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(product.light_level,''),
-		COALESCE(product.watering,''),COALESCE(product.height_class,''),COALESCE(product.care_level,''),
-		COALESCE(product.placement,''),COALESCE(product.pet_safety,''),COALESCE(product.growth_habit,''),product.category_id,
+		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(NULLIF(pim.light_level,''),product.light_level,''),
+		COALESCE(NULLIF(pim.watering,''),product.watering,''),COALESCE(NULLIF(pim.height_class,''),product.height_class,''),COALESCE(NULLIF(pim.care_level,''),product.care_level,''),
+		COALESCE(NULLIF(pim.placement,''),product.placement,''),COALESCE(NULLIF(pim.pet_safety,''),product.pet_safety,''),COALESCE(NULLIF(pim.growth_habit,''),product.growth_habit,''),product.category_id,
 		COALESCE(popularity.score,0),
 		COALESCE((SELECT ARRAY_AGG(collection.slug ORDER BY collection.sort_order,collection.id)
 			FROM collections collection
@@ -607,6 +607,19 @@ const catalogListQuery = `
 		SELECT name FROM ancestors WHERE parent_id IS NULL LIMIT 1
 	) root_category ON TRUE
 	LEFT JOIN popularity ON popularity.product_id=product.id
+	LEFT JOIN LATERAL (
+		SELECT
+			MAX(value.value #>> '{}') FILTER (WHERE definition.code='light_level') AS light_level,
+			MAX(value.value #>> '{}') FILTER (WHERE definition.code='watering') AS watering,
+			MAX(value.value #>> '{}') FILTER (WHERE definition.code='height_class') AS height_class,
+			MAX(value.value #>> '{}') FILTER (WHERE definition.code='care_level') AS care_level,
+			MAX(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value->>0 ELSE value.value #>> '{}' END) FILTER (WHERE definition.code='placement') AS placement,
+			MAX(value.value #>> '{}') FILTER (WHERE definition.code='pet_safety') AS pet_safety,
+			MAX(value.value #>> '{}') FILTER (WHERE definition.code='growth_habit') AS growth_habit
+		FROM product_attribute_values value
+		JOIN attribute_definitions definition ON definition.id=value.attribute_id
+		WHERE value.product_id=product.id AND definition.code IN ('light_level','watering','height_class','care_level','placement','pet_safety','growth_habit')
+	) pim ON TRUE
 	WHERE product.status='published'
 	ORDER BY default_variant.stock>0 DESC,product.is_featured DESC,product.name ASC
 	LIMIT 1000
