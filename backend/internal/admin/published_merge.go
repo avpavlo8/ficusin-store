@@ -479,15 +479,23 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 	if missingSabyCode {
 		return fmt.Errorf("%w: у одного или нескольких SKU не подтверждён буквенный X-код СБИС", ErrInvalidInput)
 	}
-	var conflictingAttributes bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM product_attribute_values WHERE product_id=ANY($1)
-		GROUP BY attribute_id HAVING count(DISTINCT value)>1
-	)`, ids).Scan(&conflictingAttributes); err != nil {
+	var conflictingAttributeCode string
+	var conflictingAttributeValues json.RawMessage
+	err := tx.QueryRow(ctx, `SELECT definition.code,
+		jsonb_agg(jsonb_build_object('productId', value.product_id, 'value', value.value)
+			ORDER BY value.product_id)
+		FROM product_attribute_values value
+		JOIN attribute_definitions definition ON definition.id=value.attribute_id
+		WHERE value.product_id=ANY($1)
+		GROUP BY definition.id, definition.code
+		HAVING count(DISTINCT value.value)>1
+		ORDER BY definition.code LIMIT 1`, ids).Scan(&conflictingAttributeCode, &conflictingAttributeValues)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if conflictingAttributes {
-		return fmt.Errorf("%w: характеристики карточек различаются; сначала проверьте значения", ErrInvalidInput)
+	if err == nil {
+		return fmt.Errorf("%w: характеристика %s различается между карточками: %s", ErrInvalidInput,
+			conflictingAttributeCode, conflictingAttributeValues)
 	}
 	var conflictingContent bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(
