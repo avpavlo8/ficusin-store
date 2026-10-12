@@ -355,3 +355,55 @@ func TestNumericProductURLAliasResolvesOnLiveDatabase(t *testing.T) {
 		t.Fatalf("resolved=%q want=%d", resolved, productCode)
 	}
 }
+
+func TestPublicCategoriesShowOnlyPublishedAssortmentOnLiveDatabase(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	slug := fmt.Sprintf("launch-assortment-%d", unique)
+	var categoryID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES('Launch assortment fixture',$1) RETURNING id`, slug).Scan(&categoryID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM categories WHERE id=$1`, categoryID) }()
+	listed := func() bool {
+		categories, err := NewPostgresRepository(pool).ListCategories(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, category := range categories {
+			if category.ID == categoryID {
+				return true
+			}
+		}
+		return false
+	}
+	if listed() {
+		t.Fatal("empty category is visible to customers")
+	}
+	var productID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,catalog_section,category_id) VALUES('Launch fixture',$1,'published','plants',$2) RETURNING id`, slug, categoryID).Scan(&productID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	if _, err := pool.Exec(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,is_active) VALUES($1,'D10',10000,1)`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if !listed() {
+		t.Fatal("category with a published product is missing")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET status='draft' WHERE id=$1`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if listed() {
+		t.Fatal("category remained visible after its only product became a draft")
+	}
+}

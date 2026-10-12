@@ -473,7 +473,24 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 }
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT id,parent_id,name,slug,sort_order,icon FROM categories WHERE active=1 ORDER BY sort_order,name`)
+	rows, err := repository.pool.Query(ctx, `
+		WITH RECURSIVE occupied(id) AS (
+			SELECT DISTINCT product.category_id
+			FROM products product
+			WHERE product.status='published' AND product.category_id IS NOT NULL
+			  AND EXISTS(SELECT 1 FROM product_variants variant
+			    WHERE variant.product_id=product.id AND variant.is_active=1
+			      AND variant.archived_at IS NULL AND variant.base_price_minor>0)
+			UNION
+			SELECT category.parent_id FROM categories category
+			JOIN occupied ON occupied.id=category.id
+			WHERE category.parent_id IS NOT NULL
+		)
+		SELECT category.id,category.parent_id,category.name,category.slug,category.sort_order,category.icon
+		FROM categories category
+		WHERE category.active=1 AND category.id IN (SELECT id FROM occupied)
+		ORDER BY category.sort_order,category.name
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("query categories: %w", err)
 	}
