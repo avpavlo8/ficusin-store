@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +119,10 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	blockedPreview, err := repository.PreviewPublishedMerge(ctx, actor, request)
 	if err != nil || blockedPreview.Ready || len(blockedPreview.Blockers) == 0 {
 		t.Fatalf("conflicting PIM must block read-only preview: %+v, %v", blockedPreview, err)
+	}
+	if !strings.Contains(blockedPreview.Blockers[0], "care_level") ||
+		!strings.Contains(blockedPreview.Blockers[0], fmt.Sprintf(`"productId": %d`, sourceID)) {
+		t.Fatalf("preview must identify the conflicting attribute and product: %+v", blockedPreview.Blockers)
 	}
 	if err := repository.MergePublishedProducts(ctx, actor, request); err == nil {
 		t.Fatal("conflicting PIM care_level was accepted")
