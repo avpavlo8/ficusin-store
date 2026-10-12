@@ -11,11 +11,11 @@ class CuratedContentTest(unittest.TestCase):
  def test_snapshot_and_migration_exact_match(self):
   names=json.loads(module.LIVE.read_text())
   ids=[id for values in module.ASSIGNMENTS.values() for id in values]
-  self.assertEqual(len(ids),23)
-  self.assertEqual(len(set(ids)),23)
+  self.assertEqual(len(ids),len(names))
+  self.assertEqual(len(set(ids)),len(names))
   self.assertEqual(set(map(str,ids)),set(names))
   sql=module.MIGRATION.read_text()
-  self.assertEqual(len(re.findall(r'^  \(\d+,',sql,re.M)),23)
+  self.assertEqual(len(re.findall(r'^  \(\d+,',sql,re.M)),len(names))
   for id,name in names.items():
    self.assertIn(f"({id},'{name.replace(chr(39),chr(39)*2)}'",sql)
  def test_every_profile_has_primary_source_and_specific_copy(self):
