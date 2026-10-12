@@ -386,6 +386,15 @@ func checkMergeProducts(ctx context.Context, tx pgx.Tx, products map[int64]*merg
 	for id := range products {
 		ids = append(ids, id)
 	}
+	// This launch rollback table is for non-plants only. A stale row on one
+	// of these plants would be deleted by cascade, so reject it explicitly.
+	var hiddenLaunchPlant bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM launch_hidden_nonplant_products WHERE product_id=ANY($1))`, ids).Scan(&hiddenLaunchPlant); err != nil {
+		return err
+	}
+	if hiddenLaunchPlant {
+		return fmt.Errorf("%w: у растения есть запись в таблице отката скрытия непродуктовых товаров", ErrInvalidInput)
+	}
 	var missingSabyCode bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM product_variants variant
@@ -501,6 +510,7 @@ func checkKnownProductReferences(ctx context.Context, tx pgx.Tx) error {
 		"product_attribute_values": true, "collection_products": true, "product_media": true,
 		"product_reviews": true, "order_items": true, "catalog_ai_enrichment_jobs": true,
 		"product_url_aliases": true, "avito_listing_products": true,
+		"launch_hidden_nonplant_products": true,
 	}
 	rows, err := tx.Query(ctx, `SELECT conrelid::regclass::TEXT FROM pg_constraint
 		WHERE contype='f' AND confrelid='products'::regclass`)
