@@ -267,6 +267,54 @@ export function MergeProductsDialog({ products, onClose, onMerged, onError }: { 
   return <Dialog title="Объединить размеры в одну карточку" onClose={onClose}><p>Выберите PRODUCT — его название, категория и описание останутся основными. SKU, остатки, цены, фотографии и связи СБИС остальных черновиков переедут в него.</p><label className="wide">Основная карточка<select value={targetId} onChange={(event) => setTargetId(Number(event.target.value))}>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sabyCode || item.sku}</option>)}</select></label><div className="admin-merge-preview"><strong>Будет одна карточка: {target?.name}</strong><span>Вариантов после объединения: не менее {products.length}</span><small>Поглощаемые черновики: {sources.map((item) => item.name).join(", ")}</small></div><p className="admin-hint">Объединяются только черновики без заказов и отзывов. Все SKU и коды СБИС сохраняются.</p><div className="dialog-actions"><button onClick={onClose}>Отмена</button><button className="primary" disabled={busy || sources.length === 0} onClick={merge}>Объединить {products.length} карточки</button></div></Dialog>;
 }
 
+type PublishedMergePreview = { ready: boolean; targetProductCode?: string; sourceProductCodes?: string[]; skus: string[]; blockers: string[] };
+
+export function PublishedMergePreviewDialog({ products, onClose, onMerged, onError }: { products: Product[]; onClose: () => void; onMerged: () => void; onError: (value: string) => void }) {
+  const [targetId, setTargetId] = useState(products[0]?.id || 0);
+  const [expectedSKUs, setExpectedSKUs] = useState(products.map((item) => item.sku).join(", "));
+  const [reviewedIdentity, setReviewedIdentity] = useState(products[0]?.name || "");
+  const [preview, setPreview] = useState<PublishedMergePreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const requestBody = () => ({
+    targetProductId: targetId,
+    sourceProductIds: products.filter((item) => item.id !== targetId).map((item) => item.id),
+    expectedSkus: expectedSKUs.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean),
+    reviewedIdentity: reviewedIdentity.trim(),
+  });
+  const check = async () => {
+    setBusy(true); setPreview(null); setConfirmation("");
+    try {
+      const result = await api<PublishedMergePreview>("/api/v1/admin/products/merge-published/preview", {
+        method: "POST",
+        body: JSON.stringify(requestBody()),
+      });
+      setPreview(result);
+    } catch (error) { onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+  const merge = async () => {
+    if (!preview?.ready || confirmation !== `ОБЪЕДИНИТЬ ${preview.targetProductCode}`) return;
+    setBusy(true);
+    try {
+      await api("/api/v1/admin/products/merge-published", { method: "POST", body: JSON.stringify(requestBody()) });
+      onMerged();
+    } catch (error) { setPreview(null); setConfirmation(""); onError((error as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <Dialog title="Проверка и объединение опубликованных карточек" onClose={onClose}>
+    <p>Проверка только читает базу. Выберите основную карточку и перечислите каждый SKU всех размеров. После проверки товары останутся без изменений.</p>
+    <ul>{products.map((item) => <li key={item.id}>{item.name} · внутренний ID {item.id} · адрес {item.slug} · {item.sku} · {item.latinName || "латинское название не заполнено"}</li>)}</ul>
+    <label className="wide">Основная карточка<select value={targetId} onChange={(event) => { setTargetId(Number(event.target.value)); setReviewedIdentity(products.find((item) => item.id === Number(event.target.value))?.name || ""); setPreview(null); }}>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · ID {item.id} · {item.slug}</option>)}</select></label>
+    <label className="wide">Подтверждённый вид или сорт<input value={reviewedIdentity} onChange={(event) => { setReviewedIdentity(event.target.value); setPreview(null); }} /></label>
+    <label className="wide">Все SKU через запятую<input value={expectedSKUs} onChange={(event) => { setExpectedSKUs(event.target.value); setPreview(null); }} /></label>
+    <p className="admin-hint">Список SKU предварительный: у карточки может быть несколько размеров. Сверьте его по карточкам до проверки.</p>
+    {preview && <div className="admin-merge-preview"><strong>{preview.ready ? "Предварительные проверки пройдены" : "Объединение заблокировано"}</strong><span>Основная карточка: {preview.targetProductCode || "—"}; исходные: {preview.sourceProductCodes?.join(", ") || "—"}</span>{preview.blockers.map((blocker) => <p className="admin-inline-error" key={blocker}>{blocker}</p>)}{preview.ready && <small>Результат может устареть. Перед фактическим объединением сервер повторит все проверки.</small>}</div>}
+    {preview?.ready && <label className="wide">Для объединения введите «ОБЪЕДИНИТЬ {preview.targetProductCode}»<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" /></label>}
+    <div className="dialog-actions"><button onClick={onClose}>Закрыть</button><button disabled={busy || !reviewedIdentity.trim() || !expectedSKUs.trim()} onClick={() => void check()}>{busy ? "Подождите…" : "Проверить без изменений"}</button>{preview?.ready && <button className="admin-danger" disabled={busy || confirmation !== `ОБЪЕДИНИТЬ ${preview.targetProductCode}`} onClick={() => void merge()}>Объединить карточки</button>}</div>
+  </Dialog>;
+}
+
 export function SyncDialog({ count, onClose, onSync }: { count: number; onClose: () => void; onSync: (fields: string[]) => void }) {
   const options = [{ id: "name", label: "Название" }, { id: "photo", label: "Фото" }, { id: "price", label: "Цена" }, { id: "description", label: "Описание" }];
   const [fields, setFields] = useState(["price"]);

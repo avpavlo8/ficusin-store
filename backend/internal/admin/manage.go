@@ -1010,6 +1010,17 @@ func (repository *PostgresRepository) SyncProducts(
 	}
 	result := SyncResult{Skipped: []int64{}}
 	for _, id := range request.ProductIDs {
+		// A merged card has several Saby identities, one per SKU. This legacy
+		// action updates a whole card (and price/photo of its first variant), so
+		// selecting the surviving product.saby_id would corrupt other sizes.
+		var linkedSKUs int
+		if err := repository.pool.QueryRow(ctx, `SELECT count(*) FROM product_variants
+			WHERE product_id=$1 AND saby_id IS NOT NULL AND archived_at IS NULL`, id).Scan(&linkedSKUs); err != nil {
+			return result, err
+		}
+		if linkedSKUs > 1 {
+			return result, fmt.Errorf("%w: у карточки %d несколько SKU СБИС; ручная синхронизация всей карточки недоступна, обновляйте каждый размер отдельно", ErrInvalidInput, id)
+		}
 		var name, description string
 		var priceMinor int64
 		var images []string

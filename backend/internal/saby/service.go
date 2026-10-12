@@ -158,18 +158,18 @@ func (service *Service) Sync(ctx context.Context, items []CatalogItem) (Result, 
 // poolRow — строка справочника номенклатуры в том виде, в каком она уезжает
 // в базу одним запросом.
 type poolRow struct {
-	SabyID      string         `json:"saby_id"`
-	Code        string         `json:"code"`
-	ExternalIDs []string       `json:"external_ids"`
-	Article     string         `json:"article"`
-	Barcode     string         `json:"barcode"`
-	Barcodes    []string       `json:"barcodes"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	PriceMinor  int64          `json:"price_minor"`
-	Balance     int            `json:"balance"`
-	Images      []string       `json:"images"`
-	Attributes  map[string]any `json:"attributes"`
+	SabyID       string         `json:"saby_id"`
+	Code         string         `json:"code"`
+	ExternalIDs  []string       `json:"external_ids"`
+	Article      string         `json:"article"`
+	Barcode      string         `json:"barcode"`
+	Barcodes     []string       `json:"barcodes"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	PriceMinor   int64          `json:"price_minor"`
+	Balance      int            `json:"balance"`
+	Images       []string       `json:"images"`
+	Attributes   map[string]any `json:"attributes"`
 	SectionPath  []string       `json:"section_path"`
 	FolderSabyID string         `json:"folder_saby_id"`
 }
@@ -313,7 +313,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		UPDATE product_external_ids external SET status='legacy',is_primary=FALSE,
 			last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
 		FROM products product JOIN product_variants variant ON variant.product_id=product.id
-		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
+		JOIN saby_nomenclature source ON source.saby_id=variant.saby_id
 		WHERE external.variant_id=variant.id AND external.provider='saby'
 			AND external.id_type='id' AND external.external_id<>source.saby_id
 	`); err != nil {
@@ -323,8 +323,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
 		SELECT p.id, pv.id, 'saby', 'id', source.saby_id,'active',TRUE,'sync',CURRENT_TIMESTAMP
 		FROM products p
-		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
-		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
+		JOIN product_variants pv ON pv.product_id=p.id
+		JOIN saby_nomenclature source ON source.saby_id=pv.saby_id
 		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
 			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
 			status='active',is_primary=TRUE,last_seen_at=CURRENT_TIMESTAMP,
@@ -336,7 +336,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		UPDATE product_external_ids external SET status='legacy',is_primary=FALSE,
 			last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
 		FROM products product JOIN product_variants variant ON variant.product_id=product.id
-		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
+		JOIN saby_nomenclature source ON source.saby_id=variant.saby_id
 		WHERE external.variant_id=variant.id AND external.provider='saby'
 			AND external.id_type='code' AND NULLIF(BTRIM(source.code),'') IS NOT NULL
 			AND external.external_id<>source.code
@@ -347,8 +347,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
 		SELECT p.id, pv.id, 'saby', 'code', source.code,'active',TRUE,'sync',CURRENT_TIMESTAMP
 		FROM products p
-		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
-		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
+		JOIN product_variants pv ON pv.product_id=p.id
+		JOIN saby_nomenclature source ON source.saby_id=pv.saby_id
 		WHERE NULLIF(BTRIM(source.code),'') IS NOT NULL
 		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET
 			product_id=EXCLUDED.product_id, variant_id=EXCLUDED.variant_id,
@@ -361,7 +361,7 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		UPDATE product_external_ids external SET status='legacy',is_primary=FALSE,
 			last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
 		FROM products product JOIN product_variants variant ON variant.product_id=product.id
-		JOIN saby_nomenclature source ON source.saby_id=product.saby_id
+		JOIN saby_nomenclature source ON source.saby_id=variant.saby_id
 		WHERE external.variant_id=variant.id AND external.provider='saby'
 			AND external.id_type='alias'
 			AND NOT (external.external_id=ANY(source.external_ids))
@@ -372,8 +372,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id,status,is_primary,source,last_seen_at)
 		SELECT p.id, pv.id, 'saby', 'alias', alias.external_id,'active',FALSE,'sync',CURRENT_TIMESTAMP
 		FROM products p
-		JOIN saby_nomenclature source ON source.saby_id=p.saby_id
-		JOIN product_variants pv ON pv.product_id=p.id AND pv.saby_id=source.saby_id
+		JOIN product_variants pv ON pv.product_id=p.id
+		JOIN saby_nomenclature source ON source.saby_id=pv.saby_id
 		CROSS JOIN LATERAL UNNEST(source.external_ids) alias(external_id)
 		WHERE NULLIF(BTRIM(alias.external_id),'') IS NOT NULL
 		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET

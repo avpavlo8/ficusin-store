@@ -1,0 +1,10 @@
+[
+  {"group":"Raven","publicTargetCode":"112","publicSourceCodes":["113"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["112","113"],"reviewedIdentity":"Замиокулькас Равен (Raven)"}},
+  {"group":"Zenzi","publicTargetCode":"110","publicSourceCodes":["11333"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["110","111","798"],"reviewedIdentity":"Замиокулькас Зензи"}},
+  {"group":"Green Kinky","publicTargetCode":"198","publicSourceCodes":["11021"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["198","486"],"reviewedIdentity":"Фикус Бенджамина Грин Кинки"}},
+  {"group":"Ficus Bambino","publicTargetCode":"205","publicSourceCodes":["11224"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["205","689","690"],"reviewedIdentity":"Фикус Лирата Бамбино"}},
+  {"group":"Strelitzia nicolai","publicTargetCode":"186","publicSourceCodes":["11034"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["186","499"],"reviewedIdentity":"Стрелиция Николая"}},
+  {"group":"Dypsis Areca","publicTargetCode":"91","publicSourceCodes":["92","11100"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["91","92","565"],"reviewedIdentity":"Дипсис Арека"}},
+  {"group":"Nephrolepis Green Lady","publicTargetCode":"156","publicSourceCodes":["11041"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["156","506","563"],"reviewedIdentity":"Нефролепис Грин Леди"}},
+  {"group":"Sansevieria Spaghetti","publicTargetCode":"178","publicSourceCodes":["11284"],"request":{"targetProductId":null,"sourceProductIds":[],"expectedSkus":["178","749"],"reviewedIdentity":"Сансевиерия Цилиндрика Спагетти"}}
+]

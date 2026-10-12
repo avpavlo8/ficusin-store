@@ -69,6 +69,11 @@ jobs:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
         run: go test ./internal/admin -run TestStage03CatalogueSafetyOnLiveDatabase -count=1
         working-directory: backend
+      - name: Verify published-card merge preserves SKU and history on PostgreSQL
+        env:
+          CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
+        run: go test ./internal/admin -run '^TestPublishedMergeOnLiveDatabase$' -count=1
+        working-directory: backend
       - name: Verify stage 04 sales ledger and analytics on PostgreSQL
         env:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable

@@ -242,6 +242,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/products", adminAPI.createProduct)
 	mux.HandleFunc("POST /api/v1/admin/products/import", adminAPI.importProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/merge", adminAPI.mergeProducts)
+	mux.HandleFunc("POST /api/v1/admin/products/merge-published", adminAPI.mergePublishedProducts)
+	mux.HandleFunc("POST /api/v1/admin/products/merge-published/preview", adminAPI.previewPublishedMerge)
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/ai-draft", adminAPI.generateProductDraft)
 	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", safeAdminProductUpdateHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)

@@ -502,6 +502,67 @@ type draftProductMerger interface {
 	MergeDraftProducts(context.Context, admin.Actor, admin.MergeProductsRequest) error
 }
 
+type publishedProductMerger interface {
+	MergePublishedProducts(context.Context, admin.Actor, admin.PublishedMergeRequest) error
+}
+
+type publishedProductMergePreviewer interface {
+	PreviewPublishedMerge(context.Context, admin.Actor, admin.PublishedMergeRequest) (admin.PublishedMergePreview, error)
+}
+
+func (handlers adminHandlers) previewPublishedMerge(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+	if !ok {
+		return
+	}
+	if actor.Role != admin.RoleOwner {
+		writeJSON(response, http.StatusForbidden, errorResponse{Error: "Проверка объединения опубликованных карточек доступна владельцу"})
+		return
+	}
+	var body admin.PublishedMergeRequest
+	if decodeJSON(request, &body) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Неверный запрос проверки объединения"})
+		return
+	}
+	previewer, ok := handlers.repository.(publishedProductMergePreviewer)
+	if !ok {
+		writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Проверка объединения недоступна"})
+		return
+	}
+	preview, err := previewer.PreviewPublishedMerge(request.Context(), actor, body)
+	if err != nil {
+		handlers.failed(response, "preview published merge", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, preview)
+}
+
+func (handlers adminHandlers) mergePublishedProducts(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+	if !ok {
+		return
+	}
+	if actor.Role != admin.RoleOwner {
+		writeJSON(response, http.StatusForbidden, errorResponse{Error: "Объединение опубликованных карточек доступно владельцу"})
+		return
+	}
+	var body admin.PublishedMergeRequest
+	if decodeJSON(request, &body) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Неверный запрос объединения"})
+		return
+	}
+	merger, ok := handlers.repository.(publishedProductMerger)
+	if !ok {
+		writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Объединение недоступно"})
+		return
+	}
+	if err := merger.MergePublishedProducts(request.Context(), actor, body); err != nil {
+		handlers.failed(response, "merge published products", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 	if !ok {
