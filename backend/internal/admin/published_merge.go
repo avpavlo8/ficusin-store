@@ -22,6 +22,57 @@ type PublishedMergeRequest struct {
 	ReviewedIdentity string   `json:"reviewedIdentity"`
 }
 
+type PublishedMergePreview struct {
+	Ready              bool     `json:"ready"`
+	TargetProductCode  string   `json:"targetProductCode,omitempty"`
+	SourceProductCodes []string `json:"sourceProductCodes,omitempty"`
+	SKUs               []string `json:"skus"`
+	Blockers           []string `json:"blockers"`
+}
+
+// PreviewPublishedMerge uses the same validation as the write operation in a
+// database-enforced read-only transaction. A preview can become stale after
+// it returns; MergePublishedProducts therefore repeats every check under locks.
+func (repository *PostgresRepository) PreviewPublishedMerge(ctx context.Context, actor Actor, request PublishedMergeRequest) (PublishedMergePreview, error) {
+	if actor.Role != RoleOwner {
+		return PublishedMergePreview{}, ErrForbidden
+	}
+	ids, err := validatePublishedMergeRequest(request)
+	if err != nil {
+		return PublishedMergePreview{}, err
+	}
+	tx, err := repository.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return PublishedMergePreview{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	preview := PublishedMergePreview{SKUs: request.ExpectedSKUs, Blockers: []string{}}
+	products, err := loadMergeProducts(ctx, tx, ids, false)
+	if err != nil {
+		if errors.Is(err, ErrInvalidInput) {
+			preview.Blockers = append(preview.Blockers, err.Error())
+			return preview, nil
+		}
+		return preview, err
+	}
+	preview.TargetProductCode = products[request.TargetProductID].Code
+	preview.SourceProductCodes = sourceCodes(products, request.SourceProductIDs)
+	for _, check := range []func(context.Context, pgx.Tx) error{
+		func(ctx context.Context, tx pgx.Tx) error { return checkMergeProducts(ctx, tx, products, request) },
+		checkKnownProductReferences,
+	} {
+		if err := check(ctx, tx); err != nil {
+			if errors.Is(err, ErrInvalidInput) {
+				preview.Blockers = append(preview.Blockers, err.Error())
+				continue
+			}
+			return preview, err
+		}
+	}
+	preview.Ready = len(preview.Blockers) == 0
+	return preview, nil
+}
+
 type mergeProduct struct {
 	ID             int64
 	Code           string
@@ -59,7 +110,7 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 
 	// Lock in one order, including the target, to avoid competing merges and
 	// source catalogue updates passing validation midway through this action.
-	products, err := loadMergeProducts(ctx, tx, ids)
+	products, err := loadMergeProducts(ctx, tx, ids, true)
 	if err != nil {
 		return err
 	}
@@ -262,10 +313,17 @@ func sourceCodes(products map[int64]*mergeProduct, sourceIDs []int64) []string {
 	return codes
 }
 
-func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64) (map[int64]*mergeProduct, error) {
-	rows, err := tx.Query(ctx, `SELECT id,product_code::TEXT,slug,name,latin_name,status,catalog_section,category_id,
+func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64, lock bool) (map[int64]*mergeProduct, error) {
+	productQuery := `SELECT id,product_code::TEXT,slug,name,latin_name,status,catalog_section,category_id,
 		COALESCE(saby_id,''),to_jsonb(products)
-		FROM products WHERE id=ANY($1) ORDER BY id FOR UPDATE`, ids)
+		FROM products WHERE id=ANY($1) ORDER BY id`
+	variantQuery := `SELECT product_id,id,sku,COALESCE(saby_id,''),label
+		FROM product_variants WHERE product_id=ANY($1) ORDER BY product_id,id`
+	if lock {
+		productQuery += ` FOR UPDATE`
+		variantQuery += ` FOR UPDATE`
+	}
+	rows, err := tx.Query(ctx, productQuery, ids)
 	if err != nil {
 		return nil, fmt.Errorf("load merge cards: %w", err)
 	}
@@ -287,8 +345,7 @@ func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64) (map[int64]*
 	if len(products) != len(ids) {
 		return nil, fmt.Errorf("%w: одна из карточек не найдена", ErrInvalidInput)
 	}
-	rows, err = tx.Query(ctx, `SELECT product_id,id,sku,COALESCE(saby_id,''),label
-		FROM product_variants WHERE product_id=ANY($1) ORDER BY product_id,id FOR UPDATE`, ids)
+	rows, err = tx.Query(ctx, variantQuery, ids)
 	if err != nil {
 		return nil, fmt.Errorf("load merge variants: %w", err)
 	}

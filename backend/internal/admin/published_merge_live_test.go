@@ -115,6 +115,10 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	request := PublishedMergeRequest{TargetProductID: targetID, SourceProductIDs: []int64{sourceID},
 		ExpectedSKUs: []string{targetSKU, sourceSKU}, ReviewedIdentity: "Тестовая аглаонема Raven"}
 	actor := Actor{Role: RoleOwner, CustomerID: ownerID}
+	blockedPreview, err := repository.PreviewPublishedMerge(ctx, actor, request)
+	if err != nil || blockedPreview.Ready || len(blockedPreview.Blockers) == 0 {
+		t.Fatalf("conflicting PIM must block read-only preview: %+v, %v", blockedPreview, err)
+	}
 	if err := repository.MergePublishedProducts(ctx, actor, request); err == nil {
 		t.Fatal("conflicting PIM care_level was accepted")
 	}
@@ -127,6 +131,13 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx, `UPDATE products SET care_level='easy' WHERE id=$1`, sourceID); err != nil {
 		t.Fatal(err)
+	}
+	readyPreview, err := repository.PreviewPublishedMerge(ctx, actor, request)
+	if err != nil || !readyPreview.Ready || len(readyPreview.Blockers) != 0 {
+		t.Fatalf("valid group should pass read-only preview: %+v, %v", readyPreview, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1`, sourceVariantID).Scan(&stillSource); err != nil || stillSource != sourceID {
+		t.Fatalf("preview changed variant owner: %d, %v", stillSource, err)
 	}
 	if err := repository.MergePublishedProducts(ctx, actor, request); err != nil {
 		t.Fatalf("merge with live constraints: %v", err)
