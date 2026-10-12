@@ -165,14 +165,16 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 		// A product-level primary ID from each source cannot remain product-level:
 		// one merged card may have only one primary per provider/type. A source
 		// with one SKU has an unambiguous owner, so scope its IDs to that SKU.
+		// Change both FKs in this statement: the immediate constraint trigger
+		// checks that variant_id belongs to product_id after every UPDATE.
 		if len(source.VariantIDs) == 1 {
 			if _, err = tx.Exec(ctx, `UPDATE product_external_ids external SET
 				is_primary=CASE WHEN EXISTS(SELECT 1 FROM product_external_ids current
 					WHERE current.variant_id=$1 AND current.provider=external.provider
 					AND current.id_type=external.id_type AND current.status='active' AND current.is_primary)
 					THEN FALSE ELSE external.is_primary END,
-				variant_id=$1,updated_at=CURRENT_TIMESTAMP
-				WHERE external.product_id=$2 AND external.variant_id IS NULL`, source.VariantIDs[0], sourceID); err != nil {
+				variant_id=$1,product_id=$3,updated_at=CURRENT_TIMESTAMP
+				WHERE external.product_id=$2 AND external.variant_id IS NULL`, source.VariantIDs[0], sourceID, target.ID); err != nil {
 				return fmt.Errorf("scope external IDs to SKU: %w", err)
 			}
 		}
