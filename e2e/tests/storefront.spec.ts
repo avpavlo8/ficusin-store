@@ -254,12 +254,15 @@ test("@desktop @phone инструкция доступна по QR и раск�
   const guide = page.locator("#plant-passport");
   await expect(guide).toContainText("Первые дни дома");
   await expect(guide).toContainText("Распакуйте");
-  await expect(guide).toContainText("Пересадите при необходимости");
+  await expect(guide).toContainText("Оцените пересадку");
+  if (page.viewportSize()!.width <= 700) {
+    for (const arrow of await guide.locator(".plant-arrival-arrow").all()) await expect(arrow).toBeVisible();
+  }
   await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
-  await page.locator("#plant-watering-tab").click();
-  await expect(page.locator("#plant-watering-tab")).toHaveAttribute("aria-selected", "true");
+  await expect(guide.getByRole("tab")).toHaveCount(0);
+  await expect(page.locator("#plant-lighting .plant-copy")).toHaveText("Яркий рассеянный свет");
   await expect(page.locator("#plant-watering .plant-copy")).toHaveText("После просыхания верхнего слоя");
-  await expect(page.locator("#plant-repotting-tab")).toHaveCount(0);
+  await expect(page.locator("#plant-repotting")).toHaveCount(0);
   await expect(guide).not.toContainText("Информация для этого растения готовится.");
   await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug");
   await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
@@ -280,7 +283,7 @@ test("@desktop незаполненные темы ухода и вопросы 
   expect(singlePhoto?.width || 0).toBeGreaterThan(400);
   await expect(page.getByRole("tabpanel")).not.toContainText("готовится");
   await page.getByRole("tab", { name: "Уход", exact: true }).click();
-  await expect(page.locator(".plant-topic-tabs")).toHaveCount(0);
+  await expect(page.locator(".plant-care-panel")).toHaveCount(0);
   await expect(page.locator("#plant-passport")).not.toContainText("готовится");
   await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "Отзывы", exact: true }).click();

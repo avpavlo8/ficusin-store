@@ -70,7 +70,10 @@ export default function ProductPage({ slug }: { slug: string }) {
   useEffect(() => {
     if (!product || product.catalogSection !== "plants") return;
     const openLinkedCare = () => {
-      if (window.location.hash === "#plant-passport" || window.location.hash.startsWith("#plant-")) setActiveTab("care");
+      if (window.location.hash === "#plant-passport" || window.location.hash.startsWith("#plant-")) {
+        setActiveTab("care");
+        document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" });
+      }
     };
     openLinkedCare();
     window.addEventListener("hashchange", openLinkedCare);
@@ -80,7 +83,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   useEffect(() => {
     if (activeTab !== "care" || !window.location.hash.startsWith("#plant-")) return;
     const frame = window.requestAnimationFrame(() => {
-      const target = document.querySelector(window.location.hash);
+      const target = document.getElementById(window.location.hash.slice(1));
       if (target instanceof HTMLDetailsElement) target.open = true;
       (target || document.querySelector("#plant-passport"))?.scrollIntoView({ block: "start" });
     });
