@@ -55,6 +55,18 @@
 - https://www.rhs.org.uk/plants/6097/dracaena-sanderiana-v/details
 - https://www.rhs.org.uk/plants/types/houseplants/growing-guide
 
+## #50 — Бонсай Citrus Myrtifolia(апельсин)
+
+Таксон или группа: Citrus × aurantium var. myrtifolia
+
+Темы: humidity, temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+- https://www.rhs.org.uk/plants/212951/citrus-myrtifolia/details
+- https://www.rhs.org.uk/plants/citrus/growing-guide
+
 ## #56 — Бонсай Гранат
 
 Таксон или группа: Punica granatum
@@ -65,6 +77,41 @@
 
 - https://www.rhs.org.uk/plants/types/trees/bonsai
 - https://www.rhs.org.uk/plants/14189/punica-granatum/details
+
+## #60 — Бонсай Кармона
+
+Таксон или группа: Carmona
+
+Темы: humidity, temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+- https://www.rhs.org.uk/plants/207663/carmona/details
+
+## #62 — Бонсай Кипарис (Chamaecyparis)
+
+Таксон или группа: Chamaecyparis
+
+Темы: humidity, temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+- https://www.rhs.org.uk/plants/96372/chamaecyparis-lawsoniana-green-hedger/details
+- https://www.rhs.org.uk/advice/pdfs/conifer-care.pdf
+
+## #63 — Бонсай Котонеастер (Кизильник)
+
+Таксон или группа: Cotoneaster
+
+Темы: humidity, temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+- https://www.rhs.org.uk/plants/cotoneaster/growing-guide
+- https://www.rhs.org.uk/plants/cotoneaster/border-shrubs
 
 ## #64 — Бонсай Лжелиственница
 
@@ -99,6 +146,17 @@
 
 - https://www.rhs.org.uk/plants/types/trees/bonsai
 - https://www.rhs.org.uk/plants/types/conifers/growing-guide
+
+## #75 — Бонсай Пираканта
+
+Таксон или группа: Pyracantha
+
+Темы: humidity, temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+- https://www.rhs.org.uk/plants/pyracantha/growing-guide
 
 ## #79 — Бонсай Сагереция чайная
 
