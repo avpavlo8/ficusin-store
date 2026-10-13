@@ -66,6 +66,18 @@
 - https://www.rhs.org.uk/plants/types/trees/bonsai
 - https://www.rhs.org.uk/plants/14189/punica-granatum/details
 
+## #64 — Бонсай Лжелиственница
+
+Таксон или группа: Pseudolarix amabilis (syn. Chrysolarix amabilis)
+
+Темы: temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/211487/chrysolarix-amabilis/details
+- https://plants.ces.ncsu.edu/plants/pseudolarix-amabilis/common-name/golden-pine/
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+
 ## #65 — Бонсай Лигуструм (Бирючина китайская)
 
 Таксон или группа: Ligustrum sinense
@@ -111,6 +123,17 @@
 - https://www.bonsaiempire.com/tree-species/buxus
 - https://www.rhs.org.uk/plants/types/trees/bonsai
 
+## #83 — Бонсай Сосна
+
+Таксон или группа: Pinus sp. (вид не указан)
+
+Темы: temperature, repotting, fertilizer
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/bonsai
+- https://www.rhs.org.uk/plants/types/conifers
+
 ## #86 — Бонсай яблоня домашняя
 
 Таксон или группа: Malus domestica
@@ -132,6 +155,17 @@
 
 - https://www.rhs.org.uk/plants/types/carnivorous/growing-guide
 - https://www.rhs.org.uk/plants/venus-fly-trap
+
+## #89 — Даваллия
+
+Таксон или группа: Davallia sp. (вид не указан)
+
+Темы: humidity, soil, repotting, temperature
+
+Источники:
+
+- https://www.rhs.org.uk/plants/5358/davallia/details
+- https://www.rhs.org.uk/plants/5360/davallia-fejeensis/details
 
 ## #91 — Дипсис Арека
 
@@ -177,6 +211,27 @@
 - https://plants.ces.ncsu.edu/plants/caladium-bicolor/common-name/caladium/
 - https://www.rhs.org.uk/plants/2601/caladium-bicolor-v/details
 
+## #120 — Калла
+
+Таксон или группа: Zantedeschia sp. (вид не указан)
+
+Темы: soil, temperature, repotting
+
+Источники:
+
+- https://www.rhs.org.uk/plants/zantedeschia
+- https://www.rhs.org.uk/plants/zantedeschia/growing-guide
+
+## #121 — Клузия
+
+Таксон или группа: Clusia sp. (вид не указан)
+
+Темы: soil, repotting, temperature
+
+Источники:
+
+- https://www.rhs.org.uk/plants/231567/clusia-rosea-princess/details
+
 ## #123 — Кофе Арабика
 
 Таксон или группа: Coffea arabica
@@ -186,6 +241,17 @@
 Источники:
 
 - https://www.rhs.org.uk/plants/4159/coffea-arabica/details
+
+## #124 — Крассула
+
+Таксон или группа: Crassula sp. (вид не указан)
+
+Темы: humidity, soil, repotting, fertilizer
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/cacti-succulents/houseplants/growing-guide
+- https://www.rhs.org.uk/plants/4739/crassula-ovata/details
 
 ## #125 — Крестовник Роули (Сенецио)
 
@@ -229,6 +295,16 @@
 
 - https://www.rhs.org.uk/plants/bay-tree/growing-guide
 - https://www.rhs.org.uk/herbs/bay/grow-your-own
+
+## #134 — Ливистона
+
+Таксон или группа: Livistona sp. (вид не указан)
+
+Темы: humidity, soil, repotting, fertilizer
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/trees/indoor-palms
 
 ## #139 — Маранта
 
@@ -414,6 +490,16 @@
 
 - https://www.rhs.org.uk/plants/163488/thuja-occidentalis-brabant-white-cedar-brabant/details
 
+## #192 — Фиалка в ассортименте
+
+Таксон или группа: Streptocarpus sect. Saintpaulia (африканская фиалка)
+
+Темы: humidity, temperature, soil, repotting, fertilizer, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/african-violets/growing-guide
+
 ## #208 — Фикус Микрокарпа Гинсенг
 
 Таксон или группа: Ficus microcarpa
@@ -453,6 +539,47 @@
 Источники:
 
 - https://www.rhs.org.uk/plants/5127/cycas-revoluta/details
+
+## #240 — Циртомиум
+
+Таксон или группа: Cyrtomium sp. (вид не указан)
+
+Темы: soil, repotting, growthRate
+
+Источники:
+
+- https://www.rhs.org.uk/plants/types/ferns/growing-guide
+- https://www.rhs.org.uk/plants/109593/cyrtomium-macrophyllum/details
+
+## #241 — Шеффлера
+
+Таксон или группа: Schefflera / Heptapleurum sp. (вид не указан)
+
+Темы: soil, fertilizer
+
+Источники:
+
+- https://www.rhs.org.uk/plants/187874/heptapleurum-arboricola/details
+
+## #242 — Шеффлера (Герда)
+
+Таксон или группа: Schefflera / Heptapleurum sp. 'Gerda' (вид не подтверждён)
+
+Темы: soil, fertilizer
+
+Источники:
+
+- https://www.rhs.org.uk/plants/187874/heptapleurum-arboricola/details
+
+## #243 — Шеффлера Луизиана
+
+Таксон или группа: Schefflera / Heptapleurum sp. 'Louisiana' (вид не подтверждён)
+
+Темы: soil, fertilizer
+
+Источники:
+
+- https://www.rhs.org.uk/plants/187874/heptapleurum-arboricola/details
 
 ## #857 — Замиокулькус Roundleaf D22
 
