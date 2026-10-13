@@ -20,13 +20,11 @@ const helpArticles = [
   ["roots", "Проблемы с корнями", "Как отличить перелив от пересушки", "/care/root-problems"],
 ] as const;
 
-const pending = "Информация для этого растения готовится.";
-
 export function PlantAbout({ product }: { product: ProductDetail }) {
-  const paragraphs = (product.description || "Подробный рассказ о растении готовится.").split(/\n\s*\n/).filter(Boolean);
+  const paragraphs = (product.description || product.shortDescription || "").split(/\n\s*\n/).filter(Boolean);
   return <article className="plant-about" id="plant-about" aria-labelledby="plant-about-title">
     <header><p className="plant-eyebrow">О растении</p><h2 id="plant-about-title">{product.name}</h2></header>
-    <div className={`plant-about-copy${product.description ? "" : " plant-empty"}`}>
+    <div className="plant-about-copy">
       {paragraphs.map((paragraph, index) => <p key={`${paragraph.slice(0, 18)}-${index}`}>{paragraph}</p>)}
     </div>
   </article>;
@@ -55,17 +53,18 @@ function HelpIcon({ type }: { type: (typeof helpArticles)[number][0] }) {
 
 export function PlantCareGuide({ product }: { product: ProductDetail }) {
   const passport = product.passport;
+  const availableTopics = topics.filter(([key]) => passport[key]?.trim());
   const [activeTopic, setActiveTopic] = useState<(typeof topics)[number][0]>(topics[0][0]);
-  const selectedTopic = topics.find(([key]) => key === activeTopic) || topics[0];
+  const selectedTopic = availableTopics.find(([key]) => key === activeTopic) || availableTopics[0];
   return <div className="plant-care" id="plant-passport">
     <section className="plant-arrival" aria-labelledby="plant-arrival-title"><header><div><p className="plant-eyebrow">Сразу после доставки</p><h3 id="plant-arrival-title">Первые дни дома</h3></div><p>Универсальная памятка: пять спокойных шагов помогают растению освоиться после дороги.</p></header><div className="plant-arrival-steps"><div><img src="/assets/care/first-days-home.jpg" alt="Пять первых действий: распаковать, осмотреть, выбрать место, дать привыкнуть и при необходимости пересадить" width="2172" height="724"/><ol><li><h4>Распакуйте</h4><p>Аккуратно снимите транспортировочную упаковку.</p></li><li><h4>Осмотрите</h4><p>Проверьте листья, стебли и влажность грунта.</p></li><li><h4>Найдите место</h4><p>Без сквозняка, батареи и резкого прямого солнца.</p></li><li><h4>Дайте привыкнуть</h4><p>Не тревожьте растение в первые дни дома.</p></li><li><h4>Пересадите при необходимости</h4><p>Обычно не раньше чем через 14 дней.</p></li></ol></div></div></section>
     {product.importantWarnings.length > 0 && <aside className="plant-warning"><strong>Важно перед началом</strong><ul>{product.importantWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></aside>}
-    <section className="plant-routine" aria-labelledby="plant-routine-title"><header className="plant-routine-intro"><div><p className="plant-eyebrow">Подробный уход</p><h3 id="plant-routine-title">Всё по темам</h3></div><p>Выберите нужный вопрос — инструкция откроется ниже.</p></header>{product.careInstructions && <p className="plant-copy plant-routine-overview">{product.careInstructions}</p>}<div className="plant-topic-tabs" role="tablist" aria-label="Темы ухода">{topics.map(([key,title]) => <button key={key} type="button" role="tab" aria-selected={activeTopic === key} aria-controls={`plant-${key}`} id={`plant-${key}-tab`} onClick={() => setActiveTopic(key)}><span><TopicIcon type={key}/></span><strong>{title}</strong></button>)}</div><article className={`plant-topic-content${selectedTopic[3] ? " has-image" : ""}`} id={`plant-${selectedTopic[0]}`} role="tabpanel" aria-labelledby={`plant-${selectedTopic[0]}-tab`}>{selectedTopic[3] && <img src={selectedTopic[3]} alt="" loading="lazy" width="1536" height="1152"/>}<div><p className="plant-topic-kicker">{selectedTopic[2]}</p><h4>{selectedTopic[1]}</h4><p className={passport[selectedTopic[0]]?.trim() ? "plant-copy" : "plant-empty"}>{passport[selectedTopic[0]]?.trim() || pending}</p></div></article></section>
+    <section className="plant-routine" aria-labelledby="plant-routine-title"><header className="plant-routine-intro"><div><p className="plant-eyebrow">Подробный уход</p><h3 id="plant-routine-title">Всё по темам</h3></div>{availableTopics.length > 0 && <p>Выберите нужный вопрос — инструкция откроется ниже.</p>}</header>{product.careInstructions && <p className="plant-copy plant-routine-overview">{product.careInstructions}</p>}{selectedTopic && <><div className="plant-topic-tabs" role="tablist" aria-label="Темы ухода">{availableTopics.map(([key,title]) => <button key={key} type="button" role="tab" aria-selected={selectedTopic[0] === key} aria-controls={`plant-${key}`} id={`plant-${key}-tab`} onClick={() => setActiveTopic(key)}><span><TopicIcon type={key}/></span><strong>{title}</strong></button>)}</div><article className={`plant-topic-content${selectedTopic[3] ? " has-image" : ""}`} id={`plant-${selectedTopic[0]}`} role="tabpanel" aria-labelledby={`plant-${selectedTopic[0]}-tab`}>{selectedTopic[3] && <img src={selectedTopic[3]} alt="" loading="lazy" width="1536" height="1152"/>}<div><p className="plant-topic-kicker">{selectedTopic[2]}</p><h4>{selectedTopic[1]}</h4><p className="plant-copy">{passport[selectedTopic[0]]}</p></div></article></>}</section>
     <section className="plant-help" aria-labelledby="plant-help-title"><header><p className="plant-eyebrow">База знаний</p><h3 id="plant-help-title">Если что-то не так</h3><p>Подробные инструкции по отдельным проблемам вынесены в статьи.</p></header><div>{helpArticles.map(([icon,title,note,url]) => <a href={url} key={url}><i aria-hidden="true"><HelpIcon type={icon}/></i><span><strong>{title}</strong><small>{note}</small></span><b aria-hidden="true">↗</b></a>)}</div></section>
   </div>;
 }
 
 export function PlantQuestions({ product }: { product: ProductDetail }) {
   const faq = (product.passport.faq || []).filter(item => item.question.trim() && item.answer.trim());
-  return <section className="plant-questions" id="questions" aria-labelledby="plant-questions-title"><p className="plant-eyebrow">Отвечаем на вопросы</p><h2 id="plant-questions-title">Вопросы о растении</h2>{faq.length ? faq.map((item,index) => <details key={`${item.question}-${index}`}><summary>{item.question}</summary><p className="plant-copy">{item.answer}</p></details>) : <p className="plant-empty">Здесь появятся ответы на частые вопросы об этом растении.</p>}<a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос ↗</a></section>;
+  return <section className="plant-questions" id="questions" aria-labelledby="plant-questions-title"><p className="plant-eyebrow">Отвечаем на вопросы</p><h2 id="plant-questions-title">Вопросы о растении</h2>{faq.map((item,index) => <details key={`${item.question}-${index}`}><summary>{item.question}</summary><p className="plant-copy">{item.answer}</p></details>)}<a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос ↗</a></section>;
 }

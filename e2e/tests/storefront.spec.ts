@@ -259,6 +259,8 @@ test("@desktop @phone инструкция доступна по QR и раск�
   await page.locator("#plant-watering-tab").click();
   await expect(page.locator("#plant-watering-tab")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#plant-watering .plant-copy")).toHaveText("После просыхания верхнего слоя");
+  await expect(page.locator("#plant-repotting-tab")).toHaveCount(0);
+  await expect(guide).not.toContainText("Информация для этого растения готовится.");
   await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug");
   await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
@@ -267,7 +269,7 @@ test("@desktop @phone инструкция доступна по QR и раск�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
-test("@desktop пустые вопросы и отзывы остаются полезными", async ({ page }) => {
+test("@desktop незаполненные темы ухода и вопросы не показывают заглушки", async ({ page }) => {
   await mockApi(page);
   await page.route("**/api/v1/products/empty", (route) => route.fulfill({ json: { product: {
     id: "empty", name: "Растение без паспорта", latin: "", shortDescription: "", description: "", careInstructions: "",
@@ -276,11 +278,11 @@ test("@desktop пустые вопросы и отзывы остаются по
   await page.goto("/product/empty");
   const singlePhoto = await page.locator(".pdp-gallery.single .pdp-image").boundingBox();
   expect(singlePhoto?.width || 0).toBeGreaterThan(400);
-  await expect(page.getByRole("tabpanel")).toContainText("Подробный рассказ о растении готовится.");
+  await expect(page.getByRole("tabpanel")).not.toContainText("готовится");
   await page.getByRole("tab", { name: "Уход", exact: true }).click();
-  await expect(page.locator("#plant-lighting")).toContainText("Информация для этого растения готовится.");
-  await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
-  await expect(page.locator("#questions")).toContainText("Здесь появятся ответы");
+  await expect(page.locator(".plant-topic-tabs")).toHaveCount(0);
+  await expect(page.locator("#plant-passport")).not.toContainText("готовится");
+  await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
   await expect(page.locator(".purchase-review-meta")).toContainText("Пока без отзывов");

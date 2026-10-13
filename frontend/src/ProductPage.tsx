@@ -128,8 +128,9 @@ export default function ProductPage({ slug }: { slug: string }) {
   const customerAttributes = [...product.attributes, ...(variant?.attributes || [])].filter((item) => item.showInCharacteristics !== false && (product.catalogSection === "plants" || !plantOnlyAttributeCodes.has(item.code)));
   const gallery = variant?.images?.length ? variant.images : product.images;
   const isPlant = product.catalogSection === "plants";
+  const hasPlantFAQ = product.passport.faq?.some((item) => item.question.trim() && item.answer.trim()) ?? false;
   const tabs = isPlant
-    ? ([['about','О растении'],['care','Уход'],['reviews','Отзывы'],['questions','Вопросы']] as const)
+    ? ([['about','О растении'],['care','Уход'],['reviews','Отзывы'],['questions','Вопросы']] as const).filter(([id]) => id !== 'questions' || hasPlantFAQ)
     : ([['characteristics','Характеристики'],['reviews','Отзывы']] as const);
   const openReviews = () => {
     setActiveTab("reviews");
