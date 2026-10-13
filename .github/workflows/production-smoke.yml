@@ -98,8 +98,8 @@ jobs:
             html="$(curl -fsS --max-time 15 "${BASE_URL}/?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             actual_js="$(printf '%s' "$html" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2 || true)"
             actual_css="$(printf '%s' "$html" | grep -oE 'href="/assets/[^"]+\.css"' | head -1 | cut -d'"' -f2 || true)"
-            care_arrival_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/first-days-home.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
-            care_topic_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/topics/light.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            care_arrival_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/guide-v2/arrival.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
+            care_topic_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/assets/care/guide-v2/objects.jpg?deploy=${GITHUB_SHA}&attempt=${attempt}" || true)"
             catalog_count="$(curl -fsS --max-time 20 "${BASE_URL}/api/v1/catalog?deploy=${GITHUB_SHA}&attempt=${attempt}" \
               | python3 -c 'import json,sys; data=json.load(sys.stdin); products=data.get("products"); print(len(products) if isinstance(products, list) else 0)' \
               2>/dev/null || printf '0')"
