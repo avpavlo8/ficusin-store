@@ -59,5 +59,6 @@ test("@desktop @phone отдельная температура доступна
   await expect(page.locator("#plant-humidity")).toHaveCount(0);
   await expect(page.locator(".plant-care-panel")).toHaveCount(1);
   await expect(page.locator("#plant-temperature")).toBeVisible();
+  await expect(page.locator(".plant-care-panel")).toHaveJSProperty("scrollTop", 0);
   await expect.poll(async () => (await page.locator("#plant-temperature").boundingBox())?.y).toBeLessThan(150);
 });
