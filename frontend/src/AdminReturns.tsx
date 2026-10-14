@@ -38,7 +38,7 @@ export function AdminReturns({ can, onError }: { can: (permission: string) => bo
       <section className="returns-list" aria-label="Список возвратов">
         {loading && <p className="returns-empty">Загружаем журнал…</p>}
         {!loading && visible.map((item) => <button key={item.id} className={selected?.id === item.id ? "selected" : ""} onClick={() => setSelectedID(item.id)}>
-          <span className={`return-state ${conditions[item.condition].className}`}>{conditions[item.condition].icon}</span><span className="return-card-main"><strong>{item.productName}</strong><small>{item.sku} · {channels[item.channel]}</small><small>{item.sourceShipmentId || `Возврат ${item.sourceReturnId}`}</small></span><span className="return-card-tail"><time>{new Date(`${item.returnedAt}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</time><em>{conditions[item.condition].label}</em></span>
+          <span className={`return-state ${conditions[item.condition].className}`}>{conditions[item.condition].icon}</span><span className="return-card-main"><strong>{item.productName}</strong><small>{item.sku} · {channels[item.channel]}</small><small>{item.sourceShipmentId || (item.sourceReturnId.startsWith("intake:") ? "Принят вручную" : `Возврат ${item.sourceReturnId}`)}</small></span><span className="return-card-tail"><time>{new Date(`${item.returnedAt}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</time><em>{conditions[item.condition].label}</em></span>
         </button>)}
         {!loading && !visible.length && <p className="returns-empty">В этой группе возвратов нет.</p>}
       </section>
