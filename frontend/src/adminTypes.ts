@@ -23,7 +23,7 @@ export type AdminData = {
 };
 
 export type MarketplaceReturn = {
-  id: number; channel: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
+  id: number; channel: string; channelComment?: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
   salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
   condition: "inspection" | "ready" | "restoring" | "dead"; comment: string; unitCost?: number;
   costOutcome: "unknown" | "restored" | "lost"; financialStatus: "linked" | "incomplete";
@@ -32,7 +32,10 @@ export type MarketplaceReturn = {
   history: Array<{ from: string; to: string; comment: string; createdAt: string }>;
 };
 
-export type ReturnProduct = { variantId: number; name: string; sku: string };
+export type ReturnProduct = { variantId: number; name: string; sku: string; label: string };
+export type ReturnIntakeRow = { key: string; variantId: number; name: string; sku: string; search: string; quantity: number; condition: "ready" | "restoring" | "dead"; comment: string };
+export type ReturnIntakeData = { channel: "ozon" | "wb" | "other"; channelComment: string; rows: ReturnIntakeRow[] };
+export type ReturnIntake = { id: string; revision: number; data: ReturnIntakeData; status: "draft" | "saved"; receiptStatus: MarketplaceReturn["receiptStatus"]; receiptExternalUrl?: string; receiptError?: string; items: MarketplaceReturn[] };
 export type FinanceImport = { id:number; bank:string; accountNumber:string; fileName:string; status:"preview"|"confirmed"|"failed"; rowsTotal:number; rowsNew:number; rowsDuplicate:number; rowsReview:number; createdAt:string; openingBalance?:number; incomingTotal?:number; outgoingTotal?:number; closingBalance?:number; balanceValid?:boolean };
 export type FinanceTransaction = { id:number; importId:number; bank:string; operationDate:string; documentNumber:string; counterparty:string; purpose:string; currency:string; debit:number; credit:number; classification:string; pnlEffect:string; reviewReason:string; confirmed:boolean };
 export type FinanceCashEntry = { id:number; operationDate:string; kind:string; direction:"in"|"out"; amount:number; purpose:string; linkedTransactionId?:number };
