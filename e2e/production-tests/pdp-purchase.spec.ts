@@ -36,7 +36,7 @@ test("Search puts results first and offers suggestions live", async ({page}) => 
   const phone = (await page.viewportSize())!.width <= 850;
   if (phone) await page.getByRole("button", {name:"Поиск по каталогу",exact:true}).first().click();
   const search = page.locator(phone ? ".mobile-catalog-search" : ".header-search");
-  await search.getByRole("combobox").fill("фикус");
+  await search.getByRole("combobox").fill("фику");
   await expect(search.getByRole("listbox")).toBeVisible();
   await expect(search.getByRole("option").first()).toBeVisible();
   await expect(page.locator(".storefront-shell")).toHaveCount(0);

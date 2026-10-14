@@ -75,7 +75,7 @@ for (const device of ["@phone", "@desktop"]) {
     await expect(page.locator(".storefront-side")).toBeHidden();
     if (device === "@phone") await page.getByRole("button", {name:"Поиск по каталогу", exact:true}).first().click();
     const search = page.locator(device === "@phone" ? ".mobile-catalog-search" : ".header-search");
-    await search.getByRole("combobox").fill("фикус");
+    await search.getByRole("combobox").fill("фику");
     await expect(search.getByRole("listbox")).toBeVisible();
     await expect(search.getByRole("option").first()).toBeVisible();
     await expect(page.locator(".storefront-shell")).toHaveCount(0);
