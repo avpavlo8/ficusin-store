@@ -268,7 +268,7 @@ test("@desktop @phone инструкция доступна по QR и раск�
   await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
   await page.getByRole("tab", { name: "Уход", exact: true }).click();
-  await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
+  await expect(guide).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 

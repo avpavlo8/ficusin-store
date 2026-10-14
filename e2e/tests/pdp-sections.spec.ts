@@ -2,6 +2,26 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./helpers";
 
+test("@desktop @phone вкладка ухода не сдвигает страницу, а прямая ссылка ведёт к теме", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/1");
+  const tabs = page.getByRole("tablist", { name: "Разделы товара" });
+  await expect(tabs).toBeVisible();
+  await tabs.evaluate(element => window.scrollTo({ top: window.scrollY + element.getBoundingClientRect().top - 240, behavior: "instant" }));
+  const before = await page.evaluate(() => window.scrollY);
+  for (const name of ["Уход", "О растении", "Уход"]) {
+    await page.getByRole("tab", { name, exact: true }).click();
+    // Include deferred effects and smooth scrolling, not just the first frame.
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(before, 0);
+  }
+  await page.getByRole("tab", { name: "О растении", exact: true }).click();
+  await page.goto("/product/1#plant-watering");
+  await expect(page.getByRole("tab", { name: "Уход", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect.poll(async () => (await page.locator("#plant-watering").boundingBox())?.y).toBeLessThan(150);
+  await expect.poll(async () => (await page.locator("#plant-watering").boundingBox())?.y).toBeGreaterThanOrEqual(0);
+});
+
 test("@desktop блоки ухода совпадают с шириной навигации на большом экране", async ({ page }) => {
   await page.setViewportSize({ width: 1872, height: 1000 });
   await mockApi(page);
@@ -30,6 +50,9 @@ test("@desktop @phone длинное описание и отзывы с фот�
   await page.goto("/product/sections");
   await expect(page.locator(".plant-about-copy p")).toHaveCount(4);
   await expect(page.locator(".plant-about-photo")).toBeVisible();
+  await expect(page.locator(".plant-about-photo")).toHaveAttribute("src", "/assets/care/guide-v2/botanical-notebook.jpg");
+  await page.locator(".plant-about-photo").scrollIntoViewIfNeeded();
+  await expect(page.locator(".plant-about-photo")).toHaveJSProperty("naturalWidth", 800);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.getByRole("tab", { name: /Отзывы/ }).click();
   await expect(page.locator(".review-feed article")).toHaveCount(2);
