@@ -123,14 +123,16 @@ function Icon({ path }: { path: string }) {
 function MobileSearch({
   query,
   onQueryChange,
+  onSearch,
   onClose,
 }: {
   query?: string;
   onQueryChange?: (value: string) => void;
+  onSearch?: (value: string) => void;
   onClose: () => void;
 }) {
   return <div className="mobile-search">
-    <CatalogSearch value={query} onChange={onQueryChange} className="mobile-catalog-search" autoFocus />
+    <CatalogSearch value={query} onChange={onQueryChange} onSearch={onSearch} className="mobile-catalog-search" autoFocus />
     <button type="button" onClick={onClose} aria-label="Закрыть поиск">×</button>
   </div>;
 }
@@ -222,6 +224,8 @@ export function StoreHeader({
   favoritesCount,
   query,
   onQueryChange,
+  onSearch,
+  onSearchClose,
   onCartClick,
   showTabBar = true,
   showSearch = true,
@@ -234,6 +238,8 @@ export function StoreHeader({
   favoritesCount?: number;
   query?: string;
   onQueryChange?: (value: string) => void;
+  onSearch?: (value: string) => void;
+  onSearchClose?: () => void;
   // Supplied by the storefront, which opens the cart as a drawer instead of
   // navigating away from the catalogue.
   onCartClick?: () => void;
@@ -304,7 +310,7 @@ export function StoreHeader({
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a><AboutMenu/></>}</nav>
       <div className="header-actions">
         {showSearch && <>
-          <CatalogSearch value={query} onChange={onQueryChange} />
+          <CatalogSearch value={query} onChange={onQueryChange} onSearch={onSearch} />
           <button
             className="search-toggle"
             onClick={() => setSearchOpen((open) => !open)}
@@ -319,7 +325,7 @@ export function StoreHeader({
           : <a className="cart-button" href="/cart" aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</a>}
       </div>
     </header>
-    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onClose={() => setSearchOpen(false)} />}
+    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onSearch={onSearch} onClose={() => { setSearchOpen(false); onSearchClose?.(); }} />}
     {menuOpen && <>
       <button className="overlay" aria-label="Закрыть меню" onClick={() => setMenuOpen(false)} />
       <MobileMenu user={user} favorites={favorites} onClose={() => setMenuOpen(false)} />

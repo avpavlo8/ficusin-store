@@ -49,7 +49,7 @@ test("@phone галерея листается горизонтальным св
   await page.goto("/product/1");
   const image = page.getByRole("button", { name: "Открыть фотографию на весь экран" });
   await expect(image.locator(".pdp-photo-track")).toBeVisible();
-  expect(await image.locator(".pdp-photo-track").evaluate(el=>getComputedStyle(el).transitionDuration)).toBe("0.35s");
+  expect(await image.locator(".pdp-photo-track").evaluate(el=>getComputedStyle(el).transitionDuration)).toBe("0.55s");
   await expect(page.locator(".pdp-image-count")).toHaveText("1 / 2");
   const swipe = async (x: number, y: number) => {
     await image.dispatchEvent("touchstart", { touches:[{identifier:1,clientX:280,clientY:350}] });
@@ -75,11 +75,14 @@ for (const device of ["@phone", "@desktop"]) {
     await expect(page.locator(".storefront-side")).toBeHidden();
     if (device === "@phone") await page.getByRole("button", {name:"Поиск по каталогу", exact:true}).first().click();
     const search = page.locator(device === "@phone" ? ".mobile-catalog-search" : ".header-search");
-    await search.getByRole("combobox").fill("фикус");
+    await search.getByRole("combobox").fill("фику");
     await expect(search.getByRole("listbox")).toBeVisible();
     await expect(search.getByRole("option").first()).toBeVisible();
+    await expect(page.locator(".storefront-shell")).toHaveCount(0);
+    await expect(page).toHaveURL(/q=/);
     await search.getByRole("combobox").fill("несуществующее растение 987654");
-    await search.getByRole("combobox").press("Escape");
+    await expect(page.locator(".storefront-shell")).toHaveCount(0);
+    await search.getByRole("combobox").press("Enter");
     await expect(page.getByText("Ничего не нашли", {exact:true})).toBeVisible();
     await search.getByRole("button",{name:"Очистить поиск"}).click();
     await expect(page.locator(".home-hero")).toBeVisible();

@@ -4,9 +4,10 @@ import { sharedAPIJSON } from "./lib/api";
 
 type SearchProduct = Searchable & { image?: string; price?: number };
 
-export function CatalogSearch({ value, onChange, inlineResults = false, className = "header-search", placeholder = "Поиск по каталогу", autoFocus = false }: {
+export function CatalogSearch({ value, onChange, onSearch, inlineResults = false, className = "header-search", placeholder = "Поиск по каталогу", autoFocus = false }: {
   value?: string;
   onChange?: (value: string) => void;
+  onSearch?: (value: string) => void;
   /** Keep «Все результаты» on this page. Only the catalogue owns a results section. */
   inlineResults?: boolean;
   className?: string;
@@ -45,7 +46,10 @@ export function CatalogSearch({ value, onChange, inlineResults = false, classNam
   const allResults = () => {
     const trimmed = query.trim();
     if (!trimmed) return;
-    if (inlineResults) { setOpen(false); document.getElementById("catalog")?.scrollIntoView(); }
+    setOpen(false);
+    root.current?.querySelector("input")?.blur();
+    if (onSearch) onSearch(trimmed);
+    else if (inlineResults) { setOpen(false); document.getElementById("catalog")?.scrollIntoView(); }
     else window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
   };
   const choose = (index: number) => {
@@ -55,7 +59,8 @@ export function CatalogSearch({ value, onChange, inlineResults = false, classNam
   useEffect(() => {
     if (!loaded || !pendingEnter.current) return;
     pendingEnter.current = false;
-    choose(activeRef.current >= 0 ? activeRef.current : 0);
+    if (activeRef.current >= 0) choose(activeRef.current);
+    else allResults();
     // This effect deliberately resumes the keyboard action that happened
     // while the catalogue request was still in flight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,11 +88,6 @@ export function CatalogSearch({ value, onChange, inlineResults = false, classNam
         pendingEnter.current = true;
       } else if (activeRef.current >= 0) {
         choose(activeRef.current);
-      } else if (matches.length > 0) {
-        // iOS virtual keyboards sometimes submit without emitting ArrowDown.
-        // In an open autocomplete Enter therefore accepts the first visible
-        // product; the explicit «Все результаты» row remains available.
-        choose(0);
       } else allResults();
     }}>
       <span aria-hidden="true">⌕</span>

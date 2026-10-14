@@ -491,3 +491,5 @@
 
 .storefront.searching .storefront-shell{grid-template-columns:minmax(0,1fr)}
 .storefront.searching .storefront-side{display:none}
+
+.storefront.search-editing{min-height:100dvh}
