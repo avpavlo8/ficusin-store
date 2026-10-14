@@ -7,8 +7,8 @@ for (const url of ["/", "/product/1", "/care/mealybug", "/cart"]) {
     await page.goto(url);
     const catalog = page.locator(".header-dropdown").first();
     await catalog.locator(":scope > summary").click();
-    await catalog.getByText("Растения", { exact: true }).click();
-    await catalog.getByText("Комнатные растения", { exact: true }).click();
+    await catalog.locator(".header-submenu > summary").filter({hasText:"Растения"}).first().click();
+    await catalog.locator(".header-submenu > summary").filter({hasText:"Комнатные растения"}).first().click();
     await expect(catalog.getByRole("link", { name: /Фикус/ })).toBeVisible();
     await expect(catalog).toHaveAttribute("open", "");
     expect(await catalog.getByRole("link", { name: /Фикус/ }).evaluate(el => getComputedStyle(el, "::after").display)).toBe("none");

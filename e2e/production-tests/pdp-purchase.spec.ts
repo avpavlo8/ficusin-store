@@ -17,7 +17,7 @@ test("PDP purchase layout, nested menu and gallery swipe work live", async ({ pa
   if ((await page.viewportSize())!.width > 850) {
     const catalog = page.locator(".header-dropdown").first();
     await catalog.locator(":scope > summary").click();
-    await catalog.getByText("Растения", {exact:true}).click();
+    await catalog.locator(".header-submenu > summary").filter({hasText:"Растения"}).first().click();
     await expect(catalog.locator(".header-submenu[open] > div").first()).toBeVisible();
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
