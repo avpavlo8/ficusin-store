@@ -8,14 +8,13 @@
 .plant-tabs-shell h3 { margin:8px 0 18px; font-size:27px; line-height:1.2; }
 .plant-eyebrow { margin:0; color:#a5432d; font-size:10px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
 .plant-copy { margin:0; white-space:pre-line; overflow-wrap:anywhere; color:#605e54; font-size:15px; line-height:1.9; }
-.plant-empty { margin:16px 0; color:#736e63; font-size:14px; line-height:1.7; }
 
 .plant-about { display:grid; grid-template-columns:minmax(0,1fr); gap:24px 56px; padding:38px 40px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
 .plant-about:has(.plant-about-photo) { grid-template-columns:minmax(0,1fr) minmax(220px,28%); }
 .plant-about header { grid-column:1; align-self:end; min-width:0; }
 .plant-about h2 { margin:12px 0 0; font-size:40px; letter-spacing:-.6px; overflow-wrap:anywhere; }
 .plant-about-latin { margin:14px 0 0; color:#747568; font:italic 18px/1.5 Georgia,serif; }
-.plant-about-photo { grid-column:2; grid-row:1 / span 2; align-self:start; justify-self:end; width:100%; max-width:340px; height:340px; object-fit:contain; border-radius:16px; background:#e9ecdf; }
+.plant-about-photo { grid-column:2; grid-row:1 / span 2; align-self:start; width:100%; max-width:340px; height:340px; object-fit:contain; border-radius:16px; background:#e9ecdf; }
 .plant-about-copy { grid-column:1; max-width:72ch; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-about-copy p { margin:0; }
 .plant-about-copy p+p { margin-top:20px; }
@@ -26,16 +25,13 @@
 .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading .eyebrow { display:block; margin:0 0 12px; color:#a5432d; font-size:10px; font-weight:800; letter-spacing:.13em; }
 .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading h2 { margin:0; color:var(--plant-ink); font:400 40px/1.15 Georgia,serif; letter-spacing:-.6px; }
 .product-page .plant-tabs-shell .review-sort { flex-shrink:0; display:grid; gap:8px; margin:0; color:#605e54; font-size:13px; }
-.plant-tabs-shell .review-sort select { min-height:46px; border-color:#d9d2c4; border-radius:10px; background:#fffaf3; }
+.plant-tabs-shell .review-sort select { min-height:46px; background:#fffaf3; }
 .product-page .plant-tabs-shell .review-feed { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:20px; overflow:visible; border:0; }
 .product-page .plant-tabs-shell .review-feed article { min-width:0; padding:30px 32px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
-.plant-tabs-shell .review-feed article > header { padding-bottom:20px; border-bottom:1px solid var(--plant-rule); }
-.plant-tabs-shell .review-feed article strong { color:var(--plant-ink); font:24px/1.3 Georgia,serif; overflow-wrap:anywhere; }
-.plant-tabs-shell .review-feed article span { color:#a5432d; font-size:19px; letter-spacing:2px; }
-.plant-tabs-shell .review-feed time,.plant-tabs-shell .review-feed small { color:#686d61; font-size:13px; line-height:1.5; }
+.plant-tabs-shell .review-feed article strong { overflow-wrap:anywhere; }
+.plant-tabs-shell .review-feed article span { color:#a5432d; }
 .product-page .plant-tabs-shell .review-feed article p { margin:22px 0 0; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-tabs-shell .review-photos { flex-wrap:wrap; margin-top:22px; }
-.plant-tabs-shell .review-photos img,.plant-tabs-shell .review-photos video { border-radius:12px; }
 .plant-tabs-shell .reviews-empty { grid-column:1 / -1; padding:38px 40px; border:1px solid #e1e3d6; border-radius:20px; background:#e9ecdf; }
 .plant-tabs-shell .reviews-empty strong { color:var(--plant-ink); font:30px/1.3 Georgia,serif; }
 .plant-tabs-shell .reviews-empty p { max-width:60ch; margin:14px 0 0; color:#50554c; font-size:17px; line-height:1.8; }
@@ -98,9 +94,6 @@
 .product-page:has(.plant-tabs-shell) { overflow-x:clip; }
 
 @media(max-width:900px) {
-  .plant-about { gap:24px 30px; padding:30px; }
-  .plant-about-photo { height:260px; }
-  .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading { padding:30px; }
   .product-page .plant-tabs-shell .review-feed { grid-template-columns:1fr; }
   .plant-arrival { padding:30px; }
   .plant-arrival-content { width:73%; }
@@ -117,9 +110,8 @@
   .plant-tabs-shell h2 { font-size:32px; }
   .plant-about { gap:22px 18px; padding:24px 22px; border-radius:16px; }
   .plant-about:has(.plant-about-photo) { grid-template-columns:minmax(0,1fr) 92px; }
-  .plant-about header { align-self:center; }
   .plant-about h2 { margin-top:10px; font-size:28px; }
-  .plant-about-latin { font-size:15px; overflow-wrap:anywhere; }
+  .plant-about-latin { overflow-wrap:anywhere; }
   .plant-about-photo { grid-row:1; height:130px; border-radius:12px; }
   .plant-about-copy { grid-column:1 / -1; font-size:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading { align-items:stretch; flex-direction:column; gap:24px; padding:24px 22px; border-radius:16px; margin-bottom:16px; }
@@ -128,7 +120,6 @@
   .product-page .plant-tabs-shell .review-feed article { padding:24px 22px; border-radius:16px; }
   .product-page .plant-tabs-shell .review-feed article p { font-size:16px; }
   .plant-tabs-shell .reviews-empty { padding:28px 22px; border-radius:16px; }
-  .plant-tabs-shell .reviews-empty strong { font-size:28px; }
   .plant-tabs-shell .reviews-empty p { font-size:16px; }
   .plant-arrival { padding:24px 22px; border-radius:16px; }
   .plant-arrival-content { width:100%; }
