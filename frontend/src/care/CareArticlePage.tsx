@@ -5,6 +5,9 @@ import "./care-articles.css";
 
 export default function CareArticlePage({ slug }: { slug?: string }) {
   const article = careArticles.find(item => item.slug === slug);
+  const readingMinutes = article ? Math.max(1, Math.ceil(article.sections.map(section => [
+    section.title, ...(section.paragraphs || []), ...(section.items || []).map(item => `${item.title} ${item.text}`), section.note || "",
+  ].join(" ")).join(" ").split(/\s+/).length / 160)) : 0;
   const plant = new URLSearchParams(window.location.search).get("plant");
   const plantLink = plant ? `/product/${encodeURIComponent(plant)}#plant-passport` : undefined;
   const articleLink = (value: string) => `/care/${value}${plant ? `?plant=${encodeURIComponent(plant)}` : ""}`;
@@ -21,7 +24,7 @@ export default function CareArticlePage({ slug }: { slug?: string }) {
       {article ? <article>
         <header className="care-story-hero">
           <img src={`/assets/care/guide-v4/${article.image}.jpg`} alt="" width="1200" height="600" />
-          <div><p className="care-kicker">{article.category} · Памятка Фикусин</p><h1>{article.title}</h1><p className="care-story-deck">{article.description}</p></div>
+          <div><p className="care-kicker">{article.category} · Подробное руководство</p><h1>{article.title}</h1><p className="care-story-deck">{article.description}</p><p className="care-reading-time">{readingMinutes} мин чтения · Можно перейти сразу к нужному разделу</p></div>
         </header>
         <aside className="care-first-action"><strong>С чего начать</strong><p>{article.firstAction}</p></aside>
         <div className="care-reading-layout">

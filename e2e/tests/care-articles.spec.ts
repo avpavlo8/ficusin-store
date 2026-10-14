@@ -15,7 +15,7 @@ for (const [slug, title] of articles) {
     await page.goto(`/care/${slug}`);
     await expect(page.getByRole("heading", { level: 1, name: title, exact: true })).toBeVisible();
     await expect(page.locator(".care-first-action")).toContainText("С чего начать");
-    await expect(page.locator(".care-story-section")).toHaveCount(4);
+    await expect(page.locator(".care-story-section")).toHaveCount(9);
     await expect(page.locator(".care-story-hero img")).toHaveJSProperty("naturalWidth", 1200);
     const toc = page.getByRole("navigation", { name: "В этой статье" });
     await toc.getByRole("link").nth(1).click();
