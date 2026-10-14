@@ -50,9 +50,9 @@ test("@desktop @phone длинное описание и отзывы с фот�
   await page.goto("/product/sections");
   await expect(page.locator(".plant-about-copy p")).toHaveCount(4);
   await expect(page.locator(".plant-about-photo")).toBeVisible();
-  await expect(page.locator(".plant-about-photo")).toHaveAttribute("src", "/assets/care/guide-v2/botanical-notebook.jpg");
+  await expect(page.locator(".plant-about-photo")).toHaveAttribute("src", "/assets/care/guide-v4/about.jpg");
   await page.locator(".plant-about-photo").scrollIntoViewIfNeeded();
-  await expect(page.locator(".plant-about-photo")).toHaveJSProperty("naturalWidth", 800);
+  await expect(page.locator(".plant-about-photo")).toHaveJSProperty("naturalWidth", 1200);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.getByRole("tab", { name: /Отзывы/ }).click();
   await expect(page.locator(".review-feed article")).toHaveCount(2);

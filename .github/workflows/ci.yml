@@ -32,7 +32,7 @@ jobs:
       # severity advisories in devDependencies must not remain invisible.
       - run: npm audit --audit-level=high
       - name: Verify rich-care images in production bundle
-        run: test -s dist/assets/care/guide-v2/arrival.jpg && test -s dist/assets/care/guide-v2/objects.jpg && test -s dist/assets/care/guide-v2/fertilizer.jpg && test -s dist/assets/care/guide-v2/climate.jpg && test -s dist/assets/care/guide-v2/botanical-notebook.jpg
+        run: test -s dist/assets/care/guide-v2/arrival.jpg && test -s dist/assets/care/guide-v2/objects.jpg && test -s dist/assets/care/guide-v2/fertilizer.jpg && test -s dist/assets/care/guide-v2/climate.jpg && for topic in about lighting watering climate soil repotting fertilizer; do test -s "dist/assets/care/guide-v4/$topic.jpg" || exit 1; done
 
   layout:
     runs-on: ubuntu-latest

@@ -18,8 +18,12 @@ test("@desktop @phone длинный уход растягивает блок, �
   const panel = page.locator("#plant-soil");
   await expect(panel).toContainText(soil);
   await expect.poll(async () => (await panel.boundingBox())?.y).toBeLessThan(150);
+  await expect(panel.locator(".plant-care-art")).toHaveJSProperty("naturalWidth", 1200);
   const shortPanel = await panel.boundingBox();
   const shortArt = await panel.locator(".plant-care-art").boundingBox();
+  expect(shortArt!.width / shortArt!.height).toBeCloseTo(2, 1);
+  expect(shortArt!.y).toBeGreaterThanOrEqual(shortPanel!.y);
+  expect(shortArt!.y + shortArt!.height).toBeLessThanOrEqual(shortPanel!.y + shortPanel!.height);
   soil = Array.from({ length: 8 }, (_, index) => `Абзац ${index + 1}. Подберите состав под потребности растения. Можно использовать готовую смесь или добавить к подходящему грунту кору и перлит. Количество компонентов зависит от условий дома.`).join("\n\n");
   await page.reload();
   await expect(panel.locator(".plant-copy p")).toHaveCount(8);
@@ -33,6 +37,8 @@ test("@desktop @phone длинный уход растягивает блок, �
   expect(longPanel!.height).toBeGreaterThan(shortPanel!.height + 200);
   expect(longArt!.width).toBeCloseTo(shortArt!.width, 0);
   expect(longArt!.height).toBeCloseTo(shortArt!.height, 0);
+  expect(longArt!.y).toBeGreaterThanOrEqual(longPanel!.y);
+  expect(longArt!.y + longArt!.height).toBeLessThanOrEqual(longPanel!.y + longPanel!.height);
   expect(copy!.y + copy!.height).toBeLessThan(longPanel!.y + longPanel!.height);
   expect(copy!.x + copy!.width).toBeLessThanOrEqual(longPanel!.x + longPanel!.width);
   expect(copy!.x + copy!.width <= longArt!.x + 1 || copy!.y >= longArt!.y + longArt!.height - 1).toBe(true);
