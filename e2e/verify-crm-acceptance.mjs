@@ -65,7 +65,30 @@ try {
    await page.screenshot({path:`${out}/${role}-orders-${width}.png`,fullPage:true});
    await page.getByText('CRM-STAGE-08',{exact:true}).click();await expect(page.getByText('Частичные отправки',{exact:true})).toBeVisible();await expect(page.getByText('Ожидает оплаты',{exact:true}).last()).toBeVisible();await expect(page.getByText('Антуриум Stage 07 · 1 шт.',{exact:false})).toBeVisible();await page.screenshot({path:`${out}/${role}-stage08-partial-shipment-${width}.png`,fullPage:true});
    if(role==='owner'){await page.goto('/account/orders/CRM-STAGE-08');await expect(page.getByRole('heading',{name:'Готовы к отправке',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Оплатить отправку 4 760 ₽',exact:true})).toBeVisible();await expect(page.getByText('Ожидаем поступления остальных растений.',{exact:false})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/owner-stage08-customer-payment-${width}.png`,fullPage:true});}
-   await page.goto('/admin?section=returns');await expect(page.getByRole('heading',{name:'Возвраты растений',exact:true})).toBeVisible();await expect(page.getByText('Нужна финансовая сверка',{exact:true})).toBeVisible();await page.getByRole('navigation',{name:'Состояния возвратов'}).getByRole('button',{name:/^Готово к продаже/}).click();await expect(page.getByText('Продажа связана',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Создать черновик поступления',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Принять возврат',exact:false})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/${role}-stage09-returns-${width}.png`,fullPage:true});
+   await page.goto('/admin?section=returns');await expect(page.getByRole('heading',{name:'Возвраты растений',exact:true})).toBeVisible();await expect(page.getByText('Нужна финансовая сверка',{exact:true})).toBeVisible();await page.getByRole('navigation',{name:'Состояния возвратов'}).getByRole('button',{name:/^В продажу/}).click();await expect(page.getByText('Продажа связана',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Создать черновик поступления',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Принять возврат',exact:false})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/${role}-stage09-returns-${width}.png`,fullPage:true});
+   // Exercise the new intake against the real HTTP API without changing the ledger.
+   await page.getByRole('button',{name:'Принять возврат',exact:false}).click();
+   let intakeDialog=page.getByRole('dialog',{name:'Принять возврат',exact:true});
+   const intakeName=intakeDialog.getByRole('combobox',{name:'Название растения 1',exact:true});
+   await intakeName.fill('Фикус Stage 07');
+   await intakeDialog.getByRole('option',{name:/Фикус Stage 07/}).click();
+   await intakeDialog.getByRole('spinbutton',{name:'Количество 1',exact:true}).fill('2');
+   await intakeDialog.getByRole('combobox',{name:'Состояние 1',exact:true}).selectOption('restoring');
+   const intakeComment=`Осмотр ${role} ${width}`;
+   await intakeDialog.getByRole('textbox',{name:'Комментарий 1',exact:true}).fill(intakeComment);
+   await expect(intakeDialog.getByText('Черновик сохранён',{exact:true})).toBeVisible();
+   const serverDraftResponse=await api.get('/api/v1/admin/returns/intake-draft');expect(serverDraftResponse.status()).toBe(200);
+   const serverDraft=(await serverDraftResponse.json()).intake;
+   expect(serverDraft.data.rows[0].comment).toBe(intakeComment);expect(serverDraft.data.rows[0].quantity).toBe(2);expect(serverDraft.status).toBe('draft');expect(serverDraft.items).toEqual([]);
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+   await page.screenshot({path:`${out}/${role}-stage09-return-intake-${width}.png`,fullPage:true});
+   await intakeDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
+   await expect(intakeDialog).toHaveCount(0);
+   await page.getByRole('button',{name:'Принять возврат',exact:false}).click();
+   intakeDialog=page.getByRole('dialog',{name:'Принять возврат',exact:true});
+   await expect(intakeDialog.getByRole('spinbutton',{name:'Количество 1',exact:true})).toHaveValue('2');
+   await expect(intakeDialog.getByRole('textbox',{name:'Комментарий 1',exact:true})).toHaveValue(intakeComment);
+   await intakeDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
    await page.goto('/admin?section=customers');
    await expect(page.getByRole('heading',{name:'Клиенты',exact:true})).toBeVisible();
    await page.getByRole('button',{name:role==='owner'?'Изменить':'Открыть',exact:true}).first().click();

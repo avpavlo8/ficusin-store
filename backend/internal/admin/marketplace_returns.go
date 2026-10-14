@@ -16,6 +16,7 @@ import (
 type MarketplaceReturn struct {
 	ID                 int64           `json:"id"`
 	Channel            string          `json:"channel"`
+	ChannelComment     string          `json:"channelComment,omitempty"`
 	SourceReturnID     string          `json:"sourceReturnId"`
 	SourceShipmentID   string          `json:"sourceShipmentId"`
 	SourceUnitIndex    int             `json:"sourceUnitIndex"`
@@ -46,6 +47,7 @@ type ReturnProduct struct {
 	VariantID int64  `json:"variantId"`
 	Name      string `json:"name"`
 	SKU       string `json:"sku"`
+	Label     string `json:"label"`
 }
 
 type ReturnCreate struct {
@@ -70,7 +72,7 @@ func validReturnCondition(value string) bool {
 }
 
 func validReturnChannel(value string) bool {
-	return value == "wb" || value == "ozon" || value == "avito" || value == "saby"
+	return value == "wb" || value == "ozon" || value == "avito" || value == "saby" || value == "other"
 }
 
 func (repository *PostgresRepository) CreateMarketplaceReturns(ctx context.Context, actor Actor, input ReturnCreate) ([]MarketplaceReturn, error) {
@@ -207,11 +209,20 @@ func (repository *PostgresRepository) CreateReturnReceipt(ctx context.Context, a
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var condition, status, sabyID, code, name string
-	if err := tx.QueryRow(ctx, `SELECT r.condition,r.receipt_status,COALESCE(d.saby_id,''),COALESCE(NULLIF(d.master_code,''),d.display_sku),d.name FROM marketplace_returns r JOIN canonical_product_directory d ON d.variant_id=r.canonical_variant_id WHERE r.id=$1 FOR UPDATE OF r`, id).Scan(&condition, &status, &sabyID, &code, &name); err != nil {
+	var groupedAction *int64
+	if err := tx.QueryRow(ctx, `SELECT r.condition,r.receipt_status,COALESCE(d.saby_id,''),COALESCE(NULLIF(d.master_code,''),d.display_sku),d.name,r.receipt_action_id FROM marketplace_returns r JOIN canonical_product_directory d ON d.variant_id=r.canonical_variant_id WHERE r.id=$1 FOR UPDATE OF r`, id).Scan(&condition, &status, &sabyID, &code, &name, &groupedAction); err != nil {
 		return MarketplaceReturn{}, err
 	}
 	if condition != "ready" {
 		return MarketplaceReturn{}, errors.New("поступление создаётся только для пригодного растения")
+	}
+	if groupedAction != nil {
+		// Every ready unit in a table belongs to the same immutable receipt.
+		// Never create a second single-unit document, even after a worker error.
+		if err := tx.Commit(ctx); err != nil {
+			return MarketplaceReturn{}, err
+		}
+		return repository.MarketplaceReturn(ctx, id)
 	}
 	if status == "posted" || status == "queued" || status == "checking" || status == "draft_created" {
 		if err := tx.Commit(ctx); err != nil {
@@ -275,7 +286,7 @@ func (repository *PostgresRepository) AddReturnPhoto(ctx context.Context, actor 
 }
 
 func (repository *PostgresRepository) ReturnProducts(ctx context.Context, query string) ([]ReturnProduct, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT variant_id,name,display_sku FROM canonical_product_directory WHERE catalog_section='plants' AND ($1='' OR name ILIKE '%'||$1||'%' OR display_sku ILIKE '%'||$1||'%') ORDER BY name,display_sku LIMIT 300`, strings.TrimSpace(query))
+	rows, err := repository.pool.Query(ctx, `SELECT d.variant_id,d.name,COALESCE(d.display_sku,''),COALESCE(d.label,'') FROM canonical_product_directory d JOIN products p ON p.id=d.product_id WHERE p.catalog_section='plants' AND ($1='' OR d.name ILIKE '%'||$1||'%' OR d.display_sku ILIKE '%'||$1||'%') ORDER BY d.name,d.display_sku,d.variant_id`, strings.TrimSpace(query))
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +294,7 @@ func (repository *PostgresRepository) ReturnProducts(ctx context.Context, query 
 	result := []ReturnProduct{}
 	for rows.Next() {
 		var item ReturnProduct
-		if err := rows.Scan(&item.VariantID, &item.Name, &item.SKU); err != nil {
+		if err := rows.Scan(&item.VariantID, &item.Name, &item.SKU, &item.Label); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -320,7 +331,7 @@ func (repository *PostgresRepository) MarketplaceReturns(ctx context.Context, st
 func (repository *PostgresRepository) MarketplaceReturn(ctx context.Context, id int64) (MarketplaceReturn, error) {
 	item := MarketplaceReturn{PhotoIDs: []int64{}, History: []ReturnHistory{}}
 	var unitCost sql.NullFloat64
-	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,v.sku,r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1`, id).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL)
+	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,COALESCE(v.sku,''),r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url,r.channel_comment FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1`, id).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL, &item.ChannelComment)
 	if err != nil {
 		return item, err
 	}
