@@ -148,3 +148,6 @@
   .header.store-header .favorites-button,
   .header.store-header .cart-button { display: none; }
 }
+
+/* Nested category links use row highlighting, not the top navigation underline. */
+.header.store-header .header-dropdown a::after{display:none}

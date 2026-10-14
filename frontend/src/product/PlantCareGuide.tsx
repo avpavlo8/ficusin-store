@@ -26,7 +26,7 @@ const helpArticles = [
 ] as const;
 
 export function PlantAbout({ product }: { product: ProductDetail }) {
-  const paragraphs = (product.description || product.shortDescription || "").split(/\n\s*\n/).filter(Boolean);
+  const paragraphs = (product.description || "").split(/\n\s*\n/).filter(Boolean);
   return <article className="plant-about" id="plant-about" aria-labelledby="plant-about-title">
     <header><p className="plant-eyebrow">О растении</p><h2 className="plant-section-title" id="plant-about-title">{product.name}</h2>{product.latin && <p className="plant-about-latin">{product.latin}</p>}</header>
     <img className="plant-about-photo" src="/assets/care/guide-v4/about.jpg" alt="" width="1200" height="600" loading="lazy" />

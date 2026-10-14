@@ -17,9 +17,9 @@ function CharacteristicIcon({ name }: { name: keyof typeof characteristicIcons }
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={characteristicIcons[name]} /></svg>;
 }
 
-export function ProductPurchasePanel({ product, variant, quantity, favorite, inCart, reviewComposer, onVariant, onQuantity, onFavorite, onBuy }: {
+export function ProductPurchasePanel({ product, variant, quantity, favorite, inCart, reviewComposer, relatedPlants, onVariant, onQuantity, onFavorite, onBuy }: {
   product: ProductDetail; variant?: ProductVariant; quantity: number; favorite: boolean; inCart: boolean;
-  reviewComposer: ReactNode;
+  reviewComposer: ReactNode; relatedPlants?: ReactNode;
   onVariant: (id: number) => void; onQuantity: (value: number) => void; onFavorite: () => void; onBuy: () => void;
 }) {
   const available = Boolean(variant && variant.stock > 0);
@@ -39,10 +39,13 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
     <div className="pdp-purchase-layout">
       <div className="pdp-order-column">
         <div className="pdp-identity"><h1>{product.name}</h1><p className="latin">{product.latin}</p>{reviewComposer}</div>
-        <p className="pdp-lead">{product.shortDescription || product.description || (isPlant ? "Живое растение из каталога Фикусин. Перед отправкой проверим состояние и бережно упакуем." : "Товар из каталога Фикусин. Проверим комплектацию и аккуратно подготовим к выдаче или отправке.")}</p>
+
         <div className="pdp-parameters">
           {product.variants.length > 0 && <fieldset className="variant-picker"><legend>{isPlant ? "Размер растения" : "Вариант товара"}</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id}><strong>{isPlant ? sizeLabel(item) : item.label}</strong>{product.variants.length > 1 && <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>}</button>)}</div></fieldset>}
-          {variant && <dl className="pdp-specs">{variant.heightCm && <div><dt>Высота</dt><dd>{variant.heightCm} см</dd></div>}<div><dt>Артикул</dt><dd>{variant.sku}</dd></div></dl>}
+          {Boolean(variant?.heightCm) && <dl className="pdp-specs"><div><dt>Высота</dt><dd>{variant?.heightCm} см</dd></div></dl>}
+        </div>
+        <div className="pdp-commerce-box"><div className="pdp-price-row"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><span className={available ? "stock-ok" : "stock-out"}>{available ? "● В наличии" : "Под заказ"}</span></div>
+          <div className="pdp-actions"><div className="pdp-quantity" aria-label="Количество"><button type="button" onClick={() => onQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1} aria-label="Уменьшить количество">−</button><output>{quantity}</output><button type="button" onClick={() => onQuantity(Math.min(available ? Math.min(variant?.stock || 1, 20) : 20, quantity + 1))} disabled={!variant || quantity >= (available ? Math.min(variant.stock, 20) : 20)} aria-label="Увеличить количество">+</button></div><button className={inCart ? "pdp-cart-button in-cart" : "pdp-cart-button"} onClick={onBuy} disabled={!variant}>{inCart ? "Удалить из корзины" : "В корзину"}</button><button className={favorite ? "pdp-favorite active" : "pdp-favorite"} onClick={onFavorite} aria-label={favorite ? "Убрать из избранного" : "Добавить в избранное"}>{favorite ? "♥" : "♡"}</button></div>
         </div>
       </div>
       <div className="pdp-side-column">
@@ -50,16 +53,15 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
           <h2>Характеристики растения</h2>
           <div><span className="characteristic-icon light"><CharacteristicIcon name="light" /></span><p><small>Освещение</small><strong>{characteristic(attributeLabel(product.lightLevel || product.passport.lighting || "Не указано"),"освещ","light")}</strong></p></div>
           <div><span className="characteristic-icon water"><CharacteristicIcon name="water" /></span><p><small>Полив</small><strong>{characteristic(attributeLabel(product.watering || product.passport.watering || "Не указано"),"полив","water")}</strong></p></div>
-          <div><span className="characteristic-icon height"><CharacteristicIcon name="height" /></span><p><small>Высота</small><strong>{characteristic(variant?.heightCm ? `${variant.heightCm} см` : attributeLabel(product.heightClass || "Не указано"),"высот","height")}</strong></p></div>
+          <div><span className="characteristic-icon height"><CharacteristicIcon name="height" /></span><p><small>Высота</small><strong>{characteristic(variant?.heightCm ? `${variant?.heightCm} см` : attributeLabel(product.heightClass || "Не указано"),"высот","height")}</strong></p></div>
           <div><span className="characteristic-icon pot"><CharacteristicIcon name="pot" /></span><p><small>Диаметр горшка</small><strong>{diameter !== "Не указан" ? diameter : characteristic("Не указан","диаметр","горш")}</strong></p></div>
           <div><span className="characteristic-icon care"><CharacteristicIcon name="care" /></span><p><small>Уход</small><strong>{characteristic(attributeLabel(product.careLevel || product.passport.careDifficulty || "Не указано"),"уход","сложност","care")}</strong></p></div>
           <div><span className="characteristic-icon pets"><CharacteristicIcon name="pets" /></span><p><small>Питомцы</small><strong>{characteristic(attributeLabel(product.petSafety || product.passport.toxicity || "Не указано"),"питом","безопас","токсич","pet")}</strong></p></div>
           <div><span className="characteristic-icon humidity"><CharacteristicIcon name="humidity" /></span><p><small>Влажность воздуха</small><strong>{characteristic(attributeLabel(product.passport.humidity || "Не указано"),"влажн","humidity")}</strong></p></div>
         </div> : <div className="pdp-key-characteristics product-characteristics" aria-label="Основные характеристики товара"><h2>Основные характеристики</h2>{allAttributes.filter((item)=>item.showInCharacteristics!==false).slice(0,6).map((item)=><div key={item.code}><p><small>{item.name}</small><strong>{attributeValue(item.value,item.unit)}</strong></p></div>)}</div>}
-        <div className="pdp-commerce-box"><div className="pdp-price-row"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><span className={available ? "stock-ok" : "stock-out"}>{available ? "● В наличии" : "Под заказ"}</span></div>
-          <div className="pdp-actions"><div className="pdp-quantity" aria-label="Количество"><button type="button" onClick={() => onQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1} aria-label="Уменьшить количество">−</button><output>{quantity}</output><button type="button" onClick={() => onQuantity(Math.min(available ? Math.min(variant?.stock || 1, 20) : 20, quantity + 1))} disabled={!variant || quantity >= (available ? Math.min(variant.stock, 20) : 20)} aria-label="Увеличить количество">+</button></div><button className={inCart ? "pdp-cart-button in-cart" : "pdp-cart-button"} onClick={onBuy} disabled={!variant}>{inCart ? "Удалить из корзины" : "В корзину"}</button><button className={favorite ? "pdp-favorite active" : "pdp-favorite"} onClick={onFavorite} aria-label={favorite ? "Убрать из избранного" : "Добавить в избранное"}>{favorite ? "♥" : "♡"}</button></div>
-        </div>
+
       </div>
     </div>
+    {relatedPlants}
   </aside>;
 }
