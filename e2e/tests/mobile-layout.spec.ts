@@ -46,6 +46,8 @@ test("@phone the storefront search filters the catalogue", async ({ page }) => {
   await expect(field).toBeVisible();
 
   await field.fill("бенджамина");
+  await expect(page.locator(".storefront-grid")).toHaveCount(0);
+  await field.press("Enter");
   // Смотрим в сетку, а не по всей странице: то же название всплывает и в
   // подсказках под строкой поиска, а проверяем мы выдачу.
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
