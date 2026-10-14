@@ -39,4 +39,7 @@ test("Search puts results first and offers suggestions live", async ({page}) => 
   await search.getByRole("combobox").fill("фикус");
   await expect(search.getByRole("listbox")).toBeVisible();
   await expect(search.getByRole("option").first()).toBeVisible();
+  await expect(page.locator(".storefront-shell")).toHaveCount(0);
+  await search.getByRole("combobox").press("Enter");
+  await expect(page.getByRole("heading", {name:"Результаты поиска"})).toBeVisible();
 });
