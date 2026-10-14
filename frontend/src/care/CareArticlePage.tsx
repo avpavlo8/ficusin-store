@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { StoreHeader } from "../StoreHeader";
 import NotFoundPage from "../NotFoundPage";
 import { careArticles } from "./articles";
@@ -17,9 +18,17 @@ function CareIcon({ kind = "leaf" }: { kind?: string }) {
   const key = kind === "follow-up" ? "followup" : kind;
   return <svg className="care-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={sectionIcons[key] || sectionIcons.leaf} /></svg>;
 }
-const articleImage = (slug: string) => `/assets/care/articles-v1/${slug}.jpg`;
+const articleImage = (slug: string) => `/assets/care/articles-v3/${slug}.jpg`;
 
 export default function CareArticlePage({ slug }: { slug?: string }) {
+  const carousel = useRef<HTMLDivElement>(null);
+  const moveCarousel = (direction: number) => {
+    const track = carousel.current;
+    if (!track) return;
+    const card = track.querySelector("a");
+    const distance = card ? card.getBoundingClientRect().width + 20 : track.clientWidth;
+    track.scrollBy({ left: direction * distance, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+  };
   const article = careArticles.find(item => item.slug === slug);
   const readingMinutes = article ? Math.max(1, Math.ceil(article.sections.map(section => [
     section.title, ...(section.paragraphs || []), ...(section.items || []).map(item => `${item.title} ${item.text}`), section.note || "",
@@ -53,11 +62,11 @@ export default function CareArticlePage({ slug }: { slug?: string }) {
               {section.note && <aside className="care-story-note"><CareIcon kind="leaf" /><div><strong>Обратите внимание</strong><p>{section.note}</p></div></aside>}
             </section>)}
             <section className="care-story-help" id="care-help"><p className="care-kicker">Разберёмся вместе</p><h2>Не уверены, что с растением?</h2><p>Пришлите фото растения целиком и повреждений крупным планом. Напишите, когда поливали, где стоит горшок и чем уже обрабатывали.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в Фикусин <span aria-hidden="true">↗</span></a></section>
-            <footer className="care-story-sources"><h2>Источники и проверка материала</h2><p>Подготовлено Фикусин · 14 октября 2026. Иллюстрации созданы для Фикусин и показывают тему статьи; определять причину нужно по совокупности признаков. Общие рекомендации сверены с материалами ниже; требования к свету, грунту и поливу уточняйте в паспорте вашего растения.</p><ul>{article.sources.map(source => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a></li>)}</ul></footer>
+
           </div>
         </div>
       </article> : <header className="care-story-hero"><img src="/assets/care/guide-v4/about.jpg" alt="" width="1200" height="600" /><div><p className="care-kicker">Забота без лишней суеты</p><h1>Помощь растению</h1><p className="care-story-deck">Начните с того, что заметили. Поможем проверить причину и выбрать следующий шаг.</p></div></header>}
-      <section className="care-related" aria-labelledby="care-related-title"><h2 id="care-related-title">{article ? "Другие полезные инструкции" : "Что случилось с растением?"}</h2><div>{careArticles.filter(item => item !== article).map(item => <a href={articleLink(item.slug)} key={item.slug}><img className="care-related-image" src={articleImage(item.slug)} alt="" width="1200" height="800" loading="lazy" /><span className="care-kicker">{item.category}</span><h3>{item.title}</h3><p>{item.description}</p><span className="care-read-link">Читать инструкцию <span aria-hidden="true">→</span></span></a>)}</div></section>
+      <section className="care-related" aria-labelledby="care-related-title"><div className="care-carousel-heading"><h2 id="care-related-title">{article ? "Другие полезные инструкции" : "Что случилось с растением?"}</h2><div className="care-carousel-controls"><button type="button" aria-label="Предыдущие инструкции" aria-controls="care-carousel-track" onClick={() => moveCarousel(-1)}>←</button><button type="button" aria-label="Следующие инструкции" aria-controls="care-carousel-track" onClick={() => moveCarousel(1)}>→</button></div></div><div className="care-carousel-track" id="care-carousel-track" ref={carousel} role="region" aria-label="Карусель инструкций" tabIndex={0}>{careArticles.filter(item => item !== article).map(item => <a href={articleLink(item.slug)} key={item.slug}><img className="care-related-image" src={articleImage(item.slug)} alt="" width="1200" height="800" loading="lazy" /><span className="care-kicker">{item.category}</span><h3>{item.title}</h3><p>{item.description}</p><span className="care-read-link">Читать инструкцию <span aria-hidden="true">→</span></span></a>)}</div></section>
       {plantLink && <a className="care-return" href={plantLink}>← К уходу за вашим растением</a>}
     </div>
   </main>;

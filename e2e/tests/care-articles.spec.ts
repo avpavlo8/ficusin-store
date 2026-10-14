@@ -17,7 +17,7 @@ for (const [slug, title] of articles) {
     await expect(page.locator(".care-first-action")).toContainText("С чего начать");
     await expect(page.locator(".care-story-section")).toHaveCount(9);
     await expect(page.locator(".care-story-hero img")).toHaveJSProperty("naturalWidth", 1200);
-    await expect(page.locator(".care-story-hero img")).toHaveAttribute("src", `/assets/care/articles-v1/${slug}.jpg`);
+    await expect(page.locator(".care-story-hero img")).toHaveAttribute("src", `/assets/care/articles-v3/${slug}.jpg`);
     await expect(page.locator(".care-story-hero img")).toHaveCSS("object-fit", "contain");
     const toc = page.getByRole("navigation", { name: "В этой статье" });
     await toc.getByRole("link").nth(1).click();
@@ -49,4 +49,18 @@ test("@desktop библиотека показывает четыре инстр
   await expect(page.locator(".care-related a")).toHaveCount(4);
   await page.goto("/care/does-not-exist");
   await expect(page.getByRole("heading", { name: /Здесь ничего/ })).toBeVisible();
+});
+
+test("@desktop @phone карусель инструкций листается и сохраняет контекст растения", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/care/mealybug?plant=33");
+  await expect(page.getByRole("heading", { name: "Источники и проверка материала" })).toHaveCount(0);
+  const track = page.getByRole("region", { name: "Карусель инструкций" });
+  await page.getByRole("button", { name: "Следующие инструкции" }).click();
+  await expect.poll(() => track.evaluate(el => el.scrollLeft)).toBeGreaterThan(50);
+  await page.getByRole("button", { name: "Предыдущие инструкции" }).click();
+  await expect.poll(() => track.evaluate(el => el.scrollLeft)).toBeLessThan(5);
+  await track.getByRole("link", { name: /Проблемы с корнями/ }).click();
+  await expect(page).toHaveURL(/\/care\/root-problems\?plant=33$/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
