@@ -13,7 +13,7 @@
 .plant-about:has(.plant-about-photo) { grid-template-columns:minmax(0,1fr) minmax(220px,28%); }
 .plant-about header { grid-column:1; align-self:end; min-width:0; }
 .plant-about h2 { margin:12px 0 0; font-size:40px; letter-spacing:-.6px; overflow-wrap:anywhere; }
-.plant-about-latin { margin:14px 0 0; color:#747568; font:italic 18px/1.5 Georgia,serif; }
+.plant-about-latin { margin:14px 0 0; color:#605e54; font:italic 18px/1.5 Georgia,serif; }
 .plant-about-photo { grid-column:2; grid-row:1 / span 2; align-self:start; width:100%; max-width:340px; height:340px; object-fit:contain; border-radius:16px; background:#e9ecdf; }
 .plant-about-copy { grid-column:1; max-width:72ch; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-about-copy p { margin:0; }
@@ -30,6 +30,7 @@
 .product-page .plant-tabs-shell .review-feed article { min-width:0; padding:30px 32px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
 .plant-tabs-shell .review-feed article strong { overflow-wrap:anywhere; }
 .plant-tabs-shell .review-feed article span { color:#a5432d; }
+.plant-tabs-shell .review-feed :is(time,small) { color:#605e54; }
 .product-page .plant-tabs-shell .review-feed article p { margin:22px 0 0; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-tabs-shell .review-photos { flex-wrap:wrap; margin-top:22px; }
 .plant-tabs-shell .reviews-empty { grid-column:1 / -1; padding:38px 40px; border:1px solid #e1e3d6; border-radius:20px; background:#e9ecdf; }

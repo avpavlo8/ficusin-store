@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { mockApi } from "./helpers";
 
 test("@desktop блоки ухода совпадают с шириной навигации на большом экране", async ({ page }) => {
@@ -47,4 +48,6 @@ test("@desktop @phone длинное описание и отзывы с фот�
   });
   expect(mediaFit).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  const accessibility = await new AxeBuilder({ page }).include("#reviews").withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(accessibility.violations.filter(item => item.impact === "serious" || item.impact === "critical")).toEqual([]);
 });
