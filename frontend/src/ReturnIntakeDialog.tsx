@@ -117,7 +117,8 @@ export function ReturnIntakeDialog({ onClose, onCreated, canReceipt, intakeID }:
           const { intake: confirmed } = await api<{ intake: ReturnIntake }>(`/api/v1/admin/returns/intakes/${current.id}`);
           if (confirmed.status === "saved" && (!receipt || confirmed.receiptStatus !== "none")) {
             intakeRef.current = confirmed; setIntake(confirmed);
-            if (!receipt) onCreated(confirmed.items);
+            if (labels) setError(cause instanceof Error ? cause.message : "Не удалось скачать этикетки. Попробуйте ещё раз.");
+            else if (!receipt) onCreated(confirmed.items);
             return;
           }
         }
