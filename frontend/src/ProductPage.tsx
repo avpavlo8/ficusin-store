@@ -23,6 +23,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [revision, setRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<"about"|"care"|"characteristics"|"reviews"|"questions">("about");
   const relatedTrack = useRef<HTMLDivElement>(null);
+  const linkedCareTarget = useRef<string | null>(null);
   const adminUser = useStoreUser();
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
@@ -71,8 +72,13 @@ export default function ProductPage({ slug }: { slug: string }) {
     if (!product || product.catalogSection !== "plants") return;
     const openLinkedCare = () => {
       if (window.location.hash === "#plant-passport" || window.location.hash.startsWith("#plant-")) {
+        linkedCareTarget.current = window.location.hash.slice(1);
         setActiveTab("care");
-        document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" });
+        const target = document.getElementById(linkedCareTarget.current);
+        if (target) {
+          target.scrollIntoView({ block: "start" });
+          linkedCareTarget.current = null;
+        }
       }
     };
     openLinkedCare();
@@ -81,11 +87,13 @@ export default function ProductPage({ slug }: { slug: string }) {
   }, [product]);
 
   useEffect(() => {
-    if (activeTab !== "care" || !window.location.hash.startsWith("#plant-")) return;
+    if (activeTab !== "care" || !linkedCareTarget.current) return;
     const frame = window.requestAnimationFrame(() => {
-      const target = document.getElementById(window.location.hash.slice(1));
+      if (!linkedCareTarget.current) return;
+      const target = document.getElementById(linkedCareTarget.current);
       if (target instanceof HTMLDetailsElement) target.open = true;
       (target || document.querySelector("#plant-passport"))?.scrollIntoView({ block: "start" });
+      linkedCareTarget.current = null;
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeTab, product]);
@@ -140,6 +148,8 @@ export default function ProductPage({ slug }: { slug: string }) {
     window.requestAnimationFrame(() => document.querySelector("#reviews")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   const changeTab = (id: typeof activeTab) => {
+    // A tab click changes content in place. Only an incoming care link scrolls.
+    linkedCareTarget.current = null;
     setActiveTab(id);
     if (isPlant) history.replaceState(null, "", id === "care" ? "#plant-passport" : window.location.pathname + window.location.search);
   };

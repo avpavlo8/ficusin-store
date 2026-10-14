@@ -29,7 +29,7 @@ export function PlantAbout({ product }: { product: ProductDetail }) {
   const paragraphs = (product.description || product.shortDescription || "").split(/\n\s*\n/).filter(Boolean);
   return <article className="plant-about" id="plant-about" aria-labelledby="plant-about-title">
     <header><p className="plant-eyebrow">О растении</p><h2 className="plant-section-title" id="plant-about-title">{product.name}</h2>{product.latin && <p className="plant-about-latin">{product.latin}</p>}</header>
-    {product.images[0] && <img className="plant-about-photo" src={product.images[0]} alt={product.name} loading="lazy" />}
+    <img className="plant-about-photo" src="/assets/care/guide-v2/botanical-notebook.jpg" alt="" width="800" height="800" loading="lazy" />
     <div className="plant-about-copy">
       {paragraphs.map((paragraph, index) => <p key={`${paragraph.slice(0, 18)}-${index}`}>{paragraph}</p>)}
     </div>

@@ -9,12 +9,11 @@
 .plant-eyebrow { margin:0; color:#a5432d; font-size:10px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
 .plant-copy { margin:0; white-space:pre-line; overflow-wrap:anywhere; color:#605e54; font-size:15px; line-height:1.9; }
 
-.plant-about { display:grid; grid-template-columns:minmax(0,1fr); gap:24px 56px; padding:38px 40px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
-.plant-about:has(.plant-about-photo) { grid-template-columns:minmax(0,1fr) minmax(220px,28%); }
+.plant-about { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,28%); gap:24px 56px; padding:38px 40px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
 .plant-about header { grid-column:1; align-self:end; min-width:0; }
 .plant-about h2 { margin:12px 0 0; font-size:40px; letter-spacing:-.6px; overflow-wrap:anywhere; }
 .plant-about-latin { margin:14px 0 0; color:#605e54; font:italic 18px/1.5 Georgia,serif; }
-.plant-about-photo { grid-column:2; grid-row:1 / span 2; align-self:start; width:100%; max-width:340px; height:340px; object-fit:contain; border-radius:16px; background:#e9ecdf; }
+.plant-about-photo { grid-column:2; grid-row:1 / span 2; align-self:start; width:100%; max-width:340px; height:auto; border-radius:16px; }
 .plant-about-copy { grid-column:1; max-width:72ch; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-about-copy p { margin:0; }
 .plant-about-copy p+p { margin-top:20px; }
@@ -109,11 +108,10 @@
   .plant-tabs-shell .pdp-anchor-nav { padding:0 18px; gap:28px; }
   .product-page .plant-tabs-shell .pdp-tab-panel { padding:18px 16px 90px; }
   .plant-tabs-shell h2 { font-size:32px; }
-  .plant-about { gap:22px 18px; padding:24px 22px; border-radius:16px; }
-  .plant-about:has(.plant-about-photo) { grid-template-columns:minmax(0,1fr) 92px; }
+  .plant-about { grid-template-columns:minmax(0,1fr) 92px; gap:22px 18px; padding:24px 22px; border-radius:16px; }
   .plant-about h2 { margin-top:10px; font-size:28px; }
   .plant-about-latin { overflow-wrap:anywhere; }
-  .plant-about-photo { grid-row:1; height:130px; border-radius:12px; }
+  .plant-about-photo { grid-row:1; border-radius:12px; }
   .plant-about-copy { grid-column:1 / -1; font-size:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading { align-items:stretch; flex-direction:column; gap:24px; padding:24px 22px; border-radius:16px; margin-bottom:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading h2 { font-size:32px; }
