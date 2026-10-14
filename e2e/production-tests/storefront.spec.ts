@@ -72,7 +72,7 @@ test("production product 5 loads its optimized photo and review section", async 
   await page.goto("/product/5", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { level: 1, name: "Аглаонема Мария" })).toBeVisible();
   const interfaceMs = Date.now() - started;
-  const mainImage = page.getByRole("button", { name: "Открыть фотографию на весь экран" }).locator("img");
+  const mainImage = page.getByRole("button", { name: "Открыть фотографию на весь экран" }).locator("img[aria-hidden='false']");
   await expect(mainImage).toBeVisible();
   await expect.poll(() => mainImage.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   const imageMs = Date.now() - started;
