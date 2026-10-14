@@ -23,7 +23,7 @@ export type AdminData = {
 };
 
 export type MarketplaceReturn = {
-  price?: number; discountPercent?: number; discountedPrice?: number; article?: string; intakeId?: string;
+  label?: string; price?: number; discountPercent?: number; discountedPrice?: number; article?: string; intakeId?: string;
   id: number; channel: string; channelComment?: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
   salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
   condition: "inspection" | "ready" | "restoring" | "dead"; comment: string; unitCost?: number;
