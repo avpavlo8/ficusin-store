@@ -61,7 +61,7 @@ test("@desktop @phone returns table opens whole catalogue, matches word fragment
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
-test("@desktop @phone other channel requires comment and receipt saves multiple plants with their conditions", async ({ page }) => {
+test("@desktop @phone other channel shows comment and receipt saves multiple plants with their conditions", async ({ page }) => {
   const state = await setup(page);
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("combobox", { name: "Канал", exact: true }).selectOption("other");
@@ -73,10 +73,6 @@ test("@desktop @phone other channel requires comment and receipt saves multiple 
   await dialog.getByRole("combobox", { name: "Название растения 2" }).fill("нсте");
   await page.getByRole("option", { name: /Монстера/ }).click();
   await dialog.getByRole("combobox", { name: "Состояние 2" }).selectOption("dead");
-  await dialog.getByRole("textbox", { name: "Комментарий к каналу" }).fill("");
-  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
-  await expect(dialog.getByText("Укажите комментарий для канала «Другое».")).toBeVisible();
-  await dialog.getByRole("textbox", { name: "Комментарий к каналу" }).fill("Возврат из розницы");
   await dialog.getByRole("button", { name: "Сделать поступление в СБИС" }).click();
   await expect(dialog.getByText("Создаём поступление в СБИС…", { exact: true })).toBeVisible();
   expect(state.receiptCalls()).toBe(1);
@@ -137,4 +133,17 @@ test("@desktop a lost autosave response is verified before saving further edits"
   await expect(page.getByText("Черновик сохранён", { exact: true })).toBeVisible();
   expect(state.getIntake()?.revision).toBe(2);
   expect(state.getIntake()?.data.rows[0].comment).toBe("Правка после потерянного ответа");
+});
+
+
+test("@desktop other channel can be saved with an optional comment", async ({ page }) => {
+  await setup(page);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox", { name: "Канал", exact: true }).selectOption("other");
+  await expect(dialog.getByRole("textbox", { name: "Комментарий к каналу" })).toBeVisible();
+  await dialog.getByRole("combobox", { name: "Название растения 1" }).fill("Фикус");
+  await page.getByRole("option", { name: /Фикус/ }).click();
+  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Фикус Бенджамина", exact: true })).toBeVisible();
 });

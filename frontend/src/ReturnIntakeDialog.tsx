@@ -98,7 +98,6 @@ export function ReturnIntakeDialog({ onClose, onCreated, canReceipt }: { onClose
   const accept = async (receipt: boolean) => {
     if (!data || busy) return;
     if (!data.rows.length || data.rows.some(row => !row.variantId || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 100)) { setError("Выберите растение из каталога и укажите количество от 1 до 100 в каждой строке."); return; }
-    if (data.channel === "other" && !data.channelComment.trim()) { setError("Укажите комментарий для канала «Другое»."); return; }
     setBusy(true); setError("");
     try {
       // A pristine new form has no server row yet. Complete forms necessarily

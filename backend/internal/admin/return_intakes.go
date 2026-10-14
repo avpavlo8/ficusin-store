@@ -57,8 +57,8 @@ func validateIntake(data ReturnIntakeData, complete bool) error {
 	if len(data.Rows) > 100 || len(data.ChannelComment) > 4000 {
 		return errors.New("слишком большой возврат")
 	}
-	if complete && (len(data.Rows) == 0 || data.Channel == "other" && strings.TrimSpace(data.ChannelComment) == "") {
-		return errors.New("добавьте растения и комментарий для канала «Другое»")
+	if complete && len(data.Rows) == 0 {
+		return errors.New("добавьте растения в возврат")
 	}
 	keys := map[string]bool{}
 	total := 0
@@ -239,6 +239,10 @@ func (repository *PostgresRepository) AcceptReturnIntake(ctx context.Context, ac
 		return nil, err
 	}
 	if status == "draft" {
+		channelComment := ""
+		if data.Channel == "other" {
+			channelComment = strings.TrimSpace(data.ChannelComment)
+		}
 		unit := 0
 		for _, row := range data.Rows {
 			var cost sql.NullFloat64
@@ -252,7 +256,7 @@ func (repository *PostgresRepository) AcceptReturnIntake(ctx context.Context, ac
 			for index := 0; index < row.Quantity; index++ {
 				unit++
 				var itemID int64
-				if err = tx.QueryRow(ctx, `INSERT INTO marketplace_returns(channel,channel_comment,source_return_id,source_unit_index,canonical_variant_id,returned_at,condition,comment,unit_cost_rub_snapshot,cost_outcome,created_by,updated_by,intake_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $7='ready' THEN 'restored' WHEN $7='dead' THEN 'lost' ELSE 'unknown' END,$10,$10,$11) RETURNING id`, data.Channel, strings.TrimSpace(data.ChannelComment), "intake:"+id, unit, row.VariantID, time.Now().UTC().Format("2006-01-02"), row.Condition, strings.TrimSpace(row.Comment), costValue, actor.CustomerID, id).Scan(&itemID); err != nil {
+				if err = tx.QueryRow(ctx, `INSERT INTO marketplace_returns(channel,channel_comment,source_return_id,source_unit_index,canonical_variant_id,returned_at,condition,comment,unit_cost_rub_snapshot,cost_outcome,created_by,updated_by,intake_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $7='ready' THEN 'restored' WHEN $7='dead' THEN 'lost' ELSE 'unknown' END,$10,$10,$11) RETURNING id`, data.Channel, channelComment, "intake:"+id, unit, row.VariantID, time.Now().UTC().Format("2006-01-02"), row.Condition, strings.TrimSpace(row.Comment), costValue, actor.CustomerID, id).Scan(&itemID); err != nil {
 					return nil, err
 				}
 				if _, err = tx.Exec(ctx, `INSERT INTO marketplace_return_history(marketplace_return_id,to_condition,comment,created_by) VALUES($1,$2,$3,$4)`, itemID, row.Condition, row.Comment, actor.CustomerID); err != nil {
