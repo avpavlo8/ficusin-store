@@ -25,9 +25,18 @@ func TestStage09PlantReturnsAreIdempotentAndDoNotChangeStock(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT id FROM customers WHERE email='crm-manager@example.invalid'`).Scan(&managerID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT id FROM product_variants WHERE saby_id='crm-stage07-a'`).Scan(&variantID); err != nil {
+	var productID int64
+	unique := fmt.Sprint(time.Now().UnixNano())
+	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,catalog_section) VALUES('Растение Stage09',$1,'draft','plants') RETURNING id`, "returns-stage09-"+unique).Scan(&productID); err != nil {
 		t.Fatal(err)
 	}
+	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor) VALUES($1,$2,$2,'D12',100000) RETURNING id`, productID, unique).Scan(&variantID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM product_variants WHERE id=$1`, variantID)
+		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
+	}()
 	actor := Actor{CustomerID: managerID, Role: RoleManager}
 	if Can(RoleManager, PermissionProcurementEdit) {
 		t.Fatal("manager unexpectedly received procurement price permission")
@@ -37,7 +46,9 @@ func TestStage09PlantReturnsAreIdempotentAndDoNotChangeStock(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourceID := fmt.Sprintf("crm-stage09-%d", time.Now().UnixNano())
-	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM marketplace_returns WHERE source_return_id LIKE $1`, sourceID+"%") }()
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM marketplace_returns WHERE source_return_id LIKE $1`, sourceID+"%")
+	}()
 	repository := NewPostgresRepository(pool)
 	created, err := repository.CreateMarketplaceReturns(ctx, actor, ReturnCreate{
 		Channel: "ozon", SourceReturnID: sourceID, SourceShipmentID: "CRM-STAGE-09-SHIPMENT",
@@ -95,13 +106,13 @@ func TestStage09PlantReturnsAreIdempotentAndDoNotChangeStock(t *testing.T) {
 		t.Fatal(err)
 	}
 	retried, err := repository.CreateReturnReceipt(ctx, actor, created[0].ID)
-	if err != nil || retried.ReceiptStatus != "queued" {
-		t.Fatalf("failed receipt was not requeued: status=%s err=%v", retried.ReceiptStatus, err)
+	if err != nil || retried.ReceiptStatus != "failed" {
+		t.Fatalf("failed receipt lost its durable association: status=%s err=%v", retried.ReceiptStatus, err)
 	}
 	var actionStatus string
 	var attempts int
-	if err := pool.QueryRow(ctx, `SELECT status,attempts FROM procurement_action_items WHERE marketplace_return_id=$1`, created[0].ID).Scan(&actionStatus, &attempts); err != nil || actionStatus != "queued" || attempts != 0 {
-		t.Fatalf("failed action was not reset: status=%s attempts=%d err=%v", actionStatus, attempts, err)
+	if err := pool.QueryRow(ctx, `SELECT status,attempts FROM procurement_action_items WHERE marketplace_return_id=$1`, created[0].ID).Scan(&actionStatus, &attempts); err != nil || actionStatus != "failed" || attempts != 5 {
+		t.Fatalf("failed action was unexpectedly retried: status=%s attempts=%d err=%v", actionStatus, attempts, err)
 	}
 	var stockAfter int
 	if err := pool.QueryRow(ctx, `SELECT COALESCE((SELECT available_qty FROM inventory WHERE variant_id=$1),0)`, variantID).Scan(&stockAfter); err != nil {
@@ -113,8 +124,8 @@ func TestStage09PlantReturnsAreIdempotentAndDoNotChangeStock(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE marketplace_returns SET receipt_status='posted' WHERE id=$1`, created[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repository.UpdateMarketplaceReturn(ctx, actor, created[0].ID, ReturnUpdate{Condition: "dead"}); err == nil {
-		t.Fatal("posted receipt allowed a direct condition reversal")
+	if changed, err := repository.UpdateMarketplaceReturn(ctx, actor, created[0].ID, ReturnUpdate{Condition: "dead"}); err != nil || changed.Condition != "dead" || changed.ReceiptStatus != "correction_required" {
+		t.Fatalf("condition change lost receipt correction: %+v %v", changed, err)
 	}
 
 	// A return linked to a historical sale uses the sale's cost snapshot,

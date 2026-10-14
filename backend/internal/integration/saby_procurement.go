@@ -510,9 +510,21 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 			return execution, fmt.Errorf("добавить товары в поступление Saby %s: %w", link, err)
 		}
 	}
+	// Retail readback contains the header only in some Saby accounts. A successful
+	// row-save creates a return document; posting remains the operator's action.
+	if payload.ReturnID > 0 && createdNow {
+		execution.Completed = true
+		execution.DraftCreated = true
+		return execution, nil
+	}
 	finalDocument, finalLineCount, err := client.readReceipt(ctx, internalID)
 	if err != nil {
 		return execution, fmt.Errorf("проверить поступление Saby %s: %w", execution.ExternalURL, err)
+	}
+	if payload.ReturnID > 0 && !createdNow && finalLineCount == len(quantities) {
+		execution.Completed = true
+		execution.DraftCreated = !sabyReceiptPosted(finalDocument)
+		return execution, nil
 	}
 	if finalLineCount != len(quantities) {
 		return execution, fmt.Errorf("Saby сохранил %d товарных строк из %d; документ: %s", finalLineCount, len(quantities), link)

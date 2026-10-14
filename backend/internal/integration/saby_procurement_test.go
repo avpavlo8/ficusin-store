@@ -575,3 +575,48 @@ func TestSabyLineReadersAcceptInternalFieldAliases(t *testing.T) {
 		t.Fatalf("quantities=%+v", quantities)
 	}
 }
+
+func TestReturnReceiptCreatesDraftWhenRetailReadbackIsHeaderOnly(t *testing.T) {
+	var creates, adds, reads int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/oauth/service/" {
+			_, _ = w.Write([]byte(`{"token":"safe-token"}`))
+			return
+		}
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&rpc)
+		switch rpc.Method {
+		case "РеалВх.Создать":
+			creates++
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,"22222222-2222-4222-8222-222222222222"],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"}]}}`))
+		case "РеалВх.NomCreateWithSaveBatch":
+			adds++
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[{"created":true}]}`))
+		case "ДокОтгрВх.Прочитать":
+			reads++
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,"22222222-2222-4222-8222-222222222222",false],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"}]}}`))
+		default:
+			t.Errorf("unsafe/unexpected method %s", rpc.Method)
+		}
+	}))
+	defer server.Close()
+	client := NewSabyClient("client", "secret", "service", 278, 6)
+	client.authURL, client.serviceURL, client.client = server.URL+"/oauth/service/", server.URL+"/service/?srv=1", server.Client()
+	payload := json.RawMessage(`{"returnId":1,"orderId":1,"lines":[{"sabyId":"42","name":"Фикус","quantity":1}]}`)
+	result, err := client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload})
+	if err != nil || !result.Completed || !result.DraftCreated || result.ExternalURL == "" {
+		t.Fatalf("return draft=%+v err=%v", result, err)
+	}
+	if creates != 1 || adds != 1 || reads != 0 {
+		t.Fatalf("calls create=%d add=%d read=%d", creates, adds, reads)
+	}
+	// An uncertain previous row-save cannot be replayed just because header readback
+	// has no lines. Keep the same external document for manual reconciliation.
+	_, err = client.CreateDraft(context.Background(), procurement.ActionItem{Channel: "saby_receipt", Payload: payload, ExternalOperationID: result.ExternalOperationID, ExternalURL: result.ExternalURL})
+	if err == nil || creates != 1 || adds != 1 {
+		t.Fatalf("unsafe replay: create=%d add=%d err=%v", creates, adds, err)
+	}
+}

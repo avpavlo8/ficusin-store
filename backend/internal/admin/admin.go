@@ -27,6 +27,7 @@ const (
 	PermissionProductsSync     = "products.sync"
 	PermissionProductsManage   = "products.manage"
 	PermissionDelete           = "catalog.delete"
+	PermissionReturnsDelete    = "returns.delete"
 	PermissionReturnsRead      = "returns.read"
 	PermissionReturnsEdit      = "returns.edit"
 	PermissionReturnsReceipt   = "returns.receipt.create"
@@ -57,7 +58,7 @@ func Can(role, permission string) bool {
 			permission == PermissionCustomersEdit || permission == PermissionOrdersRead ||
 			permission == PermissionOrdersEdit || permission == PermissionProductsRead ||
 			permission == PermissionProductsEdit || permission == PermissionReturnsRead ||
-			permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt ||
+			permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt || permission == PermissionReturnsDelete ||
 			permission == PermissionProcurementRead || permission == PermissionProcurementEdit ||
 			permission == PermissionAnalyticsRead
 	case RoleManager:
@@ -142,7 +143,7 @@ type Order struct {
 	Address        string `json:"address"`
 	Comment        string `json:"comment"`
 	DeliveryMethod string `json:"deliveryMethod"`
-	DeliveryPayee string `json:"deliveryPayee"`
+	DeliveryPayee  string `json:"deliveryPayee"`
 	// DeliveryFeePending marks an order whose delivery price the manager
 	// still has to work out — no box dimensions, CDEK unavailable, or the
 	// customer asked whether the plants fit into one box.

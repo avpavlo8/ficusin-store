@@ -3,12 +3,12 @@ import { horizontalOverflow, mockApi, owner } from "./helpers";
 import AxeBuilder from "@axe-core/playwright";
 import type { ReturnIntake, ReturnIntakeData } from "../../frontend/src/adminTypes";
 
-const products = [{ variantId: 101, name: "Фикус Бенджамина", sku: "FIC-D12", label: "D12" }, { variantId: 102, name: "Монстера Делициоза", sku: "MON-D17", label: "D17" }];
+const products = [{ variantId: 101, name: "Фикус Бенджамина", sku: "FIC-D12", label: "D12", price: 1000 }, { variantId: 102, name: "Монстера Делициоза", sku: "MON-D17", label: "D17", price: 2500 }];
 
 async function setup(page: Page) {
   await mockApi(page, owner);
   await page.route("**/api/v1/admin/dashboard", route => route.fulfill({ json: { user: { fullName: "Александр" }, role: "owner", permissions: ["dashboard.read", "returns.read", "returns.edit", "returns.receipt.create"], dashboard: { products: 2, variants: 2, orders: 0, customers: 1, wholesalePending: 0, lastSync: null, recentOrders: [] } } }));
-  await page.route("**/api/v1/admin/returns", route => route.fulfill({ json: { items: [] } }));
+
   await page.route("**/api/v1/admin/returns/products", route => route.fulfill({ json: { items: products } }));
   let intake: ReturnIntake | null = null;
   let failSave = false;
@@ -16,6 +16,8 @@ async function setup(page: Page) {
   let loseSaveResponse = false;
   let receiptCalls = 0;
   const writes: ReturnIntakeData[] = [];
+  await page.route("**/api/v1/admin/returns", route => route.fulfill({ json: { items: intake?.items || [] } }));
+  await page.route("**/api/v1/admin/returns/documents", route => route.fulfill({ json: { items: intake?.status === "saved" ? [intake] : [] } }));
   await page.route("**/api/v1/admin/returns/intake-draft", route => route.fulfill({ json: { intake: intake?.status === "draft" ? intake : null } }));
   await page.route("**/api/v1/admin/returns/intakes/**", async route => {
     const request = route.request();
@@ -24,11 +26,11 @@ async function setup(page: Page) {
       const input = request.postDataJSON();
       writes.push(input.data);
       if (delaySave) await new Promise(resolve => setTimeout(resolve, delaySave));
-      intake = { id: new URL(request.url()).pathname.split("/").at(-1)!, revision: input.revision + 1, data: input.data, status: "draft", receiptStatus: "none", items: [] };
+      intake = { id: new URL(request.url()).pathname.split("/").at(-1)!, revision: input.revision + 1, data: {...input.data,rows:input.data.rows.map((row: ReturnIntakeData["rows"][number])=>({discountPercent:0,...row}))}, status: "draft", receiptStatus: "none", items: [] };
       if (loseSaveResponse) { loseSaveResponse = false; return route.fulfill({ status: 502, json: { error: "Ответ сохранения потерян" } }); }
     } else if (request.method() === "POST" && intake) {
       if (request.url().endsWith("/receipt")) receiptCalls++;
-      intake.status = "saved";
+      intake.status = "saved"; intake.documentNumber = 1; intake.createdAt = "2026-10-14T12:00:00Z";
       intake.receiptStatus = request.url().endsWith("/receipt") ? "queued" : "none";
       intake.items = intake.data.rows.flatMap(row => Array.from({ length: row.quantity }, (_, index) => ({ id: row.variantId * 100 + index, channel: intake!.data.channel, sourceReturnId: "test", sourceShipmentId: "", sourceUnitIndex: index + 1, variantId: row.variantId, productName: row.name, sku: row.sku, returnedAt: "2026-10-14", condition: row.condition, comment: row.comment, costOutcome: row.condition === "ready" ? "restored" as const : row.condition === "dead" ? "lost" as const : "unknown" as const, financialStatus: "incomplete" as const, receiptStatus: row.condition === "ready" ? intake!.receiptStatus : "none" as const, photoIds: [], history: [] })));
     }
@@ -73,15 +75,15 @@ test("@desktop @phone other channel shows comment and receipt saves multiple pla
   await dialog.getByRole("combobox", { name: "Название растения 2" }).fill("нсте");
   await page.getByRole("option", { name: /Монстера/ }).click();
   await dialog.getByRole("combobox", { name: "Состояние 2" }).selectOption("dead");
-  await dialog.getByRole("button", { name: "Сделать поступление в СБИС" }).click();
+  await dialog.getByRole("button", { name: "Создать поступление" }).click();
   await expect(dialog.getByText("Создаём поступление в СБИС…", { exact: true })).toBeVisible();
   expect(state.receiptCalls()).toBe(1);
   expect(state.getIntake()?.data.rows.map(row => [row.variantId, row.quantity, row.condition])).toEqual([[101, 2, "ready"], [102, 1, "dead"]]);
-  await expect(dialog.getByRole("button", { name: "Сделать поступление в СБИС" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Создать поступление" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(state.receiptCalls()).toBe(1);
-  await expect(page.getByRole("heading", { name: "Фикус Бенджамина", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Возврат №1/ })).toBeVisible();
 });
 
 test("@desktop @phone autosave failure keeps edited values, shows retry and prevents losing them on close", async ({ page }) => {
@@ -145,5 +147,11 @@ test("@desktop other channel can be saved with an optional comment", async ({ pa
   await page.getByRole("option", { name: /Фикус/ }).click();
   await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Фикус Бенджамина", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Возврат №1/ })).toBeVisible();
+});
+
+test("@desktop saved document opens again and replaces the misleading Saby row counter with the receipt link", async ({page})=>{
+ const state=await setup(page);await page.getByRole("combobox",{name:"Название растения 1"}).fill("фи");await page.getByRole("option",{name:/Фикус/}).click();await page.getByRole("dialog").getByRole("button",{name:"Создать поступление",exact:true}).click();
+ const intake=state.getIntake()!;intake.receiptStatus="failed";intake.receiptError="Saby сохранил 0 товарных строк из 1";intake.receiptExternalUrl="https://ret.saby.ru/opendoc.html?guid=test";
+ const dialog=page.getByRole("dialog");await expect(dialog.getByRole("link",{name:"Открыть поступление ↗"})).toBeVisible();await expect(dialog.getByText(/0 товарных строк/)).toHaveCount(0);await dialog.getByRole("button",{name:"Сохранить",exact:true}).click();await page.getByRole("button",{name:/Возврат №1 ·/}).click();await expect(page.getByRole("dialog").getByRole("spinbutton",{name:"Количество 1",exact:true})).toHaveValue("1");await expect(page.getByRole("dialog").getByRole("combobox",{name:"Состояние 1",exact:true})).toBeDisabled();expect(state.receiptCalls()).toBe(1);
 });

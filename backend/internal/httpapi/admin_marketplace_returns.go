@@ -141,7 +141,7 @@ func (handlers adminHandlers) addReturnPhoto(response http.ResponseWriter, reque
 		ContentType string `json:"contentType"`
 		Data        string `json:"data"`
 	}
-	if err := decodeJSON(request, &input); err != nil {
+	if err := decodeJSONWithLimit(request, &input, 7<<20); err != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное фото"})
 		return
 	}
