@@ -30,7 +30,7 @@ try {
   await dialog.getByRole('button',{name:'Закрыть',exact:true}).click();
   await page.getByRole('navigation',{name:'Состояния возвратов'}).getByRole('button',{name:/^На восстановление/}).click();
   await page.locator('.return-unit').filter({hasText:item.article}).getByRole('button').click();
-  await expect(page.getByRole('button',{name:'Продать',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Поступление в СБИС',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Продать',exact:true})).toBeVisible();const card=page.locator('.return-unit').filter({hasText:item.article});const checkboxBox=await card.getByRole('checkbox').boundingBox();expect(checkboxBox.width).toBeLessThanOrEqual(24);const cardBox=await card.boundingBox();const nameBox=await card.locator('strong').boundingBox();expect(nameBox.x).toBeGreaterThan(cardBox.x);expect(nameBox.x+nameBox.width).toBeLessThanOrEqual(cardBox.x+cardBox.width+1);await expect(page.getByRole('heading',{name:'Поступление в СБИС',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Удалить все записи',exact:true})).toHaveCount(0);
   await page.getByRole('checkbox',{name:`Выбрать ${item.article}`,exact:true}).check();
   await expect(page.getByRole('button',{name:'Скачать этикетки',exact:true})).toBeEnabled();
