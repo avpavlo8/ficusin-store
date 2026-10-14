@@ -168,8 +168,8 @@
 .pdp-cart-button:disabled { opacity:.5; cursor:not-allowed; }
 .pdp-favorite { min-height:48px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--green); font-size:24px; cursor:pointer; }
 .pdp-favorite.active { border-color:#b8694e; color:#b04d36; }
-.pdp-related { padding: 90px 5vw; }
-.pdp-related h2 { margin: 8px 0 35px; color: var(--green); font: 400 44px Georgia,serif; }
+
+.pdp-related h2 { color:var(--green); }
 .related-card { display: block; }
 .related-card .product-info > strong { display: block; margin-top: 14px; color: var(--green); }
 .pdp-error { min-height: 60vh; display: grid; place-content: center; gap: 18px; text-align: center; }
@@ -245,7 +245,7 @@
 	.pdp-anchor-nav { top:0; padding:0 18px; gap:24px; }
 	.pdp-anchor-nav a { min-height:48px; }
 	.pdp-section-heading { margin-bottom:28px; align-items:start; flex-direction:column; gap:16px; }
-	.pdp-related { padding: 65px 18px; }
+	
 	.plant-passport,.pdp-reviews { padding:60px 18px; }
 	.passport-sections dl > div { grid-template-columns:1fr; gap:6px; padding:12px 0; }
 	.passport-faq { margin:38px 0 0; }
@@ -358,7 +358,7 @@
 
 
 .product-page .pdp-related-carousel { position:relative; }
-.product-page .pdp-related-side { width:50px; height:50px; position:absolute; z-index:2; top:50%; display:grid; place-items:center; border:1px solid #d9cbbb; border-radius:50%; background:#fffaf3; color:#31482c; font-size:21px; cursor:pointer; box-shadow:0 8px 24px rgba(63,45,28,.12); transform:translateY(-50%); transition:background .2s,color .2s,transform .2s; }
+.product-page .pdp-related-side { position:absolute; place-items:center; border:1px solid #d9cbbb; border-radius:50%; background:#fffaf3; color:#31482c; cursor:pointer; box-shadow:0 8px 24px rgba(63,45,28,.12); transform:translateY(-50%); transition:background .2s,color .2s,transform .2s; }
 .product-page .pdp-related-side:hover { background:var(--pdp-orange); color:white; transform:translateY(-50%) scale(1.05); }.product-page .pdp-related-side.prev { left:-25px; }.product-page .pdp-related-side.next { right:-25px; }
 
 
