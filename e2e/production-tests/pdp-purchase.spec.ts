@@ -5,6 +5,11 @@ test("PDP purchase layout, nested menu and gallery swipe work live", async ({ pa
   await expect(page.getByRole("heading", { level:1, name:"Антуриум", exact:true })).toBeVisible();
   await expect(page.locator(".pdp-order-column .pdp-commerce-box")).toBeVisible();
   await expect(page.locator(".pdp-summary .pdp-related")).toHaveCount(1);
+  await expect(page.locator(".pdp-summary .pdp-related-track")).toHaveCSS("display","flex");
+  const cards = page.locator(".pdp-summary .related-card");
+  const first = (await cards.nth(0).boundingBox())!;
+  const second = (await cards.nth(1).boundingBox())!;
+  expect(second.y).toBeCloseTo(first.y,0);
   await expect(page.locator(".pdp-lead")).toHaveCount(0);
   await expect(page.getByText("Артикул", { exact:true })).toHaveCount(0);
   const image = page.getByRole("button", { name:"Открыть фотографию на весь экран" });
