@@ -488,3 +488,6 @@
   color: #8d5947;
   font-weight: 600;
 }
+
+.storefront.searching .storefront-shell{grid-template-columns:minmax(0,1fr)}
+.storefront.searching .storefront-side{display:none}
