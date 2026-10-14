@@ -45,7 +45,7 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
   const setQuery = (next: string) => onChange ? onChange(next) : setOwnValue(next);
   const allResults = () => {
     const trimmed = query.trim();
-    if (!trimmed) return;
+    if (!trimmed && !onSearch) return;
     setOpen(false);
     root.current?.querySelector("input")?.blur();
     if (onSearch) onSearch(trimmed);

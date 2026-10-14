@@ -16,6 +16,10 @@ test("PDP purchase layout, nested menu and gallery swipe work live", async ({ pa
   const count = page.locator(".pdp-image-count");
   await expect(count).toHaveText(/^1\s*\/\s*\d+$/);
   await image.dispatchEvent("touchstart", {touches:[{identifier:1,clientX:280,clientY:350}]});
+  await image.dispatchEvent("touchmove", {touches:[{identifier:1,clientX:200,clientY:353}]});
+  await expect(image.locator(".pdp-photo-track")).toHaveCSS("transition-duration","0s");
+  expect(await image.locator(".pdp-photo-track").evaluate(el=>new DOMMatrix(getComputedStyle(el).transform).m41)).toBeCloseTo(-80,0);
+  await expect(count).toHaveText(/^1\s*\/\s*\d+$/);
   await image.dispatchEvent("touchend", {touches:[],changedTouches:[{identifier:1,clientX:65,clientY:355}]});
   await expect(count).toHaveText(/^2\s*\/\s*\d+$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -39,7 +43,8 @@ test("Search puts results first and offers suggestions live", async ({page}) => 
   await search.getByRole("combobox").fill("фику");
   await expect(search.getByRole("listbox")).toBeVisible();
   await expect(search.getByRole("option").first()).toBeVisible();
-  await expect(page.locator(".storefront-shell")).toHaveCount(0);
+  await expect(page.locator(".storefront-shell")).toBeVisible();
+  await expect(page.locator(".storefront-head")).toContainText("фикус");
   await search.getByRole("combobox").press("Enter");
   await expect(page.getByRole("heading", {name:"Результаты поиска"})).toBeVisible();
 });
