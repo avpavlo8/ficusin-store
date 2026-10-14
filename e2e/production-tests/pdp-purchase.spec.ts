@@ -27,3 +27,16 @@ test("PDP purchase layout, nested menu and gallery swipe work live", async ({ pa
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
+
+test("Search puts results first and offers suggestions live", async ({page}) => {
+  await page.goto("/?q=фикус");
+  await expect(page.getByRole("heading", {name:"Результаты поиска"})).toBeVisible();
+  await expect(page.locator(".home-hero,.catalog-landing-hero,.storefront-tree")).toHaveCount(0);
+  await expect(page.locator(".storefront-side")).toBeHidden();
+  const phone = (await page.viewportSize())!.width <= 850;
+  if (phone) await page.getByRole("button", {name:"Поиск по каталогу",exact:true}).first().click();
+  const search = page.locator(phone ? ".mobile-catalog-search" : ".header-search");
+  await search.getByRole("combobox").fill("фикус");
+  await expect(search.getByRole("listbox")).toBeVisible();
+  await expect(search.getByRole("option").first()).toBeVisible();
+});
