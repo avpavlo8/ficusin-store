@@ -47,7 +47,7 @@
 .plant-arrival h3 { margin:0 0 10px; font-size:40px; letter-spacing:-1px; }
 .plant-arrival-intro { margin:0; color:#605e54; font-size:16px; line-height:1.6; }
 .plant-arrival ol { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:30px 36px; list-style:none; padding:0; margin:30px 0 0; }
-.plant-arrival li { position:relative; grid-column:auto; }
+.plant-arrival li { position:relative; }
 
 .plant-arrival-arrow { position:absolute; right:-29px; top:0; color:#af4b2c; font-size:26px; line-height:1; }
 .plant-arrival li:nth-child(3) .plant-arrival-arrow { display:none; }

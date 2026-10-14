@@ -164,7 +164,7 @@
 .pdp-quantity { display: inline-flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .pdp-quantity button { width: 38px; min-height:48px; padding:0; border:0; border-radius:0; background:#fff; color:var(--green); font-size:18px; }
 .pdp-quantity output { min-width: 28px; text-align: center; font-weight: 700; }
-.pdp-cart-button { min-height:48px; padding:0 18px; border:0; border-radius:10px; background:var(--green); color:#fff; font-weight:700; cursor:pointer; }
+.pdp-cart-button { padding:0 18px; color:#fff; font-weight:700; cursor:pointer; }
 .pdp-cart-button:disabled { opacity:.5; cursor:not-allowed; }
 .pdp-favorite { min-height:48px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--green); font-size:24px; cursor:pointer; }
 .pdp-favorite.active { border-color:#b8694e; color:#b04d36; }
@@ -295,7 +295,7 @@
 .product-page .pdp-thumbs button.active { border:2px solid var(--pdp-orange); }
 .product-page .pdp-image { height:100%; max-height:650px; aspect-ratio:auto; border-radius:22px; background:transparent; }
 .product-page .pdp-image img { object-fit:contain; }
-.product-page .pdp-image > span[aria-hidden] { display:none; }
+
 .product-page .pdp-summary { padding:0; align-self:stretch; border:0; background:transparent; }
 .product-page .pdp-identity { padding-bottom:18px; border-bottom:0; }
 .product-page .pdp-summary h1 { margin:0 0 5px; color:#31482c; font:500 clamp(32px,2.5vw,46px)/1.06 Georgia,serif; letter-spacing:-.02em; }
@@ -319,7 +319,7 @@
 .product-page .pdp-actions { margin:16px 0 0; grid-template-columns:112px 1fr 52px; }
 .product-page .pdp-quantity { border-color:#dfd1c0; border-radius:12px; background:#fffaf3; }
 .product-page .pdp-quantity button { background:transparent; }
-.product-page .pdp-cart-button { min-height:52px; border-radius:11px; background:var(--pdp-orange); font-size:15px; }
+.product-page .pdp-cart-button { min-height:52px; border-radius:11px; font-size:15px; }
 .product-page .pdp-favorite { min-height:52px; border-color:#dfd1c0; border-radius:50%; background:#fffaf3; color:#31482c; }
 .product-page .pdp-key-characteristics { padding:27px 26px; align-self:start; display:grid; align-content:start; border:1px solid #dfd1c0; border-radius:18px; background:rgba(255,250,243,.72); }
 .product-page .pdp-key-characteristics h2 { margin:0 0 12px; color:#31482c; font:500 25px/1.1 Georgia,serif; }
