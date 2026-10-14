@@ -429,7 +429,7 @@
 .product-page .pdp-summary .related-card h3{font-size:17px;line-height:1.25;min-height:0;margin:4px 0 12px}
 .product-page .pdp-summary .related-card .latin{font-size:11px}
 .product-page .pdp-summary .related-card .product-info>strong{font-size:15px}
-.product-page .pdp-summary .pdp-related-side{display:grid;width:36px;height:36px;z-index:3;font-size:19px}
+.product-page .pdp-summary .pdp-related-side{display:grid;width:36px;height:36px;z-index:3;top:36%;font-size:19px}
 .product-page .pdp-summary .pdp-related-side.prev{left:0}.product-page .pdp-summary .pdp-related-side.next{right:0}
 .product-page .pdp-summary .pdp-related-carousel:before,.product-page .pdp-summary .pdp-related-carousel:after{content:"";position:absolute;top:0;bottom:0;width:28px;z-index:2;pointer-events:none;backdrop-filter:blur(2px)}
 .product-page .pdp-summary .pdp-related-carousel:before{left:0;background:linear-gradient(to right,#f8f0e5,transparent);mask-image:linear-gradient(to right,#000,transparent)}
