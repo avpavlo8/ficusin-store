@@ -159,3 +159,19 @@ test("@desktop saved document opens again and replaces the misleading Saby row c
 test("@desktop label download failure keeps the saved document open with a retryable error", async ({page})=>{
  const state=await setup(page);await page.route("**/api/v1/admin/returns/labels",route=>route.fulfill({status:503,json:{error:"Не удалось скачать этикетки. Попробуйте ещё раз."}}));await page.getByRole("combobox",{name:"Название растения 1"}).fill("фи");await page.getByRole("option",{name:/Фикус/}).click();await page.getByRole("combobox",{name:"Состояние 1"}).selectOption("restoring");await page.getByRole("dialog").getByRole("button",{name:"Сохранить и скачать этикетки",exact:true}).click();await expect(page.getByRole("dialog")).toBeVisible();await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Не удалось скачать этикетки");expect(state.getIntake()?.status).toBe("saved");await expect(page.getByRole("dialog").getByRole("button",{name:"Скачать этикетки",exact:true})).toBeEnabled();
 });
+
+
+test("@desktop @phone invalid intake focuses the first missing plant or invalid quantity", async ({page}) => {
+  await setup(page);
+  const input=page.getByRole("combobox",{name:"Название растения 1",exact:true});
+  await page.getByRole("button",{name:"Сохранить возврат",exact:true}).click();
+  await expect(input).toBeFocused();
+  await expect(page.getByText("Выберите растение из каталога",{exact:true})).toBeVisible();
+  await input.fill("фикус");
+  await page.getByRole("option",{name:/Фикус Бенджамина/}).click();
+  const quantity=page.getByRole("spinbutton",{name:"Количество 1",exact:true});
+  await quantity.fill("0");
+  await page.getByRole("button",{name:"Сохранить возврат",exact:true}).click();
+  await expect(quantity).toBeFocused();
+  await expect(quantity).toHaveAttribute("aria-invalid","true");
+});

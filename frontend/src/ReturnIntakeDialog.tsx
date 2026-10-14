@@ -106,7 +106,7 @@ export function ReturnIntakeDialog({ onClose, onCreated, canReceipt, intakeID, o
   };
   const accept = async (receipt: boolean, labels = false) => {
     if (!data || busy) return;
-    if (!data.rows.length || data.rows.some(row => !row.variantId || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 100)) { const invalid=data.rows.filter(row=>!row.variantId||!Number.isInteger(row.quantity)||row.quantity<1||row.quantity>100);setInvalidRows(invalid.map(row=>row.key));setError("Заполните выделенные строки: выберите растение и количество от 1 до 100.");window.setTimeout(()=>formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"] input,[aria-invalid="true"]')?.focus(),0); return; }
+    if (!data.rows.length || data.rows.some(row => !row.variantId || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 100)) { const invalid=data.rows.filter(row=>!row.variantId||!Number.isInteger(row.quantity)||row.quantity<1||row.quantity>100);setInvalidRows(invalid.map(row=>row.key));setError("Заполните выделенные строки: выберите растение и количество от 1 до 100.");window.setTimeout(()=>formRef.current?.querySelector<HTMLElement>('input[aria-invalid="true"],[aria-invalid="true"] input')?.focus(),0); return; }
     setBusy(true); setError("");
     try {
       // A pristine new form has no server row yet. Complete forms necessarily
