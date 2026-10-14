@@ -219,6 +219,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const category = activeCategory?.id ?? null;
   const categoryName = activeCategory?.name ?? "";
   const searching = query.trim().length > 0;
+  const updateSearch = (next: string) => {
+    setQuery(next);
+    if (!searching && next.trim()) window.scrollTo({top:0,behavior:"instant"});
+  };
   const categoryNotFound = landing?.type === "category" && categoriesLoaded && !activeCategory;
   const collectionNotFound = landing?.type === "collection" && collectionState === "loaded" && !collectionMeta;
   const routePending = landing?.type === "category"
@@ -476,11 +480,11 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   if (categoryNotFound || collectionNotFound) return <NotFoundPage />;
-  if (routePending) return <main className={`storefront${searching ? " searching" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={setQuery} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
+  if (routePending) return <main className={`storefront${searching ? " searching" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={updateSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
 
   return (
     <main className={`storefront${searching ? " searching" : ""}`}>
-      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={setQuery} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
+      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={updateSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
 
       {!searching && (landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy"><h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1><p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p><div className="home-hero-actions"><a href="#catalog">Выбрать своё растение <span>→</span></a></div><div className="home-team"><img src="/assets/redesign/team-avatars.webp" alt="Команда Фикусин" /><span>За вашими растениями<br />ухаживает <b>команда любителей</b></span></div></div>
