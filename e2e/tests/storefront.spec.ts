@@ -264,7 +264,7 @@ test("@desktop @phone инструкция доступна по QR и раск�
   await expect(page.locator("#plant-watering .plant-copy")).toHaveText("После просыхания верхнего слоя");
   await expect(page.locator("#plant-repotting")).toHaveCount(0);
   await expect(guide).not.toContainText("Информация для этого растения готовится.");
-  await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug");
+  await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug?plant=1");
   await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
   await page.getByRole("tab", { name: "Уход", exact: true }).click();
