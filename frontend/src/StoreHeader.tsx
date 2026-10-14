@@ -156,7 +156,7 @@ function MobileMenu({
       <a href="/login">Войти</a>
       <a href="/register">Регистрация</a>
     </>}
-    <a href="/#catalog" onClick={onClose}>Каталог</a>
+    <a href="/#catalog" onClick={onClose}>Каталог</a><a href="/discounts" onClick={onClose}>Растения со скидкой</a>
     <a href="/favorites">Избранное ({favorites})</a>
     <a href="/delivery-and-returns">Доставка и возврат</a>
     <span className="mobile-menu-heading">О магазине</span>
@@ -304,7 +304,7 @@ export function StoreHeader({
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav">{homeNavigation ? <>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}<a href="/discounts">Растения со скидкой<span>→</span></a></div></details>
         <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{resolvedPlantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
         <a href="/delivery-and-returns">Доставка и оплата</a><AboutMenu/>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a><AboutMenu/></>}</nav>

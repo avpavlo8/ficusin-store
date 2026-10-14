@@ -87,6 +87,7 @@ type SabyCatalogRefresher interface {
 }
 
 type ActionExecution struct {
+	DraftCreated        bool
 	Completed           bool
 	ExternalOperationID string
 	ExternalURL         string

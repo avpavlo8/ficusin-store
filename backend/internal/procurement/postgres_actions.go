@@ -1276,7 +1276,7 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 		}
 	}
 	if returnID != nil {
-		if _, err := tx.Exec(ctx, `UPDATE marketplace_returns SET receipt_status=CASE WHEN $2='completed' THEN 'posted' WHEN $2='failed' THEN 'failed' WHEN $3<>'' THEN 'draft_created' ELSE 'checking' END,receipt_external_id=CASE WHEN $3='' THEN receipt_external_id ELSE $3 END,receipt_external_url=CASE WHEN $4='' THEN receipt_external_url ELSE $4 END,receipt_posted_at=CASE WHEN $2='completed' THEN CURRENT_TIMESTAMP ELSE receipt_posted_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 OR receipt_action_id=$5`, *returnID, status, result.ExternalOperationID, result.ExternalURL, actionID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE marketplace_returns SET receipt_status=CASE WHEN receipt_status='correction_required' THEN receipt_status WHEN $2='completed' AND $6 THEN 'draft_created' WHEN $2='completed' THEN 'posted' WHEN $2='failed' THEN 'failed' WHEN $3<>'' THEN 'draft_created' ELSE 'checking' END,receipt_external_id=CASE WHEN $3='' THEN receipt_external_id ELSE $3 END,receipt_external_url=CASE WHEN $4='' THEN receipt_external_url ELSE $4 END,receipt_posted_at=CASE WHEN $2='completed' AND NOT $6 THEN CURRENT_TIMESTAMP ELSE receipt_posted_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 OR receipt_action_id=$5`, *returnID, status, result.ExternalOperationID, result.ExternalURL, actionID, result.DraftCreated); err != nil {
 			return false, fmt.Errorf("update marketplace return receipt: %w", err)
 		}
 	}

@@ -110,7 +110,7 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
         choose(activeRef.current);
       } else allResults();
     }}>
-      <span aria-hidden="true">⌕</span>
+      {!selection && <span aria-hidden="true">⌕</span>}
       <input aria-label={selection?.label} autoFocus={autoFocus} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); activeRef.current = -1; setActive(-1); }}
         onFocus={() => setOpen(true)} onKeyDown={keyDown} placeholder={placeholder} autoComplete="off"
         role="combobox" aria-expanded={open && Boolean(selection || query.trim())} aria-controls={listID}
@@ -120,7 +120,7 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
     {open && (selection || query.trim()) && <div className="catalog-search-options" id={listID} role="listbox" aria-label={selection ? "Каталог растений" : undefined}>
       {matches.map((item, index) => <button id={`${listID}-${index}`} role="option" aria-selected={active === index}
         className={active === index ? "active" : ""} key={item.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(index)}>
-        {item.image && <img src={item.image} alt="" />}<span><b>{item.name}</b><small>{item.latin}</small></span>
+        {item.image && <img src={item.image} alt="" />}<span><b>{item.name}</b><small>{item.latin}{selection && item.price != null && ` · ${item.price.toLocaleString("ru-RU")} ₽`}</small></span>
       </button>)}
       {selection && !matches.length && <p className="catalog-search-empty">Совпадений нет. Попробуйте часть названия.</p>}
       {!selection && <button id={`${listID}-${matches.length}`} role="option" aria-selected={active === matches.length}

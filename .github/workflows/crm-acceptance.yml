@@ -27,6 +27,7 @@ jobs:
       DATABASE_SSL_VERIFY: 'false'
       AUTH_COOKIE_SECURE: 'false'
       SITE_URL: http://127.0.0.1:8080
+      PROCUREMENT_PDF_FONT: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
       TELEGRAM_BOT_TOKEN: ci-dummy-token
       TELEGRAM_ORDER_CHAT_ID: '-100000000001'
       PGPASSWORD: postgres
@@ -124,13 +125,15 @@ jobs:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
         run: go test ./internal/admin -run 'TestManualMarketplacePriceRetryChecksSitePriceAndLink|TestManualAvitoPriceRetryChecksAllSizes' -count=1
         working-directory: backend
+      - name: Ensure thermal label font
+        run: test -s "$PROCUREMENT_PDF_FONT" || (sudo apt-get update && sudo apt-get install -y fonts-dejavu-core)
       - name: Verify real API and desktop/mobile UI
         run: >-
           docker run --rm --network host --ipc=host
           -v "$GITHUB_WORKSPACE:/work" -w /work/e2e
           -e GITHUB_SHA -e CRM_ARTIFACT_DIR=/work/crm-artifacts
           mcr.microsoft.com/playwright:v1.63.0-noble
-          bash -c 'npm ci && node verify-crm-acceptance.mjs'
+          bash -c 'npm ci && node verify-crm-acceptance.mjs && node verify-return-recovery.mjs'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
