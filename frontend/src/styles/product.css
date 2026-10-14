@@ -421,7 +421,7 @@
 .product-page .pdp-summary .pdp-related{margin:28px 0 0;padding:0;max-width:none;overflow:visible}
 .product-page .pdp-summary .pdp-related>header{margin-bottom:16px}
 .product-page .pdp-summary .pdp-related h2{margin:0;font:400 27px/1.2 Georgia,serif}
-.product-page .pdp-summary .pdp-related-track{padding:4px 24px 12px;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;mask-image:linear-gradient(to right,transparent,#000 35px,#000 calc(100% - 35px),transparent)}
+.product-page .pdp-summary .pdp-related-track{display:flex;flex-wrap:nowrap;padding:4px 24px 12px;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;mask-image:linear-gradient(to right,transparent,#000 35px,#000 calc(100% - 35px),transparent)}
 .product-page .pdp-summary .pdp-related-track::-webkit-scrollbar{display:none}
 .product-page .pdp-summary .pdp-related-track .related-card{flex:0 0 calc((100% - 28px)/3);scroll-snap-align:start}
 .product-page .pdp-summary .related-card{position:relative;min-width:0;padding:0;border:0;background:transparent;border-radius:12px}
