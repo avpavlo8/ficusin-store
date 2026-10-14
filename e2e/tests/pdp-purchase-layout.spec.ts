@@ -79,7 +79,7 @@ for (const device of ["@phone", "@desktop"]) {
     await expect(search.getByRole("listbox")).toBeVisible();
     await expect(search.getByRole("option").first()).toBeVisible();
     await search.getByRole("combobox").fill("несуществующее растение 987654");
-    await page.locator(".storefront-head").click();
+    await search.getByRole("combobox").press("Escape");
     await expect(page.getByText("Ничего не нашли", {exact:true})).toBeVisible();
     await search.getByRole("button",{name:"Очистить поиск"}).click();
     await expect(page.locator(".home-hero")).toBeVisible();
