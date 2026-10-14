@@ -53,14 +53,14 @@
 .breadcrumbs { max-width: 1320px; margin: 0 auto; padding: 18px 28px; display: flex; gap: 9px; color: #7b847d; font-size: 12px; }
 .breadcrumbs b { color: var(--green); }
 .pdp-main { max-width: 1320px; margin: 0 auto; padding: 10px 28px 64px; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(390px,.85fr); gap: clamp(36px,5vw,68px); align-items:start; }
-.pdp-gallery { min-width: 0; position: sticky; top: 94px; display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 12px; }
+.pdp-gallery { min-width:0; display:grid; gap:12px; }
 .pdp-gallery.single { grid-template-columns:minmax(0,1fr); }
-.pdp-thumbs { display: grid; align-content: start; gap: 9px; }
-.pdp-thumbs button { aspect-ratio: 1; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 8px; background: var(--cream); cursor: pointer; }
+.pdp-thumbs { display:grid; align-content:start; }
+.pdp-thumbs button { aspect-ratio: 1; padding: 0; overflow: hidden; border:1px solid transparent; cursor:pointer; }
 .pdp-thumbs button.active { border-color: var(--green); }
 .pdp-thumbs img { width: 100%; height: 100%; object-fit: cover; }
-.pdp-image { width:100%; aspect-ratio: 4/5; min-height: 0; max-height: 680px; padding:0; position:relative; overflow: hidden; border:0; border-radius: 18px; background: #f4f1e9; cursor:zoom-in; }
-.pdp-image img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.pdp-image { width:100%; min-height:0; padding:0; position:relative; overflow:hidden; border:0; cursor:zoom-in; }
+.pdp-image img { width: 100%; height:100%; object-position:center; }
 .pdp-image-count { position:absolute; right:14px; bottom:14px; padding:6px 9px; border-radius:99px; background:rgba(255,255,255,.9); color:#4c5850; font-size:11px; }
 .pdp-lightbox { position:fixed; z-index:200; inset:0; padding:20px; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:16px; background:rgba(12,20,15,.96); color:#fff; }
 .pdp-lightbox > header { display:grid; grid-template-columns:1fr auto auto; gap:20px; align-items:center; }
