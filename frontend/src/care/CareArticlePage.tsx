@@ -18,7 +18,7 @@ function CareIcon({ kind = "leaf" }: { kind?: string }) {
   const key = kind === "follow-up" ? "followup" : kind;
   return <svg className="care-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={sectionIcons[key] || sectionIcons.leaf} /></svg>;
 }
-const articleImage = (slug: string) => `/assets/care/articles-v3/${slug}.jpg`;
+const articleImage = (slug: string) => `/assets/care/articles-v4/${slug}.jpg`;
 
 export default function CareArticlePage({ slug }: { slug?: string }) {
   const carousel = useRef<HTMLDivElement>(null);

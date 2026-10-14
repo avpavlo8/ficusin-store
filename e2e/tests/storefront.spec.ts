@@ -36,7 +36,7 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(page.locator(".home-catalog-toolbar")).toBeVisible();
   const headerMenus = page.locator(".header-dropdown");
   await headerMenus.first().locator(":scope > summary").click();
-  await expect(headerMenus.first().getByRole("link", { name: /Растения/ })).toHaveAttribute("href", /\/catalog\//);
+  await expect(headerMenus.first().locator(".header-submenu > summary").filter({hasText:"Растения"}).first()).toBeVisible();
   await headerMenus.nth(1).locator(":scope > summary").click();
   await expect(headerMenus.first()).not.toHaveAttribute("open", "");
   await expect(headerMenus.nth(1).getByRole("link", { name: /Аглаонема/ })).toHaveAttribute("href", /\/catalog\//);

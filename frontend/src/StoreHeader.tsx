@@ -20,7 +20,7 @@ function closeOtherHeaderMenus(current: HTMLDetailsElement) {
 }
 
 function HeaderMenuBranch({ item, onPick }: { item: HeaderMenuItem; onPick?: (id: number) => void }) {
-  if (item.children?.length) return <details className="header-submenu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>{item.label}<span>›</span></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
+  if (item.children?.length) return <details className="header-submenu" onToggle={(event) => { event.stopPropagation(); closeOtherHeaderMenus(event.currentTarget); }}><summary>{item.label}<span>›</span></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
   return <a href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={(event) => { if (onPick) { event.preventDefault(); onPick(item.id); } document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); }}>{item.label}<span>→</span></a>;
 }
 

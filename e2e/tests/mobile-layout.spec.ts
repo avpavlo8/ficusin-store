@@ -146,11 +146,15 @@ test("@phone product purchase panel and recommendations do not collide", async (
   expect(relatedBox).not.toBeNull();
   expect(relatedBox!.width).toBeGreaterThanOrEqual(210);
   const price = related.locator(".product-info > strong");
-  const arrow = related.locator(".related-arrow");
-  const [priceBox, arrowBox] = await Promise.all([price.boundingBox(), arrow.boundingBox()]);
+  const priceBox = await price.boundingBox();
   expect(priceBox).not.toBeNull();
-  expect(arrowBox).not.toBeNull();
-  expect(priceBox!.x + priceBox!.width).toBeLessThanOrEqual(arrowBox!.x);
+  expect(priceBox!.x).toBeGreaterThanOrEqual(relatedBox!.x);
+  expect(priceBox!.x + priceBox!.width).toBeLessThanOrEqual(relatedBox!.x + relatedBox!.width + 1);
+  const arrow = page.getByRole("button", { name:"Предыдущие похожие растения" });
+  await expect(arrow).toBeVisible();
+  const arrowBox = await arrow.boundingBox();
+  expect(arrowBox!.y + arrowBox!.height).toBeLessThanOrEqual(priceBox!.y);
+
 });
 
 // Нижняя панель ведёт на настоящий адрес: каждый переход — новая загрузка

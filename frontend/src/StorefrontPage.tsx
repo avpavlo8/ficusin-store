@@ -271,7 +271,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     const children = new Map<number | null, Category[]>();
     categories.forEach((item) => children.set(item.parentId, [...(children.get(item.parentId) || []), item]));
     const order = (items: Category[]) => [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"));
-    const roots: HeaderMenuItem[] = order(children.get(null) || []).map((item) => ({ id: item.id, label: item.name, slug: item.slug }));
+    const branch = (item: Category): HeaderMenuItem => ({id:item.id,label:item.name,slug:item.slug,children:order(children.get(item.id) || []).map(branch)});
+    const roots = order(children.get(null) || []).map(branch);
     const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
     if (!plantRoot) return { catalog: roots, plants: [] };
     const collectPlantKinds = (parentId: number): Category[] => order(children.get(parentId) || []).flatMap((item): Category[] => {

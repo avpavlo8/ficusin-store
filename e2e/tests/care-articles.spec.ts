@@ -17,7 +17,7 @@ for (const [slug, title] of articles) {
     await expect(page.locator(".care-first-action")).toContainText("С чего начать");
     await expect(page.locator(".care-story-section")).toHaveCount(9);
     await expect(page.locator(".care-story-hero img")).toHaveJSProperty("naturalWidth", 1200);
-    await expect(page.locator(".care-story-hero img")).toHaveAttribute("src", `/assets/care/articles-v3/${slug}.jpg`);
+    await expect(page.locator(".care-story-hero img")).toHaveAttribute("src", `/assets/care/articles-v4/${slug}.jpg`);
     await expect(page.locator(".care-story-hero img")).toHaveCSS("object-fit", "contain");
     const toc = page.getByRole("navigation", { name: "В этой статье" });
     await toc.getByRole("link").nth(1).click();

@@ -1,0 +1,60 @@
+import { expect, test } from "@playwright/test";
+import { mockApi } from "./helpers";
+
+for (const url of ["/", "/product/1", "/care/mealybug", "/cart"]) {
+  test(`@desktop вложенные категории открываются на ${url}`, async ({ page }) => {
+    await mockApi(page);
+    await page.goto(url);
+    const catalog = page.locator(".header-dropdown").first();
+    await catalog.locator(":scope > summary").click();
+    await catalog.locator(".header-submenu > summary").filter({hasText:"Растения"}).first().click();
+    await catalog.locator(".header-submenu > summary").filter({hasText:"Комнатные растения"}).first().click();
+    await expect(catalog.getByRole("link", { name: /Фикус/ })).toBeVisible();
+    await expect(catalog).toHaveAttribute("open", "");
+    expect(await catalog.getByRole("link", { name: /Фикус/ }).evaluate(el => getComputedStyle(el, "::after").display)).toBe("none");
+  });
+}
+
+test("@desktop покупка выше рекомендаций, рекомендации под обеими колонками", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/product/1");
+  const size = page.getByRole("group", { name: "Размер растения" });
+  await expect(size).toBeVisible();
+  const commerce = page.locator(".pdp-order-column .pdp-commerce-box");
+  await expect(commerce.getByRole("button", { name: "В корзину", exact: true })).toBeVisible();
+  expect((await commerce.boundingBox())!.y).toBeGreaterThan((await size.boundingBox())!.y);
+  const details = (await page.locator(".pdp-key-characteristics").boundingBox())!;
+  const rail = (await page.locator(".pdp-summary .pdp-related").boundingBox())!;
+  expect(rail.y).toBeGreaterThanOrEqual(details.y + details.height);
+  expect(rail.x + rail.width).toBeGreaterThanOrEqual(details.x + details.width - 1);
+  await expect(page.locator(".pdp-related")).toHaveCount(1);
+  await expect(page.locator(".pdp-lead")).toHaveCount(0);
+  await expect(page.getByText("Артикул", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("@phone галерея листается горизонтальным свайпом, вертикальный жест сохраняет фото", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/v1/products/1", route => route.fulfill({ json: { product: {
+    id:"1",name:"Антуриум",latin:"Anthurium",catalogSection:"plants",description:"Описание",
+    images:["/assets/care/guide-v4/lighting.jpg","/assets/care/guide-v4/watering.jpg"],
+    variants:[{id:1,sku:"1",label:"D12",price:1390,stock:5,images:[],attributes:[]}],
+    recommendations:[],attributes:[],passport:{},reviews:[],importantWarnings:[],rating:0,reviewsCount:0,
+  } } }));
+  await page.goto("/product/1");
+  const image = page.getByRole("button", { name: "Открыть фотографию на весь экран" });
+  await expect(page.locator(".pdp-image-count")).toHaveText("1 / 2");
+  const swipe = async (x: number, y: number) => {
+    await image.dispatchEvent("touchstart", { touches:[{identifier:1,clientX:280,clientY:350}] });
+    await image.dispatchEvent("touchend", { touches:[],changedTouches:[{identifier:1,clientX:x,clientY:y}] });
+  };
+  await swipe(70,355);
+  await expect(page.locator(".pdp-image-count")).toHaveText("2 / 2");
+  await image.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await swipe(270,550);
+  await expect(page.locator(".pdp-image-count")).toHaveText("2 / 2");
+  await page.waitForTimeout(450);
+  await image.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+});
