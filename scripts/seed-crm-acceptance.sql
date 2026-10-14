@@ -176,3 +176,12 @@ FROM product_variants variant JOIN products product ON product.id=variant.produc
 WHERE customer.email='crm-manager@example.invalid';
 INSERT INTO marketplace_return_history(marketplace_return_id,to_condition,comment,created_by)
 SELECT item.id,item.condition,item.comment,item.created_by FROM marketplace_returns item WHERE item.source_return_id='CRM-RETURN-09-UNKNOWN';
+
+-- Return recovery uses a numeric synthetic Saby identity so creation of a
+-- durable receipt can be tested without any external service credentials.
+INSERT INTO saby_nomenclature(saby_id,code,name,price_minor,balance)
+VALUES('99999199','CRM-RETURN-RECOVERY','Аглаонема Вайт Ленс',100000,0);
+INSERT INTO products(name,slug,status,catalog_section,saby_id)
+VALUES('Аглаонема Вайт Ленс','crm-return-recovery-plant','draft','plants','99999199');
+INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active,saby_id)
+SELECT id,'99999199','D12',100000,0,'99999199' FROM products WHERE slug='crm-return-recovery-plant';

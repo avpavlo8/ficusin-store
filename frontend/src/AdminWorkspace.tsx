@@ -26,21 +26,15 @@ export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg>;
 }
 
-export function WorkspaceSidebar({ data, section, onNavigate }: { data: AdminData; section: Section; onNavigate: (section: Section) => void }) {
-  return <aside className="account-sidebar">
-    <a className="workspace-skip" href="#workspace-content">К содержимому</a>
-    <a className="workspace-brand" href="/" aria-label="Фикусин — в магазин">Фикусин<span aria-hidden="true">✳</span></a>
-    <p className="workspace-caption">Рабочее пространство</p>
-    <nav aria-label="Разделы управления">{sections.filter(item => !["categories", "collections"].includes(item.id)).filter(item => (!item.permission || data.permissions.includes(item.permission)) && (!item.owner || data.role === "owner")).map(item =>
-      <button key={item.id} type="button" className={(section === item.id || item.id === "products" && ["categories", "collections"].includes(section)) ? "active" : ""} aria-current={(section === item.id || item.id === "products" && ["categories", "collections"].includes(section)) ? "page" : undefined} onClick={() => onNavigate(item.id)}>
-        <AdminIcon name={item.id} />{item.label}
-      </button>
-    )}</nav>
-    <div className="workspace-sidebar-bottom">
-      <a className="workspace-store-link" href="/">Вернуться в магазин <AdminIcon name="arrow" /></a>
-      <a className="workspace-profile" href="/account"><span className="workspace-avatar" aria-hidden="true">{data.user.fullName.trim().charAt(0) || "Ф"}</span><div><strong>{data.user.fullName}</strong><small>{roleLabel(data.role)} · Личный кабинет</small></div></a>
-    </div>
-  </aside>;
+export function WorkspaceSidebar({data,section,onNavigate,compact=false}:{data:AdminData;section:Section;onNavigate:(section:Section)=>void;compact?:boolean}) {
+ const mobileMenu=useRef<HTMLDetailsElement>(null);
+ const links=sections.filter(item=>!["categories","collections"].includes(item.id)).filter(item=>(!item.permission||data.permissions.includes(item.permission))&&(!item.owner||data.role==="owner")).map(item=> {
+  const active=section===item.id||item.id==="products"&&["categories","collections"].includes(section);
+  return <button key={item.id} type="button" className={active?"active":""} aria-current={active?"page":undefined} onClick={()=>{onNavigate(item.id);if(mobileMenu.current)mobileMenu.current.open=false;}}><AdminIcon name={item.id}/>{item.label}</button>;
+ });
+ return <aside className="account-sidebar"><a className="workspace-skip" href="#workspace-content">К содержимому</a><a className="workspace-brand" href="/" aria-label="Фикусин — в магазин">Фикусин<span aria-hidden="true">✳</span></a><p className="workspace-caption">Рабочее пространство</p>
+ {compact&&<details ref={mobileMenu} className="workspace-mobile-navigation"><summary>Разделы</summary><nav aria-label="Мобильные разделы управления">{links}</nav></details>}
+ <nav aria-label="Разделы управления">{links}</nav><div className="workspace-sidebar-bottom"><a className="workspace-store-link" href="/">Вернуться в магазин <AdminIcon name="arrow"/></a><a className="workspace-profile" href="/account"><span className="workspace-avatar" aria-hidden="true">{data.user.fullName.trim().charAt(0)||"Ф"}</span><div><strong>{data.user.fullName}</strong><small>{roleLabel(data.role)} · Личный кабинет</small></div></a></div></aside>;
 }
 
 export function WorkspaceToolbar({ data, section, onNavigate }: { data: AdminData; section: Section; onNavigate: (section: Section) => void }) {

@@ -138,8 +138,9 @@ func (handlers adminHandlers) addReturnPhoto(response http.ResponseWriter, reque
 		return
 	}
 	var input struct {
-		ContentType string `json:"contentType"`
-		Data        string `json:"data"`
+		ContentType    string `json:"contentType"`
+		ReplacePhotoID int64  `json:"replacePhotoId"`
+		Data           string `json:"data"`
 	}
 	if err := decodeJSONWithLimit(request, &input, 7<<20); err != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное фото"})
@@ -149,7 +150,24 @@ func (handlers adminHandlers) addReturnPhoto(response http.ResponseWriter, reque
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Фото не должно превышать 5 МБ"})
 		return
 	}
-	item, err := repository.AddReturnPhoto(request.Context(), actor, id, input.ContentType, input.Data)
+	var item admin.MarketplaceReturn
+	var err error
+	if input.ReplacePhotoID < 0 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное фото"})
+		return
+	}
+	if input.ReplacePhotoID > 0 {
+		replacer, ok := repository.(interface {
+			ReplaceReturnPhoto(context.Context, admin.Actor, int64, int64, string, string) (admin.MarketplaceReturn, error)
+		})
+		if !ok {
+			writeJSON(response, 503, errorResponse{Error: "Замена фото недоступна"})
+			return
+		}
+		item, err = replacer.ReplaceReturnPhoto(request.Context(), actor, id, input.ReplacePhotoID, input.ContentType, input.Data)
+	} else {
+		item, err = repository.AddReturnPhoto(request.Context(), actor, id, input.ContentType, input.Data)
+	}
 	if err != nil {
 		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
 		return

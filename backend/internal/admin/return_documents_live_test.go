@@ -127,6 +127,45 @@ func TestReturnIntakeRecoveryDocumentsOnLiveDatabase(t *testing.T) {
 	if _, _, err = repo.DiscountPlantPhoto(ctx, recovery.ID); err != nil {
 		t.Fatal(err)
 	}
+	photoID := photographed.PhotoIDs[0]
+	if _, err = repo.ReplaceReturnPhoto(ctx, manager, recovery.ID, photoID, "image/png", "broken"); err == nil {
+		t.Fatal("invalid replacement accepted")
+	}
+	unchanged, _ := repo.MarketplaceReturn(ctx, recovery.ID)
+	if len(unchanged.PhotoIDs) != 1 || unchanged.PhotoIDs[0] != photoID {
+		t.Fatal("failed replacement lost original")
+	}
+	photographed, err = repo.ReplaceReturnPhoto(ctx, manager, recovery.ID, photoID, "image/png", base64.StdEncoding.EncodeToString(buffer.Bytes()))
+	if err != nil || len(photographed.PhotoIDs) != 1 || photographed.PhotoIDs[0] == photoID {
+		t.Fatalf("replacement %+v %v", photographed, err)
+	}
+	photoID = photographed.PhotoIDs[0]
+	if _, _, err = repo.ReturnPhoto(ctx, photoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.SetReturnPhotoArchived(ctx, manager, recovery.ID, photoID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = repo.ReturnPhoto(ctx, photoID); err == nil {
+		t.Fatal("deleted photo accessible")
+	}
+	photographed, err = repo.SetReturnPhotoArchived(ctx, manager, recovery.ID, photoID, false)
+	if err != nil || len(photographed.PhotoIDs) != 1 {
+		t.Fatalf("photo undo %+v %v", photographed, err)
+	}
+	public := "Новый рост здоровый"
+	if _, err = repo.UpdateMarketplaceReturn(ctx, manager, recovery.ID, ReturnUpdate{Condition: "restoring", Comment: "Private assessment", PublicComment: &public}); err != nil {
+		t.Fatal(err)
+	}
+	offers, err = repo.DiscountPlants(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, offer := range offers {
+		if offer.ID == recovery.ID && offer.Description != public {
+			t.Fatalf("private comment leaked: %+v", offer)
+		}
+	}
 	// A failed selection is atomic: no receipt or condition changes.
 	if _, err = repo.CreateReturnReceiptBatch(ctx, manager, []int64{saved.Items[2].ID, saved.Items[3].ID}, false); err == nil {
 		t.Fatal("dead plant accepted")
@@ -210,5 +249,40 @@ func TestReturnIntakeRecoveryDocumentsOnLiveDatabase(t *testing.T) {
 	}
 	if _, err = repo.ReturnIntake(ctx, owner, id); err == nil {
 		t.Fatal("deleted document visible")
+	}
+	if _, err = repo.ArchivedReturns(ctx, manager); err != ErrForbidden {
+		t.Fatalf("manager archive: %v", err)
+	}
+	if err = repo.RestoreReturns(ctx, manager, nil, id, false); err != ErrForbidden {
+		t.Fatalf("manager restore: %v", err)
+	}
+	archive, err := repo.ArchivedReturns(ctx, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = 0
+	for _, archived := range archive.Items {
+		if archived.IntakeID == id {
+			found++
+		}
+	}
+	if found != 4 {
+		t.Fatalf("archive lost units: %d", found)
+	}
+	if err = repo.RestoreReturns(ctx, administrator, nil, id, false); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := repo.ReturnIntake(ctx, owner, id)
+	if err != nil || len(restored.Items) != 4 || restored.Data.Rows[0].Condition != "restoring" {
+		t.Fatalf("restored document %+v %v", restored, err)
+	}
+	for _, item := range restored.Items {
+		if item.ID == ids[0] && (item.ReceiptExternalURL != "https://ret.saby.ru/test" || item.ReceiptStatus != "correction_required") {
+			t.Fatalf("restoration lost Saby identity: %+v", item)
+		}
+	}
+	var status string
+	if err = pool.QueryRow(ctx, `SELECT status FROM procurement_action_items WHERE id=$1`, actionID).Scan(&status); err != nil || status != "completed" {
+		t.Fatalf("restoration requeued external receipt: %s %v", status, err)
 	}
 }

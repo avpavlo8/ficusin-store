@@ -80,10 +80,10 @@ test("@desktop @phone other channel shows comment and receipt saves multiple pla
   expect(state.receiptCalls()).toBe(1);
   expect(state.getIntake()?.data.rows.map(row => [row.variantId, row.quantity, row.condition])).toEqual([[101, 2, "ready"], [102, 1, "dead"]]);
   await expect(dialog.getByRole("button", { name: "Создать поступление" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await dialog.getByRole("button", { name: "Закрыть документ", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(state.receiptCalls()).toBe(1);
-  await expect(page.getByRole("button", { name: /Возврат №1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Документ приёмки №1/ })).toBeVisible();
 });
 
 test("@desktop @phone autosave failure keeps edited values, shows retry and prevents losing them on close", async ({ page }) => {
@@ -145,17 +145,17 @@ test("@desktop other channel can be saved with an optional comment", async ({ pa
   await expect(dialog.getByRole("textbox", { name: "Комментарий к каналу" })).toBeVisible();
   await dialog.getByRole("combobox", { name: "Название растения 1" }).fill("Фикус");
   await page.getByRole("option", { name: /Фикус/ }).click();
-  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await dialog.getByRole("button", { name: "Сохранить возврат", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Возврат №1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Документ приёмки №1/ })).toBeVisible();
 });
 
 test("@desktop saved document opens again and replaces the misleading Saby row counter with the receipt link", async ({page})=>{
  const state=await setup(page);await page.getByRole("combobox",{name:"Название растения 1"}).fill("фи");await page.getByRole("option",{name:/Фикус/}).click();await page.getByRole("dialog").getByRole("button",{name:"Создать поступление",exact:true}).click();
  const intake=state.getIntake()!;intake.receiptStatus="failed";intake.receiptError="Saby сохранил 0 товарных строк из 1";intake.receiptExternalUrl="https://ret.saby.ru/opendoc.html?guid=test";
- const dialog=page.getByRole("dialog");await expect(dialog.getByRole("link",{name:"Открыть поступление ↗"})).toBeVisible();await expect(dialog.getByText(/0 товарных строк/)).toHaveCount(0);await dialog.getByRole("button",{name:"Сохранить",exact:true}).click();await page.getByRole("button",{name:/Возврат №1 ·/}).click();await expect(page.getByRole("dialog").getByRole("spinbutton",{name:"Количество 1",exact:true})).toHaveValue("1");await expect(page.getByRole("dialog").getByRole("combobox",{name:"Состояние 1",exact:true})).toBeDisabled();expect(state.receiptCalls()).toBe(1);
+ const dialog=page.getByRole("dialog");await expect(dialog.getByRole("link",{name:"Открыть поступление ↗"})).toBeVisible();await expect(dialog.getByText(/0 товарных строк/)).toHaveCount(0);await dialog.getByRole("button",{name:"Закрыть документ",exact:true}).click();await page.getByRole("button",{name:/Документ приёмки №1/}).click();await expect(page.getByRole("dialog").getByRole("heading",{name:"Состав при приёмке",exact:true})).toBeVisible();await expect(page.getByRole("dialog").getByRole("spinbutton")).toHaveCount(0);expect(state.receiptCalls()).toBe(1);
 });
 
 test("@desktop label download failure keeps the saved document open with a retryable error", async ({page})=>{
- const state=await setup(page);await page.route("**/api/v1/admin/returns/labels",route=>route.fulfill({status:503,json:{error:"Не удалось скачать этикетки. Попробуйте ещё раз."}}));await page.getByRole("combobox",{name:"Название растения 1"}).fill("фи");await page.getByRole("option",{name:/Фикус/}).click();await page.getByRole("combobox",{name:"Состояние 1"}).selectOption("restoring");await page.getByRole("dialog").getByRole("button",{name:"Скачать этикетки",exact:true}).click();await expect(page.getByRole("dialog")).toBeVisible();await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Не удалось скачать этикетки");expect(state.getIntake()?.status).toBe("saved");await expect(page.getByRole("dialog").getByRole("button",{name:"Скачать этикетки",exact:true})).toBeEnabled();
+ const state=await setup(page);await page.route("**/api/v1/admin/returns/labels",route=>route.fulfill({status:503,json:{error:"Не удалось скачать этикетки. Попробуйте ещё раз."}}));await page.getByRole("combobox",{name:"Название растения 1"}).fill("фи");await page.getByRole("option",{name:/Фикус/}).click();await page.getByRole("combobox",{name:"Состояние 1"}).selectOption("restoring");await page.getByRole("dialog").getByRole("button",{name:"Сохранить и скачать этикетки",exact:true}).click();await expect(page.getByRole("dialog")).toBeVisible();await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Не удалось скачать этикетки");expect(state.getIntake()?.status).toBe("saved");await expect(page.getByRole("dialog").getByRole("button",{name:"Скачать этикетки",exact:true})).toBeEnabled();
 });
