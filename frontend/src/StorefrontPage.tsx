@@ -149,6 +149,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
+  const [searchDraft, setSearchDraft] = useState(query);
+  const [searchEditing, setSearchEditing] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [opened, setOpened] = useState<Set<number>>(new Set());
   const [inStockOnly, setInStockOnly] = useState(() => new URLSearchParams(window.location.search).get("stock") === "1");
@@ -220,9 +222,18 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const categoryName = activeCategory?.name ?? "";
   const searching = query.trim().length > 0;
   const updateSearch = (next: string) => {
-    setQuery(next);
-    if (!searching && next.trim()) window.scrollTo({top:0,behavior:"instant"});
+    setSearchDraft(next);
+    setSearchEditing(Boolean(next.trim()));
+    if (!next.trim()) setQuery("");
+    window.scrollTo({top:0,behavior:"instant"});
   };
+  const submitSearch = (next: string) => {
+    setQuery(next);
+    setSearchDraft(next);
+    setSearchEditing(false);
+    window.scrollTo({top:0,behavior:"instant"});
+  };
+  const cancelSearch = () => { setSearchDraft(query); setSearchEditing(false); };
   const categoryNotFound = landing?.type === "category" && categoriesLoaded && !activeCategory;
   const collectionNotFound = landing?.type === "collection" && collectionState === "loaded" && !collectionMeta;
   const routePending = landing?.type === "category"
@@ -480,20 +491,20 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   if (categoryNotFound || collectionNotFound) return <NotFoundPage />;
-  if (routePending) return <main className={`storefront${searching ? " searching" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={updateSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
+  if (routePending) return <main className={`storefront${searching ? " searching" : ""}${searchEditing ? " search-editing" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
 
   return (
-    <main className={`storefront${searching ? " searching" : ""}`}>
-      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={query} onQueryChange={updateSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
+    <main className={`storefront${searching ? " searching" : ""}${searchEditing ? " search-editing" : ""}`}>
+      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
 
-      {!searching && (landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
+      {!searching && !searchEditing && (landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy"><h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1><p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p><div className="home-hero-actions"><a href="#catalog">Выбрать своё растение <span>→</span></a></div><div className="home-team"><img src="/assets/redesign/team-avatars.webp" alt="Команда Фикусин" /><span>За вашими растениями<br />ухаживает <b>команда любителей</b></span></div></div>
         <div className="home-hero-visual"><img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" /><span className="home-stamp" role="img" aria-label="Живые растения для живых людей"><svg viewBox="0 0 132 132" aria-hidden="true"><defs><path id="stamp-top" d="M25 64 A41 41 0 0 1 107 64" /><path id="stamp-bottom" d="M25 74 A41 41 0 0 0 107 74" /></defs><circle cx="66" cy="66" r="58" /><circle cx="66" cy="66" r="52" strokeDasharray="2 4" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M66 82V55m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM55 85h22" /></svg></span><span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span><span className="home-note packing"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span></div>
       </section>)}
 
-      {!searching && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
+      {!searching && !searchEditing && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
 
-      <section className="storefront-shell" id="catalog">
+      {!searchEditing && <section className="storefront-shell" id="catalog">
         <aside className="storefront-side">
           {!searching && <nav className="storefront-tree">
             <a href="/#catalog" className={!landing && category == null ? "active" : ""}><span>Весь каталог</span>{!loading && <small>{products.length}</small>}</a>
@@ -538,7 +549,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           </div>
           {visible.length > visibleLimit && <button className="storefront-more" type="button" onClick={() => setVisibleLimit((value) => value + 12)}>Показать ещё растения <span>⌄</span></button>}
         </div>
-      </section>
+      </section>}
       <CheckoutHost cart={cart} products={[...products, ...cartMeta.lines.filter((line) => !products.some((product) => product.sku === line.sku))]} cartOpen={cartOpen} onCartOpenChange={setCartOpen} onCartChange={setCart}
         cartStatus={cartMeta.status} cartError={cartMeta.error} missingCartItems={cartMeta.missingSkus.length} onCartRetry={cartMeta.retry} />
     </main>

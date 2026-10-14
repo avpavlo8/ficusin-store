@@ -98,12 +98,14 @@ test("@phone mobile autocomplete поддерживает тап и Search actio
   // Touch keyboards have no arrow keys. Physical-keyboard navigation is
   // covered by the desktop scenario; the phone path verifies the real tap.
   if (browserName === "webkit") {
-    // iOS Search/Enter accepts the first visible autocomplete product.
+    // iOS Search/Enter confirms the whole query; a suggestion is opened by tap.
     await search.press("Enter");
+    await expect(page).toHaveURL(/\/\?q=/);
+    await expect(page.getByRole("heading",{name:"Результаты поиска"})).toBeVisible();
   } else {
     await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
+    await expect(page).toHaveURL(/\/product\/2$/);
   }
-  await expect(page).toHaveURL(/\/product\/2$/);
 });
 
 // Кабинет обещал, что скидка растёт после выполненных заказов, но не говорил,
