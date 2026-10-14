@@ -13,7 +13,8 @@
 .plant-about header { width:56%; min-width:0; }
 .plant-about h2 { margin:12px 0 0; font-size:40px; letter-spacing:-.6px; overflow-wrap:anywhere; }
 .plant-about-latin { margin:14px 0 0; color:#605e54; font:italic 18px/1.5 Georgia,serif; }
-.plant-about-photo { position:absolute; z-index:-1; right:0; top:0; width:44%; height:100%; max-height:600px; object-fit:cover; object-position:center; mask-image:linear-gradient(to right,transparent,#000 38%),linear-gradient(to bottom,#000 75%,transparent); mask-composite:intersect; mix-blend-mode:multiply; }
+.plant-about-photo,.plant-care-art { position:absolute; z-index:-1; right:0; top:50%; translate:0 -50%; width:44%; max-width:600px; height:auto; object-fit:contain; mask-image:linear-gradient(to right,transparent,#000 28%),linear-gradient(to bottom,transparent,#000 8%,#000 92%,transparent); mask-composite:intersect; mix-blend-mode:multiply; }
+.plant-about-photo { top:28px; translate:none; }
 .plant-about-copy { width:56%; max-width:72ch; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-about-copy p { margin:0; }
 .plant-about-copy p+p { margin-top:20px; }
@@ -61,12 +62,6 @@
 .plant-care-panel .plant-copy { color:#50554c; font-size:17px; line-height:1.8; }
 .plant-care .plant-copy p { margin:0; }
 .plant-care .plant-copy p+p { margin-top:16px; }
-.plant-care-art { position:absolute; z-index:-1; right:0; top:50%; translate:0 -50%; width:44%; max-width:600px; aspect-ratio:1; background-image:url('/assets/care/guide-v2/objects.jpg'); background-size:304% 204%; background-repeat:no-repeat; background-position:0 0; mask-image:linear-gradient(to right,transparent,#000 38%),linear-gradient(to bottom,transparent,#000 18%,#000 82%,transparent); mask-composite:intersect; mix-blend-mode:multiply; }
-.plant-care-panel[data-topic="watering"] .plant-care-art { background-position:50% 0; }
-.plant-care-panel[data-topic="climate"] .plant-care-art { background-image:url('/assets/care/guide-v2/climate.jpg'); background-size:cover; background-position:right bottom; }
-.plant-care-panel[data-topic="soil"] .plant-care-art { background-position:0 100%; }
-.plant-care-panel[data-topic="repotting"] .plant-care-art { background-position:50% 100%; }
-.plant-care-panel[data-topic="fertilizer"] .plant-care-art { background-image:url('/assets/care/guide-v2/fertilizer.jpg'); background-size:cover; background-position:right bottom; }
 .plant-care-panel[data-topic="growthRate"] { min-height:0; }
 .plant-care-panel[data-topic="growthRate"] .plant-care-text { width:100%; max-width:850px; }
 .plant-climate-copy+.plant-climate-copy { margin-top:22px; }
@@ -112,7 +107,7 @@
   .plant-about h2 { margin-top:10px; font-size:28px; }
   .plant-about-latin { overflow-wrap:anywhere; }
   .plant-about header { width:65%; min-height:140px; }
-  .plant-about-photo { width:55%; height:180px; }
+  .plant-about-photo,.plant-care-art { top:18px; translate:none; width:62%; max-width:240px; }
   .plant-about-copy { width:100%; font-size:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading { align-items:stretch; flex-direction:column; gap:24px; padding:24px 22px; border-radius:16px; margin-bottom:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading h2 { font-size:32px; }
@@ -138,7 +133,6 @@
   .plant-care-text { width:100%; }
   .plant-care-panel .plant-care-heading { display:flex; flex-direction:column; justify-content:center; min-height:140px; padding-right:30%; margin-bottom:18px; font-size:30px; }
   .plant-care-panel[data-topic="climate"] .plant-care-heading { font-size:28px; }
-  .plant-care-art { top:0; translate:none; width:55%; max-width:180px; mask-image:linear-gradient(to right,transparent,#000 45%),linear-gradient(to bottom,#000 45%,transparent 90%); }
   .plant-care-panel .plant-copy { font-size:16px; line-height:1.8; }
   .plant-care-heading::after { width:66px; margin-top:9px; }
   .plant-warning { padding:18px 20px; }

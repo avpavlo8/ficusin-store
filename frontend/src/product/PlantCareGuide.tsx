@@ -29,7 +29,7 @@ export function PlantAbout({ product }: { product: ProductDetail }) {
   const paragraphs = (product.description || product.shortDescription || "").split(/\n\s*\n/).filter(Boolean);
   return <article className="plant-about" id="plant-about" aria-labelledby="plant-about-title">
     <header><p className="plant-eyebrow">О растении</p><h2 className="plant-section-title" id="plant-about-title">{product.name}</h2>{product.latin && <p className="plant-about-latin">{product.latin}</p>}</header>
-    <img className="plant-about-photo" src="/assets/care/guide-v2/botanical-notebook.jpg" alt="" width="800" height="800" loading="lazy" />
+    <img className="plant-about-photo" src="/assets/care/guide-v4/about.jpg" alt="" width="1200" height="600" loading="lazy" />
     <div className="plant-about-copy">
       {paragraphs.map((paragraph, index) => <p key={`${paragraph.slice(0, 18)}-${index}`}>{paragraph}</p>)}
     </div>
@@ -56,7 +56,7 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
   const climate = (["humidity", "temperature"] as const).filter(key => passport[key]?.trim());
   const climateTitle = climate.length === 2 ? "Влажность и температура" : climate[0] === "humidity" ? "Влажность воздуха" : "Температура";
   const climatePanel = climate.length > 0 && <section className="plant-care-panel" data-topic="climate" aria-labelledby="plant-climate-title" key="climate">
-    <div className="plant-care-art" aria-hidden="true" />
+    <img className="plant-care-art" src="/assets/care/guide-v4/climate.jpg" alt="" width="1200" height="600" loading="lazy" />
     <div className="plant-care-text">
       <h3 className="plant-care-heading" id="plant-climate-title">{climateTitle}</h3>
       {climate.map(key => <div className="plant-climate-copy" id={`plant-${key}`} key={key}>
@@ -66,7 +66,7 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
     </div>
   </section>;
   const panels = availableTopics.map(([key, title]) => <section className="plant-care-panel" data-topic={key} id={`plant-${key}`} aria-labelledby={`plant-${key}-title`} key={key}>
-    {key !== "growthRate" && <div className="plant-care-art" aria-hidden="true" />}
+    {key !== "growthRate" && <img className="plant-care-art" src={`/assets/care/guide-v4/${key}.jpg`} alt="" width="1200" height="600" loading="lazy" />}
     <div className="plant-care-text"><h3 className="plant-care-heading" id={`plant-${key}-title`}>{title}</h3><CareCopy text={passport[key] || ""} /></div>
   </section>);
   // Keep climate in reading order even when lighting or watering is unfilled.
