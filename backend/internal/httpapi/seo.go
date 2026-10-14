@@ -22,6 +22,11 @@ import (
 // настоящий: раньше любой набор букв возвращал «200 ОК», и поисковики
 // заводили в индекс пустые страницы, которых у магазина нет.
 var appRoutes = map[string]bool{
+	"/care":                 true,
+	"/care/mealybug":        true,
+	"/care/spider-mite":     true,
+	"/care/yellow-leaves":   true,
+	"/care/root-problems":   true,
 	"/":                     true,
 	"/login":                true,
 	"/register":             true,
@@ -92,7 +97,7 @@ func sitemapHandler(logger *slog.Logger, repository sitemapCatalog, collections 
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		base := canonicalBase(configuredBase)
 		set := sitemapSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
-		for _, path := range []string{"/", "/delivery-and-returns", "/contacts", "/offer", "/privacy", "/requisites"} {
+		for _, path := range []string{"/", "/delivery-and-returns", "/contacts", "/offer", "/privacy", "/requisites", "/care", "/care/mealybug", "/care/spider-mite", "/care/yellow-leaves", "/care/root-problems"} {
 			set.URLs = append(set.URLs, sitemapURL{
 				Location: base + path, Changefreq: "weekly", Priority: "0.8",
 			})
@@ -200,6 +205,11 @@ type routeMeta struct {
 }
 
 var publicRouteMeta = map[string]routeMeta{
+	"/care":                 {"Помощь комнатным растениям — Фикусин", "Понятные инструкции: мучнистый червец, паутинный клещ, жёлтые листья и проблемы с корнями. Как распознать причину и помочь растению.", true},
+	"/care/mealybug":        {"Мучнистый червец на комнатных растениях: что делать — Фикусин", "Как распознать мучнистого червеца, удалить видимых вредителей, выбрать обработку и проверить результат.", true},
+	"/care/spider-mite":     {"Паутинный клещ на комнатных растениях: что делать — Фикусин", "Первые признаки паутинного клеща, проверка листьев, план обработки и наблюдение после неё.", true},
+	"/care/yellow-leaves":   {"Почему желтеют листья комнатных растений — Фикусин", "Как проверить полив, свет и вредителей, найти причину пожелтения листьев и выбрать подходящее действие.", true},
+	"/care/root-problems":   {"Проблемы с корнями: перелив, пересушка и гниль — Фикусин", "Как отличить пересушку от переувлажнения, проверить корни и понять, когда нужна пересадка.", true},
 	"/":                     {"Фикусин — комнатные растения в Рязани с доставкой по России", "Комнатные растения, кашпо и всё для ухода. Магазин «Фикусин» в Рязани, доставка по России и самовывоз на Новосёлов, 40А.", true},
 	"/delivery-and-returns": {"Доставка и оплата комнатных растений — Фикусин", "Самовывоз в Рязани и доставка растений СДЭК по России. Условия оплаты, упаковки и получения заказа.", true},
 	"/contacts":             {"Контакты магазина растений Фикусин в Рязани", "Магазин комнатных растений «Фикусин»: Рязань, улица Новосёлов, 40А. Телефон, Telegram и часы работы.", true},
@@ -216,7 +226,17 @@ func withRouteMeta(base, path string, shell []byte) []byte {
 	if !public {
 		meta = routeMeta{Title: "Фикусин", Description: "Интернет-магазин комнатных растений «Фикусин».", Index: false}
 	}
-	return applyRouteMeta(base, path, shell, meta, nil)
+	var structured any
+	if public && strings.HasPrefix(path, "/care/") {
+		structured = map[string]any{
+			"@context": "https://schema.org", "@type": "Article",
+			"headline": strings.TrimSuffix(meta.Title, " — Фикусин"), "description": meta.Description,
+			"url": base + path, "mainEntityOfPage": base + path, "inLanguage": "ru-RU",
+			"datePublished": "2026-10-14", "dateModified": "2026-10-14",
+			"author": map[string]any{"@type": "Organization", "name": "Фикусин", "url": base},
+		}
+	}
+	return applyRouteMeta(base, path, shell, meta, structured)
 }
 
 func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any) []byte {

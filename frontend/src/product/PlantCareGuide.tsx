@@ -85,7 +85,7 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
     {product.importantWarnings.length > 0 && <aside className="plant-warning"><strong>Важно перед началом</strong><ul>{product.importantWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></aside>}
     <div className="plant-care-panels">{panels}</div>
     {product.careInstructions?.trim() && <aside className="plant-care-note"><h3>На заметку</h3><CareCopy text={product.careInstructions} /></aside>}
-    <section className="plant-help" aria-labelledby="plant-help-title"><header><h3 id="plant-help-title">Если что-то не так</h3></header><div>{helpArticles.map(([icon,title,note,url]) => <a href={url} key={url}><i aria-hidden="true"><HelpIcon type={icon}/></i><span><strong>{title}</strong><small>{note}</small></span><b aria-hidden="true">↗</b></a>)}</div></section>
+    <section className="plant-help" aria-labelledby="plant-help-title"><header><h3 id="plant-help-title">Если что-то не так</h3></header><div>{helpArticles.map(([icon,title,note,url]) => <a href={`${url}?plant=${encodeURIComponent(product.id)}`} key={url}><i aria-hidden="true"><HelpIcon type={icon}/></i><span><strong>{title}</strong><small>{note}</small></span><b aria-hidden="true">↗</b></a>)}</div></section>
     <aside className="plant-care-contact"><div><h3>Остались вопросы?</h3><p>Поможем подобрать уход именно для вашего растения.</p></div><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Напишите нам <span aria-hidden="true">→</span></a></aside>
   </div>;
 }

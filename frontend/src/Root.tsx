@@ -4,6 +4,7 @@ import ProductPage from "./ProductPage";
 import NotFoundPage from "./NotFoundPage";
 import { StoreFooter } from "./StoreFooter";
 
+const CareArticlePage = lazy(() => import("./care/CareArticlePage"));
 const AdminPage = lazy(() => import("./AdminPage"));
 const FavoritesPage = lazy(() => import("./FavoritesPage"));
 const AccountPage = lazy(() => import("./AccountPage"));
@@ -25,6 +26,8 @@ export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
   const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter /></Suspense>;
+  if (path === "/care") return withFooter(<CareArticlePage />);
+  if (path.startsWith("/care/")) return withFooter(<CareArticlePage slug={path.slice("/care/".length)} />);
   if (path.startsWith("/product/")) {
     return withFooter(<ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />);
   }

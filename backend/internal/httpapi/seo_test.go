@@ -329,3 +329,33 @@ func TestAnalyticsCounterIsInjectedOnlyWhenConfigured(t *testing.T) {
 		}
 	}
 }
+
+func TestCareArticlesDirectRoutesMetadataAndSitemap(t *testing.T) {
+	staticDir := t.TempDir()
+	shell := []byte(`<html><head><title>shop</title><meta name="description" content="shop"></head><body><div id="root"></div></body></html>`)
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), shell, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil, "https://ficusin.ru")
+	sitemap := sitemapBody(t, sitemapCatalogStub{}, nil)
+	for _, slug := range []string{"mealybug", "spider-mite", "yellow-leaves", "root-problems"} {
+		path := "/care/" + slug
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path+"?plant=33", nil))
+		body := response.Body.String()
+		if response.Code != http.StatusOK {
+			t.Errorf("%s returned %d", path, response.Code)
+		}
+		if !strings.Contains(body, `rel="canonical" href="https://ficusin.ru`+path+`"`) || !strings.Contains(body, `"@type":"Article"`) || strings.Contains(body, `noindex`) {
+			t.Errorf("article metadata missing: %s", body)
+		}
+		if !strings.Contains(sitemap, "https://ficusin.ru"+path) {
+			t.Errorf("article absent from sitemap: %s", path)
+		}
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/care/nonexistent", nil))
+	if response.Code != http.StatusNotFound {
+		t.Errorf("unknown article returned %d", response.Code)
+	}
+}
