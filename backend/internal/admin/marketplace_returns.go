@@ -14,11 +14,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 )
 
 type MarketplaceReturn struct {
+	PublicComment      string          `json:"publicComment"`
+	DeletedAt          *time.Time      `json:"deletedAt,omitempty"`
 	Label              string          `json:"label"`
 	Price              float64         `json:"price"`
 	DiscountPercent    int             `json:"discountPercent"`
@@ -75,9 +78,10 @@ type ReturnCreate struct {
 }
 
 type ReturnUpdate struct {
-	DiscountPercent *int   `json:"discountPercent,omitempty"`
-	Condition       string `json:"condition"`
-	Comment         string `json:"comment"`
+	PublicComment   *string `json:"publicComment,omitempty"`
+	DiscountPercent *int    `json:"discountPercent,omitempty"`
+	Condition       string  `json:"condition"`
+	Comment         string  `json:"comment"`
 }
 
 func validReturnCondition(value string) bool {
@@ -180,6 +184,9 @@ func (repository *PostgresRepository) UpdateMarketplaceReturn(ctx context.Contex
 	if !Can(actor.Role, PermissionReturnsEdit) {
 		return MarketplaceReturn{}, ErrForbidden
 	}
+	if utf8.RuneCountInString(input.Comment) > 4000 || input.PublicComment != nil && utf8.RuneCountInString(*input.PublicComment) > 1000 {
+		return MarketplaceReturn{}, errors.New("комментарий слишком длинный")
+	}
 	if !validReturnCondition(input.Condition) {
 		return MarketplaceReturn{}, errors.New("неизвестное состояние")
 	}
@@ -195,7 +202,7 @@ func (repository *PostgresRepository) UpdateMarketplaceReturn(ctx context.Contex
 	if input.DiscountPercent != nil && (*input.DiscountPercent < 0 || *input.DiscountPercent > 100) {
 		return MarketplaceReturn{}, errors.New("скидка должна быть от 0 до 100%")
 	}
-	if _, err := tx.Exec(ctx, `UPDATE marketplace_returns SET condition=$2,comment=$3,discount_percent=COALESCE($5,discount_percent),receipt_status=CASE WHEN condition<>$2 AND receipt_status<>'none' THEN 'correction_required' ELSE receipt_status END,cost_outcome=CASE WHEN $2='ready' THEN 'restored' WHEN $2='dead' THEN 'lost' ELSE 'unknown' END,updated_by=$4,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, input.Condition, strings.TrimSpace(input.Comment), actor.CustomerID, input.DiscountPercent); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE marketplace_returns SET condition=$2,comment=$3,discount_percent=COALESCE($5,discount_percent),public_comment=COALESCE($6,public_comment),receipt_status=CASE WHEN condition<>$2 AND receipt_status<>'none' THEN 'correction_required' ELSE receipt_status END,cost_outcome=CASE WHEN $2='ready' THEN 'restored' WHEN $2='dead' THEN 'lost' ELSE 'unknown' END,updated_by=$4,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, input.Condition, strings.TrimSpace(input.Comment), actor.CustomerID, input.DiscountPercent, input.PublicComment); err != nil {
 		return MarketplaceReturn{}, err
 	}
 	if before != input.Condition {
@@ -218,6 +225,15 @@ func (repository *PostgresRepository) CreateReturnReceipt(ctx context.Context, a
 }
 
 func (repository *PostgresRepository) AddReturnPhoto(ctx context.Context, actor Actor, id int64, contentType, data string) (MarketplaceReturn, error) {
+	return repository.writeReturnPhoto(ctx, actor, id, 0, contentType, data)
+}
+func (repository *PostgresRepository) ReplaceReturnPhoto(ctx context.Context, actor Actor, id, photoID int64, contentType, data string) (MarketplaceReturn, error) {
+	if photoID <= 0 {
+		return MarketplaceReturn{}, errors.New("некорректное фото")
+	}
+	return repository.writeReturnPhoto(ctx, actor, id, photoID, contentType, data)
+}
+func (repository *PostgresRepository) writeReturnPhoto(ctx context.Context, actor Actor, id, replacePhotoID int64, contentType, data string) (MarketplaceReturn, error) {
 	if !Can(actor.Role, PermissionReturnsEdit) {
 		return MarketplaceReturn{}, ErrForbidden
 	}
@@ -242,7 +258,16 @@ func (repository *PostgresRepository) AddReturnPhoto(ctx context.Context, actor 
 	if err = tx.QueryRow(ctx, `SELECT id FROM marketplace_returns WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&locked); err != nil {
 		return MarketplaceReturn{}, err
 	}
-	command, err := tx.Exec(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,image,created_by) SELECT $1,$2,$3,$4 WHERE (SELECT COUNT(*) FROM marketplace_return_photos WHERE marketplace_return_id=$1)<6`, id, contentType, raw, actor.CustomerID)
+	if replacePhotoID > 0 {
+		command, err := tx.Exec(ctx, `UPDATE marketplace_return_photos SET deleted_at=CURRENT_TIMESTAMP WHERE id=$1 AND marketplace_return_id=$2 AND deleted_at IS NULL`, replacePhotoID, id)
+		if err != nil {
+			return MarketplaceReturn{}, err
+		}
+		if command.RowsAffected() != 1 {
+			return MarketplaceReturn{}, errors.New("фото не найдено в этом возврате")
+		}
+	}
+	command, err := tx.Exec(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,image,created_by) SELECT $1,$2,$3,$4 WHERE (SELECT COUNT(*) FROM marketplace_return_photos WHERE marketplace_return_id=$1 AND deleted_at IS NULL)<6`, id, contentType, raw, actor.CustomerID)
 	if err != nil {
 		return MarketplaceReturn{}, err
 	}
@@ -299,9 +324,13 @@ func (repository *PostgresRepository) MarketplaceReturns(ctx context.Context, st
 }
 
 func (repository *PostgresRepository) MarketplaceReturn(ctx context.Context, id int64) (MarketplaceReturn, error) {
+	return repository.marketplaceReturn(ctx, id, false)
+}
+
+func (repository *PostgresRepository) marketplaceReturn(ctx context.Context, id int64, archived bool) (MarketplaceReturn, error) {
 	item := MarketplaceReturn{PhotoIDs: []int64{}, History: []ReturnHistory{}}
 	var unitCost sql.NullFloat64
-	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,COALESCE(v.sku,''),r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url,r.channel_comment,COALESCE(v.label,''),COALESCE(r.retail_price_minor_snapshot,v.base_price_minor)::DOUBLE PRECISION/100,r.discount_percent,COALESCE(r.intake_id::TEXT,'') FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1 AND r.deleted_at IS NULL`, id).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL, &item.ChannelComment, &item.Label, &item.Price, &item.DiscountPercent, &item.IntakeID)
+	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,COALESCE(v.sku,''),r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url,r.channel_comment,COALESCE(v.label,''),COALESCE(r.retail_price_minor_snapshot,v.base_price_minor)::DOUBLE PRECISION/100,r.discount_percent,COALESCE(r.intake_id::TEXT,''),r.public_comment,r.deleted_at FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1 AND (r.deleted_at IS NULL OR $2)`, id, archived).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL, &item.ChannelComment, &item.Label, &item.Price, &item.DiscountPercent, &item.IntakeID, &item.PublicComment, &item.DeletedAt)
 	if err != nil {
 		return item, err
 	}
@@ -310,7 +339,7 @@ func (repository *PostgresRepository) MarketplaceReturn(ctx context.Context, id 
 	if unitCost.Valid {
 		item.UnitCost = &unitCost.Float64
 	}
-	photoRows, err := repository.pool.Query(ctx, `SELECT id FROM marketplace_return_photos WHERE marketplace_return_id=$1 ORDER BY id`, id)
+	photoRows, err := repository.pool.Query(ctx, `SELECT id FROM marketplace_return_photos WHERE marketplace_return_id=$1 AND deleted_at IS NULL ORDER BY id`, id)
 	if err != nil {
 		return item, err
 	}
@@ -342,7 +371,7 @@ func (repository *PostgresRepository) MarketplaceReturn(ctx context.Context, id 
 func (repository *PostgresRepository) ReturnPhoto(ctx context.Context, id int64) (string, []byte, error) {
 	var contentType string
 	var data []byte
-	err := repository.pool.QueryRow(ctx, `SELECT f.content_type,f.image FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE f.id=$1 AND r.deleted_at IS NULL`, id).Scan(&contentType, &data)
+	err := repository.pool.QueryRow(ctx, `SELECT f.content_type,f.image FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE f.id=$1 AND f.deleted_at IS NULL AND r.deleted_at IS NULL`, id).Scan(&contentType, &data)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil, err
 	}

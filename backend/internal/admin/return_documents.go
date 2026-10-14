@@ -14,7 +14,11 @@ func (r *PostgresRepository) ReturnDocuments(ctx context.Context, actor Actor) (
 	if !Can(actor.Role, PermissionReturnsRead) {
 		return nil, ErrForbidden
 	}
-	rows, err := r.pool.Query(ctx, `SELECT i.id::TEXT,i.revision,i.data,i.status,i.document_number,i.created_at,COALESCE((SELECT jsonb_agg(jsonb_build_object('id',r.id,'condition',r.condition) ORDER BY r.id) FROM marketplace_returns r WHERE r.intake_id=i.id AND r.deleted_at IS NULL),'[]'::JSONB) FROM return_intakes i WHERE i.status='saved' AND i.deleted_at IS NULL ORDER BY i.created_at DESC,i.id DESC`)
+	return r.returnDocuments(ctx, false)
+}
+
+func (r *PostgresRepository) returnDocuments(ctx context.Context, archived bool) ([]ReturnIntake, error) {
+	rows, err := r.pool.Query(ctx, `SELECT i.id::TEXT,i.revision,i.data,i.status,i.document_number,i.created_at,COALESCE((SELECT jsonb_agg(jsonb_build_object('id',r.id,'condition',r.condition,'receiptStatus',r.receipt_status,'receiptExternalUrl',r.receipt_external_url) ORDER BY r.id) FROM marketplace_returns r WHERE r.intake_id=i.id AND (r.deleted_at IS NOT NULL)=$1),'[]'::JSONB) FROM return_intakes i WHERE i.status='saved' AND (i.deleted_at IS NOT NULL)=$1 ORDER BY i.created_at DESC,i.id DESC`, archived)
 	if err != nil {
 		return nil, err
 	}

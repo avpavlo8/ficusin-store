@@ -23,6 +23,7 @@ export type AdminData = {
 };
 
 export type MarketplaceReturn = {
+  publicComment?: string; deletedAt?: string;
   label?: string; price?: number; discountPercent?: number; discountedPrice?: number; article?: string; intakeId?: string;
   id: number; channel: string; channelComment?: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
   salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
