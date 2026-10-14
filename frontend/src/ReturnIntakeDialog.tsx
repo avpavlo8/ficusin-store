@@ -6,7 +6,7 @@ import { plantCount, returnConditions, returnChannels, returnDate } from "./retu
 import { CatalogSearch } from "./CatalogSearch";
 import type { MarketplaceReturn, ReturnIntake, ReturnIntakeData, ReturnIntakeRow, ReturnProduct } from "./adminTypes";
 
-const rowConditions = { ready: "В продажу", restoring: "На восстановление", dead: "Списать" } as const;
+const rowConditions = { ready: returnConditions.ready.label, restoring: returnConditions.restoring.label, dead: returnConditions.dead.label } as const;
 const newRow = (): ReturnIntakeRow => ({ key: crypto.randomUUID(), variantId: 0, name: "", sku: "", search: "", quantity: 1, condition: "ready", comment: "" });
 const dataJSON = (data?: ReturnIntakeData) => JSON.stringify(data && { channel: data.channel, channelComment: data.channelComment, rows: data.rows.map(row => ({key: row.key, variantId: row.variantId, name: row.name, sku: row.sku, search: row.search, quantity: row.quantity, condition: row.condition, comment: row.comment, discountPercent: row.discountPercent || 0})) });
 const receiptLabels: Record<string, string> = { none: "", queued: "Создаём поступление в СБИС…", checking: "Проверяем поступление в СБИС…", draft_created: "Поступление создано в СБИС", posted: "Поступление проведено в СБИС", failed: "Не удалось создать поступление", correction_required: "Нужна корректировка в СБИС" };
@@ -106,7 +106,7 @@ export function ReturnIntakeDialog({ onClose, onCreated, canReceipt, intakeID, o
   };
   const accept = async (receipt: boolean, labels = false) => {
     if (!data || busy) return;
-    if (!data.rows.length || data.rows.some(row => !row.variantId || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 100)) { const invalid=data.rows.filter(row=>!row.variantId||!Number.isInteger(row.quantity)||row.quantity<1||row.quantity>100);setInvalidRows(invalid.map(row=>row.key));setError("Заполните выделенные строки: выберите растение и количество от 1 до 100.");window.setTimeout(()=>formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"] input,[aria-invalid="true"]')?.focus(),0); return; }
+    if (!data.rows.length || data.rows.some(row => !row.variantId || !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 100)) { const invalid=data.rows.filter(row=>!row.variantId||!Number.isInteger(row.quantity)||row.quantity<1||row.quantity>100);setInvalidRows(invalid.map(row=>row.key));setError("Заполните выделенные строки: выберите растение и количество от 1 до 100.");window.setTimeout(()=>formRef.current?.querySelector<HTMLElement>('input[aria-invalid="true"],[aria-invalid="true"] input')?.focus(),0); return; }
     setBusy(true); setError("");
     try {
       // A pristine new form has no server row yet. Complete forms necessarily
