@@ -9,12 +9,12 @@
 .plant-eyebrow { margin:0; color:#a5432d; font-size:10px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
 .plant-copy { margin:0; white-space:pre-line; overflow-wrap:anywhere; color:#605e54; font-size:15px; line-height:1.9; }
 
-.plant-about { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,28%); gap:24px 56px; padding:38px 40px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
-.plant-about header { grid-column:1; align-self:end; min-width:0; }
+.plant-about { position:relative; isolation:isolate; overflow:clip; display:grid; gap:24px; min-height:360px; padding:38px 40px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
+.plant-about header { width:56%; min-width:0; }
 .plant-about h2 { margin:12px 0 0; font-size:40px; letter-spacing:-.6px; overflow-wrap:anywhere; }
 .plant-about-latin { margin:14px 0 0; color:#605e54; font:italic 18px/1.5 Georgia,serif; }
-.plant-about-photo { grid-column:2; grid-row:1 / span 2; align-self:start; width:100%; max-width:340px; height:auto; border-radius:16px; }
-.plant-about-copy { grid-column:1; max-width:72ch; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
+.plant-about-photo { position:absolute; z-index:-1; right:0; top:0; width:44%; height:100%; max-height:600px; object-fit:cover; object-position:center; mask-image:linear-gradient(to right,transparent,#000 38%),linear-gradient(to bottom,#000 75%,transparent); mask-composite:intersect; mix-blend-mode:multiply; }
+.plant-about-copy { width:56%; max-width:72ch; color:#50554c; font-size:17px; line-height:1.8; white-space:pre-line; overflow-wrap:anywhere; }
 .plant-about-copy p { margin:0; }
 .plant-about-copy p+p { margin-top:20px; }
 
@@ -36,7 +36,7 @@
 .plant-tabs-shell .reviews-empty strong { color:var(--plant-ink); font:30px/1.3 Georgia,serif; }
 .plant-tabs-shell .reviews-empty p { max-width:60ch; margin:14px 0 0; color:#50554c; font-size:17px; line-height:1.8; }
 
-/* Care is an open reading flow. Art has its own column and never sets text height. */
+/* Broad masked artwork merges into each surface; content controls card height. */
 .plant-care { width:100%; }
 .plant-warning { padding:22px 28px; margin-top:20px; border-left:3px solid #a5432d; border-radius:0 14px 14px 0; background:#eee2d3; font-size:15px; }
 .plant-warning ul { margin-bottom:0; padding-left:20px; line-height:1.75; }
@@ -53,15 +53,15 @@
 .plant-arrival h4 { margin:0 0 8px; font:20px/1.25 Georgia,serif; color:#34432f; }
 .plant-arrival li p { margin:0; color:#605e54; font-size:14px; line-height:1.65; }
 .plant-care-panels { display:grid; gap:20px; margin-top:20px; }
-.plant-care-panel { position:relative; isolation:isolate; overflow:hidden; min-height:238px; padding:34px 40px 38px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
+.plant-care-panel { position:relative; isolation:isolate; overflow:clip; min-height:320px; padding:34px 40px 38px; border:1px solid #e8dfd2; border-radius:20px; background:#f6f0e7; }
 .plant-care-panel[data-topic="watering"],.plant-care-panel[data-topic="soil"],.plant-care-panel[data-topic="fertilizer"] { background:#e9ecdf; border-color:#e1e3d6; }
-.plant-care-text { position:relative; width:65%; max-width:76ch; }
+.plant-care-text { position:relative; width:56%; max-width:76ch; }
 .plant-care-heading::after,.plant-section-title::after,.plant-tabs-shell .pdp-reviews h2::after { content:""; display:block; width:82px; height:7px; margin-top:10px; border-top:3px solid #ae4a2d; border-radius:50%; transform:rotate(-2deg); }
 .plant-care-panel .plant-care-heading { margin:0 0 18px; font-size:36px; line-height:1.15; letter-spacing:-.6px; }
 .plant-care-panel .plant-copy { color:#50554c; font-size:17px; line-height:1.8; }
 .plant-care .plant-copy p { margin:0; }
 .plant-care .plant-copy p+p { margin-top:16px; }
-.plant-care-art { position:absolute; z-index:-1; right:0; bottom:0; width:30%; max-width:290px; aspect-ratio:1; background-image:url('/assets/care/guide-v2/objects.jpg'); background-size:304% 204%; background-repeat:no-repeat; background-position:0 0; mask-image:linear-gradient(to right,transparent,#000 28%),linear-gradient(to bottom,transparent,#000 20%); mask-composite:intersect; mix-blend-mode:multiply; }
+.plant-care-art { position:absolute; z-index:-1; right:0; top:50%; translate:0 -50%; width:44%; max-width:600px; aspect-ratio:1; background-image:url('/assets/care/guide-v2/objects.jpg'); background-size:304% 204%; background-repeat:no-repeat; background-position:0 0; mask-image:linear-gradient(to right,transparent,#000 38%),linear-gradient(to bottom,transparent,#000 18%,#000 82%,transparent); mask-composite:intersect; mix-blend-mode:multiply; }
 .plant-care-panel[data-topic="watering"] .plant-care-art { background-position:50% 0; }
 .plant-care-panel[data-topic="climate"] .plant-care-art { background-image:url('/assets/care/guide-v2/climate.jpg'); background-size:cover; background-position:right bottom; }
 .plant-care-panel[data-topic="soil"] .plant-care-art { background-position:0 100%; }
@@ -108,11 +108,12 @@
   .plant-tabs-shell .pdp-anchor-nav { padding:0 18px; gap:28px; }
   .product-page .plant-tabs-shell .pdp-tab-panel { padding:18px 16px 90px; }
   .plant-tabs-shell h2 { font-size:32px; }
-  .plant-about { grid-template-columns:minmax(0,1fr) 92px; gap:22px 18px; padding:24px 22px; border-radius:16px; }
+  .plant-about { gap:22px; min-height:0; padding:24px 22px; border-radius:16px; }
   .plant-about h2 { margin-top:10px; font-size:28px; }
   .plant-about-latin { overflow-wrap:anywhere; }
-  .plant-about-photo { grid-row:1; border-radius:12px; }
-  .plant-about-copy { grid-column:1 / -1; font-size:16px; }
+  .plant-about header { width:65%; min-height:140px; }
+  .plant-about-photo { width:55%; height:180px; }
+  .plant-about-copy { width:100%; font-size:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading { align-items:stretch; flex-direction:column; gap:24px; padding:24px 22px; border-radius:16px; margin-bottom:16px; }
   .product-page .plant-tabs-shell .pdp-reviews .pdp-section-heading h2 { font-size:32px; }
   .product-page .plant-tabs-shell .review-feed { gap:16px; }
@@ -135,9 +136,9 @@
   .plant-care-panels { gap:16px; margin-top:16px; }
   .plant-care-panel { padding:24px 22px; border-radius:16px; min-height:0; }
   .plant-care-text { width:100%; }
-  .plant-care-panel .plant-care-heading { display:flex; flex-direction:column; justify-content:center; min-height:95px; padding-right:96px; margin-bottom:18px; font-size:30px; }
+  .plant-care-panel .plant-care-heading { display:flex; flex-direction:column; justify-content:center; min-height:140px; padding-right:30%; margin-bottom:18px; font-size:30px; }
   .plant-care-panel[data-topic="climate"] .plant-care-heading { font-size:28px; }
-  .plant-care-art { top:0; bottom:auto; width:116px; height:116px; max-height:none; aspect-ratio:auto; mask-image:linear-gradient(to right,transparent,#000 28%),linear-gradient(to bottom,#000 70%,transparent); }
+  .plant-care-art { top:0; translate:none; width:55%; max-width:180px; mask-image:linear-gradient(to right,transparent,#000 45%),linear-gradient(to bottom,#000 45%,transparent 90%); }
   .plant-care-panel .plant-copy { font-size:16px; line-height:1.8; }
   .plant-care-heading::after { width:66px; margin-top:9px; }
   .plant-warning { padding:18px 20px; }
