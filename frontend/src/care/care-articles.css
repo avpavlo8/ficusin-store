@@ -39,9 +39,9 @@
 }
 /* Editorial rhythm: photographs, useful signposts, and open reading sections. */
 .care-line-icon{width:24px;height:24px;flex:none}
-.care-story-illustrated{min-height:370px;padding-right:48%;background:#f3efe5}
-.care-story-illustrated>div{width:100%}
-.care-story-illustrated>img{width:48%;height:100%;mask-image:linear-gradient(to right,transparent,#000 18%);mask-composite:add;mix-blend-mode:normal}
+.care-story-illustrated{min-height:370px;padding:0;background:#f3efe5;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr)}
+.care-story-illustrated>div{width:100%;grid-column:1;grid-row:1;padding:42px;align-self:center}
+.care-story-illustrated>img{position:relative;grid-column:2;grid-row:1;align-self:center;right:auto;top:auto;transform:none;width:100%;height:auto;mask-image:linear-gradient(to right,transparent,#000 38%),linear-gradient(to bottom,transparent,#000 9%,#000 91%,transparent);mask-composite:intersect;mix-blend-mode:normal}
 .care-first-action{display:flex;align-items:flex-start;gap:18px}
 .care-first-action>.care-line-icon{color:#97482f;margin-top:2px}
 .care-section-icon{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;border:1px solid #d9cfbd;border-radius:50%;color:#97482f;background:#efe8d9}
@@ -66,8 +66,8 @@
 .care-related a:hover{border-color:#b5a48a;transform:translateY(-3px)}
 .care-related-image{width:calc(100% + 52px);max-width:none;height:190px;object-fit:contain;align-self:center;margin:-26px -26px 24px;background:#f3efe5}
 @media(max-width:760px){
-.care-story-illustrated{display:flex;flex-direction:column;padding:26px 24px 0}
-.care-story-illustrated>img{position:relative;order:2;width:calc(100% + 48px);max-width:none;margin:20px -24px 0;top:auto;right:auto;transform:none;opacity:1;height:auto;mask-image:none;aspect-ratio:3/2;object-fit:contain;background:#f3efe5}
+.care-story-illustrated{display:flex;flex-direction:column;padding:26px 24px 0}.care-story-illustrated>div{padding:0}
+.care-story-illustrated>img{position:relative;order:2;width:calc(100% + 48px);max-width:none;margin:20px -24px 0;top:auto;right:auto;transform:none;opacity:1;height:auto;mask-image:linear-gradient(to bottom,transparent,#000 22%);mask-composite:add;aspect-ratio:3/2;object-fit:contain;background:#f3efe5}
 .care-story-illustrated h1{max-width:100%}.care-story-illustrated .care-kicker{max-width:100%}
 .care-section-icon{width:36px;height:36px}.care-section-icon .care-line-icon{width:21px;height:21px}
 .care-story-section h2{gap:12px;align-items:flex-start}
