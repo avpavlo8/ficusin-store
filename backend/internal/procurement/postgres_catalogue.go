@@ -53,7 +53,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
-			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
+			AND l.receiving_parent_line_id IS NULL AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
 			AND (l.reconciliation_status <> 'added' OR l.comparison_accepted)
 		GROUP BY o.id, s.name
 		ORDER BY o.created_at DESC
@@ -108,6 +108,17 @@ func (store *PostgresStore) listDocuments(ctx context.Context) ([]DocumentSummar
 	return items, rows.Err()
 }
 
+// Historical plan names and superseded invoice rows are retained for audit,
+// but only aliases still needed by an unfinished purchase belong in the queue.
+const activeAliasReviewPredicate = `a.match_status IN ('unmatched', 'suggested', 'new_product')
+ AND EXISTS (
+  SELECT 1 FROM procurement_order_lines line
+  JOIN procurement_orders purchase ON purchase.id=line.procurement_order_id
+  WHERE line.supplier_alias_id=a.id AND purchase.status NOT IN ('received','cancelled')
+   AND line.match_status IN ('unmatched','suggested','new_product')
+   AND NOT line.invoice_excluded AND line.reconciliation_status<>'superseded'
+ )`
+
 func (store *PostgresStore) listReview(ctx context.Context) ([]AliasReview, error) {
 	rows, err := store.pool.Query(ctx, `
 		SELECT a.id, a.supplier_id, s.name, a.raw_name, a.supplier_article,
@@ -118,7 +129,7 @@ func (store *PostgresStore) listReview(ctx context.Context) ([]AliasReview, erro
 		FROM procurement_supplier_aliases a
 		JOIN procurement_suppliers s ON s.id = a.supplier_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = a.matched_saby_id
-		WHERE a.match_status IN ('unmatched', 'suggested', 'new_product')
+		WHERE `+activeAliasReviewPredicate+`
 		ORDER BY a.occurrences DESC, a.last_seen_at DESC NULLS LAST, a.id
 		LIMIT 100
 	`)
@@ -820,7 +831,7 @@ func (store *PostgresStore) ResolveAlias(
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
 			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE supplier_alias_id = $1 AND procurement_order_id IN (
+		WHERE supplier_alias_id = $1 AND receiving_mode='catalog' AND procurement_order_id IN (
 			SELECT id FROM procurement_orders WHERE status NOT IN ('received', 'cancelled')
 		)
 	`, aliasID, input.SabyID, input.MatchStatus, canonicalVariantID); err != nil {
@@ -831,7 +842,7 @@ func (store *PostgresStore) ResolveAlias(
 		if err != nil {
 			return AliasReview{}, fmt.Errorf("reconcile procurement lines after late alias match: %w", err)
 		}
-		affected, err := tx.Query(ctx, `SELECT DISTINCT l.procurement_order_id FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE l.supplier_alias_id=$1 AND o.status NOT IN ('received','cancelled')`, aliasID)
+		affected, err := tx.Query(ctx, `SELECT DISTINCT l.procurement_order_id FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE l.supplier_alias_id=$1 AND l.receiving_mode='catalog' AND o.status NOT IN ('received','cancelled')`, aliasID)
 		if err != nil {
 			return AliasReview{}, err
 		}
@@ -868,7 +879,7 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches batch SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
 		WHERE batch.procurement_order_id IN (
-			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1
+			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1 AND receiving_mode='catalog'
 		) AND batch.status IN ('draft', 'partially_completed')
 		AND NOT EXISTS (
 			SELECT 1 FROM procurement_action_items item
@@ -881,7 +892,7 @@ func (store *PostgresStore) ResolveAlias(
 		UPDATE procurement_orders SET status = 'review', calculated_at = NULL,
 			calculation_settings = NULL, calculation_version = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE status NOT IN ('received', 'cancelled') AND id IN (
-			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1
+			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1 AND receiving_mode='catalog'
 		)
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("invalidate procurement calculation after rematch: %w", err)
@@ -907,7 +918,7 @@ func (store *PostgresStore) ResolveAlias(
 			updated_at = CURRENT_TIMESTAMP
 		WHERE EXISTS (
 			SELECT 1 FROM procurement_order_lines affected
-			WHERE affected.procurement_document_id = d.id AND affected.supplier_alias_id = $1
+			WHERE affected.procurement_document_id = d.id AND affected.supplier_alias_id = $1 AND affected.receiving_mode='catalog'
 		)
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("refresh procurement document review status: %w", err)
@@ -924,7 +935,7 @@ func (store *PostgresStore) ResolveAlias(
 			updated_at = CURRENT_TIMESTAMP
 		WHERE o.status NOT IN ('received', 'cancelled') AND EXISTS (
 			SELECT 1 FROM procurement_order_lines affected
-			WHERE affected.procurement_order_id = o.id AND affected.supplier_alias_id = $1
+			WHERE affected.procurement_order_id = o.id AND affected.supplier_alias_id = $1 AND affected.receiving_mode='catalog'
 		)
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("refresh procurement order review status: %w", err)
@@ -1128,7 +1139,7 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 			COALESCE(line.source_page,0),line.source_line,line.invoice_components,line.load_unit
 		FROM procurement_order_lines line
 		WHERE line.procurement_order_id=$1 AND line.id IN($2,$3)
-			AND line.ordered_qty>0 AND line.procurement_document_id IS NOT NULL
+			AND line.receiving_mode='catalog' AND line.ordered_qty>0 AND line.procurement_document_id IS NOT NULL
 			AND line.supplier_alias_id IS NOT NULL AND line.source_line IS NOT NULL
 			AND line.reconciliation_status IN('matched','changed') AND NOT line.invoice_excluded
 		ORDER BY line.id FOR UPDATE
@@ -1260,7 +1271,7 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	err = tx.QueryRow(ctx, `
 		SELECT l.procurement_order_id,o.status FROM procurement_order_lines l
 		JOIN procurement_orders o ON o.id = l.procurement_order_id
-		WHERE l.id = $1 AND o.status NOT IN ('received', 'cancelled') FOR UPDATE OF l, o
+		WHERE l.id = $1 AND l.receiving_parent_line_id IS NULL AND o.status NOT IN ('received', 'cancelled') FOR UPDATE OF l, o
 	`, lineID).Scan(&orderID, &orderStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OrderDetail{}, ErrNotFound
@@ -1271,7 +1282,26 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	if orderStatus == "ordered" || (orderStatus != "draft" && input.ExpectedUnitPrice != nil) {
 		return OrderDetail{}, ErrInvalidInput
 	}
-	if input.InvoiceLineIDs != nil || input.InvoiceLineID != nil {
+	if input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil {
+		if err := updateReceivingLine(ctx, tx, actor, lineID, orderID, input); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := audit(ctx, tx, actor, "procurement.receiving.update", "procurement_order_line", lineID, input); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return OrderDetail{}, err
+		}
+		return store.OrderDetail(ctx, orderID)
+	}
+	if input.InvoiceLineIDs != nil || input.InvoiceLineID != nil || input.InvoiceExcluded != nil {
+		var classified bool
+		if err := tx.QueryRow(ctx, `SELECT receiving_mode<>'catalog' FROM procurement_order_lines WHERE id=$1`, lineID).Scan(&classified); err != nil {
+			return OrderDetail{}, err
+		}
+		if classified {
+			return OrderDetail{}, &UserFacingError{Message: "Сначала верните строку к обычной приёмке, затем измените состав инвойса."}
+		}
 		var immutable bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_action_batches b WHERE b.procurement_order_id=$1
         AND (b.status='processing' OR EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.channel='saby_receipt' AND i.status='completed')))`, orderID).Scan(&immutable); err != nil {
@@ -1380,10 +1410,15 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if !allowed {
 		return OrderDetail{}, ErrInvalidInput
 	}
+	if input.Status == "received" {
+		if err := checkReceivingComplete(ctx, tx, orderID, true); err != nil {
+			return OrderDetail{}, err
+		}
+	}
 	if input.Status == "received" && !input.Force {
 		var prepared bool
 		if err := tx.QueryRow(ctx, `
-			SELECT EXISTS (SELECT 1 FROM procurement_action_batches batch
+			SELECT NOT EXISTS(SELECT 1 FROM procurement_order_lines l WHERE l.procurement_order_id=$1 AND l.match_status='confirmed' AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded') OR EXISTS (SELECT 1 FROM procurement_action_batches batch
 				JOIN procurement_action_items item ON item.batch_id=batch.id
 				WHERE batch.procurement_order_id = $1 AND batch.kind = 'receipt'
 					AND item.channel='saby_receipt' AND item.status='completed'

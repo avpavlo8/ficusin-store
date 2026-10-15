@@ -159,3 +159,24 @@
  .admin-page .procurement-invoice-candidates td:last-child{grid-column:1/-1}
  .admin-page .procurement-invoice-candidates td[data-label]::before{content:attr(data-label);display:block;color:#746f65;font-size:12px;margin-bottom:5px}
 }
+
+.admin-page .procurement-match-backdrop{z-index:1206}
+.admin-page .admin-dialog.procurement-match-dialog{z-index:1207;max-height:calc(100dvh - 32px);overflow:auto}
+.admin-page .procurement-receiving-backdrop{z-index:1208}
+.admin-page .admin-dialog.procurement-receiving-dialog{z-index:1209;width:min(760px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;display:flex;flex-direction:column;overflow:hidden}
+.admin-page .procurement-receiving-dialog>header{padding:18px 24px;border-bottom:1px solid #d9d2c6;flex-shrink:0}
+.admin-page .procurement-receiving-dialog>header h2{font-size:24px}
+.admin-page .procurement-receiving-body{min-height:0;overflow:auto;padding:20px 24px;display:grid;gap:16px;font-size:14px;line-height:1.5}
+.admin-page .procurement-receiving-body p{margin:0}
+.admin-page .procurement-receiving-body label{display:grid;gap:6px}
+.admin-page .procurement-receiving-total{display:flex;justify-content:space-between;gap:12px;padding:12px 16px;background:#edf0e9;border-radius:10px}
+.admin-page .procurement-receiving-part{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #d9d2c6}
+.admin-page .procurement-receiving-part small,.admin-page .procurement-lines small>span{display:block}
+.admin-page .procurement-receiving-dialog>.dialog-actions{margin:0;padding:14px 24px;border-top:1px solid #d9d2c6;flex-shrink:0}
+@media(max-width:800px){
+ .admin-page .admin-dialog.procurement-receiving-dialog{inset:8px;width:auto;max-height:calc(100dvh - 16px);transform:none}
+ .admin-page .procurement-receiving-dialog>header,.admin-page .procurement-receiving-body,.admin-page .procurement-receiving-dialog>.dialog-actions{padding:14px 16px}
+ .admin-page .procurement-receiving-part{grid-template-columns:1fr 90px}
+ .admin-page .procurement-receiving-part>div{grid-column:1/-1}
+ .admin-page .procurement-receiving-total{flex-direction:column}
+}

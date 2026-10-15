@@ -234,12 +234,12 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
         <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
         <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
         <td>{item.lines} / {item.units}<small>Принято в состав</small>{data.documents.find(doc=>doc.orderId===item.id && !doc.superseded) && <small>В PDF: {data.documents.find(doc=>doc.orderId===item.id && !doc.superseded)?.lines} строк / {data.documents.find(doc=>doc.orderId===item.id && !doc.superseded)?.units} шт.</small>}</td><td>{formatTotal(item)}{item.pendingReview ? <small>Сумма принятого состава; есть несверенные строки</small> : null}</td>
-        <td>{item.failedActions ? <span className="procurement-warning">Ошибка отправки · {item.failedActions}<small>Откройте закупку и проверьте журнал</small></span> : item.pendingReview ? <span className="procurement-warning">Сверить · {item.pendingReview}</span> : item.unmatched ? <span className="procurement-warning">{item.unmatched} новых позиций<small>Связь с СБИС проверяется после загрузки инвойса</small></span> : <span>{item.status === "received" ? "Закрыта" : item.status === "cancelled" ? "Отменена" : "Нет несопоставленных строк"}</span>}</td>
+        <td>{item.failedActions ? <span className="procurement-warning">Ошибка отправки · {item.failedActions}<small>Откройте закупку и проверьте журнал</small></span> : item.pendingReview ? <span className="procurement-warning">Сверить · {item.pendingReview}</span> : item.unmatched ? <span className="procurement-warning">Нет связи с СБИС: {item.unmatched}<small>Выберите карточки товаров в закупке</small></span> : <span>{item.status === "received" ? "Закрыта" : item.status === "cancelled" ? "Отменена" : "Нет несопоставленных строк"}</span>}</td>
       </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупки не найдены</h3><p>Измените фильтр или создайте новый заказ.</p></div>}
     </section>
 
     <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Контроль</p><h2 id="procurement-review">Очередь сопоставления</h2></div><span className="admin-pill">{data.review.length} показано</span></div>
+      <div className="admin-block-heading"><div><p className="eyebrow">Контроль</p><h2 id="procurement-review">Связи с товарами СБИС</h2><p>Названия из активных закупок, для которых ещё не выбрана карточка СБИС. Связь строки с инвойсом проверяется отдельно.</p></div><span className="admin-pill">{data.review.length} показано</span></div>
       {data.review.length ? <div className="admin-table-wrap"><table className="admin-table procurement-review"><thead><tr>
         <th>Поставщик</th><th>Название в документе</th><th>Размер</th><th>Кандидат СБИС</th><th>Уверенность</th><th>Наличие</th><th></th>
       </tr></thead><tbody>{data.review.map((item) => <tr key={item.id}>
@@ -247,8 +247,8 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
         <td>{[item.potDiameterCm && `D${item.potDiameterCm}`, item.heightCm && `${item.heightCm} см`].filter(Boolean).join(" · ") || "—"}</td>
         <td><strong>{item.suggestedSabyName || "Кандидат не найден"}</strong><small>{item.suggestedSabyId}</small></td>
         <td>{Math.round(item.confidence * 100)}%</td><td>{item.availabilityStatus === "check" ? "Проверить" : "Неизвестно"}</td>
-        <td><button className="table-action" onClick={() => setMatchDialog(item)}>Сопоставить</button></td>
-      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Очередь пуста</strong><span>Новые названия появятся здесь после разбора первого документа.</span></div>}
+        <td><button className="table-action" onClick={() => setMatchDialog(item)}>Выбрать товар СБИС</button></td>
+      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Очередь пуста</strong><span>Для всех строк активных закупок выбраны товары СБИС или строки исключены.</span></div>}
     </section>
 
     <section className="admin-block procurement-block">

@@ -14,7 +14,7 @@ func propagateProcurementAlias(ctx context.Context, tx pgx.Tx, aliasID int64, sa
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_order_lines l
  JOIN procurement_orders o ON o.id=l.procurement_order_id
  JOIN procurement_action_batches b ON b.procurement_order_id=o.id
- WHERE l.supplier_alias_id=$1 AND o.status NOT IN ('received','cancelled')
+ WHERE l.supplier_alias_id=$1 AND l.receiving_mode='catalog' AND o.status NOT IN ('received','cancelled')
  AND l.saby_id IS DISTINCT FROM $2 AND (b.status='processing' OR EXISTS
  (SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.status='completed')))`, aliasID, sabyID).Scan(&busy); err != nil {
 		return err
@@ -26,7 +26,7 @@ func propagateProcurementAlias(ctx context.Context, tx pgx.Tx, aliasID int64, sa
  purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
  proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
  FROM procurement_orders o WHERE l.procurement_order_id=o.id AND l.supplier_alias_id=$1
- AND o.status NOT IN ('received','cancelled') AND l.reconciliation_status<>'superseded'
+ AND o.status NOT IN ('received','cancelled') AND l.receiving_mode='catalog' AND l.reconciliation_status<>'superseded'
  AND (l.saby_id IS DISTINCT FROM $2 OR l.canonical_variant_id IS DISTINCT FROM NULLIF($3,0) OR l.match_status<>'confirmed')
  RETURNING o.id`, aliasID, sabyID, canonical)
 	if err != nil {
