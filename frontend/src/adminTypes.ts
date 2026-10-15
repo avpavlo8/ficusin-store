@@ -143,7 +143,7 @@ export type SalesLinkResult = {
 
 export type ProcurementRequestAllocation = { procurementOrderId: number; orderNumber: string; quantity: number; status: string };
 export type ProcurementRequest = {
-  history?: {at:string;status:string;quantity:number;name:string;notes:string}[];
+  history?: {at:string;status:string;quantity:number;name:string;notes:string;dueDate?:string;assignee?:string}[];
   dueDate?: string; assignee?: string; id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string; customerOrderId?: number; customerName: string; source: string; allocatedQuantity: number; remainingQuantity: number; allocations: ProcurementRequestAllocation[] };
 
 export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; balanceKnown: boolean; balanceAsOf?: string; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; grossSales: number; returns: number; customerRequests: number; staffRequests: number; openRequests: number; allocatedRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; demandQty: number; needBeforeIncoming: number; uncoveredQty: number; quantityKnown: boolean; roundingExplanation: string; dailySales: number; daysOfCover?: number; lastSaleAt?: string; lastOrderedAt?: string; status: RecommendationStatus; reason: string };

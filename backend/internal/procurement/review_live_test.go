@@ -110,7 +110,7 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	for _, item := range requests {
 		if item.ID == request.ID {
 			found = true
-			if item.Status != "cancelled" || item.AllocatedQuantity != 0 || item.DueDate != *edit.DueDate || item.Assignee != *edit.Assignee || len(item.History) < 2 {
+			if item.Status != "cancelled" || item.AllocatedQuantity != 0 || item.DueDate != *edit.DueDate || item.Assignee != *edit.Assignee || len(item.History) < 2 || item.History[0].DueDate != due || item.History[0].Assignee != assignee {
 				t.Fatalf("request cancellation/history lost: %+v", item)
 			}
 		}

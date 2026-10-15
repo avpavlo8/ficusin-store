@@ -238,7 +238,7 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 		}
 		allocationRows.Close()
 	}
-	historyRows, err := store.pool.Query(ctx, "SELECT entity_id,created_at,COALESCE(after_data->>'status','open'),COALESCE((after_data->>'quantity')::INTEGER,0),COALESCE(after_data->>'requestedName',''),COALESCE(after_data->>'notes','') FROM admin_audit_log WHERE entity_type='procurement_request' ORDER BY created_at DESC LIMIT 1000")
+	historyRows, err := store.pool.Query(ctx, "SELECT entity_id,created_at,COALESCE(after_data->>'status','open'),COALESCE((after_data->>'quantity')::INTEGER,0),COALESCE(after_data->>'requestedName',''),COALESCE(after_data->>'notes',''),COALESCE(after_data->>'dueDate',''),COALESCE(after_data->>'assignee','') FROM admin_audit_log WHERE entity_type='procurement_request' ORDER BY created_at DESC LIMIT 1000")
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +246,7 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 	for historyRows.Next() {
 		var id string
 		var event RequestEvent
-		if err := historyRows.Scan(&id, &event.At, &event.Status, &event.Quantity, &event.Name, &event.Notes); err != nil {
+		if err := historyRows.Scan(&id, &event.At, &event.Status, &event.Quantity, &event.Name, &event.Notes, &event.DueDate, &event.Assignee); err != nil {
 			return nil, err
 		}
 		for i := range items {

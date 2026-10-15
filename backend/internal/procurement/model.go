@@ -247,6 +247,8 @@ type CalculationInput struct {
 }
 
 type RequestEvent struct {
+	DueDate  string    `json:"dueDate"`
+	Assignee string    `json:"assignee"`
 	At       time.Time `json:"at"`
 	Status   string    `json:"status"`
 	Quantity int       `json:"quantity"`
