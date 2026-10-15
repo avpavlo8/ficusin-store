@@ -40,7 +40,7 @@ func updateReceivingLine(ctx context.Context, tx pgx.Tx, actor Actor, lineID, or
 	if input.ReceivingMode != nil {
 		mode = *input.ReceivingMode
 	}
-	if !oneOf(mode, "catalog", "assortment", "customer_handoff") {
+	if !oneOf(mode, "catalog", "assortment", "customer_handoff", "awaiting_catalog") {
 		return ErrInvalidInput
 	}
 	if input.ReceivingAllocations != nil && mode != "assortment" {
@@ -58,6 +58,29 @@ func updateReceivingLine(ctx context.Context, tx pgx.Tx, actor Actor, lineID, or
 		// Preserve cancelled proposals in history even when their receipt child goes.
 		// Child rows are retired instead of deleted, so action foreign keys stay valid.
 		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET reconciliation_status='superseded',updated_at=CURRENT_TIMESTAMP WHERE receiving_parent_line_id=$1 AND reconciliation_status<>'superseded'`, lineID); err != nil {
+			return err
+		}
+	}
+	if mode == "awaiting_catalog" {
+		var aliasID int64
+		var previous string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(supplier_alias_id,0),COALESCE(saby_id,'') FROM procurement_order_lines WHERE id=$1`, lineID).Scan(&aliasID, &previous); err != nil {
+			return err
+		}
+		if aliasID > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE procurement_supplier_aliases a SET matched_saby_id=NULL,canonical_variant_id=NULL,match_status='new_product',confidence=0,updated_at=CURRENT_TIMESTAMP
+ FROM procurement_order_lines p JOIN procurement_orders o ON o.id=p.procurement_order_id
+ WHERE p.id=$2 AND a.supplier_id=o.supplier_id AND (a.id=$1 OR
+ (a.raw_name=p.raw_name AND a.supplier_article=p.supplier_article
+  AND a.pot_diameter_cm IS NOT DISTINCT FROM p.pot_diameter_cm AND a.height_cm IS NOT DISTINCT FROM p.height_cm
+  AND a.matched_saby_id=NULLIF($3,'')))`, aliasID, lineID, previous); err != nil {
+				return err
+			}
+			if err := audit(ctx, tx, actor, "procurement.alias.detach", "procurement_supplier_alias", aliasID, map[string]any{"previousSabyId": previous, "reason": "awaiting_catalog", "orderLineId": lineID}); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET saby_id=NULL,canonical_variant_id=NULL,baseline_site_price_minor=NULL WHERE id=$1`, lineID); err != nil {
 			return err
 		}
 	}
@@ -135,13 +158,49 @@ func checkReceivingComplete(ctx context.Context, tx pgx.Tx, orderID int64, inclu
 	var pending bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_order_lines p WHERE p.procurement_order_id=$1
   AND p.receiving_parent_line_id IS NULL AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded'
-  AND ((p.receiving_mode='assortment' AND COALESCE((SELECT SUM(c.invoiced_qty) FROM procurement_order_lines c
+  AND (p.receiving_mode='awaiting_catalog' OR (p.receiving_mode='assortment' AND COALESCE((SELECT SUM(c.invoiced_qty) FROM procurement_order_lines c
      WHERE c.receiving_parent_line_id=p.id AND c.reconciliation_status<>'superseded'),0)<>COALESCE(p.invoiced_qty,p.ordered_qty))
    OR ($2 AND p.receiving_mode='customer_handoff' AND NOT p.customer_handed_over)))`, orderID, includeHandoffs).Scan(&pending); err != nil {
 		return err
 	}
 	if pending {
-		return &UserFacingError{Message: "Перед поступлением разберите миксы по карточкам, а перед завершением также отметьте передачу растений под заказ."}
+		return &UserFacingError{Message: "Перед поступлением разберите миксы и выберите новые карточки СБИС, а перед завершением также отметьте передачу растений под заказ."}
+	}
+	return nil
+}
+
+// A manually selected card identifies the original plan key as well as its
+// invoice alias. Assortment and handoff decisions never enter this path.
+func confirmOriginalPlanAliases(ctx context.Context, tx pgx.Tx, actorID, aliasID int64, sabyID string, canonical int64) error {
+	rows, err := tx.Query(ctx, `SELECT DISTINCT a.id FROM procurement_order_lines p
+  JOIN procurement_orders o ON o.id=p.procurement_order_id
+  JOIN procurement_supplier_aliases a ON a.supplier_id=o.supplier_id
+  AND a.raw_name=p.raw_name AND a.supplier_article=p.supplier_article
+  AND a.pot_diameter_cm IS NOT DISTINCT FROM p.pot_diameter_cm AND a.height_cm IS NOT DISTINCT FROM p.height_cm
+  WHERE p.supplier_alias_id=$1 AND p.ordered_qty>0 AND p.receiving_mode='catalog'
+  AND p.reconciliation_status IN('matched','changed') AND o.status NOT IN('received','cancelled')
+  AND a.id<>$1 AND a.match_status IN('unmatched','suggested','new_product') ORDER BY a.id`, aliasID)
+	if err != nil {
+		return err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := remapProcurementAlias(ctx, tx, actorID, id, sabyID, canonical); err != nil {
+			return err
+		}
 	}
 	return nil
 }

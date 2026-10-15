@@ -116,6 +116,11 @@ func TestCatalogReviewOnlyIncludesUnresolvedActivePurchaseLines(t *testing.T) {
 			t.Fatalf("resolved purchase still in queue: %+v", item)
 		}
 	}
+	var originalPlanCard string
+	must(pool.QueryRow(ctx, `SELECT COALESCE(matched_saby_id,'') FROM procurement_supplier_aliases WHERE id=$1`, oldPlanAlias).Scan(&originalPlanCard))
+	if originalPlanCard != saby {
+		t.Fatal("original plan name was not learned with the invoice name")
+	}
 	var retained int
 	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_supplier_aliases WHERE supplier_id=$1`, supplierID).Scan(&retained))
 	if retained != 7 {

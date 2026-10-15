@@ -31,6 +31,26 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
 });
 
+test("@desktop @phone accidental card can be detached while waiting for a new Saby card",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const row=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
+ await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
+ await page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
+ await expect(row).toContainText('СБИС: X616872557');
+ await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
+ await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('awaiting_catalog');
+ await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
+ await expect(dialog).toBeHidden();
+ await expect(row).toContainText('Ожидает карточку СБИС');
+ await expect(row).not.toContainText('СБИС: X616872557');
+ await expect(row).toContainText('60 / 60');
+ await page.reload();
+ await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку СБИС');
+});
+
 test("@desktop @phone invoice match exposes missing Saby card and resolves it inside purchase",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto('/admin?section=procurement&order=4');
@@ -145,10 +165,15 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     const line=orderDetail.lines.find(line=>line.id===1001)!;
     if(path.endsWith("/aliases/9")){
       if(body.matchStatus!=="confirmed" || body.sabyId!=="TEST-SABY-BONSAI")throw new Error("Wrong catalog candidate");
-      Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed"});
+      Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed",receivingMode:"catalog"});
+      Object.assign(orderDetail.validation,{pendingCatalog:0});
       procurement.review=[];procurement.summary.unresolvedAliases=0;
     }else{
       Object.assign(line,{receivingMode:body.receivingMode,matchStatus:body.receivingMode==="catalog"?"unmatched":"deferred",receivingAllocations:(body.receivingAllocations || []).map((part:{sabyId:string;quantity:number})=>({...part,name:"Bonsai Zantaxilum D15",code:"X616872557"}))});
+    }
+    if(body.receivingMode==="awaiting_catalog"){
+      Object.assign(line,{sabyId:"",sabyName:"",sabyCode:""});
+      Object.assign(orderDetail.validation,{pendingCatalog:1});
     }
     orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
     return orderDetail;

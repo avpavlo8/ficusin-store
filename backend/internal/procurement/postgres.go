@@ -670,6 +670,9 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		if line.MatchStatus != "confirmed" && line.MatchStatus != "ignored" && line.MatchStatus != "deferred" {
 			result.Unmatched++
 		}
+		if line.ReceivingMode == "awaiting_catalog" {
+			result.PendingCatalog++
+		}
 		if line.ReceivingMode == "assortment" {
 			allocated := 0
 			for _, part := range line.ReceivingAllocations {
@@ -741,7 +744,7 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 			receiptLines = true
 		}
 	}
-	result.CanPrepareReceipt = result.CanPrepareActions && result.PendingAssortments == 0 && receiptLines
+	result.CanPrepareReceipt = result.CanPrepareActions && result.PendingAssortments == 0 && result.PendingCatalog == 0 && receiptLines
 	return result, nil
 }
 

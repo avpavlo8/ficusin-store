@@ -115,7 +115,7 @@ const activeAliasReviewPredicate = `a.match_status IN ('unmatched', 'suggested',
   SELECT 1 FROM procurement_order_lines line
   JOIN procurement_orders purchase ON purchase.id=line.procurement_order_id
   WHERE line.supplier_alias_id=a.id AND purchase.status NOT IN ('received','cancelled')
-   AND line.match_status IN ('unmatched','suggested','new_product')
+   AND (line.match_status IN ('unmatched','suggested','new_product') OR line.receiving_mode='awaiting_catalog')
    AND NOT line.invoice_excluded AND line.reconciliation_status<>'superseded'
  )`
 
@@ -826,23 +826,27 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_order_lines SET
 			saby_id = NULLIF($2, ''), match_status = $3,
+ receiving_mode=CASE WHEN receiving_mode='awaiting_catalog' AND $3='confirmed' THEN 'catalog' ELSE receiving_mode END,
 			canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($4,0) ELSE NULL END,
 			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
 			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE supplier_alias_id = $1 AND receiving_mode='catalog' AND procurement_order_id IN (
+		WHERE supplier_alias_id = $1 AND (receiving_mode='catalog' OR (receiving_mode='awaiting_catalog' AND $3='confirmed')) AND procurement_order_id IN (
 			SELECT id FROM procurement_orders WHERE status NOT IN ('received', 'cancelled')
 		)
 	`, aliasID, input.SabyID, input.MatchStatus, canonicalVariantID); err != nil {
 		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
 	}
 	if input.MatchStatus == "confirmed" {
+		if err := confirmOriginalPlanAliases(ctx, tx, actor.CustomerID, aliasID, input.SabyID, canonicalVariantID); err != nil {
+			return AliasReview{}, err
+		}
 		orderIDs, err := reconcileLateAliasMatches(ctx, tx, aliasID, input.SabyID)
 		if err != nil {
 			return AliasReview{}, fmt.Errorf("reconcile procurement lines after late alias match: %w", err)
 		}
-		affected, err := tx.Query(ctx, `SELECT DISTINCT l.procurement_order_id FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE l.supplier_alias_id=$1 AND l.receiving_mode='catalog' AND o.status NOT IN ('received','cancelled')`, aliasID)
+		affected, err := tx.Query(ctx, `SELECT DISTINCT l.procurement_order_id FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE l.supplier_alias_id=$1 AND l.receiving_mode IN ('catalog','awaiting_catalog') AND o.status NOT IN ('received','cancelled')`, aliasID)
 		if err != nil {
 			return AliasReview{}, err
 		}
@@ -879,7 +883,7 @@ func (store *PostgresStore) ResolveAlias(
 	if _, err := tx.Exec(ctx, `
 		UPDATE procurement_action_batches batch SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
 		WHERE batch.procurement_order_id IN (
-			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1 AND receiving_mode='catalog'
+			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1 AND receiving_mode IN ('catalog','awaiting_catalog')
 		) AND batch.status IN ('draft', 'partially_completed')
 		AND NOT EXISTS (
 			SELECT 1 FROM procurement_action_items item
@@ -892,7 +896,7 @@ func (store *PostgresStore) ResolveAlias(
 		UPDATE procurement_orders SET status = 'review', calculated_at = NULL,
 			calculation_settings = NULL, calculation_version = NULL, updated_at = CURRENT_TIMESTAMP
 		WHERE status NOT IN ('received', 'cancelled') AND id IN (
-			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1 AND receiving_mode='catalog'
+			SELECT DISTINCT procurement_order_id FROM procurement_order_lines WHERE supplier_alias_id = $1 AND receiving_mode IN ('catalog','awaiting_catalog')
 		)
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("invalidate procurement calculation after rematch: %w", err)
@@ -918,7 +922,7 @@ func (store *PostgresStore) ResolveAlias(
 			updated_at = CURRENT_TIMESTAMP
 		WHERE EXISTS (
 			SELECT 1 FROM procurement_order_lines affected
-			WHERE affected.procurement_document_id = d.id AND affected.supplier_alias_id = $1 AND affected.receiving_mode='catalog'
+			WHERE affected.procurement_document_id = d.id AND affected.supplier_alias_id = $1 AND affected.receiving_mode IN ('catalog','awaiting_catalog')
 		)
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("refresh procurement document review status: %w", err)
@@ -935,7 +939,7 @@ func (store *PostgresStore) ResolveAlias(
 			updated_at = CURRENT_TIMESTAMP
 		WHERE o.status NOT IN ('received', 'cancelled') AND EXISTS (
 			SELECT 1 FROM procurement_order_lines affected
-			WHERE affected.procurement_order_id = o.id AND affected.supplier_alias_id = $1 AND affected.receiving_mode='catalog'
+			WHERE affected.procurement_order_id = o.id AND affected.supplier_alias_id = $1 AND affected.receiving_mode IN ('catalog','awaiting_catalog')
 		)
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("refresh procurement order review status: %w", err)

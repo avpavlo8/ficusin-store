@@ -1311,7 +1311,7 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 				AND orders.status='ready_to_receive'
                 AND NOT EXISTS(SELECT 1 FROM procurement_order_lines p WHERE p.procurement_order_id=orders.id
                   AND p.receiving_parent_line_id IS NULL AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded'
-                  AND ((p.receiving_mode='customer_handoff' AND NOT p.customer_handed_over)
+                  AND (p.receiving_mode='awaiting_catalog' OR (p.receiving_mode='customer_handoff' AND NOT p.customer_handed_over)
                     OR (p.receiving_mode='assortment' AND COALESCE((SELECT SUM(c.invoiced_qty) FROM procurement_order_lines c WHERE c.receiving_parent_line_id=p.id AND c.reconciliation_status<>'superseded'),0)<>COALESCE(p.invoiced_qty,p.ordered_qty))))
 				AND EXISTS (SELECT 1 FROM procurement_action_items item
 					WHERE item.batch_id=$1 AND item.channel='saby_receipt')

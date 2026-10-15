@@ -51,6 +51,9 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		if line.ProposedRetailRUB == nil || *line.ProposedRetailRUB <= 0 {
 			return nil, &UserFacingError{Message: fmt.Sprintf("Не рассчитана розничная цена для PDF приёмки: %s", blankDash(name))}
 		}
+		if line.ReceivingMode == "awaiting_catalog" {
+			name = line.RawName + " · выбрать карточку СБИС"
+		}
 		if line.ReceivingMode == "assortment" && len(line.ReceivingAllocations) > 0 {
 			for _, part := range line.ReceivingAllocations {
 				rows = append(rows, receivingPDFRow{Name: part.Name, InvoiceName: line.InvoiceRawName + " · разбор микса", Pot: line.PotDiameterCM, Height: line.HeightCM, Quantity: part.Quantity, Price: *line.ProposedRetailRUB})

@@ -449,7 +449,7 @@ func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID
 		if input.CustomerHandedOver != nil && (input.ReceivingMode != nil || input.ReceivingAllocations != nil) {
 			return OrderDetail{}, ErrInvalidInput
 		}
-		if input.ReceivingMode != nil && !oneOf(*input.ReceivingMode, "catalog", "assortment", "customer_handoff") {
+		if input.ReceivingMode != nil && !oneOf(*input.ReceivingMode, "catalog", "assortment", "customer_handoff", "awaiting_catalog") {
 			return OrderDetail{}, ErrInvalidInput
 		}
 		if input.ReceivingAllocations != nil && len(*input.ReceivingAllocations) > 100 {

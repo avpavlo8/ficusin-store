@@ -205,6 +205,48 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	if customerDetail.Order.Status != "received" {
 		t.Fatal("confirmed customer handoff did not finish")
 	}
+	// Detach an accidental card without dropping the plant from logistics.
+	parsed.DocumentNumber += "-NEW-CARD"
+	parsed.Lines[0].RawName = "New citrus card"
+	detached, err := store.ImportDocument(ctx, actor, DocumentUpload{SupplierID: supplierID, FileName: "new-card.pdf", ContentType: "application/pdf", Content: []byte(fmt.Sprintf("%%PDF-new-card-%d", unique))}, parsed)
+	must(err)
+	pendingDetail, err := store.OrderDetail(ctx, detached.Order.ID)
+	must(err)
+	pendingLine := pendingDetail.Lines[0].ID
+	pendingAlias := pendingDetail.Lines[0].MatchAlias.ID
+	_, err = store.UpdateOrderLine(ctx, actor, pendingLine, OrderLineUpdate{AcceptComparison: &yes, ComparisonNote: &note})
+	must(err)
+	_, err = store.ResolveAlias(ctx, actor, pendingAlias, AliasResolution{MatchStatus: "confirmed", SabyID: cards[0]})
+	must(err)
+	awaiting := "awaiting_catalog"
+	pendingDetail, err = store.UpdateOrderLine(ctx, actor, pendingLine, OrderLineUpdate{ReceivingMode: &awaiting})
+	must(err)
+	if pendingDetail.Lines[0].SabyID != "" || !pendingDetail.Validation.CanCalculate || pendingDetail.Validation.PendingCatalog != 1 {
+		t.Fatalf("detach lost the billable line: %+v", pendingDetail)
+	}
+	var oldAliasCard string
+	must(pool.QueryRow(ctx, `SELECT COALESCE(matched_saby_id,'') FROM procurement_supplier_aliases WHERE id=$1`, pendingAlias).Scan(&oldAliasCard))
+	if oldAliasCard != "" {
+		t.Fatal("detached alias would remap the wrong card on next import")
+	}
+	pendingDetail, err = store.CalculateOrder(ctx, actor, detached.Order.ID, costs)
+	must(err)
+	if pendingDetail.Validation.CanPrepareReceipt {
+		t.Fatal("missing card did not block stock receipt")
+	}
+	if _, err = store.PrepareBatch(ctx, actor, detached.Order.ID, "receipt", nil); err == nil {
+		t.Fatal("receipt accepted a missing card")
+	}
+	newCard := fmt.Sprintf("new-citrus-%d", unique)
+	_, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance,section_path,seen_at) VALUES($1,$1,'New citrus',0,ARRAY['Цветы'],now())`, newCard)
+	must(err)
+	_, err = store.ResolveAlias(ctx, actor, pendingAlias, AliasResolution{MatchStatus: "confirmed", SabyID: newCard})
+	must(err)
+	pendingDetail, err = store.OrderDetail(ctx, detached.Order.ID)
+	must(err)
+	if pendingDetail.Lines[0].ReceivingMode != "catalog" || pendingDetail.Lines[0].SabyID != newCard || pendingDetail.Validation.PendingCatalog != 0 {
+		t.Fatalf("new card not applied %+v", pendingDetail)
+	}
 	var regularQty int
 	must(pool.QueryRow(ctx, `SELECT invoiced_qty FROM procurement_order_lines WHERE id=$1`, regularID).Scan(&regularQty))
 	if regularQty != 10 {

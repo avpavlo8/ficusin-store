@@ -180,6 +180,7 @@ type OrderDetail struct {
 
 type OrderValidation struct {
 	PendingAssortments  int      `json:"pendingAssortments"`
+	PendingCatalog      int      `json:"pendingCatalog"`
 	PendingHandoffs     int      `json:"pendingHandoffs"`
 	CanPrepareReceipt   bool     `json:"canPrepareReceipt"`
 	CanCalculate        bool     `json:"canCalculate"`

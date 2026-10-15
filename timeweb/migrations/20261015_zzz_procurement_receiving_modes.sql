@@ -2,7 +2,7 @@
 -- rows give each physically sorted cultivar its own existing catalog identity.
 ALTER TABLE procurement_order_lines
  ADD COLUMN IF NOT EXISTS receiving_mode TEXT NOT NULL DEFAULT 'catalog'
- CHECK(receiving_mode IN ('catalog','assortment','customer_handoff')),
+ CHECK(receiving_mode IN ('catalog','assortment','customer_handoff','awaiting_catalog')),
  ADD COLUMN IF NOT EXISTS receiving_parent_line_id BIGINT REFERENCES procurement_order_lines(id) ON DELETE CASCADE,
  ADD COLUMN IF NOT EXISTS customer_handed_over BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE procurement_order_lines DROP CONSTRAINT IF EXISTS procurement_order_lines_match_status_check;
