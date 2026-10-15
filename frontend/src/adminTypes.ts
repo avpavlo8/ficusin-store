@@ -191,7 +191,7 @@ export type ProcurementOrderLine = {
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
   currentUnitCostRub?: number; currentUnitCostKind: string; currentUnitCostEffectiveAt?: string;
-  channelPrices?:Record<string,number>; additionalPurchaseUnitRub?:number; retailOverrideRub?:number; channelCosts?: Record<string,ProcurementChannelCosts>; channelQuotes?:Record<string,ProcurementChannelQuote>; dimensionWarning?:string; dimensionsReviewed?:boolean;
+  channelPrices?:Record<string,number>; additionalPurchaseUnitRub?:number; retailOverrideRub?:number; channelCosts?: Record<string,ProcurementChannelCosts>; channelQuotes?:Record<string,ProcurementChannelQuote>; dimensionWarning?:string; catalogueLabel?:string; dimensionsReviewed?:boolean;
   currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
   proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;

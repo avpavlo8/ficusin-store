@@ -134,3 +134,19 @@ func TestMarketPriceCanUseLowerContributionButCannotCreateLoss(t *testing.T) {
 		t.Fatalf("loss-making market price accepted: %+v", loss)
 	}
 }
+
+func TestInvoiceDimensionsMustNotBeReplacedToFitWrongCatalogueVariant(t *testing.T) {
+	pot, height := 12., 40.
+	invoice := &AliasReview{PotDiameterCM: &pot, HeightCM: &height}
+	if dimensionWarning(&pot, &height, invoice, false, "D6") == "" {
+		t.Fatal("same plan/invoice dimensions hid wrong catalogue variant")
+	}
+	if dimensionWarning(&pot, &height, invoice, false, "D12") != "" {
+		t.Fatal("matching catalogue size rejected")
+	}
+	small := 5.5
+	invoice.PotDiameterCM = &small
+	if dimensionWarning(&small, &height, invoice, false, "D6") != "" {
+		t.Fatal("normal whole-centimeter rounding rejected")
+	}
+}

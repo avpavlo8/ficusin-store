@@ -1,6 +1,9 @@
 package procurement
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 // Missing charges are distinct from an explicitly verified zero. All amounts
 // are seller charges per completed sale, at the seller's price before platform
@@ -180,13 +183,18 @@ func applyMarketPrices(quotes map[string]ChannelQuote, settings PricingSettings,
 
 // PDF dimensions are evidence, catalogue names are not. An explicit row review
 // may retain a physical measurement; identity matching alone cannot approve it.
-func dimensionWarning(pot, height *float64, invoice *AliasReview, reviewed bool) string {
+func dimensionWarning(pot, height *float64, invoice *AliasReview, reviewed bool, catalogueLabels ...string) string {
 	if reviewed || invoice == nil {
 		return ""
 	}
 	differs := func(a, b *float64) bool { return b != nil && *b > 0 && (a == nil || math.Abs(*a-*b) > .05) }
 	if differs(pot, invoice.PotDiameterCM) || differs(height, invoice.HeightCM) {
 		return "Размеры отличаются от инвойса: проверьте и сохраните фактические D и H"
+	}
+	if len(catalogueLabels) > 0 && invoice.PotDiameterCM != nil {
+		if diameter := parseDimension(catalogueLabels[0], potPattern); diameter != nil && math.Round(*diameter) != math.Round(*invoice.PotDiameterCM) {
+			return fmt.Sprintf("Карточка D%g, инвойс D%g: проверьте вариант товара. Не подгоняйте размеры инвойса под карточку.", *diameter, *invoice.PotDiameterCM)
+		}
 	}
 	return ""
 }

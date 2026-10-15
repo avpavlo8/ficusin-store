@@ -213,6 +213,7 @@ type ReceivingAllocation struct {
 }
 
 type OrderLine struct {
+	CatalogueLabel               string                  `json:"catalogueLabel"`
 	ChannelPrices                map[string]int64        `json:"channelPrices"`
 	LabelRetailRUB               *float64                `json:"labelRetailRub,omitempty"`
 	LabelReprintNeeded           bool                    `json:"labelReprintNeeded"`
