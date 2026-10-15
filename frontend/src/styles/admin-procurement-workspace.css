@@ -1,0 +1,143 @@
+/* Shared procurement controls. New actions inherit this baseline instead of UA defaults. */
+.admin-page :is(.procurement-page-heading,.procurement-summary-links,.procurement-plan-dialog,.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) button {
+  appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;max-width:100%;padding:9px 14px;border:1px solid #d9d9ce;border-radius:10px;background:#fffdf8;color:#355143;font-family:inherit;font-size:14px;font-weight:600;line-height:1.3;text-align:center;text-transform:none;letter-spacing:normal;cursor:pointer;box-shadow:none;transition:background .15s,border-color .15s;
+}
+.admin-page :is(.procurement-page-heading,.procurement-summary-links,.procurement-plan-dialog,.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) button:hover:not(:disabled){background:#f0f2eb;border-color:#b6c2b5}
+.admin-page :is(.procurement-page-heading,.procurement-summary-links,.procurement-plan-dialog,.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) button:disabled{opacity:.45;cursor:not-allowed}
+.admin-page :is(.procurement-page-heading,.procurement-summary-links,.procurement-plan-dialog,.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) :is(button,input,select,textarea,summary,a):focus-visible{outline:2px solid #956047;outline-offset:3px}
+.admin-page :is(.procurement-page-heading,.procurement-summary-links,.procurement-plan-dialog,.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) :is(button.primary,button.admin-primary){background:#355143!important;border-color:#355143!important;color:#fffdf8!important;box-shadow:none!important}
+.admin-page :is(.procurement-page-heading,.procurement-summary-links,.procurement-plan-dialog,.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) :is(button.primary,button.admin-primary):hover:not(:disabled){background:#254233!important;border-color:#254233!important}
+.admin-page :is(.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog)>header>button{flex:none;width:40px;height:40px;min-height:40px;padding:0;border:0;background:transparent;color:#575b50;font-size:26px;font-weight:400}
+.admin-page :is(.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) :is(input:not([type=checkbox]):not([type=file]),select,textarea){width:100%;min-height:42px;padding:10px 12px;border:1px solid #d4d5c9;border-radius:9px;background:#fffef9;color:#343a31;font:inherit;font-size:14px;box-sizing:border-box}
+.admin-page .procurement-receiving-dialog form{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.admin-page .procurement-receiving-dialog form>.dialog-actions{margin:0;padding:16px 24px;border-top:1px solid #e4e3d9;flex:none}
+.admin-page .procurement-receiving-dialog form>.procurement-receiving-body{overflow:auto}
+.admin-page .procurement-page-heading{margin-bottom:20px}
+.admin-page .procurement-page-heading .account-title{font-size:32px}
+.admin-page .procurement-page-heading .eyebrow,.admin-page .procurement-page-heading p:empty{display:none}
+.admin-page .procurement-page-heading .procurement-inline-actions{gap:8px}
+.admin-page .procurement-tabs{padding:0 0 12px;gap:4px;border:0;border-bottom:1px solid #dddcd1;border-radius:0;background:transparent}
+.admin-page .procurement-tabs button{min-height:40px;padding:10px 13px;font-size:14px;border:0;border-radius:9px;color:#686d61}
+.admin-page .procurement-tabs button.active{color:#294b38;background:#e8ede3;box-shadow:none}
+.admin-page .procurement-tabs button span{margin-left:5px;color:inherit;font-variant-numeric:tabular-nums}
+.admin-page .procurement-block{padding:20px 0;background:transparent;border:0;box-shadow:none}
+.admin-page .procurement-block .admin-block-heading .eyebrow{display:none}
+.admin-page .procurement-block .admin-block-heading h2{font-size:25px}
+.admin-page .procurement-content .admin-table th{padding:14px 16px;letter-spacing:.045em;color:#6c7464}
+.admin-page .procurement-content .admin-table td{padding:16px}
+.admin-page .procurement-filter-bar{margin:0 0 16px;gap:10px}
+.admin-page .procurement-filter-bar input{max-width:560px}
+.admin-page .procurement-section-details{margin:12px 0;border-top:1px solid #dddcd1;border-bottom:1px solid #dddcd1}
+.admin-page .procurement-section-details>summary{display:flex;align-items:center;gap:10px;padding:16px 2px;color:#485344;font-size:14px;font-weight:600;cursor:pointer;list-style:none}
+.admin-page .procurement-section-details>summary::after{content:"+";margin-left:auto;font-size:20px;font-weight:400;color:#65725e}
+.admin-page .procurement-section-details[open]>summary::after{content:"−"}
+.admin-page .procurement-section-details>summary span{font-size:12px;font-weight:500;color:#737a6b}
+.admin-page .procurement-section-details .procurement-block{padding-top:8px}
+.admin-page .procurement-summary-links{margin:0 0 12px}
+.admin-page .procurement-summary-links button{border:0;background:#f4ece2;color:#7e4a2b}
+.admin-page .procurement-order-dialog>header{padding:16px 24px}
+.admin-page .procurement-order-dialog>header h2{font-size:30px}
+.admin-page .procurement-order-dialog>header .eyebrow{display:none}
+.admin-page .procurement-order-summary{gap:10px 24px;padding-bottom:20px;color:#6b7263;font-size:14px}
+.admin-page .procurement-order-summary>strong{color:#355143;font-weight:600}
+.admin-page .procurement-order-summary>strong:last-child{margin-left:auto;font-size:20px}
+.admin-page .procurement-cost-details{margin:0 0 20px;border:1px solid #dcded2;border-radius:12px;background:#fafbf6}
+.admin-page .procurement-cost-details>summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;padding:14px 16px;color:#46533f;font-size:14px;font-weight:600;cursor:pointer}
+.admin-page .procurement-cost-details>summary span{margin-left:auto;color:#737c69;font-size:13px;font-weight:400}
+.admin-page .procurement-readonly-fields{border:0;margin:0;padding:0;min-width:0}
+.admin-page .procurement-order-dialog .procurement-costs{grid-template-columns:repeat(3,minmax(140px,1fr)) auto auto;gap:12px;margin:0;padding:4px 16px 16px;background:transparent;border-radius:0}
+.admin-page .procurement-order-dialog .procurement-costs label{margin:0;font-size:12px;font-weight:500;color:#606d55}
+.admin-page .procurement-costs .procurement-inline-upload{position:relative;display:flex;align-items:center;justify-content:center;min-height:42px;padding:10px 14px;border:1px solid #d9d9ce;border-radius:10px;background:#fffdf8;color:#355143;cursor:pointer;font-size:13px}
+.admin-page .procurement-checklist{border:0;border-radius:10px;background:#f5f6ef;color:#46533f;font-size:14px}
+.admin-page .procurement-checklist.blocked{border:1px solid #e4c5aa;background:#fff6eb;color:#854c29}
+.admin-page .procurement-checklist ul{padding-left:20px;line-height:1.6}
+.admin-page .procurement-receiving-summary{display:flex;align-items:center;flex-wrap:wrap;gap:12px 20px;margin:0 0 18px;padding:0;border:0;font-size:13px;color:#737a6b}
+.admin-page .procurement-receiving-summary>div{display:flex;flex-wrap:wrap;gap:8px}
+.admin-page .procurement-receiving-summary button{min-height:34px;padding:7px 12px;border:0;border-radius:7px;background:#edf0e7;color:#465b3c;font-size:13px;font-weight:500}
+.admin-page .procurement-receiving-summary button strong{padding-left:5px;font-weight:700}
+.admin-page .procurement-order-body .admin-table-wrap{max-height:none;overflow:auto;border-color:#e1e2d7;border-radius:12px}
+.admin-page .procurement-order-body .procurement-lines{min-width:1150px;width:100%;table-layout:auto}
+.admin-page .procurement-order-body .procurement-lines th{padding:14px 12px;color:#6e7867;font-size:11px;letter-spacing:.035em}
+.admin-page .procurement-lines th small{display:block;margin-top:4px;font-size:11px;font-weight:400;letter-spacing:0;text-transform:none;color:#7a8171}
+.admin-page .procurement-order-body .procurement-lines td{padding:16px 12px;vertical-align:top;font-size:14px;line-height:1.45}
+.admin-page .procurement-order-body .procurement-lines td:first-child{min-width:170px;max-width:250px}
+.admin-page .procurement-order-body .procurement-lines td:nth-child(2){max-width:230px}
+.admin-page .procurement-order-body .procurement-lines td:last-child{width:180px;min-width:160px}
+.admin-page .procurement-order-dialog .procurement-lines small{font-size:12px;color:#7a8171;line-height:1.5}
+.admin-page .procurement-lines td>strong{font-weight:600}
+.admin-page .procurement-reconciliation-matched{background:transparent;color:#7a8171;font-size:12px;font-weight:400}
+.admin-page .procurement-reconciliation-matched::before{display:none}
+.admin-page .procurement-lines .procurement-inline-actions{display:flex;flex-direction:column;align-items:stretch;gap:6px}
+.admin-page .procurement-lines .procurement-inline-actions>button{min-height:36px;padding:8px 10px;font-size:13px;font-weight:600}
+.admin-page .procurement-row-more>summary{padding:7px 10px;border-radius:8px;color:#78816f;font-size:13px;cursor:pointer;list-style:none;text-align:center}
+.admin-page .procurement-row-more>summary:hover{background:#edf0e7;color:#355143}
+.admin-page .procurement-row-more>div{display:grid;gap:6px;margin-top:6px}
+.admin-page .procurement-row-more button{width:100%;font-size:12px;padding:7px 10px}
+.admin-page .procurement-receipt-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:20px 0}
+.admin-page .procurement-receipt-actions>span{color:#7a6852;font-size:13px}
+.admin-page .procurement-order-final{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:24px;padding-top:0;border:0}
+.admin-page .procurement-order-final>.procurement-section-details{flex:1;margin:0}
+.admin-page .procurement-order-final .procurement-inline-actions{padding-bottom:16px}
+.admin-page .procurement-price-channels{border:0;margin:0 0 16px;padding:0;gap:8px}
+.admin-page .procurement-price-channels legend{display:none}
+.admin-page .procurement-receiving-total{background:#edf0e7;color:#465b3c}
+.admin-page .procurement-match-dialog .procurement-match-actions{gap:8px;flex-wrap:wrap}
+.admin-page .procurement-match-dialog .procurement-match-actions button{flex:1 1 160px}
+.admin-page .procurement-modal{padding:24px}
+.admin-page .procurement-modal>header{margin-bottom:20px}
+.admin-page .procurement-modal>header h2{font-size:26px}
+.admin-page .procurement-content .procurement-calculator-result button{background:#f4f5ef;color:#355143}
+@media(max-width:1200px){.admin-page .procurement-order-dialog .procurement-costs{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-page .procurement-costs .procurement-inline-upload{grid-column:1/3}.admin-page .procurement-tabs{gap:2px}.admin-page .procurement-tabs button{padding:10px;font-size:13px}}
+@media(max-width:800px){
+ .admin-page .procurement-page-heading .account-title{font-size:28px}
+ .admin-page .procurement-page-heading .procurement-inline-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+ .admin-page .procurement-page-heading button{font-size:13px}
+ .admin-page .procurement-order-dialog>header{padding:14px 16px}
+ .admin-page .procurement-order-dialog>header h2{font-size:26px}
+ .admin-page .procurement-order-summary{gap:8px 14px;padding-bottom:16px}
+ .admin-page .procurement-order-summary>strong:last-child{margin-left:0;font-size:18px}
+ .admin-page .procurement-cost-details>summary{gap:6px;padding:12px}
+ .admin-page .procurement-cost-details>summary span{margin-left:0;width:100%;font-size:12px}
+ .admin-page .procurement-order-dialog .procurement-costs{grid-template-columns:1fr 1fr;padding:0 12px 12px}
+ .admin-page .procurement-costs .procurement-inline-upload{grid-column:auto;font-size:12px}
+ .admin-page .procurement-costs>label:first-child{grid-column:1/-1}
+ .admin-page .procurement-filter-bar input{max-width:none}
+ .admin-page .procurement-receiving-summary{align-items:flex-start;gap:8px}
+ .admin-page .procurement-receiving-summary>span{width:100%}
+ .admin-page .procurement-receiving-summary button{font-size:12px}
+ .admin-page .procurement-receipt-actions{align-items:stretch;flex-direction:column}
+ .admin-page .procurement-receiving-dialog form>.dialog-actions{padding:14px 16px}
+ .admin-page .procurement-receiving-dialog form .admin-form-grid{grid-template-columns:1fr 1fr}
+ .admin-page .procurement-order-body .procurement-lines{min-width:1050px}
+ .admin-page .procurement-modal{width:calc(100vw - 24px);padding:18px;max-height:calc(100dvh - 24px)}
+}
+@media(prefers-reduced-motion:reduce){.admin-page :is(.procurement-content,.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog) button{transition:none}}
+@media(max-width:800px){
+ .admin-page .procurement-order-body .procurement-order-lines,.admin-page .procurement-order-lines>tbody{display:block;width:100%;min-width:0}
+ .admin-page .procurement-order-lines>thead{display:none}
+ .admin-page .procurement-order-lines>tbody>tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:16px;border-bottom:1px solid #dedfd4}
+ .admin-page .procurement-order-body .procurement-order-lines>tbody>tr>td{display:block;width:auto;min-width:0;max-width:none;padding:0;border:0;box-shadow:none;background:transparent;overflow-wrap:anywhere}
+ .admin-page .procurement-order-lines>tbody>tr>td:first-child,.admin-page .procurement-order-lines>tbody>tr>td:nth-child(2),.admin-page .procurement-order-lines>tbody>tr>td:nth-child(3),.admin-page .procurement-order-lines>tbody>tr>td:last-child{grid-column:1/-1}
+ .admin-page .procurement-order-lines>tbody>tr>td:first-child>strong{font-size:16px}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(2)>strong{font-size:13px;font-weight:400;color:#767f6c}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(3){display:flex;align-items:center;flex-wrap:wrap;gap:5px 12px}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(n+4):not(:last-child)::before{display:block;margin-bottom:4px;color:#7a8171;font-size:11px}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(4)::before{content:"Телега / размер"}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(5)::before{content:"Упаковки"}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(6)::before{content:"Количество: план / инвойс"}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(7)::before{content:"Закупка: план / инвойс"}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(8)::before{content:"Себестоимость"}
+ .admin-page .procurement-order-lines>tbody>tr>td:nth-child(9)::before{content:"Продажа: сейчас / расчёт"}
+ .admin-page .procurement-order-lines>tbody>tr>td:last-child .procurement-inline-actions{display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center}
+ .admin-page .procurement-order-lines .procurement-row-more{width:100%}
+ .admin-page .procurement-order-lines .procurement-row-more>summary{text-align:left;padding-left:0}
+ .admin-page .procurement-order-lines .procurement-row-more>div{grid-template-columns:1fr 1fr}
+ .admin-page .procurement-order-lines .procurement-row-mismatch{background:#fff5eb}
+}
+.admin-page .procurement-row-more .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.admin-page .admin-dialog:is(.procurement-order-dialog,.procurement-modal,.procurement-match-dialog,.procurement-invoice-pair-dialog,.procurement-receiving-dialog):focus{outline:none}
+.admin-page .procurement-order-dialog .procurement-costs-domestic{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.admin-page .procurement-costs-domestic .procurement-inline-upload{min-width:180px}
+@media(max-width:800px){.admin-page .procurement-costs-domestic .procurement-inline-upload{min-width:0;flex:1}.admin-page .procurement-costs-domestic>button{flex:1}}
+
+.admin-page .procurement-costs>button{min-height:42px}

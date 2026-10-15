@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { salesChannelLabel } from "./AdminProcurementPanels";
 import { api, money } from "./adminShared";
+import { useProcurementDialog, useProcurementError } from "./procurementUX";
 import type { NomenclatureCandidate, SalesLinkResult, UnlinkedSale } from "./adminTypes";
 
 // Каналы, у которых внешний код продажи может разойтись с номенклатурой.
@@ -60,11 +61,12 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
   };
   return <section className="admin-block procurement-block">
     <div className="admin-block-heading"><div><p className="eyebrow">Продажи без товара</p><h2>Ручное сопоставление</h2></div><span className="admin-pill">{items.length} кодов</span></div>
-    <p className="admin-hint procurement-note">Связывание по выгрузке идёт только на точное совпадение кода, артикула или штрихкода. По названию его делать нельзя: «Фикус Бенджамина 12» и «Фикус Бенджамина 14» — разные растения с разной ценой. Всё, что не совпало, ждёт здесь и в расчёт закупки не попадает. {externalCodeHint(channel)}</p>
+    <p className="admin-hint procurement-note">Выберите товар для продаж, которые ещё не учитываются в закупках.</p>
+    <details className="procurement-explanation"><summary>Как выбрать товар</summary><p>{externalCodeHint(channel)} Проверьте размер растения перед сопоставлением.</p></details>
     <div className="admin-toolbar">
       {linkableChannels.map((item) => <button key={item} className={item === channel ? "admin-primary" : "secondary-button"} onClick={() => { setChannel(item); setNotice(""); }}>{salesChannelLabel(item)}</button>)}
 		<button className="secondary-button" onClick={() => setShowIgnored((value) => !value)}>{showIgnored ? "Скрыть пропущенные" : "Показать пропущенные"}</button>
-      <span>{loading ? "Загружаем…" : "Связь сохраняется в справочнике и чинит уже загруженные продажи"}</span>
+      {loading && <span>Загружаем…</span>}
     </div>
     {notice && <p className="integration-check-result success" role="status">{notice}</p>}
     {items.length ? <div className="admin-table-wrap"><table className="admin-table procurement-unlinked-sales"><thead><tr>
@@ -108,6 +110,9 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
   const [candidates, setCandidates] = useState<NomenclatureCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const close = () => { if (!saving) onClose(); };
+  const dialogRef = useProcurementDialog(close);
+  const { error, errorRef, notify } = useProcurementError(onError);
   useEffect(() => {
     if (query.trim().length < 2) { setCandidates([]); return; }
     const timer = window.setTimeout(() => {
@@ -134,21 +139,22 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
         body: JSON.stringify({ channel: sale.channel, externalId: sale.externalId, variantId: candidate.variantId }),
       });
       onLinked(result.link);
-    } catch (error) { onError((error as Error).message); }
+    } catch (error) { notify((error as Error).message); }
     finally { setSaving(false); }
   };
   // Вёрстка кандидатов взята у диалога сопоставления инвойса: своя таблица
   // не помещалась в ширину окна и обрезала кнопку выбора.
-  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} />
-    <div className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
-      <header><div><p className="eyebrow">{salesChannelLabel(sale.channel)} · {sale.units} шт.</p><h2 id="sales-link-title">Сопоставить продажи</h2></div><button onClick={onClose} aria-label="Закрыть">×</button></header>
-      <div className="procurement-match-source"><strong>{visibleMarketplaceArticle(sale)}</strong><span>{sale.name || "Название с площадки не загружено"}{sale.channel === "wb" ? ` · технический nmID ${sale.externalId}` : ""}</span></div>
-      <p className="admin-hint procurement-note">Артикул закрепится за нашим товаром в едином справочнике. Уже загруженные продажи вернутся в расчёт, следующие выгрузки используют сохранённую связь, а сменившийся артикул останется в истории.</p>
+  return <><button tabIndex={-1} className="admin-dialog-backdrop" aria-label="Закрыть" disabled={saving} onClick={close} />
+    <div ref={dialogRef} className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
+      <header><div><p className="eyebrow">{salesChannelLabel(sale.channel)} · {sale.units} шт.</p><h2 id="sales-link-title">Сопоставить продажи</h2></div><button onClick={close} disabled={saving} aria-label="Закрыть">×</button></header>
+      {error && <div ref={errorRef} tabIndex={-1} className="procurement-dialog-error" role="alert">{error}</div>}
+      <div className="procurement-match-source"><strong>{visibleMarketplaceArticle(sale)}</strong><span>{sale.name}</span></div>
+      <p className="admin-hint procurement-note">Связь сохранится для следующих продаж этого артикула.</p>
       <label className="procurement-match-search">Поиск по единому справочнику товаров<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название или код X…" /></label>
       <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в справочнике…</span></div> : candidates.length ? candidates.map((item) => <article key={item.variantId}>
         <div><strong>{item.name}</strong><span>{candidateKeys(item)}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
         <button disabled={saving} onClick={() => void link(item)}>Связать</button>
       </article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Попробуйте часть названия без размера — код маркетплейса не обязан совпадать с написанием в СБИС.</span></div>}</div>
-      <div className="dialog-actions procurement-match-actions"><button className="primary" onClick={onClose} disabled={saving}>Отмена</button></div>
+      <div className="dialog-actions procurement-match-actions"><button onClick={close} disabled={saving}>Отмена</button></div>
     </div></>;
 }

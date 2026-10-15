@@ -15,6 +15,8 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await expect(order.getByRole('spinbutton',{name:'Курс оплаты',exact:true})).toHaveValue('123');
  await expect(row).toContainText('Разобрать после приезда');
  await expect(row).toContainText('Распределено 0 / 60 шт.');
+ await order.getByRole('button',{name:'Разобрать миксы 1',exact:true}).click();
+ await expect(order.locator('.procurement-order-lines > tbody > tr')).toHaveCount(1);
  await row.getByRole('button',{name:'Разобрать микс',exact:true}).click();
  await dialog.getByRole('textbox',{name:'Поиск карточки для разбора'}).fill('Bonsai');
  await dialog.getByRole('button',{name:'Добавить',exact:true}).click();
@@ -26,6 +28,8 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await qty.fill('60');
  await dialog.getByRole('button',{name:'Сохранить распределение',exact:true}).click();
  await expect(dialog).toBeHidden();
+ await expect(order.getByRole('button',{name:'Разобрать миксы 1',exact:true})).toHaveCount(0);
+ await order.getByLabel('Фильтр строк закупки').selectOption('all');
  await expect(row).toContainText('Распределено 60 / 60 шт.');
  await page.reload();
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
@@ -38,14 +42,14 @@ test("@desktop @phone accidental card can be detached while waiting for a new Sa
  const row=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
  await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
  await page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
- await expect(row).toContainText('СБИС: X616872557');
+ await expect(row).toContainText('Bonsai Zantaxilum D15');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
  await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('awaiting_catalog');
  await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
  await expect(dialog).toBeHidden();
  await expect(row).toContainText('Ожидает карточку СБИС');
- await expect(row).not.toContainText('СБИС: X616872557');
+ await expect(row).not.toContainText('Bonsai Zantaxilum D15');
  await expect(row).toContainText('60 / 60');
  await page.reload();
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку СБИС');
@@ -59,7 +63,7 @@ test("@desktop @phone invoice match exposes missing Saby card and resolves it in
  await expect(order.getByRole('combobox',{name:'Фильтр строк закупки'})).toHaveValue('unmatched');
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
  await expect(row).toContainText('Совпадает');
- await expect(row).toContainText('СБИС: товар не выбран');
+ await expect(row).toContainText('Выберите товар СБИС');
  await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
  const picker=page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true});
  await expect(picker).toBeVisible();
@@ -70,10 +74,10 @@ test("@desktop @phone invoice match exposes missing Saby card and resolves it in
  await expect(order.getByText('Не выбраны товары СБИС: 1',{exact:true})).toHaveCount(0);
  await order.getByRole('combobox',{name:'Фильтр строк закупки'}).selectOption('all');
  const matched=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
- await expect(matched).toContainText('СБИС: X616872557');
+ await expect(matched).toContainText('Bonsai Zantaxilum D15');
  await expect(matched).toContainText('60 / 60');
  await page.reload();
- await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('СБИС: X616872557');
+ await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Bonsai Zantaxilum D15');
 });
 
 test("@desktop @phone manager can inspect incoming plants without editing controls",async({page})=>{
@@ -175,6 +179,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       Object.assign(line,{sabyId:"",sabyName:"",sabyCode:""});
       Object.assign(orderDetail.validation,{pendingCatalog:1});
     }
+    orderDetail.validation.pendingAssortments=line.receivingMode==="assortment" && (line.receivingAllocations || []).reduce((sum,part)=>sum+part.quantity,0)!==line.invoicedQuantity?1:0;
     orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
     return orderDetail;
   });
@@ -252,6 +257,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
           orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
           return json(orderDetail);
         }
+        if("heightCm" in body || "acceptComparison" in body || "invoiceExcluded" in body){Object.assign(planned,body);return json(orderDetail);}
         const invoices = orderDetail.lines.filter(line => (body.invoiceLineIds || [body.invoiceLineId]).includes(line.id));
         const parts=invoices.map(line=>({rawName:line.invoiceRawName,quantity:line.invoicedQuantity,unitPrice:line.unitPrice,lineTotal:Number(line.invoicedQuantity)*Number(line.unitPrice),sourcePage:1,sourceLine:line.id}));
         Object.assign(planned, { invoiceRawName: invoices[0].invoiceRawName, invoicedQuantity: invoices.reduce((sum,line)=>sum+Number(line.invoicedQuantity),0), invoiceComponents:parts, reconciliationStatus: "matched" });
@@ -294,7 +300,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
 test("@desktop @phone request validates integer quantity, traps focus, archives and restores", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin?section=procurement&view=requests");
-  await page.getByRole("button", { name: "Добавить", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить", exact: true }).press("Enter");
   const dialog = page.getByRole("dialog", { name: "Добавить к закупке" });
   await dialog.press("Escape");
   await expect(dialog).toBeHidden();
@@ -383,10 +389,12 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
-  await expect(page.getByText("Заказ → инвойс → сверка → поступление")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Заказ → инвойс → сверка → поступление")).toHaveCount(0);
   await expect(page.getByText("TEST-100").first()).toBeVisible();
+  await page.getByText("Инвойсы и счета", { exact: false }).click();
   await expect(page.getByText("Российский счёт")).toBeVisible();
   await expect(page.getByText("Суммы сходятся")).toBeVisible();
+  await page.getByText("Связи с товарами СБИС", { exact: false }).click();
   await expect(page.getByText("Тестовая строка D10")).toBeVisible();
   await expect(page.getByText("Нет связи с СБИС: 2",{exact:false})).toBeVisible();
   await page.getByRole("button", { name: "Выбрать товар СБИС", exact: true }).click();
@@ -401,7 +409,7 @@ test("@phone procurement does not break the admin layout", async ({ page }) => {
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
-  await expect(page.getByText("Заказ → инвойс → сверка → поступление")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Заказ → инвойс → сверка → поступление")).toHaveCount(0);
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
   const addSupplier = page.getByRole("button", { name: "Поставщики" });
   await expect(addSupplier).toBeVisible();
@@ -465,7 +473,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
-  await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
+  await expect(page.getByText("Нужно проверить")).toBeVisible();
   await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
 });
@@ -477,9 +485,9 @@ test("@desktop procurement opens an order with no validation blockers", async ({
   await page.locator(".procurement-orders").getByText("TEST-100").click();
 
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByText("Проверки пройдены")).toBeVisible();
+  await expect(page.getByText("Проверки пройдены")).toHaveCount(0);
 
-  const delivery = page.getByLabel("Москва → Рязань, весь инвойс, ₽");
+  const delivery = page.getByLabel("Москва → Рязань, ₽");
   await delivery.click();
   await delivery.pressSequentially("14000");
   await expect(delivery).toHaveValue("14000");
@@ -500,9 +508,9 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
-  await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
-  await expect(page.getByText(/Загрузите PDF-инвойс кнопкой выше/)).toBeVisible();
-  await page.getByLabel("Загрузить инвойс в эту закупку").setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+  await expect(page.getByText("Нужно проверить")).toBeVisible();
+  await expect(page.getByText("Загрузите инвойс",{exact:true})).toBeVisible();
+  await page.getByLabel("Заменить инвойс").setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
 });
 
@@ -510,7 +518,7 @@ test("@desktop procurement shows one markup and clear rounding settings", async 
   await mockProcurement(page);
   await page.goto("/admin");
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
-  await page.getByRole("button", { name: "Формула v1" }).click();
+  await page.getByRole("button", { name: "Формула цены" }).click();
 
   await expect(page.getByLabel("Наценка на закупочную стоимость, %")).toHaveValue("110");
   await expect(page.getByLabel("Менять цену при отклонении более, %")).toHaveValue("10");
@@ -754,10 +762,10 @@ test("@desktop @phone invoice picker stays in viewport from a scrolled row and r
   const order = page.getByRole("dialog", { name: "TEST-100", exact: true });
   const trigger = order.getByRole("button", { name: "Выбрать из инвойса", exact: true });
   await trigger.scrollIntoViewIfNeeded();
-  const table = order.locator(".procurement-order-body > .admin-table-wrap");
+  const table = order.locator(".procurement-order-body");
   const scroll = await table.evaluate(element => element.scrollTop);
   expect(scroll).toBeGreaterThan(300);
-  await trigger.click();
+  await trigger.press("Enter");
   const picker = page.getByRole("dialog", { name: "Выбрать строки инвойса", exact: true });
   await expect(picker).toBeVisible();
   await expect(picker).toBeFocused();
@@ -776,7 +784,9 @@ test("@desktop @phone invoice picker stays in viewport from a scrolled row and r
   await expect(order).toBeVisible();
   await expect(trigger).toBeFocused();
   expect(await table.evaluate(element => element.scrollTop)).toBeCloseTo(scroll, 0);
-  await order.getByRole("button", { name: "Сменить строку инвойса", exact: true }).last().click();
+  const lastRow=order.locator(".procurement-order-lines").getByRole("row").filter({hasText:"Товар 60"});
+  await lastRow.locator(".procurement-row-more > summary").click();
+  await lastRow.getByRole("button", { name: "Сменить строку инвойса", exact: true }).click();
   await expect(picker).toBeVisible();
   await expect(picker.getByRole("heading")).toBeInViewport();
   await picker.getByRole("button", { name: "Отмена", exact: true }).click();
@@ -784,4 +794,30 @@ test("@desktop @phone invoice picker stays in viewport from a scrolled row and r
   await picker.getByRole("button", { name: "Сопоставить", exact: true }).first().click();
   await expect(picker).toBeHidden();
   await expect(order.getByRole("row").filter({ hasText: "Нижняя строка без инвойса" })).toContainText("Added invoice 1");
+});
+
+
+test("@desktop @phone procurement uses quiet checks, styled controls and a single dimension form",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,blockers:[]});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await expect(order.getByText('Проверки пройдены',{exact:true})).toHaveCount(0);
+ await expect(order.getByText('Артикул в PDF не указан',{exact:true})).toHaveCount(0);
+ const row=order.getByRole('row').filter({hasText:'Нижняя строка без инвойса'});
+ await row.locator('.procurement-row-more > summary').click();
+ await row.getByRole('button',{name:'Исправить размеры',exact:true}).press("Enter");
+ const editor=page.getByRole('dialog',{name:'Размеры и размещение',exact:true});
+ await expect(editor).toBeVisible();
+ await editor.getByLabel('Высота растения, см').fill('0');
+ await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeDisabled();
+ await editor.getByLabel('Диаметр горшка, см').fill('15,5');
+ await editor.getByLabel('Высота растения, см').fill('45');
+ await editor.getByLabel('Телега / коробка').fill('2');
+ const save=editor.getByRole('button',{name:'Сохранить',exact:true});
+ expect(await save.evaluate(el=>getComputedStyle(el).borderRadius)).not.toBe('0px');
+ const rect=await editor.boundingBox();expect(rect!.y).toBeGreaterThanOrEqual(0);expect(rect!.y+rect!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+ await save.click();await expect(editor).toBeHidden();
+ await expect(row).toContainText('D15.5 · 45 см');
+ await expect(row.getByRole('button',{name:'Исправить размеры',exact:true})).toBeFocused();
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
