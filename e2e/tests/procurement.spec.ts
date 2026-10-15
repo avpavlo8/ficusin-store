@@ -109,7 +109,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
-    settings: { version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
+    settings: { economics:{monthlyFixedCostsRub:300000,channels:{}},version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
     suppliers: [{ id: 1, name: "Тестовый поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }, { id: 2, name: "Другой поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
     orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: options.currency || "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
@@ -881,11 +881,12 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await editor.getByLabel("Розничная цена после проверки рынка, ₽").fill("1650");
  await editor.locator("summary").filter({hasText:"Ozon · FBS"}).click();
  await editor.getByLabel("Отдельные расходы этого товара").last().check();
+ await editor.getByLabel("Цена Ozon после проверки рынка, ₽").fill("2700");
  await editor.getByLabel("Комиссия, %",{exact:true}).fill("52");
  await editor.getByLabel("Эквайринг, %",{exact:true}).fill("1");
  await editor.getByLabel("Упаковка, ₽",{exact:true}).fill("150");
  await editor.getByLabel("Логистика, последняя миля, обработка, ₽",{exact:true}).fill("200");
- await editor.getByLabel("Потери и возвраты на продажу, ₽",{exact:true}).fill("30");
+ await editor.getByLabel("Потери, возвраты и прочие затраты, ₽",{exact:true}).fill("30");
  await editor.getByRole("button",{name:"Сохранить для пересчёта",exact:true}).click();
  await expect(editor).toBeHidden();
  await page.reload();
@@ -894,6 +895,7 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await reloaded.getByRole("button",{name:"Расходы продажи",exact:true}).click();
  await expect(editor.getByLabel("Розничная цена после проверки рынка, ₽")).toHaveValue("1650");
  await editor.locator("summary").filter({hasText:"Ozon · FBS"}).click();
+ await expect(editor.getByLabel("Цена Ozon после проверки рынка, ₽")).toHaveValue("2700");
  await expect(editor.getByLabel("Комиссия, %",{exact:true})).toHaveValue("52");
  await expect(editor.getByLabel("Логистика, последняя миля, обработка, ₽",{exact:true})).toHaveValue("200");
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);

@@ -38,7 +38,7 @@ export async function updateRequestStatus(item: ProcurementRequest, status: stri
 }
 
 export function ProcurementSettingsPanel({ settings, onSaved, onError }: { settings: ProcurementSettings; onSaved: () => void; onError: (value: string) => void }) {
-  const [draft, setDraft] = useState(()=>({...settings,economics:settings.economics || {monthlyFixedCostsRub:300000,channels:{}}})); const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState(()=>({...settings,economics:settings.economics || {monthlyFixedCostsRub:0,channels:{}}})); const [saving, setSaving] = useState(false);
   type Example = { before: {cost: number; retail: number}; after: {cost: number; retail: number; channelQuotes?:Record<string,import("./adminTypes").ProcurementChannelQuote>}; history: {version:number;at:string}[] };
   const [exampleKey,setExampleKey]=useState("");
   const [example,setExample]=useState<Example | null>(null);

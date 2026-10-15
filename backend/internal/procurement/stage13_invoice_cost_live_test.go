@@ -180,6 +180,19 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET unit_price=350,line_total=7000 WHERE id=$1`, lineID); err != nil {
 		t.Fatal(err)
 	}
+	// An explicit competitive channel price can retain less than the site
+	// and still be profitable. It must reach the prepared action unchanged.
+	if _, err = store.UpdateOrderLine(ctx, actor, lineID, OrderLineUpdate{ChannelPrices: map[string]int64{"wb": 2700}}); err != nil {
+		t.Fatal(err)
+	}
+	marketDetail, err := store.CalculateOrder(ctx, actor, orderID, CalculationInput{})
+	if err != nil || !marketDetail.Lines[0].ChannelQuotes["wb"].Manual {
+		t.Fatalf("market price not calculated: %+v err=%v", marketDetail.Lines, err)
+	}
+	marketDraft, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb"})
+	if err != nil || len(marketDraft.Items) != 1 || marketDraft.Items[0].NewValue != 2700 {
+		t.Fatalf("market price not prepared: %+v err=%v", marketDraft, err)
+	}
 	// Nonreturnable supplier packaging/rent and bank/import costs land in the
 	// batch; a refundable trolley deposit remains separate from expense.
 	if _, err = pool.Exec(ctx, `UPDATE procurement_suppliers SET kind='international' WHERE id=$1`, supplierID); err != nil {

@@ -518,8 +518,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			WITH products AS (
 				SELECT MAX(canonical_variant_id) AS canonical_variant_id,saby_id,
 					MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,BOOL_OR(retail_override_rub IS NOT NULL) AS manual_retail,
-					MAX((channel_quotes->'wb'->>'priceRub')::BIGINT) AS wb,
-                    MAX((channel_quotes->'ozon'->>'priceRub')::BIGINT) AS ozon,
+					MAX((channel_quotes->'wb'->>'priceRub')::BIGINT) AS wb,BOOL_OR((channel_quotes->'wb'->>'manual')::BOOLEAN) AS manual_wb,
+                    MAX((channel_quotes->'ozon'->>'priceRub')::BIGINT) AS ozon,BOOL_OR((channel_quotes->'ozon'->>'manual')::BOOLEAN) AS manual_ozon,
                     MAX((channel_quotes->'site'->>'breakEvenRub')::BIGINT) AS site_floor,
                     MAX((channel_quotes->'wb'->>'breakEvenRub')::BIGINT) AS wb_floor,
                     MAX((channel_quotes->'ozon'->>'breakEvenRub')::BIGINT) AS ozon_floor,
@@ -563,8 +563,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				AND p.canonical_variant_id IS NOT NULL
                 AND (CASE channel.name WHEN 'wb' THEN p.wb WHEN 'ozon' THEN p.ozon ELSE p.retail END)>0
                 AND (CASE channel.name
-                  WHEN 'wb' THEN wb_product.current_price IS NULL OR wb_product.current_price<=p.wb_floor OR ABS(p.wb-wb_product.current_price)>wb_product.current_price*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
-                  WHEN 'ozon' THEN ozon_product.current_price IS NULL OR ozon_product.current_price<=p.ozon_floor OR ABS(p.ozon-ozon_product.current_price)>ozon_product.current_price*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
+                  WHEN 'wb' THEN (p.manual_wb AND p.wb IS DISTINCT FROM wb_product.current_price) OR wb_product.current_price IS NULL OR wb_product.current_price<=p.wb_floor OR ABS(p.wb-wb_product.current_price)>wb_product.current_price*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
+                  WHEN 'ozon' THEN (p.manual_ozon AND p.ozon IS DISTINCT FROM ozon_product.current_price) OR ozon_product.current_price IS NULL OR ozon_product.current_price<=p.ozon_floor OR ABS(p.ozon-ozon_product.current_price)>ozon_product.current_price*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
                   ELSE (p.manual_retail AND p.retail::NUMERIC<>pv.base_price_minor::NUMERIC/100) OR pv.base_price_minor<=p.site_floor*100 OR ABS(p.retail::NUMERIC-pv.base_price_minor::NUMERIC/100)>(pv.base_price_minor::NUMERIC/100)*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1) END)
 		`, batchID, orderID, channels)
 		if err == nil {

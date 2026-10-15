@@ -20,6 +20,7 @@ type PricingEconomics struct {
 }
 
 type ChannelQuote struct {
+	Manual          bool     `json:"manual"`
 	PriceRUB        *int64   `json:"priceRub,omitempty"`
 	BreakEvenRUB    *int64   `json:"breakEvenRub,omitempty"`
 	ContributionRUB *float64 `json:"contributionRub,omitempty"`
@@ -93,9 +94,9 @@ func channelQuote(cost, contribution, tax float64, costs ChannelCosts, fixed flo
 
 // Retail remains a candidate for comparison with the market, not a claim that
 // this markup guarantees profit. Each marketplace must retain the same ruble
-// contribution as a direct sale after its own fees. Overheads are shown once,
+// contribution as a direct sale after its own fees, unless a market price is explicitly chosen. Overheads are shown once,
 // through the break-even sales volume, rather than a second hidden surcharge.
-func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64, overrides map[string]ChannelCosts) map[string]ChannelQuote {
+func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64, overrides map[string]ChannelCosts, marketPrices ...map[string]int64) map[string]ChannelQuote {
 	profiles := make(map[string]ChannelCosts, 3)
 	for _, channel := range []string{"site", "wb", "ozon"} {
 		profiles[channel] = settings.Economics.Channels[channel]
@@ -111,7 +112,7 @@ func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64
 		for _, channel := range []string{"wb", "ozon"} {
 			quotes[channel] = ChannelQuote{Missing: append([]string{"расходы сайта для сравнения дохода"}, profiles[channel].missing()...)}
 		}
-		return quotes
+		return applyMarketPrices(quotes, settings, cost, profiles, marketPrices)
 	}
 	keep := 1 - settings.TaxRate - *site.CommissionRate - *site.AcquiringRate
 	variable := cost + *site.PackagingRUB + *site.LogisticsRUB + *site.LossRUB
@@ -137,6 +138,42 @@ func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64
 			continue
 		}
 		quotes[channel] = channelQuote(cost, contribution, settings.TaxRate, profiles[channel], settings.Economics.MonthlyFixedCostsRUB)
+	}
+	return applyMarketPrices(quotes, settings, cost, profiles, marketPrices)
+}
+
+// Explicit market prices may retain a different contribution from the site.
+// Profitability and monthly coverage are still checked against their own fees.
+func applyMarketPrices(quotes map[string]ChannelQuote, settings PricingSettings, cost float64, profiles map[string]ChannelCosts, inputs []map[string]int64) map[string]ChannelQuote {
+	if len(inputs) == 0 {
+		return quotes
+	}
+	for _, channel := range []string{"wb", "ozon"} {
+		price := inputs[0][channel]
+		if price <= 0 {
+			continue
+		}
+		costs := profiles[channel]
+		q := channelQuote(cost, 0, settings.TaxRate, costs, settings.Economics.MonthlyFixedCostsRUB)
+		q.Manual = true
+		if q.PriceRUB != nil {
+			q.CoverUnits = nil
+			actual := float64(price)*(1-settings.TaxRate-*costs.CommissionRate-*costs.AcquiringRate) - cost - *costs.PackagingRUB - *costs.LogisticsRUB - *costs.LossRUB
+			if actual <= 0 {
+				q.PriceRUB = nil
+				q.ContributionRUB = nil
+				q.Missing = []string{"выбранная рыночная цена не покрывает товар и расходы продажи"}
+			} else {
+				p := price
+				q.PriceRUB = &p
+				q.ContributionRUB = &actual
+				if settings.Economics.MonthlyFixedCostsRUB > 0 && settings.Economics.MonthlyFixedCostsRUB/actual < 1e12 {
+					n := int64(math.Ceil(settings.Economics.MonthlyFixedCostsRUB / actual))
+					q.CoverUnits = &n
+				}
+			}
+		}
+		quotes[channel] = q
 	}
 	return quotes
 }

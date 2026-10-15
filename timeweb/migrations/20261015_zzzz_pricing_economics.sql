@@ -3,6 +3,7 @@
 ALTER TABLE procurement_pricing_settings ADD COLUMN economics JSONB NOT NULL
  DEFAULT '{"monthlyFixedCostsRub":300000,"channels":{}}'::JSONB;
 ALTER TABLE procurement_order_lines ADD COLUMN channel_costs JSONB NOT NULL DEFAULT '{}'::JSONB,
+ ADD COLUMN channel_prices JSONB NOT NULL DEFAULT '{}'::JSONB,
  ADD COLUMN channel_quotes JSONB NOT NULL DEFAULT '{}'::JSONB,
  ADD COLUMN retail_override_rub BIGINT CHECK(retail_override_rub>0),
  ADD COLUMN dimensions_reviewed BOOLEAN NOT NULL DEFAULT FALSE;

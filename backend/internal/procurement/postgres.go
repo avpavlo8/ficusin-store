@@ -580,7 +580,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
               'id',alias.id,'supplierId',alias.supplier_id,'rawName',alias.raw_name,
               'supplierArticle',alias.supplier_article,'potDiameterCm',alias.pot_diameter_cm,
               'heightCm',alias.height_cm,'matchStatus',alias.match_status) END,
-            l.receiving_mode,l.customer_handed_over,l.channel_costs,l.channel_quotes,l.dimensions_reviewed,l.retail_override_rub,l.additional_purchase_unit_rub::DOUBLE PRECISION,l.baseline_site_price_minor::DOUBLE PRECISION/100,
+            l.receiving_mode,l.customer_handed_over,l.channel_costs,l.channel_quotes,l.channel_prices,l.dimensions_reviewed,l.retail_override_rub,l.additional_purchase_unit_rub::DOUBLE PRECISION,l.baseline_site_price_minor::DOUBLE PRECISION/100,
             COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty,'currentRetailRub',COALESCE(child.baseline_site_price_minor,child_variant.base_price_minor,0)::NUMERIC/100) ORDER BY child.id)
              FROM procurement_order_lines child JOIN saby_nomenclature n ON n.saby_id=child.saby_id
              LEFT JOIN product_variants child_variant ON child_variant.id=child.canonical_variant_id
@@ -610,7 +610,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
 			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.LabelRetailRUB, &line.ReceivingAllocations); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.ChannelPrices, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.LabelRetailRUB, &line.ReceivingAllocations); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.ReceivingMode != "catalog" {
@@ -862,6 +862,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		matchStatus, loadUnit, sabyID string
 		reconciliationStatus          string
 		channelCosts                  map[string]ChannelCosts
+		channelPrices                 map[string]int64
 		dimensionsReviewed            bool
 		invoicePot, invoiceHeight     *float64
 		retailOverride                *int64
@@ -873,7 +874,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			COALESCE(pot_diameter_cm, 0)::DOUBLE PRECISION,
 			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status, load_unit,
 			expected_unit_price::DOUBLE PRECISION, invoiced_qty, comparison_accepted, ordered_qty,
-			COALESCE(saby_id, ''),reconciliation_status,channel_costs,dimensions_reviewed,
+			COALESCE(saby_id, ''),reconciliation_status,channel_costs,channel_prices,dimensions_reviewed,
             (SELECT pot_diameter_cm::DOUBLE PRECISION FROM procurement_supplier_aliases WHERE id=supplier_alias_id),
             (SELECT height_cm::DOUBLE PRECISION FROM procurement_supplier_aliases WHERE id=supplier_alias_id),retail_override_rub,
             COALESCE((SELECT base_price_minor::DOUBLE PRECISION/100 FROM product_variants WHERE id=canonical_variant_id),0)
@@ -891,7 +892,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		var line sourceLine
 		if err := rows.Scan(&line.id, &line.quantity, &line.unitPrice, &line.pot, &line.height, &line.matchStatus,
 			&line.loadUnit, &line.expectedPrice, &line.invoicedQty, &line.comparisonAccepted, &line.orderedQty, &line.sabyID,
-			&line.reconciliationStatus, &line.channelCosts, &line.dimensionsReviewed, &line.invoicePot, &line.invoiceHeight, &line.retailOverride, &line.currentRetail); err != nil {
+			&line.reconciliationStatus, &line.channelCosts, &line.channelPrices, &line.dimensionsReviewed, &line.invoicePot, &line.invoiceHeight, &line.retailOverride, &line.currentRetail); err != nil {
 			rows.Close()
 			return OrderDetail{}, fmt.Errorf("scan procurement calculation line: %w", err)
 		}
@@ -1001,7 +1002,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		if line.retailOverride != nil {
 			calculated.ProposedRetailRUB = *line.retailOverride
 		}
-		quotes, err := json.Marshal(calculateChannelQuotes(settings, calculated.UnitCostRUB, calculated.ProposedRetailRUB, line.channelCosts))
+		quotes, err := json.Marshal(calculateChannelQuotes(settings, calculated.UnitCostRUB, calculated.ProposedRetailRUB, line.channelCosts, line.channelPrices))
 		if err != nil {
 			return OrderDetail{}, err
 		}

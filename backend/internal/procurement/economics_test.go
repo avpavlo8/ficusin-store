@@ -122,3 +122,15 @@ func TestDomesticDeliveryAndOtherPurchaseCostsAreNotLostWithoutDimensions(t *tes
 		t.Fatalf("delivery or other charges lost: %v", total)
 	}
 }
+
+func TestMarketPriceCanUseLowerContributionButCannotCreateLoss(t *testing.T) {
+	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{300000, map[string]ChannelCosts{"site": zeroCosts(), "wb": {amount(.36), amount(0), amount(150), amount(100), amount(30)}}}}
+	q := calculateChannelQuotes(settings, 500, 1000, nil, map[string]int64{"wb": 1800})["wb"]
+	if !q.Manual || q.PriceRUB == nil || *q.PriceRUB != 1800 || q.ContributionRUB == nil || math.Abs(*q.ContributionRUB-228) > 1e-9 || *q.CoverUnits != 1316 {
+		t.Fatalf("profitable market price rejected: %+v", q)
+	}
+	loss := calculateChannelQuotes(settings, 500, 1000, nil, map[string]int64{"wb": 1392})["wb"]
+	if loss.PriceRUB != nil || loss.BreakEvenRUB == nil || *loss.BreakEvenRUB != 1393 {
+		t.Fatalf("loss-making market price accepted: %+v", loss)
+	}
+}

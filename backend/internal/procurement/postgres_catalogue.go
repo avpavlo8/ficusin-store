@@ -1283,7 +1283,7 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
 	}
-	if input.ChannelCosts != nil || input.RetailOverrideRUB != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil {
+	if input.ChannelCosts != nil || input.ChannelPrices != nil || input.RetailOverrideRUB != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil {
 		var busy bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_action_batches b JOIN procurement_action_items i ON i.batch_id=b.id WHERE b.procurement_order_id=$1 AND (b.status NOT IN('draft','cancelled','completed') OR (b.status<>'cancelled' AND i.channel='saby_receipt' AND i.status NOT IN('draft','skipped','not_configured'))))`, orderID).Scan(&busy); err != nil {
 			return OrderDetail{}, err
@@ -1322,6 +1322,15 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 		}
 		if immutable {
 			return OrderDetail{}, &UserFacingError{Message: "Поступление уже отправляется или создано. Сначала сверьте фактический документ СБИС."}
+		}
+	}
+	if input.ChannelPrices != nil {
+		data, err := json.Marshal(input.ChannelPrices)
+		if err != nil {
+			return OrderDetail{}, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET channel_prices=$2::JSONB WHERE id=$1`, lineID, string(data)); err != nil {
+			return OrderDetail{}, err
 		}
 	}
 	if input.RetailOverrideRUB != nil {

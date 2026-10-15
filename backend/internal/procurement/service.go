@@ -462,9 +462,17 @@ func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID in
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
-	if input.ChannelCosts != nil || input.RetailOverrideRUB != nil {
+	if input.ChannelCosts != nil || input.ChannelPrices != nil || input.RetailOverrideRUB != nil {
 		if lineID <= 0 || input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.InvoiceLineID != nil || input.InvoiceLineIDs != nil || input.InvoiceExcluded != nil || input.AcceptComparison != nil || input.ComparisonNote != nil {
 			return OrderDetail{}, ErrInvalidInput
+		}
+		if len(input.ChannelPrices) > 2 {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		for channel, price := range input.ChannelPrices {
+			if !oneOf(channel, "wb", "ozon") || price < 0 || price > 1000000000 {
+				return OrderDetail{}, ErrInvalidInput
+			}
 		}
 		if input.RetailOverrideRUB != nil && (*input.RetailOverrideRUB < 0 || *input.RetailOverrideRUB > 1000000000) {
 			return OrderDetail{}, ErrInvalidInput

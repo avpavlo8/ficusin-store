@@ -103,7 +103,7 @@ export type ProcurementChannelCosts = {
   logisticsRub?: number | null; lossRub?: number | null;
 };
 export type ProcurementChannelQuote = {
-  priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
+  manual?:boolean; priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
 };
 export type ProcurementEconomics = {monthlyFixedCostsRub:number;channels:Record<string,ProcurementChannelCosts>};
 export type ProcurementSettings = {
@@ -191,7 +191,7 @@ export type ProcurementOrderLine = {
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
   currentUnitCostRub?: number; currentUnitCostKind: string; currentUnitCostEffectiveAt?: string;
-  additionalPurchaseUnitRub?:number; retailOverrideRub?:number; channelCosts?: Record<string,ProcurementChannelCosts>; channelQuotes?:Record<string,ProcurementChannelQuote>; dimensionWarning?:string; dimensionsReviewed?:boolean;
+  channelPrices?:Record<string,number>; additionalPurchaseUnitRub?:number; retailOverrideRub?:number; channelCosts?: Record<string,ProcurementChannelCosts>; channelQuotes?:Record<string,ProcurementChannelQuote>; dimensionWarning?:string; dimensionsReviewed?:boolean;
   currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
   proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
