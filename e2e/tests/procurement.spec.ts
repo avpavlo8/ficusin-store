@@ -324,7 +324,7 @@ test("@desktop procurement shows one markup and clear rounding settings", async 
   await expect(page.getByLabel("Менять цену при отклонении более, %")).toHaveValue("10");
   await expect(page.getByLabel("Округлять цены до ближайших 50 или 90")).toBeChecked();
   await expect(page.getByLabel("База Голландии")).toHaveCount(0);
-  await expect(page.getByLabel("Объём телеги, см³")).toHaveCount(0);
+  await expect(page.locator(".procurement-settings-grid").getByLabel("Объём телеги, см³")).toHaveCount(0);
 });
 
 test("@desktop procurement separates actionable and already ordered recommendations", async ({ page }) => {
@@ -541,6 +541,7 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  await dialog.getByRole("button",{name:"Каталог и рекомендации",exact:true}).click();
   const drawer = page.getByLabel("Рекомендации к закупке", { exact: true });
   await drawer.getByPlaceholder("Название, код или артикул").fill("Bonsai Zantaxilum");
   await expect(drawer.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
