@@ -240,7 +240,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
       </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупки не найдены</h3><p>Измените фильтр или создайте новый заказ.</p></div>}
     </section>
 
-    <details className="procurement-section-details procurement-review-details" id="procurement-review" open={reviewExpanded} onToggle={event=>setReviewExpanded(event.currentTarget.open)}><summary>Связи с товарами СБИС <span>{data.review.length}</span></summary><section className="admin-block procurement-block">
+    {data.review.length>0 && <details className="procurement-section-details procurement-review-details" id="procurement-review" open={reviewExpanded} onToggle={event=>setReviewExpanded(event.currentTarget.open)}><summary>Связи с товарами СБИС <span>{data.review.length}</span></summary><section className="admin-block procurement-block">
       {data.review.length ? <div className="admin-table-wrap"><table className="admin-table procurement-review"><thead><tr>
         <th>Поставщик</th><th>Название в документе</th><th>Размер</th><th>Предложенный товар</th><th></th>
       </tr></thead><tbody>{data.review.map((item) => <tr key={item.id}>
@@ -249,7 +249,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
         <td>{item.suggestedSabyName || "—"}</td>
         <td><button className="table-action" onClick={() => setMatchDialog(item)}>Выбрать товар СБИС</button></td>
       </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Нет позиций для сопоставления</strong></div>}
-    </section></details>
+    </section></details>}
 
     <details className="procurement-section-details"><summary>Инвойсы и счета <span>{data.documents.length}</span></summary><section className="admin-block procurement-block">
       {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
