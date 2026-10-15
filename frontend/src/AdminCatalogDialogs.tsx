@@ -155,7 +155,7 @@ export function ProductDialog({owner=false,product,onClose,onSaved,onError,hasNe
    const attributes=changedAttributes(customerSchema,form.attributes||{},product.attributes||{});if(Object.keys(attributes).length)body.attributes=attributes;
    if(edits.length)body.variants=edits;
    const result=await api<{product:Product}>(`/api/v1/admin/products/${product.id}`,{method:"PATCH",body:JSON.stringify(body)});
-   setForm(result.product);setSaveNotice("Товар и размеры сохранены");onSaved(result.product,openNext);
+   setForm(result.product);setFaqText((result.product.passport?.faq||[]).map(x=>`${x.question} | ${x.answer}`).join("\n"));setWarningText((result.product.importantWarnings||[]).join("\n"));setSaveNotice("Товар и размеры сохранены");onSaved(result.product,openNext);
    if(!openNext)await loadVariants();
   }catch(error){setSaveError((error as Error).message);onError((error as Error).message)}finally{setSaving(false)}
  };
