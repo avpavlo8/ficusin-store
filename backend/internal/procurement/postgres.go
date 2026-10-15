@@ -580,7 +580,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
               'id',alias.id,'supplierId',alias.supplier_id,'rawName',alias.raw_name,
               'supplierArticle',alias.supplier_article,'potDiameterCm',alias.pot_diameter_cm,
               'heightCm',alias.height_cm,'matchStatus',alias.match_status) END,
-            l.receiving_mode,l.customer_handed_over,l.channel_costs,l.channel_quotes,l.dimensions_reviewed,l.retail_override_rub,l.additional_purchase_unit_rub::DOUBLE PRECISION,
+            l.receiving_mode,l.customer_handed_over,l.channel_costs,l.channel_quotes,l.dimensions_reviewed,l.retail_override_rub,l.additional_purchase_unit_rub::DOUBLE PRECISION,l.baseline_site_price_minor::DOUBLE PRECISION/100,
             COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty,'currentRetailRub',COALESCE(child.baseline_site_price_minor,child_variant.base_price_minor,0)::NUMERIC/100) ORDER BY child.id)
              FROM procurement_order_lines child JOIN saby_nomenclature n ON n.saby_id=child.saby_id
              LEFT JOIN product_variants child_variant ON child_variant.id=child.canonical_variant_id
@@ -610,7 +610,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
 			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.ReceivingAllocations); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.LabelRetailRUB, &line.ReceivingAllocations); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.ReceivingMode != "catalog" {
@@ -632,10 +632,19 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 				line.PriceChangeNeeded = true
 			}
 		}
+		if line.LabelRetailRUB != nil && line.ProposedRetailRUB != nil {
+			line.LabelReprintNeeded = priceChangeNeeded(*line.LabelRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+			if line.RetailOverrideRUB != nil && *line.LabelRetailRUB != float64(*line.ProposedRetailRUB) {
+				line.LabelReprintNeeded = true
+			}
+			if q := line.ChannelQuotes["site"]; q.BreakEvenRUB != nil && *line.LabelRetailRUB <= float64(*q.BreakEvenRUB) && *line.LabelRetailRUB != float64(*line.ProposedRetailRUB) {
+				line.LabelReprintNeeded = true
+			}
+		}
 		if line.ProposedRetailRUB != nil {
 			for i := range line.ReceivingAllocations {
 				part := &line.ReceivingAllocations[i]
-				part.PriceChangeNeeded = priceChangeNeeded(part.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+				part.PriceChangeNeeded = priceChangeNeeded(part.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold) || (line.RetailOverrideRUB != nil && part.CurrentRetailRUB != float64(*line.ProposedRetailRUB))
 			}
 		}
 		detail.Lines = append(detail.Lines, line)

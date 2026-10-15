@@ -132,6 +132,14 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 	if _, err = store.ApproveBatch(ctx, actor, prepared["site"], nil); err != nil {
 		t.Fatal(err)
 	}
+	approvedDetail, err := store.OrderDetail(ctx, orderID)
+	if err != nil || approvedDetail.Lines[0].CurrentRetailRUB != 1650 || approvedDetail.Lines[0].PriceChangeNeeded || !approvedDetail.Lines[0].LabelReprintNeeded {
+		t.Fatalf("current price and old physical label snapshot mixed: %+v err=%v", approvedDetail.Lines, err)
+	}
+	labelRows, err := receivingPDFRows(approvedDetail)
+	if err != nil || len(labelRows) != 1 || !labelRows[0].ReprintLabel || labelRows[0].PreviousPrice != 1800 {
+		t.Fatalf("label reprint lost after site approval: %+v err=%v", labelRows, err)
+	}
 	exported, err := store.ApprovedSabyPriceExportLines(ctx, orderID)
 	if err != nil || len(exported) != 1 || *exported[0].ProposedRetailRUB != 1650 {
 		t.Fatalf("manual price below threshold missing from Saby XLSX: %+v err=%v", exported, err)

@@ -124,7 +124,7 @@ func (store *PostgresStore) listProductPage(ctx context.Context, supplierID int6
 		) last_line ON TRUE
 		LEFT JOIN LATERAL (
 			SELECT o.id AS order_id,COALESCE(o.order_number,'') AS order_number,
-				MAX(l.unit_cost_rub)::DOUBLE PRECISION AS unit_cost,
+				(SUM(l.unit_cost_rub*COALESCE(l.invoiced_qty,l.ordered_qty))/NULLIF(SUM(COALESCE(l.invoiced_qty,l.ordered_qty)),0))::DOUBLE PRECISION AS unit_cost,
 				NULL::DOUBLE PRECISION AS marketplace,NULL::DOUBLE PRECISION AS strike,
                 MAX((l.channel_quotes->'wb'->>'priceRub')::DOUBLE PRECISION) AS wb,
                 MAX((l.channel_quotes->'ozon'->>'priceRub')::DOUBLE PRECISION) AS ozon
