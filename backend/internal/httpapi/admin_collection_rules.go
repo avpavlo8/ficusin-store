@@ -43,6 +43,10 @@ func collectionPreviewHandler(handlers adminHandlers) http.HandlerFunc {
 			return
 		}
 		ids, err := repository.PreviewCollectionRules(request.Context(), input.Rules)
+		if errors.Is(err, admin.ErrInvalidInput) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
 		if err != nil {
 			handlers.failed(response, "preview collection", err)
 			return

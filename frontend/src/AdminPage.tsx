@@ -36,7 +36,7 @@ export default function AdminPage() {
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Не удалось загрузить панель"));
   }, []);
 
-  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {window.history.pushState(null,"",`/admin?section=${section}`);return;}setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
+  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {if(section!=="products")window.history.pushState(null,"",`/admin?section=${section}`);return;}setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
 
   const go = async (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
     if(["returns","products"].includes(section) && beforeLeave.current && !await beforeLeave.current()) return;
