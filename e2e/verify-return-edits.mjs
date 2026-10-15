@@ -25,6 +25,13 @@ for(const [name,engine,options] of [['desktop',chromium,{viewport:{width:1440,he
   await dialog.getByRole('button',{name:'Редактировать документ',exact:true}).click();await dialog.getByRole('button',{name:'Добавить растение',exact:false}).click();const search=dialog.getByRole('combobox',{name:'Название растения 3',exact:true});await search.fill('');await search.click();const list=dialog.getByRole('listbox',{name:'Каталог растений'});await expect(list).toBeVisible();await list.scrollIntoViewIfNeeded();const lastIndex=Math.min(7,(await list.getByRole('option').count())-1);for(let index=0;index<=lastIndex;index++)await search.press('ArrowDown');const activeBox=await list.getByRole('option').nth(lastIndex).boundingBox();const listBox=await list.boundingBox();expect(activeBox.y).toBeGreaterThanOrEqual(listBox.y-2);expect(activeBox.y+activeBox.height).toBeLessThanOrEqual(listBox.y+listBox.height+2);const box=await list.boundingBox();const footer=await dialog.locator('footer').boundingBox();expect(box.y+box.height).toBeLessThanOrEqual(footer.y+2);expect(await search.evaluate(el=>getComputedStyle(el).outlineStyle)).toBe('none');expect(await search.evaluate(el=>getComputedStyle(el.parentElement).outlineStyle)).toBe('solid');
   const a11y=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();expect(a11y.violations.filter(v=>['serious','critical'].includes(v.impact||''))).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/return-editor-${name}.png`,fullPage:true});
+  if(name!=='desktop'){
+   // A short viewport models the space left above a phone keyboard.
+   await page.setViewportSize({width:390,height:480});await search.click();await list.scrollIntoViewIfNeeded();
+   const inputBox=await search.boundingBox(),headerBox=await dialog.locator('header').boundingBox(),shortList=await list.boundingBox(),shortFooter=await dialog.locator('footer').boundingBox();
+   expect(inputBox.y).toBeGreaterThanOrEqual(headerBox.y+headerBox.height-2);expect(shortList.y+shortList.height).toBeLessThanOrEqual(shortFooter.y+2);
+   await page.screenshot({path:`${out}/return-editor-${name}-short.png`,fullPage:true});
+  }
   await dialog.getByRole('button',{name:'Отменить изменения',exact:true}).click();await dialog.getByRole('button',{name:'Закрыть документ',exact:true}).click();
   results.push({name,savedEdits:true,stableUnitIDs:true,reloaded:true,unsavedCloseProtected:true,cancelRestores:true,zeroAndDiscountLabels:true,searchInsideDialog:true,singleFocusFrame:true});
  }catch(error){await page.screenshot({path:`${out}/return-edits-failure-${name}.png`,fullPage:true});throw error;}
