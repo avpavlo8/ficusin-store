@@ -372,7 +372,7 @@ func (service *Service) CreatePlan(ctx context.Context, actor Actor, input PlanC
 	if input.SourceKind == "" {
 		input.SourceKind = SourceRecommendation
 	}
-	if len(input.Title) > 120 || !oneOf(input.SourceKind, SourceManual, SourceRecommendation) {
+	if len([]rune(input.Title)) > 120 || !oneOf(input.SourceKind, SourceManual, SourceRecommendation) {
 		return OrderSummary{}, ErrInvalidInput
 	}
 	input.OrderNumber = strings.TrimSpace(input.OrderNumber)
@@ -539,7 +539,7 @@ func (service *Service) CreateRequest(ctx context.Context, actor Actor, input Re
 		}
 	}
 	input.Assignee = strings.TrimSpace(input.Assignee)
-	if len(input.Assignee) > 120 || input.Quantity > 1000000 {
+	if len([]rune(input.Assignee)) > 120 || input.Quantity > 1000000 {
 		return Request{}, ErrInvalidInput
 	}
 	input.Kind = strings.TrimSpace(input.Kind)
@@ -569,7 +569,7 @@ func (service *Service) UpdateRequest(ctx context.Context, actor Actor, requestI
 		value := strings.TrimSpace(*input.Assignee)
 		input.Assignee = &value
 	}
-	if (input.Assignee != nil && len(*input.Assignee) > 120) || input.Quantity > 1000000 {
+	if (input.Assignee != nil && len([]rune(*input.Assignee)) > 120) || input.Quantity > 1000000 {
 		return Request{}, ErrInvalidInput
 	}
 	input.SabyID = strings.TrimSpace(input.SabyID)
