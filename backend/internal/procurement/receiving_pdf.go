@@ -58,7 +58,7 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		}
 		if line.ReceivingMode == "assortment" && len(line.ReceivingAllocations) > 0 {
 			for _, part := range line.ReceivingAllocations {
-				rows = append(rows, receivingPDFRow{Name: part.Name, InvoiceName: line.InvoiceRawName + " · разбор микса", Pot: line.PotDiameterCM, Height: line.HeightCM, Quantity: part.Quantity, Price: *line.ProposedRetailRUB})
+				rows = append(rows, receivingPDFRow{Name: part.Name, InvoiceName: line.InvoiceRawName + " · разбор микса", Pot: line.PotDiameterCM, Height: line.HeightCM, Quantity: part.Quantity, Price: *line.ProposedRetailRUB, PreviousPrice: part.CurrentRetailRUB, ReprintLabel: part.PriceChangeNeeded && part.CurrentRetailRUB > 0 && part.CurrentRetailRUB != float64(*line.ProposedRetailRUB)})
 			}
 			continue
 		}

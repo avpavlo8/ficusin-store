@@ -574,8 +574,9 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
               'supplierArticle',alias.supplier_article,'potDiameterCm',alias.pot_diameter_cm,
               'heightCm',alias.height_cm,'matchStatus',alias.match_status) END,
             l.receiving_mode,l.customer_handed_over,
-            COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty) ORDER BY child.id)
+            COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty,'currentRetailRub',COALESCE(child.baseline_site_price_minor,child_variant.base_price_minor,0)::NUMERIC/100) ORDER BY child.id)
              FROM procurement_order_lines child JOIN saby_nomenclature n ON n.saby_id=child.saby_id
+             LEFT JOIN product_variants child_variant ON child_variant.id=child.canonical_variant_id
              WHERE child.receiving_parent_line_id=l.id AND child.reconciliation_status<>'superseded'),'[]'::jsonb)
 		FROM procurement_order_lines l
         LEFT JOIN procurement_supplier_aliases alias ON alias.id=l.supplier_alias_id
@@ -616,6 +617,12 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 		}
 		if line.ReceivingMode == "catalog" && line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
 			line.PriceChangeNeeded = priceChangeNeeded(line.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+		}
+		if line.ProposedRetailRUB != nil {
+			for i := range line.ReceivingAllocations {
+				part := &line.ReceivingAllocations[i]
+				part.PriceChangeNeeded = priceChangeNeeded(part.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+			}
 		}
 		detail.Lines = append(detail.Lines, line)
 	}

@@ -70,3 +70,19 @@ func TestReceivingPDFMarksOnlyApplicablePriceChangesForReprinting(t *testing.T) 
 		})
 	}
 }
+
+func TestReceivingPDFMarksAllocatedMixCardsIndividually(t *testing.T) {
+	qty := 3
+	price := int64(1790)
+	rows, err := receivingPDFRows(OrderDetail{Lines: []OrderLine{{RawName: "Микс", MatchStatus: "deferred", ReceivingMode: "assortment", InvoicedQuantity: &qty, ProposedRetailRUB: &price, ReceivingAllocations: []ReceivingAllocation{
+		{SabyID: "lemon", Name: "Лимон", Quantity: 1, CurrentRetailRUB: 1490, PriceChangeNeeded: true},
+		{SabyID: "kumquat", Name: "Кумкват", Quantity: 1, CurrentRetailRUB: 1790, PriceChangeNeeded: false},
+		{SabyID: "calamondin", Name: "Каламондин", Quantity: 1, CurrentRetailRUB: 0, PriceChangeNeeded: true},
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || !rows[0].ReprintLabel || rows[0].PreviousPrice != 1490 || rows[1].ReprintLabel || rows[2].ReprintLabel {
+		t.Fatalf("rows = %#v", rows)
+	}
+}
