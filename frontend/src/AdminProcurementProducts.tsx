@@ -4,7 +4,7 @@ import { api, money } from "./adminShared";
 import type { NomenclatureCandidate, ProcurementProduct, ProcurementSupplier, SabyCatalogFolder } from "./adminTypes";
 import { availabilityLabel } from "./AdminProcurementPanels";
 
-export function ProcurementProducts({ suppliers, onError }: { suppliers: ProcurementSupplier[]; onError: (value: string) => void }) {
+export function ProcurementProducts({ suppliers, onError, onSaved }: { suppliers: ProcurementSupplier[]; onError: (value: string) => void; onSaved?: () => void }) {
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0);
   const [query, setQuery] = useState("");
   const [page,setPage]=useState(0);
@@ -123,7 +123,7 @@ export function ProcurementProducts({ suppliers, onError }: { suppliers: Procure
       </div>
     </div>
     <div className="procurement-filter-bar"><button disabled={page === 0 || loading} onClick={()=>setPage(page-1)}>Назад</button><span>{total ? `${page*100+1}–${Math.min((page+1)*100,total)} из ${total}` : "0 товаров"}</span><button disabled={(page+1)*100>=total || loading} onClick={()=>setPage(page+1)}>Далее</button></div>
-    {editing && <ProcurementProductDialog item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} onError={onError} />}
+    {editing && <ProcurementProductDialog item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); onSaved?.(); }} onError={onError} />}
   </section>;
 }
 
