@@ -605,6 +605,12 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ReceivingAllocations); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
+		if line.ReceivingMode != "catalog" {
+			line.CurrentRetailRUB = 0
+			line.CurrentUnitCostRUB = nil
+			line.CurrentUnitCostKind = ""
+			line.CurrentUnitCostEffectiveAt = nil
+		}
 		if line.MatchAlias != nil {
 			line.MatchAlias.SupplierName = order.SupplierName
 		}

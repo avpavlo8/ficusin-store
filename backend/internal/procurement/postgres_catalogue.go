@@ -1418,7 +1418,12 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 	if input.Status == "received" && !input.Force {
 		var prepared bool
 		if err := tx.QueryRow(ctx, `
-			SELECT NOT EXISTS(SELECT 1 FROM procurement_order_lines l WHERE l.procurement_order_id=$1 AND l.match_status='confirmed' AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded') OR EXISTS (SELECT 1 FROM procurement_action_batches batch
+			SELECT (EXISTS(SELECT 1 FROM procurement_order_lines l WHERE l.procurement_order_id=$1
+                AND l.receiving_mode='customer_handoff' AND l.customer_handed_over AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded')
+              AND NOT EXISTS(SELECT 1 FROM procurement_order_lines l WHERE l.procurement_order_id=$1
+                AND l.receiving_parent_line_id IS NULL AND l.receiving_mode<>'customer_handoff' AND l.match_status<>'ignored'
+                AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'))
+              OR EXISTS (SELECT 1 FROM procurement_action_batches batch
 				JOIN procurement_action_items item ON item.batch_id=batch.id
 				WHERE batch.procurement_order_id = $1 AND batch.kind = 'receipt'
 					AND item.channel='saby_receipt' AND item.status='completed'

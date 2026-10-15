@@ -43,9 +43,13 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	}
 	actor := Actor{CustomerID: actorID, Role: "owner"}
 	pot, height := 15.0, 45.0
-	parsed := ParsedDocument{ParserKind: "holland_packing_list", DocumentNumber: fmt.Sprintf("RECEIVING-%d", unique), Currency: "EUR", ArithmeticOK: true, ProductSubtotal: 240, DocumentTotal: 240, CalculatedTotal: 240}
+	parsed := ParsedDocument{ParserKind: "holland_packing_list", DocumentNumber: fmt.Sprintf("RECEIVING-%d", unique), Currency: "EUR", ArithmeticOK: true, ProductSubtotal: 340, DocumentTotal: 340, CalculatedTotal: 340}
 	for i, qty := range []int{6, 8, 10} {
-		parsed.Lines = append(parsed.Lines, ParsedLine{SourcePage: 1, SourceLine: i + 1, RawName: []string{"Citr Mix", "Nepent Mix", "Regular plant"}[i], Quantity: qty, UnitPrice: 10, LineTotal: float64(qty) * 10, LoadUnit: "1", PotDiameterCM: &pot, HeightCM: &height})
+		price := 10.0
+		if i == 2 {
+			price = 20
+		}
+		parsed.Lines = append(parsed.Lines, ParsedLine{SourcePage: 1, SourceLine: i + 1, RawName: []string{"Citr Mix", "Nepent Mix", "Regular plant"}[i], Quantity: qty, UnitPrice: price, LineTotal: float64(qty) * price, LoadUnit: "1", PotDiameterCM: &pot, HeightCM: &height})
 	}
 	imported, err := store.ImportDocument(ctx, actor, DocumentUpload{SupplierID: supplierID, FileName: "mix.pdf", ContentType: "application/pdf", Content: []byte(fmt.Sprintf("%%PDF-receiving-%d", unique))}, parsed)
 	must(err)
@@ -60,7 +64,7 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 		_, err = store.UpdateOrderLine(ctx, actor, line.ID, OrderLineUpdate{AcceptComparison: &yes, ComparisonNote: &note})
 		must(err)
 	}
-	_, err = store.ResolveAlias(ctx, actor, regularAlias, AliasResolution{MatchStatus: "confirmed", SabyID: cards[2]})
+	_, err = store.ResolveAlias(ctx, actor, regularAlias, AliasResolution{MatchStatus: "confirmed", SabyID: cards[0]})
 	must(err)
 	_, err = store.ResolveAlias(ctx, actor, detail.Lines[0].MatchAlias.ID, AliasResolution{MatchStatus: "confirmed", SabyID: cards[0]})
 	must(err)
@@ -101,7 +105,7 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	parts := []ReceivingAllocation{{SabyID: cards[0], Quantity: 2}, {SabyID: cards[1], Quantity: 4}}
 	detail, err = store.UpdateOrderLine(ctx, actor, mixID, OrderLineUpdate{ReceivingAllocations: &parts})
 	must(err)
-	if len(detail.Lines) != 3 || detail.Order.Lines != 3 || detail.Order.Units != 24 || math.Abs(detail.Order.Total-240) > .000001 {
+	if len(detail.Lines) != 3 || detail.Order.Lines != 3 || detail.Order.Units != 24 || math.Abs(detail.Order.Total-340) > .000001 {
 		t.Fatalf("distribution doubled purchase %+v", detail.Order)
 	}
 	if len(detail.Lines[0].ReceivingAllocations) != 2 {
@@ -129,8 +133,9 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	}
 	var payload struct {
 		Lines []struct {
-			SabyID   string `json:"sabyId"`
-			Quantity int    `json:"quantity"`
+			SabyID   string  `json:"sabyId"`
+			Quantity int     `json:"quantity"`
+			UnitCost float64 `json:"unitCost"`
 		}
 	}
 	must(json.Unmarshal(batch.Items[0].Payload, &payload))
@@ -138,8 +143,20 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	for _, line := range payload.Lines {
 		quantities[line.SabyID] += line.Quantity
 	}
-	if quantities[cards[0]] != 2 || quantities[cards[1]] != 4 || quantities[cards[2]] != 10 || len(quantities) != 3 {
+	if quantities[cards[0]] != 12 || quantities[cards[1]] != 4 || len(quantities) != 2 {
 		t.Fatalf("wrong receipt identities %v", quantities)
+	}
+	var expectedCost, receiptCost float64
+	for _, line := range detail.Lines {
+		if line.ID != handoffID {
+			expectedCost += *line.UnitCostRUB * float64(line.Quantity)
+		}
+	}
+	for _, line := range payload.Lines {
+		receiptCost += line.UnitCost * float64(line.Quantity)
+	}
+	if math.Abs(expectedCost-receiptCost) > .0001 {
+		t.Fatalf("receipt inflated cost: %.4f instead of %.4f", receiptCost, expectedCost)
 	}
 	if _, err = store.UpdateOrderStatus(ctx, actor, orderID, OrderStatusUpdate{Status: "received", Force: true, Note: "test"}); err == nil {
 		t.Fatal("force completion hid pending customer handoff")

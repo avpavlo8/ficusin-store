@@ -134,7 +134,24 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   // Install the API stub inside the page before React starts. WebKit handles
   // route interception differently after state transitions, while fetch is
   // identical across the browsers this layout suite covers.
-  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError }) => {
+  // Keep the mock backend outside the document so reloading the UI does not
+  // reset saved data. PostgreSQL tests separately verify durable storage.
+  if(options.catalogMatch) await page.exposeFunction("procurementFixture",(path:string,rawBody:string)=>{
+    if(path==="/api/v1/admin/procurement")return procurement;
+    if(path==="/api/v1/admin/procurement/orders/4")return orderDetail;
+    const body=JSON.parse(rawBody);
+    const line=orderDetail.lines.find(line=>line.id===1001)!;
+    if(path.endsWith("/aliases/9")){
+      if(body.matchStatus!=="confirmed" || body.sabyId!=="TEST-SABY-BONSAI")throw new Error("Wrong catalog candidate");
+      Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed"});
+      procurement.review=[];procurement.summary.unresolvedAliases=0;
+    }else{
+      Object.assign(line,{receivingMode:body.receivingMode,matchStatus:body.receivingMode==="catalog"?"unmatched":"deferred",receivingAllocations:(body.receivingAllocations || []).map((part:{sabyId:string;quantity:number})=>({...part,name:"Bonsai Zantaxilum D15",code:"X616872557"}))});
+    }
+    orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
+    return orderDetail;
+  });
+  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch }) => {
     const originalFetch = window.fetch.bind(window);
     const drafts: Array<{ id: number; title: string; payload: unknown; createdAt: string; updatedAt: string }> = [];
     const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
@@ -143,6 +160,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     window.fetch = (input, init) => {
       const raw = typeof input === "string" ? input : input instanceof Request ? input.url : input.toString();
       const path = new URL(raw, window.location.origin).pathname;
+      if(catalogMatch && ["/api/v1/admin/procurement","/api/v1/admin/procurement/orders/4","/api/v1/admin/procurement/aliases/9","/api/v1/admin/procurement/order-lines/1001"].includes(path)){
+        return (window as unknown as {procurementFixture:(path:string,body:string)=>Promise<unknown>}).procurementFixture(path,String(init?.body || "")).then(json);
+      }
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
@@ -241,7 +261,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "" });
+  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "", catalogMatch: !!options.catalogMatch });
 }
 
 test("@desktop @phone request validates integer quantity, traps focus, archives and restores", async ({ page }) => {
