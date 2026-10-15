@@ -819,5 +819,7 @@ test("@desktop @phone procurement uses quiet checks, styled controls and a singl
  await save.click();await expect(editor).toBeHidden();
  await expect(row).toContainText('D15.5 · 45 см');
  await expect(row.getByRole('button',{name:'Исправить размеры',exact:true})).toBeFocused();
+ await order.locator(".procurement-order-final > details > summary").press("Tab");
+ await expect(order.getByRole("button",{name:"Закрыть",exact:true})).toBeFocused();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
