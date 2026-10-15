@@ -86,3 +86,5 @@
 .return-plant-picker .catalog-search-options{position:relative;top:auto;left:auto;margin-top:8px;min-width:0;max-height:240px}
 .return-intake-table input:disabled,.return-intake-table fieldset:disabled{opacity:.7}
 @media(max-width:700px){.return-create-dialog{height:95dvh}.return-plant-picker .catalog-search-options{max-height:min(210px,28dvh)}}
+
+@media(max-width:700px){.return-intake-table tr{grid-template-columns:.85fr 1.75fr}.return-create-dialog .return-intake-top select,.return-create-dialog .return-intake-table input,.return-create-dialog .return-intake-table select,.return-create-dialog .return-intake-table textarea,.return-create-dialog .return-plant-picker>div:first-child input{font-size:16px}}

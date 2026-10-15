@@ -26,6 +26,7 @@ for(const [name,engine,options] of [['desktop',chromium,{viewport:{width:1440,he
   const a11y=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();expect(a11y.violations.filter(v=>['serious','critical'].includes(v.impact||''))).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/return-editor-${name}.png`,fullPage:true});
   if(name!=='desktop'){
+   expect(await search.evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
    // A short viewport models the space left above a phone keyboard.
    await page.setViewportSize({width:390,height:480});await search.click();await list.scrollIntoViewIfNeeded();
    const inputBox=await search.boundingBox(),headerBox=await dialog.locator('header').boundingBox(),shortList=await list.boundingBox(),shortFooter=await dialog.locator('footer').boundingBox();
