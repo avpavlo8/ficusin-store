@@ -11,6 +11,96 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func TestReviewLegacyPriceRepairRequiresExactAuditAndIsIdempotent(t *testing.T) {
+	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("CRM_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var customer, supplier int64
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Legacy repair test',now()) RETURNING id`, fmt.Sprintf("legacy-review-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&customer); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Legacy review %d", unique)).Scan(&supplier); err != nil {
+		t.Fatal(err)
+	}
+	store := NewPostgresStore(pool)
+	actor := Actor{CustomerID: customer, Role: "owner"}
+	pot, height := 14.0, 40.0
+	type fixture struct {
+		line, order int64
+		price, cost float64
+		repair      bool
+	}
+	cases := map[string]fixture{}
+	for _, name := range []string{"fraction", "below-one", "cancelled", "closed", "invoice", "identity-changed", "cost-changed", "no-audit"} {
+		price := 4.85
+		if name == "below-one" {
+			price = .85
+		}
+		order, err := store.CreatePlan(ctx, actor, PlanCreate{SupplierID: supplier, Costs: &CalculationInput{ExchangeRate: 120, DeliveryToMoscowRUB: 1200}, Items: []PlanItem{{RawName: fmt.Sprintf("Legacy %s %d", name, unique), Quantity: 1, ExpectedUnitPrice: price, PotDiameterCM: &pot, HeightCM: &height, LoadUnit: "shelf"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		v := fixture{order: order.ID, price: price, repair: name == "fraction" || name == "below-one" || name == "cancelled"}
+		if err := pool.QueryRow(ctx, `UPDATE procurement_order_lines SET expected_unit_price=NULLIF(TRUNC(expected_unit_price),0) WHERE procurement_order_id=$1 RETURNING id,unit_cost_rub::DOUBLE PRECISION`, order.ID).Scan(&v.line, &v.cost); err != nil {
+			t.Fatal(err)
+		}
+		switch name {
+		case "cancelled":
+			_, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='cancelled' WHERE id=$1`, order.ID)
+		case "closed":
+			_, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='received' WHERE id=$1`, order.ID)
+		case "invoice":
+			_, err = pool.Exec(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'legacy.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'review','ok','LEGACY-TEST','EUR',1,1,$4)`, supplier, order.ID, fmt.Sprintf("%064x", unique), customer)
+		case "identity-changed":
+			_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET raw_name='Edited after creation' WHERE id=$1`, v.line)
+		case "cost-changed":
+			_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET purchase_unit_rub=999 WHERE id=$1`, v.line)
+		case "no-audit":
+			_, err = pool.Exec(ctx, `UPDATE admin_audit_log SET action='procurement.plan.create.test-untrusted' WHERE entity_type='procurement_order' AND entity_id=$1 AND action='procurement.plan.create'`, fmt.Sprint(order.ID))
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		cases[name] = v
+	}
+	migration, err := os.ReadFile("../../../timeweb/migrations/20261015_zz_procurement_plan_price_repair.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pass := 0; pass < 2; pass++ {
+		if _, err := pool.Exec(ctx, string(migration)); err != nil {
+			t.Fatal(err)
+		}
+		for name, v := range cases {
+			var price, cost float64
+			var audits int
+			if err := pool.QueryRow(ctx, `SELECT COALESCE(expected_unit_price,0)::DOUBLE PRECISION,unit_cost_rub::DOUBLE PRECISION FROM procurement_order_lines WHERE id=$1`, v.line).Scan(&price, &cost); err != nil {
+				t.Fatal(err)
+			}
+			if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM admin_audit_log WHERE action='procurement.plan.price.repair' AND entity_type='procurement_order_line' AND entity_id=$1`, fmt.Sprint(v.line)).Scan(&audits); err != nil {
+				t.Fatal(err)
+			}
+			want := math.Trunc(v.price)
+			wantAudits := 0
+			if v.repair {
+				want = v.price
+				wantAudits = 1
+			}
+			if price != want || cost != v.cost || audits != wantAudits {
+				t.Fatalf("%s pass %d: price=%v want=%v cost=%v want=%v audit=%d want=%d", name, pass, price, want, cost, v.cost, audits, wantAudits)
+			}
+		}
+	}
+}
+
 func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
 	if dsn == "" {
