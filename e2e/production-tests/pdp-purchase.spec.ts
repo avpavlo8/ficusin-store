@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-test("PDP purchase layout, nested menu and gallery swipe work live", async ({ page }) => {
+test("PDP purchase layout, nested menu and gallery swipe work live", async ({ page, request }) => {
+  const response = await request.get("/api/v1/products/33");
+  expect(response.ok()).toBeTruthy();
+  const { product } = await response.json();
+  expect(typeof product?.name).toBe("string");
+  expect(product.name.trim().length).toBeGreaterThan(0);
   await page.goto("/product/33");
-  await expect(page.getByRole("heading", { level:1, name:"Антуриум", exact:true })).toBeVisible();
+  await expect(page.getByRole("heading", { level:1, name:product.name, exact:true })).toBeVisible();
   await expect(page.locator(".pdp-order-column .pdp-commerce-box")).toBeVisible();
   await expect(page.locator(".pdp-summary .pdp-related")).toHaveCount(1);
   await expect(page.locator(".pdp-summary .pdp-related-track")).toHaveCSS("display","flex");
