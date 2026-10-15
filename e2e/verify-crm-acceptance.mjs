@@ -30,7 +30,17 @@ try {
   const beforeMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(beforeMedia.length).toBe(2);
   if(role==='manager') {
-   for(const path of ['/admin?section=procurement','/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/finance/pnl?from=2026-09-01&to=2026-09-30','/api/v1/admin/finance/supplier-account','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
+   expect(data.permissions).toContain('procurement.read');
+   expect(data.permissions).not.toContain('procurement.edit');
+   expect((await api.get('/admin?section=procurement')).status()).toBe(200);
+   const purchasesResponse=await api.get('/api/v1/admin/procurement');expect(purchasesResponse.status()).toBe(200);
+   const purchase=(await purchasesResponse.json()).orders.find(order=>order.orderNumber==='CRM-STAGE-06');expect(purchase).toBeTruthy();
+   const detailResponse=await api.get(`/api/v1/admin/procurement/orders/${purchase.id}`);expect(detailResponse.status()).toBe(200);
+   const purchaseLine=(await detailResponse.json()).lines[0];expect(purchaseLine).toBeTruthy();
+   expect((await api.patch(`/api/v1/admin/procurement/order-lines/${purchaseLine.id}`,{data:{invoiceLineIds:[purchaseLine.id]}})).status()).toBe(403);
+   expect((await api.post(`/api/v1/admin/procurement/orders/${purchase.id}/batches`,{data:{kind:'receipt'}})).status()).toBe(403);
+   expect((await api.patch(`/api/v1/admin/procurement/orders/${purchase.id}/status`,{data:{status:'cancelled'}})).status()).toBe(403);
+   for(const path of ['/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/finance/pnl?from=2026-09-01&to=2026-09-30','/api/v1/admin/finance/supplier-account','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
    for(const body of [{name:'Forbidden',priceMinor:1},{name:'Forbidden',stock:null},{name:'Forbidden',externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:body})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',priceMinor:1}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',attributes:{external_price:1}}})).status()).toBe(403);
@@ -118,6 +128,20 @@ try {
     expect(await page.evaluate(key=>localStorage.getItem(key),'ficusin:procurement-plan-draft:v1')).toBe(procurementDraft);
    }
    if(role==='manager') {
+    await page.goto('/admin?section=procurement');
+    await expect(page.getByRole('heading',{name:'Закупки',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Собрать заказ',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Загрузить инвойс',exact:true})).toHaveCount(0);
+    await page.getByRole('link',{name:'CRM-STAGE-06',exact:true}).click();
+    const purchaseDialog=page.getByRole('dialog',{name:'CRM-STAGE-06',exact:true});
+    await expect(purchaseDialog).toBeVisible();
+    await purchaseDialog.getByRole('textbox',{name:'Поиск растения в закупке',exact:true}).fill('NL-V-09');
+    await expect(purchaseDialog.getByRole('row').filter({hasText:'NL-V-09'})).toContainText('8');
+    await expect(purchaseDialog.getByRole('button',{name:'Рассчитать',exact:true})).toHaveCount(0);
+    await expect(purchaseDialog.getByRole('button',{name:'Отменить закупку',exact:true})).toHaveCount(0);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({path:`${out}/manager-procurement-readonly-${width}.png`,fullPage:true});
+    await purchaseDialog.getByRole('button',{name:'Закрыть закупку',exact:true}).click();
     const denied=await page.goto('/admin?section=finance');expect(denied.status()).toBe(403);
     await expect(page.getByRole('heading',{name:'Доступ к разделу ограничен'})).toBeVisible();
     await page.screenshot({path:`${out}/manager-denied-${width}.png`,fullPage:true});

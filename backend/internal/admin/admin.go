@@ -62,7 +62,7 @@ func Can(role, permission string) bool {
 			permission == PermissionProcurementRead || permission == PermissionProcurementEdit ||
 			permission == PermissionAnalyticsRead
 	case RoleManager:
-		return permission == PermissionDashboard ||
+		return permission == PermissionProcurementRead || permission == PermissionDashboard ||
 			permission == PermissionCustomersRead ||
 			permission == PermissionOrdersRead || permission == PermissionOrdersEdit ||
 			permission == PermissionProductsRead || permission == PermissionProductsEdit ||

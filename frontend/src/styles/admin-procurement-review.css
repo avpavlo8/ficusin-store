@@ -119,3 +119,43 @@
 }
 
 .admin-page .procurement-page-heading .admin-primary,.admin-page .procurement-content .admin-primary{color:#fffdf8;background:#a65032}.admin-page .procurement-warning small{display:block;margin-top:5px;font-weight:400}
+
+/* Invoice pairing stays in the viewport, outside the scrolled order body. */
+.admin-page .procurement-incoming-orders small,.admin-page .procurement-incoming-lines small{display:block;margin-top:5px;color:#746f65}
+@media(max-width:800px){
+ .admin-page .procurement-incoming-orders,.admin-page .procurement-incoming-lines{display:block;width:100%;min-width:0;max-width:100%}
+ .admin-page .procurement-incoming-orders thead,.admin-page .procurement-incoming-lines thead{display:none}
+ .admin-page .procurement-incoming-orders tbody,.admin-page .procurement-incoming-lines tbody{display:block}
+ .admin-page .procurement-incoming-orders tr,.admin-page .procurement-incoming-lines tr{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #d9d2c6;padding:10px 0}
+ .admin-page .procurement-incoming-orders td,.admin-page .procurement-incoming-lines td{display:block;min-width:0;border:0;padding:8px;overflow-wrap:anywhere}
+ .admin-page .procurement-incoming-orders td:first-child,.admin-page .procurement-incoming-lines td:first-child{grid-column:1/-1}
+ .admin-page .procurement-incoming-orders td::before,.admin-page .procurement-incoming-lines td::before{content:attr(data-label);display:block;margin-bottom:5px;color:#746f65;font-size:12px}
+}
+.admin-page .procurement-invoice-pair-backdrop{z-index:1204}
+.admin-page .admin-dialog.procurement-invoice-pair-dialog{z-index:1205;width:min(1100px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;display:flex;flex-direction:column;overflow:hidden}
+.admin-page .procurement-invoice-pair-dialog>header{flex-shrink:0;padding:18px 24px;border-bottom:1px solid #d9d2c6}
+.admin-page .procurement-invoice-pair-dialog>header h2{font-size:24px}
+.admin-page .procurement-invoice-pair-body{min-height:0;padding:20px 24px;overflow:auto}
+.admin-page .procurement-invoice-pair-body>p{font-size:14px;line-height:1.5}
+.admin-page .procurement-invoice-pair-body .admin-table-wrap{overflow:auto}
+.admin-page .procurement-invoice-pair-body .procurement-invoice-candidates{min-width:800px}
+.admin-page .procurement-invoice-pair-dialog>.dialog-actions{flex-shrink:0;flex-wrap:wrap;margin:0;padding:14px 24px;border-top:1px solid #d9d2c6}
+.admin-page .procurement-invoice-pair-dialog>.dialog-actions>span{flex:1 1 260px}
+.admin-page .procurement-invoice-pair-dialog>.dialog-actions small{display:block}
+.admin-page .procurement-invoice-pair-dialog button{min-height:40px;font-size:14px}
+@media(max-width:800px){
+ .admin-page .admin-dialog.procurement-invoice-pair-dialog{inset:8px;width:auto;max-height:calc(100dvh - 16px);transform:none}
+ .admin-page .procurement-invoice-pair-dialog>header,.admin-page .procurement-invoice-pair-body,.admin-page .procurement-invoice-pair-dialog>.dialog-actions{padding:14px 16px}
+ .admin-page .procurement-invoice-pair-dialog>header h2{font-size:21px}
+}
+
+@media(max-width:800px){
+ .admin-page .procurement-invoice-pair-body .procurement-invoice-candidates{display:block;min-width:0;width:100%}
+ .admin-page .procurement-invoice-candidates thead{display:none}
+ .admin-page .procurement-invoice-candidates tbody{display:block}
+ .admin-page .procurement-invoice-candidates tr{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #d9d2c6;padding:10px 0}
+ .admin-page .procurement-invoice-candidates td{display:block;min-width:0;border:0;padding:8px;overflow-wrap:anywhere}
+ .admin-page .procurement-invoice-candidates td:nth-child(2){grid-column:1/-1;grid-row:1}
+ .admin-page .procurement-invoice-candidates td:last-child{grid-column:1/-1}
+ .admin-page .procurement-invoice-candidates td[data-label]::before{content:attr(data-label);display:block;color:#746f65;font-size:12px;margin-bottom:5px}
+}

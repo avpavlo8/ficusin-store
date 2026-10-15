@@ -196,46 +196,47 @@ type OrderValidation struct {
 }
 
 type OrderLine struct {
-	ID                           int64      `json:"id"`
-	CanonicalVariantID           *int64     `json:"canonicalVariantId,omitempty"`
-	SabyID                       string     `json:"sabyId"`
-	SabyCode                     string     `json:"sabyCode"`
-	SabyName                     string     `json:"sabyName"`
-	RawName                      string     `json:"rawName"`
-	SupplierArticle              string     `json:"supplierArticle"`
-	SupplierCategory             string     `json:"supplierCategory"`
-	PackageCount                 *int       `json:"packageCount,omitempty"`
-	UnitsPerPackage              *int       `json:"unitsPerPackage,omitempty"`
-	InvoiceRawName               string     `json:"invoiceRawName"`
-	InvoiceSupplierArticle       string     `json:"invoiceSupplierArticle"`
-	ReconciliationStatus         string     `json:"reconciliationStatus"`
-	InvoiceExcluded              bool       `json:"invoiceExcluded"`
-	InvoiceExclusionReason       string     `json:"invoiceExclusionReason"`
-	Quantity                     int        `json:"quantity"`
-	OrderedQuantity              int        `json:"orderedQuantity"`
-	InvoicedQuantity             *int       `json:"invoicedQuantity,omitempty"`
-	UnitPrice                    float64    `json:"unitPrice"`
-	ExpectedUnitPrice            *float64   `json:"expectedUnitPrice,omitempty"`
-	LoadUnit                     string     `json:"loadUnit"`
-	PotDiameterCM                *float64   `json:"potDiameterCm,omitempty"`
-	HeightCM                     *float64   `json:"heightCm,omitempty"`
-	MatchStatus                  string     `json:"matchStatus"`
-	PurchaseUnitRUB              *float64   `json:"purchaseUnitRub,omitempty"`
-	TrolleyDeliveryUnitRUB       *float64   `json:"trolleyDeliveryUnitRub,omitempty"`
-	RyazanDeliveryUnitRUB        *float64   `json:"ryazanDeliveryUnitRub,omitempty"`
-	UnitCostRUB                  *float64   `json:"unitCostRub,omitempty"`
-	CurrentUnitCostRUB           *float64   `json:"currentUnitCostRub,omitempty"`
-	CurrentUnitCostKind          string     `json:"currentUnitCostKind"`
-	CurrentUnitCostEffectiveAt   *time.Time `json:"currentUnitCostEffectiveAt,omitempty"`
-	CurrentRetailRUB             float64    `json:"currentRetailRub"`
-	ProposedRetailRUB            *int64     `json:"proposedRetailRub,omitempty"`
-	ProposedMarketplaceRUB       *int64     `json:"proposedMarketplaceRub,omitempty"`
-	ProposedMarketplaceStrikeRUB *int64     `json:"proposedMarketplaceStrikeRub,omitempty"`
-	PriceChangeNeeded            bool       `json:"priceChangeNeeded"`
-	CustomerRequest              bool       `json:"customerRequest"`
-	ComparisonMismatch           bool       `json:"comparisonMismatch"`
-	ComparisonAccepted           bool       `json:"comparisonAccepted"`
-	ComparisonNote               string     `json:"comparisonNote"`
+	InvoiceComponents            json.RawMessage `json:"invoiceComponents,omitempty"`
+	ID                           int64           `json:"id"`
+	CanonicalVariantID           *int64          `json:"canonicalVariantId,omitempty"`
+	SabyID                       string          `json:"sabyId"`
+	SabyCode                     string          `json:"sabyCode"`
+	SabyName                     string          `json:"sabyName"`
+	RawName                      string          `json:"rawName"`
+	SupplierArticle              string          `json:"supplierArticle"`
+	SupplierCategory             string          `json:"supplierCategory"`
+	PackageCount                 *int            `json:"packageCount,omitempty"`
+	UnitsPerPackage              *int            `json:"unitsPerPackage,omitempty"`
+	InvoiceRawName               string          `json:"invoiceRawName"`
+	InvoiceSupplierArticle       string          `json:"invoiceSupplierArticle"`
+	ReconciliationStatus         string          `json:"reconciliationStatus"`
+	InvoiceExcluded              bool            `json:"invoiceExcluded"`
+	InvoiceExclusionReason       string          `json:"invoiceExclusionReason"`
+	Quantity                     int             `json:"quantity"`
+	OrderedQuantity              int             `json:"orderedQuantity"`
+	InvoicedQuantity             *int            `json:"invoicedQuantity,omitempty"`
+	UnitPrice                    float64         `json:"unitPrice"`
+	ExpectedUnitPrice            *float64        `json:"expectedUnitPrice,omitempty"`
+	LoadUnit                     string          `json:"loadUnit"`
+	PotDiameterCM                *float64        `json:"potDiameterCm,omitempty"`
+	HeightCM                     *float64        `json:"heightCm,omitempty"`
+	MatchStatus                  string          `json:"matchStatus"`
+	PurchaseUnitRUB              *float64        `json:"purchaseUnitRub,omitempty"`
+	TrolleyDeliveryUnitRUB       *float64        `json:"trolleyDeliveryUnitRub,omitempty"`
+	RyazanDeliveryUnitRUB        *float64        `json:"ryazanDeliveryUnitRub,omitempty"`
+	UnitCostRUB                  *float64        `json:"unitCostRub,omitempty"`
+	CurrentUnitCostRUB           *float64        `json:"currentUnitCostRub,omitempty"`
+	CurrentUnitCostKind          string          `json:"currentUnitCostKind"`
+	CurrentUnitCostEffectiveAt   *time.Time      `json:"currentUnitCostEffectiveAt,omitempty"`
+	CurrentRetailRUB             float64         `json:"currentRetailRub"`
+	ProposedRetailRUB            *int64          `json:"proposedRetailRub,omitempty"`
+	ProposedMarketplaceRUB       *int64          `json:"proposedMarketplaceRub,omitempty"`
+	ProposedMarketplaceStrikeRUB *int64          `json:"proposedMarketplaceStrikeRub,omitempty"`
+	PriceChangeNeeded            bool            `json:"priceChangeNeeded"`
+	CustomerRequest              bool            `json:"customerRequest"`
+	ComparisonMismatch           bool            `json:"comparisonMismatch"`
+	ComparisonAccepted           bool            `json:"comparisonAccepted"`
+	ComparisonNote               string          `json:"comparisonNote"`
 }
 
 type CalculationInput struct {
@@ -321,6 +322,7 @@ type OrderLineUpdate struct {
 	InvoiceExcluded   *bool    `json:"invoiceExcluded"`
 	ExclusionReason   *string  `json:"exclusionReason"`
 	InvoiceLineID     *int64   `json:"invoiceLineId"`
+	InvoiceLineIDs    []int64  `json:"invoiceLineIds"`
 }
 
 // AvailabilityUpdate — наличие у поставщика. Ключ — пара поставщик+товар,

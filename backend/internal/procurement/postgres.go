@@ -568,7 +568,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			COALESCE(l.baseline_site_price_minor, pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			l.proposed_retail_rub, l.proposed_marketplace_rub,
 			l.proposed_marketplace_strike_rub, l.customer_request,
-			l.comparison_accepted, l.comparison_note
+			l.comparison_accepted, l.comparison_note, l.invoice_components
 		FROM procurement_order_lines l
 		LEFT JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 		LEFT JOIN product_variants pv ON pv.id=l.canonical_variant_id
@@ -593,7 +593,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
 			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
@@ -1087,9 +1087,9 @@ func (store *PostgresStore) ImportDocument(
 	if previousDocumentID > 0 {
 		if _, err := tx.Exec(ctx, `INSERT INTO procurement_invoice_line_history(
 			procurement_order_line_id,procurement_document_id,invoice_raw_name,invoice_supplier_article,
-			invoiced_qty,unit_price,line_total,reconciliation_status,invoice_excluded,invoice_exclusion_reason)
+			invoiced_qty,unit_price,line_total,reconciliation_status,invoice_excluded,invoice_exclusion_reason,invoice_components)
 			SELECT id,procurement_document_id,invoice_raw_name,invoice_supplier_article,invoiced_qty,
-				unit_price,line_total,reconciliation_status,invoice_excluded,invoice_exclusion_reason
+				unit_price,line_total,reconciliation_status,invoice_excluded,invoice_exclusion_reason,invoice_components
 			FROM procurement_order_lines WHERE procurement_order_id=$1 AND reconciliation_status<>'superseded'`, orderID); err != nil {
 			return ImportResult{}, fmt.Errorf("archive procurement invoice lines: %w", err)
 		}
@@ -1098,7 +1098,7 @@ func (store *PostgresStore) ImportDocument(
 			return ImportResult{}, fmt.Errorf("supersede procurement document: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
-			procurement_document_id=NULL,invoiced_qty=NULL,unit_price=NULL,line_total=NULL,
+			procurement_document_id=NULL,invoiced_qty=NULL,unit_price=NULL,line_total=NULL,invoice_components='[]'::JSONB,
 			invoice_raw_name='',invoice_supplier_article='',invoice_excluded=FALSE,
 			invoice_exclusion_reason='',invoice_excluded_at=NULL,invoice_excluded_by=NULL,
 			comparison_accepted=FALSE,comparison_note='',reconciliation_status='planned',updated_at=CURRENT_TIMESTAMP
@@ -1172,6 +1172,9 @@ func (store *PostgresStore) ImportDocument(
 		WHERE procurement_order_id=$1 AND ordered_qty>0 AND procurement_document_id IS NULL
 			AND reconciliation_status='planned'`, orderID); err != nil {
 		return ImportResult{}, fmt.Errorf("mark missing procurement plan lines: %w", err)
+	}
+	if err := reconcileConfirmedInvoiceGroups(ctx, tx, actor.CustomerID, orderID); err != nil {
+		return ImportResult{}, err
 	}
 	// A reconciled invoice sets the current supplier price. Planned prices stay
 	// on the order lines. An invoice with broken arithmetic awaits review.

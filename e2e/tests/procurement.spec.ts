@@ -1,7 +1,32 @@
 import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string } = {}) {
+test("@desktop @phone manager can inspect incoming plants without editing controls",async({page})=>{
+ await mockProcurement(page,{manager:true,invoicePicker:true});
+ await page.goto('/admin?section=procurement&order=4');
+ await expect(page.getByRole('heading',{name:'TEST-100',exact:true})).toBeVisible();
+ await page.getByRole('textbox',{name:'Поиск растения в закупке'}).fill('Нижняя строка');
+ await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60');
+ await expect(page.getByRole('button',{name:'Рассчитать',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Отменить закупку',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Закрыть закупку',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Собрать заказ',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Загрузить инвойс',exact:true})).toHaveCount(0);
+});
+
+test("@desktop @phone several invoice rows fulfil one planned quantity",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true});
+ await page.goto('/admin?section=procurement&order=4');
+ await page.getByRole('button',{name:'Выбрать из инвойса',exact:true}).click();
+ const picker=page.getByRole('dialog',{name:'Выбрать строки инвойса',exact:true});
+ for(const id of [2000,2001,2002])await picker.getByRole('checkbox',{name:new RegExp(`Добавить строку ${id}:`)}).check();
+ await expect(picker.getByText('Выбрано: 3 · +60 шт. · итог 60 / 60 шт.',{exact:true})).toBeVisible();
+ await picker.getByRole('button',{name:'Сопоставить выбранные',exact:true}).click();
+ await expect(picker).toBeHidden();
+ await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
+});
+
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; manager?: boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -30,13 +55,23 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
     validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
-    lines: [], batches: [],
+    lines: [] as Array<Record<string, unknown>>, batches: [],
   };
+  if (options.invoicePicker) {
+    procurement.orders[0].status = "review";
+    const baseLine = { supplierCategory: "Растения", orderedQuantity: 1, invoicedQuantity: 1, expectedUnitPrice: 4.85, unitPrice: 4.85, potDiameterCm: 14, heightCm: 40, packageCount: 1, unitsPerPackage: 1, loadUnit: "shelf", comparisonAccepted: false, currentRetailRub: 0, matchStatus: "confirmed" };
+    orderDetail.lines = [
+      ...Array.from({ length: 60 }, (_, index) => ({ ...baseLine, id: index + 1, rawName: `Товар ${index + 1}`, sabyName: `Товар ${index + 1}`, sabyId: `SABY-${index + 1}`, invoiceRawName: `Invoice ${index + 1}`, reconciliationStatus: "matched" })),
+      { ...baseLine, id: 1001, rawName: "Нижняя строка без инвойса", sabyName: "Нижняя строка без инвойса", sabyId: "SABY-MISSING", orderedQuantity:60, invoicedQuantity: null, reconciliationStatus: "missing" },
+      ...Array.from({ length: 30 }, (_, index) => ({ ...baseLine, id: index + 2000, rawName: `Добавлено ${index + 1}`, invoiceRawName: `Added invoice ${index + 1}`, sabyId: "", orderedQuantity: 0, invoicedQuantity: index<3?[10,20,30][index]:1, reconciliationStatus: "added" })),
+    ];
+  }
   const dashboard = {
       user: { fullName: "Тестовый владелец" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit", "integrations.edit", "catalog.delete"],
       dashboard: { products: 331, variants: 331, orders: 0, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
   };
+  if(options.manager){dashboard.role="manager";dashboard.permissions=["dashboard.read","procurement.read"];procurement.orders[0].status="review";}
   // Install the API stub inside the page before React starts. WebKit handles
   // route interception differently after state transitions, while fetch is
   // identical across the browsers this layout suite covers.
@@ -94,6 +129,16 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ integration: { channel: "wb", configured: true, lastCheckedAt: "2026-08-13T12:00:00Z", lastSuccessAt: "2026-08-13T12:00:00Z", lastError: "" } });
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
+      if (path === "/api/v1/admin/procurement/order-lines/1001" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        const planned = orderDetail.lines.find(line => line.id === 1001)!;
+        const invoices = orderDetail.lines.filter(line => (body.invoiceLineIds || [body.invoiceLineId]).includes(line.id));
+        const parts=invoices.map(line=>({rawName:line.invoiceRawName,quantity:line.invoicedQuantity,unitPrice:line.unitPrice,lineTotal:Number(line.invoicedQuantity)*Number(line.unitPrice),sourcePage:1,sourceLine:line.id}));
+        Object.assign(planned, { invoiceRawName: invoices[0].invoiceRawName, invoicedQuantity: invoices.reduce((sum,line)=>sum+Number(line.invoicedQuantity),0), invoiceComponents:parts, reconciliationStatus: "matched" });
+        for(const invoice of invoices)invoice.reconciliationStatus = "superseded";
+        orderDetail.lines=orderDetail.lines.filter(line=>line.reconciliationStatus!=="superseded");
+        return json(orderDetail);
+      }
       if (path === "/api/v1/admin/procurement/plans/preview" && init?.method === "POST") {
         return json({ lines: [{ purchase: 636, cost: 700, retail: 1490 }] });
       }
@@ -581,4 +626,42 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await expect(dialog.locator("tbody tr")).toHaveCount(2);
   await expect(dialog.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
   await expect(dialog.getByText("2 позиции", { exact: false })).toBeVisible();
+});
+
+test("@desktop @phone invoice picker stays in viewport from a scrolled row and restores focus", async ({ page }) => {
+  await mockProcurement(page, { invoicePicker: true });
+  await page.goto("/admin?section=procurement&view=orders&order=4");
+  const order = page.getByRole("dialog", { name: "TEST-100", exact: true });
+  const trigger = order.getByRole("button", { name: "Выбрать из инвойса", exact: true });
+  await trigger.scrollIntoViewIfNeeded();
+  const table = order.locator(".procurement-order-body > .admin-table-wrap");
+  const scroll = await table.evaluate(element => element.scrollTop);
+  expect(scroll).toBeGreaterThan(300);
+  await trigger.click();
+  const picker = page.getByRole("dialog", { name: "Выбрать строки инвойса", exact: true });
+  await expect(picker).toBeVisible();
+  await expect(picker).toBeFocused();
+  const bounds = await picker.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+  await expect(picker.getByRole("heading", { name: "Выбрать строки инвойса" })).toBeInViewport();
+  await expect(picker.getByRole("button", { name: "Отмена", exact: true })).toBeInViewport();
+  await picker.getByRole("button", { name: "Отмена", exact: true }).press("Tab");
+  await expect(picker.getByRole("button", { name: "Закрыть выбор строки инвойса", exact: true })).toBeFocused();
+  await picker.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(order).toBeVisible();
+  await expect(trigger).toBeFocused();
+  expect(await table.evaluate(element => element.scrollTop)).toBeCloseTo(scroll, 0);
+  await order.getByRole("button", { name: "Сменить строку инвойса", exact: true }).last().click();
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole("heading")).toBeInViewport();
+  await picker.getByRole("button", { name: "Отмена", exact: true }).click();
+  await trigger.click();
+  await picker.getByRole("button", { name: "Сопоставить", exact: true }).first().click();
+  await expect(picker).toBeHidden();
+  await expect(order.getByRole("row").filter({ hasText: "Нижняя строка без инвойса" })).toContainText("Added invoice 1");
 });

@@ -441,8 +441,20 @@ func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID in
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
-	if lineID <= 0 || (input.ExpectedUnitPrice == nil && input.PotDiameterCM == nil && input.HeightCM == nil && input.LoadUnit == nil && input.AcceptComparison == nil && input.ComparisonNote == nil && input.InvoiceExcluded == nil && input.InvoiceLineID == nil) {
+	if lineID <= 0 || (input.ExpectedUnitPrice == nil && input.PotDiameterCM == nil && input.HeightCM == nil && input.LoadUnit == nil && input.AcceptComparison == nil && input.ComparisonNote == nil && input.InvoiceExcluded == nil && input.InvoiceLineID == nil && input.InvoiceLineIDs == nil) {
 		return OrderDetail{}, ErrInvalidInput
+	}
+	if input.InvoiceLineIDs != nil {
+		if len(input.InvoiceLineIDs) == 0 || len(input.InvoiceLineIDs) > 500 || input.InvoiceLineID != nil || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.AcceptComparison != nil || input.ComparisonNote != nil || input.InvoiceExcluded != nil {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		seen := map[int64]bool{}
+		for _, id := range input.InvoiceLineIDs {
+			if id <= 0 || seen[id] {
+				return OrderDetail{}, ErrInvalidInput
+			}
+			seen[id] = true
+		}
 	}
 	if input.InvoiceLineID != nil {
 		if *input.InvoiceLineID <= 0 || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.AcceptComparison != nil || input.ComparisonNote != nil || input.InvoiceExcluded != nil {

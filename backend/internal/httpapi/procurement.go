@@ -255,7 +255,7 @@ func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, 
 }
 
 func (handlers procurementHandlers) receivingPDF(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
+	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit); !ok {
 		return
 	}
 	orderID, ok := pathID(response, request)

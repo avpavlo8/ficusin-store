@@ -24,7 +24,7 @@ func (handlers procurementHandlers) draftService(response http.ResponseWriter) (
 }
 
 func (handlers procurementHandlers) loadPlanDraft(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead)
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
 	if !ok {
 		return
 	}

@@ -23,7 +23,8 @@ func (s *crmProductRepository) UpdateProduct(_ context.Context, _ admin.Actor, _
 func TestCRMManagerDeniedRoutes(t *testing.T) {
 	cases := []struct{ method, path, body string }{
 		{"GET", "/api/v1/admin/analytics", ""}, {"GET", "/api/v1/admin/settings", ""},
-		{"GET", "/api/v1/admin/procurement", ""}, {"GET", "/api/v1/admin/procurement/orders/18", ""},
+		{"PATCH", "/api/v1/admin/procurement/order-lines/18", `{"invoiceLineIds":[1,2]}`},
+		{"POST", "/api/v1/admin/procurement/orders", "{}"},
 		{"GET", "/api/v1/admin/procurement/orders/18/saby-prices.xlsx", ""},
 		{"GET", "/api/v1/admin/procurement/orders/18/receiving.pdf", ""},
 		{"POST", "/api/v1/admin/procurement/batches/1/retry", "{}"},
@@ -93,7 +94,7 @@ func TestCRMContentEditPreservesGallery(t *testing.T) {
 func TestCRMManagerPermissionResponse(t *testing.T) {
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(&adminRepositoryStub{}, admin.RoleManager, "")).ServeHTTP(response, adminRequest("GET", "/api/v1/admin/dashboard", ""))
-	for _, forbidden := range []string{"analytics.read", "procurement.read", "procurement.edit", "products.sync", "products.manage", "catalog.delete"} {
+	for _, forbidden := range []string{"analytics.read", "procurement.edit", "products.sync", "products.manage", "catalog.delete"} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Fatalf("leaked permission %s", forbidden)
 		}
