@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
+const ProcurementReadOnly = lazy(() => import("./ProcurementReadOnly"));
 const Procurement = lazy(() => import("./AdminProcurement").then(module => ({default:module.Procurement})));
 import { Dashboard } from "./AdminDashboard";
 import { WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
@@ -73,7 +74,7 @@ export default function AdminPage() {
           {section === "analytics" && <Analytics onError={setError} />}
 		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
 		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} /></Suspense>}
-          {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}><Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /></Suspense>}
+          {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}>{can("procurement.edit") ? <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /> : <ProcurementReadOnly onError={setError} />}</Suspense>}
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "collections" && <Collections owner={data.role === "owner"} onError={setError} />}

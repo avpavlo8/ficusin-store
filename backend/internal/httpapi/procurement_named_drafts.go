@@ -26,7 +26,7 @@ func (handlers procurementHandlers) namedDraftService(response http.ResponseWrit
 }
 
 func (handlers procurementHandlers) listNamedPlanDrafts(w http.ResponseWriter, r *http.Request) {
-	_, actor, ok := handlers.admin.authorize(w, r, admin.PermissionProcurementRead)
+	_, actor, ok := handlers.admin.authorize(w, r, admin.PermissionProcurementEdit)
 	if !ok {
 		return
 	}
@@ -43,7 +43,7 @@ func (handlers procurementHandlers) listNamedPlanDrafts(w http.ResponseWriter, r
 }
 
 func (handlers procurementHandlers) loadNamedPlanDraft(w http.ResponseWriter, r *http.Request) {
-	_, actor, ok := handlers.admin.authorize(w, r, admin.PermissionProcurementRead)
+	_, actor, ok := handlers.admin.authorize(w, r, admin.PermissionProcurementEdit)
 	if !ok {
 		return
 	}

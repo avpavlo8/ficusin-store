@@ -169,6 +169,7 @@ export type ProcurementOrderLine = {
   id: number; sabyId: string; sabyCode: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
   supplierCategory: string; packageCount?: number; unitsPerPackage?: number;
   invoiceRawName: string; invoiceSupplierArticle: string; reconciliationStatus: string;
+  invoiceComponents?: Array<{rawName:string; quantity:number; unitPrice:number; lineTotal:number; sourcePage?:number; sourceLine?:number}>;
   invoiceExcluded: boolean; invoiceExclusionReason: string;
   unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;

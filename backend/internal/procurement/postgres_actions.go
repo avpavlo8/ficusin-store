@@ -1471,7 +1471,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 			o.document_date, o.source_kind, o.currency, o.status,
 			COUNT(l.id)::INTEGER,
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
-			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0)), 0)::DOUBLE PRECISION,
+			COALESCE(SUM(COALESCE(l.line_total, COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0))), 0)::DOUBLE PRECISION,
 			COUNT(l.id) FILTER (WHERE l.match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
 			o.created_at,o.title,
 (SELECT COUNT(*)::INTEGER FROM procurement_order_lines p WHERE p.procurement_order_id=o.id AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded' AND p.reconciliation_status IN ('added','changed','missing') AND NOT p.comparison_accepted),

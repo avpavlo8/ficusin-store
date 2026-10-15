@@ -21,6 +21,8 @@ func TestRolePermissions(t *testing.T) {
 		{name: "manager cannot delete returns", role: RoleManager, permission: PermissionReturnsDelete, want: false},
 		{name: "administrator cannot delete", role: RoleAdministrator, permission: PermissionDelete, want: false},
 		{name: "manager can edit orders", role: RoleManager, permission: PermissionOrdersEdit, want: true},
+		{name: "manager can view procurement", role: RoleManager, permission: PermissionProcurementRead, want: true},
+		{name: "manager cannot edit procurement", role: RoleManager, permission: PermissionProcurementEdit, want: false},
 		{name: "manager can edit products", role: RoleManager, permission: PermissionProductsEdit, want: true},
 		{name: "manager cannot sync products", role: RoleManager, permission: PermissionProductsSync, want: false},
 		{name: "manager cannot edit customers", role: RoleManager, permission: PermissionCustomersEdit, want: false},

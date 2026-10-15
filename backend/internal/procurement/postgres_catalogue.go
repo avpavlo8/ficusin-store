@@ -8,6 +8,7 @@ package procurement
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -44,7 +45,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 			o.document_date, o.source_kind, o.currency, o.status,
 			COUNT(l.id)::INTEGER,
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
-			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0)), 0)::DOUBLE PRECISION,
+			COALESCE(SUM(COALESCE(l.line_total, COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0))), 0)::DOUBLE PRECISION,
 			COUNT(l.id) FILTER (WHERE l.match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
 			o.created_at, o.title,
             (SELECT COUNT(*)::INTEGER FROM procurement_order_lines p WHERE p.procurement_order_id=o.id AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded' AND ((p.reconciliation_status='added' AND NOT p.comparison_accepted) OR (p.reconciliation_status IN ('changed','missing') AND NOT p.comparison_accepted))),
@@ -830,7 +831,27 @@ func (store *PostgresStore) ResolveAlias(
 		if err != nil {
 			return AliasReview{}, fmt.Errorf("reconcile procurement lines after late alias match: %w", err)
 		}
+		affected, err := tx.Query(ctx, `SELECT DISTINCT l.procurement_order_id FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE l.supplier_alias_id=$1 AND o.status NOT IN ('received','cancelled')`, aliasID)
+		if err != nil {
+			return AliasReview{}, err
+		}
+		for affected.Next() {
+			var id int64
+			if err := affected.Scan(&id); err != nil {
+				affected.Close()
+				return AliasReview{}, err
+			}
+			orderIDs = append(orderIDs, id)
+		}
+		err = affected.Err()
+		affected.Close()
+		if err != nil {
+			return AliasReview{}, err
+		}
 		for _, orderID := range orderIDs {
+			if err := reconcileConfirmedInvoiceGroups(ctx, tx, actor.CustomerID, orderID); err != nil {
+				return AliasReview{}, err
+			}
 			if err := releaseOrderAllocations(ctx, tx, orderID, "late_alias_reconcile"); err != nil {
 				return AliasReview{}, fmt.Errorf("release allocations after late alias match: %w", err)
 			}
@@ -1037,6 +1058,15 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 		return fmt.Errorf("lock manual procurement reconciliation pair: %w", err)
 	}
 	if plannedSaby != "" {
+		var planAliasID int64
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(supplier_alias_id,0) FROM procurement_order_lines WHERE id=$1`, plannedID).Scan(&planAliasID); err != nil {
+			return err
+		}
+		if planAliasID > 0 {
+			if err := remapProcurementAlias(ctx, tx, actorID, planAliasID, plannedSaby, plannedCanonical); err != nil {
+				return err
+			}
+		}
 		if err := remapProcurementAlias(ctx, tx, actorID, aliasID, plannedSaby, plannedCanonical); err != nil {
 			return err
 		}
@@ -1066,6 +1096,8 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 }
 
 type procurementInvoiceAssignment struct {
+	components json.RawMessage
+	loadUnit   string
 	aliasID    int64
 	documentID int64
 	rawName    string
@@ -1093,7 +1125,7 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 			(SELECT variant_id FROM canonical_product_directory WHERE active AND saby_id=line.saby_id ORDER BY variant_id LIMIT 1),0),
 			line.supplier_alias_id,line.procurement_document_id,line.invoice_raw_name,line.invoice_supplier_article,
 			COALESCE(line.invoiced_qty,0),COALESCE(line.unit_price,0)::DOUBLE PRECISION,COALESCE(line.line_total,0)::DOUBLE PRECISION,
-			COALESCE(line.source_page,0),line.source_line
+			COALESCE(line.source_page,0),line.source_line,line.invoice_components,line.load_unit
 		FROM procurement_order_lines line
 		WHERE line.procurement_order_id=$1 AND line.id IN($2,$3)
 			AND line.ordered_qty>0 AND line.procurement_document_id IS NOT NULL
@@ -1110,7 +1142,7 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 		var plan procurementPlanIdentity
 		if err := rows.Scan(&plan.id, &plan.sabyID, &plan.canonical, &plan.invoice.aliasID, &plan.invoice.documentID,
 			&plan.invoice.rawName, &plan.invoice.article, &plan.invoice.quantity, &plan.invoice.unitPrice,
-			&plan.invoice.lineTotal, &plan.invoice.sourcePage, &plan.invoice.sourceLine); err != nil {
+			&plan.invoice.lineTotal, &plan.invoice.sourcePage, &plan.invoice.sourceLine, &plan.invoice.components, &plan.invoice.loadUnit); err != nil {
 			return fmt.Errorf("scan invoice assignment for swap: %w", err)
 		}
 		plans[plan.id] = plan
@@ -1126,12 +1158,42 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 	if first.invoice.aliasID == second.invoice.aliasID && first.sabyID != second.sabyID {
 		return &UserFacingError{Message: "У этих строк один ключ поставщика. Сначала уточните размеры, чтобы разделить варианты товара"}
 	}
-	if err := remapProcurementAlias(ctx, tx, actorID, second.invoice.aliasID, first.sabyID, first.canonical); err != nil {
-		return err
+	aliasPlans := map[int64]procurementPlanIdentity{}
+	for _, pair := range []struct {
+		invoice procurementInvoiceAssignment
+		plan    procurementPlanIdentity
+	}{{second.invoice, first}, {first.invoice, second}} {
+		var parts []struct {
+			AliasID int64 `json:"aliasId"`
+		}
+		if err := json.Unmarshal(pair.invoice.components, &parts); err != nil {
+			return err
+		}
+		parts = append(parts, struct {
+			AliasID int64 `json:"aliasId"`
+		}{pair.invoice.aliasID})
+		for _, part := range parts {
+			if part.AliasID <= 0 {
+				continue
+			}
+			if previous, ok := aliasPlans[part.AliasID]; ok && previous.sabyID != pair.plan.sabyID {
+				return &UserFacingError{Message: "Один ключ поставщика встретился у разных товаров. Сначала уточните размеры."}
+			}
+			aliasPlans[part.AliasID] = pair.plan
+		}
 	}
-	if err := remapProcurementAlias(ctx, tx, actorID, first.invoice.aliasID, second.sabyID, second.canonical); err != nil {
-		return err
+	aliasIDs := make([]int64, 0, len(aliasPlans))
+	for id := range aliasPlans {
+		aliasIDs = append(aliasIDs, id)
 	}
+	sort.Slice(aliasIDs, func(i, j int) bool { return aliasIDs[i] < aliasIDs[j] })
+	for _, id := range aliasIDs {
+		plan := aliasPlans[id]
+		if err := remapProcurementAlias(ctx, tx, actorID, id, plan.sabyID, plan.canonical); err != nil {
+			return err
+		}
+	}
+
 	// Free one unique (document, source_line) slot, then rotate the two invoice
 	// assignments. Planned Saby cards, planned prices, dimensions and packaging
 	// remain on their original rows.
@@ -1148,6 +1210,9 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 }
 
 func remapProcurementAlias(ctx context.Context, tx pgx.Tx, actorID, aliasID int64, sabyID string, canonical int64) error {
+	if err := propagateProcurementAlias(ctx, tx, aliasID, sabyID, canonical); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `UPDATE procurement_supplier_aliases SET
 		matched_saby_id=$2,canonical_variant_id=NULLIF($3,0),match_status='confirmed',confidence=1,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1`, aliasID, sabyID, canonical); err != nil {
@@ -1170,14 +1235,15 @@ func remapProcurementAlias(ctx context.Context, tx pgx.Tx, actorID, aliasID int6
 func applyProcurementInvoiceAssignment(ctx context.Context, tx pgx.Tx, lineID int64, plan procurementPlanIdentity, invoice procurementInvoiceAssignment) error {
 	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
 		procurement_document_id=$2,supplier_alias_id=$3,invoice_raw_name=$4,invoice_supplier_article=$5,
-		invoiced_qty=$6,unit_price=$7,line_total=$8,source_page=NULLIF($9,0),source_line=$10,
+		invoiced_qty=$6,unit_price=$7,line_total=$8,source_page=NULLIF($9,0),source_line=$10,invoice_components=$12::JSONB,load_unit=$13,saby_id=$14,
 		match_status='confirmed',canonical_variant_id=NULLIF($11,0),comparison_accepted=FALSE,comparison_note='',
 		reconciliation_status=CASE WHEN ordered_qty IS DISTINCT FROM $6::INTEGER
-			OR expected_unit_price IS NULL OR ABS(expected_unit_price-$7::NUMERIC)>.005 THEN 'changed' ELSE 'matched' END,
+			OR expected_unit_price IS NULL OR ABS(expected_unit_price-$7::NUMERIC)>.005
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements($12::JSONB) v WHERE ABS(expected_unit_price-(v->>'unitPrice')::NUMERIC)>.005) THEN 'changed' ELSE 'matched' END,
 		purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
 		proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1`, lineID, invoice.documentID, invoice.aliasID, invoice.rawName, invoice.article,
-		invoice.quantity, invoice.unitPrice, invoice.lineTotal, invoice.sourcePage, invoice.sourceLine, plan.canonical); err != nil {
+		invoice.quantity, invoice.unitPrice, invoice.lineTotal, invoice.sourcePage, invoice.sourceLine, plan.canonical, string(invoice.components), invoice.loadUnit, plan.sabyID); err != nil {
 		return fmt.Errorf("apply swapped invoice assignment: %w", err)
 	}
 	return nil
@@ -1205,8 +1271,28 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	if orderStatus == "ordered" || (orderStatus != "draft" && input.ExpectedUnitPrice != nil) {
 		return OrderDetail{}, ErrInvalidInput
 	}
-	if input.InvoiceLineID != nil {
+	if input.InvoiceLineIDs != nil || input.InvoiceLineID != nil {
+		var immutable bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_action_batches b WHERE b.procurement_order_id=$1
+        AND (b.status='processing' OR EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.channel='saby_receipt' AND i.status='completed')))`, orderID).Scan(&immutable); err != nil {
+			return OrderDetail{}, err
+		}
+		if immutable {
+			return OrderDetail{}, &UserFacingError{Message: "Поступление уже отправляется или создано. Сначала сверьте фактический документ СБИС."}
+		}
+	}
+	if input.InvoiceLineIDs != nil {
+		if err := appendInvoiceLinesToPlan(ctx, tx, actor.CustomerID, orderID, lineID, input.InvoiceLineIDs); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
+			return OrderDetail{}, err
+		}
+	} else if input.InvoiceLineID != nil {
 		if err := pairInvoiceLineWithPlan(ctx, tx, actor.CustomerID, orderID, lineID, *input.InvoiceLineID); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := reconcileConfirmedInvoiceGroups(ctx, tx, actor.CustomerID, orderID); err != nil {
 			return OrderDetail{}, err
 		}
 		if err := rebalanceInvoiceAllocations(ctx, tx, orderID); err != nil {
