@@ -32,7 +32,7 @@ export function valueMissing(value: unknown) {
 
 export function readinessFor(product: Product, categories: Category[], schema: CategoryAttribute[]): ProductReadiness {
   const codes: ReadinessCode[] = [];
-  const missingStage1 = schema.filter((item) => item.scope === "product" && item.keyCharacteristic && valueMissing(product.attributes?.[item.code])).map((item) => item.name);
+  const missingStage1 = schema.filter((item) => item.scope === "product" && (item.keyCharacteristic || item.required) && valueMissing(product.attributes?.[item.code])).map((item) => item.name);
   const unknownEnums = schema.filter((item) => item.scope === "product" && (item.dataType === "enum" || item.dataType === "multi_enum")).filter((item) => {
     const raw = product.attributes?.[item.code];
     const values = Array.isArray(raw) ? raw.map(String) : valueMissing(raw) ? [] : [String(raw)];
@@ -43,7 +43,7 @@ export function readinessFor(product: Product, categories: Category[], schema: C
   if (!(product.description || "").trim()) codes.push("no_description");
   const root = rootCategory(categories, product.categoryId);
   if (!product.categoryId || !categories.some((item) => item.id === product.categoryId) || !root || !["plants","pots","soil","fertilizer","accessories"].includes(root.slug)) codes.push("invalid_category");
-  if (missingStage1.length || product.variantStage1Missing) codes.push("stage1_missing");
+  if (missingStage1.length || product.variantStage1Missing || product.variantTasks?.length) codes.push("stage1_missing");
   if (isPlantProduct(product, categories) && !product.latinName.trim()) codes.push("latin_name_missing");
   if (isPlantProduct(product, categories) && (!product.careInstructions.trim() || !product.passport?.lighting || !product.passport?.watering)) codes.push("care_missing");
   if (unknownEnums.length || product.unknownEnumValues) codes.push("unknown_enum");
