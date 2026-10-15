@@ -9,7 +9,7 @@ import (
 	"strconv"
 )
 
-// ReturnDocuments lists accepted immutable documents shared with the team.
+// ReturnDocuments lists accepted documents shared with the team.
 func (r *PostgresRepository) ReturnDocuments(ctx context.Context, actor Actor) ([]ReturnIntake, error) {
 	if !Can(actor.Role, PermissionReturnsRead) {
 		return nil, ErrForbidden
@@ -202,9 +202,15 @@ func (r *PostgresRepository) ReturnLabelItems(ctx context.Context, actor Actor, 
 	if err != nil {
 		return nil, err
 	}
-	for _, item := range items {
-		if item.Condition != "restoring" {
-			return nil, errors.New("этикетки доступны для растений на восстановлении")
+	for index := range items {
+		item := &items[index]
+		if item.Condition == "dead" {
+			return nil, errors.New("для списанных растений этикетки не печатаются")
+		}
+		// Saby owns barcode identities; website snapshots still own the price.
+		err = r.pool.QueryRow(ctx, `SELECT COALESCE((SELECT b.value FROM saby_nomenclature s CROSS JOIN LATERAL unnest(s.barcodes || ARRAY[s.barcode]) AS b(value) WHERE s.saby_id=d.saby_id AND b.value ~ '^[0-9]{13}$' ORDER BY b.value LIMIT 1),'') FROM canonical_product_directory d WHERE d.variant_id=$1`, item.VariantID).Scan(&item.Barcode)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return items, nil

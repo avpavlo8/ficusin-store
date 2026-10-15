@@ -10,6 +10,7 @@ import (
 )
 
 type returnIntakeRepository interface {
+	UpdateReturnIntake(context.Context, admin.Actor, string, admin.ReturnIntakeEdit) (*admin.ReturnIntake, error)
 	ReturnIntakeDraft(context.Context, admin.Actor) (*admin.ReturnIntake, error)
 	ReturnIntake(context.Context, admin.Actor, string) (*admin.ReturnIntake, error)
 	SaveReturnIntakeDraft(context.Context, admin.Actor, string, admin.ReturnIntakeSave) (*admin.ReturnIntake, error)
@@ -28,6 +29,10 @@ func (handlers adminHandlers) intakeRepository(response http.ResponseWriter, req
 	return repository, actor, ok
 }
 func intakeResponse(response http.ResponseWriter, intake *admin.ReturnIntake, err error) {
+	if errors.Is(err, admin.ErrForbidden) {
+		writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав"})
+		return
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Черновик не найден"})
 		return
@@ -85,5 +90,19 @@ func (handlers adminHandlers) acceptReturnIntake(response http.ResponseWriter, r
 		return
 	}
 	intake, err := repository.AcceptReturnIntake(request.Context(), actor, request.PathValue("intakeID"), input.Revision, receipt)
+	intakeResponse(response, intake, err)
+}
+
+func (handlers adminHandlers) updateReturnIntake(response http.ResponseWriter, request *http.Request) {
+	repository, actor, ok := handlers.intakeRepository(response, request, admin.PermissionReturnsEdit)
+	if !ok {
+		return
+	}
+	var input admin.ReturnIntakeEdit
+	if err := decodeJSON(request, &input); err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные возврата"})
+		return
+	}
+	intake, err := repository.UpdateReturnIntake(request.Context(), actor, request.PathValue("intakeID"), input)
 	intakeResponse(response, intake, err)
 }

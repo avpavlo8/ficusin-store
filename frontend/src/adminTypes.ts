@@ -23,7 +23,7 @@ export type AdminData = {
 };
 
 export type MarketplaceReturn = {
-  publicComment?: string; deletedAt?: string;
+  version?: string; publicComment?: string; deletedAt?: string;
   label?: string; price?: number; discountPercent?: number; discountedPrice?: number; article?: string; intakeId?: string;
   id: number; channel: string; channelComment?: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
   salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
@@ -35,7 +35,7 @@ export type MarketplaceReturn = {
 };
 
 export type ReturnProduct = { price?: number; variantId: number; name: string; sku: string; label: string };
-export type ReturnIntakeRow = { discountPercent?: number; key: string; variantId: number; name: string; sku: string; search: string; quantity: number; condition: "ready" | "restoring" | "dead"; comment: string };
+export type ReturnIntakeRow = { itemIds?: number[]; discountPercent?: number; key: string; variantId: number; name: string; sku: string; search: string; quantity: number; condition: "inspection" | "ready" | "restoring" | "dead"; comment: string };
 export type ReturnIntakeData = { channel: "ozon" | "wb" | "other"; channelComment: string; rows: ReturnIntakeRow[] };
 export type ReturnIntake = { documentNumber?: number; createdAt?: string; id: string; revision: number; data: ReturnIntakeData; status: "draft" | "saved"; receiptStatus: MarketplaceReturn["receiptStatus"]; receiptExternalUrl?: string; receiptError?: string; items: MarketplaceReturn[] };
 export type FinanceImport = { id:number; bank:string; accountNumber:string; fileName:string; status:"preview"|"confirmed"|"failed"; rowsTotal:number; rowsNew:number; rowsDuplicate:number; rowsReview:number; createdAt:string; openingBalance?:number; incomingTotal?:number; outgoingTotal?:number; closingBalance?:number; balanceValid?:boolean };

@@ -20,6 +20,8 @@ import (
 )
 
 type MarketplaceReturn struct {
+	Barcode            string          `json:"barcode,omitempty"`
+	Version            string          `json:"version"`
 	PublicComment      string          `json:"publicComment"`
 	DeletedAt          *time.Time      `json:"deletedAt,omitempty"`
 	Label              string          `json:"label"`
@@ -330,7 +332,7 @@ func (repository *PostgresRepository) MarketplaceReturn(ctx context.Context, id 
 func (repository *PostgresRepository) marketplaceReturn(ctx context.Context, id int64, archived bool) (MarketplaceReturn, error) {
 	item := MarketplaceReturn{PhotoIDs: []int64{}, History: []ReturnHistory{}}
 	var unitCost sql.NullFloat64
-	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,COALESCE(v.sku,''),r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url,r.channel_comment,COALESCE(v.label,''),COALESCE(r.retail_price_minor_snapshot,v.base_price_minor)::DOUBLE PRECISION/100,r.discount_percent,COALESCE(r.intake_id::TEXT,''),r.public_comment,r.deleted_at FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1 AND (r.deleted_at IS NULL OR $2)`, id, archived).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL, &item.ChannelComment, &item.Label, &item.Price, &item.DiscountPercent, &item.IntakeID, &item.PublicComment, &item.DeletedAt)
+	err := repository.pool.QueryRow(ctx, `SELECT r.id,r.channel,r.source_return_id,r.source_shipment_id,r.source_unit_index,r.sales_event_id,r.canonical_variant_id,p.name,COALESCE(v.sku,''),r.returned_at::TEXT,r.condition,r.comment,r.unit_cost_rub_snapshot::DOUBLE PRECISION,r.cost_outcome,r.financial_status,r.receipt_status,r.receipt_external_url,r.channel_comment,COALESCE(v.label,''),COALESCE(r.retail_price_minor_snapshot,v.base_price_minor)::DOUBLE PRECISION/100,r.discount_percent,COALESCE(r.intake_id::TEXT,''),r.public_comment,r.deleted_at,r.updated_at::TEXT FROM marketplace_returns r JOIN product_variants v ON v.id=r.canonical_variant_id JOIN products p ON p.id=v.product_id WHERE r.id=$1 AND (r.deleted_at IS NULL OR $2)`, id, archived).Scan(&item.ID, &item.Channel, &item.SourceReturnID, &item.SourceShipmentID, &item.SourceUnitIndex, &item.SalesEventID, &item.VariantID, &item.ProductName, &item.SKU, &item.ReturnedAt, &item.Condition, &item.Comment, &unitCost, &item.CostOutcome, &item.FinancialStatus, &item.ReceiptStatus, &item.ReceiptExternalURL, &item.ChannelComment, &item.Label, &item.Price, &item.DiscountPercent, &item.IntakeID, &item.PublicComment, &item.DeletedAt, &item.Version)
 	if err != nil {
 		return item, err
 	}

@@ -244,6 +244,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/returns/{id}/photos/{photoID}/restore", adminAPI.archiveReturnPhoto)
 	mux.HandleFunc("GET /api/v1/admin/returns/intake-draft", adminAPI.returnIntakeDraft)
 	mux.HandleFunc("GET /api/v1/admin/returns/intakes/{intakeID}", adminAPI.returnIntake)
+	mux.HandleFunc("PATCH /api/v1/admin/returns/intakes/{intakeID}", adminAPI.updateReturnIntake)
 	mux.HandleFunc("PUT /api/v1/admin/returns/intakes/{intakeID}", adminAPI.saveReturnIntakeDraft)
 	mux.HandleFunc("POST /api/v1/admin/returns/intakes/{intakeID}/save", adminAPI.acceptReturnIntake)
 	mux.HandleFunc("POST /api/v1/admin/returns/intakes/{intakeID}/receipt", adminAPI.acceptReturnIntake)

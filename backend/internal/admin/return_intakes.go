@@ -16,15 +16,16 @@ import (
 )
 
 type ReturnIntakeRow struct {
-	DiscountPercent int    `json:"discountPercent"`
-	Key             string `json:"key"`
-	VariantID       int64  `json:"variantId"`
-	Name            string `json:"name"`
-	SKU             string `json:"sku"`
-	Search          string `json:"search"`
-	Quantity        int    `json:"quantity"`
-	Condition       string `json:"condition"`
-	Comment         string `json:"comment"`
+	ItemIDs         []int64 `json:"itemIds,omitempty"`
+	DiscountPercent int     `json:"discountPercent"`
+	Key             string  `json:"key"`
+	VariantID       int64   `json:"variantId"`
+	Name            string  `json:"name"`
+	SKU             string  `json:"sku"`
+	Search          string  `json:"search"`
+	Quantity        int     `json:"quantity"`
+	Condition       string  `json:"condition"`
+	Comment         string  `json:"comment"`
 }
 type ReturnIntakeData struct {
 	Channel        string            `json:"channel"`
@@ -54,10 +55,13 @@ func validIntakeID(id string) bool {
 }
 
 func validateIntake(data ReturnIntakeData, complete bool) error {
+	return validateIntakeRows(data, complete, 100)
+}
+func validateIntakeRows(data ReturnIntakeData, complete bool, maxRows int) error {
 	if data.Channel != "ozon" && data.Channel != "wb" && data.Channel != "other" {
 		return errors.New("выберите канал возврата")
 	}
-	if len(data.Rows) > 100 || len(data.ChannelComment) > 4000 {
+	if len(data.Rows) > maxRows || len(data.ChannelComment) > 4000 {
 		return errors.New("слишком большой возврат")
 	}
 	if complete && len(data.Rows) == 0 {
