@@ -200,10 +200,12 @@ type OrderValidation struct {
 }
 
 type ReceivingAllocation struct {
-	SabyID   string `json:"sabyId"`
-	Name     string `json:"name"`
-	Code     string `json:"code"`
-	Quantity int    `json:"quantity"`
+	CurrentRetailRUB  float64 `json:"currentRetailRub"`
+	PriceChangeNeeded bool    `json:"priceChangeNeeded"`
+	SabyID            string  `json:"sabyId"`
+	Name              string  `json:"name"`
+	Code              string  `json:"code"`
+	Quantity          int     `json:"quantity"`
 }
 
 type OrderLine struct {

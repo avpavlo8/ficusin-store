@@ -121,6 +121,20 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	if len(pdfRows) != 4 {
 		t.Fatalf("PDF lost split cards or handoff: %+v", pdfRows)
 	}
+	// Preserve each card's previous label price even after live catalogue prices move.
+	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET baseline_site_price_minor=CASE WHEN saby_id=$2 THEN proposed_retail_rub*50 ELSE proposed_retail_rub*100 END WHERE receiving_parent_line_id=$1 AND reconciliation_status<>'superseded'`, mixID, cards[0])
+	must(err)
+	detail, err = store.OrderDetail(ctx, orderID)
+	must(err)
+	allocations := detail.Lines[0].ReceivingAllocations
+	if len(allocations) != 2 || !allocations[0].PriceChangeNeeded || allocations[0].CurrentRetailRUB <= 0 || allocations[1].PriceChangeNeeded {
+		t.Fatalf("mix card label prices lost: %+v", allocations)
+	}
+	pdfRows, err = receivingPDFRows(detail)
+	must(err)
+	if !pdfRows[0].ReprintLabel || pdfRows[1].ReprintLabel {
+		t.Fatalf("mix label changes not reflected in receiving PDF: %+v", pdfRows)
+	}
 	var childCosts int
 	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_order_lines c JOIN procurement_order_lines p ON p.id=c.receiving_parent_line_id WHERE p.id=$1 AND c.reconciliation_status<>'superseded' AND c.unit_cost_rub=p.unit_cost_rub AND c.unit_cost_rub>0 AND c.supplier_alias_id IS NULL`, mixID).Scan(&childCosts))
 	if childCosts != 2 {
