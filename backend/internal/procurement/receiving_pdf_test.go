@@ -40,3 +40,33 @@ func TestReceivingPDFRowsIgnoreExcludedAndPendingSupplierRows(t *testing.T) {
 		t.Fatalf("rows = %#v", rows)
 	}
 }
+
+func TestReceivingPDFMarksOnlyApplicablePriceChangesForReprinting(t *testing.T) {
+	quantity := 1
+	for _, tc := range []struct {
+		name     string
+		current  float64
+		proposed int64
+		change   bool
+		mode     string
+		want     bool
+	}{
+		{"price increases", 1490, 1790, true, "catalog", true},
+		{"price decreases", 1790, 1490, true, "catalog", true},
+		{"same price", 1490, 1490, true, "catalog", false},
+		{"below change threshold", 1490, 1590, false, "catalog", false},
+		{"no previous label", 0, 1790, true, "catalog", false},
+		{"customer handoff", 1490, 1790, true, "customer_handoff", false},
+		{"unallocated mix", 1490, 1790, true, "assortment", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, err := receivingPDFRows(OrderDetail{Lines: []OrderLine{{RawName: tc.name, MatchStatus: "confirmed", ReconciliationStatus: "matched", ReceivingMode: tc.mode, InvoicedQuantity: &quantity, CurrentRetailRUB: tc.current, ProposedRetailRUB: &tc.proposed, PriceChangeNeeded: tc.change}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rows[0].ReprintLabel != tc.want || rows[0].PreviousPrice != tc.current {
+				t.Fatalf("row = %#v, want reprint %v", rows[0], tc.want)
+			}
+		})
+	}
+}

@@ -16,14 +16,16 @@ const (
 )
 
 type receivingPDFRow struct {
-	Name        string
-	InvoiceName string
-	Pot         *float64
-	Height      *float64
-	Packages    *int
-	Units       *int
-	Quantity    int
-	Price       int64
+	Name          string
+	InvoiceName   string
+	Pot           *float64
+	Height        *float64
+	Packages      *int
+	Units         *int
+	Quantity      int
+	Price         int64
+	PreviousPrice float64
+	ReprintLabel  bool
 }
 
 func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
@@ -69,6 +71,7 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		rows = append(rows, receivingPDFRow{
 			Name: name, InvoiceName: strings.TrimSpace(line.InvoiceRawName), Pot: line.PotDiameterCM, Height: line.HeightCM,
 			Packages: line.PackageCount, Units: line.UnitsPerPackage, Quantity: *line.InvoicedQuantity, Price: *line.ProposedRetailRUB,
+			PreviousPrice: line.CurrentRetailRUB, ReprintLabel: (line.ReceivingMode == "" || line.ReceivingMode == "catalog") && line.PriceChangeNeeded && line.CurrentRetailRUB > 0 && line.CurrentRetailRUB != float64(*line.ProposedRetailRUB),
 		})
 	}
 	if len(rows) == 0 {
@@ -93,7 +96,7 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 	}
 
 	const margin = 30.0
-	widths := []float64{28, 320, 85, 90, 60, 95, 70}
+	widths := []float64{28, 270, 80, 70, 50, 82, 118, 50}
 	tableWidth := 0.0
 	for _, width := range widths {
 		tableWidth += width
@@ -143,7 +146,7 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 			return err
 		}
 		pdf.SetTextColor(45, 55, 49)
-		headers := []string{"№", "Название СБИС", "Размер", "Упаковка", "Кол-во", "Цена, ₽", "Проверено"}
+		headers := []string{"№", "Название СБИС", "Размер", "Упаковка", "Кол-во", "Цена, ₽", "Ценник", "Принято"}
 		x := margin
 		for index, header := range headers {
 			pdf.SetXY(x+4, y+7)
@@ -178,7 +181,7 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 		pdf.Line(margin, y+rowHeight, margin+tableWidth, y+rowHeight)
 		x := margin
 		values := []string{
-			fmt.Sprintf("%d", index+1), shortenPDFText(row.Name, 58), sizePDFText(row), packagePDFText(row), fmt.Sprintf("%d", row.Quantity), formatPDFRUB(row.Price), "□",
+			fmt.Sprintf("%d", index+1), shortenPDFText(row.Name, 48), sizePDFText(row), packagePDFText(row), fmt.Sprintf("%d", row.Quantity), formatPDFRUB(row.Price), "—", "□",
 		}
 		for column, value := range values {
 			pdf.SetTextColor(40, 48, 43)
@@ -186,7 +189,7 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 			if column == 1 {
 				size = 9.2
 			}
-			if column == 6 {
+			if column == 7 {
 				size = 15
 			}
 			if err := pdf.SetFont("DejaVu", "", size); err != nil {
@@ -202,7 +205,27 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 					return nil, 0, err
 				}
 				pdf.SetXY(x+4, y+21)
-				if err := pdf.CellWithOption(&gopdf.Rect{W: widths[column] - 8, H: 9}, "Инвойс: "+shortenPDFText(row.InvoiceName, 72), gopdf.CellOption{Align: gopdf.Left}); err != nil {
+				if err := pdf.CellWithOption(&gopdf.Rect{W: widths[column] - 8, H: 9}, "Инвойс: "+shortenPDFText(row.InvoiceName, 60), gopdf.CellOption{Align: gopdf.Left}); err != nil {
+					return nil, 0, err
+				}
+			}
+			if column == 6 && row.ReprintLabel {
+				pdf.SetFillColor(252, 244, 229)
+				pdf.RectFromUpperLeftWithStyle(x+1, y+1, widths[column]-2, rowHeight-2, "F")
+				pdf.SetTextColor(117, 65, 32)
+				if err := pdf.SetFont("DejaVu", "", 8.5); err != nil {
+					return nil, 0, err
+				}
+				pdf.SetXY(x+4, y+6)
+				if err := pdf.Cell(nil, "□ Перепечатать"); err != nil {
+					return nil, 0, err
+				}
+				if err := pdf.SetFont("DejaVu", "", 7.5); err != nil {
+					return nil, 0, err
+				}
+				pdf.SetXY(x+4, y+21)
+				previous := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", row.PreviousPrice), "0"), ".")
+				if err := pdf.Cell(nil, strings.ReplaceAll(previous, ".", ",")+" → "+formatPDFRUB(row.Price)); err != nil {
 					return nil, 0, err
 				}
 			}
