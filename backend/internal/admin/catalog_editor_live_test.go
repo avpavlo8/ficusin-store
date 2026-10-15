@@ -134,6 +134,19 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	if err != nil || actual.Status != "draft" {
 		t.Fatalf("rejected publication changed status: %+v %v", actual, err)
 	}
+
+	if _, err := pool.Exec(ctx, `UPDATE products SET status='published' WHERE id=$1`, product.ID); err != nil {
+		t.Fatal(err)
+	}
+	zero := int64(0)
+	active := true
+	_, err = repository.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: first, PriceMinor: &zero, Active: &active}}})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("zero-price active published size accepted: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET status='draft' WHERE id=$1`, product.ID); err != nil {
+		t.Fatal(err)
+	}
 	foreignID := int64(999999999999)
 	_, err = repository.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: foreignID, Label: &label}}})
 	if !errors.Is(err, ErrInvalidInput) {

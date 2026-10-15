@@ -78,10 +78,15 @@ func saveVariantEdits(ctx context.Context, tx pgx.Tx, actor Actor, productID int
 			return err
 		}
 		var active bool
-		if err := tx.QueryRow(ctx, `SELECT is_active<>0 FROM product_variants WHERE id=$1`, id).Scan(&active); err != nil {
+		var currentPrice int64
+		var status string
+		if err := tx.QueryRow(ctx, `SELECT v.is_active<>0,v.base_price_minor,p.status FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1`, id).Scan(&active, &currentPrice, &status); err != nil {
 			return err
 		}
 		if active {
+			if status == "published" && currentPrice <= 0 {
+				return fmt.Errorf("%w: цена активного размера должна быть больше нуля", ErrInvalidInput)
+			}
 			if err := validateRequiredVariantAttributes(ctx, tx, productID, id); err != nil {
 				return err
 			}
