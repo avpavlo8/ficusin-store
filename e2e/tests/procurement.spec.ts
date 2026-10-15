@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -40,7 +40,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   // Install the API stub inside the page before React starts. WebKit handles
   // route interception differently after state transitions, while fetch is
   // identical across the browsers this layout suite covers.
-  await page.addInitScript(({ user, dashboard, procurement, orderDetail }) => {
+  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError }) => {
     const originalFetch = window.fetch.bind(window);
     const drafts: Array<{ id: number; title: string; payload: unknown; createdAt: string; updatedAt: string }> = [];
     const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
@@ -53,6 +53,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
       if(path === "/api/v1/admin/procurement/requests" && init?.method === "POST"){
+        if(requestError) return Promise.resolve(new Response(JSON.stringify({error:requestError}),{status:503,headers:{"Content-Type":"application/json"}}));
         const body=JSON.parse(String(init.body));const item={...body,id:procurement.requests.length+1,status:"open",createdAt:new Date().toISOString(),allocatedQuantity:0,remainingQuantity:body.quantity,allocations:[],history:[]};procurement.requests.push(item);return json({request:item});
       }
       if(path.startsWith("/api/v1/admin/procurement/requests/") && init?.method === "PATCH"){
@@ -118,7 +119,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, dashboard, procurement, orderDetail });
+  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "" });
 }
 
 test("@desktop @phone request validates integer quantity, traps focus, archives and restores", async ({ page }) => {
@@ -152,6 +153,18 @@ test("@desktop @phone request validates integer quantity, traps focus, archives 
   await row.getByRole("button", { name: "Вернуть в работу", exact: true }).click();
   await page.getByLabel("Показать запросы").selectOption("active");
   await expect(row).toContainText("Открыт");
+});
+
+test("@desktop request save error is visible inside the dialog and preserves inputs", async ({ page }) => {
+  await mockProcurement(page, {requestError:"Сервис временно недоступен"});
+  await page.goto("/admin?section=procurement&view=requests");
+  await page.getByRole("button",{name:"Добавить",exact:true}).click();
+  const dialog=page.getByRole("dialog",{name:"Добавить к закупке"});
+  await dialog.getByLabel("Название товара",{exact:true}).fill("Сохранить введённое растение");
+  await dialog.getByRole("button",{name:"Добавить",exact:true}).click();
+  await expect(dialog.getByRole("alert")).toContainText("Сервис временно недоступен");
+  await expect(dialog.getByRole("alert")).toBeFocused();
+  await expect(dialog.getByLabel("Название товара",{exact:true})).toHaveValue("Сохранить введённое растение");
 });
 
 test("@desktop calculator keeps its inputs across tabs and creates a request", async ({ page }) => {

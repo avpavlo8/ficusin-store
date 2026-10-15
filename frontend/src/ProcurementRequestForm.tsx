@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./adminShared";
 import type { NomenclatureCandidate, ProcurementRequest } from "./adminTypes";
-import { useProcurementDialog } from "./procurementUX";
+import { useProcurementDialog, useProcurementError } from "./procurementUX";
 
-export function ProcurementRequestForm({ onClose, onSaved, onError, request, initialName = "", initialNotes = "" }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void; request?: ProcurementRequest; initialName?: string; initialNotes?: string }) {
+export function ProcurementRequestForm({ onClose, onSaved, onError: externalError, request, initialName = "", initialNotes = "" }: { onClose: () => void; onSaved: () => void; onError: (value: string) => void; request?: ProcurementRequest; initialName?: string; initialNotes?: string }) {
+  const {error:dialogError,errorRef,notify:onError,clear:clearError}=useProcurementError(externalError);
   const [kind, setKind] = useState(request?.kind || "customer_order");
   const [customerOrderId, setCustomerOrderId] = useState(String(request?.customerOrderId || ""));
   const [name, setName] = useState(request?.requestedName || initialName);
@@ -40,7 +41,7 @@ export function ProcurementRequestForm({ onClose, onSaved, onError, request, ini
       onSaved();
     } catch (error) { onError((error as Error).message); } finally { setSaving(false); }
   };
-  return <><button tabIndex={-1} className="admin-dialog-backdrop" aria-label="Закрыть" onClick={close} /><div ref={dialogRef} className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="request-title"><header><h2 id="request-title">{request ? "Редактировать запрос" : "Добавить к закупке"}</h2><button onClick={close} disabled={saving} aria-label="Закрыть">×</button></header><form onSubmit={(event) => { event.preventDefault(); void save(); }} noValidate><div className="admin-form-grid">
+  return <><button tabIndex={-1} className="admin-dialog-backdrop" aria-label="Закрыть" onClick={close} /><div ref={dialogRef} className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="request-title"><header><h2 id="request-title">{request ? "Редактировать запрос" : "Добавить к закупке"}</h2><button onClick={close} disabled={saving} aria-label="Закрыть">×</button></header>{dialogError && <div ref={errorRef} tabIndex={-1} className="procurement-dialog-error" role="alert"><strong>Не удалось сохранить запрос</strong><span>{dialogError}</span><button aria-label="Закрыть сообщение об ошибке" onClick={clearError}>×</button></div>}<form onSubmit={(event) => { event.preventDefault(); void save(); }} noValidate><div className="admin-form-grid">
     <label>Тип<select value={kind} disabled={Boolean(request)} onChange={(event) => setKind(event.target.value)}><option value="customer_order">Заказ клиента</option><option value="staff_recommendation">Рекомендация магазина</option></select></label>
     <label>Количество, шт.<input aria-label="Количество, шт." ref={quantityRef} aria-invalid={quantityError && (submitted || quantity !== "1")} aria-describedby={quantityError ? "request-quantity-error" : undefined} type="text" inputMode="numeric" value={quantity} onChange={(event) => setQuantity(event.target.value)} />{quantityError && <small id="request-quantity-error" className="procurement-warning">Введите целое число от 1 до 1 000 000</small>}</label>
     {kind === "customer_order" && <label>Номер заказа в CRM<input ref={customerOrderRef} aria-label="Номер заказа в CRM" aria-invalid={customerOrderError} type="number" min="1" step="1" disabled={Boolean(request)} value={customerOrderId} onChange={(event) => setCustomerOrderId(event.target.value)} placeholder="Необязательно" />{customerOrderError && <small className="procurement-warning">Введите целый положительный номер заказа</small>}</label>}

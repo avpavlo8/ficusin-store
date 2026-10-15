@@ -51,6 +51,8 @@
 .admin-page .procurement-order-dialog input{font-size:16px;min-height:42px}
 .admin-page .procurement-calculator small,.admin-page .procurement-calculator label{font-size:14px;line-height:1.5}
 .admin-page input[aria-invalid=true]{border-color:#ab3c22!important;box-shadow:0 0 0 1px #ab3c22}
+.admin-page .procurement-dialog-error{position:relative;flex-shrink:0;display:grid;gap:5px;margin:12px 16px;padding:12px 48px 12px 14px;border:1px solid #c78670;border-radius:8px;background:#fff0e8;color:#75351f;font-size:14px;line-height:1.45}
+.admin-page .procurement-dialog-error button{position:absolute;top:6px;right:6px;min-height:32px;width:32px;padding:0;border:0;background:transparent;color:inherit;font-size:22px}
 @media(max-width:1100px){
  .admin-page .procurement-page-heading{align-items:flex-start;flex-direction:column;gap:8px}
  .admin-page .procurement-plan-table{min-width:1050px}

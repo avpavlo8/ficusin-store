@@ -1,4 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+export function useProcurementError(report: (message: string) => void) {
+  const [error, setError] = useState("");
+  const errorRef = useRef<HTMLDivElement>(null);
+  const notify = useCallback((message: string) => {
+    setError(message);
+    report(message);
+    window.requestAnimationFrame(() => {
+      errorRef.current?.focus();
+      errorRef.current?.scrollIntoView({ block: "nearest" });
+    });
+  }, [report]);
+  return { error, errorRef, notify, clear: () => setError("") };
+}
 
 // A modal owns keyboard focus until it closes. Keep the latest callback without
 // refocusing the form on each keystroke.
