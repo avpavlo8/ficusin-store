@@ -614,7 +614,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 		if line.MatchAlias != nil {
 			line.MatchAlias.SupplierName = order.SupplierName
 		}
-		if line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
+		if line.ReceivingMode == "catalog" && line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
 			line.PriceChangeNeeded = priceChangeNeeded(line.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
 		}
 		detail.Lines = append(detail.Lines, line)
