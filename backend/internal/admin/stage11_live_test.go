@@ -79,8 +79,12 @@ func TestStage11PnLAndSupplierAccountOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO marketplace_returns(channel,source_return_id,source_unit_index,canonical_variant_id,returned_at,condition,unit_cost_rub_snapshot,cost_outcome) VALUES('ozon',$1,1,$2,'2036-09-10','ready',900,'restored')`, prefix+"-unlinked", variantID); err != nil { t.Fatal(err) }
-	if _, err = pool.Exec(ctx, `INSERT INTO finance_transactions(import_id,bank,account_number,source_row,operation_date,dedupe_key,debit_rub,credit_rub,classification,pnl_effect,confirmed) VALUES($1,'tochka','stage11',5,'2036-09-10',$2,900,0,'supplier','expense',TRUE)`, importID, prefix+"-supplier"); err != nil { t.Fatal(err) }
+	if _, err = pool.Exec(ctx, `INSERT INTO marketplace_returns(channel,source_return_id,source_unit_index,canonical_variant_id,returned_at,condition,unit_cost_rub_snapshot,cost_outcome) VALUES('ozon',$1,1,$2,'2036-09-10','ready',900,'restored')`, prefix+"-unlinked", variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO finance_transactions(import_id,bank,account_number,source_row,operation_date,dedupe_key,debit_rub,credit_rub,classification,pnl_effect,confirmed) VALUES($1,'tochka','stage11',5,'2036-09-10',$2,900,0,'supplier','expense',TRUE)`, importID, prefix+"-supplier"); err != nil {
+		t.Fatal(err)
+	}
 	report, err := repository.FinancePnL(ctx, "2036-09-01", "2036-09-30")
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +105,19 @@ func TestStage11PnLAndSupplierAccountOnLiveDatabase(t *testing.T) {
 	assertNear("cash flow", report.CashFlow, -150)
 	if report.NetProfit != nil || !report.Preliminary || report.ActualCostUnits != 2 || report.EstimatedCostUnits != 1 || report.UnknownCostUnits != 1 {
 		t.Fatalf("unexpected completeness: %+v", report)
+	}
+	// A monthly planning budget is not a fictitious booked expense. A report
+	// with no operating entries must explicitly flag the missing salary/rent.
+	if _, err = pool.Exec(ctx, `UPDATE finance_transactions SET confirmed=FALSE WHERE import_id=$1 AND classification='other'`, importID); err != nil {
+		t.Fatal(err)
+	}
+	withoutExpenses, err := repository.FinancePnL(ctx, "2036-09-01", "2036-09-30")
+	if err != nil || withoutExpenses.MonthlyFixedCostBudgetRUB <= 0 || withoutExpenses.OperatingExpenses != 0 || len(withoutExpenses.Warnings) != len(report.Warnings)+1 {
+		t.Fatalf("missing store expenses not flagged: %+v err=%v", withoutExpenses, err)
+	}
+	assertNear("planning budget must not be booked as an expense", withoutExpenses.ProfitBeforeTax, 850)
+	if _, err = pool.Exec(ctx, `UPDATE finance_transactions SET confirmed=TRUE WHERE import_id=$1 AND classification='other'`, importID); err != nil {
+		t.Fatal(err)
 	}
 	if err = repository.SaveFinanceTax(ctx, actor, TaxPeriodInput{From: "2036-09-01", To: "2036-09-30", ActualTax: 80, Source: prefix + "-tax"}); err != nil {
 		t.Fatal(err)
