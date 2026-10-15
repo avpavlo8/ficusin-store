@@ -136,7 +136,7 @@ export function ProductDialog({owner=false,product,onClose,onSaved,onError,hasNe
   for(const variant of variants){
    const original=originalVariants.current.find(x=>x.id===variant.id);
    if(JSON.stringify(variant)===JSON.stringify(original))continue;
-   if(!variant.label.trim()||!Number.isFinite(variant.price)||variant.price<0||variant.wholesaleMinQty<1){fail(`Проверьте название, цену и минимум размера «${variant.label}»`,"variants");return}
+   if(!variant.label.trim()||!Number.isFinite(variant.price)||variant.price<0||(!Number.isInteger(variant.wholesaleMinQty)||variant.wholesaleMinQty<1)){fail(`Проверьте название, цену и минимум размера «${variant.label}»`,"variants");return}
    const attributes:Record<string,unknown>={};
    for(const code of new Set([...Object.keys(original?.attributes||{}),...Object.keys(variant.attributes)])){
     const value=variant.attributes[code];if(JSON.stringify(value)===JSON.stringify(original?.attributes[code]))continue;

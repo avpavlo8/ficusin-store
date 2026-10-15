@@ -292,7 +292,7 @@ export function VariantsEditor({ owner=false, productId, categoryId, variants, o
     {owner&&draft.id>0&&<VariantPriceProposals variantId={draft.id} onError={onError}/>}
     <h4 className="wide">Фотографии этого размера</h4>{draft.id<0?<p className="wide admin-hint">Сохраните карточку, затем загрузите фото нового размера.</p>:<div className="wide"><p className="admin-hint">Загрузка и удаление фото применяются сразу, отдельно от текстовых правок.</p><VariantMediaManager canDelete={owner} variantId={draft.id} sku={draft.sku} onChanged={()=>{}} onError={onError}/></div>}
    </div>
-   {owner&&<div className="catalog-variant-actions"><button type="button" className="admin-action" onClick={()=>add(draft)}>Копировать как новый размер</button><button type="button" className="text-button" onClick={()=>update({archived:!draft.archived,active:false})}>{draft.archived?"Вернуть из архива":"В архив после сохранения"}</button><button type="button" className="text-button danger" disabled={draft.id>0&&dirty} onClick={()=>void remove()}>{draft.id<0?"Убрать новый размер":"Удалить размер отдельно…"}</button></div>}
+   {owner&&<div className="catalog-variant-actions"><button type="button" className="admin-action" onClick={()=>add(draft)}>Копировать как новый размер</button>{draft.id>0&&<button type="button" className="text-button" onClick={()=>update({archived:!draft.archived,active:false})}>{draft.archived?"Вернуть из архива":"В архив после сохранения"}</button>}<button type="button" className="text-button danger" disabled={draft.id>0&&dirty} onClick={()=>void remove()}>{draft.id<0?"Убрать новый размер":"Удалить размер отдельно…"}</button></div>}
   </div>:<p className="editor-empty">Размеров пока нет. Добавьте первый размер.</p>}
   </div>
  </section>;
