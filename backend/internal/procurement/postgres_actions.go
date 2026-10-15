@@ -41,17 +41,22 @@ func (store *PostgresStore) ListSabyCatalogFolders(ctx context.Context) ([]SabyC
 }
 
 func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, query string) ([]ProductDirectoryItem, error) {
+	items, _, err := store.listProductPage(ctx, supplierID, query, "", 300, 0)
+	return items, err
+}
+
+func (store *PostgresStore) listProductPage(ctx context.Context, supplierID int64, query string, folder string, limit int, offset int) ([]ProductDirectoryItem, int, error) {
 	rows, err := store.pool.Query(ctx, `
 		WITH selected_cards AS (
 			SELECT * FROM saby_nomenclature
 			WHERE missing_since IS NULL
+				AND ($3 = '' OR folder_saby_id=$3)
 				AND ($2 = '' OR name ILIKE '%' || $2 || '%'
 				OR code ILIKE '%' || $2 || '%' OR COALESCE(article,'') ILIKE '%' || $2 || '%'
 				OR saby_id ILIKE '%' || $2 || '%')
 			ORDER BY CASE WHEN EXISTS (SELECT 1 FROM UNNEST(section_path) part
 				WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
 				THEN 0 ELSE 1 END, section_path, name
-			LIMIT 300
 		), sales AS (
 			SELECT saby_id,
 				COALESCE(SUM(units) FILTER (WHERE channel='saby'),0)::INTEGER AS saby_sales,
@@ -94,7 +99,7 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
 			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package,
 			COALESCE(pricing.order_id,0),COALESCE(pricing.order_number,''),
-			pricing.unit_cost,pricing.marketplace,pricing.strike
+			pricing.unit_cost,pricing.marketplace,pricing.strike,COUNT(*) OVER()::INTEGER
 		FROM selected_cards n
 		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
 		LEFT JOIN LATERAL (
@@ -134,14 +139,15 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 		) pricing ON TRUE
 		ORDER BY CASE WHEN EXISTS (SELECT 1 FROM UNNEST(n.section_path) part
 			WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
-			THEN 0 ELSE 1 END, n.section_path, n.name
-		LIMIT 300
-	`, supplierID, query)
+			THEN 0 ELSE 1 END, n.section_path, n.name, n.saby_id, s.id
+		LIMIT $4 OFFSET $5
+	`, supplierID, query, folder, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("query procurement product directory: %w", err)
+		return nil, 0, fmt.Errorf("query procurement product directory: %w", err)
 	}
 	defer rows.Close()
 	items := make([]ProductDirectoryItem, 0)
+	total := 0
 	for rows.Next() {
 		var item ProductDirectoryItem
 		if err := rows.Scan(&item.VariantID, &item.SabyID, &item.SabyCode, &item.SabyArticle, &item.Name, &item.SabySection,
@@ -156,12 +162,12 @@ func (store *PostgresStore) ListProducts(ctx context.Context, supplierID int64, 
 			&item.WBSales, &item.OzonSales, &item.SupplierCategory, &item.ExpectedUnitPrice,
 			&item.PotDiameterCM, &item.HeightCM, &item.UnitsPerPackage,
 			&item.LatestOrderID, &item.LatestOrderNumber, &item.LatestUnitCostRUB,
-			&item.SuggestedMarketplaceRUB, &item.SuggestedMarketplaceStrikeRUB); err != nil {
-			return nil, fmt.Errorf("scan procurement product directory: %w", err)
+			&item.SuggestedMarketplaceRUB, &item.SuggestedMarketplaceStrikeRUB, &total); err != nil {
+			return nil, 0, fmt.Errorf("scan procurement product directory: %w", err)
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	return items, total, rows.Err()
 }
 
 func (store *PostgresStore) UpdateProduct(ctx context.Context, actor Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
@@ -1467,7 +1473,9 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0)), 0)::DOUBLE PRECISION,
 			COUNT(l.id) FILTER (WHERE l.match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
-			o.created_at
+			o.created_at,o.title,
+(SELECT COUNT(*)::INTEGER FROM procurement_order_lines p WHERE p.procurement_order_id=o.id AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded' AND p.reconciliation_status IN ('added','changed','missing') AND NOT p.comparison_accepted),
+(SELECT COUNT(*)::INTEGER FROM procurement_action_items ai JOIN procurement_action_batches ab ON ab.id=ai.batch_id WHERE ab.procurement_order_id=o.id AND ai.status='failed')
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
@@ -1478,7 +1486,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 	`, orderID).Scan(
 		&item.ID, &item.SupplierID, &item.SupplierName, &item.OrderNumber,
 		&item.DocumentNumber, &item.DocumentDate, &item.SourceKind, &item.Currency,
-		&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt,
+		&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt, &item.Title, &item.PendingReview, &item.FailedActions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OrderSummary{}, ErrNotFound

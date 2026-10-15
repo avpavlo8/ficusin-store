@@ -538,7 +538,23 @@ func (handlers procurementHandlers) listProducts(response http.ResponseWriter, r
 			return
 		}
 	}
-	items, err := handlers.service.ListProducts(request.Context(), supplierID, request.URL.Query().Get("q"))
+	items := []procurement.ProductDirectoryItem{}
+	total := 0
+	counts := map[string]int{}
+	if service, ok := handlers.service.(interface {
+		ProductPage(context.Context, int64, string, string, int, int) (procurement.ProductPage, error)
+	}); ok && request.URL.Query().Has("limit") {
+		limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
+		offset, _ := strconv.Atoi(request.URL.Query().Get("offset"))
+		var page procurement.ProductPage
+		page, err = service.ProductPage(request.Context(), supplierID, request.URL.Query().Get("q"), request.URL.Query().Get("folder"), limit, offset)
+		items = page.Items
+		total = page.Total
+		counts = page.FolderCounts
+	} else {
+		items, err = handlers.service.ListProducts(request.Context(), supplierID, request.URL.Query().Get("q"))
+		total = len(items)
+	}
 	if err != nil {
 		handlers.failed(response, "list procurement products", err)
 		return
@@ -553,7 +569,7 @@ func (handlers procurementHandlers) listProducts(response http.ResponseWriter, r
 			return
 		}
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"items": items, "folders": folders})
+	writeJSON(response, http.StatusOK, map[string]any{"items": items, "folders": folders, "total": total, "folderCounts": counts})
 }
 
 func (handlers procurementHandlers) updateProduct(response http.ResponseWriter, request *http.Request) {

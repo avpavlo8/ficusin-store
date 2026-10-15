@@ -46,7 +46,9 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0)), 0)::DOUBLE PRECISION,
 			COUNT(l.id) FILTER (WHERE l.match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
-			o.created_at
+			o.created_at, o.title,
+            (SELECT COUNT(*)::INTEGER FROM procurement_order_lines p WHERE p.procurement_order_id=o.id AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded' AND ((p.reconciliation_status='added' AND NOT p.comparison_accepted) OR (p.reconciliation_status IN ('changed','missing') AND NOT p.comparison_accepted))),
+            (SELECT COUNT(*)::INTEGER FROM procurement_action_items ai JOIN procurement_action_batches ab ON ab.id=ai.batch_id WHERE ab.procurement_order_id=o.id AND ai.status='failed')
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
@@ -66,7 +68,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 		if err := rows.Scan(
 			&item.ID, &item.SupplierID, &item.SupplierName, &item.OrderNumber,
 			&item.DocumentNumber, &item.DocumentDate, &item.SourceKind, &item.Currency,
-			&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt,
+			&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt, &item.Title, &item.PendingReview, &item.FailedActions,
 		); err != nil {
 			return nil, fmt.Errorf("scan procurement order: %w", err)
 		}
@@ -185,14 +187,13 @@ func (store *PostgresStore) listAvailability(ctx context.Context) ([]Availabilit
 func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error) {
 	rows, err := store.pool.Query(ctx, `
 		SELECT r.id,r.kind,COALESCE(r.saby_id,''),r.requested_name,r.quantity,r.status,r.notes,r.created_at,
-			r.customer_order_id,COALESCE(o.customer_name,''),r.source,
+			r.customer_order_id,COALESCE(o.customer_name,''),r.source,COALESCE(r.due_date::TEXT,''),r.assignee,
 			COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0)::INTEGER
 		FROM procurement_requests r
 		LEFT JOIN orders o ON o.id=r.customer_order_id
 		LEFT JOIN procurement_request_allocations a ON a.request_id=r.id
-		WHERE r.status IN ('open', 'included')
 		GROUP BY r.id,o.customer_name
-		ORDER BY CASE kind WHEN 'customer_order' THEN 0 ELSE 1 END, created_at DESC
+		ORDER BY CASE WHEN r.status IN ('open','included') THEN 0 ELSE 1 END, CASE kind WHEN 'customer_order' THEN 0 ELSE 1 END, created_at DESC
 		LIMIT 100
 	`)
 	if err != nil {
@@ -204,7 +205,7 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 		var item Request
 		if err := rows.Scan(&item.ID, &item.Kind, &item.SabyID, &item.RequestedName,
 			&item.Quantity, &item.Status, &item.Notes, &item.CreatedAt, &item.CustomerOrderID,
-			&item.CustomerName, &item.Source, &item.AllocatedQuantity); err != nil {
+			&item.CustomerName, &item.Source, &item.DueDate, &item.Assignee, &item.AllocatedQuantity); err != nil {
 			return nil, fmt.Errorf("scan procurement request: %w", err)
 		}
 		item.RemainingQuantity = max(0, item.Quantity-item.AllocatedQuantity)
@@ -237,7 +238,24 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 		}
 		allocationRows.Close()
 	}
-	return items, nil
+	historyRows, err := store.pool.Query(ctx, "SELECT entity_id,created_at,COALESCE(after_data->>'status','open'),COALESCE((after_data->>'quantity')::INTEGER,0),COALESCE(after_data->>'requestedName',''),COALESCE(after_data->>'notes',''),COALESCE(after_data->>'dueDate',''),COALESCE(after_data->>'assignee','') FROM admin_audit_log WHERE entity_type='procurement_request' ORDER BY created_at DESC LIMIT 1000")
+	if err != nil {
+		return nil, err
+	}
+	defer historyRows.Close()
+	for historyRows.Next() {
+		var id string
+		var event RequestEvent
+		if err := historyRows.Scan(&id, &event.At, &event.Status, &event.Quantity, &event.Name, &event.Notes, &event.DueDate, &event.Assignee); err != nil {
+			return nil, err
+		}
+		for i := range items {
+			if fmt.Sprint(items[i].ID) == id && len(items[i].History) < 20 {
+				items[i].History = append(items[i].History, event)
+			}
+		}
+	}
+	return items, historyRows.Err()
 }
 
 func (store *PostgresStore) listRecommendations(ctx context.Context, settings PricingSettings) ([]Recommendation, error) {
@@ -1386,11 +1404,11 @@ func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, inpu
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var item Request
 	err = tx.QueryRow(ctx, `
-		INSERT INTO procurement_requests (kind,saby_id,canonical_variant_id,requested_name,quantity,notes,created_by,customer_order_id,source)
-		SELECT $1,NULLIF($2,''),(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1),$3,$4,$5,$6,$7,$8
+		INSERT INTO procurement_requests (kind,saby_id,canonical_variant_id,requested_name,quantity,notes,created_by,customer_order_id,source,due_date,assignee)
+		SELECT $1,NULLIF($2,''),(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1),$3,$4,$5,$6,$7,$8,NULLIF($9,'')::DATE,$10
 		WHERE $7::BIGINT IS NULL OR EXISTS(SELECT 1 FROM orders WHERE id=$7)
 		RETURNING id,kind,COALESCE(saby_id,''),requested_name,quantity,status,notes,created_at,customer_order_id,source
-	`, input.Kind, input.SabyID, input.RequestedName, input.Quantity, input.Notes, actor.CustomerID, input.CustomerOrderID, input.Source).Scan(
+	`, input.Kind, input.SabyID, input.RequestedName, input.Quantity, input.Notes, actor.CustomerID, input.CustomerOrderID, input.Source, input.DueDate, input.Assignee).Scan(
 		&item.ID, &item.Kind, &item.SabyID, &item.RequestedName, &item.Quantity,
 		&item.Status, &item.Notes, &item.CreatedAt, &item.CustomerOrderID, &item.Source,
 	)
@@ -1403,6 +1421,8 @@ func (store *PostgresStore) CreateRequest(ctx context.Context, actor Actor, inpu
 		}
 		return Request{}, fmt.Errorf("insert procurement request: %w", err)
 	}
+	item.DueDate = input.DueDate
+	item.Assignee = input.Assignee
 	if err := audit(ctx, tx, actor, "procurement.request.create", "procurement_request", item.ID, item); err != nil {
 		return Request{}, err
 	}
@@ -1418,16 +1438,30 @@ func (store *PostgresStore) UpdateRequest(ctx context.Context, actor Actor, requ
 		return Request{}, fmt.Errorf("begin update procurement request: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	var oldSaby string
+	if err := tx.QueryRow(ctx, "SELECT COALESCE(saby_id,'') FROM procurement_requests WHERE id=$1 FOR UPDATE", requestID).Scan(&oldSaby); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Request{}, ErrNotFound
+		}
+		return Request{}, err
+	}
+	var allocated int
+	if err := tx.QueryRow(ctx, "SELECT COALESCE(SUM(active_quantity),0)::INTEGER FROM procurement_request_allocations WHERE request_id=$1 AND status='active'", requestID).Scan(&allocated); err != nil {
+		return Request{}, err
+	}
+	if allocated > 0 && (input.Quantity < allocated || input.SabyID != oldSaby) {
+		return Request{}, &UserFacingError{Message: "Часть запроса уже распределена. Нельзя менять товар или уменьшать количество ниже распределённого."}
+	}
 	var item Request
 	err = tx.QueryRow(ctx, `
 		UPDATE procurement_requests SET saby_id = NULLIF($2, ''),
 			canonical_variant_id=(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1), requested_name = $3,
-			quantity = $4, status = $5, notes = $6, updated_at = CURRENT_TIMESTAMP
+			quantity = $4, status = $5, notes = $6, due_date=CASE WHEN $7::TEXT IS NULL THEN due_date ELSE NULLIF($7,'')::DATE END, assignee=COALESCE($8::TEXT,assignee), updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
-		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
-	`, requestID, input.SabyID, input.RequestedName, input.Quantity, input.Status, input.Notes).Scan(
+		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at,COALESCE(due_date::TEXT,''),assignee
+	`, requestID, input.SabyID, input.RequestedName, input.Quantity, input.Status, input.Notes, input.DueDate, input.Assignee).Scan(
 		&item.ID, &item.Kind, &item.SabyID, &item.RequestedName, &item.Quantity,
-		&item.Status, &item.Notes, &item.CreatedAt,
+		&item.Status, &item.Notes, &item.CreatedAt, &item.DueDate, &item.Assignee,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Request{}, ErrNotFound

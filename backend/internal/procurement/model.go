@@ -111,6 +111,9 @@ type SupplierCreate struct {
 }
 
 type OrderSummary struct {
+	Title          string     `json:"title"`
+	PendingReview  int        `json:"pendingReview"`
+	FailedActions  int        `json:"failedActions"`
 	ID             int64      `json:"id"`
 	SupplierID     int64      `json:"supplierId"`
 	SupplierName   string     `json:"supplierName"`
@@ -136,6 +139,8 @@ type OrderCreate struct {
 }
 
 type PlanCreate struct {
+	Title       string            `json:"title"`
+	SourceKind  string            `json:"sourceKind"`
 	Costs       *CalculationInput `json:"costs,omitempty"`
 	SupplierID  int64             `json:"supplierId"`
 	OrderNumber string            `json:"orderNumber"`
@@ -241,7 +246,20 @@ type CalculationInput struct {
 	DeliveryToRyazanRUB float64 `json:"deliveryToRyazanRub"`
 }
 
+type RequestEvent struct {
+	DueDate  string    `json:"dueDate"`
+	Assignee string    `json:"assignee"`
+	At       time.Time `json:"at"`
+	Status   string    `json:"status"`
+	Quantity int       `json:"quantity"`
+	Name     string    `json:"name"`
+	Notes    string    `json:"notes"`
+}
+
 type Request struct {
+	History           []RequestEvent      `json:"history"`
+	DueDate           string              `json:"dueDate"`
+	Assignee          string              `json:"assignee"`
 	ID                int64               `json:"id"`
 	Kind              string              `json:"kind"`
 	SabyID            string              `json:"sabyId"`
@@ -266,6 +284,8 @@ type RequestAllocation struct {
 }
 
 type RequestCreate struct {
+	DueDate         string `json:"dueDate"`
+	Assignee        string `json:"assignee"`
 	Kind            string `json:"kind"`
 	SabyID          string `json:"sabyId"`
 	RequestedName   string `json:"requestedName"`
@@ -276,11 +296,13 @@ type RequestCreate struct {
 }
 
 type RequestUpdate struct {
-	SabyID        string `json:"sabyId"`
-	RequestedName string `json:"requestedName"`
-	Quantity      int    `json:"quantity"`
-	Status        string `json:"status"`
-	Notes         string `json:"notes"`
+	DueDate       *string `json:"dueDate"`
+	Assignee      *string `json:"assignee"`
+	SabyID        string  `json:"sabyId"`
+	RequestedName string  `json:"requestedName"`
+	Quantity      int     `json:"quantity"`
+	Status        string  `json:"status"`
+	Notes         string  `json:"notes"`
 }
 
 type OrderStatusUpdate struct {

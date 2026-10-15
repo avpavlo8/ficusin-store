@@ -1,0 +1,3 @@
+ALTER TABLE procurement_orders ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+ALTER TABLE procurement_requests ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE procurement_requests ADD COLUMN IF NOT EXISTS assignee TEXT NOT NULL DEFAULT '';
