@@ -312,7 +312,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
 	  <p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления ставит один приоритетный проход в общую очередь; состояние и следующий запуск видны в разделе «Маркетплейсы».</p>
     </section>}
 
-    {view === "settings" && canIntegrations && <ProcurementSettingsPanel settings={data.settings} onSaved={() => void load()} onError={onError} />}
+    {view === "settings" && canIntegrations && <ProcurementSettingsPanel key={data.settings.version} settings={data.settings} onSaved={() => void load()} onError={onError} />}
     </div></div>
     {supplierDialog && <SupplierDialog suppliers={data.suppliers} canDelete={canDelete} onClose={() => setSupplierDialog(false)} onSaved={() => void load()} onError={onError} />}
     {orderDialog && <ProcurementOrderDialog suppliers={data.suppliers.filter(item => item.active !== false)} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
