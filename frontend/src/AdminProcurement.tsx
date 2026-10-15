@@ -319,6 +319,6 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
     {requestDialog && <ProcurementRequestDialog request={editingRequest} onClose={() => {setRequestDialog(false);setEditingRequest(undefined);}} onSaved={() => { setRequestDialog(false);setEditingRequest(undefined); void load(); }} onError={onError} />}
     {calculatorRequest && <ProcurementRequestDialog initialName={calculatorRequest.name} initialNotes={calculatorRequest.notes} onClose={() => setCalculatorRequest(null)} onSaved={() => {setCalculatorRequest(null);setView("requests");void load();}} onError={onError}/> }
     {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
-    {selectedOrder && <ProcurementOrderDetailDialog orderId={selectedOrder} canDelete={canDelete} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
+    {selectedOrder && <ProcurementOrderDetailDialog settings={data.settings} orderId={selectedOrder} canDelete={canDelete} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
   </>;
 }

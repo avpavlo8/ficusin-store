@@ -23,8 +23,8 @@ func propagateProcurementAlias(ctx context.Context, tx pgx.Tx, aliasID int64, sa
 		return &UserFacingError{Message: "По этому названию уже выполняется или выполнена отправка. Сначала сверьте документы связанной закупки."}
 	}
 	rows, err := tx.Query(ctx, `UPDATE procurement_order_lines l SET saby_id=$2,canonical_variant_id=NULLIF($3,0),match_status='confirmed',receiving_mode='catalog',
- purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
- proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
+ purchase_unit_rub=NULL,additional_purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
+ proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,channel_quotes='{}'::JSONB,updated_at=CURRENT_TIMESTAMP
  FROM procurement_orders o WHERE l.procurement_order_id=o.id AND l.supplier_alias_id=$1
  AND o.status NOT IN ('received','cancelled') AND l.receiving_mode IN ('catalog','awaiting_catalog') AND l.reconciliation_status<>'superseded'
  AND (l.saby_id IS DISTINCT FROM $2 OR l.canonical_variant_id IS DISTINCT FROM NULLIF($3,0) OR l.match_status<>'confirmed')
@@ -91,8 +91,8 @@ func appendInvoiceLinesToPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, 
 	}
 	var documents, loads, sizes int
 	if err := tx.QueryRow(ctx, `SELECT COUNT(DISTINCT procurement_document_id)::INTEGER,COUNT(DISTINCT load_unit)::INTEGER,
- COUNT(DISTINCT (pot_diameter_cm,height_cm))::INTEGER FROM procurement_order_lines
- WHERE procurement_order_id=$1 AND (id=ANY($2) OR (id=$3 AND procurement_document_id IS NOT NULL))`, orderID, invoiceIDs, plannedID).Scan(&documents, &loads, &sizes); err != nil {
+ COUNT(DISTINCT (COALESCE(a.pot_diameter_cm,l.pot_diameter_cm),COALESCE(a.height_cm,l.height_cm)))::INTEGER FROM procurement_order_lines l LEFT JOIN procurement_supplier_aliases a ON a.id=l.supplier_alias_id
+ WHERE l.procurement_order_id=$1 AND (l.id=ANY($2) OR (l.id=$3 AND l.procurement_document_id IS NOT NULL))`, orderID, invoiceIDs, plannedID).Scan(&documents, &loads, &sizes); err != nil {
 		return err
 	}
 	// Plan dimensions can differ from the PDF and are reviewed separately; rows
@@ -150,7 +150,7 @@ func appendInvoiceLinesToPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, 
 	if _, err := tx.Exec(ctx, `WITH parts AS(SELECT invoice_components||$2::JSONB AS data FROM procurement_order_lines WHERE id=$1),
  totals AS(SELECT data,SUM((v->>'quantity')::INTEGER)::INTEGER AS qty,SUM((v->>'lineTotal')::NUMERIC) AS total,
  STRING_AGG(DISTINCT v->>'rawName',' / ') AS names FROM parts,jsonb_array_elements(data) v GROUP BY data)
- UPDATE procurement_order_lines l SET invoice_components=t.data,invoiced_qty=t.qty,line_total=t.total,unit_price=t.total/t.qty,
+ UPDATE procurement_order_lines l SET invoice_components=t.data,dimensions_reviewed=FALSE,invoiced_qty=t.qty,line_total=t.total,unit_price=t.total/t.qty,
  invoice_raw_name=t.names,invoice_supplier_article=COALESCE(t.data->0->>'article',''),
  procurement_document_id=(t.data->0->>'documentId')::BIGINT,supplier_alias_id=(t.data->0->>'aliasId')::BIGINT,
  source_page=(t.data->0->>'sourcePage')::INTEGER,source_line=(t.data->0->>'sourceLine')::INTEGER,
@@ -159,8 +159,8 @@ func appendInvoiceLinesToPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, 
  reconciliation_status=CASE WHEN l.ordered_qty<>t.qty OR l.expected_unit_price IS NULL OR
  EXISTS(SELECT 1 FROM jsonb_array_elements(t.data) v WHERE ABS(l.expected_unit_price-(v->>'unitPrice')::NUMERIC)>.005)
  THEN 'changed' ELSE 'matched' END,
- purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
- proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
+ purchase_unit_rub=NULL,additional_purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
+ proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,channel_quotes='{}'::JSONB,updated_at=CURRENT_TIMESTAMP
  FROM totals t WHERE l.id=$1`, plannedID, string(components), canonical); err != nil {
 		return fmt.Errorf("aggregate invoice rows: %w", err)
 	}

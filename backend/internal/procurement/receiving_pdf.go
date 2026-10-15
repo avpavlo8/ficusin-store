@@ -68,10 +68,14 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		if line.ReceivingMode == "customer_handoff" {
 			name = line.RawName + " · под заказ"
 		}
+		previous, changed := line.CurrentRetailRUB, line.PriceChangeNeeded
+		if line.LabelRetailRUB != nil {
+			previous, changed = *line.LabelRetailRUB, line.LabelReprintNeeded
+		}
 		rows = append(rows, receivingPDFRow{
 			Name: name, InvoiceName: strings.TrimSpace(line.InvoiceRawName), Pot: line.PotDiameterCM, Height: line.HeightCM,
 			Packages: line.PackageCount, Units: line.UnitsPerPackage, Quantity: *line.InvoicedQuantity, Price: *line.ProposedRetailRUB,
-			PreviousPrice: line.CurrentRetailRUB, ReprintLabel: (line.ReceivingMode == "" || line.ReceivingMode == "catalog") && line.PriceChangeNeeded && line.CurrentRetailRUB > 0 && line.CurrentRetailRUB != float64(*line.ProposedRetailRUB),
+			PreviousPrice: previous, ReprintLabel: (line.ReceivingMode == "" || line.ReceivingMode == "catalog") && changed && previous > 0 && previous != float64(*line.ProposedRetailRUB),
 		})
 	}
 	if len(rows) == 0 {

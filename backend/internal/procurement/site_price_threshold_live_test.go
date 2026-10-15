@@ -97,6 +97,15 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 				VALUES($1,$2,$3,'Threshold plant',1,1,100,'confirmed','matched',$4,$4,$4,$5)`, orderID, sabyID, variantID, tc.proposed, sitePrice*100); err != nil {
 				t.Fatal(err)
 			}
+			if _, err := pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=(SELECT version FROM procurement_pricing_settings WHERE id=1),calculated_at=CURRENT_TIMESTAMP WHERE id=$1`, orderID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `UPDATE procurement_order_lines SET channel_quotes=jsonb_build_object(
+              'site',jsonb_build_object('priceRub',$2::BIGINT,'breakEvenRub',100,'contributionRub',500,'missing','[]'::JSONB),
+              'wb',jsonb_build_object('priceRub',$2::BIGINT,'breakEvenRub',100,'contributionRub',500,'missing','[]'::JSONB),
+              'ozon',jsonb_build_object('priceRub',$2::BIGINT,'breakEvenRub',100,'contributionRub',500,'missing','[]'::JSONB)) WHERE procurement_order_id=$1`, orderID, tc.proposed); err != nil {
+				t.Fatal(err)
+			}
 			batch, err := store.PrepareBatch(ctx, Actor{CustomerID: actorID, Role: "owner"}, orderID, "prices", []string{"site"})
 			if err != nil {
 				t.Fatal(err)
@@ -176,7 +185,7 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err == nil {
 				t.Fatal("external price approved after a newer invoice calculation")
 			}
-			if _, err := pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=NULL WHERE id=$1`, orderID); err != nil {
+			if _, err := pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=(SELECT version FROM procurement_pricing_settings WHERE id=1) WHERE id=$1`, orderID); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.ApproveBatch(ctx, actor, sabyBatch.ID, map[string]bool{"saby_price": true}); err != nil {

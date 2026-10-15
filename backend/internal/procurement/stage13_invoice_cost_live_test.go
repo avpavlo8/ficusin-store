@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestStage13FinalInvoiceCostBecomesCurrentBeforeReceipt(t *testing.T) {
+func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 	dsn := os.Getenv("CRM_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("CRM_TEST_DATABASE_URL is not set")
@@ -72,16 +72,172 @@ func TestStage13FinalInvoiceCostBecomesCurrentBeforeReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cost float64
-	var kind, source, status string
+	var kind, status string
 	if err = pool.QueryRow(ctx, `SELECT current_unit_cost_rub::DOUBLE PRECISION,current_unit_cost_kind
-		FROM product_variants WHERE id=$1`, variantID).Scan(&cost, &kind); err != nil || cost != 350 || kind != "actual" {
+		FROM product_variants WHERE id=$1`, variantID).Scan(&cost, &kind); err != nil || cost != 900 || kind != "estimated" {
 		t.Fatalf("current cost=%.2f kind=%s err=%v", cost, kind, err)
 	}
-	if err = pool.QueryRow(ctx, `SELECT source FROM procurement_cost_history
-		WHERE procurement_order_id=$1 AND canonical_variant_id=$2`, orderID, variantID).Scan(&source); err != nil || source != "final_invoice_calculation" {
-		t.Fatalf("cost source=%q err=%v", source, err)
+	var historyCount int
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_cost_history WHERE procurement_order_id=$1 AND canonical_variant_id=$2`, orderID, variantID).Scan(&historyCount); err != nil || historyCount != 0 {
+		t.Fatalf("calculation wrote actual cost history: %d, err=%v", historyCount, err)
+	}
+	var incomingCost float64
+	if err = pool.QueryRow(ctx, `SELECT unit_cost_rub::DOUBLE PRECISION FROM procurement_order_lines WHERE procurement_order_id=$1`, orderID).Scan(&incomingCost); err != nil || incomingCost != 350 {
+		t.Fatalf("incoming batch cost=%v err=%v", incomingCost, err)
 	}
 	if err = pool.QueryRow(ctx, `SELECT status FROM procurement_orders WHERE id=$1`, orderID).Scan(&status); err != nil || status != "ready_to_receive" {
 		t.Fatalf("order status=%q err=%v", status, err)
 	}
+	actor := Actor{CustomerID: actorID, Role: "owner"}
+	if _, err = store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb"}); err == nil {
+		t.Fatal("unknown tariffs allowed a marketplace price")
+	}
+	var lineID int64
+	if err = pool.QueryRow(ctx, `SELECT id FROM procurement_order_lines WHERE procurement_order_id=$1`, orderID).Scan(&lineID); err != nil {
+		t.Fatal(err)
+	}
+	profiles := map[string]ChannelCosts{"site": zeroCosts(), "wb": {amount(.36), amount(0), amount(150), amount(100), amount(30)}, "ozon": {amount(.52), amount(.01), amount(150), amount(200), amount(30)}}
+	retail := int64(1650)
+	if _, err = store.UpdateOrderLine(ctx, actor, lineID, OrderLineUpdate{ChannelCosts: profiles, RetailOverrideRUB: &retail}); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := store.CalculateOrder(ctx, actor, orderID, CalculationInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Lines) != 1 || detail.Lines[0].ProposedRetailRUB == nil || *detail.Lines[0].ProposedRetailRUB != 1650 {
+		t.Fatalf("market retail override lost: %+v", detail.Lines)
+	}
+	settings, err := store.loadSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.TaxRate != .08 {
+		t.Fatalf("fixture expects 8 percent revenue tax, got %v", settings.TaxRate)
+	}
+	prepared := map[string]int64{}
+	for channel, want := range map[string]float64{"site": 1650, "wb": 3211, "ozon": 4867} {
+		batch, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{channel})
+		if err != nil || len(batch.Items) != 1 || batch.Items[0].NewValue != want {
+			t.Fatalf("%s actual prepared price: items=%+v err=%v want=%v", channel, batch.Items, err, want)
+		}
+		prepared[channel] = batch.ID
+		if batch.Items[0].CompareAtValue != nil {
+			t.Fatal("invented a strike-through price")
+		}
+	}
+	if _, err = store.ApprovedSabyPriceExportLines(ctx, orderID); err == nil {
+		t.Fatal("manual retail exported before site approval")
+	}
+	if _, err = store.ApproveBatch(ctx, actor, prepared["site"], nil); err != nil {
+		t.Fatal(err)
+	}
+	approvedDetail, err := store.OrderDetail(ctx, orderID)
+	if err != nil || approvedDetail.Lines[0].CurrentRetailRUB != 1650 || approvedDetail.Lines[0].PriceChangeNeeded || !approvedDetail.Lines[0].LabelReprintNeeded {
+		t.Fatalf("current price and old physical label snapshot mixed: %+v err=%v", approvedDetail.Lines, err)
+	}
+	labelRows, err := receivingPDFRows(approvedDetail)
+	if err != nil || len(labelRows) != 1 || !labelRows[0].ReprintLabel || labelRows[0].PreviousPrice != 1800 {
+		t.Fatalf("label reprint lost after site approval: %+v err=%v", labelRows, err)
+	}
+	exported, err := store.ApprovedSabyPriceExportLines(ctx, orderID)
+	if err != nil || len(exported) != 1 || *exported[0].ProposedRetailRUB != 1650 {
+		t.Fatalf("manual price below threshold missing from Saby XLSX: %+v err=%v", exported, err)
+	}
+	sabyDraft, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"saby_price"})
+	if err != nil || len(sabyDraft.Items) != 1 {
+		t.Fatalf("manual price missing from Saby draft: %+v err=%v", sabyDraft, err)
+	}
+	// Editing costs invalidates the order and all draft prices. Preparing new
+	// prices without recalculation must fail even if the old rows still exist.
+	if _, err = store.UpdateOrderLine(ctx, actor, lineID, OrderLineUpdate{ChannelCosts: profiles}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb"}); err == nil {
+		t.Fatal("stale quote survived a cost edit")
+	}
+
+	// Keeping a profitable site price within the threshold must still allow
+	// correcting marketplace prices. The old shared site threshold hid them.
+	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET retail_override_rub=NULL,unit_price=786,line_total=15720 WHERE id=$1`, lineID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_documents SET product_subtotal=15720,document_total=15720,calculated_total=15720 WHERE id=$1`, documentID); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := store.CalculateOrder(ctx, actor, orderID, CalculationInput{})
+	if err != nil || *kept.Lines[0].ProposedRetailRUB != 1650 {
+		t.Fatalf("small retail change must retain actual profitable site price: %+v err=%v", kept.Lines, err)
+	}
+	siteDraft, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"site"})
+	if err != nil || len(siteDraft.Items) != 0 {
+		t.Fatalf("unexpected site change: %+v err=%v", siteDraft, err)
+	}
+	wbDraft, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb"})
+	if err != nil || len(wbDraft.Items) != 1 {
+		t.Fatalf("marketplace price incorrectly depends on site change: %+v err=%v", wbDraft, err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET unit_price=350,line_total=7000 WHERE id=$1`, lineID); err != nil {
+		t.Fatal(err)
+	}
+	// An explicit competitive channel price can retain less than the site
+	// and still be profitable. It must reach the prepared action unchanged.
+	if _, err = store.UpdateOrderLine(ctx, actor, lineID, OrderLineUpdate{ChannelPrices: map[string]int64{"wb": 2700}}); err != nil {
+		t.Fatal(err)
+	}
+	marketDetail, err := store.CalculateOrder(ctx, actor, orderID, CalculationInput{})
+	if err != nil || !marketDetail.Lines[0].ChannelQuotes["wb"].Manual {
+		t.Fatalf("market price not calculated: %+v err=%v", marketDetail.Lines, err)
+	}
+	marketDraft, err := store.PrepareBatch(ctx, actor, orderID, "prices", []string{"wb"})
+	if err != nil || len(marketDraft.Items) != 1 || marketDraft.Items[0].NewValue != 2700 {
+		t.Fatalf("market price not prepared: %+v err=%v", marketDraft, err)
+	}
+	// Nonreturnable supplier packaging/rent and bank/import costs land in the
+	// batch; a refundable trolley deposit remains separate from expense.
+	if _, err = pool.Exec(ctx, `UPDATE procurement_suppliers SET kind='international' WHERE id=$1`, supplierID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_orders SET currency='EUR' WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_documents SET currency='EUR',parser_kind='holland_packing_list',package_total=211,product_subtotal=7000,calculated_total=7000,document_total=7211,extracted_text='Single Package 10,00
+Returnable Package 196,00
+Package Rent 5,00' WHERE id=$1`, documentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET retail_override_rub=NULL,pot_diameter_cm=12,height_cm=40,load_unit='1' WHERE id=$1`, lineID); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.CalculateOrder(ctx, actor, orderID, CalculationInput{ExchangeRate: 100, DeliveryToMoscowRUB: 1000, DeliveryToRyazanRUB: 500, AdditionalCostsRUB: 2000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Costs.SupplierChargesRUB != 1500 || detail.Costs.ReturnableDepositRUB != 19600 || detail.Costs.AdditionalCostsRUB != 2000 || detail.Lines[0].UnitCostRUB == nil || *detail.Lines[0].UnitCostRUB != 35250 || detail.Lines[0].AdditionalPurchaseUnitRUB == nil || *detail.Lines[0].AdditionalPurchaseUnitRUB != 175 {
+		t.Fatalf("supplier charges lost or deposit expensed: costs=%+v line=%+v", detail.Costs, detail.Lines[0])
+	}
+	// Read-only previews must not change formula version or product cost.
+	versionBefore := settings.Version
+	example, err := store.PricingExample(ctx, settings)
+	if err != nil || example.After.ChannelQuotes == nil {
+		t.Fatalf("pricing example=%+v err=%v", example, err)
+	}
+	currentSettings, err := store.loadSettings(ctx)
+	if err != nil || currentSettings.Version != versionBefore {
+		t.Fatalf("preview mutated settings: %+v %v", currentSettings, err)
+	}
+	updated := settings
+	updated.Economics = PricingEconomics{MonthlyFixedCostsRUB: 300000, Channels: profiles}
+	saved, err := store.UpdateSettings(ctx, actor, updated)
+	if err != nil || saved.Economics.MonthlyFixedCostsRUB != 300000 || saved.Economics.Channels["ozon"].CommissionRate == nil || *saved.Economics.Channels["ozon"].CommissionRate != .52 {
+		t.Fatalf("pricing profiles not persisted: %+v err=%v", saved, err)
+	}
+	if _, err = store.UpdateSettings(ctx, actor, updated); err == nil {
+		t.Fatal("stale settings editor overwrote newer financial inputs")
+	}
+	settings.Version = saved.Version
+	if _, err = store.UpdateSettings(ctx, actor, settings); err != nil {
+		t.Fatalf("restore settings: %v", err)
+	}
+
 }

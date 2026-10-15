@@ -111,6 +111,9 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	if len(detail.Lines[0].ReceivingAllocations) != 2 {
 		t.Fatalf("distribution lost %+v", detail.Lines[0])
 	}
+	chosenRetail := int64(2000)
+	_, err = store.UpdateOrderLine(ctx, actor, mixID, OrderLineUpdate{RetailOverrideRUB: &chosenRetail, ChannelPrices: map[string]int64{"wb": 2700}})
+	must(err)
 	detail, err = store.CalculateOrder(ctx, actor, orderID, costs)
 	must(err)
 	if !detail.Validation.CanPrepareReceipt || detail.Validation.PendingAssortments != 0 {
@@ -136,7 +139,7 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 		t.Fatalf("mix label changes not reflected in receiving PDF: %+v", pdfRows)
 	}
 	var childCosts int
-	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_order_lines c JOIN procurement_order_lines p ON p.id=c.receiving_parent_line_id WHERE p.id=$1 AND c.reconciliation_status<>'superseded' AND c.unit_cost_rub=p.unit_cost_rub AND c.unit_cost_rub>0 AND c.supplier_alias_id IS NULL`, mixID).Scan(&childCosts))
+	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_order_lines c JOIN procurement_order_lines p ON p.id=c.receiving_parent_line_id WHERE p.id=$1 AND c.reconciliation_status<>'superseded' AND c.unit_cost_rub=p.unit_cost_rub AND c.unit_cost_rub>0 AND c.supplier_alias_id IS NULL AND c.retail_override_rub=p.retail_override_rub AND c.channel_prices=p.channel_prices`, mixID).Scan(&childCosts))
 	if childCosts != 2 {
 		t.Fatal("child costs or alias isolation failed")
 	}

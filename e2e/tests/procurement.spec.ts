@@ -109,7 +109,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
-    settings: { version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
+    settings: { economics:{monthlyFixedCostsRub:300000,channels:{}},version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
     suppliers: [{ id: 1, name: "Тестовый поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }, { id: 2, name: "Другой поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
     orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: options.currency || "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
@@ -179,6 +179,8 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed",receivingMode:"catalog"});
       Object.assign(orderDetail.validation,{pendingCatalog:0});
       procurement.review=[];procurement.summary.unresolvedAliases=0;
+    }else if("channelCosts" in body || "retailOverrideRub" in body){
+      Object.assign(line,body);
     }else{
       Object.assign(line,{receivingMode:body.receivingMode,matchStatus:body.receivingMode==="catalog"?"unmatched":"deferred",receivingAllocations:(body.receivingAllocations || []).map((part:{sabyId:string;quantity:number})=>({...part,name:"Bonsai Zantaxilum D15",code:"X616872557"}))});
     }
@@ -216,6 +218,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         if(Object.keys(body).some(key=>!["requestedName","sabyId","quantity","notes","dueDate","assignee","status"].includes(key)))return Promise.resolve(new Response(JSON.stringify({error:"Unknown update request field"}),{status:400}));
         const id=Number(path.split("/").at(-1));const item=procurement.requests.find(item=>item.id===id);if(item)Object.assign(item,body);return json({request:item});
       }
+      if(path === "/api/v1/admin/procurement/pricing/preview")return json({retailRub:1490,quotes:{site:{priceRub:1490,breakEvenRub:800,contributionRub:600,coverUnits:500,missing:[]},wb:{missing:["комиссия","логистика"]},ozon:{missing:["комиссия","логистика"]}}});
       if(path === "/api/v1/admin/procurement/settings/example")return json({before:{cost:682,retail:1490},after:{cost:682,retail:1590},history:[]});
       if (path === "/api/v1/admin/procurement/recommendations/supplier" && init?.method === "PUT") {
         const body = JSON.parse(String(init.body)) as { sabyId: string; supplierId: number };
@@ -264,7 +267,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
           orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
           return json(orderDetail);
         }
-        if("heightCm" in body || "acceptComparison" in body || "invoiceExcluded" in body){Object.assign(planned,body);return json(orderDetail);}
+        if("heightCm" in body || "acceptComparison" in body || "invoiceExcluded" in body || "channelCosts" in body || "retailOverrideRub" in body){Object.assign(planned,body);return json(orderDetail);}
         const invoices = orderDetail.lines.filter(line => (body.invoiceLineIds || [body.invoiceLineId]).includes(line.id));
         const parts=invoices.map(line=>({rawName:line.invoiceRawName,quantity:line.invoicedQuantity,unitPrice:line.unitPrice,lineTotal:Number(line.invoicedQuantity)*Number(line.unitPrice),sourcePage:1,sourceLine:line.id}));
         Object.assign(planned, { invoiceRawName: invoices[0].invoiceRawName, invoicedQuantity: invoices.reduce((sum,line)=>sum+Number(line.invoicedQuantity),0), invoiceComponents:parts, reconciliationStatus: "matched" });
@@ -527,7 +530,7 @@ test("@desktop procurement shows one markup and clear rounding settings", async 
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.getByRole("button", { name: "Формула цены" }).click();
 
-  await expect(page.getByLabel("Наценка на закупочную стоимость, %")).toHaveValue("110");
+  await expect(page.getByLabel("Стартовая наценка на себестоимость, %")).toHaveValue("110");
   await expect(page.getByLabel("Менять цену при отклонении более, %")).toHaveValue("10");
   await expect(page.getByLabel("Округлять цены до ближайших 50 или 90")).toBeChecked();
   await expect(page.getByLabel("База Голландии")).toHaveCount(0);
@@ -863,5 +866,52 @@ test("@desktop @phone purchase tabs switch groups, keep totals and return to all
  await expect(all).toHaveAttribute('aria-selected','true');
  await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(91);
  await expect(all).toBeInViewport();
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
+
+test("@desktop @phone product pricing keeps market retail and Ozon FBS costs after reload",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
+ await page.goto("/admin?section=procurement&order=4");
+ const order=page.getByRole("dialog",{name:"TEST-100",exact:true});
+ const row=order.getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
+ await row.locator(".procurement-row-more > summary").click();
+ await row.getByRole("button",{name:"Расходы продажи",exact:true}).click();
+ const editor=page.getByRole("dialog",{name:"Цена и расходы продажи",exact:true});
+ await editor.getByLabel("Розничная цена после проверки рынка, ₽").fill("1650");
+ await editor.locator("summary").filter({hasText:"Ozon · FBS"}).click();
+ await editor.getByLabel("Отдельные расходы этого товара").last().check();
+ await editor.getByLabel("Цена Ozon после проверки рынка, ₽").fill("2700");
+ await editor.getByLabel("Комиссия, %",{exact:true}).fill("52");
+ await editor.getByLabel("Эквайринг, %",{exact:true}).fill("1");
+ await editor.getByLabel("Упаковка, ₽",{exact:true}).fill("150");
+ await editor.getByLabel("Логистика, последняя миля, обработка, ₽",{exact:true}).fill("200");
+ await editor.getByLabel("Потери, возвраты и прочие затраты, ₽",{exact:true}).fill("30");
+ await editor.getByRole("button",{name:"Сохранить для пересчёта",exact:true}).click();
+ await expect(editor).toBeHidden();
+ await page.reload();
+ const reloaded=page.getByRole("dialog",{name:"TEST-100",exact:true}).getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
+ await reloaded.locator(".procurement-row-more > summary").click();
+ await reloaded.getByRole("button",{name:"Расходы продажи",exact:true}).click();
+ await expect(editor.getByLabel("Розничная цена после проверки рынка, ₽")).toHaveValue("1650");
+ await editor.locator("summary").filter({hasText:"Ozon · FBS"}).click();
+ await expect(editor.getByLabel("Цена Ozon после проверки рынка, ₽")).toHaveValue("2700");
+ await expect(editor.getByLabel("Комиссия, %",{exact:true})).toHaveValue("52");
+ await expect(editor.getByLabel("Логистика, последняя миля, обработка, ₽",{exact:true})).toHaveValue("200");
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
+test("@desktop @phone pricing shows monthly costs and leaves unknown marketplace charges blank",async({page})=>{
+ await mockProcurement(page);
+ await page.goto("/admin?section=procurement&view=settings");
+ await expect(page.getByLabel("Расходы в месяц, ₽",{exact:true})).toHaveValue("300000");
+ const channels=page.locator("details.procurement-explanation").filter({has:page.locator("summary",{hasText:"FBS"})});
+ await expect(channels).toHaveCount(2);
+ for(const channel of await channels.all()) {
+  await expect(channel.getByLabel("Комиссия, %",{exact:true})).toHaveValue("");
+  await expect(channel.getByLabel("Логистика, последняя миля, обработка, ₽",{exact:true})).toHaveValue("");
+ }
+ await expect(page.getByLabel("Резерв, %",{exact:true})).toHaveCount(0);
+ await expect(page.getByLabel("Логистика маркетплейса, ₽ за см высоты",{exact:true})).toHaveCount(0);
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });

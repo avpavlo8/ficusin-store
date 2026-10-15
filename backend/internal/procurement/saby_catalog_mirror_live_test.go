@@ -166,6 +166,13 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 		t.Fatal(err)
 	}
 
+	if _, err = pool.Exec(ctx, `UPDATE procurement_orders SET calculation_version=(SELECT version FROM procurement_pricing_settings WHERE id=1) WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET channel_quotes='{"wb":{"priceRub":3990,"contributionRub":500,"missing":[]},"ozon":{"priceRub":4990,"contributionRub":500,"missing":[]}}'::JSONB WHERE procurement_order_id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+
 	items, err := store.ListProducts(ctx, supplierID, code)
 	if err != nil {
 		t.Fatal(err)
@@ -180,8 +187,8 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	if item.WBNmID == nil || *item.WBNmID != wbNmID || item.WBVendorCode != wbVendor || item.OzonOfferID != ozonOffer {
 		t.Fatalf("marketplace mapping lost for Saby-only product: %+v", item)
 	}
-	if item.SuggestedMarketplaceRUB == nil || *item.SuggestedMarketplaceRUB != 3990 ||
-		item.SuggestedMarketplaceStrikeRUB == nil || *item.SuggestedMarketplaceStrikeRUB != 4990 {
+	if item.SuggestedWBRUB == nil || *item.SuggestedWBRUB != 3990 ||
+		item.SuggestedOzonRUB == nil || *item.SuggestedOzonRUB != 4990 {
 		t.Fatalf("initial marketplace price missing: %+v", item)
 	}
 
@@ -203,7 +210,7 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	}
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, otherSupplierID) }()
 	otherItems, err := store.ListProducts(ctx, otherSupplierID, code)
-	if err != nil || len(otherItems) != 1 || otherItems[0].SuggestedMarketplaceRUB == nil || *otherItems[0].SuggestedMarketplaceRUB != 3990 {
+	if err != nil || len(otherItems) != 1 || otherItems[0].SuggestedWBRUB == nil || *otherItems[0].SuggestedWBRUB != 3990 {
 		t.Fatalf("latest marketplace price disappeared behind supplier filter: items=%+v err=%v", otherItems, err)
 	}
 

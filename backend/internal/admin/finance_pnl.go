@@ -34,30 +34,31 @@ type PnLProduct struct {
 }
 
 type PnLReport struct {
-	From                string       `json:"from"`
-	To                  string       `json:"to"`
-	Preliminary         bool         `json:"preliminary"`
-	Revenue             float64      `json:"revenue"`
-	COGS                float64      `json:"cogs"`
-	GrossProfit         float64      `json:"grossProfit"`
-	MarketplaceCosts    float64      `json:"marketplaceCosts"`
-	Packaging           float64      `json:"packaging"`
-	ReturnLoss          float64      `json:"returnLoss"`
-	OperatingExpenses   float64      `json:"operatingExpenses"`
-	ProfitBeforeTax     float64      `json:"profitBeforeTax"`
-	ActualTax           *float64     `json:"actualTax"`
-	NetProfit           *float64     `json:"netProfit"`
-	CashFlow            float64      `json:"cashFlow"`
-	TaxRegime           string       `json:"taxRegime"`
-	TaxRate             float64      `json:"taxRate"`
-	ActualCostUnits     int          `json:"actualCostUnits"`
-	EstimatedCostUnits  int          `json:"estimatedCostUnits"`
-	UnknownCostUnits    int          `json:"unknownCostUnits"`
-	ActualCostAmount    float64      `json:"actualCostAmount"`
-	EstimatedCostAmount float64      `json:"estimatedCostAmount"`
-	Channels            []PnLLine    `json:"channels"`
-	Products            []PnLProduct `json:"products"`
-	Warnings            []string     `json:"warnings"`
+	MonthlyFixedCostBudgetRUB float64      `json:"monthlyFixedCostBudgetRub"`
+	From                      string       `json:"from"`
+	To                        string       `json:"to"`
+	Preliminary               bool         `json:"preliminary"`
+	Revenue                   float64      `json:"revenue"`
+	COGS                      float64      `json:"cogs"`
+	GrossProfit               float64      `json:"grossProfit"`
+	MarketplaceCosts          float64      `json:"marketplaceCosts"`
+	Packaging                 float64      `json:"packaging"`
+	ReturnLoss                float64      `json:"returnLoss"`
+	OperatingExpenses         float64      `json:"operatingExpenses"`
+	ProfitBeforeTax           float64      `json:"profitBeforeTax"`
+	ActualTax                 *float64     `json:"actualTax"`
+	NetProfit                 *float64     `json:"netProfit"`
+	CashFlow                  float64      `json:"cashFlow"`
+	TaxRegime                 string       `json:"taxRegime"`
+	TaxRate                   float64      `json:"taxRate"`
+	ActualCostUnits           int          `json:"actualCostUnits"`
+	EstimatedCostUnits        int          `json:"estimatedCostUnits"`
+	UnknownCostUnits          int          `json:"unknownCostUnits"`
+	ActualCostAmount          float64      `json:"actualCostAmount"`
+	EstimatedCostAmount       float64      `json:"estimatedCostAmount"`
+	Channels                  []PnLLine    `json:"channels"`
+	Products                  []PnLProduct `json:"products"`
+	Warnings                  []string     `json:"warnings"`
 }
 
 type TaxPeriodInput struct {
@@ -351,6 +352,12 @@ func (repository *PostgresRepository) FinancePnL(ctx context.Context, fromText, 
 	}
 	if out.ActualTax == nil {
 		out.Warnings = append(out.Warnings, "Фактический налог АУСН не сверен")
+	}
+	if err = repository.pool.QueryRow(ctx, `SELECT COALESCE((economics->>'monthlyFixedCostsRub')::DOUBLE PRECISION,0) FROM procurement_pricing_settings WHERE id=1`).Scan(&out.MonthlyFixedCostBudgetRUB); err != nil {
+		return out, err
+	}
+	if out.Revenue > 0 && out.MonthlyFixedCostBudgetRUB > 0 && out.OperatingExpenses == 0 {
+		out.Warnings = append(out.Warnings, "Расходы магазина за период не отражены при ненулевом месячном бюджете: проверьте зарплаты, аренду и сервисы. Прибыль пока не подтверждена")
 	}
 	out.Preliminary = len(out.Warnings) > 0
 	return out, rows.Err()

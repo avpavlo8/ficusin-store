@@ -149,7 +149,7 @@ func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, 
 			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
 			avoid_round_hundreds, recommendation_days, target_cover_days,
 			retail_markup_multiplier::DOUBLE PRECISION, round_prices,
-			marketplace_logistics_per_cm::DOUBLE PRECISION
+			marketplace_logistics_per_cm::DOUBLE PRECISION, economics
 		FROM procurement_pricing_settings WHERE id = 1
 	`).Scan(
 		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
@@ -160,7 +160,7 @@ func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, 
 		&item.MarketplaceStrikeMarkup, &item.RetailRoundStep, &item.AvoidRoundHundreds,
 		&item.RecommendationDays, &item.TargetCoverDays,
 		&item.RetailMarkupMultiplier, &item.RoundPrices,
-		&item.MarketplaceLogisticsPerCM,
+		&item.MarketplaceLogisticsPerCM, &item.Economics,
 	)
 	if err != nil {
 		return PricingSettings{}, fmt.Errorf("load procurement pricing settings: %w", err)
@@ -174,6 +174,10 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 		return PricingSettings{}, fmt.Errorf("begin update procurement settings: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	economics, err := json.Marshal(input.Economics)
+	if err != nil {
+		return PricingSettings{}, ErrInvalidInput
+	}
 	var item PricingSettings
 	err = tx.QueryRow(ctx, `
 		UPDATE procurement_pricing_settings SET
@@ -185,9 +189,9 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 			marketplace_strike_markup = $15, retail_round_step = $16,
 			avoid_round_hundreds = $17, recommendation_days = $18, target_cover_days = $19,
 			retail_markup_multiplier = $20, round_prices = $21,
-			marketplace_logistics_per_cm = $22,
+			marketplace_logistics_per_cm = $22, economics = $24::JSONB,
 			updated_by = $23, updated_at = CURRENT_TIMESTAMP
-		WHERE id = 1
+		WHERE id = 1 AND version=$25
 		RETURNING version, default_exchange_rate::DOUBLE PRECISION,
 			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
 			trolley_fill_ratio::DOUBLE PRECISION, return_loss_rate::DOUBLE PRECISION,
@@ -198,7 +202,7 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
 			avoid_round_hundreds, recommendation_days, target_cover_days,
 			retail_markup_multiplier::DOUBLE PRECISION, round_prices,
-			marketplace_logistics_per_cm::DOUBLE PRECISION
+			marketplace_logistics_per_cm::DOUBLE PRECISION, economics
 	`, input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3,
 		input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate,
 		input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold,
@@ -206,7 +210,7 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 		input.InternationalRetailMultiplier, input.MarketplaceStrikeMarkup,
 		input.RetailRoundStep, input.AvoidRoundHundreds, input.RecommendationDays,
 		input.TargetCoverDays, input.RetailMarkupMultiplier, input.RoundPrices,
-		input.MarketplaceLogisticsPerCM, actor.CustomerID,
+		input.MarketplaceLogisticsPerCM, actor.CustomerID, string(economics), input.Version,
 	).Scan(
 		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
 		&item.TrolleyVolumeCM3, &item.TrolleyFillRatio, &item.ReturnLossRate,
@@ -216,8 +220,11 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 		&item.MarketplaceStrikeMarkup, &item.RetailRoundStep, &item.AvoidRoundHundreds,
 		&item.RecommendationDays, &item.TargetCoverDays,
 		&item.RetailMarkupMultiplier, &item.RoundPrices,
-		&item.MarketplaceLogisticsPerCM,
+		&item.MarketplaceLogisticsPerCM, &item.Economics,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PricingSettings{}, &UserFacingError{Message: "Настройки уже изменились. Обновите страницу перед сохранением."}
+	}
 	if err != nil {
 		return PricingSettings{}, fmt.Errorf("update procurement settings: %w", err)
 	}
@@ -546,10 +553,10 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	err = store.pool.QueryRow(ctx, `
 		SELECT COALESCE(exchange_rate, 0)::DOUBLE PRECISION,
 			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION,
-			delivery_to_moscow_rub::DOUBLE PRECISION, delivery_to_ryazan_rub::DOUBLE PRECISION
+			delivery_to_moscow_rub::DOUBLE PRECISION, delivery_to_ryazan_rub::DOUBLE PRECISION,additional_costs_rub::DOUBLE PRECISION,supplier_charges_rub::DOUBLE PRECISION,returnable_deposit_rub::DOUBLE PRECISION
 		FROM procurement_orders WHERE id = $1
 	`, orderID).Scan(&detail.Costs.ExchangeRate, &detail.Costs.TrolleyCostCurrency, &detail.Costs.TrolleyCostRUB,
-		&detail.Costs.DeliveryToMoscowRUB, &detail.Costs.DeliveryToRyazanRUB)
+		&detail.Costs.DeliveryToMoscowRUB, &detail.Costs.DeliveryToRyazanRUB, &detail.Costs.AdditionalCostsRUB, &detail.Costs.SupplierChargesRUB, &detail.Costs.ReturnableDepositRUB)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("load procurement order costs: %w", err)
 	}
@@ -565,7 +572,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			l.purchase_unit_rub::DOUBLE PRECISION, l.trolley_delivery_unit_rub::DOUBLE PRECISION,
 			l.ryazan_delivery_unit_rub::DOUBLE PRECISION, l.unit_cost_rub::DOUBLE PRECISION,
 			pv.current_unit_cost_rub::DOUBLE PRECISION,COALESCE(pv.current_unit_cost_kind,''),pv.current_unit_cost_effective_at,
-			COALESCE(l.baseline_site_price_minor, pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
+			COALESCE(pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			l.proposed_retail_rub, l.proposed_marketplace_rub,
 			l.proposed_marketplace_strike_rub, l.customer_request,
 			l.comparison_accepted, l.comparison_note, l.invoice_components,
@@ -573,7 +580,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
               'id',alias.id,'supplierId',alias.supplier_id,'rawName',alias.raw_name,
               'supplierArticle',alias.supplier_article,'potDiameterCm',alias.pot_diameter_cm,
               'heightCm',alias.height_cm,'matchStatus',alias.match_status) END,
-            l.receiving_mode,l.customer_handed_over,
+            l.receiving_mode,l.customer_handed_over,l.channel_costs,l.channel_quotes,l.channel_prices,l.dimensions_reviewed,l.retail_override_rub,l.additional_purchase_unit_rub::DOUBLE PRECISION,l.baseline_site_price_minor::DOUBLE PRECISION/100,COALESCE(pv.label,''),
             COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty,'currentRetailRub',COALESCE(child.baseline_site_price_minor,child_variant.base_price_minor,0)::NUMERIC/100) ORDER BY child.id)
              FROM procurement_order_lines child JOIN saby_nomenclature n ON n.saby_id=child.saby_id
              LEFT JOIN product_variants child_variant ON child_variant.id=child.canonical_variant_id
@@ -603,25 +610,42 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
 			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ReceivingAllocations); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.ChannelPrices, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.LabelRetailRUB, &line.CatalogueLabel, &line.ReceivingAllocations); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.ReceivingMode != "catalog" {
+			line.CatalogueLabel = ""
 			line.CurrentRetailRUB = 0
 			line.CurrentUnitCostRUB = nil
 			line.CurrentUnitCostKind = ""
 			line.CurrentUnitCostEffectiveAt = nil
 		}
+		line.DimensionWarning = dimensionWarning(line.PotDiameterCM, line.HeightCM, line.MatchAlias, line.DimensionsReviewed, line.CatalogueLabel)
 		if line.MatchAlias != nil {
 			line.MatchAlias.SupplierName = order.SupplierName
 		}
 		if line.ReceivingMode == "catalog" && line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
 			line.PriceChangeNeeded = priceChangeNeeded(line.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+			if line.RetailOverrideRUB != nil && line.CurrentRetailRUB != float64(*line.ProposedRetailRUB) {
+				line.PriceChangeNeeded = true
+			}
+			if q, ok := line.ChannelQuotes["site"]; ok && q.BreakEvenRUB != nil && line.CurrentRetailRUB <= float64(*q.BreakEvenRUB) {
+				line.PriceChangeNeeded = true
+			}
+		}
+		if line.LabelRetailRUB != nil && line.ProposedRetailRUB != nil {
+			line.LabelReprintNeeded = priceChangeNeeded(*line.LabelRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+			if line.RetailOverrideRUB != nil && *line.LabelRetailRUB != float64(*line.ProposedRetailRUB) {
+				line.LabelReprintNeeded = true
+			}
+			if q := line.ChannelQuotes["site"]; q.BreakEvenRUB != nil && *line.LabelRetailRUB <= float64(*q.BreakEvenRUB) && *line.LabelRetailRUB != float64(*line.ProposedRetailRUB) {
+				line.LabelReprintNeeded = true
+			}
 		}
 		if line.ProposedRetailRUB != nil {
 			for i := range line.ReceivingAllocations {
 				part := &line.ReceivingAllocations[i]
-				part.PriceChangeNeeded = priceChangeNeeded(part.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
+				part.PriceChangeNeeded = priceChangeNeeded(part.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold) || (line.RetailOverrideRUB != nil && part.CurrentRetailRUB != float64(*line.ProposedRetailRUB))
 			}
 		}
 		detail.Lines = append(detail.Lines, line)
@@ -701,6 +725,9 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		if line.ComparisonMismatch && !line.ComparisonAccepted {
 			result.ComparisonMismatch++
 		}
+		if kind == KindInternational && line.DimensionWarning != "" {
+			result.Blockers = append(result.Blockers, line.RawName+": "+line.DimensionWarning)
+		}
 		if kind == KindInternational && (line.PotDiameterCM == nil || *line.PotDiameterCM <= 0 || line.HeightCM == nil || *line.HeightCM <= 0) {
 			result.MissingDimensions++
 		}
@@ -720,6 +747,8 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		if result.ExpectedTrolleyRUB == 0 {
 			result.ExpectedTrolleyRUB = float64(result.TrolleyCount) * detail.Costs.TrolleyCostRUB
 		}
+	} else {
+		result.ExpectedTrolleyRUB = detail.Costs.DeliveryToMoscowRUB
 	}
 	result.ExpectedRyazanRUB = detail.Costs.DeliveryToRyazanRUB
 	if documents == 0 {
@@ -790,10 +819,10 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			saby_id=alias.matched_saby_id,
 			canonical_variant_id=alias.canonical_variant_id,
 			match_status='confirmed',
-			purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,
+			purchase_unit_rub=NULL,additional_purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,
 			ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
 			proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,
-			proposed_marketplace_strike_rub=NULL,baseline_site_price_minor=NULL,updated_at=CURRENT_TIMESTAMP
+			proposed_marketplace_strike_rub=NULL,channel_quotes='{}'::JSONB,baseline_site_price_minor=NULL,updated_at=CURRENT_TIMESTAMP
 		FROM procurement_supplier_aliases alias
 		WHERE line.procurement_order_id=$1
 			AND line.supplier_alias_id=alias.id
@@ -833,14 +862,25 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		invoicedQty                   *int
 		matchStatus, loadUnit, sabyID string
 		reconciliationStatus          string
+		channelCosts                  map[string]ChannelCosts
+		channelPrices                 map[string]int64
+		dimensionsReviewed            bool
+		invoicePot, invoiceHeight     *float64
+		retailOverride                *int64
 		comparisonAccepted            bool
+		currentRetail                 float64
+		catalogueLabel                string
 	}
 	rows, err := tx.Query(ctx, `
 		SELECT id, COALESCE(invoiced_qty, ordered_qty), COALESCE(unit_price, expected_unit_price, 0)::DOUBLE PRECISION,
 			COALESCE(pot_diameter_cm, 0)::DOUBLE PRECISION,
 			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status, load_unit,
 			expected_unit_price::DOUBLE PRECISION, invoiced_qty, comparison_accepted, ordered_qty,
-			COALESCE(saby_id, ''),reconciliation_status
+			COALESCE(saby_id, ''),reconciliation_status,channel_costs,channel_prices,dimensions_reviewed,
+            (SELECT pot_diameter_cm::DOUBLE PRECISION FROM procurement_supplier_aliases WHERE id=supplier_alias_id),
+            (SELECT height_cm::DOUBLE PRECISION FROM procurement_supplier_aliases WHERE id=supplier_alias_id),retail_override_rub,
+            COALESCE((SELECT base_price_minor::DOUBLE PRECISION/100 FROM product_variants WHERE id=canonical_variant_id),0),
+            COALESCE((SELECT label FROM product_variants WHERE id=canonical_variant_id),'')
 		FROM procurement_order_lines WHERE procurement_order_id = $1 AND receiving_parent_line_id IS NULL
 			AND reconciliation_status<>'superseded' AND NOT invoice_excluded
 			AND (reconciliation_status<>'added' OR comparison_accepted) FOR UPDATE
@@ -855,7 +895,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		var line sourceLine
 		if err := rows.Scan(&line.id, &line.quantity, &line.unitPrice, &line.pot, &line.height, &line.matchStatus,
 			&line.loadUnit, &line.expectedPrice, &line.invoicedQty, &line.comparisonAccepted, &line.orderedQty, &line.sabyID,
-			&line.reconciliationStatus); err != nil {
+			&line.reconciliationStatus, &line.channelCosts, &line.channelPrices, &line.dimensionsReviewed, &line.invoicePot, &line.invoiceHeight, &line.retailOverride, &line.currentRetail, &line.catalogueLabel); err != nil {
 			rows.Close()
 			return OrderDetail{}, fmt.Errorf("scan procurement calculation line: %w", err)
 		}
@@ -864,6 +904,9 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			return OrderDetail{}, ErrInvalidInput
 		}
 		if line.matchStatus == "confirmed" || line.matchStatus == "deferred" {
+			if line.matchStatus == "deferred" {
+				line.catalogueLabel = ""
+			}
 			if line.quantity <= 0 || line.unitPrice <= 0 || line.invoicedQty == nil {
 				rows.Close()
 				return OrderDetail{}, ErrInvalidInput
@@ -871,6 +914,10 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			if kind == KindInternational && (line.pot <= 0 || line.height <= 0 || !validInvoiceLoadUnit(line.loadUnit)) {
 				rows.Close()
 				return OrderDetail{}, ErrInvalidInput
+			}
+			if kind == KindInternational && dimensionWarning(&line.pot, &line.height, &AliasReview{PotDiameterCM: line.invoicePot, HeightCM: line.invoiceHeight}, line.dimensionsReviewed, line.catalogueLabel) != "" {
+				rows.Close()
+				return OrderDetail{}, &UserFacingError{Message: "Размеры отличаются от инвойса. Проверьте и сохраните размеры строки перед расчётом."}
 			}
 			totalHeightUnits += line.height * float64(line.quantity)
 			if kind == KindInternational {
@@ -901,8 +948,25 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	`, orderID).Scan(&documentCount, &arithmeticMismatch); err != nil {
 		return OrderDetail{}, fmt.Errorf("validate documents before calculation: %w", err)
 	}
-	if documentCount == 0 || arithmeticMismatch > 0 || (input.DeliveryToRyazanRUB > 0 && totalHeightUnits <= 0) {
+	if documentCount == 0 || arithmeticMismatch > 0 || (kind == KindInternational && input.DeliveryToRyazanRUB > 0 && totalHeightUnits <= 0) {
 		return OrderDetail{}, ErrInvalidInput
+	}
+	supplierCharges, deposit, err := loadSupplierCharges(ctx, tx, orderID, input.ExchangeRate)
+	if err != nil {
+		return OrderDetail{}, err
+	}
+	if !finiteNonnegative(input.AdditionalCostsRUB) || input.AdditionalCostsRUB > 1e12 {
+		return OrderDetail{}, ErrInvalidInput
+	}
+	extraWeights := []allocationWeight{}
+	for _, line := range lines {
+		if line.matchStatus == "confirmed" || line.matchStatus == "deferred" {
+			extraWeights = append(extraWeights, allocationWeight{ID: line.id, Weight: line.unitPrice * float64(line.quantity), Quantity: line.quantity})
+		}
+	}
+	extraPerUnit := allocateMoneyPerUnit(supplierCharges+input.AdditionalCostsRUB, extraWeights)
+	if _, err := tx.Exec(ctx, `UPDATE procurement_orders SET supplier_charges_rub=$2,returnable_deposit_rub=$3,additional_costs_rub=$4 WHERE id=$1`, orderID, supplierCharges, deposit, input.AdditionalCostsRUB); err != nil {
+		return OrderDetail{}, err
 	}
 	moscowWeights := make([]allocationWeight, 0, len(lines))
 	ryazanWeights := make([]allocationWeight, 0, len(lines))
@@ -915,7 +979,10 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			moscowWeights = append(moscowWeights, allocationWeight{ID: line.id,
 				Weight: unitVolume * float64(line.quantity) / loadVolumes[line.loadUnit] / float64(len(loadVolumes)), Quantity: line.quantity})
 		}
-		if totalHeightUnits > 0 {
+		if kind == KindDomestic {
+			moscowWeights = append(moscowWeights, allocationWeight{ID: line.id, Weight: line.unitPrice * float64(line.quantity), Quantity: line.quantity})
+			ryazanWeights = append(ryazanWeights, allocationWeight{ID: line.id, Weight: line.unitPrice * float64(line.quantity), Quantity: line.quantity})
+		} else if totalHeightUnits > 0 {
 			ryazanWeights = append(ryazanWeights, allocationWeight{ID: line.id,
 				Weight: line.height * float64(line.quantity), Quantity: line.quantity})
 		}
@@ -928,56 +995,41 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		}
 		calculated := calculateAllocatedLine(
 			settings, kind, line.unitPrice, input.ExchangeRate,
-			moscowPerUnit[line.id], ryazanPerUnit[line.id], line.height,
+			moscowPerUnit[line.id], ryazanPerUnit[line.id], line.height, extraPerUnit[line.id],
 		)
+		// A suppressed small site change must not anchor MP prices to a price
+		// that will never be published. Keep the current profitable site price.
+		if line.retailOverride == nil && line.currentRetail > 0 && math.Trunc(line.currentRetail) == line.currentRetail && !priceChangeNeeded(line.currentRetail, calculated.ProposedRetailRUB, settings.PriceChangeThreshold) {
+			q := calculateChannelQuotes(settings, calculated.UnitCostRUB, int64(line.currentRetail), line.channelCosts)
+			if q["site"].PriceRUB != nil {
+				calculated.ProposedRetailRUB = int64(line.currentRetail)
+			}
+		}
+		if line.retailOverride != nil {
+			calculated.ProposedRetailRUB = *line.retailOverride
+		}
+		quotes, err := json.Marshal(calculateChannelQuotes(settings, calculated.UnitCostRUB, calculated.ProposedRetailRUB, line.channelCosts, line.channelPrices))
+		if err != nil {
+			return OrderDetail{}, err
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE procurement_order_lines SET purchase_unit_rub = $2,
 				trolley_delivery_unit_rub = $3, ryazan_delivery_unit_rub = $4,
 				unit_cost_rub = $5, proposed_retail_rub = $6,
-				proposed_marketplace_rub = $7, proposed_marketplace_strike_rub = $8,
+				proposed_marketplace_rub = NULL, proposed_marketplace_strike_rub = NULL,channel_quotes=$7::JSONB,additional_purchase_unit_rub=$8,
 				baseline_site_price_minor = (SELECT pv.base_price_minor FROM product_variants pv WHERE pv.id=procurement_order_lines.canonical_variant_id),
 				updated_at = CURRENT_TIMESTAMP WHERE id = $1
 		`, line.id, calculated.PurchaseUnitRUB, calculated.TrolleyDeliveryUnitRUB,
 			calculated.RyazanDeliveryUnitRUB, calculated.UnitCostRUB,
-			calculated.ProposedRetailRUB, calculated.ProposedMarketplaceRUB,
-			calculated.ProposedMarketplaceStrikeRUB); err != nil {
+			calculated.ProposedRetailRUB, string(quotes), calculated.AdditionalPurchaseUnitRUB); err != nil {
 			return OrderDetail{}, fmt.Errorf("save procurement calculation line: %w", err)
 		}
 	}
 	if err := syncReceivingChildCosts(ctx, tx, orderID); err != nil {
 		return OrderDetail{}, err
 	}
-	// The approved invoice and its final logistics are the moment when the
-	// owner knows the landed cost. Make that cost effective now, rather than a
-	// week later when the Saby receipt is posted. Historical sales already
-	// carry their own snapshot and are therefore never rewritten.
-	if _, err := tx.Exec(ctx, `
-		WITH source AS (
-			SELECT canonical_variant_id,saby_id,$1::BIGINT AS procurement_order_id,
-				MIN(id) AS line_id,MAX(unit_cost_rub) AS unit_cost
-			FROM procurement_order_lines
-			WHERE procurement_order_id=$1 AND receiving_parent_line_id IS NULL AND match_status='confirmed' AND NOT invoice_excluded
-				AND reconciliation_status<>'superseded' AND canonical_variant_id IS NOT NULL
-				AND saby_id IS NOT NULL AND unit_cost_rub IS NOT NULL
-			GROUP BY canonical_variant_id,saby_id
-		), saved AS (
-			INSERT INTO procurement_cost_history(canonical_variant_id,saby_id,procurement_order_id,
-				procurement_order_line_id,unit_cost_rub,cost_kind,source,effective_at)
-			SELECT canonical_variant_id,saby_id,procurement_order_id,line_id,unit_cost,
-				'actual','final_invoice_calculation',CURRENT_TIMESTAMP FROM source
-			ON CONFLICT (procurement_order_id,canonical_variant_id) WHERE cost_kind='actual'
-			DO UPDATE SET procurement_order_line_id=EXCLUDED.procurement_order_line_id,
-				unit_cost_rub=EXCLUDED.unit_cost_rub,source=EXCLUDED.source,
-				effective_at=EXCLUDED.effective_at,recorded_at=CURRENT_TIMESTAMP
-			RETURNING canonical_variant_id,unit_cost_rub,effective_at
-		)
-		UPDATE product_variants variant SET current_unit_cost_rub=saved.unit_cost_rub,
-			current_unit_cost_kind='actual',current_unit_cost_effective_at=saved.effective_at,
-			updated_at=CURRENT_TIMESTAMP
-		FROM saved WHERE variant.id=saved.canonical_variant_id
-	`, orderID); err != nil {
-		return OrderDetail{}, fmt.Errorf("apply final invoice costs: %w", err)
-	}
+	// A calculation describes the incoming batch. It cannot change the cost
+	// of stock already held; actual costs are recorded after verified receipt.
 	snapshot, err := json.Marshal(settings)
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("encode procurement calculation settings: %w", err)
@@ -1155,7 +1207,7 @@ func (store *PostgresStore) ImportDocument(
 			return ImportResult{}, fmt.Errorf("supersede procurement document: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
-			procurement_document_id=NULL,invoiced_qty=NULL,unit_price=NULL,line_total=NULL,invoice_components='[]'::JSONB,
+			procurement_document_id=NULL,invoiced_qty=NULL,unit_price=NULL,line_total=NULL,invoice_components='[]'::JSONB,dimensions_reviewed=FALSE,
 			invoice_raw_name='',invoice_supplier_article='',invoice_excluded=FALSE,
 			invoice_exclusion_reason='',invoice_excluded_at=NULL,invoice_excluded_by=NULL,
 			comparison_accepted=FALSE,comparison_note='',reconciliation_status='planned',updated_at=CURRENT_TIMESTAMP

@@ -9,10 +9,19 @@ import (
 // approval from the current calculation. A download is still a manual import,
 // so it must never imply that Saby has accepted the price.
 func (store *PostgresStore) ApprovedSabyPriceExportLines(ctx context.Context, orderID int64) ([]OrderLine, error) {
-	rows, err := store.pool.Query(ctx, `
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err = validatePriceQuotes(ctx, tx, orderID, []string{"site"}); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `
 		WITH candidates AS (
 			SELECT line.saby_id, line.canonical_variant_id AS variant_id,
-				MAX(line.proposed_retail_rub) AS proposed_price,
+				MAX(line.proposed_retail_rub) AS proposed_price,BOOL_OR(line.retail_override_rub IS NOT NULL) AS manual_retail,
+                MAX((line.channel_quotes->'site'->>'breakEvenRub')::BIGINT) AS site_floor,
 				MAX(line.baseline_site_price_minor) AS baseline_price
 			FROM procurement_order_lines line
 			WHERE line.procurement_order_id=$1 AND line.match_status='confirmed'
@@ -28,7 +37,7 @@ func (store *PostgresStore) ApprovedSabyPriceExportLines(ctx context.Context, or
 			FROM candidates candidate
 			JOIN product_variants variant ON variant.id=candidate.variant_id
 			LEFT JOIN saby_nomenclature saby ON saby.saby_id=candidate.saby_id
-			WHERE COALESCE(candidate.baseline_price,variant.base_price_minor)<=0
+			WHERE (candidate.manual_retail AND candidate.proposed_price*100 IS DISTINCT FROM COALESCE(candidate.baseline_price,variant.base_price_minor)) OR COALESCE(candidate.baseline_price,variant.base_price_minor)<=COALESCE(candidate.site_floor,0)*100
 				OR ABS(candidate.proposed_price::NUMERIC-
 					COALESCE(candidate.baseline_price,variant.base_price_minor)::NUMERIC/100)
 					> (COALESCE(candidate.baseline_price,variant.base_price_minor)::NUMERIC/100)*
