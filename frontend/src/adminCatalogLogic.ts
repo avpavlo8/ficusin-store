@@ -78,5 +78,10 @@ export function categoryPath(categories:Category[],id?:number) {
  while(current&&!seen.has(current.id)){seen.add(current.id);names.unshift(current.name);current=categories.find(x=>x.id===current?.parentId)}
  return names.join(" / ");
 }
+export function catalogSlug(value:string) {
+ const alphabet:Record<string,string>={а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya"};
+ return Array.from(value.toLowerCase()).map(x=>alphabet[x]??x).join("").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,63);
+}
+export type RegisterCatalogLeave = (check:()=>Promise<boolean>)=>()=>void;
 export const channelLabels:Record<string,string>={saby:"СБИС",wildberries:"Wildberries",wb:"Wildberries",ozon:"Ozon",avito:"Авито",site:"Сайт",ficusin:"Фикусин"};
 export const mappingLabels:Record<string,string>={code:"Код СБИС",id:"Идентификатор",uuid:"Идентификатор СБИС",vendor_code:"Артикул продавца",offer_id:"Артикул продавца",nm_id:"Код карточки",legacy_sku:"Прежний артикул"};

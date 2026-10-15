@@ -240,16 +240,17 @@ function attributeValueMissing(value: unknown) {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
-export function VariantsEditor({ owner=false, productId, categoryId, variants, onChange, dirty, onReload, onError }: {
+export function VariantsEditor({ owner=false, productId, categoryId, variants, onChange, dirty, onReload, onError, selectedId, onSelect }: {
+ selectedId:number|null;onSelect:(id:number|null)=>void;
  owner?:boolean;productId:number;categoryId?:number;variants:AdminVariant[];onChange:(items:AdminVariant[])=>void;dirty:boolean;onReload:()=>void;onError:(value:string)=>void;
 }) {
  const [schema,setSchema]=useState<EffectiveAttribute[]>([]);
- const [selectedId,setSelectedId]=useState<number|null>(null);
+ const setSelectedId=onSelect;
  const [showArchived,setShowArchived]=useState(false);
  const [error,setError]=useState("");
- useEffect(()=>{let active=true;if(categoryId)api<{attributes:EffectiveAttribute[]}>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then(data=>{if(active)setSchema((data.attributes||[]).filter(x=>x.scope==="variant"&&x.active&&!x.excluded))}).catch(error=>{if(active)setError(error.message)});return()=>{active=false}},[categoryId]);
+ useEffect(()=>{let active=true;if(!categoryId)return()=>{active=false};api<{attributes:EffectiveAttribute[]}>(`/api/v1/admin/categories/${categoryId}/effective-attributes`).then(data=>{if(active)setSchema((data.attributes||[]).filter(x=>x.scope==="variant"&&x.active&&!x.excluded))}).catch(error=>{if(active)setError(error.message)});return()=>{active=false}},[categoryId]);
  const visible=variants.filter(x=>showArchived||!x.archived);
- const draft=variants.find(x=>x.id===(selectedId??visible[0]?.id));
+ const draft=visible.find(x=>x.id===selectedId)||visible[0];
  const update=(patch:Partial<AdminVariant>)=>{if(draft)onChange(variants.map(x=>x.id===draft.id?{...x,...patch}:x))};
  const add=(copy?:AdminVariant)=>{
   const id=Math.min(0,...variants.map(x=>x.id))-1;
@@ -263,7 +264,7 @@ export function VariantsEditor({ owner=false, productId, categoryId, variants, o
   if(!window.confirm(`Удалить размер «${draft.label}», артикул ${draft.sku}? Проданный размер сервер защитит от удаления.`))return;
   try{await api(`/api/v1/admin/variants/${draft.id}`,{method:"DELETE"});setSelectedId(null);onReload()}catch(error){onError((error as Error).message)}
  };
- const available=schema.filter(x=>owner||x.audience==="customer"||/^package_/.test(x.code));
+ const available=(categoryId?schema:[]).filter(x=>owner||x.audience==="customer"||/^package_/.test(x.code));
  const packaging=available.filter(x=>/^package_/.test(x.code));
  const dimensions=available.filter(x=>!/^package_/.test(x.code));
  const missing=draft?available.filter(x=>(x.required||x.keyCharacteristic)&&attributeValueMissing(draft.attributes[x.code])):[];

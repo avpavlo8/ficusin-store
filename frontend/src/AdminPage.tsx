@@ -36,10 +36,10 @@ export default function AdminPage() {
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Не удалось загрузить панель"));
   }, []);
 
-  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {if(section!=="products")window.history.pushState(null,"",`/admin?section=${section}`);return;}setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
+  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products","collections"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {if(!["products","collections"].includes(section))window.history.pushState(null,"",`/admin?section=${section}`);return;}setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
 
   const go = async (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
-    if(["returns","products"].includes(section) && beforeLeave.current && !await beforeLeave.current()) return;
+    if(["returns","products","collections"].includes(section) && beforeLeave.current && !await beforeLeave.current()) return;
     setFocusOrder(options?.orderNumber || "");
     setWholesaleOnly(Boolean(options?.wholesaleOnly));
     setError("");
@@ -77,7 +77,7 @@ export default function AdminPage() {
           {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}>{can("procurement.edit") ? <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /> : <ProcurementReadOnly onError={setError} />}</Suspense>}
           {section === "products" && <Products can={can} onError={setError} registerBeforeLeave={registerBeforeLeave} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
-          {section === "collections" && <Collections owner={data.role === "owner"} onError={setError} />}
+          {section === "collections" && <Collections owner={data.role === "owner"} onError={setError} registerBeforeLeave={registerBeforeLeave} />}
           {section === "categories" && <Categories canEdit={can("products.edit")} owner={data.role === "owner"} onError={setError} />}
           </>}
           </div>

@@ -58,10 +58,15 @@ try {
   const collectionCountBefore=((await (await api.get('/api/v1/admin/collection-definitions')).json()).collections||[]).length;
   await page.getByRole('button',{name:'Новая подборка',exact:true}).click();
   expect(((await (await api.get('/api/v1/admin/collection-definitions')).json()).collections||[]).length).toBe(collectionCountBefore);
-  const collectionTitle=`CRM подборка ${role}`;await page.getByLabel('Название',{exact:true}).fill(collectionTitle);await page.getByLabel('Slug',{exact:true}).fill(`crm-stage-03-${role}`);await page.getByLabel('Адрес изображения',{exact:true}).fill('/assets/hero-monstera.webp');await page.getByLabel('Показывать после создания',{exact:false}).check();const collectionCreateResponse=page.waitForResponse(response=>response.url().endsWith('/api/v1/admin/collection-definitions/with-cover')&&response.request().method()==='POST');await page.getByRole('button',{name:'Создать подборку',exact:true}).click();const savedCollectionResponse=await collectionCreateResponse;expect(savedCollectionResponse.status(),await savedCollectionResponse.text()).toBe(201);
+  const collectionTitle=`CRM подборка ${role}`;await page.getByLabel('Название',{exact:true}).fill(collectionTitle);await page.getByLabel('Адрес подборки',{exact:true}).fill(`crm-stage-03-${role}`);await page.getByLabel('Адрес изображения',{exact:true}).fill('/assets/hero-monstera.webp');await page.getByLabel('Показывать после создания',{exact:false}).check();const collectionCreateResponse=page.waitForResponse(response=>response.url().endsWith('/api/v1/admin/collection-definitions/with-cover')&&response.request().method()==='POST');await page.getByRole('button',{name:'Создать подборку',exact:true}).click();const savedCollectionResponse=await collectionCreateResponse;expect(savedCollectionResponse.status(),await savedCollectionResponse.text()).toBe(201);
   await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();
   const createdCollections=(await (await api.get('/api/v1/admin/collection-definitions')).json()).collections;const createdCollection=createdCollections.find(item=>item.slug===`crm-stage-03-${role}`);expect(createdCollection.coverUrl).toBe('/assets/hero-monstera.webp');
-  const memberResponse=await api.patch(`/api/v1/admin/collections/${createdCollection.id}`,{data:{products:[product.id]}});expect(memberResponse.status()).toBe(200);
+  const collectionEditor=page.locator('.collection-editor-v2');
+  await collectionEditor.locator('.admin-collection-list label').filter({hasText:product.name}).first().getByRole('checkbox').check();
+  const memberSaved=page.waitForResponse(response=>response.url().endsWith(`/api/v1/admin/collection-definitions/${createdCollection.id}`)&&response.request().method()==='PUT');
+  await collectionEditor.getByRole('button',{name:'Сохранить',exact:true}).click();expect((await memberSaved).status()).toBe(200);
+  await expect(collectionEditor.getByRole('status')).toContainText('Подборка и состав сохранены');
+  const storedCollection=(await(await api.get('/api/v1/admin/collection-definitions')).json()).collections.find(item=>item.id===createdCollection.id);expect(storedCollection.products).toContain(product.id);
   await page.reload();await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();await page.screenshot({path:`${out}/${role}-collections-1440.png`,fullPage:true});
   await page.goto('/');await expect(page.getByText(collectionTitle,{exact:true}).first()).toBeVisible();
   for(const width of [1440,390]) {

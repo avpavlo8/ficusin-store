@@ -5,7 +5,7 @@ export type Section = "dashboard" | "analytics" | "products" | "categories" | "o
 export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string; productsCount: number; childrenCount: number };
 
 export type CategoryAttribute = {
-  code: string; name: string; dataType: "text" | "number" | "boolean" | "enum" | "multi_enum";
+  code: string; name: string; dataType: "text" | "string" | "number" | "boolean" | "enum" | "multi_enum";
   unit: string; options: string[]; optionLabels: Record<string, string>; audience: "customer" | "technical"; scope: "product" | "variant";
   required: boolean; filterable: boolean; showOnPdp: boolean; keyCharacteristic: boolean; badge: boolean; sortOrder: number;
 };

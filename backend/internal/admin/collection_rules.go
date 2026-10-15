@@ -30,6 +30,7 @@ type CollectionDefinition struct {
 }
 
 type CollectionDefinitionInput struct {
+	Products  *[]int64         `json:"products,omitempty"`
 	Slug      string           `json:"slug"`
 	Title     string           `json:"title"`
 	Note      string           `json:"note"`
@@ -218,7 +219,12 @@ func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Con
 		return CollectionDefinition{}, err
 	}
 	raw, _ := json.Marshal(input.Rules)
-	tag, err := repository.pool.Exec(ctx, `
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return CollectionDefinition{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `
 		UPDATE collections SET slug=$2,title=$3,note=$4,cover_url=$5,sort_order=$6,is_active=$7,mode=$8,rules=$9::jsonb,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, id, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw))
@@ -227,6 +233,32 @@ func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Con
 	}
 	if tag.RowsAffected() != 1 {
 		return CollectionDefinition{}, pgx.ErrNoRows
+	}
+	if input.Products != nil && input.Mode == "manual" {
+		ids := *input.Products
+		for _, productID := range ids {
+			var exists bool
+			if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM products WHERE id=$1)", productID).Scan(&exists); err != nil {
+				return CollectionDefinition{}, err
+			}
+			if !exists {
+				return CollectionDefinition{}, fmt.Errorf("%w: товар %d не найден", ErrInvalidInput, productID)
+			}
+		}
+		if _, err := tx.Exec(ctx, "DELETE FROM collection_products WHERE collection_id=$1", id); err != nil {
+			return CollectionDefinition{}, err
+		}
+		for index, productID := range ids {
+			if _, err := tx.Exec(ctx, "INSERT INTO collection_products(collection_id,product_id,sort_order) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", id, productID, index); err != nil {
+				return CollectionDefinition{}, err
+			}
+		}
+	}
+	if err := insertAudit(ctx, tx, actor, "collection.updated", "collection", fmt.Sprint(id), nil, input); err != nil {
+		return CollectionDefinition{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CollectionDefinition{}, err
 	}
 	items, err := repository.ListCollectionDefinitions(ctx)
 	if err != nil {
