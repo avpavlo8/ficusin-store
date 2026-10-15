@@ -614,6 +614,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.ReceivingMode != "catalog" {
+			line.CatalogueLabel = ""
 			line.CurrentRetailRUB = 0
 			line.CurrentUnitCostRUB = nil
 			line.CurrentUnitCostKind = ""
@@ -903,6 +904,9 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			return OrderDetail{}, ErrInvalidInput
 		}
 		if line.matchStatus == "confirmed" || line.matchStatus == "deferred" {
+			if line.matchStatus == "deferred" {
+				line.catalogueLabel = ""
+			}
 			if line.quantity <= 0 || line.unitPrice <= 0 || line.invoicedQty == nil {
 				rows.Close()
 				return OrderDetail{}, ErrInvalidInput
