@@ -126,6 +126,10 @@ test("@desktop @phone request validates integer quantity, traps focus, archives 
   await page.goto("/admin?section=procurement&view=requests");
   await page.getByRole("button", { name: "Добавить", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Добавить к закупке" });
+  await dialog.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", {name:"Добавить",exact:true})).toBeFocused();
+  await page.getByRole("button", {name:"Добавить",exact:true}).click();
   await dialog.getByLabel("Название товара", { exact: true }).fill("Проверка запроса");
   await dialog.getByLabel("Количество, шт.", { exact: true }).fill("1.5");
   await dialog.getByRole("button", { name: "Добавить", exact: true }).click();
