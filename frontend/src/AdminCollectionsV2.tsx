@@ -46,7 +46,7 @@ function NewCollectionDraft({ sortOrder, onCreated, onCancel, onError, registerG
     <p className="admin-hint">Запись появится только после сохранения. Название и обложка обязательны.</p>
     <div className="admin-form-grid">
       <label>Название<input autoFocus value={draft.title} onChange={(event) => { const title=event.target.value;setDraft((current)=>({ ...current,title,slug: slugEdited?current.slug:catalogSlug(title) })); }} /></label>
-      <label>Адрес подборки<input value={draft.slug} placeholder="green-office" onChange={(event) => {setSlugEdited(true);setDraft({ ...draft, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-") })}} /><small>Латиницей, например: dlya-ofisa. Создаётся из названия.</small></label>
+      <label>Адрес подборки<input aria-label="Адрес подборки" aria-describedby="new-collection-address-help" value={draft.slug} placeholder="green-office" onChange={(event) => {setSlugEdited(true);setDraft({ ...draft, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-") })}} /><small id="new-collection-address-help">Латиницей, например: dlya-ofisa. Создаётся из названия.</small></label>
       <label className="wide">Подпись<input value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></label>
       <div className="wide collection-cover-editor">
         <div className="collection-cover-preview" style={preview ? { backgroundImage: `url('${preview}')` } : undefined}><span>{preview ? draft.title || "Новая подборка" : "Добавьте обложку"}</span></div>

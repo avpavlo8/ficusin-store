@@ -67,7 +67,7 @@ test('@desktop follow-up failed collection save and cancelled close/navigation p
 
 test('@desktop follow-up Cyrillic collection slug and cancel guard',async({page})=>{
  await fixture(page);await page.goto('/admin?section=collections');await page.getByRole('button',{name:'Новая подборка',exact:true}).click();const e=page.getByRole('region',{name:'Новая подборка',exact:true});
- await e.getByLabel('Название',{exact:true}).fill('Для офиса');await expect(e.getByLabel('Адрес подборки')).toHaveValue('dlya-ofisa');page.once('dialog',dialog=>void dialog.dismiss());await e.getByRole('button',{name:'Отмена',exact:true}).click();await expect(e).toBeVisible();
+ await e.getByLabel('Название',{exact:true}).fill('Для офиса');await expect(e.getByLabel('Адрес подборки',{exact:true})).toHaveValue('dlya-ofisa');page.once('dialog',dialog=>void dialog.dismiss());await e.getByRole('button',{name:'Отмена',exact:true}).click();await expect(e).toBeVisible();
 });
 
 test('@phone follow-up collection controls stay visible and selection stays local until save',async({page})=>{
