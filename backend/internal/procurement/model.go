@@ -294,13 +294,13 @@ type RequestCreate struct {
 }
 
 type RequestUpdate struct {
-	DueDate       string `json:"dueDate"`
-	Assignee      string `json:"assignee"`
-	SabyID        string `json:"sabyId"`
-	RequestedName string `json:"requestedName"`
-	Quantity      int    `json:"quantity"`
-	Status        string `json:"status"`
-	Notes         string `json:"notes"`
+	DueDate       *string `json:"dueDate"`
+	Assignee      *string `json:"assignee"`
+	SabyID        string  `json:"sabyId"`
+	RequestedName string  `json:"requestedName"`
+	Quantity      int     `json:"quantity"`
+	Status        string  `json:"status"`
+	Notes         string  `json:"notes"`
 }
 
 type OrderStatusUpdate struct {

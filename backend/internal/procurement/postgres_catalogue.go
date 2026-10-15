@@ -1456,12 +1456,12 @@ func (store *PostgresStore) UpdateRequest(ctx context.Context, actor Actor, requ
 	err = tx.QueryRow(ctx, `
 		UPDATE procurement_requests SET saby_id = NULLIF($2, ''),
 			canonical_variant_id=(SELECT variant_id FROM canonical_product_directory WHERE saby_id=$2 ORDER BY variant_id LIMIT 1), requested_name = $3,
-			quantity = $4, status = $5, notes = $6, due_date=NULLIF($7,'')::DATE, assignee=$8, updated_at = CURRENT_TIMESTAMP
+			quantity = $4, status = $5, notes = $6, due_date=CASE WHEN $7::TEXT IS NULL THEN due_date ELSE NULLIF($7,'')::DATE END, assignee=COALESCE($8::TEXT,assignee), updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
-		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at
+		RETURNING id, kind, COALESCE(saby_id, ''), requested_name, quantity, status, notes, created_at,COALESCE(due_date::TEXT,''),assignee
 	`, requestID, input.SabyID, input.RequestedName, input.Quantity, input.Status, input.Notes, input.DueDate, input.Assignee).Scan(
 		&item.ID, &item.Kind, &item.SabyID, &item.RequestedName, &item.Quantity,
-		&item.Status, &item.Notes, &item.CreatedAt,
+		&item.Status, &item.Notes, &item.CreatedAt, &item.DueDate, &item.Assignee,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Request{}, ErrNotFound
@@ -1479,8 +1479,6 @@ func (store *PostgresStore) UpdateRequest(ctx context.Context, actor Actor, requ
 			return Request{}, fmt.Errorf("fulfil request allocations: %w", err)
 		}
 	}
-	item.DueDate = input.DueDate
-	item.Assignee = input.Assignee
 	if err := audit(ctx, tx, actor, "procurement.request.update", "procurement_request", requestID, item); err != nil {
 		return Request{}, err
 	}

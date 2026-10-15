@@ -92,7 +92,8 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	edit := RequestUpdate{SabyID: saby, RequestedName: request.RequestedName, Quantity: 1, Status: "open", DueDate: "2030-02-16", Assignee: "Second buyer"}
+	due, assignee := "2030-02-16", "Second buyer"
+	edit := RequestUpdate{SabyID: saby, RequestedName: request.RequestedName, Quantity: 1, Status: "open", DueDate: &due, Assignee: &assignee}
 	if _, err := store.UpdateRequest(ctx, actor, request.ID, edit); err == nil {
 		t.Fatal("allocated quantity was silently reduced")
 	}
@@ -109,7 +110,7 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	for _, item := range requests {
 		if item.ID == request.ID {
 			found = true
-			if item.Status != "cancelled" || item.AllocatedQuantity != 0 || item.DueDate != edit.DueDate || item.Assignee != edit.Assignee || len(item.History) < 2 {
+			if item.Status != "cancelled" || item.AllocatedQuantity != 0 || item.DueDate != *edit.DueDate || item.Assignee != *edit.Assignee || len(item.History) < 2 {
 				t.Fatalf("request cancellation/history lost: %+v", item)
 			}
 		}
@@ -117,9 +118,20 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	if !found {
 		t.Fatal("cancelled request disappeared from history")
 	}
+	edit.DueDate = nil
+	edit.Assignee = nil // An older client changing only status must preserve the new metadata.
 	edit.Status = "open"
 	if _, err := store.UpdateRequest(ctx, actor, request.ID, edit); err != nil {
 		t.Fatal(err)
+	}
+	requests, err = store.listRequests(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range requests {
+		if item.ID == request.ID && (item.DueDate != due || item.Assignee != assignee) {
+			t.Fatalf("partial update erased metadata: %+v", item)
+		}
 	}
 	inputSupplier := SupplierUpdate{SupplierCreate: SupplierCreate{Name: fmt.Sprintf("Review edited %d", unique), Kind: KindInternational, CountryCode: "NL", DefaultCurrency: "EUR"}, Active: false}
 	archived, err := store.UpdateSupplier(ctx, actor, supplier, inputSupplier)

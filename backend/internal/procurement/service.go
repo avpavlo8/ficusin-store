@@ -560,13 +560,16 @@ func (service *Service) CreateRequest(ctx context.Context, actor Actor, input Re
 }
 
 func (service *Service) UpdateRequest(ctx context.Context, actor Actor, requestID int64, input RequestUpdate) (Request, error) {
-	if input.DueDate != "" {
-		if _, err := time.Parse("2006-01-02", input.DueDate); err != nil {
+	if input.DueDate != nil && *input.DueDate != "" {
+		if _, err := time.Parse("2006-01-02", *input.DueDate); err != nil {
 			return Request{}, ErrInvalidInput
 		}
 	}
-	input.Assignee = strings.TrimSpace(input.Assignee)
-	if len(input.Assignee) > 120 || input.Quantity > 1000000 {
+	if input.Assignee != nil {
+		value := strings.TrimSpace(*input.Assignee)
+		input.Assignee = &value
+	}
+	if (input.Assignee != nil && len(*input.Assignee) > 120) || input.Quantity > 1000000 {
 		return Request{}, ErrInvalidInput
 	}
 	input.SabyID = strings.TrimSpace(input.SabyID)
