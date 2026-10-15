@@ -96,7 +96,7 @@ func (h adminHandlers) returnLabels(w http.ResponseWriter, r *http.Request) {
 	}
 	pdf, err := admin.BuildReturnLabels(items, input.IncludeDate)
 	if err != nil {
-		writeJSON(w, 500, errorResponse{Error: "Не удалось сформировать этикетки"})
+		writeJSON(w, 422, errorResponse{Error: "Не удалось сформировать этикетки: " + err.Error()})
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")

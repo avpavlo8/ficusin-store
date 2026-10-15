@@ -2,13 +2,13 @@ package admin
 
 import (
 	"fmt"
+	"github.com/boombuler/barcode/code128"
+	"github.com/boombuler/barcode/ean"
+	"github.com/signintech/gopdf"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/signintech/gopdf"
 )
 
 func returnLabelMoney(value float64) string {
@@ -23,14 +23,15 @@ func returnLabelMoney(value float64) string {
 	return whole + " руб."
 }
 
-// Thermal output stays black and white. Bold embedded fonts keep the name and
-// price legible on a physical 58 x 40 mm label, not only on a zoomed preview.
+// Saby-style thermal labels: centred shop, prominent name and price, barcode.
+// The product barcode is authoritative; RET identifies units without one.
 func BuildReturnLabels(items []MarketplaceReturn, includeDate bool) ([]byte, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("выберите растения для этикеток")
 	}
+	const pageWidth = 58 * 72 / 25.4
 	pdf := &gopdf.GoPdf{}
-	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: 58 * 72 / 25.4, H: 40 * 72 / 25.4}})
+	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: pageWidth, H: 40 * 72 / 25.4}})
 	regular := strings.TrimSpace(os.Getenv("PROCUREMENT_PDF_FONT"))
 	if regular == "" {
 		regular = "/app/fonts/DejaVuSans.ttf"
@@ -48,126 +49,149 @@ func BuildReturnLabels(items []MarketplaceReturn, includeDate bool) ([]byte, err
 	if err := pdf.AddTTFFont("bold", bold); err != nil {
 		return nil, err
 	}
-	text := func(x, y, size float64, font, value string) error {
+	centre := func(y, size float64, font, value string) error {
 		if err := pdf.SetFont(font, "", size); err != nil {
 			return err
 		}
-		pdf.SetXY(x, y)
+		width, err := pdf.MeasureTextWidth(value)
+		if err != nil {
+			return err
+		}
+		pdf.SetXY((pageWidth-width)/2, y)
 		return pdf.Cell(nil, value)
 	}
 	for _, item := range items {
 		pdf.AddPage()
-		if err := text(8, 5, 7.2, "bold", "ФИКУСИН"); err != nil {
+		if err := centre(3, 7.8, "regular", "Магазин комнатных растений"); err != nil {
 			return nil, err
 		}
-		if err := text(8, 14, 6.5, "regular", "На восстановлении · ещё расцветёт"); err != nil {
+		if err := centre(12, 9, "regular", "«Фикусин»"); err != nil {
 			return nil, err
 		}
-		// A small outlined sprout gives the label a botanical identity without a
-		// photograph, grey background or heavy ink consumption.
-		pdf.SetLineWidth(.7)
-		pdf.Curve(150, 17, 146, 9, 154, 5, 157, 6, "D")
-		pdf.Curve(157, 6, 157, 13, 153, 16, 150, 17, "D")
-		pdf.Line(150, 17, 155, 9)
+		name := strings.TrimSpace(item.ProductName + " " + item.Label)
 		var lines []string
 		size := 12.0
-		for ; size >= 7; size -= .25 {
+		for ; size >= 6; size -= .25 {
 			if err := pdf.SetFont("bold", "", size); err != nil {
 				return nil, err
 			}
-			lines = []string{}
+			lines = nil
 			line := ""
-			for _, word := range strings.Fields(item.ProductName) {
+			for _, word := range strings.Fields(name) {
 				candidate := strings.TrimSpace(line + " " + word)
-				width, err := pdf.MeasureTextWidth(candidate)
+				w, err := pdf.MeasureTextWidth(candidate)
 				if err != nil {
 					return nil, err
 				}
-				if width > 148 && line != "" {
-					lines = append(lines, line)
-					line = word
-				} else {
+				if w <= 148 {
 					line = candidate
+					continue
+				}
+				if line != "" {
+					lines = append(lines, line)
+				}
+				line = ""
+				// Long uninterrupted catalogue values must wrap as well as words.
+				for _, letter := range word {
+					candidate = line + string(letter)
+					w, err = pdf.MeasureTextWidth(candidate)
+					if err != nil {
+						return nil, err
+					}
+					if w > 148 && line != "" {
+						lines = append(lines, line)
+						line = string(letter)
+					} else {
+						line = candidate
+					}
 				}
 			}
 			if line != "" {
 				lines = append(lines, line)
 			}
-			fits := len(lines) <= 3
-			for _, line := range lines {
-				width, err := pdf.MeasureTextWidth(line)
-				if err != nil {
-					return nil, err
-				}
-				fits = fits && width <= 148
-			}
-			if fits {
+			if len(lines) <= 2 {
 				break
 			}
 		}
-		if size < 7 {
-			return nil, fmt.Errorf("название «%s» слишком длинное для этикетки 58×40 мм", item.ProductName)
+		if size < 6 {
+			return nil, fmt.Errorf("сократите название растения «%s» для этикетки 58×40 мм", name)
+		}
+		y := 30.0
+		if len(lines) > 1 {
+			y = 24
 		}
 		for i, line := range lines {
-			if err := text(8, 25+float64(i)*10.5, size, "bold", line); err != nil {
+			if err := centre(y+float64(i)*12, size, "bold", line); err != nil {
 				return nil, err
 			}
 		}
-		pdf.SetLineWidth(.45)
-		pdf.Line(8, 60, 156, 60)
-		price := returnLabelMoney(item.DiscountedPrice)
-		priceSize := 22.0
+		price := item.Price
+		if item.DiscountPercent > 0 {
+			price = item.DiscountedPrice
+		}
+		priceText := returnLabelMoney(price)
+		priceSize := 21.0
 		for {
 			if err := pdf.SetFont("bold", "", priceSize); err != nil {
 				return nil, err
 			}
-			width, err := pdf.MeasureTextWidth(price)
+			w, err := pdf.MeasureTextWidth(priceText)
 			if err != nil {
 				return nil, err
 			}
-			if width <= 148 {
+			if w <= 148 {
 				break
 			}
 			priceSize -= .5
-			if priceSize < 10 {
-				return nil, fmt.Errorf("слишком большая цена для этикетки")
+			if priceSize < 9 {
+				return nil, fmt.Errorf("цена слишком длинная для этикетки")
 			}
 		}
-		if err := text(8, 63, priceSize, "bold", price); err != nil {
+		if err := centre(49, priceSize, "bold", priceText); err != nil {
 			return nil, err
 		}
-		note := "Цена этого экземпляра"
 		if item.DiscountPercent > 0 {
-			note = "Скидка " + strconv.Itoa(item.DiscountPercent) + "% · было " + returnLabelMoney(item.Price)
-		}
-		if err := text(8, 87, 6.8, "regular", note); err != nil {
-			return nil, err
-		}
-		if err := text(8, 97, 7, "bold", item.Article); err != nil {
-			return nil, err
-		}
-		right := item.Label
-		if includeDate {
-			date, err := time.Parse("2006-01-02", item.ReturnedAt)
-			if err != nil {
+			if err := centre(71, 6.2, "regular", fmt.Sprintf("Скидка %d%% · было %s", item.DiscountPercent, returnLabelMoney(item.Price))); err != nil {
 				return nil, err
 			}
-			if right != "" {
-				right += " · "
-			}
-			right += date.Format("02.01.06")
 		}
-		if err := pdf.SetFont("regular", "", 6.8); err != nil {
-			return nil, err
+		value := item.Barcode
+		if value == "" {
+			value = item.Article
 		}
-		width, err := pdf.MeasureTextWidth(right)
+		if value == "" {
+			value = fmt.Sprintf("RET-%06d", item.ID)
+		}
+		encoded, err := ean.Encode(value)
 		if err != nil {
+			encoded, err = code128.Encode(value)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("не удалось напечатать штрихкод экземпляра %s", item.Article)
+		}
+		modules := encoded.Bounds().Dx()
+		// Leave at least eleven narrow modules of quiet space for EAN13.
+		const barcodeWidth = 126.0
+		moduleWidth := barcodeWidth / float64(modules)
+		pdf.SetFillColor(0, 0, 0)
+		for x := 0; x < modules; x++ {
+			r, g, b, _ := encoded.At(x, 0).RGBA()
+			if r+g+b < 3*32768 {
+				pdf.RectFromUpperLeftWithStyle((pageWidth-barcodeWidth)/2+float64(x)*moduleWidth, 81, moduleWidth, 15, "F")
+			}
+		}
+		if err = centre(97, 7, "regular", value); err != nil {
 			return nil, err
 		}
-		if width > 75 {
-			return nil, fmt.Errorf("размер растения слишком длинный для этикетки")
+		footer := item.Article
+		if includeDate {
+			date, parseErr := time.Parse("2006-01-02", item.ReturnedAt)
+			if parseErr != nil {
+				return nil, fmt.Errorf("проверьте дату возврата для %s", item.Article)
+			}
+			footer += " · " + date.Format("02.01.2006")
 		}
-		if err := text(156-width, 97, 6.8, "regular", right); err != nil {
+		if err = centre(106, 5.8, "regular", footer); err != nil {
 			return nil, err
 		}
 	}

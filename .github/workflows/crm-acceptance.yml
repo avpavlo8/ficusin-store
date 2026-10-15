@@ -133,7 +133,7 @@ jobs:
           -v "$GITHUB_WORKSPACE:/work" -w /work/e2e
           -e GITHUB_SHA -e CRM_ARTIFACT_DIR=/work/crm-artifacts
           mcr.microsoft.com/playwright:v1.63.0-noble
-          bash -c 'npm ci && node verify-crm-acceptance.mjs && node verify-return-recovery.mjs'
+          bash -c 'npm ci && node verify-crm-acceptance.mjs && node verify-return-recovery.mjs && node verify-return-edits.mjs'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -27,7 +27,7 @@ try{
   await page.setViewportSize({width,height:1000});
   await page.goto('/admin?section=returns');await page.getByRole('navigation',{name:'Журналы возвратов'}).getByRole('button',{name:/^Документы/}).click();
   await page.getByRole('button',{name:new RegExp(`Документ приёмки №${saved.documentNumber}`)}).click();
-  const dialog=page.getByRole('dialog',{name:`Документ приёмки №${saved.documentNumber}`});await expect(dialog.getByRole('heading',{name:'Состав при приёмке',exact:true})).toBeVisible();await expect(dialog.getByRole('spinbutton')).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Сохранить',exact:true})).toHaveCount(0);
+  const dialog=page.getByRole('dialog',{name:`Документ приёмки №${saved.documentNumber}`});await expect(dialog.getByRole('heading',{name:'Состав документа',exact:true})).toBeVisible();await expect(dialog.getByRole('spinbutton')).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Сохранить',exact:true})).toHaveCount(0);
   await expect(dialog.getByRole('button',{name:'Создать поступление',exact:true})).toBeVisible();
   await page.screenshot({path:`${out}/return-document-${width}.png`,fullPage:true});
   const instance=dialog.locator('.return-document-units article').filter({hasText:item.article});await instance.getByRole('button',{name:'Открыть экземпляр'}).click();

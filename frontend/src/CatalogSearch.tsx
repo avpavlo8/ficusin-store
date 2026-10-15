@@ -97,6 +97,10 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
     } else if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); activeRef.current = -1; setActive(-1); }
   };
 
+  useEffect(() => {
+    if (open && active >= 0) document.getElementById(`${listID}-${active}`)?.scrollIntoView({block:"nearest"});
+  }, [active,open,listID]);
+
   const Field = selection ? "div" : "form";
 
   return <div className={`${className} catalog-search`} ref={root}>
