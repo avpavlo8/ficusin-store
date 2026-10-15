@@ -54,10 +54,14 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/procurement") return json(procurement);
       if(path === "/api/v1/admin/procurement/requests" && init?.method === "POST"){
         if(requestError) return Promise.resolve(new Response(JSON.stringify({error:requestError}),{status:503,headers:{"Content-Type":"application/json"}}));
-        const body=JSON.parse(String(init.body));const item={...body,id:procurement.requests.length+1,status:"open",createdAt:new Date().toISOString(),allocatedQuantity:0,remainingQuantity:body.quantity,allocations:[],history:[]};procurement.requests.push(item);return json({request:item});
+        const body=JSON.parse(String(init.body));
+        if(Object.keys(body).some(key=>!["kind","requestedName","sabyId","quantity","notes","dueDate","assignee","source","customerOrderId"].includes(key)))return Promise.resolve(new Response(JSON.stringify({error:"Unknown create request field"}),{status:400}));
+        const item={...body,id:procurement.requests.length+1,status:"open",createdAt:new Date().toISOString(),allocatedQuantity:0,remainingQuantity:body.quantity,allocations:[],history:[]};procurement.requests.push(item);return json({request:item});
       }
       if(path.startsWith("/api/v1/admin/procurement/requests/") && init?.method === "PATCH"){
-        const id=Number(path.split("/").at(-1));const item=procurement.requests.find(item=>item.id===id);if(item)Object.assign(item,JSON.parse(String(init.body)));return json({request:item});
+        const body=JSON.parse(String(init.body));
+        if(Object.keys(body).some(key=>!["requestedName","sabyId","quantity","notes","dueDate","assignee","status"].includes(key)))return Promise.resolve(new Response(JSON.stringify({error:"Unknown update request field"}),{status:400}));
+        const id=Number(path.split("/").at(-1));const item=procurement.requests.find(item=>item.id===id);if(item)Object.assign(item,body);return json({request:item});
       }
       if(path === "/api/v1/admin/procurement/settings/example")return json({before:{cost:682,retail:1490},after:{cost:682,retail:1590},history:[]});
       if (path === "/api/v1/admin/procurement/recommendations/supplier" && init?.method === "PUT") {
@@ -145,6 +149,12 @@ test("@desktop @phone request validates integer quantity, traps focus, archives 
   await expect(dialog).toBeHidden();
   const row = page.getByRole("row").filter({ hasText: "Проверка запроса" });
   await expect(row).toContainText("Закупщик");
+  await row.getByRole("button", {name:"Изменить",exact:true}).click();
+  const editDialog=page.getByRole("dialog",{name:"Редактировать запрос"});
+  await editDialog.getByLabel("Ответственный").fill("Другой закупщик");
+  await editDialog.getByRole("button",{name:"Сохранить",exact:true}).click();
+  await expect(editDialog).toBeHidden();
+  await expect(row).toContainText("Другой закупщик");
   page.once("dialog", d => d.accept());
   await row.getByRole("button", { name: "Отменить", exact: true }).click();
   await expect(row).toHaveCount(0);

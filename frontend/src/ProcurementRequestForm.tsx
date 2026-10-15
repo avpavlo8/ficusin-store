@@ -37,7 +37,9 @@ export function ProcurementRequestForm({ onClose, onSaved, onError: externalErro
     if(customerOrderError){customerOrderRef.current?.focus();return;}
     setSaving(true);
     try {
-      await api(request ? `/api/v1/admin/procurement/requests/${request.id}` : "/api/v1/admin/procurement/requests", { method: request ? "PATCH" : "POST", body: JSON.stringify({ kind, requestedName: name, sabyId, quantity: Number(quantity), notes, dueDate, assignee, status: request?.status || "open", source: "manual", customerOrderId: kind === "customer_order" && customerOrderId ? Number(customerOrderId) : null }) });
+      const fields = { requestedName: name, sabyId, quantity: Number(quantity), notes, dueDate, assignee };
+      const body = request ? { ...fields, status: request.status } : { ...fields, kind, source: "manual", customerOrderId: kind === "customer_order" && customerOrderId ? Number(customerOrderId) : null };
+      await api(request ? `/api/v1/admin/procurement/requests/${request.id}` : "/api/v1/admin/procurement/requests", { method: request ? "PATCH" : "POST", body: JSON.stringify(body) });
       onSaved();
     } catch (error) { onError((error as Error).message); } finally { setSaving(false); }
   };
