@@ -32,7 +32,8 @@ export function useProcurementDialog(onClose: () => void) {
       if (document.querySelectorAll('[aria-modal="true"]').item(document.querySelectorAll('[aria-modal="true"]').length - 1) !== panel) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close.current(); }
       if (event.key !== "Tab") return;
-      const elements = [...panel.querySelectorAll<HTMLElement>('summary,a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter((item) => item.getClientRects().length);
+      // Closed details can report geometry for controls that cannot receive focus.
+      const elements = [...panel.querySelectorAll<HTMLElement>('summary,a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter((item) => item.getClientRects().length && !item.matches("details:not([open]) > :not(summary), details:not([open]) > :not(summary) *"));
       const first = elements[0]; const last = elements.at(-1);
       if (!first) { event.preventDefault(); return; }
       if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last?.focus(); }
