@@ -1,6 +1,81 @@
 import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
+test("@desktop @phone assortment waits for arrival and distributes into existing cards",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,catalogMatch:true,currency:"EUR"});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
+ await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
+ await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
+ await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('assortment');
+ await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
+ await expect(dialog).toBeHidden();
+ await expect(order.getByRole('spinbutton',{name:'Курс оплаты',exact:true})).toHaveValue('123');
+ await expect(row).toContainText('Разобрать после приезда');
+ await expect(row).toContainText('Распределено 0 / 60 шт.');
+ await row.getByRole('button',{name:'Разобрать микс',exact:true}).click();
+ await dialog.getByRole('textbox',{name:'Поиск карточки для разбора'}).fill('Bonsai');
+ await dialog.getByRole('button',{name:'Добавить',exact:true}).click();
+ const qty=dialog.getByRole('spinbutton',{name:'Количество: Bonsai Zantaxilum D15',exact:true});
+ await qty.fill('61');
+ await expect(dialog.getByRole('button',{name:'Сохранить распределение',exact:true})).toBeDisabled();
+ await qty.fill('59');
+ await expect(dialog.getByRole('button',{name:'Сохранить распределение',exact:true})).toBeDisabled();
+ await qty.fill('60');
+ await dialog.getByRole('button',{name:'Сохранить распределение',exact:true}).click();
+ await expect(dialog).toBeHidden();
+ await expect(row).toContainText('Распределено 60 / 60 шт.');
+ await page.reload();
+ await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
+});
+
+test("@desktop @phone accidental card can be detached while waiting for a new Saby card",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const row=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
+ await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
+ await page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
+ await expect(row).toContainText('СБИС: X616872557');
+ await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
+ await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('awaiting_catalog');
+ await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
+ await expect(dialog).toBeHidden();
+ await expect(row).toContainText('Ожидает карточку СБИС');
+ await expect(row).not.toContainText('СБИС: X616872557');
+ await expect(row).toContainText('60 / 60');
+ await page.reload();
+ await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку СБИС');
+});
+
+test("@desktop @phone invoice match exposes missing Saby card and resolves it inside purchase",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await order.getByRole('button',{name:'Показать строки без товара СБИС (1)',exact:true}).click();
+ await expect(order.getByRole('combobox',{name:'Фильтр строк закупки'})).toHaveValue('unmatched');
+ const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
+ await expect(row).toContainText('Совпадает');
+ await expect(row).toContainText('СБИС: товар не выбран');
+ await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
+ const picker=page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true});
+ await expect(picker).toBeVisible();
+ const box=await picker.boundingBox();const viewport=page.viewportSize()!;
+ expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height);
+ await picker.getByRole('button',{name:'Выбрать',exact:true}).click();
+ await expect(picker).toBeHidden();
+ await expect(order.getByText('Не выбраны товары СБИС: 1',{exact:true})).toHaveCount(0);
+ await order.getByRole('combobox',{name:'Фильтр строк закупки'}).selectOption('all');
+ const matched=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
+ await expect(matched).toContainText('СБИС: X616872557');
+ await expect(matched).toContainText('60 / 60');
+ await page.reload();
+ await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('СБИС: X616872557');
+});
+
 test("@desktop @phone manager can inspect incoming plants without editing controls",async({page})=>{
  await mockProcurement(page,{manager:true,invoicePicker:true});
  await page.goto('/admin?section=procurement&order=4');
@@ -26,7 +101,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; manager?: boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -54,7 +129,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   if (options.anotherRecommendation) procurement.recommendations.push({ aliasId: 11, supplierId: 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
-    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не сопоставлено строк: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
+    validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не выбраны товары СБИС: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
     lines: [] as Array<Record<string, unknown>>, batches: [],
   };
   if (options.invoicePicker) {
@@ -66,6 +141,12 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       ...Array.from({ length: 30 }, (_, index) => ({ ...baseLine, id: index + 2000, rawName: `Добавлено ${index + 1}`, invoiceRawName: `Added invoice ${index + 1}`, sabyId: "", orderedQuantity: 0, invoicedQuantity: index<3?[10,20,30][index]:1, reconciliationStatus: "added" })),
     ];
   }
+  if (options.catalogMatch) {
+    const line=orderDetail.lines.find(line=>line.id===1001)!;
+    Object.assign(line,{rawName:"Бонсай Зантоксилум D15",sabyName:"",sabyId:"",supplierArticle:"BONSAI",invoiceRawName:"Bonsai Zantaxilum",invoicedQuantity:60,matchStatus:"unmatched",reconciliationStatus:"matched",matchAlias:{...procurement.review[0],id:9,rawName:"Bonsai Zantaxilum",matchStatus:"unmatched"}});
+    orderDetail.validation.unmatched=1;
+    orderDetail.validation.blockers=["Не выбраны товары СБИС: 1"];
+  }
   const dashboard = {
       user: { fullName: "Тестовый владелец" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit", "integrations.edit", "catalog.delete"],
@@ -75,7 +156,29 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   // Install the API stub inside the page before React starts. WebKit handles
   // route interception differently after state transitions, while fetch is
   // identical across the browsers this layout suite covers.
-  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError }) => {
+  // Keep the mock backend outside the document so reloading the UI does not
+  // reset saved data. PostgreSQL tests separately verify durable storage.
+  if(options.catalogMatch) await page.exposeFunction("procurementFixture",(path:string,rawBody:string)=>{
+    if(path==="/api/v1/admin/procurement")return procurement;
+    if(path==="/api/v1/admin/procurement/orders/4")return orderDetail;
+    const body=JSON.parse(rawBody);
+    const line=orderDetail.lines.find(line=>line.id===1001)!;
+    if(path.endsWith("/aliases/9")){
+      if(body.matchStatus!=="confirmed" || body.sabyId!=="TEST-SABY-BONSAI")throw new Error("Wrong catalog candidate");
+      Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed",receivingMode:"catalog"});
+      Object.assign(orderDetail.validation,{pendingCatalog:0});
+      procurement.review=[];procurement.summary.unresolvedAliases=0;
+    }else{
+      Object.assign(line,{receivingMode:body.receivingMode,matchStatus:body.receivingMode==="catalog"?"unmatched":"deferred",receivingAllocations:(body.receivingAllocations || []).map((part:{sabyId:string;quantity:number})=>({...part,name:"Bonsai Zantaxilum D15",code:"X616872557"}))});
+    }
+    if(body.receivingMode==="awaiting_catalog"){
+      Object.assign(line,{sabyId:"",sabyName:"",sabyCode:""});
+      Object.assign(orderDetail.validation,{pendingCatalog:1});
+    }
+    orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
+    return orderDetail;
+  });
+  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch }) => {
     const originalFetch = window.fetch.bind(window);
     const drafts: Array<{ id: number; title: string; payload: unknown; createdAt: string; updatedAt: string }> = [];
     const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
@@ -84,6 +187,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     window.fetch = (input, init) => {
       const raw = typeof input === "string" ? input : input instanceof Request ? input.url : input.toString();
       const path = new URL(raw, window.location.origin).pathname;
+      if(catalogMatch && ["/api/v1/admin/procurement","/api/v1/admin/procurement/orders/4","/api/v1/admin/procurement/aliases/9","/api/v1/admin/procurement/order-lines/1001"].includes(path)){
+        return (window as unknown as {procurementFixture:(path:string,body:string)=>Promise<unknown>}).procurementFixture(path,String(init?.body || "")).then(json);
+      }
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
       if (path === "/api/v1/admin/procurement") return json(procurement);
@@ -128,10 +234,24 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/procurement/integrations/wb/check" && init?.method === "POST") {
         return json({ integration: { channel: "wb", configured: true, lastCheckedAt: "2026-08-13T12:00:00Z", lastSuccessAt: "2026-08-13T12:00:00Z", lastError: "" } });
       }
+      if (path === "/api/v1/admin/procurement/aliases/9" && init?.method === "PATCH") {
+        const body=JSON.parse(String(init.body));
+        if(body.matchStatus!=="confirmed" || body.sabyId!=="TEST-SABY-BONSAI")return Promise.resolve(new Response(JSON.stringify({error:"Wrong catalog candidate"}),{status:400}));
+        const line=orderDetail.lines.find(line=>line.id===1001)!;
+        Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed"});
+        orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
+        procurement.review=[];procurement.summary.unresolvedAliases=0;
+        return json({alias:{id:9,...body}});
+      }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
       if (path === "/api/v1/admin/procurement/order-lines/1001" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body));
         const planned = orderDetail.lines.find(line => line.id === 1001)!;
+        if(body.receivingMode){
+          Object.assign(planned,{receivingMode:body.receivingMode,matchStatus:body.receivingMode==="catalog"?"unmatched":"deferred",receivingAllocations:(body.receivingAllocations || []).map((part:{sabyId:string;quantity:number})=>({...part,name:"Bonsai Zantaxilum D15",code:"X616872557"}))});
+          orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
+          return json(orderDetail);
+        }
         const invoices = orderDetail.lines.filter(line => (body.invoiceLineIds || [body.invoiceLineId]).includes(line.id));
         const parts=invoices.map(line=>({rawName:line.invoiceRawName,quantity:line.invoicedQuantity,unitPrice:line.unitPrice,lineTotal:Number(line.invoicedQuantity)*Number(line.unitPrice),sourcePage:1,sourceLine:line.id}));
         Object.assign(planned, { invoiceRawName: invoices[0].invoiceRawName, invoicedQuantity: invoices.reduce((sum,line)=>sum+Number(line.invoicedQuantity),0), invoiceComponents:parts, reconciliationStatus: "matched" });
@@ -150,7 +270,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ items: [{ variantId: 22, sabyId: "", sabyCode: "PLANT-22", sabyArticle: "", name: "Новый товар без кода СБИС", balance: 0, currentPriceRub: 0, supplierId: 1, supplierName: "Тестовый поставщик", supplierArticle: "NL-22", availabilityStatus: "unknown", checkAfter: "", hollandArticle: "", wbVendorCode: "WB-22", ozonOfferId: "OZON-22", wbArticles: ["WB-22"], wbLegacyArticles: [], ozonArticles: ["OZON-22"], ozonLegacyArticles: [], sabySales: 0, siteSales: 0, wbSales: 1, ozonSales: 2, minimumOrderQty: 1, orderMultiple: 6, aliases: [], aliasIds: [] }] });
       }
       if (path === "/api/v1/admin/procurement/documents" && init?.method === "POST") {
-        orderDetail.validation.blockers = ["Не сопоставлено строк: 2"];
+        orderDetail.validation.blockers = ["Не выбраны товары СБИС: 2"];
         return json({ duplicate: false, order: procurement.orders[0] });
       }
       if (path === "/api/v1/admin/procurement/sales/nomenclature") {
@@ -168,7 +288,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "" });
+  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "", catalogMatch: !!options.catalogMatch });
 }
 
 test("@desktop @phone request validates integer quantity, traps focus, archives and restores", async ({ page }) => {
@@ -268,9 +388,9 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await expect(page.getByText("Российский счёт")).toBeVisible();
   await expect(page.getByText("Суммы сходятся")).toBeVisible();
   await expect(page.getByText("Тестовая строка D10")).toBeVisible();
-  await expect(page.getByText("2 новых позиций",{exact:false})).toBeVisible();
-  await page.getByRole("button", { name: "Сопоставить", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Сопоставить товар" })).toBeVisible();
+  await expect(page.getByText("Нет связи с СБИС: 2",{exact:false})).toBeVisible();
+  await page.getByRole("button", { name: "Выбрать товар СБИС", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Выбрать товар СБИС" })).toBeVisible();
   await expect(page.getByText("Тестовый товар D10")).toBeVisible();
   await expect(page.getByRole("button", { name: "Это новый товар" })).toBeVisible();
 });
@@ -346,7 +466,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await page.locator(".procurement-orders").getByText("TEST-100").click();
   await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
-  await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
+  await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
 });
 
@@ -383,7 +503,7 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await expect(page.getByText("Что нужно сделать дальше")).toBeVisible();
   await expect(page.getByText(/Загрузите PDF-инвойс кнопкой выше/)).toBeVisible();
   await page.getByLabel("Загрузить инвойс в эту закупку").setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
-  await expect(page.getByText("Не сопоставлено строк: 2")).toBeVisible();
+  await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
 });
 
 test("@desktop procurement shows one markup and clear rounding settings", async ({ page }) => {

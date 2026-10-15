@@ -26,7 +26,7 @@ func (store *PostgresStore) Dashboard(ctx context.Context) (Dashboard, error) {
 	if err := store.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM procurement_orders WHERE status NOT IN ('received', 'cancelled'))::INTEGER,
-			(SELECT COUNT(*) FROM procurement_supplier_aliases WHERE match_status IN ('unmatched', 'suggested', 'new_product'))::INTEGER,
+			(SELECT COUNT(*) FROM procurement_supplier_aliases a WHERE `+activeAliasReviewPredicate+`)::INTEGER,
 			(SELECT COUNT(*) FROM procurement_supplier_products WHERE availability_status IN ('check','temporarily_unavailable') AND (check_after IS NULL OR check_after <= CURRENT_DATE))::INTEGER,
 			(SELECT COUNT(*) FROM procurement_requests WHERE status = 'open')::INTEGER
 	`).Scan(
@@ -568,11 +568,20 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			COALESCE(l.baseline_site_price_minor, pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			l.proposed_retail_rub, l.proposed_marketplace_rub,
 			l.proposed_marketplace_strike_rub, l.customer_request,
-			l.comparison_accepted, l.comparison_note, l.invoice_components
+			l.comparison_accepted, l.comparison_note, l.invoice_components,
+            CASE WHEN alias.id IS NOT NULL THEN jsonb_build_object(
+              'id',alias.id,'supplierId',alias.supplier_id,'rawName',alias.raw_name,
+              'supplierArticle',alias.supplier_article,'potDiameterCm',alias.pot_diameter_cm,
+              'heightCm',alias.height_cm,'matchStatus',alias.match_status) END,
+            l.receiving_mode,l.customer_handed_over,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty) ORDER BY child.id)
+             FROM procurement_order_lines child JOIN saby_nomenclature n ON n.saby_id=child.saby_id
+             WHERE child.receiving_parent_line_id=l.id AND child.reconciliation_status<>'superseded'),'[]'::jsonb)
 		FROM procurement_order_lines l
+        LEFT JOIN procurement_supplier_aliases alias ON alias.id=l.supplier_alias_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 		LEFT JOIN product_variants pv ON pv.id=l.canonical_variant_id
-		WHERE l.procurement_order_id = $1 AND l.reconciliation_status <> 'superseded'
+		WHERE l.procurement_order_id = $1 AND l.receiving_parent_line_id IS NULL AND l.reconciliation_status <> 'superseded'
 		ORDER BY l.load_unit, l.id
 	`, orderID)
 	if err != nil {
@@ -593,10 +602,19 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
 			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ReceivingAllocations); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
-		if line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
+		if line.ReceivingMode != "catalog" {
+			line.CurrentRetailRUB = 0
+			line.CurrentUnitCostRUB = nil
+			line.CurrentUnitCostKind = ""
+			line.CurrentUnitCostEffectiveAt = nil
+		}
+		if line.MatchAlias != nil {
+			line.MatchAlias.SupplierName = order.SupplierName
+		}
+		if line.ReceivingMode == "catalog" && line.CanonicalVariantID != nil && line.ProposedRetailRUB != nil {
 			line.PriceChangeNeeded = priceChangeNeeded(line.CurrentRetailRUB, *line.ProposedRetailRUB, settings.PriceChangeThreshold)
 		}
 		detail.Lines = append(detail.Lines, line)
@@ -627,7 +645,7 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		SELECT s.kind, o.status,
 			COUNT(d.id) FILTER (WHERE d.superseded_at IS NULL)::INTEGER,
 			COUNT(d.id) FILTER (WHERE d.superseded_at IS NULL AND d.arithmetic_status <> 'ok')::INTEGER,
-			COUNT(DISTINCT NULLIF(BTRIM(l.load_unit), '')) FILTER (WHERE l.match_status = 'confirmed'
+			COUNT(DISTINCT NULLIF(BTRIM(l.load_unit), '')) FILTER (WHERE l.match_status IN ('confirmed','deferred') AND l.receiving_parent_line_id IS NULL
 				AND NOT l.invoice_excluded AND l.reconciliation_status <> 'superseded'
 				AND BTRIM(l.load_unit) ~ '^[0-9]+$')::INTEGER
 		FROM procurement_orders o
@@ -649,10 +667,25 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		if line.InvoiceExcluded {
 			continue
 		}
-		if line.MatchStatus != "confirmed" && line.MatchStatus != "ignored" {
+		if line.MatchStatus != "confirmed" && line.MatchStatus != "ignored" && line.MatchStatus != "deferred" {
 			result.Unmatched++
 		}
-		if line.MatchStatus != "confirmed" {
+		if line.ReceivingMode == "awaiting_catalog" {
+			result.PendingCatalog++
+		}
+		if line.ReceivingMode == "assortment" {
+			allocated := 0
+			for _, part := range line.ReceivingAllocations {
+				allocated += part.Quantity
+			}
+			if allocated != line.Quantity || allocated <= 0 {
+				result.PendingAssortments++
+			}
+		}
+		if line.ReceivingMode == "customer_handoff" && !line.CustomerHandedOver {
+			result.PendingHandoffs++
+		}
+		if line.MatchStatus != "confirmed" && line.MatchStatus != "deferred" {
 			continue
 		}
 		if documents > 0 && (line.InvoicedQuantity == nil || line.Quantity <= 0 || line.UnitPrice <= 0) {
@@ -689,7 +722,7 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		result.Blockers = append(result.Blockers, "Итог документа не совпадает с суммой строк")
 	}
 	if result.Unmatched > 0 {
-		result.Blockers = append(result.Blockers, fmt.Sprintf("Не сопоставлено строк: %d", result.Unmatched))
+		result.Blockers = append(result.Blockers, fmt.Sprintf("Не выбраны товары СБИС: %d", result.Unmatched))
 	}
 	if result.ComparisonMismatch > 0 {
 		result.Blockers = append(result.Blockers, fmt.Sprintf("Не подтверждено расхождений заказа и инвойса: %d", result.ComparisonMismatch))
@@ -705,6 +738,13 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 	}
 	result.CanCalculate = status != "received" && status != "cancelled" && len(result.Blockers) == 0
 	result.CanPrepareActions = status == "ready_to_receive" && result.CanCalculate && detail.Order.Status == "ready_to_receive"
+	receiptLines := false
+	for _, line := range detail.Lines {
+		if !line.InvoiceExcluded && (line.MatchStatus == "confirmed" || len(line.ReceivingAllocations) > 0) {
+			receiptLines = true
+		}
+	}
+	result.CanPrepareReceipt = result.CanPrepareActions && result.PendingAssortments == 0 && result.PendingCatalog == 0 && receiptLines
 	return result, nil
 }
 
@@ -752,7 +792,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			AND line.supplier_alias_id=alias.id
 			AND alias.match_status='confirmed'
 			AND alias.matched_saby_id IS NOT NULL
-			AND line.match_status<>'ignored'
+			AND line.match_status<>'ignored' AND line.receiving_mode='catalog'
 			AND NOT line.invoice_excluded
 			AND line.reconciliation_status<>'superseded'
 			AND (
@@ -794,7 +834,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status, load_unit,
 			expected_unit_price::DOUBLE PRECISION, invoiced_qty, comparison_accepted, ordered_qty,
 			COALESCE(saby_id, ''),reconciliation_status
-		FROM procurement_order_lines WHERE procurement_order_id = $1
+		FROM procurement_order_lines WHERE procurement_order_id = $1 AND receiving_parent_line_id IS NULL
 			AND reconciliation_status<>'superseded' AND NOT invoice_excluded
 			AND (reconciliation_status<>'added' OR comparison_accepted) FOR UPDATE
 	`, orderID)
@@ -812,11 +852,11 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			rows.Close()
 			return OrderDetail{}, fmt.Errorf("scan procurement calculation line: %w", err)
 		}
-		if line.matchStatus != "confirmed" && line.matchStatus != "ignored" {
+		if line.matchStatus != "confirmed" && line.matchStatus != "ignored" && line.matchStatus != "deferred" {
 			rows.Close()
 			return OrderDetail{}, ErrInvalidInput
 		}
-		if line.matchStatus == "confirmed" {
+		if line.matchStatus == "confirmed" || line.matchStatus == "deferred" {
 			if line.quantity <= 0 || line.unitPrice <= 0 || line.invoicedQty == nil {
 				rows.Close()
 				return OrderDetail{}, ErrInvalidInput
@@ -860,7 +900,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	moscowWeights := make([]allocationWeight, 0, len(lines))
 	ryazanWeights := make([]allocationWeight, 0, len(lines))
 	for _, line := range lines {
-		if line.matchStatus != "confirmed" {
+		if line.matchStatus != "confirmed" && line.matchStatus != "deferred" {
 			continue
 		}
 		if kind == KindInternational && loadVolumes[line.loadUnit] > 0 && len(loadVolumes) > 0 {
@@ -897,6 +937,9 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			return OrderDetail{}, fmt.Errorf("save procurement calculation line: %w", err)
 		}
 	}
+	if err := syncReceivingChildCosts(ctx, tx, orderID); err != nil {
+		return OrderDetail{}, err
+	}
 	// The approved invoice and its final logistics are the moment when the
 	// owner knows the landed cost. Make that cost effective now, rather than a
 	// week later when the Saby receipt is posted. Historical sales already
@@ -906,7 +949,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			SELECT canonical_variant_id,saby_id,$1::BIGINT AS procurement_order_id,
 				MIN(id) AS line_id,MAX(unit_cost_rub) AS unit_cost
 			FROM procurement_order_lines
-			WHERE procurement_order_id=$1 AND match_status='confirmed' AND NOT invoice_excluded
+			WHERE procurement_order_id=$1 AND receiving_parent_line_id IS NULL AND match_status='confirmed' AND NOT invoice_excluded
 				AND reconciliation_status<>'superseded' AND canonical_variant_id IS NOT NULL
 				AND saby_id IS NOT NULL AND unit_cost_rub IS NOT NULL
 			GROUP BY canonical_variant_id,saby_id
@@ -1032,6 +1075,13 @@ func (store *PostgresStore) ImportDocument(
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return ImportResult{}, fmt.Errorf("check procurement document conflict: %w", err)
 		}
+	}
+	var receivingStarted bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_order_lines WHERE procurement_order_id=$1 AND receiving_mode<>'catalog' AND reconciliation_status<>'superseded')`, orderID).Scan(&receivingStarted); err != nil {
+		return ImportResult{}, err
+	}
+	if receivingStarted {
+		return ImportResult{}, &UserFacingError{Message: "В закупке настроен разбор или передача под заказ. Перед заменой инвойса верните эти строки к обычной приёмке."}
 	}
 	var previousDocumentID int64
 	var revisionNo = 1

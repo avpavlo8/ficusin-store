@@ -441,6 +441,22 @@ func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID in
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
+	receiving := input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil
+	if receiving {
+		if lineID <= 0 || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.AcceptComparison != nil || input.ComparisonNote != nil || input.InvoiceExcluded != nil || input.InvoiceLineID != nil || input.InvoiceLineIDs != nil {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		if input.CustomerHandedOver != nil && (input.ReceivingMode != nil || input.ReceivingAllocations != nil) {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		if input.ReceivingMode != nil && !oneOf(*input.ReceivingMode, "catalog", "assortment", "customer_handoff", "awaiting_catalog") {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		if input.ReceivingAllocations != nil && len(*input.ReceivingAllocations) > 100 {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		return service.store.UpdateOrderLine(ctx, actor, lineID, input)
+	}
 	if lineID <= 0 || (input.ExpectedUnitPrice == nil && input.PotDiameterCM == nil && input.HeightCM == nil && input.LoadUnit == nil && input.AcceptComparison == nil && input.ComparisonNote == nil && input.InvoiceExcluded == nil && input.InvoiceLineID == nil && input.InvoiceLineIDs == nil) {
 		return OrderDetail{}, ErrInvalidInput
 	}

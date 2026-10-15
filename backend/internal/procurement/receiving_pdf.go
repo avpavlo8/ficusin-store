@@ -42,7 +42,7 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		if name == "" {
 			name = strings.TrimSpace(line.RawName)
 		}
-		if line.MatchStatus != "confirmed" {
+		if line.MatchStatus != "confirmed" && line.MatchStatus != "deferred" {
 			return nil, &UserFacingError{Message: fmt.Sprintf("Не сопоставлена позиция для PDF приёмки: %s", blankDash(name))}
 		}
 		if line.InvoicedQuantity == nil || *line.InvoicedQuantity <= 0 {
@@ -50,6 +50,21 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 		}
 		if line.ProposedRetailRUB == nil || *line.ProposedRetailRUB <= 0 {
 			return nil, &UserFacingError{Message: fmt.Sprintf("Не рассчитана розничная цена для PDF приёмки: %s", blankDash(name))}
+		}
+		if line.ReceivingMode == "awaiting_catalog" {
+			name = line.RawName + " · выбрать карточку СБИС"
+		}
+		if line.ReceivingMode == "assortment" && len(line.ReceivingAllocations) > 0 {
+			for _, part := range line.ReceivingAllocations {
+				rows = append(rows, receivingPDFRow{Name: part.Name, InvoiceName: line.InvoiceRawName + " · разбор микса", Pot: line.PotDiameterCM, Height: line.HeightCM, Quantity: part.Quantity, Price: *line.ProposedRetailRUB})
+			}
+			continue
+		}
+		if line.ReceivingMode == "assortment" {
+			name = line.RawName + " · разобрать после приезда"
+		}
+		if line.ReceivingMode == "customer_handoff" {
+			name = line.RawName + " · под заказ"
 		}
 		rows = append(rows, receivingPDFRow{
 			Name: name, InvoiceName: strings.TrimSpace(line.InvoiceRawName), Pot: line.PotDiameterCM, Height: line.HeightCM,

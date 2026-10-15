@@ -165,7 +165,12 @@ export type ProcurementActionItem = { id: number; lineId: number; productName: s
 
 export type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
 
+export type ProcurementReceivingAllocation = {sabyId:string;name:string;code:string;quantity:number};
 export type ProcurementOrderLine = {
+ receivingMode?: "catalog" | "assortment" | "customer_handoff" | "awaiting_catalog";
+ receivingAllocations?: ProcurementReceivingAllocation[];
+ customerHandedOver?: boolean;
+  matchAlias?: ProcurementAlias;
   id: number; sabyId: string; sabyCode: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
   supplierCategory: string; packageCount?: number; unitsPerPackage?: number;
   invoiceRawName: string; invoiceSupplierArticle: string; reconciliationStatus: string;
@@ -180,7 +185,7 @@ export type ProcurementOrderLine = {
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
 };
 
-export type ProcurementValidation = { canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
+export type ProcurementValidation = { pendingCatalog?: number; pendingAssortments?: number; pendingHandoffs?: number; canPrepareReceipt?: boolean; canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
 
 export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 

@@ -95,7 +95,7 @@ func fulfilOrderAllocations(ctx context.Context, tx pgx.Tx, orderID int64) error
 // Releasing allocations above the invoiced quantity restores the missing part
 // to recommendations. A line absent from an invoice has capacity zero.
 func rebalanceInvoiceAllocations(ctx context.Context, tx pgx.Tx, orderID int64) error {
-	rows, err := tx.Query(ctx, `SELECT id,COALESCE(saby_id,''),CASE WHEN invoice_excluded THEN 0 ELSE COALESCE(invoiced_qty,0) END FROM procurement_order_lines WHERE procurement_order_id=$1 AND reconciliation_status<>'superseded' ORDER BY id FOR UPDATE`, orderID)
+	rows, err := tx.Query(ctx, `SELECT id,COALESCE(saby_id,''),CASE WHEN invoice_excluded OR match_status<>'confirmed' THEN 0 ELSE COALESCE(invoiced_qty,0) END FROM procurement_order_lines WHERE procurement_order_id=$1 AND reconciliation_status<>'superseded' ORDER BY id FOR UPDATE`, orderID)
 	if err != nil {
 		return err
 	}

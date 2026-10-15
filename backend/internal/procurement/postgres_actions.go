@@ -429,6 +429,11 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	if status != "ready_to_receive" {
 		return ActionBatch{}, ErrInvalidInput
 	}
+	if kind == "receipt" {
+		if err := checkReceivingComplete(ctx, tx, orderID, false); err != nil {
+			return ActionBatch{}, err
+		}
+	}
 	batchChannel := ""
 	if kind == "prices" && len(channels) == 1 {
 		batchChannel = channels[0]
@@ -470,7 +475,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					l.saby_id, COALESCE(NULLIF(n.code, ''), l.saby_id) AS code,
 					COALESCE(NULLIF(n.name, ''), MAX(l.raw_name)) AS name,
 					n.balance::INTEGER AS old_balance,
-					MAX(COALESCE(l.unit_cost_rub, l.purchase_unit_rub, l.unit_price, l.expected_unit_price, 0))::DOUBLE PRECISION AS unit_cost,
+					(SUM(COALESCE(l.unit_cost_rub, l.purchase_unit_rub, l.unit_price, l.expected_unit_price, 0) * COALESCE(l.invoiced_qty,l.ordered_qty)) / NULLIF(SUM(COALESCE(l.invoiced_qty,l.ordered_qty)),0))::DOUBLE PRECISION AS unit_cost,
 					SUM(COALESCE(l.invoiced_qty, l.ordered_qty))::INTEGER AS quantity
 				FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
@@ -1304,6 +1309,10 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 				received_at=COALESCE(received_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP
 			WHERE orders.id=(SELECT procurement_order_id FROM procurement_action_batches WHERE id=$1 AND kind='receipt')
 				AND orders.status='ready_to_receive'
+                AND NOT EXISTS(SELECT 1 FROM procurement_order_lines p WHERE p.procurement_order_id=orders.id
+                  AND p.receiving_parent_line_id IS NULL AND NOT p.invoice_excluded AND p.reconciliation_status<>'superseded'
+                  AND (p.receiving_mode='awaiting_catalog' OR (p.receiving_mode='customer_handoff' AND NOT p.customer_handed_over)
+                    OR (p.receiving_mode='assortment' AND COALESCE((SELECT SUM(c.invoiced_qty) FROM procurement_order_lines c WHERE c.receiving_parent_line_id=p.id AND c.reconciliation_status<>'superseded'),0)<>COALESCE(p.invoiced_qty,p.ordered_qty))))
 				AND EXISTS (SELECT 1 FROM procurement_action_items item
 					WHERE item.batch_id=$1 AND item.channel='saby_receipt')
 				AND NOT EXISTS (SELECT 1 FROM procurement_action_items item
@@ -1479,7 +1488,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 		FROM procurement_orders o
 		JOIN procurement_suppliers s ON s.id = o.supplier_id
 		LEFT JOIN procurement_order_lines l ON l.procurement_order_id = o.id
-			AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
+			AND l.receiving_parent_line_id IS NULL AND l.reconciliation_status <> 'superseded' AND NOT l.invoice_excluded
 			AND (l.reconciliation_status <> 'added' OR l.comparison_accepted)
 		WHERE o.id = $1
 		GROUP BY o.id, s.name

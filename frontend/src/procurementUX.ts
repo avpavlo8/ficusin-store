@@ -66,3 +66,5 @@ export async function uploadProcurementPDF<T>(body: FormData): Promise<T> {
 
 export const procurementOrderHref = (id: number) => `/admin?section=procurement&view=orders&order=${id}`;
 export const quantityLabel = (value: number) => `${value} ${value % 10 === 1 && value % 100 !== 11 ? "позиция" : value % 10 >= 2 && value % 10 <= 4 && (value % 100 < 12 || value % 100 > 14) ? "позиции" : "позиций"}`;
+
+export const receivingModeLabel = (mode?: string) => mode === "awaiting_catalog" ? "Ожидает карточку СБИС" : mode === "assortment" ? "Разобрать после приезда" : mode === "customer_handoff" ? "Под заказ · передать клиенту" : "Обычная приёмка";
