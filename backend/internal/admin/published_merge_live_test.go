@@ -35,18 +35,18 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	ownerEmail := fmt.Sprintf("merge-owner-%d@example.invalid", unique)
 	orderNumber := fmt.Sprintf("MERGE-%d", unique)
 	avitoID := fmt.Sprintf("merge-avito-%d", unique)
-	var targetID, sourceID, targetCode, sourceCode, targetVariantID, sourceVariantID, ownerID, orderID, reviewID, orderItemID int64
+	var targetID, sourceID, targetCode, sourceCode, targetVariantID, sourceVariantID, ownerID, orderID, reviewID, orderItemID, categoryID int64
 	defer func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='product.published.merge' AND entity_id=$1`, fmt.Sprint(targetID))
 		_, _ = pool.Exec(ctx, `DELETE FROM product_reviews WHERE id=$1`, reviewID)
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID)
 		_, _ = pool.Exec(ctx, `DELETE FROM avito_listings WHERE item_id=$1`, avitoID)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id IN ($1,$2)`, targetID, sourceID)
+		_, _ = pool.Exec(ctx, `DELETE FROM categories WHERE id=$1`, categoryID)
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id IN ($1,$2)`, targetSaby, sourceSaby)
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, ownerID)
 	}()
-	var categoryID int64
-	if err := pool.QueryRow(ctx, `SELECT id FROM categories WHERE slug='aglaonema'`).Scan(&categoryID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO categories(parent_id,name,slug,sort_order) SELECT id,'Merge test',$1,999 FROM categories WHERE slug='plants' RETURNING id`, fmt.Sprintf("merge-category-%d", unique)).Scan(&categoryID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)

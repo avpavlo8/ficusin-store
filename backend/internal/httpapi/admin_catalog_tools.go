@@ -10,78 +10,42 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
 	"github.com/jackc/pgx/v5"
 )
 
-func generateAICoverHandler(handlers adminHandlers, storage productPhotoStorage) http.HandlerFunc {
-	var generationMu sync.Mutex
-	inProgress := map[int64]bool{}
-	return func(response http.ResponseWriter, request *http.Request) {
-		_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2 * time.Minute))
-		_, _, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
-		if !ok { return }
-		if handlers.ai == nil || !handlers.ai.Configured() || storage == nil || !storage.Configured() {
-			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "AI или хранилище изображений не настроены"})
-			return
-		}
-		productID, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
-		if err != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар"}); return }
-		products, err := handlers.repository.ListProducts(request.Context())
-		if err != nil { handlers.failed(response, "read product for ai cover", err); return }
-		isPlant := false
-		for _, product := range products { if product.ID == productID { isPlant, err = adminProductIsPlant(request.Context(), handlers.repository, product); if err != nil { handlers.failed(response, "resolve product category", err); return }; break } }
-		if !isPlant {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "AI-обложка доступна только для растений"})
-			return
-		}
-		generationMu.Lock()
-		if inProgress[productID] { generationMu.Unlock(); writeJSON(response, http.StatusConflict, errorResponse{Error: "Обложка для этого товара уже создаётся"}); return }
-		inProgress[productID] = true
-		generationMu.Unlock()
-		defer func() { generationMu.Lock(); delete(inProgress, productID); generationMu.Unlock() }()
-		var body struct{ Prompt string `json:"prompt"` }
-		if decodeJSON(request, &body) != nil || strings.TrimSpace(body.Prompt) == "" {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Пустой промпт"})
-			return
-		}
-		raw, _, err := handlers.ai.GenerateCover(request.Context(), body.Prompt)
-		if err != nil { handlers.failedAI(response, "generate ai cover", err); return }
-		card, large, err := prepareProductCopies(raw)
-		if err != nil { handlers.failedAI(response, "prepare ai cover", err); return }
-		token := fmt.Sprint(time.Now().UnixNano())
-		prefix := fmt.Sprintf("products/%d/ai-cover-%s", productID, token)
-		cardKey, largeKey := prefix+"-card.jpg", prefix+"-large.jpg"
-		if err := storage.Put(request.Context(), cardKey, card, "image/jpeg"); err != nil { handlers.failed(response, "store ai card cover", err); return }
-		if err := storage.Put(request.Context(), largeKey, large, "image/jpeg"); err != nil { handlers.failed(response, "store ai large cover", err); return }
-		// Generation is a proposal only. It is deliberately not linked to the
-		// product gallery and cannot become primary until the editor accepts the
-		// image diff and explicitly saves the card.
-		writeJSON(response, http.StatusCreated, map[string]any{"url": storage.PublicURL(largeKey), "cardUrl": storage.PublicURL(cardKey)})
-	}
-}
-
 func adminProductIsPlant(ctx context.Context, repository adminRepository, product admin.Product) (bool, error) {
-	if product.CategoryID == nil { return false, nil }
+	if product.CategoryID == nil {
+		return false, nil
+	}
 	categories, err := repository.ListCategories(ctx)
-	if err != nil { return false, err }
+	if err != nil {
+		return false, err
+	}
 	byID := make(map[int64]admin.Category, len(categories))
-	for _, category := range categories { byID[category.ID] = category }
+	for _, category := range categories {
+		byID[category.ID] = category
+	}
 	category, exists := byID[*product.CategoryID]
 	visited := map[int64]bool{}
-	for exists && category.ParentID != nil && !visited[category.ID] { visited[category.ID] = true; category, exists = byID[*category.ParentID] }
+	for exists && category.ParentID != nil && !visited[category.ID] {
+		visited[category.ID] = true
+		category, exists = byID[*category.ParentID]
+	}
 	return exists && category.Slug == "plants", nil
 }
 
 func prepareProductCopies(raw []byte) (card, large []byte, err error) {
 	large, err = photos.Prepare(raw, photos.SizeLarge.MaxSide)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 	card, err = photos.Prepare(raw, photos.SizeCard.MaxSide)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 	return card, large, nil
 }
 

@@ -673,7 +673,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 			FROM categories child JOIN category_paths parent ON parent.id=child.parent_id
 		)
 		SELECT product.product_code::TEXT,variant.sku,product.name,variant.label,
-			COALESCE(NULLIF(product.short_description,''),NULLIF(product.description,''),''),
+			COALESCE(NULLIF(product.description,''),''),
 			variant.base_price_minor,
 			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item
 				JOIN warehouses warehouse ON warehouse.id=item.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1

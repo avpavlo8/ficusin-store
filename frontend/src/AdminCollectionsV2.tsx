@@ -71,6 +71,12 @@ function operatorsFor(attribute?: Attribute): Array<{ value: Rule["operator"]; l
   return [...common, { value: "in", label: "одно из" }, { value: "contains", label: "содержит" }];
 }
 
+function ruleSummary(rule:Rule,attributes:Attribute[]){
+ const attribute=attributes.find(x=>x.code===rule.attribute);const operator=operatorsFor(attribute).find(x=>x.value===rule.operator)?.label||rule.operator;
+ const values=Array.isArray(rule.value)?rule.value:[rule.value];const value=values.map(x=>typeof x==="boolean"?(x?"Да":"Нет"):attribute?.options.find(o=>o.code===String(x))?.label||String(x??"")).join(", ");
+ return `${attribute?.name||"Неизвестная характеристика"} ${operator}${rule.operator==="exists"?"":` ${value}${attribute?.unit?` ${attribute.unit}`:""}`}`;
+}
+
 function CollectionEditor({ owner, item, attributes, products, onSaved, onDeleted, onError }: {
   owner: boolean; item: Definition; attributes: Attribute[]; products: Product[];
   onSaved: (value: Definition) => void; onDeleted: (id: number) => void; onError: (value: string) => void;
@@ -79,7 +85,13 @@ function CollectionEditor({ owner, item, attributes, products, onSaved, onDelete
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const shown = useMemo(() => products.filter((product) => `${product.name} ${product.latinName} ${product.sku}`.toLowerCase().includes(query.toLowerCase())), [products, query]);
+  const [preview,setPreview]=useState<{rules:string;products:number[];error?:string}|null>(null);
+  const ruleKey=JSON.stringify(draft.rules);
+  useEffect(()=>{if(draft.mode!=="dynamic")return;let active=true;const timer=window.setTimeout(()=>{api<{products:number[]}>("/api/v1/admin/collection-definitions/preview",{method:"POST",body:JSON.stringify({rules:draft.rules})}).then(data=>{if(active)setPreview({rules:ruleKey,products:data.products||[]})}).catch(error=>{if(active)setPreview({rules:ruleKey,products:[],error:error.message})})},300);return()=>{active=false;window.clearTimeout(timer)}},[draft.mode,draft.rules,ruleKey]);
+  const previewIds=preview?.rules===ruleKey&&!preview.error?preview.products:null;
+  const dirty=JSON.stringify(draft)!==JSON.stringify(item);
+  useEffect(()=>{const protect=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue=""}};window.addEventListener("beforeunload",protect);return()=>window.removeEventListener("beforeunload",protect)},[dirty]);
+  const shown = useMemo(() => products.filter((product) => `${product.name} ${product.latinName} ${product.sku}`.toLowerCase().includes(query.trim().replace(/\s+/g," ").toLowerCase())), [products, query]);
 
   const save = async () => {
     setSaving(true);
@@ -100,7 +112,7 @@ function CollectionEditor({ owner, item, attributes, products, onSaved, onDelete
     try {
       const body = new FormData(); body.append("file", file);
       const result = await api<{ collection: Definition }>(`/api/v1/admin/collection-definitions/${item.id}/cover`, { method: "POST", body });
-      setDraft(structuredClone(result.collection)); onSaved(result.collection);
+      setDraft(current=>({...current,coverUrl:result.collection.coverUrl})); onSaved({...item,coverUrl:result.collection.coverUrl});
     } catch (error) { onError((error as Error).message); }
     finally { setUploading(false); }
   };
@@ -142,20 +154,20 @@ function CollectionEditor({ owner, item, attributes, products, onSaved, onDelete
     </div>
 
     {draft.mode === "dynamic" ? <div className="collection-rules">
-      <div className="variant-editor-head"><div><h4>Правила</h4><p>Все строки применяются одновременно (AND). Совпадение считается по PRODUCT/SKU-атрибутам PIM.</p></div><button type="button" className="admin-action" onClick={() => setDraft({ ...draft, rules: [...draft.rules, { attribute: attributes[0]?.code || "", operator: "eq", value: "" }] })}>Добавить правило</button></div>
+      <div className="variant-editor-head"><div><h4>Правила</h4><p>Товар должен соответствовать всем условиям. Проверяются общие характеристики и активные размеры; подборка включает карточку целиком.</p></div><button type="button" className="admin-action" onClick={() => setDraft({ ...draft, rules: [...draft.rules, { attribute: attributes[0]?.code || "", operator: "eq", value: "" }] })}>Добавить правило</button></div>
       {draft.rules.map((rule, index) => {
         const attribute = attributes.find((candidate) => candidate.code === rule.attribute);
         return <div className="collection-rule-row" key={`${index}-${rule.attribute}`}>
-          <select value={rule.attribute} onChange={(event) => updateRule(index, { attribute: event.target.value, operator: "eq", value: "" })}>{attributes.filter((candidate) => candidate.active).map((candidate) => <option value={candidate.code} key={candidate.id}>{candidate.name} · {candidate.code}</option>)}</select>
-          <select value={rule.operator} onChange={(event) => updateRule(index, { operator: event.target.value as Rule["operator"], value: "" })}>{operatorsFor(attribute).map((operator) => <option value={operator.value} key={operator.value}>{operator.label}</option>)}</select>
-          {rule.operator !== "exists" && (attribute?.dataType === "enum" && ["eq", "neq"].includes(rule.operator) ? <select value={valueForInput(rule)} onChange={(event) => updateRule(index, { value: event.target.value })}><option value="">Не выбрано</option>{attribute.options.filter((option) => option.active).map((option) => <option value={option.code} key={option.code}>{option.label}</option>)}</select> : <input value={valueForInput(rule)} placeholder={rule.operator === "in" ? "значение1, значение2" : attribute?.unit || "Значение"} onChange={(event) => updateRule(index, { value: parseRuleValue(attribute, rule.operator, event.target.value) })} />)}
+          <select aria-label={`Характеристика условия ${index+1}`} value={rule.attribute} onChange={(event) => updateRule(index, { attribute: event.target.value, operator: "eq", value: "" })}>{attributes.filter((candidate) => candidate.active).map((candidate) => <option value={candidate.code} key={candidate.id}>{candidate.name}{candidate.unit?` · ${candidate.unit}`:""}</option>)}</select>
+          <select aria-label={`Сравнение условия ${index+1}`} value={rule.operator} onChange={(event) => updateRule(index, { operator: event.target.value as Rule["operator"], value: "" })}>{operatorsFor(attribute).map((operator) => <option value={operator.value} key={operator.value}>{operator.label}</option>)}</select>
+          {rule.operator !== "exists" && (attribute?.dataType === "enum" && ["eq", "neq"].includes(rule.operator) ? <select value={valueForInput(rule)} onChange={(event) => updateRule(index, { value: event.target.value })}><option value="">Не выбрано</option>{attribute.options.filter((option) => option.active).map((option) => <option value={option.code} key={option.code}>{option.label}</option>)}</select> : <input aria-label={`Значение условия ${index+1}`} value={valueForInput(rule)} placeholder={rule.operator === "in" ? "значение1, значение2" : attribute?.unit || "Значение"} onChange={(event) => updateRule(index, { value: parseRuleValue(attribute, rule.operator, event.target.value) })} />)}
           <button type="button" className="text-button danger" onClick={() => setDraft({ ...draft, rules: draft.rules.filter((_, ruleIndex) => ruleIndex !== index) })}>Удалить</button>
         </div>;
       })}
-      <div className="admin-collection-preview"><strong>Сейчас подходит: {draft.products.length}</strong><span>{products.filter((product) => draft.products.includes(product.id)).slice(0, 12).map((product) => product.name).join(", ") || "После сохранения здесь появится превью"}</span></div>
+      <div className="admin-collection-preview"><strong>{previewIds?`Подходит: ${previewIds.length} товаров`:preview?.rules===ruleKey&&preview.error?"Не удалось проверить условия":"Проверяем условия…"}</strong>{preview?.rules===ruleKey&&preview.error&&<p role="alert">{preview.error}</p>}{previewIds&&<><p>После сохранения: добавится {previewIds.filter(id=>!item.products.includes(id)).length}, исключится {item.products.filter(id=>!previewIds.includes(id)).length}. Предпросмотр ничего не сохраняет.</p><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Товар</th><th>Артикул / размер</th><th>Статус</th><th>Совпадение</th></tr></thead><tbody>{products.filter(product=>previewIds.includes(product.id)).map(product=><tr key={product.id}><td><a href={`/admin?section=products&product=${product.id}&tab=attributes`}>{product.name}</a></td><td>{product.sku} · {product.variantLabel}{product.variantCount&&product.variantCount>1?` · всего размеров: ${product.variantCount}`:""}<a href={`/admin?section=products&product=${product.id}&tab=variants`}>Проверить размеры</a></td><td>{product.status==="published"?"Опубликован":product.status==="archived"?"Архив":"Черновик"}</td><td>{draft.rules.map((rule,index)=><small key={index}>{ruleSummary(rule,attributes)}</small>)}</td></tr>)}</tbody></table></div>{!previewIds.length&&<p>Ни один товар не соответствует всем условиям.</p>}</>}</div>
     </div> : <div className="collection-manual-products">
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти товар" />
-      <div className="admin-collection-list">{shown.map((product) => <label key={product.id}><input type="checkbox" checked={draft.products.includes(product.id)} onChange={() => void toggleProduct(product.id)} /><span>{product.name}</span><small>{product.stock > 0 ? `${product.stock} шт.` : "под заказ"}</small></label>)}</div>
+      <p className="admin-hint">Выбор товара сохраняется сразу. Название, обложка и настройки — кнопкой «Сохранить».</p><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти товар" />
+      <div className="admin-collection-list">{shown.map((product) => <label key={product.id}><input type="checkbox" checked={draft.products.includes(product.id)} onChange={() => void toggleProduct(product.id)} /><span>{product.name}<small>Артикул {product.sku} · {product.variantLabel}</small></span><small>{product.stock > 0 ? `${product.stock} шт.` : "под заказ"}</small></label>)}</div>
     </div>}
 
     <div className="dialog-actions"><button type="button" className="danger" disabled={!owner} onClick={() => void remove()}>Удалить подборку</button><button type="button" className="primary" disabled={saving || !draft.title.trim() || !draft.slug.trim() || (draft.mode === "dynamic" && draft.rules.length === 0)} onClick={() => void save()}>{saving ? "Сохраняем…" : "Сохранить"}</button></div>
@@ -166,7 +178,7 @@ export function CollectionsV2({ owner, onError }: { owner: boolean; onError: (va
   const [collections, setCollections] = useState<Definition[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [attributes, setAttributes] = useState<Attribute[]>([]);
-  const [opened, setOpened] = useState<number | null>(null);
+  const [opened, setOpened] = useState<number | null>(()=>Number(new URLSearchParams(location.search).get("collection"))||null);
   const [creating, setCreating] = useState(false);
   const [dragged, setDragged] = useState<number | null>(null);
   const load = useCallback(() => Promise.all([
@@ -192,11 +204,11 @@ export function CollectionsV2({ owner, onError }: { owner: boolean; onError: (va
     if(!dragged||dragged===targetId)return;const moved=collections.find((item)=>item.id===dragged);if(!moved)return;const next=collections.filter((item)=>item.id!==dragged);next.splice(next.findIndex((item)=>item.id===targetId),0,moved);setDragged(null);await persistOrder(next);
   };
 
-  return <><PageHeading eyebrow="Витрина" title="Подборки" text="Ручные списки или автоматические подборки по PIM-атрибутам" />
+  return <><PageHeading eyebrow="Витрина" title="Подборки" text="Ручной состав или автоматический подбор по характеристикам" />
     <div className="admin-toolbar"><button className="admin-primary" disabled={creating} onClick={() => setCreating(true)}>Новая подборка</button><span>{collections.length} подборок</span></div>
     {creating && <NewCollectionDraft sortOrder={(collections.length + 1) * 10} onCancel={() => setCreating(false)} onError={onError} onCreated={(collection) => { setCollections((current) => [...current, collection]);setOpened(collection.id);setCreating(false); }} />}
     <div className="admin-collections">{collections.map((collection, index) => <div key={collection.id} className={`admin-collection${dragged===collection.id?" dragging":""}`} draggable onDragStart={()=>setDragged(collection.id)} onDragEnd={()=>setDragged(null)} onDragOver={(event)=>event.preventDefault()} onDrop={()=>void dropBefore(collection.id)}>
-      <div className="admin-collection-row"><div className="collection-order-buttons" aria-label={`Порядок: ${collection.title}`}><button type="button" disabled={index===0} aria-label={`Поднять ${collection.title}`} onClick={() => void reorder(collection.id,-1)}>↑</button><button type="button" disabled={index===collections.length-1} aria-label={`Опустить ${collection.title}`} onClick={() => void reorder(collection.id,1)}>↓</button></div><button className="admin-collection-head" onClick={() => setOpened(opened === collection.id ? null : collection.id)}>{collection.coverUrl && <span className="admin-collection-thumb" style={{ backgroundImage: `url('${collection.coverUrl}')` }} />}<span className="admin-collection-copy"><b>{collection.title}</b><small>{collection.mode === "dynamic" ? "Автоматически по правилам" : collection.note || "Ручной список"}</small></span><span className="admin-collection-count">{collection.products.length} товаров</span></button></div>
+      <div className="admin-collection-row"><div className="collection-order-buttons" aria-label={`Порядок: ${collection.title}`}><button type="button" disabled={index===0} aria-label={`Поднять ${collection.title}`} onClick={() => void reorder(collection.id,-1)}>↑</button><button type="button" disabled={index===collections.length-1} aria-label={`Опустить ${collection.title}`} onClick={() => void reorder(collection.id,1)}>↓</button></div><button className="admin-collection-head" onClick={() => setOpened(opened === collection.id ? null : collection.id)}>{collection.coverUrl && <span className="admin-collection-thumb" style={{ backgroundImage: `url('${collection.coverUrl}')` }} />}<span className="admin-collection-copy"><b>{collection.title}</b><small>{collection.active?"На витрине":"Скрыта"} · {collection.mode === "dynamic" ? collection.rules.map(rule=>ruleSummary(rule,attributes)).join("; ") : collection.note || "Ручной список"}</small></span><span className="admin-collection-count">{collection.products.length} товаров</span></button></div>
       {opened === collection.id && <CollectionEditor owner={owner} item={collection} attributes={attributes} products={products} onSaved={(saved) => setCollections((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate))} onDeleted={(id) => { setCollections((current) => current.filter((candidate) => candidate.id !== id)); setOpened(null); }} onError={onError} />}
     </div>)}{!collections.length && <p className="admin-hint">Подборок пока нет.</p>}</div>
   </>;

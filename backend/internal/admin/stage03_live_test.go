@@ -44,7 +44,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("repeated Saby price import preserves local content", func(t *testing.T) {
+	t.Run("Saby price import is rejected and preserves site content", func(t *testing.T) {
 		sabyID := fmt.Sprintf("stage-03-saby-%d", unique)
 		if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,description,price_minor,balance) VALUES($1,$2,'Имя СБИС','Описание СБИС',15500,9)`, sabyID, fmt.Sprintf("X%d", unique)); err != nil {
 			t.Fatal(err)
@@ -53,8 +53,8 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 		for index := 0; index < 2; index++ {
-			if _, err := repository.SyncProducts(ctx, owner, SyncRequest{ProductIDs: []int64{productA}, Fields: []string{"price"}}); err != nil {
-				t.Fatal(err)
+			if _, err := repository.SyncProducts(ctx, owner, SyncRequest{ProductIDs: []int64{productA}, Fields: []string{"price"}}); !errors.Is(err, ErrInvalidInput) {
+				t.Fatalf("Saby must not overwrite site prices: %v", err)
 			}
 		}
 		var description string

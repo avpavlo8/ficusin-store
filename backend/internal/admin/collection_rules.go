@@ -48,7 +48,9 @@ func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 	input.Note = strings.TrimSpace(input.Note)
 	input.CoverURL = strings.TrimSpace(input.CoverURL)
 	input.Mode = strings.ToLower(strings.TrimSpace(input.Mode))
-	if input.Mode == "" { input.Mode = "manual" }
+	if input.Mode == "" {
+		input.Mode = "manual"
+	}
 	if input.Title == "" || !collectionSlugPattern.MatchString(input.Slug) {
 		return fmt.Errorf("%w: заполните название и slug латиницей", ErrInvalidInput)
 	}
@@ -62,6 +64,9 @@ func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 	if len(input.Rules) == 0 {
 		return fmt.Errorf("%w: для динамической подборки нужно хотя бы одно правило", ErrInvalidInput)
 	}
+	if len(input.Rules) > 32 {
+		return fmt.Errorf("%w: не более 32 условий", ErrInvalidInput)
+	}
 	allowed := map[string]bool{"eq": true, "neq": true, "in": true, "contains": true, "gte": true, "lte": true, "exists": true}
 	for index := range input.Rules {
 		rule := &input.Rules[index]
@@ -72,6 +77,33 @@ func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 		}
 	}
 	return nil
+}
+
+// PreviewCollectionRules uses the exact database matcher used by saved and
+// public collections. It does not save the draft or alter membership.
+func (repository *PostgresRepository) PreviewCollectionRules(ctx context.Context, rules []CollectionRule) ([]int64, error) {
+	input := CollectionDefinitionInput{Slug: "preview", Title: "Предпросмотр", Mode: "dynamic", Rules: rules}
+	if err := validateCollectionDefinition(&input); err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(input.Rules)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := repository.pool.Query(ctx, `SELECT id FROM products WHERE collection_rules_match_product(id,$1::jsonb) ORDER BY id`, string(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Context) ([]CollectionDefinition, error) {
@@ -87,79 +119,164 @@ func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Cont
 			END
 		FROM collections collection ORDER BY collection.sort_order,collection.id
 	`)
-	if err != nil { return nil, fmt.Errorf("list collection definitions: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("list collection definitions: %w", err)
+	}
 	defer rows.Close()
 	items := make([]CollectionDefinition, 0)
 	for rows.Next() {
 		var item CollectionDefinition
 		var raw []byte
-		if err := rows.Scan(&item.ID,&item.Slug,&item.Title,&item.Note,&item.CoverURL,&item.SortOrder,&item.Active,&item.Mode,&raw,&item.Products); err != nil { return nil, err }
-		if err := json.Unmarshal(raw, &item.Rules); err != nil { return nil, fmt.Errorf("decode collection rules: %w", err) }
+		if err := rows.Scan(&item.ID, &item.Slug, &item.Title, &item.Note, &item.CoverURL, &item.SortOrder, &item.Active, &item.Mode, &raw, &item.Products); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &item.Rules); err != nil {
+			return nil, fmt.Errorf("decode collection rules: %w", err)
+		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
 func (repository *PostgresRepository) CreateCollectionDefinition(ctx context.Context, actor Actor, input CollectionDefinitionInput) (CollectionDefinition, error) {
-	if !Can(actor.Role, PermissionProductsEdit) { return CollectionDefinition{}, ErrForbidden }
-	if err := validateCollectionDefinition(&input); err != nil { return CollectionDefinition{}, err }
-	if input.CoverURL == "" { return CollectionDefinition{}, fmt.Errorf("%w: добавьте обложку подборки", ErrInvalidInput) }
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return CollectionDefinition{}, ErrForbidden
+	}
+	if err := validateCollectionDefinition(&input); err != nil {
+		return CollectionDefinition{}, err
+	}
+	if input.CoverURL == "" {
+		return CollectionDefinition{}, fmt.Errorf("%w: добавьте обложку подборки", ErrInvalidInput)
+	}
 	raw, _ := json.Marshal(input.Rules)
 	var id int64
 	if err := repository.pool.QueryRow(ctx, `
 		INSERT INTO collections(slug,title,note,cover_url,sort_order,is_active,mode,rules,updated_at)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,CURRENT_TIMESTAMP) RETURNING id
-	`, input.Slug,input.Title,input.Note,input.CoverURL,input.SortOrder,boolToSmallInt(input.Active),input.Mode,string(raw)).Scan(&id); err != nil {
+	`, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw)).Scan(&id); err != nil {
 		return CollectionDefinition{}, fmt.Errorf("create collection: %w", err)
 	}
 	items, err := repository.ListCollectionDefinitions(ctx)
-	if err != nil { return CollectionDefinition{}, err }
-	for _, item := range items { if item.ID == id { return item, nil } }
+	if err != nil {
+		return CollectionDefinition{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
 	return CollectionDefinition{}, pgx.ErrNoRows
 }
 
 // ReorderCollectionDefinitions saves the complete visible order atomically.
 func (repository *PostgresRepository) ReorderCollectionDefinitions(ctx context.Context, actor Actor, ids []int64) ([]CollectionDefinition, error) {
-	if !Can(actor.Role, PermissionProductsEdit) { return nil, ErrForbidden }
-	if len(ids)==0 { return nil,fmt.Errorf("%w: порядок подборок пуст",ErrInvalidInput) };seen:=map[int64]bool{};for _,id:=range ids{if id<=0||seen[id]{return nil,fmt.Errorf("%w: некорректный порядок подборок",ErrInvalidInput)};seen[id]=true}
-	tx,err:=repository.pool.Begin(ctx);if err!=nil{return nil,err};defer func(){_ = tx.Rollback(ctx)}();var total int;if err=tx.QueryRow(ctx,`SELECT COUNT(*) FROM collections`).Scan(&total);err!=nil{return nil,err};if total!=len(ids){return nil,fmt.Errorf("%w: передайте все подборки",ErrInvalidInput)}
-	for index,id:=range ids{tag,updateErr:=tx.Exec(ctx,`UPDATE collections SET sort_order=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`,id,(index+1)*10);if updateErr!=nil{return nil,fmt.Errorf("reorder collections: %w",updateErr)};if tag.RowsAffected()!=1{return nil,fmt.Errorf("%w: подборка не найдена",ErrInvalidInput)}}
-	if err=tx.Commit(ctx);err!=nil{return nil,err};return repository.ListCollectionDefinitions(ctx)
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return nil, ErrForbidden
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("%w: порядок подборок пуст", ErrInvalidInput)
+	}
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			return nil, fmt.Errorf("%w: некорректный порядок подборок", ErrInvalidInput)
+		}
+		seen[id] = true
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var total int
+	if err = tx.QueryRow(ctx, `SELECT COUNT(*) FROM collections`).Scan(&total); err != nil {
+		return nil, err
+	}
+	if total != len(ids) {
+		return nil, fmt.Errorf("%w: передайте все подборки", ErrInvalidInput)
+	}
+	for index, id := range ids {
+		tag, updateErr := tx.Exec(ctx, `UPDATE collections SET sort_order=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, (index+1)*10)
+		if updateErr != nil {
+			return nil, fmt.Errorf("reorder collections: %w", updateErr)
+		}
+		if tag.RowsAffected() != 1 {
+			return nil, fmt.Errorf("%w: подборка не найдена", ErrInvalidInput)
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return repository.ListCollectionDefinitions(ctx)
 }
 
 func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Context, actor Actor, id int64, input CollectionDefinitionInput) (CollectionDefinition, error) {
-	if !Can(actor.Role, PermissionProductsEdit) { return CollectionDefinition{}, ErrForbidden }
-	if err := validateCollectionDefinition(&input); err != nil { return CollectionDefinition{}, err }
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return CollectionDefinition{}, ErrForbidden
+	}
+	if err := validateCollectionDefinition(&input); err != nil {
+		return CollectionDefinition{}, err
+	}
 	raw, _ := json.Marshal(input.Rules)
 	tag, err := repository.pool.Exec(ctx, `
 		UPDATE collections SET slug=$2,title=$3,note=$4,cover_url=$5,sort_order=$6,is_active=$7,mode=$8,rules=$9::jsonb,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
-	`, id,input.Slug,input.Title,input.Note,input.CoverURL,input.SortOrder,boolToSmallInt(input.Active),input.Mode,string(raw))
-	if err != nil { return CollectionDefinition{}, fmt.Errorf("update collection: %w", err) }
-	if tag.RowsAffected() != 1 { return CollectionDefinition{}, pgx.ErrNoRows }
+	`, id, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw))
+	if err != nil {
+		return CollectionDefinition{}, fmt.Errorf("update collection: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return CollectionDefinition{}, pgx.ErrNoRows
+	}
 	items, err := repository.ListCollectionDefinitions(ctx)
-	if err != nil { return CollectionDefinition{}, err }
-	for _, item := range items { if item.ID == id { return item, nil } }
+	if err != nil {
+		return CollectionDefinition{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
 	return CollectionDefinition{}, pgx.ErrNoRows
 }
 
 func (repository *PostgresRepository) DeleteCollectionDefinition(ctx context.Context, actor Actor, id int64) error {
-	if !Can(actor.Role, PermissionDelete) { return ErrForbidden }
+	if !Can(actor.Role, PermissionDelete) {
+		return ErrForbidden
+	}
 	tag, err := repository.pool.Exec(ctx, `DELETE FROM collections WHERE id=$1`, id)
-	if err != nil { return fmt.Errorf("delete collection: %w", err) }
-	if tag.RowsAffected() != 1 { return pgx.ErrNoRows }
+	if err != nil {
+		return fmt.Errorf("delete collection: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return pgx.ErrNoRows
+	}
 	return nil
 }
 
 func (repository *PostgresRepository) SetCollectionCover(ctx context.Context, actor Actor, id int64, coverURL string) (CollectionDefinition, error) {
-	if !Can(actor.Role, PermissionProductsEdit) { return CollectionDefinition{}, ErrForbidden }
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return CollectionDefinition{}, ErrForbidden
+	}
 	coverURL = strings.TrimSpace(coverURL)
-	if coverURL == "" { return CollectionDefinition{}, fmt.Errorf("%w: пустой адрес обложки", ErrInvalidInput) }
+	if coverURL == "" {
+		return CollectionDefinition{}, fmt.Errorf("%w: пустой адрес обложки", ErrInvalidInput)
+	}
 	tag, err := repository.pool.Exec(ctx, `UPDATE collections SET cover_url=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, coverURL)
-	if err != nil { return CollectionDefinition{}, fmt.Errorf("update collection cover: %w", err) }
-	if tag.RowsAffected() != 1 { return CollectionDefinition{}, pgx.ErrNoRows }
+	if err != nil {
+		return CollectionDefinition{}, fmt.Errorf("update collection cover: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return CollectionDefinition{}, pgx.ErrNoRows
+	}
 	items, err := repository.ListCollectionDefinitions(ctx)
-	if err != nil { return CollectionDefinition{}, err }
-	for _, item := range items { if item.ID == id { return item, nil } }
+	if err != nil {
+		return CollectionDefinition{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
 	return CollectionDefinition{}, pgx.ErrNoRows
 }

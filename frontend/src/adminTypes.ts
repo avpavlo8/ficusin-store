@@ -63,6 +63,7 @@ export type Order = {
 };
 
 export type Product = {
+ totalStock?:number;minPrice?:number;maxPrice?:number;variantsReady?:boolean;
   id: number; sabyId: string; slug: string; name: string; latinName: string;
   shortDescription: string; description: string; careInstructions: string;
   status: string; featured: boolean; image: string; price: number; stock: number;
@@ -77,6 +78,7 @@ export type Product = {
   passport: PlantPassport; importantWarnings: string[];
   externalIds: Array<{ provider: string; type: string; externalId: string }>;
   attributes: Record<string, string | number | boolean | string[]>;
+  variantTasks?: string[]; variantCount?: number; stockUpdatedAt?: string; updatedAt?: string;
   variantStage1Missing?: boolean;
   unknownEnumValues?: boolean;
 };

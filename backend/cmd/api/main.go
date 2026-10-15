@@ -19,7 +19,6 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
@@ -195,7 +194,6 @@ func main() {
 	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
-	catalogAI := catalogai.New(cfg.OpenAI.APIKey, cfg.OpenAI.TextModel)
 	analyticsStore := commerceanalytics.NewStore(pool)
 	operationsProbe := operations.NewProbe(pool)
 	go avitoService.Run(ctx)
@@ -221,7 +219,6 @@ func main() {
 		CookieSecure:     cfg.Auth.CookieSecure,
 		StaticDir:        cfg.HTTP.StaticDir,
 		YandexSuggestKey: cfg.YandexSuggestKey,
-		CatalogAI:        catalogAI,
 		Analytics:        analyticsStore,
 		SiteURL:          cfg.SiteURL,
 		Readiness:        pool,

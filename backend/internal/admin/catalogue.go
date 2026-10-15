@@ -18,22 +18,22 @@ var ErrInvalidInput = errors.New("некорректные данные")
 // СБИС. Оба пути ведут в одну функцию, поэтому товар, заведённый руками, и
 // товар, привезённый импортом, устроены одинаково.
 type seed struct {
-	name           string
-	latinName      string
-	description    string
-	categoryID     *int64
-	catalogSection string
-	priceMinor     int64
-	stock          int
-	images         []string
-	sabyID         string
-	sabyFields     []string
-	status         string
-	heightCM       *int
-	potDiameterCM  *int
-	packageLengthCM *int
-	packageWidthCM *int
-	packageHeightCM *int
+	name               string
+	latinName          string
+	description        string
+	categoryID         *int64
+	catalogSection     string
+	priceMinor         int64
+	stock              int
+	images             []string
+	sabyID             string
+	sabyFields         []string
+	status             string
+	heightCM           *int
+	potDiameterCM      *int
+	packageLengthCM    *int
+	packageWidthCM     *int
+	packageHeightCM    *int
 	packageWeightGrams *int
 }
 
@@ -81,6 +81,7 @@ func (repository *PostgresRepository) CreateProduct(
 		images = append(images, picture)
 	}
 	id, err := createProduct(ctx, tx, seed{
+		status:         "draft",
 		name:           name,
 		latinName:      strings.TrimSpace(input.LatinName),
 		description:    strings.TrimSpace(input.Description),
@@ -90,7 +91,7 @@ func (repository *PostgresRepository) CreateProduct(
 		stock:          input.Stock,
 		images:         images,
 		sabyFields:     []string{},
-		heightCM: input.HeightCM, potDiameterCM: input.PotDiameterCM,
+		heightCM:       input.HeightCM, potDiameterCM: input.PotDiameterCM,
 		packageLengthCM: input.PackageLengthCM, packageWidthCM: input.PackageWidthCM,
 		packageHeightCM: input.PackageHeightCM, packageWeightGrams: input.PackageWeightGrams,
 	})
@@ -101,16 +102,31 @@ func (repository *PostgresRepository) CreateProduct(
 		return Product{}, err
 	}
 	var variantID int64
-	if err := tx.QueryRow(ctx, `SELECT id FROM product_variants WHERE product_id=$1 ORDER BY id LIMIT 1`, id).Scan(&variantID); err != nil { return Product{}, err }
+	if err := tx.QueryRow(ctx, `SELECT id FROM product_variants WHERE product_id=$1 ORDER BY id LIMIT 1`, id).Scan(&variantID); err != nil {
+		return Product{}, err
+	}
 	variantAttributes := map[string]any{}
-	if input.HeightCM != nil { variantAttributes["height_cm"] = *input.HeightCM }
-	if input.PotDiameterCM != nil { variantAttributes["pot_diameter_cm"] = *input.PotDiameterCM }
-	if input.PackageLengthCM != nil { variantAttributes["package_length_cm"] = *input.PackageLengthCM }
-	if input.PackageWidthCM != nil { variantAttributes["package_width_cm"] = *input.PackageWidthCM }
-	if input.PackageHeightCM != nil { variantAttributes["package_height_cm"] = *input.PackageHeightCM }
-	if input.PackageWeightGrams != nil { variantAttributes["package_weight_grams"] = *input.PackageWeightGrams }
-	if err := saveVariantPIMValues(ctx, tx, id, variantID, variantAttributes); err != nil { return Product{}, err }
-	if err := validateRequiredAttributes(ctx, tx, id); err != nil { return Product{}, err }
+	if input.HeightCM != nil {
+		variantAttributes["height_cm"] = *input.HeightCM
+	}
+	if input.PotDiameterCM != nil {
+		variantAttributes["pot_diameter_cm"] = *input.PotDiameterCM
+	}
+	if input.PackageLengthCM != nil {
+		variantAttributes["package_length_cm"] = *input.PackageLengthCM
+	}
+	if input.PackageWidthCM != nil {
+		variantAttributes["package_width_cm"] = *input.PackageWidthCM
+	}
+	if input.PackageHeightCM != nil {
+		variantAttributes["package_height_cm"] = *input.PackageHeightCM
+	}
+	if input.PackageWeightGrams != nil {
+		variantAttributes["package_weight_grams"] = *input.PackageWeightGrams
+	}
+	if err := saveVariantPIMValues(ctx, tx, id, variantID, variantAttributes); err != nil {
+		return Product{}, err
+	}
 	after, err := productAuditData(ctx, tx, id)
 	if err != nil {
 		return Product{}, err
@@ -130,9 +146,13 @@ func (repository *PostgresRepository) CreateProduct(
 func saveProductAttributes(ctx context.Context, tx pgx.Tx, productID int64, attributes map[string]any) error {
 	for code, value := range attributes {
 		code = strings.TrimSpace(code)
-		if code == "" { continue }
+		if code == "" {
+			continue
+		}
 		raw, err := json.Marshal(value)
-		if err != nil { return fmt.Errorf("encode product attribute %s: %w", code, err) }
+		if err != nil {
+			return fmt.Errorf("encode product attribute %s: %w", code, err)
+		}
 		if string(raw) == "null" || string(raw) == `""` || string(raw) == "[]" {
 			if _, err := tx.Exec(ctx, `DELETE FROM product_attribute_values value USING attribute_definitions definition
 				WHERE value.attribute_id=definition.id AND value.product_id=$1 AND definition.code=$2`, productID, code); err != nil {
@@ -179,7 +199,9 @@ func saveProductAttributes(ctx context.Context, tx pgx.Tx, productID int64, attr
 			ON CONFLICT(product_id,attribute_id) DO UPDATE SET value=EXCLUDED.value,
 				source='local',updated_at=CURRENT_TIMESTAMP
 		`, productID, code, string(raw))
-		if err != nil { return fmt.Errorf("save product attribute %s: %w", code, err) }
+		if err != nil {
+			return fmt.Errorf("save product attribute %s: %w", code, err)
+		}
 		if tag.RowsAffected() != 1 {
 			return fmt.Errorf("%w: атрибут %s не разрешён для PRODUCT или имеет неверное значение", ErrInvalidInput, code)
 		}
@@ -197,22 +219,34 @@ func validateRequiredAttributes(ctx context.Context, tx pgx.Tx, productID int64)
 			SELECT category_id id,0 depth FROM products WHERE id=$1
 			UNION ALL SELECT c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON c.id=a.id WHERE c.parent_id IS NOT NULL
 		), effective AS (
-			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,ca.is_required,a.depth
+			SELECT DISTINCT ON (d.id) d.id,d.code,d.name,ca.is_required,ca.is_excluded,a.depth
 			FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
 			JOIN attribute_definitions d ON d.id=ca.attribute_id AND d.value_scope='product' AND d.is_active
 			ORDER BY d.id,a.depth
 		)
 		SELECT e.name FROM effective e LEFT JOIN product_attribute_values v
 			ON v.attribute_id=e.id AND v.product_id=$1
-		WHERE e.is_required AND (v.value IS NULL OR v.value='null'::jsonb OR v.value='""'::jsonb OR v.value='[]'::jsonb)
+		WHERE e.is_required AND NOT e.is_excluded AND (v.value IS NULL OR v.value='null'::jsonb OR v.value='""'::jsonb OR v.value='[]'::jsonb)
 		ORDER BY e.name
 	`, productID)
-	if err != nil { return fmt.Errorf("validate required attributes: %w",err) }
+	if err != nil {
+		return fmt.Errorf("validate required attributes: %w", err)
+	}
 	defer rows.Close()
-	missing:=[]string{}
-	for rows.Next(){var name string;if err:=rows.Scan(&name);err!=nil{return err};missing=append(missing,name)}
-	if err:=rows.Err();err!=nil{return err}
-	if len(missing)>0{return fmt.Errorf("%w: заполните обязательные характеристики: %s",ErrInvalidInput,strings.Join(missing,", "))}
+	missing := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		missing = append(missing, name)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: заполните обязательные характеристики: %s", ErrInvalidInput, strings.Join(missing, ", "))
+	}
 	return nil
 }
 
@@ -400,24 +434,55 @@ func (repository *PostgresRepository) ImportProducts(
 // PRODUCT. It refuses published/history-bearing sources: merging those would
 // silently rewrite links, reviews and order history.
 func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, actor Actor, request MergeProductsRequest) error {
-	if !Can(actor.Role, PermissionProductsManage) { return ErrForbidden }
-	if request.TargetProductID <= 0 || len(request.SourceProductIDs) == 0 { return ErrInvalidInput }
-	tx, err := repository.pool.Begin(ctx); if err != nil { return err }; defer func(){ _=tx.Rollback(ctx) }()
-	var targetStatus string
-	if err:=tx.QueryRow(ctx,`SELECT status FROM products WHERE id=$1 FOR UPDATE`,request.TargetProductID).Scan(&targetStatus);err!=nil{return err}
-	if targetStatus!="draft" { return fmt.Errorf("%w: основная карточка должна быть черновиком",ErrInvalidInput) }
-	seen:=map[int64]bool{}
-	for _,sourceID:=range request.SourceProductIDs {
-		if sourceID<=0 || sourceID==request.TargetProductID || seen[sourceID] { return fmt.Errorf("%w: неверный источник объединения",ErrInvalidInput) }; seen[sourceID]=true
-		var status string; var blocked bool
-		err:=tx.QueryRow(ctx,`SELECT product.status, EXISTS(SELECT 1 FROM order_items item WHERE item.product_id=product.id) OR EXISTS(SELECT 1 FROM product_reviews review WHERE review.product_id=product.id) FROM products product WHERE product.id=$1 FOR UPDATE`,sourceID).Scan(&status,&blocked)
-		if err!=nil{return err}; if status!="draft" || blocked{return fmt.Errorf("%w: объединять можно только черновики без истории",ErrInvalidInput)}
-		if _,err=tx.Exec(ctx,`UPDATE product_variants SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`,request.TargetProductID,sourceID);err!=nil{return fmt.Errorf("move variants: %w",err)}
-		if _,err=tx.Exec(ctx,`UPDATE product_external_ids SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`,request.TargetProductID,sourceID);err!=nil{return fmt.Errorf("move external ids: %w",err)}
-		if _,err=tx.Exec(ctx,`UPDATE product_media SET product_id=$1 WHERE product_id=$2`,request.TargetProductID,sourceID);err!=nil{return fmt.Errorf("move media: %w",err)}
-		if _,err=tx.Exec(ctx,`DELETE FROM products WHERE id=$1`,sourceID);err!=nil{return fmt.Errorf("delete merged draft: %w",err)}
+	if !Can(actor.Role, PermissionProductsManage) {
+		return ErrForbidden
 	}
-	if err:=insertAudit(ctx,tx,actor,"product.merge","product",fmt.Sprint(request.TargetProductID),nil,map[string]any{"sources":request.SourceProductIDs});err!=nil{return err}
+	if request.TargetProductID <= 0 || len(request.SourceProductIDs) == 0 {
+		return ErrInvalidInput
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var targetStatus string
+	if err := tx.QueryRow(ctx, `SELECT status FROM products WHERE id=$1 FOR UPDATE`, request.TargetProductID).Scan(&targetStatus); err != nil {
+		return err
+	}
+	if targetStatus != "draft" {
+		return fmt.Errorf("%w: основная карточка должна быть черновиком", ErrInvalidInput)
+	}
+	seen := map[int64]bool{}
+	for _, sourceID := range request.SourceProductIDs {
+		if sourceID <= 0 || sourceID == request.TargetProductID || seen[sourceID] {
+			return fmt.Errorf("%w: неверный источник объединения", ErrInvalidInput)
+		}
+		seen[sourceID] = true
+		var status string
+		var blocked bool
+		err := tx.QueryRow(ctx, `SELECT product.status, EXISTS(SELECT 1 FROM order_items item WHERE item.product_id=product.id) OR EXISTS(SELECT 1 FROM product_reviews review WHERE review.product_id=product.id) FROM products product WHERE product.id=$1 FOR UPDATE`, sourceID).Scan(&status, &blocked)
+		if err != nil {
+			return err
+		}
+		if status != "draft" || blocked {
+			return fmt.Errorf("%w: объединять можно только черновики без истории", ErrInvalidInput)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE product_variants SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move variants: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE product_external_ids SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move external ids: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE product_media SET product_id=$1 WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move media: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `DELETE FROM products WHERE id=$1`, sourceID); err != nil {
+			return fmt.Errorf("delete merged draft: %w", err)
+		}
+	}
+	if err := insertAudit(ctx, tx, actor, "product.merge", "product", fmt.Sprint(request.TargetProductID), nil, map[string]any{"sources": request.SourceProductIDs}); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 

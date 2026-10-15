@@ -107,7 +107,10 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("collection_rules_match_product(product.id,collection.rules)", public)
         self.assertIn('Mode      string', admin)
         self.assertIn('mode: "manual" | "dynamic"', ui)
-        self.assertIn("Все строки применяются одновременно (AND)", ui)
+        self.assertIn("/api/v1/admin/collection-definitions/preview", ui)
+        self.assertIn("draft.rules", ui)
+        self.assertIn("Товар должен соответствовать всем условиям", ui)
+        self.assertIn("Предпросмотр ничего не сохраняет", ui)
 
     def test_sku_media_has_repository_routes_and_admin_ui(self):
         repository = text("backend/internal/admin/variant_media.go")

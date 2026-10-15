@@ -16,22 +16,91 @@ type collectionDefinitionRepository interface {
 	DeleteCollectionDefinition(context.Context, admin.Actor, int64) error
 }
 
-type collectionOrderRepository interface { ReorderCollectionDefinitions(context.Context,admin.Actor,[]int64)([]admin.CollectionDefinition,error) }
-type collectionOrderInput struct { IDs []int64 `json:"ids"` }
+type collectionOrderRepository interface {
+	ReorderCollectionDefinitions(context.Context, admin.Actor, []int64) ([]admin.CollectionDefinition, error)
+}
+type collectionOrderInput struct {
+	IDs []int64 `json:"ids"`
+}
 
-func collectionDefinitionsOrderHandler(adminAPI adminHandlers) http.HandlerFunc { return func(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=adminAPI.authorize(response,request,admin.PermissionProductsEdit);if !ok{return};provider,ok:=adminAPI.repository.(collectionOrderRepository);if !ok{adminAPI.failed(response,"collection definitions unavailable",errors.New("collection definitions unavailable"));return};var input collectionOrderInput;if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный порядок"});return};items,err:=provider.ReorderCollectionDefinitions(request.Context(),actor,input.IDs);if errors.Is(err,admin.ErrInvalidInput){writeJSON(response,http.StatusBadRequest,errorResponse{Error:err.Error()});return};if err!=nil{adminAPI.failed(response,"reorder collection definitions",err);return};writeJSON(response,http.StatusOK,map[string]any{"collections":items})
-} }
+func collectionPreviewHandler(handlers adminHandlers) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if _, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead); !ok {
+			return
+		}
+		var input struct {
+			Rules []admin.CollectionRule `json:"rules"`
+		}
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные условия"})
+			return
+		}
+		repository, ok := handlers.repository.(interface {
+			PreviewCollectionRules(context.Context, []admin.CollectionRule) ([]int64, error)
+		})
+		if !ok {
+			writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Предпросмотр недоступен"})
+			return
+		}
+		ids, err := repository.PreviewCollectionRules(request.Context(), input.Rules)
+		if errors.Is(err, admin.ErrInvalidInput) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		if err != nil {
+			handlers.failed(response, "preview collection", err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"products": ids})
+	}
+}
+
+func collectionDefinitionsOrderHandler(adminAPI adminHandlers) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
+		if !ok {
+			return
+		}
+		provider, ok := adminAPI.repository.(collectionOrderRepository)
+		if !ok {
+			adminAPI.failed(response, "collection definitions unavailable", errors.New("collection definitions unavailable"))
+			return
+		}
+		var input collectionOrderInput
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный порядок"})
+			return
+		}
+		items, err := provider.ReorderCollectionDefinitions(request.Context(), actor, input.IDs)
+		if errors.Is(err, admin.ErrInvalidInput) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		if err != nil {
+			adminAPI.failed(response, "reorder collection definitions", err)
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]any{"collections": items})
+	}
+}
 
 func collectionDefinitionsHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		provider, ok := adminAPI.repository.(collectionDefinitionRepository)
-		if !ok { adminAPI.failed(response, "collection definitions unavailable", errors.New("collection definitions unavailable")); return }
+		if !ok {
+			adminAPI.failed(response, "collection definitions unavailable", errors.New("collection definitions unavailable"))
+			return
+		}
 		if request.Method == http.MethodGet {
 			items, err := provider.ListCollectionDefinitions(request.Context())
-			if err != nil { adminAPI.failed(response, "list collection definitions", err); return }
+			if err != nil {
+				adminAPI.failed(response, "list collection definitions", err)
+				return
+			}
 			writeJSON(response, http.StatusOK, map[string]any{"collections": items})
 			return
 		}
@@ -40,10 +109,19 @@ func collectionDefinitionsHandler(adminAPI adminHandlers) http.HandlerFunc {
 			return
 		}
 		var input admin.CollectionDefinitionInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подборка"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подборка"})
+			return
+		}
 		item, err := provider.CreateCollectionDefinition(request.Context(), actor, input)
-		if errors.Is(err, admin.ErrInvalidInput) { writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()}); return }
-		if err != nil { adminAPI.failed(response, "create collection definition", err); return }
+		if errors.Is(err, admin.ErrInvalidInput) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		if err != nil {
+			adminAPI.failed(response, "create collection definition", err)
+			return
+		}
 		writeJSON(response, http.StatusCreated, map[string]any{"collection": item})
 	}
 }
@@ -51,25 +129,53 @@ func collectionDefinitionsHandler(adminAPI adminHandlers) http.HandlerFunc {
 func collectionDefinitionHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		id, ok := pathID(response, request)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		provider, ok := adminAPI.repository.(collectionDefinitionRepository)
-		if !ok { adminAPI.failed(response, "collection definitions unavailable", errors.New("collection definitions unavailable")); return }
+		if !ok {
+			adminAPI.failed(response, "collection definitions unavailable", errors.New("collection definitions unavailable"))
+			return
+		}
 		if request.Method == http.MethodDelete {
-			if !admin.Can(actor.Role, admin.PermissionDelete) { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Удаление доступно владельцу"}); return }
+			if !admin.Can(actor.Role, admin.PermissionDelete) {
+				writeJSON(response, http.StatusForbidden, errorResponse{Error: "Удаление доступно владельцу"})
+				return
+			}
 			err := provider.DeleteCollectionDefinition(request.Context(), actor, id)
-			if errors.Is(err, pgx.ErrNoRows) { writeJSON(response, http.StatusNotFound, errorResponse{Error: "Подборка не найдена"}); return }
-			if err != nil { adminAPI.failed(response, "delete collection definition", err); return }
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(response, http.StatusNotFound, errorResponse{Error: "Подборка не найдена"})
+				return
+			}
+			if err != nil {
+				adminAPI.failed(response, "delete collection definition", err)
+				return
+			}
 			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
 			return
 		}
 		var input admin.CollectionDefinitionInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подборка"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная подборка"})
+			return
+		}
 		item, err := provider.UpdateCollectionDefinition(request.Context(), actor, id, input)
-		if errors.Is(err, admin.ErrInvalidInput) { writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()}); return }
-		if errors.Is(err, pgx.ErrNoRows) { writeJSON(response, http.StatusNotFound, errorResponse{Error: "Подборка не найдена"}); return }
-		if err != nil { adminAPI.failed(response, "update collection definition", err); return }
+		if errors.Is(err, admin.ErrInvalidInput) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(response, http.StatusNotFound, errorResponse{Error: "Подборка не найдена"})
+			return
+		}
+		if err != nil {
+			adminAPI.failed(response, "update collection definition", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"collection": item})
 	}
 }

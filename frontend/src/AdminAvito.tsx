@@ -15,7 +15,7 @@ const dateTime=(value?:string)=>value?new Intl.DateTimeFormat("ru-RU",{dateStyle
 export function AdminAvito({ onError }: { onError:(value:string)=>void }) {
   const [items,setItems]=useState<AvitoListing[]>([]); const [state,setState]=useState<AvitoState|null>(null);
   const [selected,setSelected]=useState<AvitoListing|null>(null); const [query,setQuery]=useState(""); const [results,setResults]=useState<AvitoProduct[]>([]); const [busy,setBusy]=useState(false);
-  const [search,setSearch]=useState(""); const [filter,setFilter]=useState<ListingFilter>("attention"); const [showEnable,setShowEnable]=useState(false); const [feedConfirmed,setFeedConfirmed]=useState(false);
+  const [search,setSearch]=useState(()=>new URLSearchParams(location.search).get("q")||""); const [filter,setFilter]=useState<ListingFilter>(()=>new URLSearchParams(location.search).get("product")?"all":"attention"); const [showEnable,setShowEnable]=useState(false); const [feedConfirmed,setFeedConfirmed]=useState(false);
   const load=useCallback(async()=>{try{const data=await api<{items:AvitoListing[];state:AvitoState}>("/api/v1/admin/avito");setItems(data.items);setState(data.state);setSelected(previous=>previous?data.items.find(item=>item.itemId===previous.itemId)||null:null)}catch(error){onError((error as Error).message)}},[onError]);
   useEffect(()=>{void load()},[load]);
   useEffect(()=>{if(query.trim().length<2){setResults([]);return}const timer=window.setTimeout(()=>void api<{items:AvitoProduct[]}>(`/api/v1/admin/avito/products?q=${encodeURIComponent(query.trim())}`).then(data=>setResults(data.items)).catch(error=>onError((error as Error).message)),250);return()=>window.clearTimeout(timer)},[query,onError]);
@@ -34,7 +34,7 @@ export function AdminAvito({ onError }: { onError:(value:string)=>void }) {
   }),[items]);
   const attentionCount=items.filter(item=>(isManagedStatus(item)&&item.products.length===0)||isMismatch(item)||Boolean(item.lastError)).length+(state?.lastError?1:0);
   const filtered=useMemo(()=>items.filter(item=>{
-    const text=`${item.title} ${item.itemId}`.toLowerCase(); if(search.trim()&&!text.includes(search.trim().toLowerCase()))return false;
+    const text=`${item.title} ${item.itemId} ${item.products.map(x=>x.name).join(" ")}`.toLowerCase(); if(search.trim()&&!text.includes(search.trim().toLowerCase()))return false;
     if(filter==="unlinked")return isManagedStatus(item)&&item.products.length===0;
     if(filter==="out-of-stock")return item.products.length>0&&item.products.every(product=>product.stock<=0);
     if(filter==="mismatch")return isMismatch(item);

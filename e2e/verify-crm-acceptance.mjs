@@ -106,9 +106,9 @@ try {
    if(role==='manager') await expect(page.getByRole('button',{name:'Сохранить возврат',exact:true})).toHaveCount(0);
    await page.screenshot({path:`${out}/${role}-customer-${width}.png`,fullPage:true});
    await page.goto('/admin/categories');
-   await expect(page.getByRole('heading',{name:'Категории и атрибуты',exact:true})).toBeVisible();
+   await expect(page.getByRole('heading',{name:'Категории',exact:true})).toBeVisible();
    await page.screenshot({path:`${out}/${role}-categories-${width}.png`,fullPage:true});
-   await page.reload();await expect(page.getByRole('heading',{name:'Категории и атрибуты',exact:true})).toBeVisible();
+   await page.reload();await expect(page.getByRole('heading',{name:'Категории',exact:true})).toBeVisible();
    if(role==='owner') {
     await page.goto('/admin?section=marketplaces');
     await expect(page.getByRole('heading',{name:'Маркетплейсы',exact:true})).toBeVisible();
