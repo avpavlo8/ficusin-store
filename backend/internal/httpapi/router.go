@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
 	"github.com/avpavlo8/ficusin-store/backend/internal/perf"
 )
 
@@ -48,17 +47,11 @@ type Dependencies struct {
 	CookieSecure     bool
 	StaticDir        string
 	YandexSuggestKey string
-	CatalogAI        catalogAIGenerator
 	Analytics        analyticsStore
 	SiteURL          string
 	Readiness        readinessChecker
 	Operations       operationsReader
 	Avito            avitoService
-}
-type catalogAIGenerator interface {
-	Generate(context.Context, catalogai.Input, string) (catalogai.Proposal, error)
-	GenerateCover(context.Context, string) ([]byte, string, error)
-	Configured() bool
 }
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
@@ -86,7 +79,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.Auth,
 		dependencies.Admin,
 		dependencies.Refunds,
-		dependencies.CatalogAI,
 	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
 	if dependencies.Avito != nil {
@@ -261,7 +253,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/products/merge", adminAPI.mergeProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/merge-published", adminAPI.mergePublishedProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/merge-published/preview", adminAPI.previewPublishedMerge)
-	mux.HandleFunc("POST /api/v1/admin/products/{id}/ai-draft", adminAPI.generateProductDraft)
 	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", safeAdminProductUpdateHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
 	registerAdminCatalogToolRoutes(mux, adminAPI, dependencies.ProductPhotos)

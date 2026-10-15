@@ -74,6 +74,15 @@ func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, 
 				}
 			}
 		}
+		if reason == "" {
+			if validationErr := validatePublishedSizes(ctx, tx, id); validationErr != nil {
+				if errors.Is(validationErr, ErrInvalidInput) {
+					reason = validationErr.Error()
+				} else {
+					return result, validationErr
+				}
+			}
+		}
 		if reason != "" {
 			result.Blocked = append(result.Blocked, BulkPublishBlocked{ProductID: id, Name: name, Reason: reason})
 			continue
@@ -509,7 +518,27 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 					(definition.data_type='enum' AND NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=(value.value#>>'{}') AND option.is_active)) OR
 					(definition.data_type='multi_enum' AND (jsonb_typeof(value.value)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value ELSE '[]'::jsonb END) selected WHERE NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=selected AND option.is_active))))
 				)
-			)
+			),
+            (SELECT COUNT(*) FROM product_variants v WHERE v.product_id=p.id AND v.archived_at IS NULL),
+            (SELECT CASE WHEN COUNT(*)=COUNT(i.synced_at) AND MIN(i.synced_at)>TIMESTAMPTZ '1970-01-02' THEN MIN(i.synced_at) END FROM product_variants v LEFT JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),
+            p.updated_at,
+            COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL),0)::int,
+            COALESCE((SELECT MIN(base_price_minor)::double precision/100 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL),0),
+            COALESCE((SELECT MAX(base_price_minor)::double precision/100 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL),0),
+            EXISTS(SELECT 1 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL) AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL AND base_price_minor<=0),
+            COALESCE((WITH RECURSIVE ancestors AS (
+                SELECT c.id,c.parent_id,0 depth FROM categories c WHERE c.id=p.category_id
+                UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+            ), effective AS (
+                SELECT DISTINCT ON(d.id) d.id,d.name,ca.show_in_summary,ca.is_required,ca.is_excluded
+                FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+                JOIN attribute_definitions d ON d.id=ca.attribute_id AND d.value_scope='variant' AND d.is_active
+                ORDER BY d.id,a.depth
+            ) SELECT jsonb_agg('Размер '||v.label||' · артикул '||v.sku||': '||e.name ORDER BY v.id,e.name)
+            FROM product_variants v CROSS JOIN effective e LEFT JOIN variant_attribute_values av ON av.variant_id=v.id AND av.attribute_id=e.id
+            WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL AND (e.show_in_summary OR e.is_required) AND NOT e.is_excluded
+             AND (av.value IS NULL OR av.value='null'::jsonb OR av.value='""'::jsonb OR av.value='[]'::jsonb)), '[]'::jsonb)
+
 		FROM products p
 		LEFT JOIN LATERAL (
 			SELECT * FROM product_variants WHERE product_id = p.id
@@ -526,6 +555,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		var item Product
 		var externalIDs []byte
 		var attributes []byte
+		var variantTasks []byte
 		if err := rows.Scan(&item.ID, &item.SabyID, &item.Slug, &item.Name,
 			&item.LatinName, &item.ShortDescription, &item.Description,
 			&item.CareInstructions, &item.Status, &item.Featured,
@@ -536,7 +566,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
 			&item.SabyUpdatedAt, &item.CategoryID, &item.Passport, &item.ImportantWarnings,
-			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues); err != nil {
+			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues, &item.VariantCount, &item.StockUpdatedAt, &item.UpdatedAt, &item.TotalStock, &item.MinPrice, &item.MaxPrice, &item.VariantsReady, &variantTasks); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		if err := json.Unmarshal(externalIDs, &item.ExternalIDs); err != nil {
@@ -544,6 +574,9 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		}
 		if err := json.Unmarshal(attributes, &item.Attributes); err != nil {
 			return nil, fmt.Errorf("decode product attributes: %w", err)
+		}
+		if err := json.Unmarshal(variantTasks, &item.VariantTasks); err != nil {
+			return nil, err
 		}
 		products = append(products, item)
 	}
@@ -748,6 +781,9 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err := saveProductAttributes(ctx, tx, id, update.Attributes); err != nil {
 		return Product{}, err
 	}
+	if err := saveVariantEdits(ctx, tx, actor, id, update.Variants); err != nil {
+		return Product{}, err
+	}
 	if update.Status != nil && *update.Status == "published" || update.CategoryID != nil || update.ClearCategory || update.Attributes != nil {
 		var status string
 		if err := tx.QueryRow(ctx, "SELECT status FROM products WHERE id=$1", id).Scan(&status); err != nil {
@@ -762,6 +798,9 @@ func (repository *PostgresRepository) UpdateProduct(
 				return Product{}, fmt.Errorf("%w: выберите корректную категорию", ErrInvalidInput)
 			}
 			if err := validateRequiredAttributes(ctx, tx, id); err != nil {
+				return Product{}, err
+			}
+			if err := validatePublishedSizes(ctx, tx, id); err != nil {
 				return Product{}, err
 			}
 		}
@@ -1000,85 +1039,11 @@ func (repository *PostgresRepository) categoryByID(ctx context.Context, id int64
 // Это разовое действие по кнопке, а не подписка: подтянув описание один раз,
 // товар не начинает получать его при каждом обмене. Постоянную связь задаёт
 // список разрешённых полей у самого товара.
-func (repository *PostgresRepository) SyncProducts(
-	ctx context.Context,
-	actor Actor,
-	request SyncRequest,
-) (SyncResult, error) {
+func (repository *PostgresRepository) SyncProducts(ctx context.Context, actor Actor, request SyncRequest) (SyncResult, error) {
 	if !Can(actor.Role, PermissionProductsSync) {
 		return SyncResult{}, ErrForbidden
 	}
-	result := SyncResult{Skipped: []int64{}}
-	for _, id := range request.ProductIDs {
-		// A merged card has several Saby identities, one per SKU. This legacy
-		// action updates a whole card (and price/photo of its first variant), so
-		// selecting the surviving product.saby_id would corrupt other sizes.
-		var linkedSKUs int
-		if err := repository.pool.QueryRow(ctx, `SELECT count(*) FROM product_variants
-			WHERE product_id=$1 AND saby_id IS NOT NULL AND archived_at IS NULL`, id).Scan(&linkedSKUs); err != nil {
-			return result, err
-		}
-		if linkedSKUs > 1 {
-			return result, fmt.Errorf("%w: у карточки %d несколько SKU СБИС; ручная синхронизация всей карточки недоступна, обновляйте каждый размер отдельно", ErrInvalidInput, id)
-		}
-		var name, description string
-		var priceMinor int64
-		var images []string
-		err := repository.pool.QueryRow(ctx, `
-			SELECT source.name, source.description, source.price_minor, source.images
-			FROM products p
-			JOIN saby_nomenclature source ON source.saby_id = p.saby_id
-			WHERE p.id = $1
-		`, id).Scan(&name, &description, &priceMinor, &images)
-		if err != nil {
-			// Товар не связан с СБИС или в справочнике его нет — пропускаем,
-			// а не роняем весь список.
-			result.Skipped = append(result.Skipped, id)
-			continue
-		}
-
-		update := ProductUpdate{}
-		applied := 0
-		wantPhoto := false
-		for _, field := range request.Fields {
-			switch field {
-			case "name":
-				if name != "" {
-					update.Name = &name
-					applied++
-				}
-			case "description":
-				if description != "" {
-					update.Description = &description
-					applied++
-				}
-			case "price":
-				if priceMinor > 0 {
-					update.PriceMinor = &priceMinor
-					applied++
-				}
-			case "photo":
-				if len(images) > 0 {
-					wantPhoto = true
-					applied++
-				}
-			}
-		}
-		if applied == 0 {
-			result.Skipped = append(result.Skipped, id)
-			continue
-		}
-		if _, err := repository.UpdateProduct(ctx, actor, id, update); err != nil {
-			return result, err
-		}
-		if wantPhoto {
-			if err := replacePhotos(ctx, repository, id, name, images); err != nil {
-				return result, err
-			}
-		}
-		result.Updated++
-	}
-	return result, nil
+	return SyncResult{}, fmt.Errorf("%w: контент и цена принадлежат сайту; остаток обновляет складской обмен СБИС", ErrInvalidInput)
 }
 
 // replacePhotos ставит карточке весь набор снимков из СБИС, а не первый:

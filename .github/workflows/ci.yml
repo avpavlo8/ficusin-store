@@ -249,9 +249,9 @@ jobs:
           fi
 
           enrichment_queue="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs job JOIN products product ON product.id=job.product_id WHERE product.status='draft'")"
-          if [[ "$enrichment_queue" -lt "1" ]]; then
-            echo "Positive-stock drafts were not queued for resumable AI enrichment." >&2
+            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs WHERE text_status IN ('pending','processing')")"
+          if [[ "$enrichment_queue" != "0" ]]; then
+            echo "Paid text generation remains queued after removal." >&2
             exit 1
           fi
 

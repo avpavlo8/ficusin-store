@@ -14,6 +14,16 @@ func ValidateProductUpdate(actor Actor, update ProductUpdate) error {
 	if !Can(actor.Role, PermissionProductsEdit) {
 		return ErrForbidden
 	}
+	if err := validateVariantEdits(actor, update.Variants); err != nil {
+		return err
+	}
+	if update.SabyFields != nil {
+		for _, field := range *update.SabyFields {
+			if field != "stock" {
+				return fmt.Errorf("%w: из СБИС поступает только остаток; контент и цена хранятся на сайте", ErrInvalidInput)
+			}
+		}
+	}
 	if actor.Role == RoleOwner {
 		return nil
 	}

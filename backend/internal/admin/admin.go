@@ -174,38 +174,46 @@ type OrderItem struct {
 }
 
 type Product struct {
-	ID                 int64    `json:"id"`
-	SabyID             string   `json:"sabyId"`
-	Slug               string   `json:"slug"`
-	Name               string   `json:"name"`
-	LatinName          string   `json:"latinName"`
-	ShortDescription   string   `json:"shortDescription"`
-	Description        string   `json:"description"`
-	CareInstructions   string   `json:"careInstructions"`
-	Status             string   `json:"status"`
-	Featured           bool     `json:"featured"`
-	CatalogSection     string   `json:"catalogSection"`
-	PlantKind          string   `json:"plantKind"`
-	LightLevel         string   `json:"lightLevel"`
-	Watering           string   `json:"watering"`
-	HeightClass        string   `json:"heightClass"`
-	CareLevel          string   `json:"careLevel"`
-	Placement          string   `json:"placement"`
-	PetSafety          string   `json:"petSafety"`
-	GrowthHabit        string   `json:"growthHabit"`
-	Image              string   `json:"image"`
-	Price              float64  `json:"price"`
-	Stock              int      `json:"stock"`
-	SKU                string   `json:"sku"`
-	VariantLabel       string   `json:"variantLabel"`
-	HeightCM           *int     `json:"heightCm"`
-	PotDiameterCM      *int     `json:"potDiameterCm"`
-	PackageLengthCM    *int     `json:"packageLengthCm"`
-	PackageWidthCM     *int     `json:"packageWidthCm"`
-	PackageHeightCM    *int     `json:"packageHeightCm"`
-	PackageWeightGrams *int     `json:"packageWeightGrams"`
-	WholesaleMinQty    int      `json:"wholesaleMinQty"`
-	OverrideFields     []string `json:"overrideFields"`
+	TotalStock         int        `json:"totalStock"`
+	MinPrice           float64    `json:"minPrice"`
+	MaxPrice           float64    `json:"maxPrice"`
+	VariantsReady      bool       `json:"variantsReady"`
+	VariantTasks       []string   `json:"variantTasks"`
+	VariantCount       int        `json:"variantCount"`
+	StockUpdatedAt     *time.Time `json:"stockUpdatedAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+	ID                 int64      `json:"id"`
+	SabyID             string     `json:"sabyId"`
+	Slug               string     `json:"slug"`
+	Name               string     `json:"name"`
+	LatinName          string     `json:"latinName"`
+	ShortDescription   string     `json:"shortDescription"`
+	Description        string     `json:"description"`
+	CareInstructions   string     `json:"careInstructions"`
+	Status             string     `json:"status"`
+	Featured           bool       `json:"featured"`
+	CatalogSection     string     `json:"catalogSection"`
+	PlantKind          string     `json:"plantKind"`
+	LightLevel         string     `json:"lightLevel"`
+	Watering           string     `json:"watering"`
+	HeightClass        string     `json:"heightClass"`
+	CareLevel          string     `json:"careLevel"`
+	Placement          string     `json:"placement"`
+	PetSafety          string     `json:"petSafety"`
+	GrowthHabit        string     `json:"growthHabit"`
+	Image              string     `json:"image"`
+	Price              float64    `json:"price"`
+	Stock              int        `json:"stock"`
+	SKU                string     `json:"sku"`
+	VariantLabel       string     `json:"variantLabel"`
+	HeightCM           *int       `json:"heightCm"`
+	PotDiameterCM      *int       `json:"potDiameterCm"`
+	PackageLengthCM    *int       `json:"packageLengthCm"`
+	PackageWidthCM     *int       `json:"packageWidthCm"`
+	PackageHeightCM    *int       `json:"packageHeightCm"`
+	PackageWeightGrams *int       `json:"packageWeightGrams"`
+	WholesaleMinQty    int        `json:"wholesaleMinQty"`
+	OverrideFields     []string   `json:"overrideFields"`
 	// SabyFields — что этому товару разрешено брать из СБИС. Пусто значит
 	// «ничего»: карточка целиком наша.
 	SabyFields           []string              `json:"sabyFields"`
@@ -237,6 +245,7 @@ type MediaHealth struct {
 }
 
 type ProductUpdate struct {
+	Variants           []VariantEdit          `json:"variants"`
 	Name               *string                `json:"name"`
 	LatinName          *string                `json:"latinName"`
 	ShortDescription   *string                `json:"shortDescription"`

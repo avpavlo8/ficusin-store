@@ -275,17 +275,6 @@
   padding-left: 16px;
   padding-right: 16px;
 }
-.admin-page .admin-row-arrow {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #f0eadf;
-  color: #294326;
-  font-size: 16px;
-  font-weight: 700;
-}
 
 @media (max-width: 1180px) {
   .admin-page .admin-order-edit-line {

@@ -1,14 +1,14 @@
 import type { Category, CategoryAttribute, Product } from "./adminTypes";
 
-export type ReadinessCode = "no_photo" | "no_short_description" | "invalid_category" | "stage1_missing" | "latin_name_missing" | "care_missing" | "unknown_enum" | "draft" | "ready" | "published";
-export type ProductReadiness = { codes: ReadinessCode[]; blockers: ReadinessCode[]; missingStage1: string[]; unknownEnums: string[] };
+export type ReadinessCode = "variants_missing" | "no_photo" | "no_description" | "invalid_category" | "stage1_missing" | "latin_name_missing" | "care_missing" | "unknown_enum" | "draft" | "ready" | "published";
+export type ProductReadiness = { tasks: Array<{label:string;section:"main"|"attributes"|"variants"|"care"|"photos"}>; codes: ReadinessCode[]; blockers: ReadinessCode[]; missingStage1: string[]; unknownEnums: string[] };
 
 export const readinessLabels: Record<ReadinessCode, string> = {
-  no_photo: "Нет основного фото", no_short_description: "Нет короткого описания",
-  invalid_category: "Некорректная категория", stage1_missing: "Не заполнены поля этапа 1",
+  variants_missing:"Проверьте размеры и цены", no_photo: "Нет основного фото", no_description: "Нет описания",
+  invalid_category: "Некорректная категория", stage1_missing: "Не заполнены характеристики",
   latin_name_missing: "Нет латинского названия", care_missing: "Не заполнен уход",
   unknown_enum: "Есть неизвестные значения", draft: "Черновик",
-  ready: "Готово к публикации", published: "Опубликовано",
+  ready: "Черновики без замечаний", published: "Опубликовано",
 };
 
 export function rootCategory(categories: Category[], categoryId?: number) {
@@ -38,8 +38,9 @@ export function readinessFor(product: Product, categories: Category[], schema: C
     const values = Array.isArray(raw) ? raw.map(String) : valueMissing(raw) ? [] : [String(raw)];
     return values.some((value) => !item.options.includes(value));
   }).map((item) => item.name);
+  if(product.variantsReady===false)codes.push("variants_missing");
   if (!product.image) codes.push("no_photo");
-  if (!product.shortDescription.trim()) codes.push("no_short_description");
+  if (!(product.description || "").trim()) codes.push("no_description");
   const root = rootCategory(categories, product.categoryId);
   if (!product.categoryId || !categories.some((item) => item.id === product.categoryId) || !root || !["plants","pots","soil","fertilizer","accessories"].includes(root.slug)) codes.push("invalid_category");
   if (missingStage1.length || product.variantStage1Missing) codes.push("stage1_missing");
@@ -49,51 +50,20 @@ export function readinessFor(product: Product, categories: Category[], schema: C
   const blockers = [...codes];
   if (product.status === "published") codes.push("published");
   else if (product.status === "draft") codes.push("draft");
-  if (product.status !== "published" && blockers.length === 0) codes.push("ready");
-  return { codes, blockers, missingStage1, unknownEnums };
-}
-
-export type AICandidate = { path: string; label: string; current: unknown; proposed: unknown; conflict: boolean };
-
-export function readPath(source: unknown, path: string): unknown {
-  return path.split(".").reduce<unknown>((value, key) => value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, source);
-}
-
-export function writePath<T>(source: T, path: string, value: unknown): T {
-  const copy = structuredClone(source);
-  const keys = path.split(".");
-  let target = copy as Record<string, unknown>;
-  keys.slice(0, -1).forEach((key) => {
-    if (!target[key] || typeof target[key] !== "object") target[key] = {};
-    target = target[key] as Record<string, unknown>;
-  });
-  target[keys[keys.length - 1]] = value;
-  return copy;
-}
-
-export function aiCandidates(form: Product, proposal: Record<string, unknown>, schema: CategoryAttribute[], field?: string): AICandidate[] {
-  const labels: Record<string, string> = { name: "Название", latinName: "Латинское название", shortDescription: "Короткое описание", description: "Описание", careInstructions: "Введение в уход", image: "Основное фото", warnings: "Предупреждения", faq: "FAQ" };
-  const candidates: Array<{ path: string; label: string; value: unknown }> = [];
-  ["name", "latinName", "shortDescription", "description", "careInstructions", "image"].forEach((key) => {
-    if ((!field || field === key) && !valueMissing(proposal[key])) candidates.push({ path: key, label: labels[key], value: proposal[key] });
-  });
-  const attributes = proposal.attributes && typeof proposal.attributes === "object" ? proposal.attributes as Record<string, unknown> : {};
-  schema.filter((item) => item.scope === "product").forEach((item) => {
-    if ((!field || field === item.code) && !valueMissing(attributes[item.code])) candidates.push({ path: `attributes.${item.code}`, label: item.name, value: attributes[item.code] });
-  });
-  const passport = proposal.passport && typeof proposal.passport === "object" ? proposal.passport as Record<string, unknown> : {};
-  Object.entries(passport).forEach(([key, value]) => {
-    if ((!field || field === key || field === "faq" && key === "faq") && !valueMissing(value)) candidates.push({ path: `passport.${key}`, label: labels[key] || key, value });
-  });
-  if ((!field || field === "warnings") && !valueMissing(proposal.warnings)) candidates.push({ path: "importantWarnings", label: labels.warnings, value: proposal.warnings });
-  return candidates.map((candidate) => {
-    const current = readPath(form, candidate.path);
-    return { ...candidate, current, proposed: candidate.value, conflict: !valueMissing(current) && JSON.stringify(current) !== JSON.stringify(candidate.value) };
-  });
-}
-
-export function applyAICandidates(form: Product, candidates: AICandidate[], selected: Set<string>) {
-  return candidates.reduce((result, candidate) => selected.has(candidate.path) ? writePath(result, candidate.path, candidate.proposed) : result, form);
+  if (product.status === "draft" && blockers.length === 0) codes.push("ready");
+  const tasks: ProductReadiness["tasks"] = [];
+  if(codes.includes("variants_missing"))tasks.push({label:"Добавьте активный размер и проверьте цены",section:"variants"});
+  if (codes.includes("no_photo")) tasks.push({label:"Добавьте основное фото",section:"photos"});
+  if (codes.includes("no_description")) tasks.push({label:"Добавьте описание",section:"main"});
+  if (codes.includes("invalid_category")) tasks.push({label:"Выберите категорию",section:"attributes"});
+  missingStage1.forEach(name=>tasks.push({label:`Заполните: ${name}`,section:"attributes"}));
+  (product.variantTasks || []).forEach(label=>tasks.push({label,section:"variants"}));
+  if (product.variantStage1Missing && !product.variantTasks?.length) tasks.push({label:"Проверьте характеристики размеров",section:"variants"});
+  if (codes.includes("latin_name_missing")) tasks.push({label:"Добавьте латинское название",section:"main"});
+  if (codes.includes("care_missing")) tasks.push({label:"Заполните рекомендации по уходу",section:"care"});
+  unknownEnums.forEach(name=>tasks.push({label:`Выберите актуальное значение: ${name}`,section:"attributes"}));
+  if (product.unknownEnumValues && !unknownEnums.length) tasks.push({label:"Проверьте значения размеров",section:"variants"});
+  return { tasks, codes, blockers, missingStage1, unknownEnums };
 }
 
 export function displayValue(value: unknown, attribute?: CategoryAttribute) {
@@ -101,3 +71,12 @@ export function displayValue(value: unknown, attribute?: CategoryAttribute) {
   const values = Array.isArray(value) ? value.map(String) : [String(value)];
   return values.map((item) => attribute?.optionLabels?.[item] || item).join(", ");
 }
+
+export function normalizeCatalogQuery(value:string) {return value.trim().replace(/\s+/g," ").toLocaleLowerCase("ru");}
+export function categoryPath(categories:Category[],id?:number) {
+ const names:string[]=[];const seen=new Set<number>();let current=categories.find(x=>x.id===id);
+ while(current&&!seen.has(current.id)){seen.add(current.id);names.unshift(current.name);current=categories.find(x=>x.id===current?.parentId)}
+ return names.join(" / ");
+}
+export const channelLabels:Record<string,string>={saby:"СБИС",wildberries:"Wildberries",wb:"Wildberries",ozon:"Ozon",avito:"Авито",site:"Сайт",ficusin:"Фикусин"};
+export const mappingLabels:Record<string,string>={code:"Код СБИС",id:"Идентификатор",uuid:"Идентификатор СБИС",vendor_code:"Артикул продавца",offer_id:"Артикул продавца",nm_id:"Код карточки",legacy_sku:"Прежний артикул"};

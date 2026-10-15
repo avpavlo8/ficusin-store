@@ -8,11 +8,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogai"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -43,7 +41,6 @@ type adminHandlers struct {
 	// payments is nil when the shop takes no card payments; the refund
 	// button then answers that it is unavailable rather than crashing.
 	payments refundService
-	ai       catalogAIGenerator
 }
 
 // refundService is the slice of the payment service the panel needs.
@@ -66,10 +63,9 @@ func newAdminHandlers(
 	authentication authService,
 	repository adminRepository,
 	payments refundService,
-	ai catalogAIGenerator,
 ) adminHandlers {
 	return adminHandlers{
-		logger: logger, auth: authentication, repository: repository, payments: payments, ai: ai,
+		logger: logger, auth: authentication, repository: repository, payments: payments,
 	}
 }
 
@@ -589,110 +585,11 @@ type effectiveAttributeProvider interface {
 	EffectiveCategoryAttributes(context.Context, int64) ([]admin.EffectiveCategoryAttribute, error)
 }
 
-func (handlers adminHandlers) generateProductDraft(response http.ResponseWriter, request *http.Request) {
-	// Research with web search legitimately takes longer than normal shop API
-	// calls. Extend only this response; checkout and every other endpoint keep
-	// the server-wide 30 second protection.
-	_ = http.NewResponseController(response).SetWriteDeadline(time.Now().Add(2 * time.Minute))
-	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsEdit)
-	if !ok {
-		return
-	}
-	var body struct {
-		Mode string `json:"mode"`
-	}
-	if decodeJSON(request, &body) != nil || (body.Mode != "description" && body.Mode != "attributes" && body.Mode != "care") {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите, что заполнить с AI"})
-		return
-	}
-	if handlers.ai == nil || !handlers.ai.Configured() {
-		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "AI не настроен: добавьте OPENAI_API_KEY"})
-		return
-	}
-	id, err := strconv.ParseInt(request.PathValue("id"), 10, 64)
-	if err != nil {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар"})
-		return
-	}
-	products, err := handlers.repository.ListProducts(request.Context())
-	if err != nil {
-		handlers.failed(response, "list product for ai", err)
-		return
-	}
-	var product *admin.Product
-	for index := range products {
-		if products[index].ID == id {
-			product = &products[index]
-			break
-		}
-	}
-	if product == nil {
-		writeJSON(response, http.StatusNotFound, errorResponse{Error: "Товар не найден"})
-		return
-	}
-	isPlant, err := adminProductIsPlant(request.Context(), handlers.repository, *product)
-	if err != nil {
-		handlers.failed(response, "resolve product category for ai", err)
-		return
-	}
-	if body.Mode == "care" && !isPlant {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Уход и паспорт доступны только для растений"})
-		return
-	}
-	input := catalogai.Input{Name: product.Name, SabyCode: product.SabyCode, Category: product.CatalogSection, IsPlant: isPlant, CurrentDescription: product.Description, Attributes: []catalogai.Attribute{}}
-	if product.CategoryID != nil {
-		if provider, yes := handlers.repository.(effectiveAttributeProvider); yes {
-			attributes, e := provider.EffectiveCategoryAttributes(request.Context(), *product.CategoryID)
-			if e == nil {
-				for _, item := range attributes {
-					if item.Active && !item.Excluded && item.Audience == "customer" && item.Scope == "product" {
-						options := []string{}
-						for _, option := range item.Options {
-							if option.Active {
-								options = append(options, option.Code)
-							}
-						}
-						input.Attributes = append(input.Attributes, catalogai.Attribute{Code: item.Code, Name: item.Name, Type: item.DataType, Unit: item.Unit, Options: options})
-					}
-				}
-			}
-		}
-	}
-	proposal, err := handlers.ai.Generate(request.Context(), input, body.Mode)
-	if err != nil {
-		handlers.failedAI(response, "generate product ai draft", err)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]any{"proposal": proposal})
-}
-
 func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsSync)
-	if !ok {
+	if _, _, ok := handlers.authorize(response, request, admin.PermissionProductsSync); !ok {
 		return
 	}
-	var body admin.SyncRequest
-	if decodeJSON(request, &body) != nil || len(body.ProductIDs) == 0 || len(body.ProductIDs) > 500 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите от 1 до 500 товаров"})
-		return
-	}
-	allowedFields := []string{"name", "photo", "price", "description"}
-	if len(body.Fields) == 0 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите поля для синхронизации"})
-		return
-	}
-	for _, field := range body.Fields {
-		if !slices.Contains(allowedFields, field) {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное поле синхронизации"})
-			return
-		}
-	}
-	result, err := handlers.repository.SyncProducts(request.Context(), actor, body)
-	if err != nil {
-		handlers.failed(response, "sync admin products", err)
-		return
-	}
-	writeJSON(response, http.StatusOK, result)
+	writeJSON(response, http.StatusGone, errorResponse{Error: "Контент и цена хранятся на сайте. Остатки обновляются автоматически из СБИС."})
 }
 
 func (handlers adminHandlers) categories(response http.ResponseWriter, request *http.Request) {
@@ -813,15 +710,6 @@ func (handlers adminHandlers) failed(response http.ResponseWriter, operation str
 	}
 	handlers.logger.Error(operation+" failed", "error", err)
 	writeJSON(response, status, errorResponse{Error: "Не удалось выполнить операцию"})
-}
-
-func (handlers adminHandlers) failedAI(response http.ResponseWriter, operation string, err error) {
-	handlers.logger.Error(operation+" failed", "error", err)
-	message := err.Error()
-	if len(message) > 600 {
-		message = message[:600] + "…"
-	}
-	writeJSON(response, http.StatusBadGateway, errorResponse{Error: "AI: " + message})
 }
 
 func pathID(response http.ResponseWriter, request *http.Request) (int64, bool) {

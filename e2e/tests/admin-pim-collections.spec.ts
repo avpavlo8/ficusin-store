@@ -25,6 +25,7 @@ async function mockCatalogAdmin(page: Page) {
       if (path.endsWith("/effective-attributes")) return json({ attributes: [
         { id: 1, code: "placement", name: "Размещение", description: "", dataType: "multi_enum", unit: "", audience: "customer", scope: "product", global: false, active: true, options: [{ code: "bathroom", label: "Ванная", active: true }], required: true, filterable: true, showOnPdp: true, keyCharacteristic: false, badge: false, sortOrder: 10, showInCharacteristics: true, excluded: false, inherited: true, sourceCategoryId: 1, sourceCategoryName: "Растения" },
       ] });
+      if (path.endsWith("/collection-definitions/preview")) return json({products:[1]});
       if (path === "/api/v1/admin/catalog-filters") return json({ filters: [] });
       if (path === "/api/v1/admin/products") return json({ products: [{ id: 1, name: "Аглаонема Мария", latinName: "Aglaonema", sku: "FIC-1", stock: 5 }] });
       if (path === "/api/v1/admin/collection-definitions") return json({ collections: [{ id: 1, slug: "bathroom", title: "Для ванной", note: "Любят влажный воздух", coverUrl: "/assets/redesign/filters/bathroom-wall-v2.webp", sortOrder: 10, active: true, mode: "dynamic", rules: [{ attribute: "placement", operator: "contains", value: "bathroom" }], products: [1] }] });
@@ -46,7 +47,9 @@ for (const target of ["desktop", "phone"] as const) {
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(Math.max(1, shellOverflow));
 
     await page.getByRole("navigation", { name: "Каталог", exact: true }).getByRole("link", { name: "Категории" }).click();
-    await expect(page.getByRole("heading", { name: "Атрибуты и схема категорий" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Категории", exact:true })).toBeVisible();
+    await page.getByRole("button",{name:"Характеристики",exact:true}).click();
+    await expect(page.getByRole("heading",{name:"Характеристики",exact:true})).toBeVisible();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(Math.max(1, shellOverflow));
   });
 }

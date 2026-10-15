@@ -15,7 +15,6 @@
 
 .admin-table tr.clickable { cursor: pointer; }
 .admin-table tr.clickable:hover td { background: #f7f5f0; }
-.admin-row-arrow { color: var(--green); font-weight: 600; }
 .admin-stats button, .admin-order-list button { cursor: pointer; font: inherit; color: inherit; text-align: left; }
 .admin-stats button:hover { border-color: var(--green); }
 .admin-order-list button { width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
@@ -151,9 +150,6 @@
 .admin-form-grid input[type="number"]::-webkit-inner-spin-button,
 .admin-form-grid input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; }
 .admin-form-grid input[type="number"] { appearance: textfield; }
-.product-form-heading { margin: 10px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink); font-size: 14px; }
-.product-form-heading:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-.external-mappings { display: grid; gap: 9px; }
 .external-mapping-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px; align-items: end; }
 .storefront-attribute-filters { display: grid; gap: 10px; margin-top: 22px; }
 .storefront-attribute-filters label { display: grid; gap: 5px; color: #59675d; font-size: 12px; font-weight: 700; }

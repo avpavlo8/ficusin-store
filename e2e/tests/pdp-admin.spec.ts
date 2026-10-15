@@ -27,7 +27,7 @@ const adminProduct = {
   sabyFields: ["stock"],
   sabyCode: "X100",
   catalogSection: "plants",
-  categoryId: undefined,
+  categoryId: 1,
   passport: { faq: [] },
   importantWarnings: [],
   externalIds: [{ provider: "saby", type: "id", externalId: "saby-1" }],
@@ -43,7 +43,9 @@ test("@desktop покупатель не видит инструменты ре�
 test("@desktop владелец редактирует описание прямо из PDP", async ({ page }) => {
   await mockApi(page, adminOwner);
   await page.route("**/api/v1/admin/products", (route) => route.fulfill({ json: { products: [adminProduct] } }));
-  await page.route("**/api/v1/admin/categories", (route) => route.fulfill({ json: { categories: [] } }));
+  await page.route("**/api/v1/admin/categories", (route) => route.fulfill({ json: { categories: [{id:1,parentId:null,name:"Растения",slug:"plants",sortOrder:1,productsCount:1}] } }));
+  await page.route("**/api/v1/admin/products/1/variants",route=>route.fulfill({json:{variants:[]}}));
+  await page.route("**/api/v1/admin/categories/1/attributes",route=>route.fulfill({json:{attributes:[]}}));
   let update: Record<string, unknown> | undefined;
   await page.route("**/api/v1/admin/products/1", async (route) => {
     update = route.request().postDataJSON() as Record<string, unknown>;
@@ -53,14 +55,14 @@ test("@desktop владелец редактирует описание прям
   await page.goto("/product/1");
   await page.getByRole("button", { name: "Редактировать карточку" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Редактирование товара" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Аглаонема Мария",exact:true })).toBeVisible();
   await expect(dialog.getByText("Помощник AI")).toHaveCount(0);
-  await expect(dialog.getByRole("button", { name: "✦ Сгенерировать раздел" })).toBeVisible();
-  await expect(dialog.getByAltText("Текущая обложка")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "✦ Сгенерировать раздел" })).toHaveCount(0);
+  await expect(dialog.getByLabel("Статус товара")).toHaveValue("published");
   await dialog.getByRole("textbox", { name: "Описание", exact: true }).fill("Новое описание из PDP");
-  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await dialog.getByRole("button", { name: "Сохранить изменения", exact: true }).click();
 
-  expect(update?.description).toBe("Новое описание из PDP");
+  await expect.poll(()=>update?.description).toBe("Новое описание из PDP");
   await expect(dialog).toHaveCount(0);
 });
 
