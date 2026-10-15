@@ -2,15 +2,17 @@ import { expect, test } from "@playwright/test";
 import { horizontalOverflow, owner } from "./helpers";
 
 test("@desktop @phone assortment waits for arrival and distributes into existing cards",async({page})=>{
- await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
+ await mockProcurement(page,{invoicePicker:true,catalogMatch:true,currency:"EUR"});
  await page.goto('/admin?section=procurement&order=4');
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
+ await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
  await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('assortment');
  await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
  await expect(dialog).toBeHidden();
+ await expect(order.getByRole('spinbutton',{name:'Курс оплаты',exact:true})).toHaveValue('123');
  await expect(row).toContainText('Разобрать после приезда');
  await expect(row).toContainText('Распределено 0 / 60 шт.');
  await row.getByRole('button',{name:'Разобрать микс',exact:true}).click();
