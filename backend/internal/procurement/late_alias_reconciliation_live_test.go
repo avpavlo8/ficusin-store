@@ -154,6 +154,10 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 		orderID, documentID, aliasID, wrongSaby).Scan(&addedID); err != nil {
 		t.Fatal(err)
 	}
+	// The fixture installs an invoice directly; mirror ImportDocument's review transition.
+	if _, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='review' WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = store.UpdateOrderLine(ctx, Actor{CustomerID: actorID, Role: "owner"}, plannedID, OrderLineUpdate{InvoiceLineID: &addedID}); err != nil {
 		t.Fatal(err)
 	}

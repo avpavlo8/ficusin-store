@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
-import { Procurement } from "./AdminProcurement";
+const Procurement = lazy(() => import("./AdminProcurement").then(module => ({default:module.Procurement})));
 import { Dashboard } from "./AdminDashboard";
 import { WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
 import "./styles/admin-workspace.css";
@@ -26,7 +26,7 @@ export default function AdminPage() {
   const registerBeforeLeave = useCallback((flush:()=>Promise<boolean>)=>{beforeLeave.current=flush;return()=>{if(beforeLeave.current===flush)beforeLeave.current=null;};},[]);
   // Set when the operator arrives from a dashboard shortcut, so the target
   // section can open on the right row instead of a blank list.
-  const [focusOrder, setFocusOrder] = useState("");
+  const [focusOrder, setFocusOrder] = useState(() => {const id=new URLSearchParams(window.location.search).get("customerOrderId");return id && /^\d+$/.test(id) ? `id:${id}` : "";});
   const [wholesaleOnly, setWholesaleOnly] = useState(false);
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function AdminPage() {
           {section === "analytics" && <Analytics onError={setError} />}
 		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
 		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} /></Suspense>}
-          {section === "procurement" && <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} />}
+          {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}><Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /></Suspense>}
           {section === "products" && <Products can={can} onError={setError} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
           {section === "collections" && <Collections owner={data.role === "owner"} onError={setError} />}

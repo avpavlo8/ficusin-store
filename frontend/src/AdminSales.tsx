@@ -102,7 +102,7 @@ export function Orders({ focusOrder, onError }: { focusOrder?: string; onError: 
     api<{ orders: Order[] }>("/api/v1/admin/orders").then((data) => {
       setItems(data.orders);
       if (focusOrder) {
-        const match = data.orders.find((order) => order.orderNumber === focusOrder);
+        const match = data.orders.find((order) => focusOrder.startsWith("id:") ? order.id === Number(focusOrder.slice(3)) : order.orderNumber === focusOrder);
         if (match) setOpened(match.id);
       }
     }).catch((error) => { setLoadError(error.message); onError(error.message); }).finally(() => setLoading(false));

@@ -1,3 +1,4 @@
+import { useProcurementDialog } from "./procurementUX";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Role } from "./adminTypes";
 export { money } from "./lib/money";
@@ -66,10 +67,11 @@ export function ConfirmDialog({ title, text, confirmLabel, busy, danger, onCance
   title: string; text: ReactNode; confirmLabel: string; busy?: boolean; danger?: boolean;
   onCancel: () => void; onConfirm: () => void;
 }) {
-  return <><button className="admin-dialog-backdrop confirm-backdrop" aria-label="Закрыть подтверждение" onClick={onCancel} disabled={busy} />
-    <div className="admin-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-text">
+  const panel = useProcurementDialog(() => {if (!busy) onCancel();});
+  return <><button tabIndex={-1} className="admin-dialog-backdrop confirm-backdrop" aria-label="Закрыть подтверждение" onClick={onCancel} disabled={busy} />
+    <div ref={panel} className="admin-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-text">
       <header><h2 id="confirm-dialog-title">{title}</h2><button onClick={onCancel} aria-label="Закрыть" disabled={busy}>×</button></header>
-      <p id="confirm-dialog-text">{text}</p>
+      <div id="confirm-dialog-text">{text}</div>
       <div className="dialog-actions"><button onClick={onCancel} disabled={busy}>Отмена</button><button className={danger ? "danger-primary" : "primary"} onClick={onConfirm} disabled={busy}>{confirmLabel}</button></div>
     </div></>;
 }

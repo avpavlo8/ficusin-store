@@ -309,11 +309,7 @@ func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input P
 	return service.store.UpdateSettings(ctx, actor, input)
 }
 
-func (service *Service) CreateSupplier(
-	ctx context.Context,
-	actor Actor,
-	input SupplierCreate,
-) (Supplier, error) {
+func normalizeSupplier(input SupplierCreate) (SupplierCreate, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Kind = strings.TrimSpace(input.Kind)
 	input.CountryCode = strings.ToUpper(strings.TrimSpace(input.CountryCode))
@@ -324,19 +320,27 @@ func (service *Service) CreateSupplier(
 		!oneOf(input.DefaultCurrency, "EUR", "USD", "RUB") || len(input.CountryCode) > 2 ||
 		(input.TaxID != "" && (len(input.TaxID) != 10 && len(input.TaxID) != 12)) ||
 		(input.KPP != "" && len(input.KPP) != 9) || (input.Kind == KindDomestic && len(input.TaxID) == 10 && input.KPP == "") {
-		return Supplier{}, ErrInvalidInput
+		return SupplierCreate{}, ErrInvalidInput
 	}
 	for _, char := range input.TaxID {
 		if char < '0' || char > '9' {
-			return Supplier{}, ErrInvalidInput
+			return SupplierCreate{}, ErrInvalidInput
 		}
 	}
 	for _, char := range input.KPP {
 		if char < '0' || char > '9' {
-			return Supplier{}, ErrInvalidInput
+			return SupplierCreate{}, ErrInvalidInput
 		}
 	}
-	return service.store.CreateSupplier(ctx, actor, input)
+	return input, nil
+}
+
+func (service *Service) CreateSupplier(ctx context.Context, actor Actor, input SupplierCreate) (Supplier, error) {
+	normalized, err := normalizeSupplier(input)
+	if err != nil {
+		return Supplier{}, err
+	}
+	return service.store.CreateSupplier(ctx, actor, normalized)
 }
 
 func (service *Service) DeleteSupplier(ctx context.Context, actor Actor, supplierID int64) error {
@@ -364,6 +368,13 @@ func (service *Service) CreateOrder(
 }
 
 func (service *Service) CreatePlan(ctx context.Context, actor Actor, input PlanCreate) (OrderSummary, error) {
+	input.Title = strings.TrimSpace(input.Title)
+	if input.SourceKind == "" {
+		input.SourceKind = SourceRecommendation
+	}
+	if len(input.Title) > 120 || !oneOf(input.SourceKind, SourceManual, SourceRecommendation) {
+		return OrderSummary{}, ErrInvalidInput
+	}
 	input.OrderNumber = strings.TrimSpace(input.OrderNumber)
 	if input.SupplierID <= 0 || len(input.Items) == 0 || len(input.Items) > 500 {
 		return OrderSummary{}, ErrInvalidInput
@@ -522,6 +533,15 @@ func (service *Service) ResolveAlias(
 }
 
 func (service *Service) CreateRequest(ctx context.Context, actor Actor, input RequestCreate) (Request, error) {
+	if input.DueDate != "" {
+		if _, err := time.Parse("2006-01-02", input.DueDate); err != nil {
+			return Request{}, ErrInvalidInput
+		}
+	}
+	input.Assignee = strings.TrimSpace(input.Assignee)
+	if len(input.Assignee) > 120 || input.Quantity > 1000000 {
+		return Request{}, ErrInvalidInput
+	}
 	input.Kind = strings.TrimSpace(input.Kind)
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.RequestedName = strings.TrimSpace(input.RequestedName)
@@ -540,6 +560,15 @@ func (service *Service) CreateRequest(ctx context.Context, actor Actor, input Re
 }
 
 func (service *Service) UpdateRequest(ctx context.Context, actor Actor, requestID int64, input RequestUpdate) (Request, error) {
+	if input.DueDate != "" {
+		if _, err := time.Parse("2006-01-02", input.DueDate); err != nil {
+			return Request{}, ErrInvalidInput
+		}
+	}
+	input.Assignee = strings.TrimSpace(input.Assignee)
+	if len(input.Assignee) > 120 || input.Quantity > 1000000 {
+		return Request{}, ErrInvalidInput
+	}
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.RequestedName = strings.TrimSpace(input.RequestedName)
 	input.Status = strings.TrimSpace(input.Status)
