@@ -59,13 +59,19 @@ func TestStage07PostedReceiptAndDatedCostsOnLiveDatabase(t *testing.T) {
 		VALUES($1,$2,$3,'Stage 07 plant',20,20,350,350,350,'confirmed','matched') RETURNING id`, orderID, sabyID, variantID).Scan(&lineID); err != nil {
 		t.Fatal(err)
 	}
+	// The same variant can have two invoice prices. Receipt valuation must
+	// use quantities, rather than choosing the most expensive invoice row.
+	if _, err = pool.Exec(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,saby_id,canonical_variant_id,raw_name,ordered_qty,invoiced_qty,unit_price,purchase_unit_rub,unit_cost_rub,match_status,reconciliation_status)
+      VALUES($1,$2,$3,'Stage 07 second batch row',10,10,650,650,650,'confirmed','matched')`, orderID, sabyID, variantID); err != nil {
+		t.Fatal(err)
+	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_batches(procurement_order_id,kind,status,created_by)
 		VALUES($1,'receipt','processing',$2) RETURNING id`, orderID, actorID).Scan(&batchID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,
 		external_article,new_value,quantity,status,lock_owner,lock_token)
-		VALUES($1,$2,'saby_receipt',$3,0,20,'processing','stage07-worker',1) RETURNING id`, batchID, lineID, fmt.Sprint(orderID)).Scan(&actionID); err != nil {
+		VALUES($1,$2,'saby_receipt',$3,0,30,'processing','stage07-worker',1) RETURNING id`, batchID, lineID, fmt.Sprint(orderID)).Scan(&actionID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.UpdateOrderStatus(ctx, Actor{CustomerID: actorID}, orderID, OrderStatusUpdate{Status: "received"}); err == nil {
@@ -82,7 +88,7 @@ func TestStage07PostedReceiptAndDatedCostsOnLiveDatabase(t *testing.T) {
 	var kind string
 	var verified bool
 	if err = pool.QueryRow(ctx, `SELECT current_unit_cost_rub::DOUBLE PRECISION,current_unit_cost_kind
-		FROM product_variants WHERE id=$1`, variantID).Scan(&cost, &kind); err != nil || cost != 350 || kind != "actual" {
+		FROM product_variants WHERE id=$1`, variantID).Scan(&cost, &kind); err != nil || cost != 450 || kind != "actual" {
 		t.Fatalf("current cost=%.2f kind=%s err=%v", cost, kind, err)
 	}
 	if err = pool.QueryRow(ctx, `SELECT receipt_verified_at IS NOT NULL FROM procurement_action_items WHERE id=$1`, actionID).Scan(&verified); err != nil || !verified {

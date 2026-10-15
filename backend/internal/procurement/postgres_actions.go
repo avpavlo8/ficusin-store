@@ -99,7 +99,7 @@ func (store *PostgresStore) listProductPage(ctx context.Context, supplierID int6
 			COALESCE(last_line.supplier_category,''),last_line.expected_unit_price,
 			last_line.pot_diameter_cm,last_line.height_cm,last_line.units_per_package,
 			COALESCE(pricing.order_id,0),COALESCE(pricing.order_number,''),
-			pricing.unit_cost,pricing.marketplace,pricing.strike,COUNT(*) OVER()::INTEGER
+			pricing.unit_cost,pricing.marketplace,pricing.strike,pricing.wb,pricing.ozon,COUNT(*) OVER()::INTEGER
 		FROM selected_cards n
 		JOIN procurement_suppliers s ON s.active AND ($1=0 OR s.id=$1)
 		LEFT JOIN LATERAL (
@@ -125,14 +125,15 @@ func (store *PostgresStore) listProductPage(ctx context.Context, supplierID int6
 		LEFT JOIN LATERAL (
 			SELECT o.id AS order_id,COALESCE(o.order_number,'') AS order_number,
 				MAX(l.unit_cost_rub)::DOUBLE PRECISION AS unit_cost,
-				MAX(l.proposed_marketplace_rub)::DOUBLE PRECISION AS marketplace,
-				MAX(l.proposed_marketplace_strike_rub)::DOUBLE PRECISION AS strike
+				NULL::DOUBLE PRECISION AS marketplace,NULL::DOUBLE PRECISION AS strike,
+                MAX((l.channel_quotes->'wb'->>'priceRub')::DOUBLE PRECISION) AS wb,
+                MAX((l.channel_quotes->'ozon'->>'priceRub')::DOUBLE PRECISION) AS ozon
 			FROM procurement_order_lines l
 			JOIN procurement_orders o ON o.id=l.procurement_order_id
 			WHERE o.status<>'cancelled'
 				AND l.saby_id=n.saby_id AND l.match_status='confirmed'
 				AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
-				AND l.proposed_marketplace_rub IS NOT NULL
+				AND l.unit_cost_rub IS NOT NULL AND l.channel_quotes<>'{}'::JSONB
 			GROUP BY o.id,o.order_number,o.calculated_at,o.created_at
 			ORDER BY o.calculated_at DESC NULLS LAST,o.created_at DESC,o.id DESC
 			LIMIT 1
@@ -162,7 +163,7 @@ func (store *PostgresStore) listProductPage(ctx context.Context, supplierID int6
 			&item.WBSales, &item.OzonSales, &item.SupplierCategory, &item.ExpectedUnitPrice,
 			&item.PotDiameterCM, &item.HeightCM, &item.UnitsPerPackage,
 			&item.LatestOrderID, &item.LatestOrderNumber, &item.LatestUnitCostRUB,
-			&item.SuggestedMarketplaceRUB, &item.SuggestedMarketplaceStrikeRUB, &total); err != nil {
+			&item.SuggestedMarketplaceRUB, &item.SuggestedMarketplaceStrikeRUB, &item.SuggestedWBRUB, &item.SuggestedOzonRUB, &total); err != nil {
 			return nil, 0, fmt.Errorf("scan procurement product directory: %w", err)
 		}
 		items = append(items, item)
@@ -434,6 +435,11 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			return ActionBatch{}, err
 		}
 	}
+	if kind == "prices" {
+		if err := validatePriceQuotes(ctx, tx, orderID, channels); err != nil {
+			return ActionBatch{}, err
+		}
+	}
 	batchChannel := ""
 	if kind == "prices" && len(channels) == 1 {
 		batchChannel = channels[0]
@@ -511,9 +517,12 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 		_, err = tx.Exec(ctx, `
 			WITH products AS (
 				SELECT MAX(canonical_variant_id) AS canonical_variant_id,saby_id,
-					MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,
-					MAX(proposed_marketplace_rub) AS marketplace,
-					MAX(proposed_marketplace_strike_rub) AS strike,
+					MIN(id) AS line_id, MAX(proposed_retail_rub) AS retail,BOOL_OR(retail_override_rub IS NOT NULL) AS manual_retail,
+					MAX((channel_quotes->'wb'->>'priceRub')::BIGINT) AS wb,
+                    MAX((channel_quotes->'ozon'->>'priceRub')::BIGINT) AS ozon,
+                    MAX((channel_quotes->'site'->>'breakEvenRub')::BIGINT) AS site_floor,
+                    MAX((channel_quotes->'wb'->>'breakEvenRub')::BIGINT) AS wb_floor,
+                    MAX((channel_quotes->'ozon'->>'breakEvenRub')::BIGINT) AS ozon_floor,
 					MAX(baseline_site_price_minor) AS baseline_site_price_minor
 				FROM procurement_order_lines
 				WHERE procurement_order_id = $2 AND match_status = 'confirmed'
@@ -536,8 +545,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					WHEN 'ozon' THEN ozon_product.current_price
 					ELSE NULL
 				END,
-				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.marketplace ELSE p.retail END,
-				CASE WHEN channel.name IN ('wb', 'ozon') THEN p.strike ELSE NULL END
+				CASE channel.name WHEN 'wb' THEN p.wb WHEN 'ozon' THEN p.ozon ELSE p.retail END,
+                NULL
 			FROM products p
 			LEFT JOIN canonical_product_directory directory ON directory.variant_id=p.canonical_variant_id
 			JOIN saby_nomenclature n ON n.saby_id = p.saby_id
@@ -552,10 +561,11 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 				WHERE channel.name = ANY($3::TEXT[])
 				AND (channel.name='site' OR pv.marketplace_scope<>'site_only')
 				AND p.canonical_variant_id IS NOT NULL
-				AND (COALESCE(p.baseline_site_price_minor,pv.base_price_minor,0) <= 0
-					OR ABS(p.retail::NUMERIC - COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100)
-						> (COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100) *
-							(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
+                AND (CASE channel.name WHEN 'wb' THEN p.wb WHEN 'ozon' THEN p.ozon ELSE p.retail END)>0
+                AND (CASE channel.name
+                  WHEN 'wb' THEN wb_product.current_price IS NULL OR wb_product.current_price<=p.wb_floor OR ABS(p.wb-wb_product.current_price)>wb_product.current_price*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
+                  WHEN 'ozon' THEN ozon_product.current_price IS NULL OR ozon_product.current_price<=p.ozon_floor OR ABS(p.ozon-ozon_product.current_price)>ozon_product.current_price*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
+                  ELSE (p.manual_retail AND p.retail::NUMERIC<>pv.base_price_minor::NUMERIC/100) OR pv.base_price_minor<=p.site_floor*100 OR ABS(p.retail::NUMERIC-pv.base_price_minor::NUMERIC/100)>(pv.base_price_minor::NUMERIC/100)*(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1) END)
 		`, batchID, orderID, channels)
 		if err == nil {
 			_, err = tx.Exec(ctx, `
@@ -572,7 +582,8 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 			_, err = tx.Exec(ctx, `
 				WITH products AS (
 					SELECT MIN(l.id) AS id, l.saby_id, MAX(l.canonical_variant_id) AS variant_id,
-						MAX(l.proposed_retail_rub) AS new_price,
+						MAX(l.proposed_retail_rub) AS new_price,BOOL_OR(l.retail_override_rub IS NOT NULL) AS manual_retail,
+                        MAX((l.channel_quotes->'site'->>'breakEvenRub')::BIGINT) AS site_floor,
 						MAX(l.baseline_site_price_minor) AS baseline_site_price_minor
 					FROM procurement_order_lines l
 					WHERE l.procurement_order_id = $2 AND l.match_status = 'confirmed'
@@ -585,7 +596,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					FROM products p
 					JOIN saby_nomenclature n ON n.saby_id = p.saby_id
 					JOIN product_variants pv ON pv.id = p.variant_id
-					WHERE COALESCE(p.baseline_site_price_minor,pv.base_price_minor) <= 0
+					WHERE (p.manual_retail AND p.new_price*100 IS DISTINCT FROM COALESCE(p.baseline_site_price_minor,pv.base_price_minor)) OR COALESCE(p.baseline_site_price_minor,pv.base_price_minor) <= COALESCE(p.site_floor,0)*100
 						OR ABS(p.new_price::NUMERIC - COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100)
 							> (COALESCE(p.baseline_site_price_minor,pv.base_price_minor)::NUMERIC / 100) *
 								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1)
@@ -615,7 +626,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					WHERE line.procurement_order_id=$2 AND line.proposed_retail_rub IS NOT NULL
 						AND line.match_status='confirmed' AND NOT line.invoice_excluded
 						AND line.reconciliation_status<>'superseded'
-						AND (COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor) <= 0
+						AND ((line.retail_override_rub IS NOT NULL AND line.proposed_retail_rub*100 IS DISTINCT FROM COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)) OR COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor) <= COALESCE((line.channel_quotes->'site'->>'breakEvenRub')::BIGINT,0)*100
 							OR ABS(line.proposed_retail_rub::NUMERIC - COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100)
 							> (COALESCE(line.baseline_site_price_minor,changed_variant.base_price_minor)::NUMERIC/100) *
 								(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
@@ -680,7 +691,7 @@ const externalPriceGuardQuery = `
 			WHERE line.procurement_order_id=$2 AND line.match_status='confirmed'
 				AND NOT line.invoice_excluded AND line.reconciliation_status<>'superseded'
 				AND line.saby_id IS NOT NULL AND line.proposed_retail_rub IS NOT NULL
-				AND (COALESCE(line.baseline_site_price_minor,pv.base_price_minor) <= 0
+				AND ((line.retail_override_rub IS NOT NULL AND line.proposed_retail_rub*100 IS DISTINCT FROM COALESCE(line.baseline_site_price_minor,pv.base_price_minor)) OR COALESCE(line.baseline_site_price_minor,pv.base_price_minor) <= COALESCE((line.channel_quotes->'site'->>'breakEvenRub')::BIGINT,0)*100
 					OR ABS(line.proposed_retail_rub::NUMERIC - COALESCE(line.baseline_site_price_minor,pv.base_price_minor)::NUMERIC/100)
 						> (COALESCE(line.baseline_site_price_minor,pv.base_price_minor)::NUMERIC/100) *
 						(SELECT price_change_threshold FROM procurement_pricing_settings WHERE id=1))
@@ -737,6 +748,16 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	}
 	if status != "draft" {
 		return ActionBatch{}, ErrInvalidInput
+	}
+	var batchKind string
+	var requested []string
+	if err := tx.QueryRow(ctx, `SELECT kind,ARRAY(SELECT DISTINCT channel FROM procurement_action_items WHERE batch_id=$1 AND channel IN('site','wb','ozon','saby_price')) FROM procurement_action_batches WHERE id=$1`, batchID).Scan(&batchKind, &requested); err != nil {
+		return ActionBatch{}, err
+	}
+	if batchKind == "prices" {
+		if err := validatePriceQuotes(ctx, tx, orderID, requested); err != nil {
+			return ActionBatch{}, err
+		}
 	}
 	// A channel button may be pressed only after the matching site proposal
 	// from this calculation was approved. Lock the order and its variants so a
@@ -1059,6 +1080,7 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 	if err := tx.QueryRow(ctx, `
 		SELECT batch.id, batch.procurement_order_id, item.channel, batch.status,
 			batch.calculation_version IS DISTINCT FROM orders.calculation_version
+            OR orders.calculation_version IS DISTINCT FROM (SELECT version FROM procurement_pricing_settings WHERE id=1)
 		FROM procurement_action_items item
 		JOIN procurement_action_batches batch ON batch.id=item.batch_id
 		JOIN procurement_orders orders ON orders.id=batch.procurement_order_id
@@ -1262,13 +1284,13 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 			if _, err := tx.Exec(ctx, `
 				WITH source AS (
 					SELECT batch.procurement_order_id,line.canonical_variant_id,line.saby_id,
-						MIN(line.id) AS line_id,MAX(line.unit_cost_rub) AS unit_cost
+						MIN(line.id) AS line_id,SUM(line.unit_cost_rub*line.invoiced_qty)/NULLIF(SUM(line.invoiced_qty),0) AS unit_cost
 					FROM procurement_action_items item
 					JOIN procurement_action_batches batch ON batch.id=item.batch_id
 					JOIN procurement_order_lines line ON line.procurement_order_id=batch.procurement_order_id
 					WHERE item.id=$1 AND line.match_status='confirmed' AND NOT line.invoice_excluded
 						AND line.reconciliation_status<>'superseded' AND line.canonical_variant_id IS NOT NULL
-						AND line.saby_id IS NOT NULL AND line.unit_cost_rub IS NOT NULL
+						AND line.saby_id IS NOT NULL AND line.unit_cost_rub IS NOT NULL AND line.invoiced_qty>0
 					GROUP BY batch.procurement_order_id,line.canonical_variant_id,line.saby_id
 				), inserted AS (
 					INSERT INTO procurement_cost_history(canonical_variant_id,saby_id,procurement_order_id,

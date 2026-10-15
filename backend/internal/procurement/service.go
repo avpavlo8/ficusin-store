@@ -293,6 +293,14 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 }
 
 func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input PricingSettings) (PricingSettings, error) {
+	normalized, err := validatePricingSettings(input)
+	if err != nil {
+		return PricingSettings{}, err
+	}
+	return service.store.UpdateSettings(ctx, actor, normalized)
+}
+
+func validatePricingSettings(input PricingSettings) (PricingSettings, error) {
 	if input.TrolleyCostRUB == 0 && input.TrolleyCostCurrency > 0 {
 		input.TrolleyCostRUB = input.TrolleyCostCurrency
 	}
@@ -306,7 +314,20 @@ func (service *Service) UpdateSettings(ctx context.Context, actor Actor, input P
 		input.RetailMarkupMultiplier <= 0 {
 		return PricingSettings{}, ErrInvalidInput
 	}
-	return service.store.UpdateSettings(ctx, actor, input)
+	for _, v := range []float64{input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3, input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate, input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold, input.DomesticRetailMultiplier, input.InternationalCostMultiplier, input.InternationalRetailMultiplier, input.MarketplaceStrikeMarkup, input.RetailMarkupMultiplier, input.MarketplaceLogisticsPerCM, input.Economics.MonthlyFixedCostsRUB} {
+		if !finiteNonnegative(v) || v > 1e12 {
+			return PricingSettings{}, ErrInvalidInput
+		}
+	}
+	if input.Version < 1 || input.Economics.Channels == nil || len(input.Economics.Channels) > 3 {
+		return PricingSettings{}, ErrInvalidInput
+	}
+	for channel, costs := range input.Economics.Channels {
+		if !oneOf(channel, "site", "wb", "ozon") || !validateChannelCosts(costs, input.TaxRate) {
+			return PricingSettings{}, ErrInvalidInput
+		}
+	}
+	return input, nil
 }
 
 func normalizeSupplier(input SupplierCreate) (SupplierCreate, error) {
@@ -417,7 +438,7 @@ func (service *Service) CalculateOrder(ctx context.Context, actor Actor, orderID
 		input.TrolleyCostRUB = input.TrolleyCostCurrency
 	}
 	if orderID <= 0 || input.ExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 ||
-		input.DeliveryToMoscowRUB < 0 || input.DeliveryToRyazanRUB < 0 {
+		input.DeliveryToMoscowRUB < 0 || input.DeliveryToRyazanRUB < 0 || !finiteNonnegative(input.AdditionalCostsRUB) || input.AdditionalCostsRUB > 1e12 {
 		return OrderDetail{}, ErrInvalidInput
 	}
 	return service.store.CalculateOrder(ctx, actor, orderID, input)
@@ -441,6 +462,23 @@ func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID in
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
+	if input.ChannelCosts != nil || input.RetailOverrideRUB != nil {
+		if lineID <= 0 || input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.InvoiceLineID != nil || input.InvoiceLineIDs != nil || input.InvoiceExcluded != nil || input.AcceptComparison != nil || input.ComparisonNote != nil {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		if input.RetailOverrideRUB != nil && (*input.RetailOverrideRUB < 0 || *input.RetailOverrideRUB > 1000000000) {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		if len(input.ChannelCosts) > 3 {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		for channel, costs := range input.ChannelCosts {
+			if !oneOf(channel, "site", "wb", "ozon") || !validateChannelCosts(costs, 0) {
+				return OrderDetail{}, ErrInvalidInput
+			}
+		}
+		return service.store.UpdateOrderLine(ctx, actor, lineID, input)
+	}
 	receiving := input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil
 	if receiving {
 		if lineID <= 0 || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.AcceptComparison != nil || input.ComparisonNote != nil || input.InvoiceExcluded != nil || input.InvoiceLineID != nil || input.InvoiceLineIDs != nil {

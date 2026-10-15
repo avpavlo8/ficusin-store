@@ -272,6 +272,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/procurement", procurementAPI.dashboard)
 	mux.HandleFunc("PUT /api/v1/admin/procurement/settings", procurementAPI.updateSettings)
 	mux.HandleFunc("POST /api/v1/admin/procurement/settings/example", procurementAPI.pricingExample)
+	mux.HandleFunc("POST /api/v1/admin/procurement/pricing/preview", procurementAPI.previewUnitPrice)
 	mux.HandleFunc("POST /api/v1/admin/procurement/suppliers", procurementAPI.createSupplier)
 	mux.HandleFunc("PATCH /api/v1/admin/procurement/suppliers/{id}", procurementAPI.updateSupplier)
 	mux.HandleFunc("GET /api/v1/admin/procurement/documents/{id}/source.pdf", procurementAPI.documentPDF)

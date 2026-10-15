@@ -828,10 +828,10 @@ func (store *PostgresStore) ResolveAlias(
 			saby_id = NULLIF($2, ''), match_status = $3,
  receiving_mode=CASE WHEN receiving_mode='awaiting_catalog' AND $3='confirmed' THEN 'catalog' ELSE receiving_mode END,
 			canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($4,0) ELSE NULL END,
-			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
+			purchase_unit_rub = NULL,additional_purchase_unit_rub=NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
-			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
+			proposed_marketplace_strike_rub = NULL,channel_quotes='{}'::JSONB, updated_at = CURRENT_TIMESTAMP
 		WHERE supplier_alias_id = $1 AND (receiving_mode='catalog' OR (receiving_mode='awaiting_catalog' AND $3='confirmed')) AND procurement_order_id IN (
 			SELECT id FROM procurement_orders WHERE status NOT IN ('received', 'cancelled')
 		)
@@ -1026,7 +1026,7 @@ func reconcileLateAliasMatches(ctx context.Context, tx pgx.Tx, aliasID int64, sa
 		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines planned SET
 			procurement_document_id=$3,supplier_alias_id=invoice.supplier_alias_id,
 			canonical_variant_id=COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id),
-			invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,
+			invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,dimensions_reviewed=FALSE,
 			invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,load_unit=invoice.load_unit,
 			match_status=invoice.match_status,source_page=invoice.source_page,source_line=$4,
 			comparison_accepted=FALSE,comparison_note='',
@@ -1095,7 +1095,7 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines planned SET
 		procurement_document_id=$3,supplier_alias_id=invoice.supplier_alias_id,
 		canonical_variant_id=CASE WHEN $5>0 THEN $5 ELSE COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id) END,
-		invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,
+		invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,dimensions_reviewed=FALSE,
 		invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,load_unit=invoice.load_unit,
 		match_status=CASE WHEN $6<>'' THEN 'confirmed' ELSE invoice.match_status END,
 		source_page=invoice.source_page,source_line=$4,comparison_accepted=FALSE,comparison_note='',
@@ -1249,14 +1249,14 @@ func remapProcurementAlias(ctx context.Context, tx pgx.Tx, actorID, aliasID int6
 
 func applyProcurementInvoiceAssignment(ctx context.Context, tx pgx.Tx, lineID int64, plan procurementPlanIdentity, invoice procurementInvoiceAssignment) error {
 	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
-		procurement_document_id=$2,supplier_alias_id=$3,invoice_raw_name=$4,invoice_supplier_article=$5,
+		procurement_document_id=$2,supplier_alias_id=$3,dimensions_reviewed=FALSE,invoice_raw_name=$4,invoice_supplier_article=$5,
 		invoiced_qty=$6,unit_price=$7,line_total=$8,source_page=NULLIF($9,0),source_line=$10,invoice_components=$12::JSONB,load_unit=$13,saby_id=$14,
 		match_status='confirmed',canonical_variant_id=NULLIF($11,0),comparison_accepted=FALSE,comparison_note='',
 		reconciliation_status=CASE WHEN ordered_qty IS DISTINCT FROM $6::INTEGER
 			OR expected_unit_price IS NULL OR ABS(expected_unit_price-$7::NUMERIC)>.005
  OR EXISTS(SELECT 1 FROM jsonb_array_elements($12::JSONB) v WHERE ABS(expected_unit_price-(v->>'unitPrice')::NUMERIC)>.005) THEN 'changed' ELSE 'matched' END,
-		purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
-		proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,updated_at=CURRENT_TIMESTAMP
+		purchase_unit_rub=NULL,additional_purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,unit_cost_rub=NULL,
+		proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,channel_quotes='{}'::JSONB,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1`, lineID, invoice.documentID, invoice.aliasID, invoice.rawName, invoice.article,
 		invoice.quantity, invoice.unitPrice, invoice.lineTotal, invoice.sourcePage, invoice.sourceLine, plan.canonical, string(invoice.components), invoice.loadUnit, plan.sabyID); err != nil {
 		return fmt.Errorf("apply swapped invoice assignment: %w", err)
@@ -1282,6 +1282,15 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	}
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
+	}
+	if input.ChannelCosts != nil || input.RetailOverrideRUB != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil {
+		var busy bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_action_batches b JOIN procurement_action_items i ON i.batch_id=b.id WHERE b.procurement_order_id=$1 AND (b.status NOT IN('draft','cancelled','completed') OR (b.status<>'cancelled' AND i.channel='saby_receipt' AND i.status NOT IN('draft','skipped','not_configured'))))`, orderID).Scan(&busy); err != nil {
+			return OrderDetail{}, err
+		}
+		if busy {
+			return OrderDetail{}, &UserFacingError{Message: "По закупке уже отправлялись цены или поступление. Сначала сверьте фактические документы."}
+		}
 	}
 	if orderStatus == "ordered" || (orderStatus != "draft" && input.ExpectedUnitPrice != nil) {
 		return OrderDetail{}, ErrInvalidInput
@@ -1315,6 +1324,29 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			return OrderDetail{}, &UserFacingError{Message: "Поступление уже отправляется или создано. Сначала сверьте фактический документ СБИС."}
 		}
 	}
+	if input.RetailOverrideRUB != nil {
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET retail_override_rub=NULLIF($2,0) WHERE id=$1`, lineID, *input.RetailOverrideRUB); err != nil {
+			return OrderDetail{}, err
+		}
+	}
+	if input.ChannelCosts != nil {
+		var tax float64
+		if err := tx.QueryRow(ctx, `SELECT tax_rate::DOUBLE PRECISION FROM procurement_pricing_settings WHERE id=1`).Scan(&tax); err != nil {
+			return OrderDetail{}, err
+		}
+		for _, costs := range input.ChannelCosts {
+			if !validateChannelCosts(costs, tax) {
+				return OrderDetail{}, ErrInvalidInput
+			}
+		}
+		data, err := json.Marshal(input.ChannelCosts)
+		if err != nil {
+			return OrderDetail{}, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET channel_costs=$2::JSONB WHERE id=$1`, lineID, string(data)); err != nil {
+			return OrderDetail{}, err
+		}
+	}
 	if input.InvoiceLineIDs != nil {
 		if err := appendInvoiceLinesToPlan(ctx, tx, actor.CustomerID, orderID, lineID, input.InvoiceLineIDs); err != nil {
 			return OrderDetail{}, err
@@ -1338,6 +1370,7 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			expected_unit_price = CASE WHEN $2 THEN $3 ELSE expected_unit_price END,
 			pot_diameter_cm = CASE WHEN $4 THEN $5 ELSE pot_diameter_cm END,
 			height_cm = CASE WHEN $6 THEN $7 ELSE height_cm END,
+            dimensions_reviewed = CASE WHEN $4 OR $6 THEN TRUE ELSE dimensions_reviewed END,
 			load_unit = CASE WHEN $8 THEN $9 ELSE load_unit END,
 			comparison_accepted = CASE WHEN $10 THEN $11 ELSE comparison_accepted END,
 			comparison_note = CASE WHEN $12 THEN $13 ELSE comparison_note END,
@@ -1351,10 +1384,10 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 				WHEN invoiced_qty IS DISTINCT FROM ordered_qty OR expected_unit_price IS NULL OR unit_price IS NULL
 					OR ABS(expected_unit_price-unit_price)>.005 THEN 'changed'
 				ELSE 'matched' END ELSE reconciliation_status END,
-			purchase_unit_rub = NULL, trolley_delivery_unit_rub = NULL,
+			purchase_unit_rub = NULL,additional_purchase_unit_rub=NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
-			proposed_marketplace_strike_rub = NULL, updated_at = CURRENT_TIMESTAMP
+			proposed_marketplace_strike_rub = NULL,channel_quotes='{}'::JSONB, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, lineID,
 			input.ExpectedUnitPrice != nil, input.ExpectedUnitPrice,

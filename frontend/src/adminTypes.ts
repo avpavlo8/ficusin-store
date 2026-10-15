@@ -98,7 +98,16 @@ export type ProcurementOrder = {
   status: string; lines: number; units: number; total: number; unmatched: number; createdAt: string;
 };
 
+export type ProcurementChannelCosts = {
+  commissionRate?: number | null; acquiringRate?: number | null; packagingRub?: number | null;
+  logisticsRub?: number | null; lossRub?: number | null;
+};
+export type ProcurementChannelQuote = {
+  priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
+};
+export type ProcurementEconomics = {monthlyFixedCostsRub:number;channels:Record<string,ProcurementChannelCosts>};
 export type ProcurementSettings = {
+  economics?: ProcurementEconomics;
   version: number; defaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; trolleyVolumeCm3: number;
   trolleyFillRatio: number; returnLossRate: number; marketplaceCostRate: number; taxRate: number;
   reserveRate: number; packageRub: number; priceChangeThreshold: number; domesticRetailMultiplier: number;
@@ -160,7 +169,7 @@ export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: b
 export type IntegrationSyncStatus = { channel: "saby" | "wb" | "ozon"; resource: "catalog" | "sales"; status: string; priority: "background" | "interactive"; requestedGeneration: number; activeGeneration: number; completedGeneration: number; lastAttemptAt?: string; lastSuccessAt?: string; nextAttemptAt?: string; nextDeepAt?: string; cooldownUntil?: string; periodFrom: string; periodTo: string; latestEventAt?: string; rowsSynced: number; lastError: string };
 
 export type SabyCatalogFolder = { id: string; parentId: string; name: string; path: string[] };
-export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: string; sabyArticle: string; name: string; sabySection: string; folderId: string; sectionPath: string[]; siteStatus: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; wbArticles: string[]; wbLegacyArticles: string[]; ozonArticles: string[]; ozonLegacyArticles: string[]; sabySales: number; siteSales: number; wbSales: number; ozonSales: number; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[]; supplierCategory: string; expectedUnitPrice?: number; potDiameterCm?: number; heightCm?: number; unitsPerPackage?: number; latestOrderId: number; latestOrderNumber: string; latestUnitCostRub?: number; suggestedMarketplaceRub?: number; suggestedMarketplaceStrikeRub?: number };
+export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: string; sabyArticle: string; name: string; sabySection: string; folderId: string; sectionPath: string[]; siteStatus: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; wbArticles: string[]; wbLegacyArticles: string[]; ozonArticles: string[]; ozonLegacyArticles: string[]; sabySales: number; siteSales: number; wbSales: number; ozonSales: number; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[]; supplierCategory: string; expectedUnitPrice?: number; potDiameterCm?: number; heightCm?: number; unitsPerPackage?: number; latestOrderId: number; latestOrderNumber: string; latestUnitCostRub?: number; suggestedWbRub?:number; suggestedOzonRub?:number; suggestedMarketplaceRub?: number; suggestedMarketplaceStrikeRub?: number };
 
 export type ProcurementActionPreviewLine = { sabyId: string; code: string; name: string; quantity?: number; oldBalance?: number; newBalance?: number; oldPrice?: number; newPrice?: number };
 export type ProcurementActionItem = { id: number; lineId: number; productName: string; productCode: string; channel: string; externalArticle: string; displayArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string; externalOperationId?: string; externalUrl?: string; previewLines?: ProcurementActionPreviewLine[] };
@@ -182,6 +191,7 @@ export type ProcurementOrderLine = {
   loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
   purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
   currentUnitCostRub?: number; currentUnitCostKind: string; currentUnitCostEffectiveAt?: string;
+  additionalPurchaseUnitRub?:number; retailOverrideRub?:number; channelCosts?: Record<string,ProcurementChannelCosts>; channelQuotes?:Record<string,ProcurementChannelQuote>; dimensionWarning?:string; dimensionsReviewed?:boolean;
   currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
   proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
   comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
@@ -189,7 +199,7 @@ export type ProcurementOrderLine = {
 
 export type ProcurementValidation = { pendingCatalog?: number; pendingAssortments?: number; pendingHandoffs?: number; canPrepareReceipt?: boolean; canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
 
-export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
+export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { additionalCostsRub?:number; supplierChargesRub?:number; returnableDepositRub?:number; exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 
 export type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };

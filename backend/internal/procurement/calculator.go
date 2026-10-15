@@ -1,8 +1,12 @@
 package procurement
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 type calculatedLine struct {
+	AdditionalPurchaseUnitRUB    float64
 	PurchaseUnitRUB              float64
 	TrolleyDeliveryUnitRUB       float64
 	RyazanDeliveryUnitRUB        float64
@@ -18,39 +22,48 @@ type allocationWeight struct {
 	Quantity int
 }
 
-// allocateMoneyPerUnit distributes an order-level expense in integer kopecks.
-// Every row except the last receives a rounded share; the last receives the
-// remainder. Multiplying the returned values by quantities therefore always
-// reconstructs the exact order expense without losing a kopeck.
+// allocateMoneyPerUnit distributes kopecks by largest remainder. Independent
+// rounding can over-allocate tiny totals and give the final row negative cost.
+// Floors plus nonnegative remainders preserve the exact expense for any order.
 func allocateMoneyPerUnit(total float64, weights []allocationWeight) map[int64]float64 {
 	result := make(map[int64]float64, len(weights))
-	totalCents := int64(math.Round(total * 100))
-	if totalCents <= 0 || len(weights) == 0 {
+	if !finiteNonnegative(total) || total > 1e12 {
 		return result
 	}
-	weightTotal := 0.0
+	cents := int64(math.Round(total * 100))
+	type share struct {
+		item     allocationWeight
+		cents    int64
+		fraction float64
+	}
+	eligible := []share{}
+	weightTotal := 0.
 	for _, item := range weights {
-		if item.Weight > 0 && item.Quantity > 0 {
+		if item.Weight > 0 && finiteNonnegative(item.Weight) && item.Quantity > 0 {
+			eligible = append(eligible, share{item: item})
 			weightTotal += item.Weight
 		}
 	}
-	if weightTotal <= 0 {
+	if cents <= 0 || weightTotal <= 0 || math.IsInf(weightTotal, 0) {
 		return result
 	}
-	remaining := totalCents
-	eligible := make([]allocationWeight, 0, len(weights))
-	for _, item := range weights {
-		if item.Weight > 0 && item.Quantity > 0 {
-			eligible = append(eligible, item)
+	remaining := cents
+	for i := range eligible {
+		exact := float64(cents) * eligible[i].item.Weight / weightTotal
+		whole := int64(math.Floor(exact))
+		if whole > remaining {
+			whole = remaining
 		}
+		eligible[i].cents = whole
+		eligible[i].fraction = exact - float64(whole)
+		remaining -= whole
 	}
-	for index, item := range eligible {
-		share := remaining
-		if index < len(eligible)-1 {
-			share = int64(math.Round(float64(totalCents) * item.Weight / weightTotal))
-			remaining -= share
-		}
-		result[item.ID] = float64(share) / 100 / float64(item.Quantity)
+	sort.SliceStable(eligible, func(i, j int) bool { return eligible[i].fraction > eligible[j].fraction })
+	for i := int64(0); i < remaining; i++ {
+		eligible[i%int64(len(eligible))].cents++
+	}
+	for _, v := range eligible {
+		result[v.item.ID] = float64(v.cents) / 100 / float64(v.item.Quantity)
 	}
 	return result
 }
@@ -61,39 +74,24 @@ func allocateMoneyPerUnit(total float64, weights []allocationWeight) map[int64]f
 func calculateAllocatedLine(
 	settings PricingSettings,
 	kind string,
-	unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit, heightCM float64,
+	unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit, heightCM float64, additional ...float64,
 ) calculatedLine {
 	purchase := unitPrice
 	if kind == KindInternational {
 		purchase *= exchangeRate
 	}
-	unitCost := purchase + trolleyPerUnit + ryazanPerUnit
+	extra := 0.
+	if len(additional) > 0 {
+		extra = additional[0]
+	}
+	unitCost := purchase + trolleyPerUnit + ryazanPerUnit + extra
 	retailBase := unitCost * settings.RetailMarkupMultiplier
 	retail := roundRetail(retailBase, settings.RoundPrices)
-	// Доставка площадки считается от высоты растения: чем оно выше, тем
-	// больше коробка. Слагаемое есть в исходной книге и при переносе
-	// формулы в код потерялось — магазин продавал дешевле своего расчёта.
-	marketplaceBase := float64(retail) + settings.PackageRUB + marketplaceLogistics(settings, heightCM)
-	marketplaceRate := 1 + settings.ReturnLossRate + settings.MarketplaceCostRate + settings.TaxRate + settings.ReserveRate
-	marketplace := int64(math.Floor(marketplaceBase * marketplaceRate))
-	strike := int64(math.Floor(float64(marketplace) * (1 + settings.MarketplaceStrikeMarkup)))
 	return calculatedLine{
-		PurchaseUnitRUB: purchase, TrolleyDeliveryUnitRUB: trolleyPerUnit,
+		AdditionalPurchaseUnitRUB: extra, PurchaseUnitRUB: purchase, TrolleyDeliveryUnitRUB: trolleyPerUnit,
 		RyazanDeliveryUnitRUB: ryazanPerUnit, UnitCostRUB: unitCost,
-		ProposedRetailRUB: retail, ProposedMarketplaceRUB: marketplace,
-		ProposedMarketplaceStrikeRUB: strike,
+		ProposedRetailRUB: retail,
 	}
-}
-
-// marketplaceLogistics — плата площадки за доставку одного растения.
-//
-// Отрицательная высота или отрицательная ставка означают незаполненные
-// данные, а не скидку: в таком случае слагаемого просто нет.
-func marketplaceLogistics(settings PricingSettings, heightCM float64) float64 {
-	if heightCM <= 0 || settings.MarketplaceLogisticsPerCM <= 0 {
-		return 0
-	}
-	return heightCM * settings.MarketplaceLogisticsPerCM
 }
 
 func roundRetail(value float64, enabled bool) int64 {

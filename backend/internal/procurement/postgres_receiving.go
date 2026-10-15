@@ -86,8 +86,8 @@ func updateReceivingLine(ctx context.Context, tx pgx.Tx, actor Actor, lineID, or
 	}
 	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET receiving_mode=$2,
   match_status=CASE WHEN $2<>'catalog' THEN 'deferred' WHEN saby_id IS NOT NULL THEN 'confirmed' ELSE 'unmatched' END,
-  customer_handed_over=FALSE,purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,
-  unit_cost_rub=NULL,proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,
+  customer_handed_over=FALSE,purchase_unit_rub=NULL,additional_purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,
+  unit_cost_rub=NULL,proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,channel_quotes='{}'::JSONB,
   updated_at=CURRENT_TIMESTAMP WHERE id=$1`, lineID, mode); err != nil {
 		return err
 	}
@@ -146,8 +146,8 @@ func updateReceivingLine(ctx context.Context, tx pgx.Tx, actor Actor, lineID, or
 func syncReceivingChildCosts(ctx context.Context, tx pgx.Tx, orderID int64) error {
 	_, err := tx.Exec(ctx, `UPDATE procurement_order_lines c SET purchase_unit_rub=p.purchase_unit_rub,
   trolley_delivery_unit_rub=p.trolley_delivery_unit_rub,ryazan_delivery_unit_rub=p.ryazan_delivery_unit_rub,
-  unit_cost_rub=p.unit_cost_rub,pot_diameter_cm=p.pot_diameter_cm,height_cm=p.height_cm,load_unit=p.load_unit,proposed_retail_rub=p.proposed_retail_rub,
-  proposed_marketplace_rub=p.proposed_marketplace_rub,proposed_marketplace_strike_rub=p.proposed_marketplace_strike_rub,
+  additional_purchase_unit_rub=p.additional_purchase_unit_rub,unit_cost_rub=p.unit_cost_rub,pot_diameter_cm=p.pot_diameter_cm,height_cm=p.height_cm,load_unit=p.load_unit,proposed_retail_rub=p.proposed_retail_rub,
+  channel_quotes=p.channel_quotes,channel_costs=p.channel_costs,proposed_marketplace_rub=p.proposed_marketplace_rub,proposed_marketplace_strike_rub=p.proposed_marketplace_strike_rub,
   baseline_site_price_minor=(SELECT base_price_minor FROM product_variants WHERE id=c.canonical_variant_id),updated_at=CURRENT_TIMESTAMP
   FROM procurement_order_lines p WHERE c.receiving_parent_line_id=p.id AND p.procurement_order_id=$1
   AND p.receiving_mode='assortment' AND c.reconciliation_status<>'superseded'`, orderID)

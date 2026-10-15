@@ -156,6 +156,9 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID)
 	}()
 
+	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET channel_costs='{"site":{"commissionRate":0,"acquiringRate":0,"packagingRub":0,"logisticsRub":0,"lossRub":0},"wb":{"commissionRate":0,"acquiringRate":0,"packagingRub":0,"logisticsRub":0,"lossRub":0}}'::JSONB WHERE id=$1`, lineID); err != nil {
+		t.Fatal(err)
+	}
 	store := NewPostgresStore(pool)
 	detail, err := store.CalculateOrder(ctx, Actor{CustomerID: actorID, Role: "owner"}, orderID, CalculationInput{})
 	if err != nil {
@@ -167,7 +170,7 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 
 	var lineSabyID string
 	var marketplace *float64
-	if err = pool.QueryRow(ctx, `SELECT saby_id,proposed_marketplace_rub::DOUBLE PRECISION
+	if err = pool.QueryRow(ctx, `SELECT saby_id,(channel_quotes->'wb'->>'priceRub')::DOUBLE PRECISION
 		FROM procurement_order_lines WHERE id=$1`, lineID).Scan(&lineSabyID, &marketplace); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +182,7 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 	}
 
 	items, err := store.ListProducts(ctx, supplierID, targetCode)
-	if err != nil || len(items) != 1 || items[0].SuggestedMarketplaceRUB == nil {
+	if err != nil || len(items) != 1 || items[0].SuggestedWBRUB == nil {
 		t.Fatalf("product directory still has no marketplace price: items=%+v err=%v", items, err)
 	}
 

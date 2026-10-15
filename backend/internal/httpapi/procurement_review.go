@@ -9,6 +9,30 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 )
 
+func (handlers procurementHandlers) previewUnitPrice(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := handlers.admin.authorize(w, r, admin.PermissionProcurementRead); !ok {
+		return
+	}
+	var input procurement.UnitPriceInput
+	if decodeJSON(r, &input) != nil {
+		handlers.failed(w, "unit price input", procurement.ErrInvalidInput)
+		return
+	}
+	service, ok := handlers.service.(interface {
+		PreviewUnitPrice(context.Context, procurement.UnitPriceInput) (procurement.UnitPricePreview, error)
+	})
+	if !ok {
+		handlers.failed(w, "unit price unavailable", procurement.ErrInvalidInput)
+		return
+	}
+	result, err := service.PreviewUnitPrice(r.Context(), input)
+	if err != nil {
+		handlers.failed(w, "unit price preview", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (handlers procurementHandlers) pricingExample(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := handlers.admin.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
 		return

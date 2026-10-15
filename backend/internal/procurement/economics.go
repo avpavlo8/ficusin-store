@@ -1,0 +1,155 @@
+package procurement
+
+import "math"
+
+// Missing charges are distinct from an explicitly verified zero. All amounts
+// are seller charges per completed sale, at the seller's price before platform
+// funded buyer discounts. Logistics includes last mile and processing; losses
+// include the expected unrecovered cost of cancellations, returns and writeoffs.
+type ChannelCosts struct {
+	CommissionRate *float64 `json:"commissionRate"`
+	AcquiringRate  *float64 `json:"acquiringRate"`
+	PackagingRUB   *float64 `json:"packagingRub"`
+	LogisticsRUB   *float64 `json:"logisticsRub"`
+	LossRUB        *float64 `json:"lossRub"`
+}
+
+type PricingEconomics struct {
+	MonthlyFixedCostsRUB float64                 `json:"monthlyFixedCostsRub"`
+	Channels             map[string]ChannelCosts `json:"channels"`
+}
+
+type ChannelQuote struct {
+	PriceRUB        *int64   `json:"priceRub,omitempty"`
+	BreakEvenRUB    *int64   `json:"breakEvenRub,omitempty"`
+	ContributionRUB *float64 `json:"contributionRub,omitempty"`
+	CoverUnits      *int64   `json:"coverUnits,omitempty"`
+	Missing         []string `json:"missing"`
+}
+
+func finiteNonnegative(v float64) bool { return v >= 0 && !math.IsNaN(v) && !math.IsInf(v, 0) }
+
+func validateChannelCosts(costs ChannelCosts, tax float64) bool {
+	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate, costs.PackagingRUB, costs.LogisticsRUB, costs.LossRUB} {
+		if v != nil && !finiteNonnegative(*v) {
+			return false
+		}
+	}
+	if !finiteNonnegative(tax) || tax >= 1 {
+		return false
+	}
+	rate := tax
+	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate} {
+		if v != nil {
+			rate += *v
+		}
+	}
+	return rate < 1
+}
+
+func (costs ChannelCosts) missing() []string {
+	missing := []string{}
+	for _, v := range []struct {
+		name  string
+		value *float64
+	}{
+		{"комиссия", costs.CommissionRate}, {"эквайринг", costs.AcquiringRate},
+		{"упаковка", costs.PackagingRUB}, {"логистика", costs.LogisticsRUB}, {"потери и возвраты", costs.LossRUB},
+	} {
+		if v.value == nil {
+			missing = append(missing, v.name)
+		}
+	}
+	return missing
+}
+
+func channelQuote(cost, contribution, tax float64, costs ChannelCosts, fixed float64) ChannelQuote {
+	quote := ChannelQuote{Missing: costs.missing()}
+	if len(quote.Missing) != 0 {
+		return quote
+	}
+	if !validateChannelCosts(costs, tax) || !finiteNonnegative(cost) || !finiteNonnegative(contribution) {
+		quote.Missing = []string{"проверьте расходы: сумма удержаний должна быть меньше 100%"}
+		return quote
+	}
+	keep := 1 - tax - *costs.CommissionRate - *costs.AcquiringRate
+	variable := cost + *costs.PackagingRUB + *costs.LogisticsRUB + *costs.LossRUB
+	// Round upwards: rounding a floor down would create a loss at the floor.
+	floor := math.Ceil(variable / keep)
+	price := math.Ceil((variable + contribution) / keep)
+	if math.IsInf(price, 0) || price > 1e12 {
+		quote.Missing = []string{"проверьте сумму расходов"}
+		return quote
+	}
+	p, f := int64(price), int64(floor)
+	actual := price*keep - variable
+	quote.PriceRUB, quote.BreakEvenRUB, quote.ContributionRUB = &p, &f, &actual
+	if actual > 0 && fixed > 0 && fixed/actual < 1e12 {
+		n := int64(math.Ceil(fixed / actual))
+		quote.CoverUnits = &n
+	}
+	return quote
+}
+
+// Retail remains a candidate for comparison with the market, not a claim that
+// this markup guarantees profit. Each marketplace must retain the same ruble
+// contribution as a direct sale after its own fees. Overheads are shown once,
+// through the break-even sales volume, rather than a second hidden surcharge.
+func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64, overrides map[string]ChannelCosts) map[string]ChannelQuote {
+	profiles := make(map[string]ChannelCosts, 3)
+	for _, channel := range []string{"site", "wb", "ozon"} {
+		profiles[channel] = settings.Economics.Channels[channel]
+		if v, ok := overrides[channel]; ok {
+			profiles[channel] = v
+		}
+	}
+	site := profiles["site"]
+	quotes := map[string]ChannelQuote{}
+	siteQuote := channelQuote(cost, 0, settings.TaxRate, site, settings.Economics.MonthlyFixedCostsRUB)
+	if siteQuote.PriceRUB == nil {
+		quotes["site"] = siteQuote
+		for _, channel := range []string{"wb", "ozon"} {
+			quotes[channel] = ChannelQuote{Missing: append([]string{"расходы сайта для сравнения дохода"}, profiles[channel].missing()...)}
+		}
+		return quotes
+	}
+	keep := 1 - settings.TaxRate - *site.CommissionRate - *site.AcquiringRate
+	variable := cost + *site.PackagingRUB + *site.LogisticsRUB + *site.LossRUB
+	contribution := float64(retail)*keep - variable
+	if contribution <= 0 {
+		contribution = 0
+		siteQuote.PriceRUB = nil
+		siteQuote.ContributionRUB = nil
+		siteQuote.CoverUnits = nil
+		siteQuote.Missing = []string{"розничная цена не покрывает себестоимость и расходы продажи"}
+	} else {
+		siteQuote.PriceRUB = &retail
+		siteQuote.ContributionRUB = &contribution
+		if settings.Economics.MonthlyFixedCostsRUB > 0 && settings.Economics.MonthlyFixedCostsRUB/contribution < 1e12 {
+			n := int64(math.Ceil(settings.Economics.MonthlyFixedCostsRUB / contribution))
+			siteQuote.CoverUnits = &n
+		}
+	}
+	quotes["site"] = siteQuote
+	for _, channel := range []string{"wb", "ozon"} {
+		if siteQuote.PriceRUB == nil {
+			quotes[channel] = ChannelQuote{Missing: []string{"прибыльная розничная цена для сравнения дохода"}}
+			continue
+		}
+		quotes[channel] = channelQuote(cost, contribution, settings.TaxRate, profiles[channel], settings.Economics.MonthlyFixedCostsRUB)
+	}
+	return quotes
+}
+
+// PDF dimensions are evidence, catalogue names are not. An explicit row review
+// may retain a physical measurement; identity matching alone cannot approve it.
+func dimensionWarning(pot, height *float64, invoice *AliasReview, reviewed bool) string {
+	if reviewed || invoice == nil {
+		return ""
+	}
+	differs := func(a, b *float64) bool { return b != nil && *b > 0 && (a == nil || math.Abs(*a-*b) > .05) }
+	if differs(pot, invoice.PotDiameterCM) || differs(height, invoice.HeightCM) {
+		return "Размеры отличаются от инвойса: проверьте и сохраните фактические D и H"
+	}
+	return ""
+}

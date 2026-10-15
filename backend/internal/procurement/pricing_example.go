@@ -15,8 +15,45 @@ type PricingExample struct {
 	History []PricingVersion `json:"history"`
 }
 
+type UnitPriceInput struct {
+	CostRUB   float64 `json:"costRub"`
+	RetailRUB float64 `json:"retailRub"`
+}
+
+type UnitPricePreview struct {
+	RetailRUB int64                   `json:"retailRub"`
+	Quotes    map[string]ChannelQuote `json:"quotes"`
+}
+
+func (service *Service) PreviewUnitPrice(ctx context.Context, input UnitPriceInput) (UnitPricePreview, error) {
+	if !finiteNonnegative(input.CostRUB) || !finiteNonnegative(input.RetailRUB) || input.CostRUB <= 0 || input.CostRUB > 1e9 || input.RetailRUB <= 0 || input.RetailRUB > 1e9 {
+		return UnitPricePreview{}, ErrInvalidInput
+	}
+	store, ok := service.store.(interface {
+		PreviewUnitPrice(context.Context, UnitPriceInput) (UnitPricePreview, error)
+	})
+	if !ok {
+		return UnitPricePreview{}, ErrInvalidInput
+	}
+	return store.PreviewUnitPrice(ctx, input)
+}
+
+func (store *PostgresStore) PreviewUnitPrice(ctx context.Context, input UnitPriceInput) (UnitPricePreview, error) {
+	settings, err := store.loadSettings(ctx)
+	if err != nil {
+		return UnitPricePreview{}, err
+	}
+	retail := roundRetail(input.RetailRUB, settings.RoundPrices)
+	return UnitPricePreview{RetailRUB: retail, Quotes: calculateChannelQuotes(settings, input.CostRUB, retail, nil)}, nil
+}
+
 // Use the production pricing calculation for both sides; this endpoint only reads.
 func (service *Service) PricingExample(ctx context.Context, input PricingSettings) (PricingExample, error) {
+	var err error
+	input, err = validatePricingSettings(input)
+	if err != nil {
+		return PricingExample{}, err
+	}
 	store, ok := service.store.(interface {
 		PricingExample(context.Context, PricingSettings) (PricingExample, error)
 	})
