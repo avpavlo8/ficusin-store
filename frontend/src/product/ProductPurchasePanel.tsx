@@ -28,9 +28,18 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
   const diameter = variant?.potDiameterCm && variant.potDiameterCm > 0
     ? `${variant.potDiameterCm} см`
     : /^\d+(?:[.,]\d+)?$/.test(variant?.label?.trim() || "") ? `${variant!.label.trim()} см` : "Не указан";
-  const sizeLabel = (item: ProductVariant) => item.potDiameterCm && item.potDiameterCm > 0
-    ? `Ø ${item.potDiameterCm} см`
-    : /^\d+(?:[.,]\d+)?$/.test(item.label.trim()) ? `Ø ${item.label.trim()} см` : item.label;
+  const sizeLabel = (item: ProductVariant) => {
+    const label = item.label.trim();
+    if (!item.potDiameterCm || item.potDiameterCm <= 0) {
+      return /^\d+(?:[.,]\d+)?$/.test(label) ? `Ø ${label} см` : label;
+    }
+    const pot = `Ø ${item.potDiameterCm} см`;
+    const diameterOnly = label.match(/^(?:D|Ø|⌀)?\s*(\d+(?:[.,]\d+)?)\s*(?:см)?$/i);
+    if (!label || /^Основной (?:вариант|размер)$/i.test(label)
+      || (diameterOnly && Number(diameterOnly[1].replace(",", ".")) === item.potDiameterCm)) return pot;
+    const detail = label.replace(/(?:\s*[·,|]\s*|\s+)?(?:D|Ø|⌀)\s*\d+(?:[.,]\d+)?\s*(?:см)?$/i, "").trim();
+    return detail ? `${detail} · ${pot}` : pot;
+  };
   const characteristic = (fallback: string, ...tokens: string[]) => {
     const item = allAttributes.find((entry) => tokens.some((token) => `${entry.code} ${entry.name}`.toLocaleLowerCase("ru").includes(token)));
     return item ? attributeValue(item.value, item.unit) : fallback;
