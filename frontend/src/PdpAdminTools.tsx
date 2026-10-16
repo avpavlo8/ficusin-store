@@ -28,7 +28,7 @@ export function PdpAdminTools({ slug, adminRole, onChanged }: {
     setLoading(true); setError("");
     try {
       const data = await api<{ products: Product[] }>("/api/v1/admin/products");
-      const found = data.products.find((item) => item.slug === slug);
+      const found = data.products.find((item) => (item.productCode || item.slug) === slug);
       if (!found) throw new Error("Карточка не найдена в редакторе");
       setProduct(found); setMode(next);
     } catch (reason) { setError((reason as Error).message); }

@@ -49,8 +49,8 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT product_code::TEXT FROM products WHERE id=$1`, product.ID).Scan(&publicCode); err != nil {
 		t.Fatal(err)
 	}
-	if product.Slug != publicCode {
-		t.Fatalf("admin storefront URL must use canonical product code, got %q want %q", product.Slug, publicCode)
+	if product.ProductCode != publicCode {
+		t.Fatalf("admin storefront URL must use canonical product code, got %q want %q", product.ProductCode, publicCode)
 	}
 	variants, err := repository.ListProductVariants(ctx, product.ID)
 	if err != nil || len(variants) != 1 {

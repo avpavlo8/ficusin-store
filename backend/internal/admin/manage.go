@@ -463,7 +463,7 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 
 func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Product, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT p.id, COALESCE(p.saby_id, ''), p.product_code::TEXT, p.name, p.latin_name,
+		SELECT p.id, COALESCE(p.saby_id, ''), p.slug, p.product_code::TEXT, p.name, p.latin_name,
 			p.short_description, p.description, p.care_instructions, p.status,
 			p.is_featured <> 0, p.catalog_section, COALESCE(p.plant_kind, ''),
 			COALESCE(p.light_level, ''), COALESCE(p.watering, ''),
@@ -556,7 +556,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		var externalIDs []byte
 		var attributes []byte
 		var variantTasks []byte
-		if err := rows.Scan(&item.ID, &item.SabyID, &item.Slug, &item.Name,
+		if err := rows.Scan(&item.ID, &item.SabyID, &item.Slug, &item.ProductCode, &item.Name,
 			&item.LatinName, &item.ShortDescription, &item.Description,
 			&item.CareInstructions, &item.Status, &item.Featured,
 			&item.CatalogSection, &item.PlantKind, &item.LightLevel, &item.Watering,

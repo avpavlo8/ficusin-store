@@ -172,3 +172,11 @@ for (const differentIdentity of [false, true]) {
   expect(products[1].price).toBe(1490);expect(products[1].sku).toBe('2');expect(products[1].status).toBe('published');expect(merges).toBe(0);
  });
 }
+
+test('@desktop ссылки на витрину используют постоянный код, сохраняя прежний slug',async({page})=>{
+ await fixture(page);
+ const p={...product(1),status:'published',slug:'old-name-d12',productCode:'201'};
+ await page.route('**/api/v1/admin/products',route=>route.fulfill({json:{products:[p]}}));
+ await open(page);await expect(page.locator('table.products').getByRole('link',{name:'На сайте ↗'})).toHaveAttribute('href','/product/201');
+ const d=await edit(page);await expect(d.getByRole('link',{name:'На сайте ↗'})).toHaveAttribute('href','/product/201');
+});
