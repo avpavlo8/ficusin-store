@@ -64,7 +64,7 @@ export type Order = {
 
 export type Product = {
  totalStock?:number;minPrice?:number;maxPrice?:number;variantsReady?:boolean;
-  id: number; sabyId: string; slug: string; name: string; latinName: string;
+  id: number; sabyId: string; slug: string; productCode?: string; name: string; latinName: string;
   shortDescription: string; description: string; careInstructions: string;
   status: string; featured: boolean; image: string; price: number; stock: number;
   sku: string; variantLabel: string; heightCm?: number; potDiameterCm?: number;

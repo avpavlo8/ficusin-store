@@ -185,6 +185,7 @@ type Product struct {
 	ID                 int64      `json:"id"`
 	SabyID             string     `json:"sabyId"`
 	Slug               string     `json:"slug"`
+	ProductCode        string     `json:"productCode"`
 	Name               string     `json:"name"`
 	LatinName          string     `json:"latinName"`
 	ShortDescription   string     `json:"shortDescription"`

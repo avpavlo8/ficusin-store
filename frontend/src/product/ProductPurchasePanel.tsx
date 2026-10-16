@@ -35,6 +35,9 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
     const item = allAttributes.find((entry) => tokens.some((token) => `${entry.code} ${entry.name}`.toLocaleLowerCase("ru").includes(token)));
     return item ? attributeValue(item.value, item.unit) : fallback;
   };
+  const standardSummaryTokens = ["освещ", "light", "полив", "water", "высот", "height", "диаметр", "горш", "pot", "уход", "сложност", "care", "питом", "безопас", "токсич", "pet", "влажн", "humidity"];
+  const extraSummary = allAttributes.filter(item => item.summaryPosition != null && !standardSummaryTokens.some(token => `${item.code} ${item.name}`.toLocaleLowerCase("ru").includes(token)))
+    .sort((a, b) => a.summaryPosition! - b.summaryPosition!);
   return <aside className="pdp-summary" aria-label="Покупка товара">
     <div className="pdp-purchase-layout">
       <div className="pdp-order-column">
@@ -58,6 +61,7 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
           <div><span className="characteristic-icon care"><CharacteristicIcon name="care" /></span><p><small>Уход</small><strong>{characteristic(attributeLabel(product.careLevel || product.passport.careDifficulty || "Не указано"),"уход","сложност","care")}</strong></p></div>
           <div><span className="characteristic-icon pets"><CharacteristicIcon name="pets" /></span><p><small>Питомцы</small><strong>{characteristic(attributeLabel(product.petSafety || product.passport.toxicity || "Не указано"),"питом","безопас","токсич","pet")}</strong></p></div>
           <div><span className="characteristic-icon humidity"><CharacteristicIcon name="humidity" /></span><p><small>Влажность воздуха</small><strong>{characteristic(attributeLabel(product.passport.humidity || "Не указано"),"влажн","humidity")}</strong></p></div>
+          {extraSummary.map(item => <div key={item.code}><span className="characteristic-icon care"><CharacteristicIcon name="care" /></span><p><small>{item.name}</small><strong>{attributeValue(item.value, item.unit)}</strong></p></div>)}
         </div> : <div className="pdp-key-characteristics product-characteristics" aria-label="Основные характеристики товара"><h2>Основные характеристики</h2>{allAttributes.filter((item)=>item.showInCharacteristics!==false).slice(0,6).map((item)=><div key={item.code}><p><small>{item.name}</small><strong>{attributeValue(item.value,item.unit)}</strong></p></div>)}</div>}
 
       </div>
