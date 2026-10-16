@@ -90,6 +90,39 @@ func TestReturnIntakeRecoveryDocumentsOnLiveDatabase(t *testing.T) {
 	if err != nil || len(labels) != 2 {
 		t.Fatalf("labels %v %v", labels, err)
 	}
+	// Mixed selections must use current conditions, never print ready/dead/inspection.
+	allIDs := make([]int64, 0, len(saved.Items))
+	for _, item := range saved.Items {
+		allIDs = append(allIDs, item.ID)
+	}
+	labels, err = repo.ReturnLabelItems(ctx, manager, allIDs)
+	if err != nil || len(labels) != 2 {
+		t.Fatalf("mixed labels: %+v %v", labels, err)
+	}
+	for _, label := range labels {
+		if label.Condition != "restoring" {
+			t.Fatalf("ineligible label: %+v", label)
+		}
+	}
+	for _, item := range saved.Items {
+		if item.Condition != "restoring" {
+			if _, err = repo.ReturnLabelItems(ctx, manager, []int64{item.ID}); err == nil {
+				t.Fatalf("accepted %s label", item.Condition)
+			}
+		}
+	}
+	zero, discount := 0, 30
+	if _, err = repo.UpdateMarketplaceReturn(ctx, manager, saved.Items[1].ID, ReturnUpdate{Condition: "restoring", DiscountPercent: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	labels, err = repo.ReturnLabelItems(ctx, manager, allIDs)
+	if err != nil || len(labels) != 2 || labels[1].DiscountPercent != 0 {
+		t.Fatalf("zero discount label: %+v %v", labels, err)
+	}
+	if _, err = repo.UpdateMarketplaceReturn(ctx, manager, saved.Items[1].ID, ReturnUpdate{Condition: "restoring", DiscountPercent: &discount}); err != nil {
+		t.Fatal(err)
+	}
+
 	offers, err := repo.DiscountPlants(ctx)
 	if err != nil {
 		t.Fatal(err)

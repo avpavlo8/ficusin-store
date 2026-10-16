@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { horizontalOverflow, mockApi, owner } from "./helpers";
 import AxeBuilder from "@axe-core/playwright";
@@ -5,12 +6,12 @@ import type { ReturnIntake, ReturnIntakeData } from "../../frontend/src/adminTyp
 
 const products = [{ variantId: 101, name: "Фикус Бенджамина", sku: "FIC-D12", label: "D12", price: 1000 }, { variantId: 102, name: "Монстера Делициоза", sku: "MON-D17", label: "D17", price: 2500 }];
 
-async function setup(page: Page) {
+async function setup(page: Page, initial: ReturnIntake | null = null) {
   await mockApi(page, owner);
   await page.route("**/api/v1/admin/dashboard", route => route.fulfill({ json: { user: { fullName: "Александр" }, role: "owner", permissions: ["dashboard.read", "returns.read", "returns.edit", "returns.receipt.create"], dashboard: { products: 2, variants: 2, orders: 0, customers: 1, wholesalePending: 0, lastSync: null, recentOrders: [] } } }));
 
   await page.route("**/api/v1/admin/returns/products", route => route.fulfill({ json: { items: products } }));
-  let intake: ReturnIntake | null = null;
+  let intake: ReturnIntake | null = initial;
   let failSave = false;
   let delaySave = 0;
   let loseSaveResponse = false;
@@ -32,13 +33,13 @@ async function setup(page: Page) {
       if (request.url().endsWith("/receipt")) receiptCalls++;
       intake.status = "saved"; intake.documentNumber = 1; intake.createdAt = "2026-10-14T12:00:00Z";
       intake.receiptStatus = request.url().endsWith("/receipt") ? "queued" : "none";
-      intake.items = intake.data.rows.flatMap(row => Array.from({ length: row.quantity }, (_, index) => ({ id: row.variantId * 100 + index, channel: intake!.data.channel, sourceReturnId: "test", sourceShipmentId: "", sourceUnitIndex: index + 1, variantId: row.variantId, productName: row.name, sku: row.sku, returnedAt: "2026-10-14", condition: row.condition, comment: row.comment, costOutcome: row.condition === "ready" ? "restored" as const : row.condition === "dead" ? "lost" as const : "unknown" as const, financialStatus: "incomplete" as const, receiptStatus: row.condition === "ready" ? intake!.receiptStatus : "none" as const, photoIds: [], history: [] })));
+      intake.items = intake.data.rows.flatMap((row, rowIndex) => Array.from({ length: row.quantity }, (_, index) => ({ id: 10001 + rowIndex * 100 + index, channel: intake!.data.channel, sourceReturnId: "test", sourceShipmentId: "", sourceUnitIndex: index + 1, variantId: row.variantId, productName: row.name, sku: row.sku, returnedAt: "2026-10-14", condition: row.condition, comment: row.comment, costOutcome: row.condition === "ready" ? "restored" as const : row.condition === "dead" ? "lost" as const : "unknown" as const, financialStatus: "incomplete" as const, receiptStatus: row.condition === "ready" ? intake!.receiptStatus : "none" as const, photoIds: [], history: [] })));
     }
     await route.fulfill({ json: { intake } });
   });
   await page.goto("/admin?section=returns");
   await page.getByRole("button", { name: "+ Принять возврат", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Название растения 1" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Название растения 1", exact: true })).toBeVisible();
   return { writes, getIntake: () => intake, setFail: (value: boolean) => { failSave = value; }, setDelay: (value: number) => { delaySave = value; }, loseResponse: () => { loseSaveResponse = true; }, receiptCalls: () => receiptCalls };
 }
 
@@ -50,14 +51,14 @@ test("@desktop @phone returns table opens whole catalogue, matches word fragment
   await input.fill("ндж");
   await expect(page.getByRole("listbox", { name: "Каталог растений" }).getByRole("option")).toHaveCount(1);
   await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
-  await page.getByRole("spinbutton", { name: "Количество 1" }).fill("3");
+  await page.getByRole("textbox", { name: "Количество 1" }).fill("3");
   await page.getByRole("combobox", { name: "Состояние 1" }).selectOption("restoring");
   await page.getByRole("textbox", { name: "Комментарий 1", exact: true }).fill("Повреждён лист");
   await expect(page.getByText("Черновик сохранён", { exact: true })).toBeVisible();
   expect(state.getIntake()?.data.rows[0]).toMatchObject({ variantId: 101, quantity: 3, condition: "restoring", comment: "Повреждён лист" });
   await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "+ Принять возврат", exact: true }).click();
-  await expect(page.getByRole("spinbutton", { name: "Количество 1" })).toHaveValue("3");
+  await expect(page.getByRole("textbox", { name: "Количество 1" })).toHaveValue("3");
   await expect(page.getByRole("textbox", { name: "Комментарий 1", exact: true })).toHaveValue("Повреждён лист");
   await expect(page.getByRole("combobox", { name: "Состояние 1" })).toHaveValue("restoring");
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
@@ -70,7 +71,7 @@ test("@desktop @phone other channel shows comment and receipt saves multiple pla
   await dialog.getByRole("textbox", { name: "Комментарий к каналу" }).fill("Возврат из розницы");
   await dialog.getByRole("combobox", { name: "Название растения 1" }).fill("фи");
   await page.getByRole("option", { name: /Фикус/ }).click();
-  await dialog.getByRole("spinbutton", { name: "Количество 1" }).fill("2");
+  await dialog.getByRole("textbox", { name: "Количество 1" }).fill("2");
   await dialog.getByRole("button", { name: "Добавить растение" }).click();
   await dialog.getByRole("combobox", { name: "Название растения 2" }).fill("нсте");
   await page.getByRole("option", { name: /Монстера/ }).click();
@@ -119,7 +120,7 @@ test("@desktop return dialog supports keyboard selection and accessible controls
   await input.press("ArrowDown");
   await input.press("Enter");
   await expect(input).toHaveValue("Фикус Бенджамина · D12");
-  await page.getByRole("spinbutton", { name: "Количество 1" }).focus();
+  await page.getByRole("textbox", { name: "Количество 1" }).focus();
   const result = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
   expect(result.violations.filter(item => ["serious", "critical"].includes(item.impact || ""))).toEqual([]);
 });
@@ -169,9 +170,87 @@ test("@desktop @phone invalid intake focuses the first missing plant or invalid 
   await expect(page.getByText("Выберите растение из каталога",{exact:true})).toBeVisible();
   await input.fill("фикус");
   await page.getByRole("option",{name:/Фикус Бенджамина/}).click();
-  const quantity=page.getByRole("spinbutton",{name:"Количество 1",exact:true});
+  const quantity=page.getByRole("textbox",{name:"Количество 1",exact:true});
   await quantity.fill("0");
   await page.getByRole("button",{name:"Сохранить возврат",exact:true}).click();
   await expect(quantity).toBeFocused();
   await expect(quantity).toHaveAttribute("aria-invalid","true");
+});
+
+test("@desktop @phone text numbers can be cleared without spinners or silent clamping", async ({ page }) => {
+  const state = await setup(page);
+  await page.getByRole("combobox", { name: "Название растения 1" }).fill("фикус");
+  await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
+  const quantity = page.getByRole("textbox", { name: "Количество 1", exact: true });
+  await expect(quantity).toHaveAttribute("type", "text");
+  await expect(quantity).toHaveAttribute("inputmode", "numeric");
+  await quantity.fill(""); await expect(quantity).toHaveValue("");
+  await quantity.pressSequentially("12"); await quantity.press("ArrowUp");
+  await expect(quantity).toHaveValue("12");
+  await page.getByRole("combobox", { name: "Состояние 1" }).selectOption("restoring");
+  const discount = page.getByRole("textbox", { name: "Скидка 1", exact: true });
+  await discount.fill(""); await expect(discount).toHaveValue("");
+  await discount.pressSequentially("101"); await expect(discount).toHaveValue("101");
+  await page.getByRole("button", { name: "Сохранить возврат", exact: true }).click();
+  await expect(discount).toBeFocused(); await expect(discount).toHaveAttribute("aria-invalid", "true");
+  expect(state.getIntake()?.status).not.toBe("saved");
+  await discount.fill("");
+  await page.getByRole("textbox", { name: "Комментарий 1", exact: true }).fill("Без скидки");
+  await expect(discount).toHaveValue("0");
+  await expect(page.getByText("Черновик сохранён", { exact: true })).toBeVisible();
+  expect(state.getIntake()?.data.rows[0]).toMatchObject({ quantity: 12, discountPercent: 0 });
+});
+
+test("@desktop @phone mixed intake prints only restoration including zero discount", async ({ page }) => {
+  await setup(page);
+  const requests: number[][] = [];
+  await page.route("**/api/v1/admin/returns/labels", async route => {
+    requests.push(route.request().postDataJSON().ids);
+    await route.fulfill({ contentType: "application/pdf", body: "%PDF-1.4\n" });
+  });
+  for (const [index, condition] of ["ready", "restoring", "dead", "restoring"].entries()) {
+    if (index) await page.getByRole("button", { name: "Добавить растение" }).click();
+    await page.getByRole("combobox", { name: `Название растения ${index + 1}`, exact: true }).fill("фикус");
+    await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
+    await page.getByRole("combobox", { name: `Состояние ${index + 1}`, exact: true }).selectOption(condition);
+  }
+  await page.getByRole("textbox", { name: "Скидка 4", exact: true }).fill("30");
+  await page.getByRole("button", { name: "Сохранить и скачать этикетки", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toEqual([10101, 10301]);
+  await page.getByRole("button", { name: "Закрыть документ", exact: true }).click();
+  await page.getByRole("navigation", { name: "Журналы возвратов" }).getByRole("button", { name: /^Растения/ }).click();
+  await page.getByRole("checkbox", { name: "Выбрать все растения", exact: true }).check();
+  await page.getByRole("button", { name: "Скачать этикетки · 2", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].sort()).toEqual([10101, 10301]);
+});
+
+test("@desktop @phone catalogue styles and 50-row intake keep search aligned and footer reachable", async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 50 }, (_, index) => ({ key: `long-${index}`, variantId: 101 + index, name: `Растение с длинным названием ${index + 1}`, sku: `SKU-${index}`, search: `Растение с длинным названием ${index + 1} · D12`, quantity: 1, condition: "ready" as const, comment: "" }));
+  const state = await setup(page, { id: "long-intake", revision: 1, status: "draft", receiptStatus: "none", data: { channel: "wb", channelComment: "", rows }, items: [] });
+  await page.addStyleTag({ path: resolve(__dirname, "../../frontend/src/styles/admin-catalog.css") });
+  const sizes = testInfo.project.name === "desktop" ? [{ width: 1366, height: 768 }, { width: 1093, height: 614 }, { width: 911, height: 512 }] : [{ width: 390, height: 844 }, { width: 390, height: 480 }];
+  for (const size of sizes) {
+    await page.setViewportSize(size);
+    const search = page.getByRole("combobox", { name: "Название растения 50", exact: true });
+    await search.fill(""); await search.click();
+    const list = page.getByRole("listbox", { name: "Каталог растений" });
+    await list.scrollIntoViewIfNeeded();
+    const field = await search.locator("..").boundingBox(), options = await list.boundingBox();
+    expect(Math.abs(options!.x - field!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(options!.width - field!.width)).toBeLessThanOrEqual(1);
+    expect(options!.y).toBeGreaterThanOrEqual(field!.y + field!.height);
+    const footer = await page.locator(".return-create-dialog footer").boundingBox();
+    expect(footer!.y + footer!.height).toBeLessThanOrEqual(size.height);
+    await page.getByRole("option", { name: /Фикус Бенджамина/ }).click();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+  }
+  await page.getByRole("button", { name: "Сохранить возврат", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: /Документ приёмки №1/ }).click();
+  await expect(page.getByRole("button", { name: "Редактировать документ", exact: true })).toBeInViewport();
+  const footer = await page.locator(".return-create-dialog footer").boundingBox();
+  expect(footer!.y + footer!.height).toBeLessThanOrEqual(sizes.at(-1)!.height);
+  expect(state.getIntake()?.items).toHaveLength(50);
 });
