@@ -105,7 +105,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -158,6 +158,28 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     orderDetail.validation.unmatched=1;
     orderDetail.validation.blockers=["Не выбраны товары СБИС: 1"];
   }
+  if(options.dimensionReview) {
+    const first=orderDetail.lines[0];
+    orderDetail.lines=[
+      {...first,id:1001,rawName:"Бонсай D10",sabyName:"Бонсай D10",catalogueLabel:"D10",potDiameterCm:12,heightCm:20,matchAlias:{potDiameterCm:12,heightCm:20},dimensionWarning:"Карточка D10, инвойс D12: проверьте вариант товара."},
+      {...first,id:1002,rawName:"Непентес микс",sabyName:"",receivingMode:"customer_handoff",matchStatus:"deferred",potDiameterCm:12,heightCm:40,matchAlias:{potDiameterCm:9,heightCm:20},dimensionWarning:"Размеры отличаются от инвойса: проверьте фактические размеры"},
+      {...first,id:1003,rawName:"Исключённая строка",invoiceExcluded:true,dimensionWarning:"Карточка D10, инвойс D12"},
+      {...first,id:1004,rawName:"Проверенная строка",dimensionsReviewed:true,dimensionWarning:""},
+    ];
+    orderDetail.validation.unmatched=0;
+    orderDetail.validation.blockers=[...orderDetail.lines.filter(line=>!line.invoiceExcluded && line.dimensionWarning).map(line=>`${line.rawName}: ${line.dimensionWarning}`),...(options.blockers || [])];
+    await page.exposeFunction("procurementDimensionFixture",(path:string,rawBody:string)=>{
+      if(path.includes("/order-lines/")) {
+        const id=Number(path.split("/").at(-1)); const line=orderDetail.lines.find(line=>line.id===id)!;
+        const body=JSON.parse(rawBody);
+        if(!(body.potDiameterCm>0 && body.heightCm>0))throw new Error("Invalid dimensions");
+        Object.assign(line,body,{dimensionsReviewed:true,dimensionWarning:""});
+        orderDetail.validation.blockers=[...orderDetail.lines.filter(line=>!line.invoiceExcluded && line.dimensionWarning).map(line=>`${line.rawName}: ${line.dimensionWarning}`),...(options.blockers || [])];
+        orderDetail.validation.canCalculate=orderDetail.validation.blockers.length===0;
+      }
+      return orderDetail;
+    });
+  }
   const dashboard = {
       user: { fullName: "Тестовый владелец" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit", "integrations.edit", "catalog.delete"],
@@ -192,7 +214,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
     return orderDetail;
   });
-  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch }) => {
+  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch, dimensionReview }) => {
     const originalFetch = window.fetch.bind(window);
     const drafts: Array<{ id: number; title: string; payload: unknown; createdAt: string; updatedAt: string }> = [];
     const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
@@ -201,6 +223,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     window.fetch = (input, init) => {
       const raw = typeof input === "string" ? input : input instanceof Request ? input.url : input.toString();
       const path = new URL(raw, window.location.origin).pathname;
+      if(dimensionReview && (path === "/api/v1/admin/procurement/orders/4" || path.startsWith("/api/v1/admin/procurement/order-lines/"))) {
+        return (window as unknown as {procurementDimensionFixture:(path:string,body:string)=>Promise<unknown>}).procurementDimensionFixture(path,String(init?.body || "{}")).then(json);
+      }
       if(catalogMatch && ["/api/v1/admin/procurement","/api/v1/admin/procurement/orders/4","/api/v1/admin/procurement/aliases/9","/api/v1/admin/procurement/order-lines/1001"].includes(path)){
         return (window as unknown as {procurementFixture:(path:string,body:string)=>Promise<unknown>}).procurementFixture(path,String(init?.body || "")).then(json);
       }
@@ -304,7 +329,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "", catalogMatch: !!options.catalogMatch });
+  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "", catalogMatch: !!options.catalogMatch, dimensionReview: !!options.dimensionReview });
 }
 
 test("@desktop @phone request validates integer quantity, traps focus, archives and restores", async ({ page }) => {
@@ -914,4 +939,67 @@ test("@desktop @phone pricing shows monthly costs and leaves unknown marketplace
  await expect(page.getByLabel("Резерв, %",{exact:true})).toHaveCount(0);
  await expect(page.getByLabel("Логистика маркетплейса, ₽ за см высоты",{exact:true})).toHaveCount(0);
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
+
+test("@desktop @phone dimension blockers lead to explicit review and unblock calculation",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,currency:"EUR",dimensionReview:true});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const calculate=order.getByRole('button',{name:'Рассчитать',exact:true});
+ await expect(calculate).toBeDisabled();
+ await expect(calculate).toHaveAccessibleDescription(/Размеры в 2 поз/);
+ await expect(order.locator('.procurement-checklist li')).toHaveCount(0);
+ await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
+ await order.getByRole('button',{name:'Проверить размеры (2)',exact:true}).click();
+ await expect(order.getByRole('tab',{name:'Проверить размеры 2',exact:true})).toBeFocused();
+ await expect(order.locator('.procurement-order-lines > tbody > tr')).toHaveCount(2);
+ const first=order.getByRole('row').filter({hasText:'Бонсай D10'});
+ await first.getByRole('button',{name:'Проверить размеры',exact:true}).click();
+ const editor=page.getByRole('dialog',{name:'Проверить размеры',exact:true});
+ await expect(editor).toContainText('Инвойс: D12, H20 см. Карточка: D10.');
+ await editor.getByRole('button',{name:'Отмена',exact:true}).click();
+ await expect(order.getByRole('tab',{name:'Проверить размеры 2',exact:true})).toBeVisible();
+ await first.getByRole('button',{name:'Проверить размеры',exact:true}).click();
+ await editor.getByRole('button',{name:'Использовать размеры инвойса',exact:true}).click();
+ await expect(calculate).toBeDisabled();
+ await editor.getByLabel('Высота растения, см').fill('21');
+ await editor.getByRole('button',{name:'Подтвердить размеры',exact:true}).click();
+ await expect(editor).toBeHidden();
+ await expect(order.getByRole('tab',{name:'Проверить размеры 1',exact:true})).toBeVisible();
+ await expect(order.getByRole('spinbutton',{name:'Курс оплаты',exact:true})).toHaveValue('123');
+ const second=order.getByRole('row').filter({hasText:'Непентес микс'});
+ await expect(second.getByRole('button',{name:'Выбрать товар СБИС',exact:true})).toHaveCount(0);
+ await second.getByRole('button',{name:'Проверить размеры',exact:true}).click();
+ await expect(editor.getByLabel('Диаметр горшка, см')).toHaveValue('12');
+ await editor.getByRole('button',{name:'Использовать размеры инвойса',exact:true}).click();
+ await expect(editor.getByLabel('Диаметр горшка, см')).toHaveValue('9');
+ await expect(editor.getByLabel('Высота растения, см')).toHaveValue('20');
+ await editor.getByRole('button',{name:'Подтвердить размеры',exact:true}).click();
+ await expect(editor).toBeHidden();
+ await expect(order.getByRole('tab',{name:'Проверить размеры 0',exact:true})).toHaveAttribute('aria-selected','true');
+ await expect(calculate).toBeEnabled();
+ await expect(order.locator('.procurement-checklist')).toHaveCount(0);
+ await page.reload();
+ await expect(calculate).toBeEnabled();
+ await expect(order.getByRole('tab',{name:/^Проверить размеры /})).toHaveCount(0);
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
+
+test("@desktop @phone dimension review keeps arithmetic blockers visible",async({page})=>{
+ await mockProcurement(page,{invoicePicker:true,currency:"EUR",dimensionReview:true,blockers:["Итог документа не совпадает с суммой строк"]});
+ await page.goto('/admin?section=procurement&order=4');
+ const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await order.getByRole('button',{name:'Проверить размеры (2)',exact:true}).click();
+ for(let i=0;i<2;i++) {
+   await order.getByRole('button',{name:'Проверить размеры',exact:true}).first().click();
+   const editor=page.getByRole('dialog',{name:'Проверить размеры',exact:true});
+   await editor.getByRole('button',{name:'Подтвердить размеры',exact:true}).click();
+   await expect(editor).toBeHidden();
+   await expect(order.getByRole('tab',{name:`Проверить размеры ${1-i}`,exact:true})).toBeVisible();
+ }
+ await expect(order.getByRole('button',{name:'Рассчитать',exact:true})).toBeDisabled();
+ await expect(order.getByRole('button',{name:'Рассчитать',exact:true})).toHaveAccessibleDescription(/Итог документа не совпадает/);
+ await expect(order.locator('.procurement-checklist li')).toHaveText(['Итог документа не совпадает с суммой строк']);
 });
