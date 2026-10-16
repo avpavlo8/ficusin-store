@@ -87,7 +87,7 @@ try {
    const intakeName=intakeDialog.getByRole('combobox',{name:'Название растения 1',exact:true});
    await intakeName.fill('Фикус Stage 07');
    await intakeDialog.getByRole('option',{name:/Фикус Stage 07/}).click();
-   await intakeDialog.getByRole('spinbutton',{name:'Количество 1',exact:true}).fill('2');
+   await intakeDialog.getByRole('textbox',{name:'Количество 1',exact:true}).fill('2');
    await intakeDialog.getByRole('combobox',{name:'Состояние 1',exact:true}).selectOption('restoring');
    const intakeComment=`Осмотр ${role} ${width}`;
    await intakeDialog.getByRole('textbox',{name:'Комментарий 1',exact:true}).fill(intakeComment);
@@ -101,7 +101,7 @@ try {
    await expect(intakeDialog).toHaveCount(0);
    await page.getByRole('button',{name:'Принять возврат',exact:false}).click();
    intakeDialog=page.getByRole('dialog',{name:'Принять возврат',exact:true});
-   await expect(intakeDialog.getByRole('spinbutton',{name:'Количество 1',exact:true})).toHaveValue('2');
+   await expect(intakeDialog.getByRole('textbox',{name:'Количество 1',exact:true})).toHaveValue('2');
    await expect(intakeDialog.getByRole('textbox',{name:'Комментарий 1',exact:true})).toHaveValue(intakeComment);
    await intakeDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
    await page.goto('/admin?section=customers');

@@ -202,16 +202,23 @@ func (r *PostgresRepository) ReturnLabelItems(ctx context.Context, actor Actor, 
 	if err != nil {
 		return nil, err
 	}
-	for index := range items {
-		item := &items[index]
-		if item.Condition == "dead" {
-			return nil, errors.New("для списанных растений этикетки не печатаются")
+	// Eligibility is checked on the current server state, including mixed selections.
+	eligible := items[:0]
+	for _, item := range items {
+		if item.Condition == "restoring" {
+			eligible = append(eligible, item)
 		}
+	}
+	if len(eligible) == 0 {
+		return nil, errors.New("этикетки печатаются только для растений на восстановлении")
+	}
+	for index := range eligible {
+		item := &eligible[index]
 		// Saby owns barcode identities; website snapshots still own the price.
 		err = r.pool.QueryRow(ctx, `SELECT COALESCE((SELECT b.value FROM saby_nomenclature s CROSS JOIN LATERAL unnest(s.barcodes || ARRAY[s.barcode]) AS b(value) WHERE s.saby_id=d.saby_id AND b.value ~ '^[0-9]{13}$' ORDER BY b.value LIMIT 1),'') FROM canonical_product_directory d WHERE d.variant_id=$1`, item.VariantID).Scan(&item.Barcode)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return items, nil
+	return eligible, nil
 }

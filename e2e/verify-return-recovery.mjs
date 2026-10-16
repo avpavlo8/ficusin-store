@@ -35,14 +35,14 @@ try{
   if(width===390){const heading=await detail.getByRole('heading',{name:item.productName,exact:true}).boundingBox();expect(heading.y).toBeLessThan(400);await expect(page.locator('.returns-list')).not.toBeVisible();}
   await expect(detail.getByRole('button',{name:'Подготовить к продаже',exact:true})).toBeVisible();await expect(detail.getByRole('heading',{name:'Поступление в СБИС',exact:true})).toHaveCount(0);
   const discount=width===1440?35:40;
-  await detail.getByRole('spinbutton',{name:'Скидка экземпляра'}).fill(String(discount));
+  await detail.getByRole('textbox',{name:'Скидка экземпляра'}).fill(String(discount));
   await detail.getByRole('textbox',{name:'Комментарий осмотра'}).fill(`Осмотр ${width} — сохранить при уходе `);
   await detail.getByRole('textbox',{name:'Описание для покупателя'}).fill('Повреждён один лист. Новый рост здоровый.');
   // Leave while edits are pending, not after waiting for the debounce.
   if(width===390)await detail.getByRole('button',{name:'К списку растений',exact:false}).click();
   await page.getByRole('navigation',{name:'Журналы возвратов'}).getByRole('button',{name:/^Документы/}).click();
   const updated=(await(await api.get(`/api/v1/admin/returns/${item.id}`)).json()).item;expect(updated.discountPercent).toBe(discount);expect(updated.comment).toBe(`Осмотр ${width} — сохранить при уходе`);expect(updated.publicComment).toContain('Повреждён один лист');
-  await page.getByRole('navigation',{name:'Журналы возвратов'}).getByRole('button',{name:/^Растения/}).click();await page.getByRole('searchbox',{name:'Поиск возвратов'}).fill(item.article);await page.locator('.return-unit').filter({hasText:item.article}).getByRole('button').click();await expect(detail).toBeVisible();await expect(detail.getByRole('spinbutton',{name:'Скидка экземпляра'})).toHaveValue(String(discount));
+  await page.getByRole('navigation',{name:'Журналы возвратов'}).getByRole('button',{name:/^Растения/}).click();await page.getByRole('searchbox',{name:'Поиск возвратов'}).fill(item.article);await page.locator('.return-unit').filter({hasText:item.article}).getByRole('button').click();await expect(detail).toBeVisible();await expect(detail.getByRole('textbox',{name:'Скидка экземпляра'})).toHaveValue(String(discount));
   const current=(await(await api.get(`/api/v1/admin/returns/${item.id}`)).json()).item;await expect(detail.locator('.return-price strong')).toContainText(current.discountedPrice.toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽');
   if(width===1440){
    const buffer=await page.screenshot();await detail.locator('input[type=file]').setInputFiles({name:'phone.png',mimeType:'',buffer});await expect(detail.locator('.return-photo')).toHaveCount(1);

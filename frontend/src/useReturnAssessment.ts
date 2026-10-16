@@ -25,6 +25,9 @@ export function useReturnAssessment(item:MarketplaceReturn,canEdit:boolean,onSav
   while(inFlight.current)await inFlight.current;
   while(assessmentJSON(value.current)!==saved.current){
    const snapshot={...value.current},json=assessmentJSON(snapshot);
+   if (!Number.isInteger(snapshot.discountPercent) || snapshot.discountPercent < 0 || snapshot.discountPercent > 100) {
+    const cause = new Error("Укажите скидку целым числом от 0 до 100%."); setState("error"); setError(cause.message); throw cause;
+   }
    setState("saving");setError("");
    const pending=api<{item:MarketplaceReturn}>(`/api/v1/admin/returns/${item.id}`,{method:"PATCH",body:json}).then(result=>{
     saved.current=assessmentJSON(fromItem(result.item));
