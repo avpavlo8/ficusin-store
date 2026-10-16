@@ -5,6 +5,7 @@ import { channelLabels, mappingLabels, isPlantProduct, valueMissing } from "./ad
 import { VariantsEditor, type AdminVariant } from "./AdminPim";
 import { ProductMediaManager } from "./ProductMediaManager";
 import type { Category, CategoryAttribute, ImportEntry, Product } from "./adminTypes";
+import { canReconcileMergeContent, mergeContentFields, mergeContentPatch } from "./publishedMergeContent";
 
 export function AttributeFields({ schema, values, onChange }: {
   schema: CategoryAttribute[]; values: Record<string, unknown>;
@@ -254,6 +255,8 @@ export function MergeProductsDialog({ products, onClose, onMerged, onError }: { 
 type PublishedMergePreview = { ready: boolean; targetProductCode?: string; sourceProductCodes?: string[]; skus: string[]; blockers: string[] };
 
 export function PublishedMergePreviewDialog({ products, onClose, onMerged, onError }: { products: Product[]; onClose: () => void; onMerged: () => void; onError: (value: string) => void }) {
+  const [editorialProducts, setEditorialProducts] = useState(products);
+  const [contentNotice, setContentNotice] = useState("");
   const [targetId, setTargetId] = useState(products[0]?.id || 0);
   const [expectedSKUs, setExpectedSKUs] = useState("");
   const [mergeSizes,setMergeSizes]=useState<AdminVariant[]>([]);
@@ -263,6 +266,21 @@ export function PublishedMergePreviewDialog({ products, onClose, onMerged, onErr
   const [preview, setPreview] = useState<PublishedMergePreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const contentTarget = editorialProducts.find(item => item.id === targetId);
+  const contentSources = contentTarget ? editorialProducts.filter(item => item.id !== targetId).map(item => ({ item, patch: mergeContentPatch(contentTarget, item) })).filter(item => Object.keys(item.patch).length) : [];
+  const reconcileContent = async () => {
+    if (!canReconcileMergeContent(editorialProducts, contentTarget)) return;
+    setBusy(true); setPreview(null); setConfirmation(""); setContentNotice("");
+    const updated = [...editorialProducts];
+    try {
+      for (const { item, patch } of contentSources) {
+        const result = await api<{ product: Product }>(`/api/v1/admin/products/${item.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+        updated[updated.findIndex(row => row.id === item.id)] = result.product;
+      }
+      setContentNotice("Контент сохранён. Повторите проверку объединения; размеры и связи не перемещались.");
+    } catch (error) { onError((error as Error).message); setContentNotice("Согласование не завершено. Сохранённые карточки показаны ниже; проверьте оставшиеся различия."); }
+    finally { setEditorialProducts(updated); setBusy(false); }
+  };
   const requestBody = () => ({
     targetProductId: targetId,
     sourceProductIds: products.filter((item) => item.id !== targetId).map((item) => item.id),
@@ -292,9 +310,11 @@ export function PublishedMergePreviewDialog({ products, onClose, onMerged, onErr
   return <Dialog title="Проверка и объединение опубликованных карточек" onClose={onClose}>
     <p>Проверка только читает базу. Выберите основную карточку. Все её размеры и размеры исходных карточек загружаются автоматически. После проверки товары останутся без изменений.</p>
     <ul>{products.map((item) => <li key={item.id}>{item.name} · внутренний ID {item.id} · адрес {item.slug} · {item.sku} · {item.latinName || "латинское название не заполнено"}</li>)}</ul>
-    <label className="wide">Основная карточка<select value={targetId} onChange={(event) => { setTargetId(Number(event.target.value)); setReviewedIdentity(products.find((item) => item.id === Number(event.target.value))?.name || ""); setPreview(null); }}>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · ID {item.id} · {item.slug}</option>)}</select></label>
+    <label className="wide">Основная карточка<select disabled={busy} value={targetId} onChange={(event) => { setTargetId(Number(event.target.value)); setReviewedIdentity(products.find((item) => item.id === Number(event.target.value))?.name || ""); setPreview(null); setConfirmation(""); setContentNotice(""); }}>{products.map((item) => <option key={item.id} value={item.id}>{item.name} · ID {item.id} · {item.slug}</option>)}</select></label>
     <label className="wide">Подтверждённый вид или сорт<input value={reviewedIdentity} onChange={(event) => { setReviewedIdentity(event.target.value); setPreview(null); }} /></label>
     <section><h3>Размеры, участвующие в проверке</h3>{sizeError?<p className="admin-inline-error" role="alert">{sizeError}</p>:!mergeSizes.length?<p>Загружаем размеры…</p>:<ul>{mergeSizes.map(x=><li key={x.id}>{products.find(p=>p.id===x.productId)?.name} · {x.label} · артикул {x.sku}</li>)}</ul>}</section>
+    {contentSources.length > 0 && <section><h3>Различия контента</h3><p>Проверьте значения перед сохранением. В перечисленных полях исходных карточек будет использован контент основной. Пустые поля основной не стирают заполненные сведения.</p>{mergeContentFields.filter(([key]) => contentSources.some(source => key in source.patch)).map(([key, label]) => <details key={key}><summary>{label}</summary>{[contentTarget!, ...contentSources.filter(source => key in source.patch).map(source => source.item)].map(item => <div key={item.id}><strong>{item.id === targetId ? "Основная" : "Исходная"}: {item.sku} · {item.name}</strong><p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{typeof item[key] === "string" ? String(item[key]) : JSON.stringify(item[key], null, 2)}</p></div>)}</details>)}<button disabled={busy || !canReconcileMergeContent(editorialProducts, contentTarget)} onClick={() => void reconcileContent()}>Сохранить контент основной в исходных карточках</button></section>}
+    {contentNotice && <p role="status">{contentNotice}</p>}
     {preview && <div className="admin-merge-preview"><strong>{preview.ready ? "Предварительные проверки пройдены" : "Объединение заблокировано"}</strong><span>Основная карточка: {preview.targetProductCode || "—"}; исходные: {preview.sourceProductCodes?.join(", ") || "—"}</span>{preview.blockers.map((blocker) => <p className="admin-inline-error" key={blocker}>{blocker}</p>)}{preview.ready && <small>Результат может устареть. Перед фактическим объединением сервер повторит все проверки.</small>}</div>}
     {preview?.ready && <label className="wide">Для объединения введите «ОБЪЕДИНИТЬ {preview.targetProductCode}»<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" /></label>}
     <div className="dialog-actions"><button onClick={onClose}>Закрыть</button><button disabled={busy || !!sizeError || !reviewedIdentity.trim() || !expectedSKUs.trim()} onClick={() => void check()}>{busy ? "Подождите…" : "Проверить без изменений"}</button>{preview?.ready && <button className="admin-danger" disabled={busy || confirmation !== `ОБЪЕДИНИТЬ ${preview.targetProductCode}`} onClick={() => void merge()}>Объединить карточки</button>}</div>

@@ -149,3 +149,26 @@ test('@desktop Назад спрашивает один раз и сохраня
  test('@desktop обязательное поле размера исключает карточку из списка без замечаний',async({page})=>{await fixture(page,{variantTasks:['Размер D11 · артикул 10: Вес упаковки']});await open(page);await expect(page.getByRole('button',{name:'Черновики без замечаний 0',exact:true})).toBeVisible();const row=page.locator('table.products tbody tr').filter({hasText:'Аглаонема Мария'});await expect(row).toContainText('Вес упаковки');await page.getByRole('button',{name:'Характеристики 1',exact:true}).click();await expect(page.locator('table.products tbody tr')).toHaveCount(1)});
 
 test('@desktop уход и вопросы после сохранения не оставляют ложный несохранённый черновик',async({page})=>{await fixture(page);await open(page);let d=await edit(page);await d.getByRole('button',{name:'Уход и FAQ',exact:true}).click();await d.getByLabel('Вопросы и ответы').fill('Как поливать? | После просыхания.\n');await d.getByLabel('Важные предупреждения').fill('Не ставить рядом с батареей.\n');await d.getByRole('button',{name:'Сохранить изменения',exact:true}).click();await expect(d.getByRole('status')).toContainText('Товар и размеры сохранены');await expect(d.getByRole('button',{name:'Сохранить изменения',exact:true})).toBeDisabled();await page.reload();d=page.getByRole('dialog');await expect(d.getByLabel('Вопросы и ответы')).toHaveValue('Как поливать? | После просыхания.');await expect(d.getByLabel('Важные предупреждения')).toHaveValue('Не ставить рядом с батареей.')});
+
+for (const differentIdentity of [false, true]) {
+ test(`@desktop согласование контента перед объединением ${differentIdentity ? 'блокирует разные виды' : 'сохраняет только различающиеся тексты'}`,async({page})=>{
+  await fixture(page);
+  const products=[1,2].map(id=>({...product(id),name:'Арека',latinName:differentIdentity&&id===2?'Chamaedorea elegans':'Chrysalidocarpus lutescens',description:'Одинаковое описание',status:'published',shortDescription:id===1?'Основной текст':'Старый текст',heightClass:id===1?'high':'low'}));
+  const writes:any[]=[];let merges=0;
+  await page.route('**/api/v1/admin/products',route=>route.fulfill({json:{products}}));
+  await page.route('**/api/v1/admin/products/*',route=>{
+   if(route.request().method()!=='PATCH')return route.fallback();
+   const id=Number(new URL(route.request().url()).pathname.split('/').pop()),body=route.request().postDataJSON();writes.push({id,body});
+   Object.assign(products.find(p=>p.id===id)!,body);return route.fulfill({json:{product:products.find(p=>p.id===id)}});
+  });
+  await page.route('**/api/v1/admin/products/merge-published',route=>{merges++;return route.fulfill({json:{}})});
+  await open(page);await page.getByLabel('Выбрать товары на странице').check();await page.getByRole('button',{name:'Проверить объединение',exact:true}).click();
+  const d=page.getByRole('dialog');await d.getByText('Прежнее краткое описание',{exact:true}).click();
+  await expect(d.getByText('Основной текст',{exact:true})).toBeVisible();await expect(d.getByText('Старый текст',{exact:true})).toBeVisible();expect(writes).toHaveLength(0);
+  const save=d.getByRole('button',{name:'Сохранить контент основной в исходных карточках'});
+  if(differentIdentity){await expect(save).toBeDisabled();return;}
+  await save.click();await expect(d.getByRole('status')).toContainText('Контент сохранён');
+  expect(writes).toEqual([{id:2,body:{shortDescription:'Основной текст',heightClass:'high'}}]);
+  expect(products[1].price).toBe(1490);expect(products[1].sku).toBe('2');expect(products[1].status).toBe('published');expect(merges).toBe(0);
+ });
+}
