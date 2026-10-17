@@ -206,3 +206,15 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 .storefront { padding-bottom: 60px; }
 
 .mobile-catalog-search .catalog-search-options{width:100%;max-height:45dvh;overflow-y:auto;overscroll-behavior:contain}
+
+.tab-bar small { font-size:12px; letter-spacing:0; }
+.favorites-unavailable { margin:24px 0; padding:20px; border-radius:14px; background:#e8e4d3; color:#31482c; }
+.favorites-unavailable p { margin:8px 0 16px; }
+.favorites-unavailable button { min-height:44px; padding:10px 14px; border:1px solid currentColor; border-radius:9px; background:transparent; color:inherit; cursor:pointer; }
+@media(hover:hover) and (pointer:fine) {
+  .store-footer-chat:hover,.store-footer-phone:hover { transform:translateY(-2px); }
+}
+@media(hover:none) {
+  .store-footer-chat:hover,.store-footer-phone:hover,.store-footer-socials a:hover { transform:none; }
+}
+@media(max-width:850px) { body.has-store-tabs main { padding-bottom:calc(88px + env(safe-area-inset-bottom)); } }

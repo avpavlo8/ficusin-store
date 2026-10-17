@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
+import { useFavorites, FAVORITES_EVENT } from "./lib/favorites";
+import { useModalFocus } from "./lib/useModalFocus";
 
 export type StoreUser = {
   fullName: string;
@@ -39,32 +41,7 @@ function AccountBadge({ user }: { user: StoreUser }) {
 
 // Favourites remain local for now. Cart contents are never stored here: the
 // header reads the same server-backed cart as the catalogue and checkout.
-export const STORAGE_EVENT = "ficusin-storage";
-
-function readStoredCounts() {
-  try {
-    const favorites = JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[];
-    return {
-      favorites: favorites.length,
-    };
-  } catch {
-    return { favorites: 0 };
-  }
-}
-
-function useStoredCounts() {
-  const [counts, setCounts] = useState(readStoredCounts);
-  useEffect(() => {
-    const sync = () => setCounts(readStoredCounts());
-    window.addEventListener("storage", sync);
-    window.addEventListener(STORAGE_EVENT, sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(STORAGE_EVENT, sync);
-    };
-  }, []);
-  return counts;
-}
+export const STORAGE_EVENT = FAVORITES_EVENT;
 
 export function useStoreUser() {
   const [user, setUser] = useState<StoreUser | null>(null);
@@ -91,7 +68,7 @@ export function AccountMenu({ user, iconOnly = false }: { user: StoreUser | null
   const staff = user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner";
   const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
   if (!staff) return <a className={iconOnly ? "account-button icon-only" : "account-button"} href="/account" aria-label="Профиль">{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</a>;
-  return <details className="account-menu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary className={iconOnly ? "account-button icon-only" : "account-button"}>{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</summary>
+  return <details className="account-menu" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary aria-label="Меню профиля" className={iconOnly ? "account-button icon-only" : "account-button"}>{iconOnly ? <Icon path={icons.person} /> : <><AccountBadge user={user} /><span>{name}</span></>}</summary>
     <div><a href="/account">Личный профиль</a><a href="/admin">Панель управления</a></div>
   </details>;
 }
@@ -131,22 +108,25 @@ function MobileSearch({
   onSearch?: (value: string) => void;
   onClose: () => void;
 }) {
-  return <div className="mobile-search">
+  return <div className="mobile-search" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
     <CatalogSearch value={query} onChange={onQueryChange} onSearch={onSearch} className="mobile-catalog-search" autoFocus />
     <button type="button" onClick={onClose} aria-label="Закрыть поиск">×</button>
   </div>;
 }
 
 function MobileMenu({
+  open,
   user,
   favorites,
   onClose,
 }: {
+  open: boolean;
   user: StoreUser | null;
   favorites: number;
   onClose: () => void;
 }) {
-  return <aside className="mobile-menu open">
+  const ref = useModalFocus(onClose, open);
+  return <aside ref={ref} className={`mobile-menu${open ? " open" : ""}`} aria-hidden={!open} inert={!open} role="dialog" aria-modal="true" aria-label="Меню магазина">
     <button onClick={onClose} aria-label="Закрыть меню">×</button>
     {user ? <>
       <a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
@@ -258,21 +238,30 @@ export function StoreHeader({
   // pass their live numbers in. The account area and the admin panel do not
   // keep that state, so the header reads it from storage itself instead of
   // showing zeroes.
-  const stored = useStoredCounts();
+  const [storedFavorites] = useFavorites();
   const [serverCart] = useSharedCart();
-  const favorites = favoritesCount ?? stored.favorites;
+  const favorites = favoritesCount ?? storedFavorites.size;
   const cart = cartCount ?? Object.values(serverCart).reduce((sum, value) => sum + value, 0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fallbackMenus, setFallbackMenus] = useState<{catalog:HeaderMenuItem[];plants:HeaderMenuItem[]}>({catalog:[],plants:[]});
   const headerRef = useRef<HTMLElement>(null);
   useBodyLock(menuOpen, "menu-open");
+  useEffect(() => { document.body.classList.toggle("has-store-tabs", showTabBar); return () => document.body.classList.remove("has-store-tabs"); }, [showTabBar]);
   useEffect(() => {
     const close = (event: PointerEvent) => {
-      if (!headerRef.current?.contains(event.target as Node)) headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => details.removeAttribute("open"));
+      if (!headerRef.current?.contains(event.target as Node) || (event.target instanceof Element && event.target.closest(".catalog-search"))) headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => details.removeAttribute("open"));
     };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const open = headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]");
+      const last = open?.[open.length - 1];
+      if (last) { last.open = false; last.querySelector("summary")?.focus(); }
+    };
+    document.addEventListener("keydown", escape);
     document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
   }, []);
   useEffect(() => {
     if (!homeNavigation || catalogMenuItems.length || plantMenuItems.length) return;
@@ -289,28 +278,35 @@ export function StoreHeader({
     }).catch(() => setFallbackMenus({catalog:[],plants:[]}));
   },[homeNavigation,catalogMenuItems.length,plantMenuItems.length]);
 
+  useEffect(() => { headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => { details.open = false; }); }, [query]);
+
   const resolvedCatalogMenuItems = catalogMenuItems.length ? catalogMenuItems : fallbackMenus.catalog;
-  const resolvedPlantMenuItems = plantMenuItems.length ? plantMenuItems : fallbackMenus.plants;
   const categoryPick = onHomeCategoryPick;
+  const closeHeaderMenus = () => headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => { details.open = false; });
+  const search = (value: string) => {
+    closeHeaderMenus();
+    if (onSearch) onSearch(value);
+    else window.location.assign(`/?q=${encodeURIComponent(value)}#catalog`);
+  };
 
   const cartLabel = `Корзина, товаров: ${cart}`;
   return <><div className="announcement" hidden />
-    <header className="header store-header" ref={headerRef}>
+    <header className="header store-header" ref={headerRef} onFocusCapture={(event) => { if (event.target.closest(".catalog-search")) closeHeaderMenus(); }}>
       <button
         className="menu-button"
-        onClick={() => setMenuOpen(true)}
+        onClick={(event) => { event.currentTarget.focus(); setMenuOpen(true); }}
         aria-label="Открыть меню"
         aria-expanded={menuOpen}
       >☰</button>
       <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
       <nav className="desktop-nav">{homeNavigation ? <>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}<a href="/discounts">Растения со скидкой<span>→</span></a></div></details>
-        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Растения <span>⌄</span></summary><div>{resolvedPlantMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}</div></details>
+        <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div><a href="/#catalog">Весь каталог<span>→</span></a>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}<a href="/discounts">Растения со скидкой<span>→</span></a></div></details>
+
         <a href="/delivery-and-returns">Доставка и оплата</a><AboutMenu/>
       </> : <><a href="/#catalog">Каталог</a><a href="/favorites">Избранное</a><a href="/delivery-and-returns">Доставка и возврат</a><AboutMenu/></>}</nav>
       <div className="header-actions">
         {showSearch && <>
-          <CatalogSearch value={query} onChange={onQueryChange} onSearch={onSearch} />
+          <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
           <button
             className="search-toggle"
             onClick={() => setSearchOpen((open) => !open)}
@@ -325,11 +321,9 @@ export function StoreHeader({
           : <a className="cart-button" href="/cart" aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</a>}
       </div>
     </header>
-    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onSearch={onSearch} onClose={() => { setSearchOpen(false); onSearchClose?.(); }} />}
-    {menuOpen && <>
-      <button className="overlay" aria-label="Закрыть меню" onClick={() => setMenuOpen(false)} />
-      <MobileMenu user={user} favorites={favorites} onClose={() => setMenuOpen(false)} />
-    </>}
+    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onSearch={search} onClose={() => { setSearchOpen(false); onSearchClose?.(); }} />}
+    <button className={`overlay mobile-menu-backdrop${menuOpen ? " open" : ""}`} aria-label="Закрыть меню" aria-hidden={!menuOpen} inert={!menuOpen} onClick={closeMenu} />
+    <MobileMenu open={menuOpen} user={user} favorites={favorites} onClose={closeMenu} />
     {showTabBar && <>
       <InstallHint />
       <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} onSearchClick={() => setSearchOpen(true)} />

@@ -1,5 +1,6 @@
+import { useFavorites } from "./lib/favorites";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { STORAGE_EVENT, StoreHeader } from "./StoreHeader";
+import { StoreHeader } from "./StoreHeader";
 import { PushToggle } from "./PushToggle";
 import { useSharedCart } from "./lib/cart";
 import { sharedAPIJSON } from "./lib/api";
@@ -578,10 +579,7 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
 
 function FavoritesSection() {
   const [products, setProducts] = useState<FavoriteProduct[]>([]);
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
-    catch { return new Set(); }
-  });
+  const [favorites, setFavorites] = useFavorites();
   const [cart, setCart] = useSharedCart();
 
   useEffect(() => {
@@ -599,9 +597,6 @@ function FavoritesSection() {
     const next = new Set(favorites);
     next.delete(id);
     setFavorites(next);
-    localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
-    // Tell the header to re-read the counter without a page reload.
-    window.dispatchEvent(new Event(STORAGE_EVENT));
   };
 
   return <>

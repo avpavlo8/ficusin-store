@@ -107,6 +107,7 @@ export function CartDrawer({
             {status === "loading" && !lines.length && <div className="cart-state" role="status"><strong>Загружаем корзину…</strong><p>Ваши товары появятся здесь после загрузки.</p></div>}
             {status === "error" && <div className="cart-state error" role="alert"><strong>Не удалось загрузить корзину</strong><p>{error || "Проверьте соединение и попробуйте ещё раз."}</p>{onRetry && <button type="button" onClick={onRetry}>Повторить</button>}</div>}
             {(missingCount > 0 || lines.some((item) => item.available === false)) && <div className="cart-state warning" role="alert"><strong>Состав корзины изменился</strong><p>Некоторые товары больше недоступны. Удалите их перед оформлением.</p></div>}
+            {lines.some((item) => item.stock !== undefined && item.stock < item.quantity) && <div className="cart-state warning"><strong>Есть растения под заказ</strong><p>Сейчас платить не нужно. Менеджер проверит поставку, уточнит срок и подтвердит итог заказа до оплаты.</p></div>}
             {lineCards}
             {status === "ready" && !lines.length && !missingCount && (
               <div className="empty-cart">
@@ -120,7 +121,7 @@ export function CartDrawer({
         </section>
         {!!lines.length && (
           <aside className="cart-summary">
-            <dl><div><dt>Итого товаров</dt><dd>{lines.length}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>рассчитаем при оформлении</dd></div></dl>
+            <dl><div><dt>Итого товаров</dt><dd>{lines.reduce((sum, item) => sum + item.quantity, 0)}</dd></div><div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>рассчитаем при оформлении</dd></div></dl>
             <div className="cart-summary-total"><span>Растения</span><strong>{money(subtotal)}</strong></div>
             <p>Стоимость доставки войдёт в итог заказа.</p>
             {!page && <div className="cart-bonus" hidden />}
@@ -224,12 +225,14 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     if (invalid) { invalid.focus(); return; }
 	track("checkout_step", { value: total, quantity: cartCount, properties: { from: step, to: next } });
     setStep(next);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   };
   const deliveryIcon = (id: string): CheckoutIconName => id === "cdek" ? "cdek" : "pickup";
   const selectedDelivery = availableDelivery.find((item) => item.id === delivery);
   const selectedPayment = paymentMethods.find((item) => item.id === paymentMethod);
   const deliveryBlocked = delivery === "cdek" && !cdekOfficeCode;
+  const deliveryNotChosen = step === 1;
+  const deliveryUnknown = deliveryNotChosen || deliveryFeePending;
   const confirmationPending = Boolean(orderNumber && orderConfirmationPending);
 
   return (
@@ -314,7 +317,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <label className="consent-check"><input type="checkbox" name="consent" required /><span>Я даю согласие на обработку персональных данных в соответствии с <a href="/privacy" target="_blank">политикой</a> и принимаю условия <a href="/offer" target="_blank">оферты</a>.</span></label>
             <div className="checkout-navigation"><button type="button" onClick={() => setStep(2)}>← Назад</button><button className="primary-button" disabled={submitting || !pricingReady || pricingError || (!hasPreorder && !paymentMethods.length) || deliveryBlocked}>{submitting ? "Оформляем…" : hasPreorder ? "Отправить заказ →" : "Продолжить →"}</button></div>
           </div>
-        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div>{discountAmount > 0 && <><div><dt>Растения без скидки</dt><dd>{money(originalSubtotal)}</dd></div><div><dt>Персональная скидка {discountBps / 100}%</dt><dd>−{money(discountAmount)}</dd></div></>}<div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryFeePending ? "уточняется" : money(deliveryFee)}</dd></div></dl><div><span>{hasPreorder ? "Предварительная сумма" : deliveryFeePending ? "Растения, без доставки" : "Итого к оплате"}</span><strong>{pricingReady ? money(total) : "Проверяем цену…"}</strong></div>{pricingError && <p role="alert">Не удалось проверить персональную скидку. Обновите страницу перед оформлением.</p>}{hasPreorder ? <p>Сейчас платить не нужно. Менеджер проверит наличие и подтвердит итог заказа.</p> : deliveryFeePending && <p>Менеджер уточнит доставку и сообщит итог до оплаты.</p>}</aside></div>
+        </form><aside className="checkout-order-summary"><h3>Ваш заказ</h3><dl><div><dt>Товаров</dt><dd>{cartCount}</dd></div>{discountAmount > 0 && <><div><dt>Растения без скидки</dt><dd>{money(originalSubtotal)}</dd></div><div><dt>Персональная скидка {discountBps / 100}%</dt><dd>−{money(discountAmount)}</dd></div></>}<div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryNotChosen ? "Выберите способ получения" : deliveryFeePending ? "Уточнит менеджер" : money(deliveryFee)}</dd></div></dl><div><span>{hasPreorder ? "Предварительная сумма" : deliveryUnknown ? "Растения, без доставки" : "Итого к оплате"}</span><strong>{pricingReady ? money(deliveryNotChosen ? subtotal : total) : "Проверяем цену…"}</strong></div>{pricingError && <p role="alert">Не удалось проверить персональную скидку. Обновите страницу перед оформлением.</p>}{hasPreorder ? <p>Сейчас платить не нужно. Менеджер проверит наличие и подтвердит итог заказа.</p> : deliveryFeePending && <p>Менеджер уточнит доставку и сообщит итог до оплаты.</p>}</aside></div>
       )}
     </aside>
   );

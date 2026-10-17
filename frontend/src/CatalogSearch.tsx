@@ -115,7 +115,7 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
       } else allResults();
     }}>
       {!selection && <span aria-hidden="true">⌕</span>}
-      <input aria-label={selection?.label} autoFocus={autoFocus} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); activeRef.current = -1; setActive(-1); }}
+      <input aria-label={selection?.label || placeholder} autoFocus={autoFocus} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); activeRef.current = -1; setActive(-1); }}
         onFocus={() => setOpen(true)} onKeyDown={keyDown} placeholder={placeholder} autoComplete="off"
         role="combobox" aria-expanded={open && Boolean(selection || query.trim())} aria-controls={listID}
         aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined} />

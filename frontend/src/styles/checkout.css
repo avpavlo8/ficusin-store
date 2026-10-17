@@ -2362,3 +2362,8 @@
     max-width: none;
   }
 }
+
+/* Totals stay on a quiet surface, with room for delivery explanations. */
+.cart-summary,.checkout-order-summary { background:#f3eee4; }
+.cart-summary dl > div,.checkout-order-summary dl > div { gap:16px; }
+.cart-summary dd,.checkout-order-summary dd { max-width:65%; overflow-wrap:normal; }

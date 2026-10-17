@@ -67,7 +67,7 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   // The menu covers the whole screen on a phone, so the close button is the
   // only way out — there is no strip of backdrop left to tap.
   await menu.getByRole("button", { name: "Закрыть меню" }).click();
-  await expect(menu).toHaveCount(0);
+  await expect(menu).not.toBeVisible();
 });
 
 test("@phone checkout stays below the menu and bottom navigation", async ({ page }) => {
@@ -202,7 +202,7 @@ test("@phone подбор по характеристикам свёрнут, т
   const filters = page.getByRole("button", { name: /Фильтры/ });
   await expect(filters).toBeVisible();
   await expect(filters).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".home-filter-panel")).toHaveCount(0);
+  await expect(page.locator(".home-filter-panel")).not.toBeVisible();
 
   const card = page.locator(".storefront-card").first();
   await card.scrollIntoViewIfNeeded();

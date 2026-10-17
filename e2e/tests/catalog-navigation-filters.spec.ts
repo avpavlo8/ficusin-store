@@ -48,10 +48,12 @@ test("@desktop общий каталог не показывает смешан�
   await expect(page.getByText("Освещение", { exact: true })).toHaveCount(0);
 });
 
-test("@desktop глобальный поиск не включает атрибутные фильтры без контекста", async ({ page }) => {
+test("@desktop глобальный поиск предлагает фильтры найденного раздела", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?q=фикус");
-  await expect(page.locator(".storefront-attribute-filters")).toHaveCount(0);
+  await page.getByRole("button", { name: /Фильтры/ }).click();
+  await expect(page.locator(".storefront-attribute-filters")).toContainText("Освещение");
+  await expect(page.locator(".storefront-attribute-filters")).not.toContainText("Материал");
   await expect(page.locator(".storefront-grid").getByText("Фикус Бенджамина")).toBeVisible();
 });
 
