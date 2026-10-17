@@ -530,7 +530,12 @@
 .catalog-category-picker select { width:100%; min-width:0; min-height:48px; padding:10px 14px; border:1px solid #ded1c2; border-radius:11px; background:rgba(255,255,255,.45); color:inherit; font:inherit; font-weight:400; cursor:pointer; }
 .catalog-category-picker select:focus-visible { outline:2px solid var(--home-orange); outline-offset:3px; }
 
-@media(min-width:851px) { .storefront-side { position:sticky; } .storefront-tree { max-height:calc(100dvh - 64px); margin-bottom:0; overscroll-behavior-y:contain; } }
+@media(min-width:851px) {
+  .storefront-side { position:sticky; }
+  .storefront-tree { grid-auto-flow:row; grid-auto-columns:auto; max-height:calc(100dvh - 64px); margin-bottom:0; overscroll-behavior-y:contain; }
+}
+@media(min-width:851px) and (max-width:1100px) { .storefront-grid:not(.list-view) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(min-width:1101px) and (max-width:1450px) { .storefront-grid:not(.list-view) { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:850px) {
   .catalog-category-picker { display:grid; }
   .storefront-shell.has-category-picker > .storefront-side { display:none; }

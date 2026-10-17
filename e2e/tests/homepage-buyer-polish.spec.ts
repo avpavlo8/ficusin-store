@@ -175,3 +175,24 @@ test("@desktop category sidebar stays beside products while scrolling", async ({
   await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
   await expect(page.getByRole("navigation",{name:"Категории товаров"})).toBeVisible();
 });
+
+test("@desktop left categories and product actions fit narrow desktop screens", async ({page})=>{
+  await mockApi(page);
+  for(const width of [880,1024,1280,1440]) {
+    await page.setViewportSize({width,height:900});
+    await page.goto("/");
+    const side=page.locator(".storefront-side");
+    await expect(side).toBeVisible();
+    await expect(page.locator(".storefront-tree")).toHaveCSS("grid-auto-flow","row");
+    const geometry=await page.locator(".storefront-card").first().evaluate(el=>{
+      const card=el.getBoundingClientRect();
+      const action=el.querySelector(".storefront-buy > button")!.getBoundingClientRect();
+      return {cardWidth:card.width,actionRight:action.right,cardRight:card.right};
+    });
+    expect(geometry.cardWidth).toBeGreaterThan(210);
+    expect(geometry.actionRight).toBeLessThanOrEqual(geometry.cardRight+1);
+    const bounds=await side.boundingBox();
+    const main=await page.locator(".storefront-main").boundingBox();
+    expect(bounds!.x+bounds!.width).toBeLessThan(main!.x);
+  }
+});
