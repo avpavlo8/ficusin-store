@@ -143,3 +143,11 @@ test("@phone @desktop a draft from a different signed-in customer cannot prefill
   await expect(page.getByLabel("Имя",{exact:true})).toHaveValue("");
   await expect(page.getByLabel("Телефон",{exact:true})).toHaveValue("");
 });
+
+test("@phone @desktop Enter advances contacts without attempting an order",async({page})=>{
+  await open(page);await contact(page);let submitted=false;
+  await page.route("**/api/v1/orders",r=>{submitted=true;return r.abort()});
+  await page.getByLabel("Email для чека",{exact:true}).press("Enter");
+  await expect(page.getByRole("region",{name:"Проверка данных"})).toBeVisible();
+  await expect(page.locator('input[name="consent"]')).not.toBeChecked();expect(submitted).toBe(false);
+});

@@ -288,6 +288,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
       ) : (
         <div className="checkout-layout"><form ref={formRef} noValidate onSubmit={event => {
           event.preventDefault();
+          if (step === 2) { advance(1); return; }
+          if (step === 1) { advance(3); return; }
           if (!validateContact()) return;
           if (deliveryBlocked) { go(2); return; }
           const consent = event.currentTarget.elements.namedItem("consent") as HTMLInputElement;
