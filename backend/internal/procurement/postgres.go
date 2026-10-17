@@ -815,7 +815,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		return OrderDetail{}, fmt.Errorf("check active procurement actions: %w", err)
 	}
 	if activeApproved {
-		if err := refreshPricesAfterFailedReceipt(ctx, tx, actor, orderID, input, settings); err != nil {
+		if err := refreshPricesAfterTerminalActions(ctx, tx, actor, orderID, input, settings); err != nil {
 			return OrderDetail{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {
