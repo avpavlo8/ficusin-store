@@ -119,7 +119,7 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
         onFocus={() => setOpen(true)} onKeyDown={keyDown} placeholder={placeholder} autoComplete="off"
         role="combobox" aria-expanded={open && Boolean(selection || query.trim())} aria-controls={listID}
         aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined} />
-      {query && <button type="button" className="catalog-search-clear" onClick={() => { setQuery(""); setOpen(false); }} aria-label="Очистить поиск">×</button>}
+      {query && <button type="button" className="catalog-search-clear" onClick={() => { setQuery(""); setOpen(false); activeRef.current = -1; setActive(-1); pendingEnter.current = false; if (!selection) onSearch?.(""); }} aria-label="Очистить поиск">×</button>}
     </Field>
     {open && (selection || query.trim()) && <div className="catalog-search-options" id={listID} role="listbox" aria-label={selection ? "Каталог растений" : undefined}>
       {matches.map((item, index) => <button id={`${listID}-${index}`} role="option" aria-selected={active === index}

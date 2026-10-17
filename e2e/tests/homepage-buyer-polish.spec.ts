@@ -103,3 +103,15 @@ test("@desktop @phone purchase icon and label do not overlap", async ({page})=>{
   expect(geometry.icon).toBeLessThanOrEqual(geometry.label);
   expect(geometry.right).toBeLessThanOrEqual(geometry.card);
 });
+
+
+test("@desktop @phone clearing a submitted search restores the catalogue and URL", async ({page})=>{
+  await mockApi(page);
+  await page.goto("/?q=фикус");
+  if((await page.viewportSize())!.width<=850) await page.getByRole("button",{name:"Поиск",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Результаты поиска"})).toBeVisible();
+  await page.getByRole("button",{name:"Очистить поиск",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Каталог",exact:true})).toBeVisible();
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(page.locator(".storefront-card")).toHaveCount(catalogue.length);
+});
