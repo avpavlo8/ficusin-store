@@ -80,14 +80,32 @@ test("production categories are available beside the catalogue and open the chos
   await page.goto("/");
   const picker=page.getByLabel("Категория",{exact:true});
   await expect(picker.locator(`option[value="${category!.slug}"]`)).toHaveCount(1);
-  await picker.selectOption(category!.slug);
+  const phone=(await page.viewportSize())!.width<=850;
+  const navigation=page.getByRole("navigation",{name:"Категории товаров"});
+  if(phone) await picker.selectOption(category!.slug);
+  else {
+    await expect(picker).toBeHidden();
+    const side=page.locator(".storefront-side");
+    await page.getByRole("link",{name:/Выбрать своё растение/}).click();
+    await page.mouse.wheel(0,250);
+    await expect(side).toBeVisible();
+    const stickyTop=await side.evaluate(el=>parseFloat(getComputedStyle(el).top));
+    await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
+    const initial=await side.boundingBox();
+    const main=await page.locator(".storefront-main").boundingBox();
+    expect(initial!.x+initial!.width).toBeLessThan(main!.x);
+    await page.mouse.wheel(0,500);
+    await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
+    await navigation.locator(`a[href="/catalog/${category!.slug}"]`).click();
+  }
   await expect(page).toHaveURL(new RegExp(`/catalog/${category!.slug}$`));
   await expect(picker).toHaveValue(category!.slug);
   if((await page.viewportSize())!.width<=850) await expect(page.locator(".storefront-side")).toBeHidden();
   await expect(page.locator(".storefront-card").first()).toBeVisible();
   const links=await page.locator(".storefront-card .storefront-name").evaluateAll(els=>els.map(el=>el.getAttribute("href")!));
   for(const link of links) expect(products.find(product=>link===`/product/${product.id}`)?.categoryId).toBe(category!.id);
-  await picker.selectOption("");
+  if(phone) await picker.selectOption("");
+  else await navigation.getByRole("link",{name:/Весь каталог/}).click();
   await expect(page).toHaveURL(/\/#catalog$/);
   await expect(picker).toHaveValue("");
 });

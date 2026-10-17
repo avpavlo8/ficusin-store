@@ -128,19 +128,71 @@ test("@desktop @phone categories remain visible with one root and nested plant k
   ]}}));
   await page.goto("/");
   const picker=page.getByLabel("Категория",{exact:true});
-  await expect(picker).toBeVisible();
+  const phone=(await page.viewportSize())!.width<=850;
+  const navigation=page.getByRole("navigation",{name:"Категории товаров"});
   await expect(picker.locator('option[value="ficus"]')).toContainText("Фикус · 2");
   await expect(picker.locator('option[value="empty-category"]')).toHaveCount(0);
+  if(phone) await expect(picker).toBeVisible();
+  else {
+    await expect(picker).toBeHidden();
+    await expect(navigation).toBeVisible();
+    await expect(navigation.locator('a[href="/catalog/ficus"]')).toBeVisible();
+    const sidebar=await navigation.boundingBox();
+    const main=await page.locator(".storefront-main").boundingBox();
+    expect(sidebar!.x+sidebar!.width).toBeLessThan(main!.x);
+  }
   await page.goto("/catalog/indoor-plants");
   await expect(picker).toHaveValue("indoor-plants");
   await expect(picker.locator('option[value="indoor-plants"]')).toContainText("Комнатные растения · 3");
-  await picker.selectOption("ficus");
+  if(phone) await picker.selectOption("ficus");
+  else await navigation.locator('a[href="/catalog/ficus"]').click();
   await expect(page).toHaveURL(/\/catalog\/ficus$/);
   await expect(picker).toHaveValue("ficus");
-  if((await page.viewportSize())!.width<=850) await expect(page.locator(".storefront-side")).toBeHidden();
+  if(phone) await expect(page.locator(".storefront-side")).toBeHidden();
+  else await expect(navigation.locator('a[href="/catalog/ficus"]')).toHaveAttribute("aria-current","page");
   await expect(page.locator(".storefront-card")).toHaveCount(2);
   await expect(page.locator(".storefront-card").filter({hasText:"Аглаонема"})).toHaveCount(0);
-  await picker.selectOption("");
+  if(phone) await picker.selectOption("");
+  else await navigation.getByRole("link",{name:/Весь каталог/}).click();
   await expect(page).toHaveURL(/\/#catalog$/);
   await expect(page.locator(".storefront-card")).toHaveCount(catalogue.length);
+});
+
+
+test("@desktop category sidebar stays beside products while scrolling", async ({page})=>{
+  await mockApi(page);
+  const products=Array.from({length:32},(_,index)=>({...catalogue[0],id:String(index+1),sku:String(index+1)}));
+  await page.route("**/api/v1/catalog",route=>route.fulfill({json:{products}}));
+  await page.goto("/#catalog");
+  await expect(page.locator(".storefront-card")).toHaveCount(12);
+  await page.getByRole("link",{name:/Выбрать своё растение/}).click();
+  await page.mouse.wheel(0,250);
+  const side=page.locator(".storefront-side");
+  await expect(side).toHaveCSS("position","sticky");
+  const stickyTop=await side.evaluate(el=>parseFloat(getComputedStyle(el).top));
+  await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
+  await page.mouse.wheel(0,550);
+  await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
+  await expect(page.getByRole("navigation",{name:"Категории товаров"})).toBeVisible();
+});
+
+test("@desktop left categories and product actions fit narrow desktop screens", async ({page})=>{
+  await mockApi(page);
+  for(const width of [880,1024,1280,1440]) {
+    await page.setViewportSize({width,height:900});
+    await page.goto("/");
+    const side=page.locator(".storefront-side");
+    await expect(side).toBeVisible();
+    await expect(page.locator(".storefront-tree")).toHaveCSS("grid-auto-flow","row");
+    const geometry=await page.locator(".storefront-card").first().evaluate(el=>{
+      const card=el.getBoundingClientRect();
+      const action=el.querySelector(".storefront-buy > button")!.getBoundingClientRect();
+      return {cardWidth:card.width,actionRight:action.right,cardRight:card.right};
+    });
+    expect(geometry.cardWidth).toBeGreaterThan(210);
+    expect(geometry.actionRight).toBeLessThanOrEqual(geometry.cardRight+1);
+    const bounds=await side.boundingBox();
+    const main=await page.locator(".storefront-main").boundingBox();
+    expect(bounds!.x+bounds!.width).toBeLessThan(main!.x);
+  }
 });
