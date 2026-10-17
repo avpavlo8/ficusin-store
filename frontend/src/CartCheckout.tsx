@@ -34,6 +34,9 @@ type CartDrawerProps = {
 };
 
 const money = formatMoney;
+const deliveryDays = (quote: { daysMin: number; daysMax: number }) => quote.daysMin > 0 && quote.daysMax >= quote.daysMin
+  ? `${quote.daysMin === quote.daysMax ? quote.daysMin : `${quote.daysMin}–${quote.daysMax}`} дн., ориентировочно`
+  : "Срок уточняется";
 
 function LineIcon({ name }: { name: "close" | "trash" }) {
   const paths = {
@@ -264,7 +267,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           <div className="success-copy">
             <span className="success-heart" aria-hidden="true">♡</span>
             <h2>{confirmationPending ? "Заказ отправлен менеджеру" : "Заказ принят"}</h2>
-            <p className="success-lead">{confirmationPending ? "Спасибо! Менеджер уточнит наличие растений и свяжется с вами. Оплата пока не требуется." : "Спасибо! Мы приняли ваш заказ."}</p>
+            <p className="success-lead">{confirmationPending ? "Спасибо! Менеджер проверит заказ, уточнит условия получения и свяжется с вами. Оплата пока не требуется." : "Спасибо! Мы приняли ваш заказ."}</p>
             <div className="success-columns">
               <div className="success-order-info">
                 <div className="success-number"><small>Номер заказа</small><strong>#{orderNumber}</strong></div>
@@ -274,8 +277,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                 <a className="success-catalog-link" href="/#catalog">Вернуться в каталог <span aria-hidden="true">↗</span></a>
               </div>
               <div className="success-next"><h3>Что будет дальше</h3>{confirmationPending ? <ol>
-                <li><b>1</b><span>Проверим наличие растений</span></li>
-                <li><b>2</b><span>Менеджер свяжется с вами после поступления</span></li>
+                <li><b>1</b><span>Проверим состав и условия получения</span></li>
+                <li><b>2</b><span>Менеджер согласует с вами срок и стоимость</span></li>
                 <li><b>3</b><span>После решения менеджера вы сможете оплатить растения и доставку</span></li>
               </ol> : <ol>
                 <li><b>1</b><span>Соберём и проверим растения</span></li>
@@ -331,8 +334,8 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                 {selectedOffice && <p className="cdek-status">Пункт выбран: {selectedOffice.location.address}</p>}
                 {cdekFeePending && !!cdekOffices.length && <div className="cdek-quote pending"><b>Рассчитает менеджер</b><span>после оформления</span><small>{cdekRepack ? "Менеджер проверит, поместятся ли растения в одну коробку, посчитает доставку и свяжется с вами до оплаты." : "Стоимость доставки менеджер посчитает и сообщит вам до оплаты. Оформить заказ можно уже сейчас."}</small></div>}
                 {cartCount > 1 && !!cdekQuotes.length && <div className="cdek-repack"><label><input type="checkbox" checked={cdekRepack} onChange={(event) => setCdekRepack(event.target.checked)} />Упаковать в одну коробку, если поместятся</label><small>Сейчас доставка посчитана по отдельной коробке на каждое растение. Менеджер проверит, поместятся ли они вместе, и пересчитает — обычно выходит дешевле.</small></div>}
-                {!cdekRepack && cdekQuotes.length > 1 && <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">{cdekQuotes.map((option) => <label key={option.tariffCode} className="cdek-tariff"><input type="radio" name="cdek-tariff" checked={option.tariffCode === cdekQuote?.tariffCode} onChange={() => setCdekTariffCode(option.tariffCode)} /><span><b>{option === cdekQuotes[0] ? "До пункта выдачи" : "Быстрее до пункта выдачи"}</b><small>{option.daysMin === option.daysMax ? `${option.daysMin} дн.` : `${option.daysMin}–${option.daysMax} дн.`}</small></span><strong>{money(option.price)}</strong></label>)}</div>}
-                {!cdekRepack && cdekQuote && cdekQuotes.length === 1 && <div className="cdek-quote"><b>{money(cdekQuote.price)}</b><span>{cdekQuote.daysMin === cdekQuote.daysMax ? `${cdekQuote.daysMin} дн.` : `${cdekQuote.daysMin}–${cdekQuote.daysMax} дн.`}</span><small>Расчёт по габаритам упаковки выбранных растений</small></div>}
+                {!cdekRepack && cdekQuotes.length > 1 && <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">{cdekQuotes.map((option) => <label key={option.tariffCode} className="cdek-tariff"><input type="radio" name="cdek-tariff" checked={option.tariffCode === cdekQuote?.tariffCode} onChange={() => setCdekTariffCode(option.tariffCode)} /><span><b>{option === cdekQuotes[0] ? "До пункта выдачи" : "Другой вариант до пункта выдачи"}</b><small>{deliveryDays(option)}</small></span><strong>{money(option.price)}</strong></label>)}</div>}
+                {!cdekRepack && cdekQuote && cdekQuotes.length === 1 && <div className="cdek-quote"><b>{money(cdekQuote.price)}</b><span>{deliveryDays(cdekQuote)}</span><small>Расчёт по габаритам упаковки выбранных растений</small></div>}
               </div>
             ) : (
               <div className="pickup-address"><strong>Рязань, ул. Новосёлов, 40А</strong><p>Самовывоз бесплатный. Сообщим, когда заказ будет готов к выдаче.</p></div>

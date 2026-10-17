@@ -231,7 +231,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       if (quoteData.quotes?.length) {
         const sorted = [...quoteData.quotes].sort((left, right) => left.price - right.price);
         // Same destination and transit window: the buyer only needs the cheapest.
-        const choices = sorted.filter((quote, index) => !sorted.slice(0, index).some(earlier => earlier.daysMax <= quote.daysMax && earlier.daysMin <= quote.daysMin));
+        const choices = sorted.filter((quote, index) => !sorted.slice(0, index).some(earlier => (earlier.daysMax || Infinity) <= (quote.daysMax || Infinity) && (earlier.daysMin || Infinity) <= (quote.daysMin || Infinity)));
         setCdekQuotes(choices);
         setCdekTariffCode(choices[0].tariffCode);
       } else {
