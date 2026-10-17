@@ -26,7 +26,7 @@ test("@desktop серверная динамическая подборка по
   await page.goto("/");
   const collection = page.locator(".preset", { hasText: "Можно в тёмную комнату" });
   await expect(collection).toBeVisible();
-  await expect(collection).toContainText("1 растений");
+  await expect(collection).toContainText("1 растение");
   await collection.click();
 
   const grid = page.locator(".storefront-grid");

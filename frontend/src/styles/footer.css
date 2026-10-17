@@ -21,3 +21,13 @@
 .store-footer-bottom { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:20px 40px; border-top:1px solid rgba(255,255,255,.17); color:rgba(255,255,255,.68); font-size:11px; }.store-footer-legal,.store-footer-address { display:flex; flex-wrap:wrap; align-items:center; gap:10px 22px; }.store-footer-address { margin:0 0 0 auto; justify-content:flex-end; font-style:normal; text-align:right; }.store-footer-bottom a { color:inherit; }.store-footer-bottom a:hover { color:white; }
 @media(max-width:900px){.store-footer{background-position:65% center}.store-footer-grid{grid-template-columns:minmax(360px,540px) 1fr}.store-footer::before{background:linear-gradient(90deg,rgba(12,34,17,.7),rgba(10,27,14,.32) 70%,rgba(9,24,13,.08))}}
 @media(max-width:700px){.store-footer{padding:0 20px;border-radius:24px 24px 0 0;background-position:72% center}.store-footer::before{background:rgba(11,31,16,.76)}.store-footer-grid{min-height:560px;padding:39px 0 32px;display:block}.store-footer-connect{max-width:none}.store-footer-connect h2{font-size:42px}.store-footer-intro{max-width:340px}.store-footer-contact-actions{grid-template-columns:1fr}.store-footer-chat,.store-footer-phone{width:100%;min-height:76px}.store-footer-bottom{padding:20px 0 calc(20px + env(safe-area-inset-bottom));align-items:flex-start;flex-direction:column;gap:16px}.store-footer-legal,.store-footer-address{gap:10px 16px}.store-footer-social-block{width:100%;order:2;justify-content:space-between}.store-footer-address{margin:0;text-align:left}}
+
+/* The footer is outside main, so main's bottom padding cannot protect it. */
+.store-footer-bottom { font-size:13px; color:#eee8dc; }
+.store-footer-social-block > span { color:#eee8dc; }
+.store-footer-socials a { width:44px; height:44px; }
+.store-footer-chat small,.store-footer-phone small { font-size:12px; color:#fff4e7; }
+@media(max-width:850px) {
+  body.has-store-tabs .store-footer { padding-bottom:calc(88px + env(safe-area-inset-bottom)); }
+  .store-footer-bottom { padding-block:20px; flex-wrap:wrap; }
+}

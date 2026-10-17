@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type TouchEvent } from "react";
 const legacyPlaceholder = "/assets/hero-monstera.webp";
 
 export function ProductGallery({ images, name, active, onSelect }: { images: string[]; name: string; active: number; onSelect: (index: number) => void }) {
-  const available = images.filter((image) => Boolean(image) && image !== legacyPlaceholder);
+  const available = images.filter((image) => Boolean(image) && image !== legacyPlaceholder && image !== "/assets/product-photo-pending.svg");
   const [open, setOpen] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);

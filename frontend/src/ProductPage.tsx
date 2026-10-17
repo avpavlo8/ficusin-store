@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { StoreHeader, STORAGE_EVENT, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
+import { StoreHeader, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PlantAbout, PlantCareGuide, PlantQuestions } from "./product/PlantCareGuide";
@@ -8,6 +8,7 @@ import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 import { track } from "./lib/analytics";
+import { useFavorites } from "./lib/favorites";
 
 const plantOnlyAttributeCodes = new Set(["plant_type","height_cm","pot_diameter_cm","light_level","watering","humidity","care_level","toxicity","pet_safety","placement","growth_habit","height_class","flowering"]);
 const PdpAdminTools = lazy(() => import("./PdpAdminTools").then((module) => ({ default: module.PdpAdminTools })));
@@ -25,10 +26,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const relatedTrack = useRef<HTMLDivElement>(null);
   const linkedCareTarget = useRef<string | null>(null);
   const adminUser = useStoreUser();
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("ficusin-favorites") || "[]") as string[]); }
-    catch { return new Set(); }
-  });
+  const [favorites, setFavorites] = useFavorites();
   const [cart, setCart] = useSharedCart();
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
@@ -104,8 +102,6 @@ export default function ProductPage({ slug }: { slug: string }) {
     setFavorites((current) => {
       const next = new Set(current);
       if (next.has(product.id)) next.delete(product.id); else next.add(product.id);
-      localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
-      window.dispatchEvent(new Event(STORAGE_EVENT));
       return next;
     });
   };

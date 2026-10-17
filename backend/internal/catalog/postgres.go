@@ -29,10 +29,10 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 				SELECT COALESCE(mirror.card_url, mirror.large_url, media.object_key)
 				FROM product_media media
 				LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
-				WHERE media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
+				WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
 				ORDER BY (media.variant_id=variant.id) DESC, media.is_primary DESC, media.sort_order, media.id
 				LIMIT 1
-			), '/assets/hero-monstera.webp'),
+			), '/assets/product-photo-pending.svg'),
 			COALESCE((
 				SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0))
 				FROM inventory item
@@ -106,7 +106,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		SELECT COALESCE(mirror.large_url, media.object_key)
 		FROM product_media media
 		LEFT JOIN media_mirror mirror ON mirror.source_url = media.object_key
-		WHERE media.product_id = $1 AND media.variant_id IS NULL
+		WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id = $1 AND media.variant_id IS NULL
 		ORDER BY media.is_primary DESC, media.sort_order, media.id
 	`, productID)
 	if err != nil {
@@ -133,7 +133,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			SELECT COALESCE(mirror.large_url, media.object_key)
 			FROM product_media media
 			LEFT JOIN media_mirror mirror ON mirror.source_url = media.object_key
-			WHERE media.product_id = $1
+			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id = $1
 			ORDER BY media.is_primary DESC, media.sort_order, media.id
 		`, productID)
 		if mediaErr == nil {
@@ -147,7 +147,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		}
 	}
 	if len(detail.Images) == 0 {
-		detail.Images = append(detail.Images, "/assets/hero-monstera.webp")
+		detail.Images = append(detail.Images, "/assets/product-photo-pending.svg")
 	}
 
 	variantRows, err := repository.pool.Query(ctx, `
@@ -161,7 +161,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 			variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.wholesale_min_qty,
 			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,media.object_key) ORDER BY media.is_primary DESC,media.sort_order,media.id)
 				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
-				WHERE media.variant_id=pv.id),'[]'::jsonb),
+				WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.variant_id=pv.id),'[]'::jsonb),
 			COALESCE((
 				WITH RECURSIVE ancestors AS (
 					SELECT id,parent_id,0 depth FROM categories WHERE id=$2
@@ -370,9 +370,9 @@ const recommendationsQuery = `
 		COALESCE((
 			SELECT COALESCE(mirror.card_url,media.object_key)
 			FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
-			WHERE media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=chosen.id)
+			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=chosen.id)
 			ORDER BY (media.variant_id=chosen.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
-		),'/assets/hero-monstera.webp'),
+		),'/assets/product-photo-pending.svg'),
 		chosen.label, chosen.stock, product.catalog_section,
 		COALESCE(product.plant_kind,''),COALESCE(product.light_level,''),COALESCE(product.watering,''),
 		COALESCE(product.height_class,''),COALESCE(product.care_level,''),COALESCE(product.placement,''),
@@ -549,9 +549,9 @@ const catalogListQuery = `
 		COALESCE((
 			SELECT COALESCE(mirror.card_url,media.object_key)
 			FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
-			WHERE media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=default_variant.id)
+			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=default_variant.id)
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
-		),'/assets/hero-monstera.webp'),
+		),'/assets/product-photo-pending.svg'),
 		default_variant.label, default_variant.stock,
 		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(NULLIF(pim.light_level,''),product.light_level,''),
 		COALESCE(NULLIF(pim.watering,''),product.watering,''),COALESCE(NULLIF(pim.height_class,''),product.height_class,''),COALESCE(NULLIF(pim.care_level,''),product.care_level,''),
@@ -683,7 +683,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 			COALESCE((
 				SELECT COALESCE(mirror.large_url,mirror.card_url,media.object_key)
 				FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
-				WHERE media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
+				WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
 				ORDER BY (media.variant_id=variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 			),''),
 			COALESCE(product.category_id,0),COALESCE(category.path,'Каталог'),

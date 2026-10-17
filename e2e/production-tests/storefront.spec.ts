@@ -154,6 +154,9 @@ test("production guest cart keeps an exact SKU and renders the server snapshot",
     await expect(page.getByRole("heading", { level: 1, name: "Корзина" })).toBeVisible();
     await expect(page.locator(".cart-line").filter({ hasText: product.name })).toBeVisible();
     await expect(page.getByRole("button", { name: /Оформить заказ/ }).first()).toBeVisible();
+    await page.getByRole("button", { name: /Оформить заказ/ }).first().click();
+    await expect(page.locator(".checkout-order-summary")).toContainText("Выберите способ получения");
+    await expect(page.locator(".checkout-order-summary")).toContainText("Растения, без доставки");
   } finally {
     const cleared = await page.request.put("/api/v1/cart", { data: { items: {} } });
     expect(cleared.ok()).toBeTruthy();

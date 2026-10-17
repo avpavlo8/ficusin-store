@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { counted } from "./lib/storefront-format";
 
 export type Product = {
   image?: string;
@@ -83,7 +84,7 @@ export function CollectionStrip<T extends Product>({
     const card = element?.querySelector<HTMLElement>(".preset");
     if (!element || !card) return;
     const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
-    element.scrollBy({ left: direction * (card.offsetWidth + gap), behavior: "smooth" });
+    element.scrollBy({ left: direction * (card.offsetWidth + gap), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   };
 
   useEffect(() => {
@@ -124,20 +125,18 @@ export function CollectionStrip<T extends Product>({
   return (
     <section className="storefront-preset-carousel" aria-label="Подборки растений">
       <button className="preset-arrow previous" type="button" onClick={() => scroll(-1)} aria-label="Предыдущие подборки" disabled={!scrollEdges.previous}>←</button>
-      <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`} role="list" ref={rail}>
-      {shown.map(({ preset, image, count, note }, index) => (
+      <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`} ref={rail}>
+      {shown.map(({ preset, image, count, note }) => (
         <a
           key={preset.id}
-          role="listitem"
           href={`/collections/${encodeURIComponent(preset.id)}`}
           className={activeSlug === preset.id ? "preset active" : "preset"}
           aria-current={activeSlug === preset.id ? "page" : undefined}
           title={note || `${preset.title} — ${count}`}
           style={{ backgroundImage: `url('${image}')` }}
         >
-          <span className="preset-number">{String(index + 1).padStart(2, "0")}</span>
           <span className="preset-title">{preset.title}</span>
-          <span className="preset-count">{count} растений</span>
+          <span className="preset-count">{counted(count, ["растение", "растения", "растений"])}</span>
           <span className="preset-go" aria-hidden="true">→</span>
         </a>
       ))}

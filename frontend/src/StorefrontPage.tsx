@@ -8,6 +8,8 @@ import { useSharedCart } from "./lib/cart";
 import { track } from "./lib/analytics";
 import { attributeLabel, attributeValue } from "./product/types";
 import { sharedAPIJSON } from "./lib/api";
+import { useFavorites } from "./lib/favorites";
+import { catalogSize, counted } from "./lib/storefront-format";
 
 type FilterDisplayMode = "select" | "chips" | "range";
 type FilterDataType = "text" | "number" | "boolean" | "enum" | "multi_enum";
@@ -168,13 +170,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, []);
 
   const [cart, setCart, cartMeta] = useSharedCart();
-  const [favorites, setFavorites] = useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(window.localStorage.getItem("ficusin-favorites") || "[]") as string[]);
-    } catch {
-      return new Set();
-    }
-  });
+  const [favorites, setFavorites] = useFavorites();
   const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
@@ -317,11 +313,11 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   // the UI rather than silently inventing a different product rule.
   const found = useMemo(() => searching ? searchProducts(products, query) : contextProducts, [products, contextProducts, query, searching]);
 
-  const facetPopulation = useMemo(() => {
-    if (landing?.type === "collection") return contextProducts;
-    if (category != null) return contextProducts;
-    return [];
-  }, [landing, category, contextProducts]);
+  const facetPopulation = searching ? found : contextProducts;
+  const [priceRange, setPriceRange] = useState<RangeValue>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return { min: params.get("priceMin") || "", max: params.get("priceMax") || "" };
+  });
 
   const facets = useMemo(() => {
     const result = new Map<string, Facet>();
@@ -344,7 +340,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       attributeDisplayLabels(attribute).forEach((label, value) => facet.labels.set(value, label));
       result.set(attribute.code, facet);
     }));
-    return [...result.entries()].filter(([, facet]) => facet.values.size > 0);
+    // A mixed catalogue only shares facets represented in every product section.
+    // A plants-only home/search gets the same useful filters as its category.
+    const sections = new Set(facetPopulation.map((product) => product.catalogSection));
+    return [...result.entries()].filter(([code, facet]) => facet.values.size > 0 && [...sections].every((section) => facetPopulation.some((product) => product.catalogSection === section && product.filterAttributes?.some((attribute) => attribute.code === code && attribute.filterable))));
   }, [facetPopulation]);
 
   const facetCodes = useMemo(() => new Set(facets.map(([code]) => code)), [facets]);
@@ -361,11 +360,13 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     const url = new URL(window.location.href);
     const managed: string[] = [];
     url.searchParams.forEach((_value, key) => {
-      if (key === "q" || key === "stock" || key === "sort" || key.startsWith("filter.") || key.startsWith("min.") || key.startsWith("max.")) managed.push(key);
+      if (key === "q" || key === "stock" || key === "sort" || key === "priceMin" || key === "priceMax" || key.startsWith("filter.") || key.startsWith("min.") || key.startsWith("max.")) managed.push(key);
     });
     managed.forEach((key) => url.searchParams.delete(key));
     if (query.trim()) url.searchParams.set("q", query.trim());
     if (inStockOnly) url.searchParams.set("stock", "1");
+    if (priceRange.min) url.searchParams.set("priceMin", priceRange.min);
+    if (priceRange.max) url.searchParams.set("priceMax", priceRange.max);
     if (sort !== "popular") url.searchParams.set("sort", sort);
     Object.entries(compatibleAttributeFilters).forEach(([code, value]) => { if (value) url.searchParams.set(`filter.${code}`, value); });
     Object.entries(compatibleRangeFilters).forEach(([code, value]) => {
@@ -373,16 +374,18 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       if (value.max) url.searchParams.set(`max.${code}`, value.max);
     });
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [query, inStockOnly, sort, compatibleAttributeFilters, compatibleRangeFilters]);
+  }, [query, inStockOnly, sort, priceRange, compatibleAttributeFilters, compatibleRangeFilters]);
 
   const activeFilterCount = useMemo(() => {
     const attributes = Object.values(compatibleAttributeFilters).filter(Boolean).length;
     const ranges = Object.values(compatibleRangeFilters).filter((value) => value.min || value.max).length;
-    return attributes + ranges + (inStockOnly ? 1 : 0);
-  }, [compatibleAttributeFilters, compatibleRangeFilters, inStockOnly]);
+    return attributes + ranges + (inStockOnly ? 1 : 0) + (priceRange.min || priceRange.max ? 1 : 0);
+  }, [compatibleAttributeFilters, compatibleRangeFilters, inStockOnly, priceRange]);
 
   const visible = useMemo(() => {
     let list = found;
+    if (priceRange.min) list = list.filter((item) => item.price >= Number(priceRange.min));
+    if (priceRange.max) list = list.filter((item) => item.price <= Number(priceRange.max));
     if (inStockOnly) list = list.filter((item) => (item.stock ?? 0) > 0);
     for (const [code, selected] of Object.entries(compatibleAttributeFilters)) {
       if (!selected) continue;
@@ -401,7 +404,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
     if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0));
     return list;
-  }, [found, inStockOnly, compatibleAttributeFilters, compatibleRangeFilters, sort]);
+  }, [found, inStockOnly, compatibleAttributeFilters, compatibleRangeFilters, sort, priceRange]);
 
   const landingTitle = landing?.type === "collection" ? collectionMeta?.title || "Подборка растений" : categoryName || "Каталог";
   const landingDescription = landing?.type === "collection"
@@ -429,6 +432,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     setInStockOnly(false);
     setAttributeFilters({});
     setRangeFilters({});
+    setPriceRange({ min: "", max: "" });
   };
 
   const toggleCategory = (id: number) => setOpened((current) => {
@@ -482,7 +486,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const toggleFavorite = (id: string) => setFavorites((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id); else next.add(id);
-    window.localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
     return next;
   });
 
@@ -494,52 +497,56 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
 
       {!searching && (landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
-        <div className="home-hero-copy"><h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1><p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p><div className="home-hero-actions"><a href="#catalog">Выбрать своё растение <span>→</span></a></div><div className="home-team"><img src="/assets/redesign/team-avatars.webp" alt="Команда Фикусин" /><span>За вашими растениями<br />ухаживает <b>команда любителей</b></span></div></div>
-        <div className="home-hero-visual"><img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" /><span className="home-stamp" role="img" aria-label="Живые растения для живых людей"><svg viewBox="0 0 132 132" aria-hidden="true"><defs><path id="stamp-top" d="M25 64 A41 41 0 0 1 107 64" /><path id="stamp-bottom" d="M25 74 A41 41 0 0 0 107 74" /></defs><circle cx="66" cy="66" r="58" /><circle cx="66" cy="66" r="52" strokeDasharray="2 4" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M66 82V55m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM55 85h22" /></svg></span><span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span><span className="home-note packing"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Аккуратно упакуем<br />и довезём в лучшем виде</b><i>→</i></span></div>
+        <div className="home-hero-copy"><h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1><p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p><div className="home-hero-actions"><a href="#catalog">Выбрать своё растение <span>→</span></a></div><div className="home-team"><img src="/assets/redesign/team-avatars.webp" alt="Команда Фикусин" /><span>За вашими растениями<br />ухаживает <b>команда Фикусина</b></span></div></div>
+        <div className="home-hero-visual"><img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" /><span className="home-stamp" role="img" aria-label="Живые растения для живых людей"><svg viewBox="0 0 132 132" aria-hidden="true"><defs><path id="stamp-top" d="M25 64 A41 41 0 0 1 107 64" /><path id="stamp-bottom" d="M25 74 A41 41 0 0 0 107 74" /></defs><circle cx="66" cy="66" r="58" /><circle cx="66" cy="66" r="52" strokeDasharray="2 4" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M66 82V55m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM55 85h22" /></svg></span><span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span><a className="home-note packing" href="/delivery-and-returns"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Как упаковываем<br />и доставляем растения</b><i aria-hidden="true">→</i></a></div>
       </section>)}
 
       {!searching && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
 
-      <section className="storefront-shell" id="catalog">
+      <section className={`storefront-shell${!landing && tree.length <= 1 ? " compact-navigation" : ""}`} id="catalog">
         <aside className="storefront-side">
           {!searching && <nav className="storefront-tree">
             <a href="/#catalog" className={!landing && category == null ? "active" : ""}><span>Весь каталог</span>{!loading && <small>{products.length}</small>}</a>
             {tree.map((root) => branch(root, 0))}
           </nav>}
-          <details className="storefront-filters" open={filtersOpen} onToggle={(event) => setFiltersOpen(event.currentTarget.open)}>
-            <summary>Подбор по характеристикам{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</summary>
-            <label className="storefront-check"><input type="checkbox" checked={inStockOnly} onChange={(event) => setInStockOnly(event.target.checked)} />Только в наличии</label>
-            {facets.length > 0 && <div className="storefront-attribute-filters"><p className="storefront-side-title">Характеристики</p>{facets.map(renderFacet)}</div>}
-          </details>
+
         </aside>
 
         <div className="storefront-main">
-          <div className="storefront-head"><div><h2>{searching ? "Результаты поиска" : landing ? landingTitle : "Каталог"}</h2><p>{loading ? "Загружаем товары…" : searching ? `Нашли ${visible.length}` : `${visible.length} товаров`}{!loading && searching && <span> по запросу «{query.trim()}»</span>}</p>{searching && landing && <p className="catalog-search-scope">Поиск выполняется по всему каталогу, без ограничения текущей {landing.type === "category" ? "категорией" : "подборкой"}.</p>}</div></div>
+          <div className="storefront-head"><div><h2>{searching ? "Результаты поиска" : landing ? landingTitle : "Каталог"}</h2><p>{loading ? "Загружаем товары…" : searching ? `Найдено: ${counted(visible.length, ["товар", "товара", "товаров"])}` : counted(visible.length, ["товар", "товара", "товаров"])}{!loading && searching && <span> по запросу «{query.trim()}»</span>}</p>{searching && landing && <p className="catalog-search-scope">Поиск выполняется по всему каталогу, без ограничения текущей {landing.type === "category" ? "категорией" : "подборкой"}.</p>}</div></div>
 
           <div className="home-catalog-toolbar">
             <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><span className="filter-sliders" aria-hidden="true">☷</span><span>Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
-            <div className="home-filter-group">{facets.slice(0, 6).filter(([, facet]) => facet.displayMode === "select" && facet.dataType !== "boolean").map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={compatibleAttributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true })).map((value) => ({ value, label: `${attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
+            <div className="home-filter-group">{facets.slice(0, 6).filter(([, facet]) => facet.displayMode === "select" && facet.dataType !== "boolean").map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={compatibleAttributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true })).map((value) => ({ value, label: `${facet.labels.get(value) || attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
             <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{ value: "popular", label: "По популярности" }, { value: "cheap", label: "Сначала дешевле" }, { value: "expensive", label: "Сначала дороже" }]} />
-            <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка">⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список">☰</button></div>
+            <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка" aria-pressed={viewMode === "grid"}>⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список" aria-pressed={viewMode === "list"}>☰</button></div>
           </div>
-          {filtersOpen && <div className="home-filter-panel"><strong>Все фильтры</strong><label className="storefront-check"><input type="checkbox" checked={inStockOnly} onChange={(event) => setInStockOnly(event.target.checked)} />Только в наличии</label><button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button></div>}
+          <div className="home-filter-panel" hidden={!filtersOpen}>
+            <div className="home-filter-panel-heading"><strong>Подобрать под ваши условия</strong><button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button></div>
+            <label className="storefront-check"><input type="checkbox" checked={inStockOnly} onChange={(event) => setInStockOnly(event.target.checked)} />Только в наличии</label>
+            <fieldset className="catalog-range-filter"><legend>Цена, ₽</legend><label>От<input aria-label="Цена: от" type="number" min="0" value={priceRange.min} onChange={(event) => setPriceRange((current) => ({ ...current, min: event.target.value }))} /></label><label>До<input aria-label="Цена: до" type="number" min="0" value={priceRange.max} onChange={(event) => setPriceRange((current) => ({ ...current, max: event.target.value }))} /></label></fieldset>
+            {facets.length > 0 && <div className="storefront-attribute-filters">{facets.map(renderFacet)}</div>}
+            <p className="catalog-filter-result" role="status">{counted(visible.length, ["товар", "товара", "товаров"])} по выбранным условиям</p>
+          </div>
 
           {loading && <p className="storefront-empty">Загружаем каталог…</p>}
           {!loading && error && <p className="storefront-empty">{error}</p>}
           {!loading && !error && visible.length === 0 && <div className="storefront-empty"><strong>{searching ? "Ничего не нашли" : "Здесь пока пусто"}</strong><p>{searching ? "Проверьте написание или поищите короче — например, «фикус» вместо «фикус бенджамина большой»." : activeFilterCount > 0 ? "По текущим фильтрам товаров нет. Сбросьте дополнительные фильтры или измените условия." : landing?.type === "collection" ? "В этой подборке сейчас нет доступных товаров." : "В этой категории сейчас нет доступных товаров."}</p>{activeFilterCount > 0 ? <button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button> : <a href="/#catalog">Показать весь каталог</a>}</div>}
 
+          {!searching && <p className="catalog-purchase-note">Показан размер выбранного варианта. Комплектацию уточним в чате. Под заказ — без оплаты до подтверждения.</p>}
           <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
             {visible.slice(0, visibleLimit).map((product) => {
               const inCart = cart[product.sku] ?? 0;
               const preorder = (product.stock ?? 0) <= 0;
               return <article key={product.id} className={preorder ? "storefront-card preorder" : "storefront-card"}>
-                <button className={favorites.has(product.id) ? "storefront-fav active" : "storefront-fav"} onClick={() => toggleFavorite(product.id)} aria-label="В избранное">♥</button>
+                <button className={favorites.has(product.id) ? "storefront-fav active" : "storefront-fav"} onClick={() => toggleFavorite(product.id)} aria-label={favorites.has(product.id) ? "Убрать из избранного" : "В избранное"} aria-pressed={favorites.has(product.id)}>♥</button>
                 <a className="storefront-image" href={`/product/${product.id}`} onClick={() => track("select_item", { productCode: product.id, sku: product.sku, value: product.price, properties: { list: landing ? landingTitle : categoryName || "catalog" } })}><img src={product.image} alt={product.name} loading="lazy" /></a>
                 <a className="storefront-name" href={`/product/${product.id}`} onClick={() => track("select_item", { productCode: product.id, sku: product.sku, value: product.price, properties: { list: landing ? landingTitle : categoryName || "catalog" } })}>{product.name}</a>
+                <p className="storefront-size">{catalogSize(product.size)}</p>
                 {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0, 2).map((attribute) => <span key={attribute.code}>{attribute.name}: {attributeValue(attribute.value, attribute.unit)}</span>)}</div>}
                 {product.latin && <p className="storefront-latin">{product.latin}</p>}
                 {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
-                <div className="storefront-buy"><span className="storefront-price"><strong>{money(product.price)}</strong>{preorder && <em>Под заказ</em>}</span>{inCart > 0 ? <div className="storefront-quantity"><button type="button" onClick={() => changeCartQuantity(product, -1)} aria-label="Уменьшить количество">−</button><button type="button" className="quantity-value" onClick={() => window.location.assign("/cart")} aria-label={`В корзине · ${inCart}`}>{inCart}</button><button type="button" onClick={() => changeCartQuantity(product, 1)} aria-label="Увеличить количество">+</button></div> : <button onClick={() => addToCart(product)} aria-label="В корзину" title="Добавить в корзину"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg><span className="cart-button-label">В корзину</span></button>}</div>
+                <div className="storefront-buy"><span className="storefront-price"><strong>{money(product.price)}</strong>{preorder ? <em>Под заказ</em> : <em className="available">В наличии</em>}</span>{inCart > 0 ? <div className="storefront-quantity"><button type="button" onClick={() => changeCartQuantity(product, -1)} aria-label="Уменьшить количество">−</button><button type="button" className="quantity-value" onClick={() => window.location.assign("/cart")} aria-label={`В корзине · ${inCart}`}>{inCart}</button><button type="button" onClick={() => changeCartQuantity(product, 1)} aria-label="Увеличить количество">+</button></div> : <button className={preorder ? "preorder-action" : undefined} onClick={() => addToCart(product)} aria-label={preorder ? "Заказать" : "В корзину"} title={preorder ? "Заказать без оплаты — менеджер уточнит поставку" : `Добавить в корзину · ${catalogSize(product.size)}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg><span className="cart-button-label">{preorder ? "Заказать" : "В корзину"}</span></button>}</div>
               </article>;
             })}
           </div>

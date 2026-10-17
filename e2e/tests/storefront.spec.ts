@@ -39,11 +39,10 @@ test("@desktop главная сохраняет утверждённую виз
   await expect(headerMenus.first().locator(".header-submenu > summary").filter({hasText:"Растения"}).first()).toBeVisible();
   await headerMenus.nth(1).locator(":scope > summary").click();
   await expect(headerMenus.first()).not.toHaveAttribute("open", "");
-  await expect(headerMenus.nth(1).getByRole("link", { name: /Аглаонема/ })).toHaveAttribute("href", /\/catalog\//);
+  await expect(headerMenus.nth(1).getByRole("link", { name: "Публичная оферта" })).toBeVisible();
   await page.locator(".home-hero-copy").click();
   await expect(headerMenus.nth(1)).not.toHaveAttribute("open", "");
-  await headerMenus.nth(2).locator(":scope > summary").click();
-  await expect(headerMenus.nth(2).getByRole("link", { name: "Публичная оферта" })).toBeVisible();
+  await expect(page.locator(".desktop-nav > .header-dropdown")).toHaveCount(2);
   await page.getByRole("button", { name: "Список" }).click();
   await expect(page.locator(".storefront-grid")).toHaveClass(/list-view/);
   await expect(page.locator(".storefront-main").getByRole("heading", { name: "Каталог" })).toHaveCount(1);
@@ -157,7 +156,7 @@ test("@desktop товар без остатка идёт как предзака
   await expect(card).toHaveClass(/preorder/);
   await expect(card.locator(".storefront-price em")).toHaveText("Под заказ");
   await expect(card.locator(".storefront-preorder")).toHaveCount(0);
-  await expect(card.getByRole("button", { name: "В корзину" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Заказать", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: /Фильтры/ }).click();
   await page.locator(".home-filter-panel").getByLabel("Только в наличии").check();

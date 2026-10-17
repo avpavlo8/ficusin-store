@@ -112,7 +112,7 @@ export const owner = {
 
 type Session = typeof guest | typeof owner;
 const carts = new WeakMap<Page, Record<string, number>>();
-const catalogue = [product, ficus, monstera, pot];
+export const catalogue = [product, ficus, monstera, pot];
 
 function cartResponse(page: Page) {
   const items = carts.get(page) || {};
