@@ -181,7 +181,8 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source)
-		VALUES($1,$2,'wildberries','sku','123456789','active',true,'manual')`, productID, variantID); err != nil {
+		VALUES($1,$2,'wildberries','sku','123456789','active',true,'manual')
+		ON CONFLICT(provider,id_type,external_id) DO UPDATE SET source='manual'`, productID, variantID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_batches(kind,source,manual_variant_id,manual_site_price_minor,created_by)
