@@ -452,3 +452,31 @@
 @media(prefers-reduced-motion:reduce){.pdp-photo-track{transition:none}}
 
 .pdp-lightbox-viewport{width:100%;height:100%;min-height:0;overflow:hidden;touch-action:pan-y pinch-zoom}
+
+/* Purchase details stay legible, while a phone always has a reachable next action. */
+.product-page .pdp-purchase-help,.product-page .pdp-preorder-help{margin:18px 0 0;color:#46513f;font:400 14px/1.6 system-ui,sans-serif}
+.product-page .pdp-purchase-help a{color:#294326;text-decoration:underline;text-underline-offset:3px}
+.product-page .pdp-order-column .pdp-cart-button.in-cart{background:#294326;color:#fff;border-color:#294326}
+.pdp-mobile-buy{display:none}
+@media(max-width:850px){
+.product-page .pdp-image{height:clamp(210px,32vh,300px);min-height:0;max-height:300px;aspect-ratio:auto}
+.product-page .pdp-photo-track{height:100%;min-height:0}
+.product-page .pdp-thumbs{display:none}
+.product-page .pdp-summary{padding:0}
+.product-page .pdp-summary h1{font-size:30px;line-height:1.12;margin-top:0}
+.product-page .pdp-identity{padding-bottom:8px}
+.product-page .pdp-identity .latin{font-size:16px;margin-bottom:8px}
+.product-page .pdp-identity .latin:after{content:none}
+.product-page .pdp-parameters{padding-top:8px}
+.product-page .pdp-order-column .pdp-commerce-box{margin-top:16px}
+.product-page .pdp-quantity{grid-column:auto;width:120px}
+.product-page .pdp-actions{grid-template-columns:120px minmax(0,1fr) 44px}
+.product-page .pdp-quantity button,.product-page .pdp-favorite{width:44px;height:48px}
+.product-page .pdp-actions .pdp-cart-button{font-size:14px;padding-inline:10px;min-height:48px}
+.product-page .pdp-price-row>strong{font-size:32px}
+.pdp-mobile-buy:not([hidden]){position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));z-index:49;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:#f8f3e9;border-top:1px solid #c3ccb9;box-shadow:0 -4px 16px #29432612}
+.pdp-mobile-buy strong{font-size:20px;display:block;color:#294326}.pdp-mobile-buy small{display:block;font-size:12px;color:#46513f;max-width:160px;overflow-wrap:anywhere}
+.pdp-mobile-buy button{min-height:48px;padding:12px 18px;border:0;border-radius:8px;background:#a13c28;color:#fff;font-size:15px;font-weight:650}
+.product-page{padding-bottom:90px}
+}
+@media(max-width:370px){.product-page .pdp-actions{grid-template-columns:1fr 44px}.product-page .pdp-quantity{grid-column:1/-1}}

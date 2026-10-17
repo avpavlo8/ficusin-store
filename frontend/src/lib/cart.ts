@@ -8,6 +8,8 @@ export type CartProduct = {
   id: string;
   sku: string;
   name: string;
+  potDiameterCm?: number;
+  heightCm?: number;
   variantLabel: string;
   price: number;
   image: string;

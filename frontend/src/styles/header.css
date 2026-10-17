@@ -121,7 +121,7 @@
   border-radius: 99px;
   background: var(--store-header-orange);
   color: white;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
 }
 .header.store-header .favorites-button:has(b) { color: var(--store-header-orange); }

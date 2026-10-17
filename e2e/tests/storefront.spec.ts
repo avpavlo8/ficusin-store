@@ -171,7 +171,7 @@ test("@desktop на карточке товара выбирается коли�
   await page.locator(".pdp-quantity button").last().click();
   await page.getByRole("button", { name: "В корзину" }).click();
 
-  await expect(page.getByRole("button", { name: "Удалить из корзины" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Перейти в корзину" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Питомцы")).toBeVisible();
   await page.getByRole("tab", { name: "Вопросы" }).click();
@@ -287,7 +287,7 @@ test("@desktop незаполненные темы ухода и вопросы 
   await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
-  await expect(page.locator(".purchase-review-meta")).toContainText("Пока без отзывов");
+  await expect(page.locator(".purchase-review-meta")).toHaveCount(0);
 });
 
 test("@desktop фотография открывается в полноэкранной галерее", async ({ page }) => {
@@ -354,15 +354,15 @@ test("@desktop корзина ведёт в отдельный пошаговы�
   const checkout = page.locator(".checkout-page-panel");
   await expect(checkout).toBeVisible();
   await expect(checkout.getByRole("heading", { name: "Оформление заказа" })).toBeVisible();
+  await expect(checkout.getByText("Способ доставки", {exact:true})).toBeVisible();
+  await checkout.getByRole("button", {name:"К контактам"}).click();
   await expect(checkout.getByLabel("Имя")).toBeVisible();
   await expect(checkout.getByLabel("Телефон")).toBeVisible();
   await expect(checkout.getByText("Способ доставки")).toBeHidden();
   await checkout.getByLabel("Имя").fill("Мария");
   await checkout.getByLabel("Телефон").fill("+7 900 123-45-67");
   await checkout.getByLabel("Email для чека").fill("maria@example.ru");
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
-  await expect(checkout.getByText("Способ доставки")).toBeVisible();
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.getByRole("button", { name: /Проверить заказ/ }).click();
   await expect(checkout.getByText("Способ оплаты")).toBeVisible();
   await expect(checkout.locator('input[name="consent"]')).toBeVisible();
 });
@@ -382,13 +382,13 @@ test("@desktop оформление отправляет заказ с норм�
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
   const checkout = page.locator(".checkout-page-panel");
+  await checkout.getByRole("button", {name:"К контактам"}).click();
   await checkout.getByLabel("Имя").fill("Александр");
   await checkout.getByLabel("Телефон").fill("9151234567");
   await checkout.getByLabel("Email для чека").fill("buyer@example.com");
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.getByRole("button", { name: /Проверить заказ/ }).click();
   await checkout.locator('input[name="consent"]').check();
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.getByRole("button", { name: /Оформить самовывоз/ }).click();
 
   await expect(checkout.getByRole("heading", { name: "Заказ принят" }).last()).toBeVisible();
   await expect(checkout.getByText("#WEB-1001")).toBeVisible();

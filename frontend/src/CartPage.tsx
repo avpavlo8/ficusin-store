@@ -18,7 +18,7 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
     return {catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name})):[]};
   },[categories]);
   return <main className={checkout ? "cart-page checkout-page" : "cart-page"} aria-busy={cartMeta.status === "loading"}>
-    <StoreHeader cartCount={Object.values(cart).reduce((sum, value) => sum + value, 0)} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={(id) => { window.location.assign(`/?category=${id}#catalog`); }} />
+    <StoreHeader showTabBar={!checkout} showSearch={!checkout} cartCount={Object.values(cart).reduce((sum, value) => sum + value, 0)} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} onHomeCategoryPick={(id) => { window.location.assign(`/?category=${id}#catalog`); }} />
     <CheckoutHost cart={cart} products={cartMeta.lines} cartOpen={!checkout}
       cartStatus={cartMeta.status} cartError={cartMeta.error} missingCartItems={cartMeta.missingSkus.length} onCartRetry={cartMeta.retry}
       cartPage={!checkout} checkoutPage={checkout} onCartOpenChange={(open) => { if (!open && !checkout) window.location.assign("/#catalog"); }} onCartChange={setCart} />
