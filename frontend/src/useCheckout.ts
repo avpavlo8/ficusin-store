@@ -87,7 +87,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       name: current.name || profile?.name || "", phone: current.phone || profile?.phone || "",
       email: current.email || profile?.email || "", address: current.address || profile?.address || "",
     });
-    if (changedOwner) setStep(2);
+    if (changedOwner) { clearCheckoutDraft(); setStep(2); }
   }, [draft]);
 
   useEffect(() => {
@@ -247,19 +247,19 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
 
   const restoredCity = useRef(false);
   useEffect(() => {
-    if (restoredCity.current || !draft?.city || !cartLines.length) return;
+    if (!checkoutOpen || restoredCity.current || !draft?.city || !cartLines.length) return;
     restoredCity.current = true;
     lastItemsKey.current = itemsKey;
     void chooseCdekCity(draft.city, draft.officeCode);
-  }, [draft, cartLines.length, chooseCdekCity, itemsKey]);
+  }, [draft, cartLines.length, chooseCdekCity, itemsKey, checkoutOpen]);
 
   // Requote after a quantity/variant change; an old tariff must not be reused.
   const lastItemsKey = useRef(itemsKey);
   useEffect(() => {
     if (lastItemsKey.current === itemsKey) return;
     lastItemsKey.current = itemsKey;
-    if (delivery === "cdek" && cdekCity && cartLines.length) void chooseCdekCity(cdekCity, cdekOfficeCode);
-  }, [itemsKey, delivery, cdekCity, cdekOfficeCode, chooseCdekCity, cartLines.length]);
+    if (checkoutOpen && delivery === "cdek" && cdekCity && cartLines.length) void chooseCdekCity(cdekCity, cdekOfficeCode);
+  }, [itemsKey, delivery, cdekCity, cdekOfficeCode, chooseCdekCity, cartLines.length, checkoutOpen]);
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

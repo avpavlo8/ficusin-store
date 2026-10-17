@@ -35,6 +35,11 @@ test("@phone @desktop purchase starts with delivery and a usable order summary",
   const summary=page.locator(".checkout-order-summary");
   await expect(summary).toContainText("Выберите способ получения");
   if ((page.viewportSize()?.width ?? 0)<900) await summary.locator("summary").click();
+  else {
+    await summary.locator("summary").click();
+    await expect(summary.locator("details")).not.toHaveAttribute("open", "");
+    await summary.locator("summary").click();
+  }
   await expect(summary).toContainText("Горшок Ø 12 см");
   if ((page.viewportSize()?.width ?? 0)<900) {
     await expect(page.locator(".tab-bar")).toHaveCount(0);

@@ -216,6 +216,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     deliveryFee, total, submitting, deliveryFeePending, originalSubtotal, discountAmount, discountBps,
   } = props;
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
+  const Heading = page ? "h1" : "h2";
   const formRef = useRef<HTMLFormElement>(null);
   const go = (next: 1 | 2 | 3) => {
     setStep(next);
@@ -257,7 +258,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
 
   return (
     <aside className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`} aria-hidden={!checkoutOpen} inert={!checkoutOpen}>
-      <div className="drawer-head"><div><h2>{confirmationPending ? "Заказ ждёт подтверждения" : orderNumber ? "Заказ принят" : "Оформление заказа"}</h2></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
+      <div className="drawer-head"><div><Heading>{confirmationPending ? "Заказ ждёт подтверждения" : orderNumber ? "Заказ принят" : "Оформление заказа"}</Heading></div>{page ? <a href="/cart" aria-label="Вернуться в корзину">←</a> : <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">×</button>}</div>
       {orderNumber ? (
         <div className="success">
           <div className="success-copy">
