@@ -243,6 +243,11 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 		if _, err = tx.Exec(ctx, `UPDATE product_media SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move product media: %w", err)
 		}
+		if _, err = tx.Exec(ctx, `INSERT INTO catalog_supplementary_media(product_id,object_key,reason,created_at)
+			SELECT $1,object_key,reason,created_at FROM catalog_supplementary_media WHERE product_id=$2
+			ON CONFLICT(product_id,object_key) DO NOTHING`, target.ID, sourceID); err != nil {
+			return fmt.Errorf("move supplementary media classification: %w", err)
+		}
 		// The job is transient, but its state is retained in the audit
 		// snapshot. A worker must not enrich a card being removed.
 		if _, err = tx.Exec(ctx, `DELETE FROM catalog_ai_enrichment_jobs WHERE product_id=$1`, sourceID); err != nil {
@@ -276,6 +281,7 @@ func mergeAuditSnapshot(ctx context.Context, tx pgx.Tx, productID int64) (json.R
 		'externalIds',COALESCE((SELECT jsonb_agg(to_jsonb(external) ORDER BY external.id) FROM product_external_ids external WHERE external.product_id=product.id),'[]'::jsonb),
 		'attributes',COALESCE((SELECT jsonb_agg(to_jsonb(attribute) ORDER BY attribute.attribute_id) FROM product_attribute_values attribute WHERE attribute.product_id=product.id),'[]'::jsonb),
 		'media',COALESCE((SELECT jsonb_agg(to_jsonb(media) ORDER BY media.id) FROM product_media media WHERE media.product_id=product.id),'[]'::jsonb),
+		'supplementaryMedia',COALESCE((SELECT jsonb_agg(to_jsonb(media) ORDER BY media.object_key) FROM catalog_supplementary_media media WHERE media.product_id=product.id),'[]'::jsonb),
 		'urlAliases',COALESCE((SELECT jsonb_agg(alias ORDER BY alias) FROM product_url_aliases WHERE product_id=product.id),'[]'::jsonb),
 		'collectionIds',COALESCE((SELECT jsonb_agg(collection_id ORDER BY collection_id) FROM collection_products WHERE product_id=product.id),'[]'::jsonb),
 		'orderItemIds',COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM order_items WHERE product_id=product.id),'[]'::jsonb),
@@ -609,7 +615,7 @@ func checkKnownProductReferences(ctx context.Context, tx pgx.Tx) error {
 		"products": true, "product_variants": true, "product_external_ids": true,
 		"product_attribute_values": true, "collection_products": true, "product_media": true,
 		"product_reviews": true, "order_items": true, "catalog_ai_enrichment_jobs": true,
-		"product_url_aliases": true, "avito_listing_products": true,
+		"product_url_aliases": true, "avito_listing_products": true, "catalog_supplementary_media": true,
 		"launch_hidden_nonplant_products":    true,
 		"launch_hidden_extra_plant_products": true, "launch_hidden_extra_plant_variants": true,
 	}

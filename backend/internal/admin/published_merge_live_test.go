@@ -110,6 +110,17 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO product_media(product_id,object_key,alt_text) VALUES($1,$2,'Merge test')`, sourceID, "https://example.invalid/"+sourceSlug+".jpg"); err != nil {
 		t.Fatal(err)
 	}
+	// A shared key exercises conflict handling; the source-only key must move.
+	for _, entry := range []struct {
+		productID int64
+		key       string
+	}{
+		{targetID, "shared-leaflet"}, {sourceID, "shared-leaflet"}, {sourceID, "source-leaflet"},
+	} {
+		if _, err := pool.Exec(ctx, `INSERT INTO catalog_supplementary_media(product_id,object_key,reason) VALUES($1,$2,'Merge test')`, entry.productID, entry.key); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := pool.Exec(ctx, `INSERT INTO collection_products(collection_id,product_id)
 		SELECT id,$1 FROM collections WHERE slug='easy'`, sourceID); err != nil {
 		t.Fatal(err)
@@ -205,6 +216,13 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM product_media WHERE product_id=$1 AND variant_id=$2`, targetID, sourceVariantID).Scan(&photoCount); err != nil {
 		t.Fatal(err)
+	}
+	var supplementaryCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM catalog_supplementary_media WHERE product_id=$1`, targetID).Scan(&supplementaryCount); err != nil {
+		t.Fatal(err)
+	}
+	if supplementaryCount != 2 {
+		t.Fatalf("lost supplementary media classification: %d", supplementaryCount)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM product_external_ids WHERE product_id=$1 AND variant_id=$2 AND external_id=$3 AND status='active'`, targetID, sourceVariantID, sourceSlug+"-offer").Scan(&externalCount); err != nil {
 		t.Fatal(err)
