@@ -68,3 +68,25 @@ test("production clearing a search restores the catalogue without another Enter"
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.locator(".storefront-card").first()).toBeVisible();
 });
+
+
+test("production categories are available beside the catalogue and open the chosen plant kind", async ({page,request})=>{
+  const [catalogResponse,categoryResponse]=await Promise.all([request.get("/api/v1/catalog"),request.get("/api/v1/categories")]);
+  expect(catalogResponse.ok()).toBeTruthy(); expect(categoryResponse.ok()).toBeTruthy();
+  const {products}=await catalogResponse.json() as {products:Array<{id:string;categoryId:number}>};
+  const {categories}=await categoryResponse.json() as {categories:Array<{id:number;parentId:number|null;slug:string}>};
+  const category=categories.find(item=>products.some(product=>product.categoryId===item.id)&&!categories.some(child=>child.parentId===item.id));
+  expect(category).toBeTruthy();
+  await page.goto("/");
+  const picker=page.getByLabel("Категория",{exact:true});
+  await expect(picker.locator(`option[value="${category!.slug}"]`)).toHaveCount(1);
+  await picker.selectOption(category!.slug);
+  await expect(page).toHaveURL(new RegExp(`/catalog/${category!.slug}$`));
+  await expect(picker).toHaveValue(category!.slug);
+  await expect(page.locator(".storefront-card").first()).toBeVisible();
+  const links=await page.locator(".storefront-card .storefront-name").evaluateAll(els=>els.map(el=>el.getAttribute("href")!));
+  for(const link of links) expect(products.find(product=>link===`/product/${product.id}`)?.categoryId).toBe(category!.id);
+  await picker.selectOption("");
+  await expect(page).toHaveURL(/\/#catalog$/);
+  await expect(picker).toHaveValue("");
+});

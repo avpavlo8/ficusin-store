@@ -527,3 +527,7 @@
 .storefront-buy > .preorder-action .cart-button-label { color:inherit; }
 @media(max-width:500px) { .storefront-buy > button { width:100%; } }
 @media(hover:none) { .storefront-buy button:hover { transform:none; } }
+
+.catalog-category-picker { display:grid; gap:6px; width:min(100%,420px); margin:0 0 16px; color:var(--home-ink); font-size:14px; font-weight:600; }
+.catalog-category-picker select { width:100%; min-width:0; min-height:48px; padding:10px 14px; border:1px solid #ded1c2; border-radius:11px; background:rgba(255,255,255,.45); color:inherit; font:inherit; font-weight:400; cursor:pointer; }
+.catalog-category-picker select:focus-visible { outline:2px solid var(--home-orange); outline-offset:3px; }
