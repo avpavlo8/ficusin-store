@@ -807,6 +807,22 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	if status == "received" || status == "cancelled" {
 		return OrderDetail{}, ErrInvalidInput
 	}
+	var activeApproved bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM procurement_action_batches
+			WHERE procurement_order_id = $1 AND status NOT IN ('draft', 'cancelled', 'completed'))
+	`, orderID).Scan(&activeApproved); err != nil {
+		return OrderDetail{}, fmt.Errorf("check active procurement actions: %w", err)
+	}
+	if activeApproved {
+		if err := refreshPricesAfterFailedReceipt(ctx, tx, actor, orderID, input, settings); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return OrderDetail{}, fmt.Errorf("commit procurement price refresh: %w", err)
+		}
+		return store.OrderDetail(ctx, orderID)
+	}
 
 	// The confirmed supplier alias is the operator's explicit identity decision.
 	// Older imports can still carry the pre-match Saby id on the order line
@@ -838,16 +854,6 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 			)
 	`, orderID); err != nil {
 		return OrderDetail{}, fmt.Errorf("reconcile procurement line identity before calculation: %w", err)
-	}
-	var activeApproved bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM procurement_action_batches
-			WHERE procurement_order_id = $1 AND status NOT IN ('draft', 'cancelled', 'completed'))
-	`, orderID).Scan(&activeApproved); err != nil {
-		return OrderDetail{}, fmt.Errorf("check active procurement actions: %w", err)
-	}
-	if activeApproved {
-		return OrderDetail{}, ErrInvalidInput
 	}
 	if kind == KindInternational {
 		if err := repairStoredInvoiceLoadUnits(ctx, tx, orderID); err != nil {
