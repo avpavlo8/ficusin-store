@@ -274,6 +274,13 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     return order(kids.get(null) ?? []).map(build);
   }, [categories, products]);
 
+  const categoryOptions = useMemo(() => {
+    const collect = (nodes: CategoryNode[], depth = 0): Array<{ slug: string; label: string }> => nodes.flatMap((node) => node.count > 0
+      ? [{ slug: node.slug, label: `${"  ".repeat(depth)}${node.name} · ${node.count}` }, ...collect(node.children, depth + 1)]
+      : []);
+    return collect(tree);
+  }, [tree]);
+
   const headerMenus = useMemo(() => {
     const children = new Map<number | null, Category[]>();
     categories.forEach((item) => children.set(item.parentId, [...(children.get(item.parentId) || []), item]));
@@ -490,6 +497,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   if (categoryNotFound || collectionNotFound) return <NotFoundPage />;
+  const showCategoryPicker = !searching && (!landing || landing.type === "category") && categoryOptions.length > 0;
+
   if (routePending) return <main className={`storefront${searching ? " searching" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
 
   return (
@@ -503,7 +512,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
       {!searching && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
 
-      <section className={`storefront-shell${!landing && tree.length <= 1 ? " compact-navigation" : ""}`} id="catalog">
+      <section className={`storefront-shell${!landing && tree.length <= 1 ? " compact-navigation" : ""}${showCategoryPicker ? " has-category-picker" : ""}`} id="catalog">
         <aside className="storefront-side">
           {!searching && <nav className="storefront-tree">
             <a href="/#catalog" className={!landing && category == null ? "active" : ""}><span>Весь каталог</span>{!loading && <small>{products.length}</small>}</a>
@@ -514,6 +523,14 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
         <div className="storefront-main">
           <div className="storefront-head"><div><h2>{searching ? "Результаты поиска" : landing ? landingTitle : "Каталог"}</h2><p>{loading ? "Загружаем товары…" : searching ? `Найдено: ${counted(visible.length, ["товар", "товара", "товаров"])}` : counted(visible.length, ["товар", "товара", "товаров"])}{!loading && searching && <span> по запросу «{query.trim()}»</span>}</p>{searching && landing && <p className="catalog-search-scope">Поиск выполняется по всему каталогу, без ограничения текущей {landing.type === "category" ? "категорией" : "подборкой"}.</p>}</div></div>
+
+          {showCategoryPicker && <label className="catalog-category-picker">Категория
+            <select aria-label="Категория" value={activeCategory?.slug || ""} onChange={(event) => window.location.assign(event.target.value ? `/catalog/${encodeURIComponent(event.target.value)}` : "/#catalog")}>
+              <option value="">Весь каталог · {products.length}</option>
+              {activeCategory && !categoryOptions.some((option) => option.slug === activeCategory.slug) && <option value={activeCategory.slug}>{activeCategory.name} · {contextProducts.length}</option>}
+              {categoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}
+            </select>
+          </label>}
 
           <div className="home-catalog-toolbar">
             <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><span className="filter-sliders" aria-hidden="true">☷</span><span>Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>

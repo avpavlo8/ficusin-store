@@ -115,3 +115,32 @@ test("@desktop @phone clearing a submitted search restores the catalogue and URL
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.locator(".storefront-card")).toHaveCount(catalogue.length);
 });
+
+
+test("@desktop @phone categories remain visible with one root and nested plant kinds", async ({page})=>{
+  await mockApi(page);
+  await page.route("**/api/v1/categories",route=>route.fulfill({json:{categories:[
+    {id:1,parentId:null,name:"Растения",slug:"plants",sortOrder:0},
+    {id:3,parentId:1,name:"Комнатные растения",slug:"indoor-plants",sortOrder:0},
+    {id:4,parentId:3,name:"Аглаонема",slug:"aglaonema",sortOrder:0},
+    {id:5,parentId:3,name:"Фикус",slug:"ficus",sortOrder:1},
+    {id:99,parentId:3,name:"Пустая категория",slug:"empty-category",sortOrder:2},
+  ]}}));
+  await page.goto("/");
+  const picker=page.getByLabel("Категория",{exact:true});
+  await expect(picker).toBeVisible();
+  await expect(picker.locator('option[value="ficus"]')).toContainText("Фикус · 2");
+  await expect(picker.locator('option[value="empty-category"]')).toHaveCount(0);
+  await page.goto("/catalog/indoor-plants");
+  await expect(picker).toHaveValue("indoor-plants");
+  await expect(picker.locator('option[value="indoor-plants"]')).toContainText("Комнатные растения · 3");
+  await picker.selectOption("ficus");
+  await expect(page).toHaveURL(/\/catalog\/ficus$/);
+  await expect(picker).toHaveValue("ficus");
+  if((await page.viewportSize())!.width<=850) await expect(page.locator(".storefront-side")).toBeHidden();
+  await expect(page.locator(".storefront-card")).toHaveCount(2);
+  await expect(page.locator(".storefront-card").filter({hasText:"Аглаонема"})).toHaveCount(0);
+  await picker.selectOption("");
+  await expect(page).toHaveURL(/\/#catalog$/);
+  await expect(page.locator(".storefront-card")).toHaveCount(catalogue.length);
+});
