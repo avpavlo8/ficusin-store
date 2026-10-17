@@ -87,6 +87,7 @@ type SabyCatalogRefresher interface {
 }
 
 type ActionExecution struct {
+	PendingMessage      string
 	DraftCreated        bool
 	Completed           bool
 	ExternalOperationID string

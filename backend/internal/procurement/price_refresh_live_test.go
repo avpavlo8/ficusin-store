@@ -24,8 +24,8 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 	}
 	defer pool.Close()
 	for _, tc := range []struct {
-		name, batchStatus, itemStatus                    string
-		changedCosts, missingCost, otherBatch, wantError bool
+		name, batchStatus, itemStatus, kind, channel, otherStatus string
+		changedCosts, missingCost, otherBatch, wantError          bool
 	}{
 		{name: "failed_receipt", batchStatus: "partially_completed", itemStatus: "failed"},
 		{name: "failed_batch", batchStatus: "failed", itemStatus: "failed"},
@@ -33,6 +33,11 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 		{name: "queued_receipt", batchStatus: "processing", itemStatus: "queued", wantError: true},
 		{name: "changed_delivery", batchStatus: "partially_completed", itemStatus: "failed", changedCosts: true, wantError: true},
 		{name: "missing_cost", batchStatus: "partially_completed", itemStatus: "failed", missingCost: true, wantError: true},
+		{name: "terminal_prices", batchStatus: "partially_completed", itemStatus: "failed", kind: "prices", channel: "wb"},
+		{name: "failed_ozon_prices", batchStatus: "failed", itemStatus: "failed", kind: "prices", channel: "ozon"},
+		{name: "receipt_and_terminal_prices", batchStatus: "partially_completed", itemStatus: "failed", otherBatch: true, otherStatus: "failed"},
+		{name: "receipt_and_running_prices", batchStatus: "partially_completed", itemStatus: "failed", otherBatch: true, otherStatus: "processing", wantError: true},
+		{name: "running_prices", batchStatus: "processing", itemStatus: "queued", kind: "prices", channel: "wb", wantError: true},
 		{name: "unfinished_prices", batchStatus: "partially_completed", itemStatus: "failed", otherBatch: true, wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,6 +47,13 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 			}
 			defer tx.Rollback(ctx) //nolint:errcheck
 			unique := time.Now().UnixNano()
+			kind, channel := tc.kind, tc.channel
+			if kind == "" {
+				kind = "receipt"
+			}
+			if channel == "" {
+				channel = "saby_receipt"
+			}
 			var actor, supplier, order, line, batch, product, variant int64
 			must := func(err error) {
 				t.Helper()
@@ -55,8 +67,8 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 			must(tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,is_active) VALUES($1,'D12',50000,1) RETURNING id`, product).Scan(&variant))
 			must(tx.QueryRow(ctx, `INSERT INTO procurement_orders(supplier_id,order_number,source_kind,currency,status,exchange_rate,delivery_to_moscow_rub,delivery_to_ryazan_rub,additional_costs_rub,calculated_at,calculation_version) VALUES($1,$2,'payment_invoice','RUB','ready_to_receive',1,20,10,5,CURRENT_TIMESTAMP,1) RETURNING id`, supplier, fmt.Sprintf("REFRESH-%d", unique)).Scan(&order))
 			must(tx.QueryRow(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,canonical_variant_id,raw_name,ordered_qty,invoiced_qty,unit_price,match_status,reconciliation_status,purchase_unit_rub,trolley_delivery_unit_rub,ryazan_delivery_unit_rub,additional_purchase_unit_rub,unit_cost_rub,proposed_retail_rub,channel_costs) VALUES($1,$2,'Refresh plant',1,1,100,'confirmed','matched',100,20,10,5,135,270,'{}') RETURNING id`, order, variant).Scan(&line))
-			must(tx.QueryRow(ctx, `INSERT INTO procurement_action_batches(procurement_order_id,kind,status,calculation_version) VALUES($1,'receipt',$2,1) RETURNING id`, order, tc.batchStatus).Scan(&batch))
-			_, err = tx.Exec(ctx, `INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,new_value,quantity,status,payload,external_operation_id,error_message) VALUES($1,$2,'saby_receipt','plant',135,1,$3,'{"lines":[{"sabyId":"plant","quantity":1}]}','external-468','Original receipt failure')`, batch, line, tc.itemStatus)
+			must(tx.QueryRow(ctx, `INSERT INTO procurement_action_batches(procurement_order_id,kind,status,calculation_version) VALUES($1,$3,$2,1) RETURNING id`, order, tc.batchStatus, kind).Scan(&batch))
+			_, err = tx.Exec(ctx, `INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,new_value,quantity,status,payload,external_operation_id,error_message) VALUES($1,$2,$4,'plant',135,1,$3,'{"lines":[{"sabyId":"plant","quantity":1}]}','external-468','Original receipt failure')`, batch, line, tc.itemStatus, channel)
 			must(err)
 			if tc.missingCost {
 				_, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET unit_cost_rub=NULL WHERE id=$1`, line)
@@ -65,6 +77,14 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 			if tc.otherBatch {
 				_, err = tx.Exec(ctx, `INSERT INTO procurement_action_batches(procurement_order_id,kind,status) VALUES($1,'prices','partially_completed')`, order)
 				must(err)
+				if tc.otherStatus != "" {
+					var extraBatch int64
+					must(tx.QueryRow(ctx, `SELECT MAX(id) FROM procurement_action_batches WHERE procurement_order_id=$1 AND kind='prices'`, order).Scan(&extraBatch))
+					_, err = tx.Exec(ctx, `UPDATE procurement_action_batches SET status=$2 WHERE id=$1`, extraBatch, tc.otherStatus)
+					must(err)
+					_, err = tx.Exec(ctx, `INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,new_value,status) VALUES($1,$2,'ozon',400,$3)`, extraBatch, line, tc.otherStatus)
+					must(err)
+				}
 			}
 			input := CalculationInput{ExchangeRate: 1, DeliveryToMoscowRUB: 20, DeliveryToRyazanRUB: 10, AdditionalCostsRUB: 5}
 			if tc.changedCosts {
@@ -73,7 +93,7 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 			zero := 0.0
 			profile := ChannelCosts{CommissionRate: &zero, AcquiringRate: &zero, PackagingRUB: &zero, LogisticsRUB: &zero, LossRUB: &zero}
 			settings := PricingSettings{Version: 42, RetailMarkupMultiplier: 2, TaxRate: 0.08, PriceChangeThreshold: 0.1, Economics: PricingEconomics{Channels: map[string]ChannelCosts{"site": profile, "wb": profile, "ozon": profile}}}
-			err = refreshPricesAfterFailedReceipt(ctx, tx, Actor{CustomerID: actor, Role: "owner"}, order, input, settings)
+			err = refreshPricesAfterTerminalActions(ctx, tx, Actor{CustomerID: actor, Role: "owner"}, order, input, settings)
 			if tc.wantError {
 				var userFacing *UserFacingError
 				if !errors.As(err, &userFacing) {

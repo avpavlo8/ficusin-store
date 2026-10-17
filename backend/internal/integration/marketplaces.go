@@ -550,7 +550,9 @@ func (executor *MarketplaceExecutor) executeWBGroup(ctx context.Context, items [
 	if err != nil {
 		var remote *remoteError
 		if errors.As(err, &remote) && remote.Status == http.StatusNotFound {
-			return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID, RetryAfter: 5 * time.Second}, nil)
+			// A missing history entry does not mean that an upload is still
+			// running. Read the actual seller price; never upload it again.
+			return executor.verifyWBPrices(ctx, items)
 		}
 		result := marketplaceRetryExecution(err)
 		result.ExternalOperationID = items[0].ExternalOperationID
@@ -565,7 +567,10 @@ func (executor *MarketplaceExecutor) executeWBGroup(ctx context.Context, items [
 	case 4, 5, 6:
 		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID}, fmt.Errorf("Wildberries завершил загрузку со статусом %d", response.Data.Status))
 	default:
-		return sameOutcome(items, procurement.ActionExecution{ExternalOperationID: items[0].ExternalOperationID, RetryAfter: 5 * time.Second}, nil)
+		// History can remain pending after the seller price is already live.
+		// Bounded readback also makes missing/deleted cards a visible error
+		// instead of blocking the procurement indefinitely.
+		return executor.verifyWBPrices(ctx, items)
 	}
 }
 
@@ -597,6 +602,8 @@ func (executor *MarketplaceExecutor) verifyWBPrices(ctx context.Context, items [
 		message := "Wildberries ещё не показывает подтверждённую цену продавца"
 		if len(prices) > 0 {
 			message = fmt.Sprintf("Цена Wildberries отличается от предложенных %.2f ₽: %v", item.NewValue, prices)
+		} else {
+			message = fmt.Sprintf("Wildberries не вернул товар с nmID %s. Проверьте действующую связь карточки", item.ExternalArticle)
 		}
 		outcomes = append(outcomes, pendingPriceReadback(item, message))
 	}
@@ -646,7 +653,7 @@ func pendingPriceReadback(item procurement.ActionItem, message string) procureme
 		return procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID},
 			Err: errors.New(message + ". Повторная проверка не отправит цену заново; для другой цены создайте новое предложение.")}
 	}
-	return procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID, RetryAfter: priceCheckDelay}}
+	return procurement.ActionOutcome{ItemID: item.ID, Result: procurement.ActionExecution{ExternalOperationID: item.ExternalOperationID, RetryAfter: priceCheckDelay, PendingMessage: message}}
 }
 
 func (executor *MarketplaceExecutor) executeOzon(ctx context.Context, item procurement.ActionItem) (procurement.ActionExecution, error) {
@@ -863,9 +870,19 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		request.Header.Set(name, value)
 	}
 	if channel, bucket := integrationRequestLane(endpoint); channel != "" && executor.requestLimiter != nil {
-		wait, err := executor.requestLimiter.ReserveIntegrationRequest(ctx, channel, bucket, marketplacePace(request.URL.Hostname()))
+		wait, err := executor.requestLimiter.IntegrationRequestDelay(ctx, channel, bucket)
+		if err != nil {
+			return fmt.Errorf("check %s API pause: %w", channel, err)
+		}
+		if wait > 30*time.Second {
+			return &remoteError{Status: http.StatusTooManyRequests, RetryAfter: wait, Path: requestPath(endpoint), Deferred: true}
+		}
+		wait, err = executor.requestLimiter.ReserveIntegrationRequest(ctx, channel, bucket, marketplacePace(request.URL.Hostname()))
 		if err != nil {
 			return fmt.Errorf("reserve %s API request: %w", channel, err)
+		}
+		if wait > 30*time.Second {
+			return &remoteError{Status: http.StatusTooManyRequests, RetryAfter: wait, Path: requestPath(endpoint), Deferred: true}
 		}
 		if err := waitForContext(ctx, wait); err != nil {
 			return err
@@ -873,6 +890,9 @@ func (executor *MarketplaceExecutor) request(ctx context.Context, method, endpoi
 		wait, err = executor.requestLimiter.IntegrationRequestDelay(ctx, channel, bucket)
 		if err != nil {
 			return fmt.Errorf("check %s API pause: %w", channel, err)
+		}
+		if wait > 30*time.Second {
+			return &remoteError{Status: http.StatusTooManyRequests, RetryAfter: wait, Path: requestPath(endpoint), Deferred: true}
 		}
 		if err := waitForContext(ctx, wait); err != nil {
 			return err

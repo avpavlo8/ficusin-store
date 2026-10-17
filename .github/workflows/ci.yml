@@ -311,11 +311,11 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
         run: go test -p 1 ./internal/admin/ ./internal/avito/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ -run 'LiveDatabase' -v
-      - name: Verify price refresh after a failed Saby receipt
+      - name: Verify procurement price recovery and variant links
         working-directory: backend
         env:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/procurement -run '^TestFailedReceiptPriceRefresh' -v
+        run: go test ./internal/procurement -run '^TestFailedReceiptPriceRefresh|^TestProcurementChannelEditTargetsExactVariant' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest

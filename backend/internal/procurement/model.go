@@ -603,7 +603,9 @@ type ActionItem struct {
 	ExternalURL         string              `json:"externalUrl,omitempty"`
 	PreviewLines        []ActionPreviewLine `json:"previewLines,omitempty"`
 	Payload             json.RawMessage     `json:"-"`
-	Attempts            int                 `json:"-"`
+	Attempts            int                 `json:"attempts,omitempty"`
+	LastAttemptAt       *time.Time          `json:"lastAttemptAt,omitempty"`
+	NextAttemptAt       *time.Time          `json:"nextAttemptAt,omitempty"`
 	LockOwner           string              `json:"-"`
 	LockToken           int64               `json:"-"`
 }

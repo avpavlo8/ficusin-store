@@ -906,7 +906,8 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 					ELSE item.external_article END,
 				item.old_value::DOUBLE PRECISION,
 				item.new_value::DOUBLE PRECISION, item.compare_at_value::DOUBLE PRECISION,
-				item.quantity, item.status, item.error_message, item.external_operation_id, item.external_url, item.payload
+				item.quantity, item.status, item.error_message, item.external_operation_id, item.external_url, item.payload,
+				item.attempts,item.last_attempt_at,item.next_attempt_at
 			FROM procurement_action_items item
 			JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
 			LEFT JOIN saby_nomenclature n ON n.saby_id = line.saby_id
@@ -923,7 +924,8 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 			var item ActionItem
 			if err := itemRows.Scan(&item.ID, &item.LineID, &item.ProductName, &item.ProductCode, &item.Channel,
 				&item.ExternalArticle, &item.DisplayArticle, &item.OldValue, &item.NewValue, &item.CompareAtValue, &item.Quantity,
-				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL, &item.Payload); err != nil {
+				&item.Status, &item.ErrorMessage, &item.ExternalOperationID, &item.ExternalURL, &item.Payload,
+				&item.Attempts, &item.LastAttemptAt, &item.NextAttemptAt); err != nil {
 				itemRows.Close()
 				return nil, fmt.Errorf("scan procurement batch item: %w", err)
 			}
@@ -1225,7 +1227,7 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 	} else if err != nil {
 		return false, fmt.Errorf("lock finished procurement action: %w", err)
 	}
-	status, message, delay := "queued", "", result.RetryAfter
+	status, message, delay := "queued", result.PendingMessage, result.RetryAfter
 	if delay <= 0 {
 		delay = 15 * time.Second
 	}

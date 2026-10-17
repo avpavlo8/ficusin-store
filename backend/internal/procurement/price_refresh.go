@@ -9,15 +9,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// A failed receipt may have been posted manually in Saby. Do not retry it,
+// Finished marketplace attempts must not block new proposals. A failed
+// receipt may have been posted manually in Saby. Do not retry it,
 // reconcile its status, or recalculate acquisition costs here. Only refresh
 // reviewable price proposals from the existing cost snapshot.
 // The caller holds the order lock, also used by batch approval and retry.
-func refreshPricesAfterFailedReceipt(ctx context.Context, tx pgx.Tx, actor Actor, orderID int64, input CalculationInput, settings PricingSettings) error {
+func refreshPricesAfterTerminalActions(ctx context.Context, tx pgx.Tx, actor Actor, orderID int64, input CalculationInput, settings PricingSettings) error {
 	var eligible bool
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(BOOL_AND(
-		b.kind='receipt' AND b.status IN ('failed','partially_completed')
-		AND EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.channel='saby_receipt' AND i.status='failed')
+		b.status IN ('failed','partially_completed')
+		AND ((b.kind='receipt' AND EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.channel='saby_receipt' AND i.status='failed'))
+		OR (b.kind='prices' AND EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id)
+		AND NOT EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.status NOT IN ('completed','failed','skipped','not_configured'))))
 		AND NOT EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=b.id AND i.status IN ('queued','processing'))
 	),FALSE) FROM procurement_action_batches b
 	WHERE b.procurement_order_id=$1 AND b.status NOT IN ('draft','cancelled','completed')`, orderID).Scan(&eligible); err != nil {
