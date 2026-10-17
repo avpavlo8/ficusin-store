@@ -24,6 +24,8 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 	}
 	rows, err := repository.pool.Query(ctx, `
 		SELECT product.product_code::TEXT, variant.sku, product.name, variant.label,
+            COALESCE(variant_numeric_attribute(variant.id,'pot_diameter_cm'),0)::INTEGER,
+            COALESCE(variant_numeric_attribute(variant.id,'height_cm'),0)::INTEGER,
 			variant.base_price_minor,
 			COALESCE((
 				SELECT COALESCE(mirror.card_url, mirror.large_url, media.object_key)
@@ -56,7 +58,7 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 	for rows.Next() {
 		var product CartProduct
 		var priceMinor int64
-		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.VariantLabel,
+		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.VariantLabel, &product.PotDiameterCM, &product.HeightCM,
 			&priceMinor, &product.Image, &product.Stock, &product.Available); err != nil {
 			return nil, fmt.Errorf("scan cart product: %w", err)
 		}
@@ -373,7 +375,9 @@ const recommendationsQuery = `
 			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=chosen.id)
 			ORDER BY (media.variant_id=chosen.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 		),'/assets/product-photo-pending.svg'),
-		chosen.label, chosen.stock, product.catalog_section,
+		CASE WHEN product.catalog_section='plants' AND chosen.label ~* '^(D|Ø)?[ ]*[0-9]+([.,][0-9]+)?([ ]*см)?$'
+            AND variant_numeric_attribute(chosen.id,'pot_diameter_cm')>0
+            THEN 'D'||(variant_numeric_attribute(chosen.id,'pot_diameter_cm')::INTEGER)::TEXT ELSE chosen.label END, chosen.stock, product.catalog_section,
 		COALESCE(product.plant_kind,''),COALESCE(product.light_level,''),COALESCE(product.watering,''),
 		COALESCE(product.height_class,''),COALESCE(product.care_level,''),COALESCE(product.placement,''),
 		COALESCE(product.pet_safety,''),COALESCE(product.growth_habit,''),product.category_id
@@ -552,7 +556,9 @@ const catalogListQuery = `
 			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=default_variant.id)
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 		),'/assets/product-photo-pending.svg'),
-		default_variant.label, default_variant.stock,
+		CASE WHEN product.catalog_section='plants' AND default_variant.label ~* '^(D|Ø)?[ ]*[0-9]+([.,][0-9]+)?([ ]*см)?$'
+            AND variant_numeric_attribute(default_variant.id,'pot_diameter_cm')>0
+            THEN 'D'||(variant_numeric_attribute(default_variant.id,'pot_diameter_cm')::INTEGER)::TEXT ELSE default_variant.label END, default_variant.stock,
 		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(NULLIF(pim.light_level,''),product.light_level,''),
 		COALESCE(NULLIF(pim.watering,''),product.watering,''),COALESCE(NULLIF(pim.height_class,''),product.height_class,''),COALESCE(NULLIF(pim.care_level,''),product.care_level,''),
 		COALESCE(NULLIF(pim.placement,''),product.placement,''),COALESCE(NULLIF(pim.pet_safety,''),product.pet_safety,''),COALESCE(NULLIF(pim.growth_habit,''),product.growth_habit,''),product.category_id,

@@ -50,14 +50,16 @@ type Product struct {
 // The browser must not download the whole catalogue just to render a cart,
 // and a non-default variant must remain visible after a direct /cart visit.
 type CartProduct struct {
-	ID           string  `json:"id"`
-	SKU          string  `json:"sku"`
-	Name         string  `json:"name"`
-	VariantLabel string  `json:"variantLabel"`
-	Price        float64 `json:"price"`
-	Image        string  `json:"image"`
-	Stock        int     `json:"stock"`
-	Available    bool    `json:"available"`
+	ID            string  `json:"id"`
+	SKU           string  `json:"sku"`
+	Name          string  `json:"name"`
+	VariantLabel  string  `json:"variantLabel"`
+	PotDiameterCM int     `json:"potDiameterCm,omitempty"`
+	HeightCM      int     `json:"heightCm,omitempty"`
+	Price         float64 `json:"price"`
+	Image         string  `json:"image"`
+	Stock         int     `json:"stock"`
+	Available     bool    `json:"available"`
 }
 
 type Collection struct {

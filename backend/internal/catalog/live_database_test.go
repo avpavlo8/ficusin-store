@@ -218,6 +218,27 @@ func TestCartProductsOnLiveDatabase(t *testing.T) {
 	if len(items) != 1 || items[0].SKU != sku || !items[0].Available {
 		t.Fatalf("unexpected cart product: %#v", items)
 	}
+	detail, err := NewPostgresRepository(pool).DetailBySlug(ctx, items[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, variant := range detail.Variants {
+		if variant.SKU != sku {
+			continue
+		}
+		diameter, height := 0, 0
+		if variant.PotDiameterCM != nil {
+			diameter = *variant.PotDiameterCM
+		}
+		if variant.HeightCM != nil {
+			height = *variant.HeightCM
+		}
+		if items[0].PotDiameterCM != diameter || items[0].HeightCM != height {
+			t.Fatalf("cart dimensions differ from selected PDP variant: cart=%#v variant=%#v", items[0], variant)
+		}
+		return
+	}
+	t.Fatal("cart SKU not found in product detail")
 }
 
 func TestPublicStockUsesFreshSabyInventoryOnLiveDatabase(t *testing.T) {

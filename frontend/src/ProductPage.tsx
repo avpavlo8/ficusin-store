@@ -7,6 +7,7 @@ import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
+import { catalogSize } from "./lib/storefront-format";
 import { track } from "./lib/analytics";
 import { useFavorites } from "./lib/favorites";
 
@@ -20,6 +21,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [activeImage, setActiveImage] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [purchaseActionVisible, setPurchaseActionVisible] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [revision, setRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<"about"|"care"|"characteristics"|"reviews"|"questions">("about");
@@ -97,6 +99,14 @@ export default function ProductPage({ slug }: { slug: string }) {
     return () => window.cancelAnimationFrame(frame);
   }, [activeTab, product]);
 
+  useEffect(() => {
+    const target = document.querySelector(".pdp-actions");
+    if (!target) return;
+    const observer = new IntersectionObserver(([entry]) => setPurchaseActionVisible(entry.isIntersecting), { threshold: 0.6 });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [product, selectedID]);
+
   const toggleFavorite = () => {
     if (!product) return;
     setFavorites((current) => {
@@ -108,12 +118,8 @@ export default function ProductPage({ slug }: { slug: string }) {
 
   const toggleCart = () => {
     if (!variant) return;
-    if (cart[variant.sku]) {
-	  track("remove_from_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity: cart[variant.sku], properties: { name: product?.name, category: product?.catalogSection } });
-      setCart((current) => { const next = { ...current }; delete next[variant.sku]; return next; });
-      setNotice("Товар удалён из корзины"); window.setTimeout(() => setNotice(""), 1800);
-      return;
-    }
+    if (cart[variant.sku]) { window.location.assign("/cart"); return; }
+
 	track("add_to_cart", { productCode: product?.id, sku: variant.sku, value: variant.price, quantity, properties: { name: product?.name, category: product?.catalogSection } });
     setCart((current) => ({ ...current, [variant.sku]: variant.stock > 0 ? Math.min(variant.stock, quantity) : quantity }));
     setNotice("Товар добавлен в корзину"); window.setTimeout(() => setNotice(""), 1800);
@@ -159,8 +165,9 @@ export default function ProductPage({ slug }: { slug: string }) {
     {(adminUser?.adminRole === "owner" || adminUser?.adminRole === "administrator" || adminUser?.adminRole === "manager") && <Suspense fallback={null}><PdpAdminTools slug={slug} adminRole={adminUser.adminRole} onChanged={() => setRevision((value) => value + 1)} /></Suspense>}
     <section className="pdp-main">
       <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
-      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} relatedPlants={relatedPlants} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(1); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
+      <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} relatedPlants={relatedPlants} reviewComposer={product.reviewsCount > 0 ? <ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} /> : null} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(1); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
+    {variant && <div className="pdp-mobile-buy" hidden={purchaseActionVisible} aria-label="Быстрая покупка"><div><strong>{money(variant.price)}</strong><small>{catalogSize(variant.label, variant.potDiameterCm)}</small></div><button type="button" onClick={toggleCart}>{cart[variant.sku] ? "Перейти в корзину" : variant.stock > 0 ? "В корзину" : "Заказать"}</button></div>}
     <div className={`pdp-tabs-shell${isPlant ? " plant-tabs-shell" : ""}`}><nav className="pdp-anchor-nav" role="tablist" aria-label="Разделы товара">{tabs.map(([id,label])=><button type="button" role="tab" className={activeTab===id?'active':''} onClick={()=>changeTab(id)} aria-selected={activeTab===id} aria-controls={`pdp-panel-${id}`} id={`pdp-tab-${id}`} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
       <section className="pdp-tab-panel" aria-live="polite">
         {isPlant&&activeTab==='about'&&<div role="tabpanel" id="pdp-panel-about" aria-labelledby="pdp-tab-about"><PlantAbout product={product}/></div>}
