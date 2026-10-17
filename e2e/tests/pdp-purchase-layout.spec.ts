@@ -18,7 +18,7 @@ for (const url of ["/", "/product/1", "/care/mealybug", "/cart"]) {
 test("@desktop покупка выше рекомендаций, рекомендации под обеими колонками", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
-  const size = page.getByRole("group", { name: "Размер горшка" });
+  const size = page.getByRole("group", { name: "Вариант растения" });
   await expect(size).toBeVisible();
   const commerce = page.locator(".pdp-order-column .pdp-commerce-box");
   await expect(commerce.getByRole("button", { name: "В корзину", exact: true })).toBeVisible();

@@ -45,7 +45,7 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
         <div className="pdp-identity"><h1>{product.name}</h1><p className="latin">{product.latin}</p>{reviewComposer}</div>
 
         <div className="pdp-parameters">
-          {product.variants.length > 0 && <fieldset className="variant-picker"><legend>{isPlant ? "Размер горшка" : "Вариант товара"}</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id}><strong>{isPlant ? sizeLabel(item) : item.label}</strong>{product.variants.length > 1 && <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>}</button>)}</div></fieldset>}
+          {product.variants.length > 0 && <fieldset className="variant-picker"><legend>{isPlant ? "Вариант растения" : "Вариант товара"}</legend><div>{product.variants.map((item) => <button type="button" className={item.id === variant?.id ? "active" : ""} onClick={() => onVariant(item.id)} key={item.id}><strong>{isPlant ? sizeLabel(item) : item.label}</strong>{product.variants.length > 1 && <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>}</button>)}</div></fieldset>}
           {Boolean(variant?.heightCm) && <dl className="pdp-specs"><div><dt>Высота</dt><dd>{variant?.heightCm} см</dd></div></dl>}
         </div>
         <div className="pdp-commerce-box"><div className="pdp-price-row"><strong>{variant ? money(variant.price) : "Цена уточняется"}</strong><span className={available ? "stock-ok" : "stock-out"}>{available ? "● В наличии" : "Под заказ"}</span></div>

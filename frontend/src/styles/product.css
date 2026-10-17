@@ -455,7 +455,7 @@
 
 /* Purchase details stay legible, while a phone always has a reachable next action. */
 .product-page .pdp-purchase-help,.product-page .pdp-preorder-help{margin:18px 0 0;color:#46513f;font:400 14px/1.6 system-ui,sans-serif}
-.product-page .pdp-purchase-help a{color:#294326;text-underline-offset:3px}
+.product-page .pdp-purchase-help a{color:#294326;text-decoration:underline;text-underline-offset:3px}
 .product-page .pdp-order-column .pdp-cart-button.in-cart{background:#294326;color:#fff;border-color:#294326}
 .pdp-mobile-buy{display:none}
 @media(max-width:850px){

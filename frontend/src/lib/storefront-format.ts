@@ -5,7 +5,10 @@ export function counted(count: number, forms: readonly [string, string, string])
 
 export function catalogSize(label: string, diameter?: number) {
   if (diameter && diameter > 0) {
-    const detail = label.replace(/(?:^|[ ·,|])(?:D|Ø|⌀)?\s*\d+(?:[.,]\d+)?\s*(?:см)?$/i, "").trim();
+    const trimmed = label.trim();
+    const numeric = trimmed.match(/^(\d+(?:[.,]\d+)?)\s*(?:см)?$/i);
+    const detail = numeric && Number(numeric[1].replace(",", ".")) === diameter ? ""
+      : trimmed.replace(/(?:\s*[·,|]\s*|\s+)?(?:D|Ø|⌀)\s*\d+(?:[.,]\d+)?\s*(?:см)?$/i, "").trim();
     return `${detail && !/^Основной (вариант|размер)$/i.test(detail) ? `${detail} · ` : ""}Горшок Ø ${diameter} см`;
   }
   if (!label) return "Размер уточняется";
