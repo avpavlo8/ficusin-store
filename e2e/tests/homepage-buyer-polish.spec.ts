@@ -137,6 +137,7 @@ test("@desktop @phone categories remain visible with one root and nested plant k
   await picker.selectOption("ficus");
   await expect(page).toHaveURL(/\/catalog\/ficus$/);
   await expect(picker).toHaveValue("ficus");
+  if((await page.viewportSize())!.width<=850) await expect(page.locator(".storefront-side")).toBeHidden();
   await expect(page.locator(".storefront-card")).toHaveCount(2);
   await expect(page.locator(".storefront-card").filter({hasText:"Аглаонема"})).toHaveCount(0);
   await picker.selectOption("");

@@ -83,6 +83,7 @@ test("production categories are available beside the catalogue and open the chos
   await picker.selectOption(category!.slug);
   await expect(page).toHaveURL(new RegExp(`/catalog/${category!.slug}$`));
   await expect(picker).toHaveValue(category!.slug);
+  if((await page.viewportSize())!.width<=850) await expect(page.locator(".storefront-side")).toBeHidden();
   await expect(page.locator(".storefront-card").first()).toBeVisible();
   const links=await page.locator(".storefront-card .storefront-name").evaluateAll(els=>els.map(el=>el.getAttribute("href")!));
   for(const link of links) expect(products.find(product=>link===`/product/${product.id}`)?.categoryId).toBe(category!.id);
