@@ -1,9 +1,8 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
 import { normalizeRussianPhone } from "./lib/phone";
 import { discountedPrice } from "./lib/checkoutPrice";
-import { readCheckoutDraft, saveCheckoutDraft, clearCheckoutDraft } from "./lib/checkoutDraft";
 import { getAttribution, track } from "./lib/analytics";
 
 type Cart = Record<string, number>;
@@ -43,52 +42,32 @@ type UseCheckoutArgs = {
 };
 
 export function useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps, initialOpen = false }: UseCheckoutArgs) {
-  const [draft] = useState(readCheckoutDraft);
-  const [draftOwner, setDraftOwner] = useState(draft?.owner ?? "guest");
-  const [step, setStep] = useState<1 | 2 | 3>(draft?.step ?? 2);
-  const [deliveryConfirmed, setDeliveryConfirmed] = useState(draft?.deliveryConfirmed ?? false);
-  const [orderError, setOrderError] = useState("");
-  const pendingRestoreOffice = useRef(draft?.officeCode ?? "");
-  const submitLock = useRef(false);
-  const quoteRequest = useRef(0);
-  const [methodsRevision, setMethodsRevision] = useState(0);
   const [checkoutOpen, setCheckoutOpen] = useState(initialOpen);
-  const [delivery, setDelivery] = useState(draft?.delivery ?? "pickup");
+  const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
   const [orderConfirmationPending, setOrderConfirmationPending] = useState(false);
-  const [cdekCityQuery, setCdekCityQuery] = useState(draft?.city?.city ?? "");
+  const [cdekCityQuery, setCdekCityQuery] = useState("");
   const [cdekCities, setCdekCities] = useState<CdekCity[]>([]);
-  const [cdekCity, setCdekCity] = useState<CdekCity | null>(draft?.city ?? null);
+  const [cdekCity, setCdekCity] = useState<CdekCity | null>(null);
   const [cdekOffices, setCdekOffices] = useState<CdekOffice[]>([]);
   const [cdekOfficeCode, setCdekOfficeCode] = useState("");
   const [cdekOfficeQuery, setCdekOfficeQuery] = useState("");
   const [cdekOfficeListOpen, setCdekOfficeListOpen] = useState(false);
   const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
   const [cdekTariffCode, setCdekTariffCode] = useState(0);
-  const [cdekRepack, setCdekRepack] = useState(draft?.repack ?? false);
+  const [cdekRepack, setCdekRepack] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState(draft?.paymentMethod ?? "online");
+  const [paymentMethod, setPaymentMethod] = useState("online");
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
   const [cdekAvailable, setCdekAvailable] = useState(true);
-  const [checkoutProfile, setCheckoutProfile] = useState<CheckoutProfile>(draft?.profile ?? {
+  const [checkoutProfile, setCheckoutProfile] = useState<CheckoutProfile>({
     name: "",
     phone: "",
     email: "",
     address: "",
   });
-
-  const applyCustomerProfile = useCallback((profile: CheckoutProfile | null, owner: string) => {
-    setDraftOwner(owner);
-    const empty = { name: "", phone: "", email: "", address: "" };
-    const changedOwner = (draft?.owner ?? "guest") !== owner;
-    setCheckoutProfile(current => changedOwner ? profile ?? empty : {
-      name: current.name || profile?.name || "", phone: current.phone || profile?.phone || "",
-      email: current.email || profile?.email || "", address: current.address || profile?.address || "",
-    });
-    if (changedOwner) { clearCheckoutDraft(); setStep(2); }
-  }, [draft]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +90,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     return () => {
       cancelled = true;
     };
-  }, [delivery, methodsRevision]);
+  }, [delivery]);
 
   useEffect(() => {
     fetch("/api/v1/delivery/cdek?action=status", { cache: "no-store" })
@@ -159,11 +138,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     () => baseDeliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable),
     [cdekAvailable],
   );
-  useEffect(() => {
-    if (!checkoutOpen || orderNumber) return;
-    saveCheckoutDraft({ owner: draftOwner, step, profile: checkoutProfile, delivery, deliveryConfirmed, paymentMethod, city: cdekCity, officeCode: cdekOfficeCode || (cdekLoading ? pendingRestoreOffice.current : ""), repack: cdekRepack });
-  }, [draftOwner, checkoutOpen, orderNumber, step, checkoutProfile, delivery, deliveryConfirmed, paymentMethod, cdekCity, cdekOfficeCode, cdekRepack, draft, cdekLoading]);
-
   const originalSubtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + discountedPrice(item.price, discountBps) * item.quantity, 0);
   const discountAmount = Math.round((originalSubtotal - subtotal) * 100) / 100;
@@ -191,9 +165,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
   const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
   const total = subtotal + deliveryFee;
 
-  const itemsKey = JSON.stringify(cartLines.map(line => ({ id: line.id, quantity: line.quantity })));
-  const chooseCdekCity = useCallback(async (city: CdekCity, restoreOffice = "") => {
-    const request = ++quoteRequest.current;
+  async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);
     setCdekCityQuery(city.city);
     setCdekCities([]);
@@ -212,13 +184,12 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             cityCode: city.code,
-            items: JSON.parse(itemsKey) as Array<{ id: string; quantity: number }>,
+            items: cartLines.map((line) => ({ id: line.id, quantity: line.quantity })),
           }),
-        }).catch(() => null),
+        }),
       ]);
       const officesData = (await officesResponse.json()) as { offices?: CdekOffice[]; error?: string };
-      const quoteData = (await quoteResponse?.json().catch(() => ({})) ?? {}) as { quotes?: CdekQuote[]; error?: string };
-      if (request !== quoteRequest.current) return;
+      const quoteData = (await quoteResponse.json()) as { quotes?: CdekQuote[]; error?: string };
       if (!officesResponse.ok) {
         throw new Error(officesData.error || "Не удалось загрузить пункты выдачи");
       }
@@ -226,45 +197,22 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
         throw new Error("В этом городе нет доступных пунктов выдачи");
       }
       setCdekOffices(officesData.offices);
-      const restored = officesData.offices.find(office => office.code === restoreOffice);
-      if (restored) { setCdekOfficeCode(restored.code); setCdekOfficeQuery(restored.location.address); }
       if (quoteData.quotes?.length) {
-        const sorted = [...quoteData.quotes].sort((left, right) => left.price - right.price);
-        // Same destination and transit window: the buyer only needs the cheapest.
-        const choices = sorted.filter((quote, index) => !sorted.slice(0, index).some(earlier => (earlier.daysMax || Infinity) <= (quote.daysMax || Infinity) && (earlier.daysMin || Infinity) <= (quote.daysMin || Infinity)));
-        setCdekQuotes(choices);
-        setCdekTariffCode(choices[0].tariffCode);
+        setCdekQuotes(quoteData.quotes);
+        setCdekTariffCode(quoteData.quotes[0].tariffCode);
       } else {
         setCdekQuotes([]);
         setCdekTariffCode(0);
       }
     } catch (error) {
-      if (request === quoteRequest.current) setCdekError(error instanceof Error ? error.message : "Не удалось рассчитать доставку");
+      setCdekError(error instanceof Error ? error.message : "Не удалось рассчитать доставку");
     } finally {
-      if (request === quoteRequest.current) setCdekLoading(false);
+      setCdekLoading(false);
     }
-  }, [itemsKey]);
-
-  const restoredCity = useRef(false);
-  useEffect(() => {
-    if (!checkoutOpen || restoredCity.current || !draft?.city || !cartLines.length) return;
-    restoredCity.current = true;
-    lastItemsKey.current = itemsKey;
-    void chooseCdekCity(draft.city, draft.officeCode);
-  }, [draft, cartLines.length, chooseCdekCity, itemsKey, checkoutOpen]);
-
-  // Requote after a quantity/variant change; an old tariff must not be reused.
-  const lastItemsKey = useRef(itemsKey);
-  useEffect(() => {
-    if (lastItemsKey.current === itemsKey) return;
-    lastItemsKey.current = itemsKey;
-    if (checkoutOpen && delivery === "cdek" && cdekCity && cartLines.length) void chooseCdekCity(cdekCity, cdekOfficeCode);
-  }, [itemsKey, delivery, cdekCity, cdekOfficeCode, chooseCdekCity, cartLines.length, checkoutOpen]);
+  }
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitLock.current) return;
-    setOrderError("");
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
     const phoneInput = event.currentTarget.elements.namedItem("phone") as HTMLInputElement;
@@ -279,7 +227,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     }
     phoneInput.setCustomValidity("");
     phoneInput.value = phone;
-    submitLock.current = true;
     const payload = {
       customer: {
         name: String(form.get("name") ?? ""),
@@ -301,7 +248,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
-	  paymentMethod: hasPreorder || deliveryFeePending ? "" : paymentMethod,
+	  paymentMethod: hasPreorder ? "" : paymentMethod,
 	  attribution: getAttribution(),
     };
 
@@ -319,7 +266,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
 	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
 	  if (!hasPreorder) track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
       setOrderConfirmationPending(needsManagerConfirmation || deliveryFeePending || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
-      clearCheckoutDraft();
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -342,9 +288,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       }
     } catch (error) {
 	  track("checkout_error", { value: total, quantity: cartCount, properties: { message: error instanceof Error ? error.message.slice(0, 200) : "unknown", delivery, paymentMethod } });
-      setOrderError(error instanceof Error ? error.message : "Не удалось оформить заказ");
+      setNotice(error instanceof Error ? error.message : "Не удалось оформить заказ");
     } finally {
-      submitLock.current = false;
       setSubmitting(false);
     }
   }
@@ -360,12 +305,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     setCheckoutOpen,
     beginCheckout,
     setCheckoutProfile,
-    applyCustomerProfile,
     availableDelivery,
     panelProps: {
-      cartLines, step, setStep, deliveryConfirmed, setDeliveryConfirmed, orderError,
-      retryCdek: () => { if (cdekCity) void chooseCdekCity(cdekCity, cdekOfficeCode); },
-      retryPaymentMethods: () => setMethodsRevision(current => current + 1),
       checkoutOpen,
       setCheckoutOpen,
       orderNumber,
@@ -379,7 +320,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       cdekQuote,
       cdekCityQuery,
       setCdekCityQuery,
-      setCdekCity: (value: SetStateAction<CdekCity | null>) => { quoteRequest.current++; setCdekLoading(false); setCdekCity(value); },
+      setCdekCity,
       setCdekCities,
       setCdekOffices,
       cdekOfficeCode,

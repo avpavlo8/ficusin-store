@@ -12,8 +12,6 @@ export type CartProduct = {
   price: number;
   image: string;
   stock?: number;
-  potDiameterCm?: number;
-  heightCm?: number;
   variantLabel?: string;
   available?: boolean;
 };
@@ -70,11 +68,11 @@ export default function CheckoutHost({
 
   const cartLines = products
     .filter((product) => cart[product.sku])
-    .map((product) => ({ ...product, id: product.sku, productCode: product.id, quantity: cart[product.sku] }));
+    .map((product) => ({ ...product, id: product.sku, quantity: cart[product.sku] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps: user?.retailDiscountBps ?? 0, initialOpen: checkoutPage });
-  const { checkoutOpen, setCheckoutOpen, applyCustomerProfile } = checkout;
+  const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
 
   useEffect(() => {
     if ((cartPage || checkoutPage) && cartLines.length) track("view_cart", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
@@ -96,13 +94,15 @@ export default function CheckoutHost({
       .then((result) => {
         if (cancelled) return;
         setPricingReady(true);
-        if (!result?.user) { applyCustomerProfile(null, "guest"); return; }
+        if (!result?.user) return;
         const profile = result.user;
         setUser(profile);
-        applyCustomerProfile({
+        setCheckoutProfile({
           name: [profile.lastName, profile.fullName, profile.patronymic].filter(Boolean).join(" "),
-          phone: profile.phone, email: profile.email, address: profile.deliveryAddress,
-        }, `customer:${profile.phone}`);
+          phone: profile.phone,
+          email: profile.email,
+          address: profile.deliveryAddress,
+        });
       })
       .catch(() => {
         if (!cancelled) setPricingError(true);
@@ -110,7 +110,7 @@ export default function CheckoutHost({
     return () => {
       cancelled = true;
     };
-  }, [applyCustomerProfile]);
+  }, [setCheckoutProfile]);
 
   useEffect(() => {
     document.body.classList.toggle("drawer-open", ((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage);

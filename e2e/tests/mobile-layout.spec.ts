@@ -78,9 +78,15 @@ test("@phone checkout stays below the menu and bottom navigation", async ({ page
   const panel = page.locator(".checkout-page-panel");
   const tabBar = page.locator(".tab-bar");
   await expect(panel).toBeVisible();
-  await expect(tabBar).toHaveCount(0);
+  await expect(tabBar).toBeVisible();
+  expect(await tabBar.evaluate((node) => Number(getComputedStyle(node).zIndex)))
+    .toBeGreaterThan(await panel.evaluate((node) => Number(getComputedStyle(node).zIndex) || 0));
+
   await page.locator(".menu-button").click();
-  await expect(page.locator(".mobile-menu")).toBeVisible();
+  const menu = page.locator(".mobile-menu");
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((node) => Number(getComputedStyle(node).zIndex)))
+    .toBeGreaterThan(await tabBar.evaluate((node) => Number(getComputedStyle(node).zIndex)));
 });
 
 test("@phone all checkout steps fit without a hidden horizontal strip", async ({ page }) => {
@@ -88,7 +94,7 @@ test("@phone all checkout steps fit without a hidden horizontal strip", async ({
   await mockApi(page);
   await page.goto("/checkout");
   const steps = page.locator(".checkout-steps");
-  await expect(steps.locator("span")).toHaveCount(3);
+  await expect(steps.locator("span")).toHaveCount(4);
   const [clientWidth, scrollWidth] = await steps.evaluate((node) => [node.clientWidth, node.scrollWidth]);
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
   for (const step of await steps.locator("span").all()) await expect(step).toBeInViewport();
