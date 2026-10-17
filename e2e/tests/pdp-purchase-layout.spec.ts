@@ -101,8 +101,8 @@ for (const device of ["@phone", "@desktop"]) {
     await search.getByRole("combobox").press("Enter");
     await expect(page.getByText("Ничего не нашли", {exact:true})).toBeVisible();
     await search.getByRole("button",{name:"Очистить поиск"}).click();
-    await expect(page.getByText("Ничего не нашли", {exact:true})).toBeVisible();
-    await search.getByRole("combobox").press("Enter");
+    await expect(page.getByText("Ничего не нашли", {exact:true})).toHaveCount(0);
+    await expect(page).not.toHaveURL(/q=/);
     await expect(page.locator(".home-hero")).toBeVisible();
   });
 }

@@ -57,3 +57,14 @@ test("production mobile footer and keyboard menu are reachable", async ({page,re
     expect(rects.address).toBeLessThanOrEqual(rects.nav);
   }
 });
+
+
+test("production clearing a search restores the catalogue without another Enter", async ({page})=>{
+  await page.goto("/?q=фикус");
+  if((await page.viewportSize())!.width<=850) await page.getByRole("button",{name:"Поиск",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Результаты поиска"})).toBeVisible();
+  await page.getByRole("button",{name:"Очистить поиск",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Каталог",exact:true})).toBeVisible();
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(page.locator(".storefront-card").first()).toBeVisible();
+});
