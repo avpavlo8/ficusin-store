@@ -602,6 +602,8 @@ func (executor *MarketplaceExecutor) verifyWBPrices(ctx context.Context, items [
 		message := "Wildberries ещё не показывает подтверждённую цену продавца"
 		if len(prices) > 0 {
 			message = fmt.Sprintf("Цена Wildberries отличается от предложенных %.2f ₽: %v", item.NewValue, prices)
+		} else {
+			message = fmt.Sprintf("Wildberries не вернул товар с nmID %s. Проверьте действующую связь карточки", item.ExternalArticle)
 		}
 		outcomes = append(outcomes, pendingPriceReadback(item, message))
 	}
