@@ -525,6 +525,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           {!searching && (!landing || landing.type === "category") && categoryOptions.length > 0 && <label className="catalog-category-picker">Категория
             <select aria-label="Категория" value={activeCategory?.slug || ""} onChange={(event) => window.location.assign(event.target.value ? `/catalog/${encodeURIComponent(event.target.value)}` : "/#catalog")}>
               <option value="">Весь каталог · {products.length}</option>
+              {activeCategory && !categoryOptions.some((option) => option.slug === activeCategory.slug) && <option value={activeCategory.slug}>{activeCategory.name} · {contextProducts.length}</option>}
               {categoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}
             </select>
           </label>}

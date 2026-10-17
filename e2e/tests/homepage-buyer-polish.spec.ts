@@ -131,6 +131,9 @@ test("@desktop @phone categories remain visible with one root and nested plant k
   await expect(picker).toBeVisible();
   await expect(picker.locator('option[value="ficus"]')).toContainText("Фикус · 2");
   await expect(picker.locator('option[value="empty-category"]')).toHaveCount(0);
+  await page.goto("/catalog/indoor-plants");
+  await expect(picker).toHaveValue("indoor-plants");
+  await expect(picker.locator('option[value="indoor-plants"]')).toContainText("Комнатные растения · 3");
   await picker.selectOption("ficus");
   await expect(page).toHaveURL(/\/catalog\/ficus$/);
   await expect(picker).toHaveValue("ficus");
