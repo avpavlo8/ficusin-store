@@ -450,10 +450,11 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   const branch = (node: CategoryNode, depth: number) => {
-    const expanded = opened.has(node.id) || activeCategoryPath.has(node.id);
+    const persistentRoot = depth === 0 && tree.length === 1;
+    const expanded = persistentRoot || opened.has(node.id) || activeCategoryPath.has(node.id);
     return <div key={node.id}>
       <a href={`/catalog/${encodeURIComponent(node.slug)}`} className={category === node.id ? "active" : ""} style={{ paddingLeft: 10 + depth * 14 }} aria-current={category === node.id ? "page" : undefined}>
-        <span>{node.children.length > 0 && <i className={expanded ? "twist open" : "twist"} aria-hidden="true" onClick={(event) => { event.preventDefault(); toggleCategory(node.id); }}>›</i>}<CategoryIcon name={node.icon} />{node.name}</span>
+        <span>{node.children.length > 0 && !persistentRoot && <i className={expanded ? "twist open" : "twist"} aria-hidden="true" onClick={(event) => { event.preventDefault(); toggleCategory(node.id); }}>›</i>}<CategoryIcon name={node.icon} />{node.name}</span>
         <small>{node.count}</small>
       </a>
       {expanded && node.children.map((child) => branch(child, depth + 1))}
@@ -512,9 +513,9 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
       {!searching && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
 
-      <section className={`storefront-shell${!landing && tree.length <= 1 ? " compact-navigation" : ""}${showCategoryPicker ? " has-category-picker" : ""}`} id="catalog">
+      <section className={`storefront-shell${showCategoryPicker ? " has-category-picker" : ""}`} id="catalog">
         <aside className="storefront-side">
-          {!searching && <nav className="storefront-tree">
+          {!searching && <nav className="storefront-tree" aria-label="Категории товаров">
             <a href="/#catalog" className={!landing && category == null ? "active" : ""}><span>Весь каталог</span>{!loading && <small>{products.length}</small>}</a>
             {tree.map((root) => branch(root, 0))}
           </nav>}
