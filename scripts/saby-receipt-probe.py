@@ -7,6 +7,7 @@ import json
 import os
 import urllib.request
 import uuid
+import re
 
 
 def request(url, payload, token=None):
@@ -49,9 +50,26 @@ token = auth["token"]
 for method, params in (
     ("ДокОтгрВх.Прочитать", {"ИдО": receipt_id, "ИмяМетода": "ДокОтгрВх.Список"}),
     ("СБИС.ПрочитатьДокумент", {"Документ": {"Идентификатор": guid}}),
+    ("РеалВх.NomList", {"Фильтр": {"_type":"record", "d":[receipt_id], "s":[{"n":"Документ","t":"Число целое"}]}, "Сортировка": [], "Навигация": {"Страница":0,"РазмерСтраницы":1000}, "ДопПоля": []}),
 ):
     result = request("https://online.sbis.ru/service/?srv=1", {
         "jsonrpc": "2.0", "protocol": 6, "id": 1, "method": method, "params": params,
     }, token)
     print(method)
     print(json.dumps(shape(result), ensure_ascii=False, indent=2))
+    if "error" in result:
+        error = result["error"]
+        msg = str(error.get("message", ""))
+        # Runtime/signature errors only. Never log a service-supplied document,
+        # a request body or arbitrary data from the exception details.
+        if any(term in msg.lower() for term in ("метод", "аргумент", "параметр")):
+            msg = re.sub(r"[0-9]+(?:[-.][0-9a-z]+)*", "#", msg, flags=re.I)
+            for secret in (token, os.environ["SABY_APP_SECRET"], os.environ["SABY_SECRET_KEY"]):
+                msg = msg.replace(secret, "[redacted]")
+            print("signatureError:", msg[:600])
+    if method == "ДокОтгрВх.Прочитать" and "result" in result:
+        record = result["result"]
+        fields, data = record.get("s",[]), record.get("d",[])
+        for i, field in enumerate(fields):
+            if field.get("n") == "ДокументРасширение.Состояние":
+                print("postedBit10:", data[i][10] if isinstance(data[i], list) and len(data[i]) > 10 else None)
