@@ -52,8 +52,41 @@ test("@desktop @phone Avito operations view surfaces risks and gates activation"
   await expect(page.getByRole("button", { name: /Не применилось · 1/ })).toBeVisible();
   await page.getByRole("button", { name: "Проверить готовность и включить" }).click();
   await expect(page.getByRole("heading", { name: "Проверка готовности" })).toBeVisible();
-  await expect(page.getByText(/Без привязки: 1/)).toBeVisible();
+  await expect(page.getByText(/Требуют привязки: 1/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Включить управление" })).toBeDisabled();
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
+test("@desktop @phone Avito separates prices and preserves an explicit pause", async ({ page }) => {
+  await setup(page);
+  const listing = { itemId: "201", title: "Олива европейская", status: "active", url: "", remotePrice: 2500, manualPaused: false, desiredPublished: true as boolean | null, lastReconciledAt: "2026-10-18T10:00:00Z", lastError: "", products: [{ id: 159, name: "Олива европейская", slug: "olive", image: "", price: 1950, stock: 24 }] };
+  await page.route("**/api/v1/admin/avito", route => route.fulfill({ json: {
+    state: { configured: true, publicationEnabled: false, feedUrl: "https://ficusin.ru/feeds/avito/test.xml", lastImportAt: "2026-10-18T10:00:00Z", lastWorkerAt: "2026-10-18T10:00:00Z", lastSuccessAt: "2026-10-18T10:00:00Z", lastError: "" }, items: [listing],
+  } }));
+  await page.route("**/api/v1/admin/avito/201/pause", async route => {
+    expect(route.request().method()).toBe("PUT");
+    listing.manualPaused = route.request().postDataJSON().paused;
+    listing.desiredPublished = !listing.manualPaused;
+    await route.fulfill({ json: { paused: listing.manualPaused } });
+  });
+  await page.goto("/admin?section=avito");
+  await expect(page.getByRole("columnheader", { name: "Цена Авито", exact: true })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Минимум сайта", exact: true })).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: "Олива европейская" });
+  await expect(row.getByRole("cell").nth(4)).toHaveText(/2\s*500/);
+  await expect(row.getByRole("cell").nth(5)).toContainText(/1\s*950/);
+  await expect(row).toContainText(/Разница:.*550/);
+  await row.getByRole("button", { name: "Приостановить", exact: true }).click();
+  await expect(row).toContainText("Ручная пауза");
+  await page.getByRole("button", { name: /На паузе · 1/ }).click();
+  await expect(row.getByRole("button", { name: "Возобновить", exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: /На паузе · 1/ }).click();
+  await expect(row).toContainText("Ручная пауза");
+  await row.getByRole("button", { name: "Возобновить", exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: /Разница цен · 1/ }).click();
+  await expect(row.getByRole("button", { name: "Приостановить", exact: true })).toBeVisible();
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
