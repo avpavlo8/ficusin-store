@@ -19,7 +19,7 @@ export function useModalFocus(onClose: () => void, enabled = true) {
       }
       branch = branch.parentElement;
     }
-    const controls = () => [...panel.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex="0"]')].filter((element) => element.getClientRects().length > 0);
+    const controls = () => [...panel.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),summary,[tabindex="0"]')].filter((element) => element.getClientRects().length > 0 && (!element.closest("details:not([open])") || element.tagName === "SUMMARY"));
     controls()[0]?.focus();
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onClose(); }

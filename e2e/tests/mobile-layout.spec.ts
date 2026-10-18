@@ -61,7 +61,7 @@ test("@phone the menu opens and lists the sections", async ({ page }) => {
   await page.locator(".menu-button").click();
   const menu = page.locator(".mobile-menu");
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("link", { name: "Каталог" })).toBeVisible();
+  await expect(menu.getByRole("button", { name: "Каталог", exact: true })).toBeVisible();
   await expect(menu.getByRole("link", { name: /Избранное/ })).toBeVisible();
 
   // The menu covers the whole screen on a phone, so the close button is the
@@ -116,7 +116,9 @@ test("@phone catalogue quantity control stays inside its product card", async ({
   await page.goto("/");
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
-  const quantity = card.locator(".storefront-quantity");
+  const quantity = card.getByRole("button", { name: "Перейти в корзину, 1 шт.", exact: true });
+  await expect(quantity.locator(".cart-item-count")).toHaveText("1");
+  await expect(quantity).toContainText("В корзину");
   const [cardBox, quantityBox] = await Promise.all([card.boundingBox(), quantity.boundingBox()]);
   expect(cardBox).not.toBeNull();
   expect(quantityBox).not.toBeNull();

@@ -46,10 +46,19 @@ func TestStorefrontHiddenVariantKeepsIncludedSibling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `
+	var includedID int64
+	if err := pool.QueryRow(ctx, `
 		INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active)
-		VALUES($1,$2,'D30',929000,1)
-	`, productID, includedSKU); err != nil {
+		VALUES($1,$2,'D30',929000,1) RETURNING id
+	`, productID, includedSKU).Scan(&includedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO variant_attribute_values(variant_id,attribute_id,value)
+		SELECT seed.variant_id,definition.id,to_jsonb(seed.height)
+		FROM (VALUES ($1::bigint,10),($2::bigint,120)) seed(variant_id,height)
+		CROSS JOIN attribute_definitions definition WHERE definition.code='height_cm'
+	`, hiddenID, includedID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
@@ -59,6 +68,22 @@ func TestStorefrontHiddenVariantKeepsIncludedSibling(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := NewPostgresRepository(pool)
+	cards, err := repository.ListAvailable(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundCard := false
+	for _, card := range cards {
+		if card.ID == code {
+			foundCard = true
+			if card.SKU != includedSKU || card.HeightCm == nil || *card.HeightCm != 120 {
+				t.Fatalf("catalog card must show the chosen variant's height: %+v", card)
+			}
+		}
+	}
+	if !foundCard {
+		t.Fatal("included sibling missing from catalog")
+	}
 	detail, err := repository.DetailBySlug(ctx, code)
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +114,83 @@ func TestStorefrontHiddenVariantKeepsIncludedSibling(t *testing.T) {
 	if !foundIncluded {
 		t.Fatal("included sibling missing from public feed")
 	}
+}
+
+func TestCatalogHeightAndFilterUseTheDisplayedVariant(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unique := time.Now().UnixNano()
+	var productID int64
+	var code string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO products(category_id,name,slug,status,catalog_section)
+		SELECT id,'Высота выбранного варианта',$1,'published','plants' FROM categories WHERE slug='plants'
+		RETURNING id,product_code::TEXT
+	`, fmt.Sprintf("catalog-height-%d", unique)).Scan(&productID, &code); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	var defaultVariantID int64
+	for index, height := range []int{35, 120} {
+		var variantID int64
+		if err := pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,sku,label,base_price_minor,is_active)
+			VALUES($1,$2,$3,100000,1) RETURNING id`, productID, fmt.Sprintf("7%016d%d", unique%10000000000000000, index), fmt.Sprintf("H%d", height)).Scan(&variantID); err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			defaultVariantID = variantID
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value)
+			SELECT $1,id,to_jsonb($2::integer) FROM attribute_definitions WHERE code='height_cm'`, variantID, height); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repository := NewPostgresRepository(pool)
+	check := func(wantHeight bool) {
+		t.Helper()
+		cards, err := repository.ListAvailable(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, card := range cards {
+			if card.ID != code {
+				continue
+			}
+			if wantHeight && (card.HeightCm == nil || *card.HeightCm != 35) || !wantHeight && card.HeightCm != nil {
+				t.Fatalf("default variant height: %+v", card.HeightCm)
+			}
+			foundHeight := false
+			for _, attribute := range card.FilterAttributes {
+				if attribute.Code == "growing_country" {
+					t.Fatal("missing growing country must stay unknown")
+				}
+				if attribute.Code == "height_cm" {
+					foundHeight = true
+					if attribute.Value != float64(35) {
+						t.Fatalf("filter borrowed height from another variant: %+v", attribute)
+					}
+				}
+			}
+			if foundHeight != wantHeight {
+				t.Fatalf("height filter presence: got %v want %v", foundHeight, wantHeight)
+			}
+			return
+		}
+		t.Fatal("height fixture missing from catalog")
+	}
+	check(true)
+	if _, err := pool.Exec(ctx, `DELETE FROM variant_attribute_values WHERE variant_id=$1 AND attribute_id=(SELECT id FROM attribute_definitions WHERE code='height_cm')`, defaultVariantID); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
 }
 
 func TestRecommendationsQueryOnLiveDatabase(t *testing.T) {

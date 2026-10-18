@@ -553,6 +553,7 @@ const catalogListQuery = `
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 		),'/assets/product-photo-pending.svg'),
 		default_variant.label, default_variant.stock,
+		NULLIF(GREATEST(variant_numeric_attribute(default_variant.id,'height_cm'),0),0)::double precision,
 		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(NULLIF(pim.light_level,''),product.light_level,''),
 		COALESCE(NULLIF(pim.watering,''),product.watering,''),COALESCE(NULLIF(pim.height_class,''),product.height_class,''),COALESCE(NULLIF(pim.care_level,''),product.care_level,''),
 		COALESCE(NULLIF(pim.placement,''),product.placement,''),COALESCE(NULLIF(pim.pet_safety,''),product.pet_safety,''),COALESCE(NULLIF(pim.growth_habit,''),product.growth_habit,''),product.category_id,
@@ -591,6 +592,7 @@ const catalogListQuery = `
 				FROM effective JOIN variant_attribute_values value ON value.attribute_id=effective.id
 				JOIN product_variants variant ON variant.id=value.variant_id AND variant.product_id=product.id AND variant.is_active=1
                   AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
+				  AND (effective.code<>'height_cm' OR variant.id=default_variant.id)
 				WHERE effective.value_scope='variant' AND NOT effective.is_excluded AND (effective.is_badge OR (effective.is_filterable AND EXISTS(SELECT 1 FROM catalog_filters filter WHERE filter.attribute_id=effective.id AND filter.is_active AND (filter.category_id IS NULL OR EXISTS(SELECT 1 FROM ancestors ancestor WHERE ancestor.id=filter.category_id)))))
 			)
 			SELECT jsonb_agg(jsonb_build_object('code',value.code,'name',value.name,'unit',value.unit,'value',value.value,
@@ -643,7 +645,7 @@ func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Prod
 		var priceMinor int64
 		var filterAttributes []byte
 		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.Latin, &product.Category, &priceMinor,
-			&product.Image, &product.Size, &product.Stock, &product.CatalogSection, &product.PlantKind, &product.LightLevel,
+			&product.Image, &product.Size, &product.Stock, &product.HeightCm, &product.CatalogSection, &product.PlantKind, &product.LightLevel,
 			&product.Watering, &product.HeightClass, &product.CareLevel, &product.Placement, &product.PetSafety, &product.GrowthHabit,
 			&product.CategoryID, &product.PopularityScore, &product.Collections, &product.Rating, &product.ReviewsCount, &filterAttributes); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)

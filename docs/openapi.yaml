@@ -312,6 +312,9 @@ components:
           type: string
         stock:
           type: integer
+        heightCm:
+          type: number
+          description: Confirmed positive height of the default variant displayed in the catalog; omitted when unknown.
         filterAttributes:
           type: array
           items:

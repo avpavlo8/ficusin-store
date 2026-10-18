@@ -1,15 +1,33 @@
 import { expect, test } from "@playwright/test";
 
-test("production homepage filters the live catalogue by budget and shows a variant size", async ({page,request})=>{
+test("production homepage filters by budget and shows the live variant height and care scale", async ({page,request})=>{
   const response=await request.get("/api/v1/catalog");
   expect(response.ok()).toBeTruthy();
-  const products=(await response.json()).products as Array<{id:string;price:number;name:string}>;
+  const products=(await response.json()).products as Array<{id:string;price:number;name:string;catalogSection:string;heightCm?:number;careLevel?:string;stock:number;filterAttributes?:Array<{code:string;value:unknown}>}>;
   const positive=products.filter(p=>p.price>0);
   expect(positive.length).toBeGreaterThan(0);
   const budget=Math.min(...positive.map(p=>p.price));
   await page.goto("/");
   await expect(page.locator(".storefront-card").first()).toBeVisible();
-  await expect(page.locator(".storefront-size").first()).not.toBeEmpty();
+  const first=page.locator(".storefront-card").first();
+  const href=await first.locator(".storefront-name").getAttribute("href");
+  const current=products.find(product=>href===`/product/${product.id}`)!;
+  expect(current).toBeTruthy();
+  if(current.catalogSection==="plants") {
+    await expect(first.locator(".storefront-attribute-badges")).toHaveCount(0);
+    const specs=first.locator(".storefront-plant-specs");
+    if(current.heightCm && current.heightCm>0) await expect(specs).toContainText(`Высота: ${current.heightCm} см`);
+    else await expect(specs).toContainText("Высота: Не указана");
+    const code=String(current.filterAttributes?.find(attribute=>attribute.code==="care_level")?.value||current.careLevel||"");
+    const level=({easy:1,medium:2,demanding:3} as Record<string,number>)[code];
+    if (level) await expect(first.locator(".care-scale")).toHaveAttribute("data-level", String(level));
+    else await expect(first.locator(".care-scale")).toHaveCount(0);
+  }
+  if(current.stock>0) await expect(first.locator(".storefront-price em")).toHaveCount(0);
+  else {
+    await expect(first.locator(".storefront-price")).toContainText("≈");
+    await expect(first.locator(".storefront-price")).toContainText("Нет в наличии");
+  }
   await page.getByRole("button",{name:/Фильтры/}).click();
   await page.getByLabel("Цена: до",{exact:true}).fill(String(budget));
   await expect(page).toHaveURL(new RegExp(`priceMax=${budget}`));
@@ -46,9 +64,25 @@ test("production mobile footer and keyboard menu are reachable", async ({page,re
     await trigger.click();
     const menu=page.getByRole("dialog",{name:"Меню магазина"});
     await expect(menu.getByRole("button",{name:"Закрыть меню",exact:true})).toBeFocused();
+    const bounds=await menu.boundingBox(),viewport=page.viewportSize()!;
+    expect(bounds!.width).toBeLessThan(viewport.width);
+    expect(bounds!.height).toBeLessThan(viewport.height*.8);
+    await expect(page.locator(".mobile-menu-backdrop")).toBeHidden();
+    await expect(page.locator("body")).not.toHaveCSS("overflow","hidden");
     await page.keyboard.press("Escape");
     await expect(menu).not.toBeVisible();
     await expect(trigger).toBeFocused();
+    await page.getByRole("button",{name:"Поиск",exact:true}).click();
+    await expect(page.locator(".mobile-search")).toBeVisible();
+    await expect(page.locator("body")).not.toHaveCSS("overflow","hidden");
+    await page.getByRole("button",{name:"Закрыть поиск",exact:true}).click();
+    const toolbar=page.locator(".home-catalog-toolbar");
+    for(const control of [toolbar.locator(".home-filter-button"),toolbar.locator(".home-sort summary")]) {
+      const box=await control.boundingBox(), icon=await control.locator("svg").boundingBox();
+      expect(Math.abs(icon!.x+icon!.width/2-box!.x-box!.width/2)).toBeLessThan(1);
+      expect(Math.abs(icon!.y+icon!.height/2-box!.y-box!.height/2)).toBeLessThan(1);
+    }
+    await expect(page.locator(".storefront-card .cart-button-label").first()).toBeHidden();
     const hint=page.getByRole("button",{name:"Скрыть подсказку",exact:true});
     if(await hint.isVisible())await hint.click();
     await page.locator(".store-footer-address").scrollIntoViewIfNeeded();
@@ -74,15 +108,15 @@ test("production categories are available beside the catalogue and open the chos
   const [catalogResponse,categoryResponse]=await Promise.all([request.get("/api/v1/catalog"),request.get("/api/v1/categories")]);
   expect(catalogResponse.ok()).toBeTruthy(); expect(categoryResponse.ok()).toBeTruthy();
   const {products}=await catalogResponse.json() as {products:Array<{id:string;categoryId:number}>};
-  const {categories}=await categoryResponse.json() as {categories:Array<{id:number;parentId:number|null;slug:string}>};
+  const {categories}=await categoryResponse.json() as {categories:Array<{id:number;parentId:number|null;slug:string;name:string}>};
   const category=categories.find(item=>products.some(product=>product.categoryId===item.id)&&!categories.some(child=>child.parentId===item.id));
   expect(category).toBeTruthy();
-  await page.goto("/");
+  await page.goto("/#catalog");
   const picker=page.getByLabel("Категория",{exact:true});
   await expect(picker.locator(`option[value="${category!.slug}"]`)).toHaveCount(1);
   const phone=(await page.viewportSize())!.width<=850;
   const navigation=page.getByRole("navigation",{name:"Категории товаров"});
-  if(phone) await picker.selectOption(category!.slug);
+  if(phone) { await page.getByRole("button",{name:"Фильтры",exact:true}).click(); await picker.selectOption(category!.slug); }
   else {
     await expect(picker).toBeHidden();
     const side=page.locator(".storefront-side");
@@ -98,7 +132,10 @@ test("production categories are available beside the catalogue and open the chos
     await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
     await navigation.locator(`a[href="/catalog/${category!.slug}"]`).click();
   }
-  await expect(page).toHaveURL(new RegExp(`/catalog/${category!.slug}$`));
+  await expect(page).toHaveURL(new RegExp(`/\\?category=${category!.id}#catalog$`));
+  await expect(page.locator(".storefront-head h2")).toHaveText(category!.name);
+  await expect(page.locator(".home-hero")).toBeAttached();
+  await expect(page.getByRole("region",{name:"Подборки растений"})).toBeAttached();
   await expect(picker).toHaveValue(category!.slug);
   if((await page.viewportSize())!.width<=850) await expect(page.locator(".storefront-side")).toBeHidden();
   await expect(page.locator(".storefront-card").first()).toBeVisible();

@@ -29,6 +29,7 @@ type Product struct {
 	Light            string             `json:"light"`
 	Size             string             `json:"size"`
 	Stock            int                `json:"stock"`
+	HeightCm         *float64           `json:"heightCm,omitempty"`
 	CatalogSection   string             `json:"catalogSection"`
 	PlantKind        string             `json:"plantKind,omitempty"`
 	LightLevel       string             `json:"lightLevel,omitempty"`

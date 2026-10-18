@@ -2367,3 +2367,6 @@
 .cart-summary,.checkout-order-summary { background:#f3eee4; }
 .cart-summary dl > div,.checkout-order-summary dl > div { gap:16px; }
 .cart-summary dd,.checkout-order-summary dd { max-width:65%; overflow-wrap:normal; }
+
+/* A closed purchase panel must not cast its shadow over the catalogue. */
+.drawer:not(.open),.checkout:not(.open) { visibility:hidden; box-shadow:none; }

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ProductDetail, ProductVariant } from "./types";
 import { attributeLabel, attributeValue, money } from "./types";
+import { CareLevel } from "./CareLevel";
 
 const characteristicIcons: Record<string, string> = {
   light: "M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z",
@@ -25,6 +26,7 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
   const available = Boolean(variant && variant.stock > 0);
   const isPlant = product.catalogSection === "plants";
   const allAttributes = [...product.attributes, ...(variant?.attributes || [])].filter((item)=>isPlant || !plantOnlyAttributeCodes.has(item.code));
+  const careLevel = String(product.attributes.find(item => item.code === "care_level")?.value || product.careLevel || "");
   const diameter = variant?.potDiameterCm && variant.potDiameterCm > 0
     ? `${variant.potDiameterCm} см`
     : /^\d+(?:[.,]\d+)?$/.test(variant?.label?.trim() || "") ? `${variant!.label.trim()} см` : "Не указан";
@@ -67,7 +69,7 @@ export function ProductPurchasePanel({ product, variant, quantity, favorite, inC
           <div><span className="characteristic-icon water"><CharacteristicIcon name="water" /></span><p><small>Полив</small><strong>{characteristic(attributeLabel(product.watering || product.passport.watering || "Не указано"),"полив","water")}</strong></p></div>
           <div><span className="characteristic-icon height"><CharacteristicIcon name="height" /></span><p><small>Высота</small><strong>{characteristic(variant?.heightCm ? `${variant?.heightCm} см` : attributeLabel(product.heightClass || "Не указано"),"высот","height")}</strong></p></div>
           <div><span className="characteristic-icon pot"><CharacteristicIcon name="pot" /></span><p><small>Диаметр горшка</small><strong>{diameter !== "Не указан" ? diameter : characteristic("Не указан","диаметр","горш")}</strong></p></div>
-          <div><span className="characteristic-icon care"><CharacteristicIcon name="care" /></span><p><small>Уход</small><strong>{characteristic(attributeLabel(product.careLevel || product.passport.careDifficulty || "Не указано"),"уход","сложност","care")}</strong></p></div>
+          <div><span className="characteristic-icon care"><CharacteristicIcon name="care" /></span><p><small>Сложность ухода</small><strong><CareLevel value={careLevel} />{!["easy", "medium", "demanding"].includes(careLevel) && "Не указана"}</strong></p></div>
           <div><span className="characteristic-icon pets"><CharacteristicIcon name="pets" /></span><p><small>Питомцы</small><strong>{characteristic(attributeLabel(product.petSafety || product.passport.toxicity || "Не указано"),"питом","безопас","токсич","pet")}</strong></p></div>
           <div><span className="characteristic-icon humidity"><CharacteristicIcon name="humidity" /></span><p><small>Влажность воздуха</small><strong>{characteristic(attributeLabel(product.passport.humidity || "Не указано"),"влажн","humidity")}</strong></p></div>
           {extraSummary.map(item => <div key={item.code}><span className="characteristic-icon care"><CharacteristicIcon name="care" /></span><p><small>{item.name}</small><strong>{attributeValue(item.value, item.unit)}</strong></p></div>)}
