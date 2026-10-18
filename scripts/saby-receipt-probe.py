@@ -6,6 +6,7 @@ posting, credentials, personal data or attachment URLs are emitted.
 import json
 import os
 import urllib.request
+import urllib.error
 import uuid
 import re
 
@@ -15,8 +16,11 @@ def request(url, payload, token=None):
     if token:
         headers["X-SBISAccessToken"] = token
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-    with urllib.request.urlopen(req, timeout=60) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        return {"httpStatus": error.code}
 
 
 def shape(value, depth=0):
@@ -50,16 +54,19 @@ token = auth["token"]
 for method, params in (
     ("ДокОтгрВх.Прочитать", {"ИдО": receipt_id, "ИмяМетода": "ДокОтгрВх.Список"}),
     ("СБИС.ПрочитатьДокумент", {"Документ": {"Идентификатор": guid}}),
-    ("РеалВх.NomList", {"Фильтр": {"_type":"record", "d":[receipt_id], "s":[{"n":"Документ","t":"Число целое"}]}, "Сортировка": [], "Навигация": {"Страница":0,"РазмерСтраницы":1000}, "ДопПоля": []}),
+    ("РеалВх.Прочитать", {"ИдО": receipt_id, "ИмяМетода": "РеалВх.Список"}),
+    ("ДвижениеНоменклатуры.Список", {"Фильтр": {"_type":"record", "d":[receipt_id], "s":[{"n":"Документ","t":"Число целое"}]}, "Сортировка": [], "Навигация": {"Страница":0,"РазмерСтраницы":1000}, "ДопПоля": []}),
 ):
     result = request("https://online.sbis.ru/service/?srv=1", {
         "jsonrpc": "2.0", "protocol": 6, "id": 1, "method": method, "params": params,
     }, token)
     print(method)
+    print("httpStatus:",result.get("httpStatus"))
     print(json.dumps(shape(result), ensure_ascii=False, indent=2))
     if "error" in result:
         error = result["error"]
         msg = str(error.get("message", ""))
+        print("errorCategories:", {word: word in msg.lower() for word in ("найден", "доступ", "аргумент", "параметр", "метод", "документ")})
         # Runtime/signature errors only. Never log a service-supplied document,
         # a request body or arbitrary data from the exception details.
         if any(term in msg.lower() for term in ("метод", "аргумент", "параметр")):
