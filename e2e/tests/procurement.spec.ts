@@ -5,6 +5,7 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true,currency:"EUR"});
  await page.goto('/admin?section=procurement&order=4');
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
  await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
@@ -30,8 +31,10 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await expect(dialog).toBeHidden();
  await expect(order.getByRole('tab',{name:'Разобрать миксы 0',exact:true})).toHaveAttribute('aria-selected','true');
  await order.getByRole('tab',{name:/^Все /}).click();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(row).toContainText('Распределено 60 / 60 шт.');
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
 });
 
@@ -39,6 +42,7 @@ test("@desktop @phone accidental card can be detached while waiting for a new Sa
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto('/admin?section=procurement&order=4');
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
  await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
  await page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
@@ -52,6 +56,7 @@ test("@desktop @phone accidental card can be detached while waiting for a new Sa
  await expect(row).not.toContainText('Bonsai Zantaxilum D15');
  await expect(row).toContainText('60 / 60');
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку СБИС');
 });
 
@@ -73,10 +78,12 @@ test("@desktop @phone invoice match exposes missing Saby card and resolves it in
  await expect(picker).toBeHidden();
  await expect(order.getByText('Не выбраны товары СБИС: 1',{exact:true})).toHaveCount(0);
  await order.getByRole('tab',{name:/^Все /}).click();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const matched=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
  await expect(matched).toContainText('Bonsai Zantaxilum D15');
  await expect(matched).toContainText('60 / 60');
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Bonsai Zantaxilum D15');
 });
 
@@ -909,6 +916,7 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto("/admin?section=procurement&order=4");
  const order=page.getByRole("dialog",{name:"TEST-100",exact:true});
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
  await row.locator(".procurement-row-more > summary").click();
  await row.getByRole("button",{name:"Расходы продажи",exact:true}).click();
@@ -925,6 +933,7 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await editor.getByRole("button",{name:"Сохранить для пересчёта",exact:true}).click();
  await expect(editor).toBeHidden();
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const reloaded=page.getByRole("dialog",{name:"TEST-100",exact:true}).getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
  await reloaded.locator(".procurement-row-more > summary").click();
  await reloaded.getByRole("button",{name:"Расходы продажи",exact:true}).click();
