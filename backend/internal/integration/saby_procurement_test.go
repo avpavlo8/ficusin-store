@@ -272,6 +272,8 @@ func TestSabyReceiptRetryNeverAppendsRowsToExistingDocument(t *testing.T) {
 			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporary add error"}}`))
 		case "ДокОтгрВх.Прочитать":
 			_, _ = fmt.Fprintf(response, `{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,%q,false,{"_type":"recordset","d":[],"s":[{"n":"@Номенклатура"},{"n":"КоличествоОсн"}]}],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"},{"n":"Строки"}]}}`, receiptGUID)
+		case "РеалВх.DocNomList":
+			_, _ = response.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"recordset","d":[],"s":[{"n":"Номенклатура"},{"n":"Количество"}]}}`))
 		default:
 			t.Fatalf("unexpected method: %s", rpc.Method)
 		}
@@ -598,6 +600,8 @@ func TestReturnReceiptCreatesDraftWhenRetailReadbackIsHeaderOnly(t *testing.T) {
 		case "ДокОтгрВх.Прочитать":
 			reads++
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"record","d":[8,"22222222-2222-4222-8222-222222222222",false],"s":[{"n":"@Документ"},{"n":"ИдентификаторДокумента"},{"n":"Проведен"}]}}`))
+		case "РеалВх.DocNomList":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"_type":"recordset","d":[],"s":[{"n":"Номенклатура"},{"n":"Количество"}]}}`))
 		default:
 			t.Errorf("unsafe/unexpected method %s", rpc.Method)
 		}

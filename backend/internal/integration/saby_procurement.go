@@ -390,6 +390,7 @@ func (client *SabyClient) WithIntegrationRequestLimiter(limiter IntegrationReque
 }
 
 type sabyDraftPayload struct {
+	VerifyOnly  bool   `json:"verifyOnly"`
 	OrderID     int64  `json:"orderId"`
 	ReturnID    int64  `json:"returnId"`
 	OrderNumber string `json:"orderNumber"`
@@ -433,6 +434,15 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	}
 	if item.Channel != "saby_receipt" {
 		return procurement.ActionExecution{}, fmt.Errorf("канал %s не поддерживается", item.Channel)
+	}
+	// Recovery is deliberately an independent read-only path. A missing or
+	// invalid saved document ID can never fall through to Create/NomCreate.
+	if payload.VerifyOnly {
+		id, err := strconv.ParseInt(strings.TrimSpace(item.ExternalOperationID), 10, 64)
+		if err != nil || id <= 0 || safeSabyURL(item.ExternalURL) == "" {
+			return procurement.ActionExecution{}, errors.New("для проверки нужен сохранённый документ СБИС; новый документ не создавался")
+		}
+		return client.verifyReceipt(ctx, item, payload, id)
 	}
 
 	quantities := make(map[int64]float64, len(payload.Lines))
@@ -547,7 +557,52 @@ func (client *SabyClient) CreateDraft(ctx context.Context, item procurement.Acti
 	return execution, nil
 }
 
+func (client *SabyClient) verifyReceipt(ctx context.Context, item procurement.ActionItem, payload sabyDraftPayload, id int64) (procurement.ActionExecution, error) {
+	result := procurement.ActionExecution{ExternalOperationID: strconv.FormatInt(id, 10), ExternalURL: safeSabyURL(item.ExternalURL)}
+	document, count, err := client.readReceipt(ctx, id)
+	if err != nil {
+		return result, fmt.Errorf("прочитать существующее поступление СБИС: %w", err)
+	}
+	guid := strings.TrimSpace(fmt.Sprint(sabyRecordField(document, "ИдентификаторДокумента")))
+	link, _ := url.Parse(result.ExternalURL)
+	linkedGUID := link.Query().Get("guid")
+	if linkedGUID == "" {
+		linkedGUID = strings.TrimPrefix(link.Path, "/doc/")
+	}
+	if guid == "" || guid == "<nil>" || !strings.EqualFold(guid, linkedGUID) {
+		return result, errors.New("идентификатор прочитанного документа СБИС отличается от сохранённой ссылки")
+	}
+	expected := map[int64]float64{}
+	for _, line := range payload.Lines {
+		nom, err := strconv.ParseInt(line.SabyID, 10, 64)
+		if err != nil || nom <= 0 || line.Quantity <= 0 {
+			return result, errors.New("некорректный состав проверки поступления")
+		}
+		expected[nom] += float64(line.Quantity)
+	}
+	actual := sabyLineQuantities(document)
+	if count != len(expected) || len(actual) != len(expected) {
+		return result, fmt.Errorf("состав существующего поступления СБИС отличается: прочитано %d строк, ожидалось %d", count, len(expected))
+	}
+	for nom, quantity := range expected {
+		got, ok := actual[nom]
+		if !ok || math.Abs(got-quantity) > .000001 {
+			return result, fmt.Errorf("количество товара %d в СБИС %.3f, в закупке %.3f", nom, got, quantity)
+		}
+	}
+	if !sabyReceiptPosted(document) {
+		result.RetryAfter = 30 * time.Second
+		result.PendingMessage = "Состав проверен. Ожидаем проведения существующего документа СБИС."
+		return result, nil
+	}
+	result.Completed = true
+	return result, nil
+}
+
 func sabyReceiptPosted(document map[string]any) bool {
+	if value, ok := sabyNamedValue(document, "Удален"); ok && sabyBool(value) {
+		return false
+	}
 	for _, name := range []string{"Проведен", "Проведён", "Проведено"} {
 		if value, ok := sabyNamedValue(document, name); ok {
 			return sabyBool(value)
@@ -556,10 +611,42 @@ func sabyReceiptPosted(document map[string]any) bool {
 	for _, name := range []string{"Состояние", "Статус"} {
 		if value, ok := sabyNamedValue(document, name); ok {
 			status := strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
-			if strings.Contains(status, "проведен") || strings.Contains(status, "проведён") {
+			if status == "проведен" || status == "проведён" || status == "проведено" {
 				return true
 			}
 		}
+	}
+	// Retail exposes posting as a schema-labelled flag array, not Проведен.
+	fields, _ := document["s"].([]any)
+	data, _ := document["d"].([]any)
+	for index, raw := range fields {
+		field, _ := raw.(map[string]any)
+		if field["n"] != "ДокументРасширение.Состояние" || index >= len(data) {
+			continue
+		}
+		typeInfo, _ := field["t"].(map[string]any)
+		if typeInfo["n"] != "Флаги" {
+			continue
+		}
+		labels, _ := typeInfo["s"].(map[string]any)
+		flags, _ := data[index].([]any)
+		posted := false
+		for key, label := range labels {
+			bit, err := strconv.Atoi(key)
+			if err != nil || bit < 0 || bit >= len(flags) {
+				continue
+			}
+			if !sabyBool(flags[bit]) {
+				continue
+			}
+			switch fmt.Sprint(label) {
+			case "Проведен", "Проведён":
+				posted = true
+			case "ОшибкиПроведения", "НеактуальныеПроводки", "ВОчередиНаПроведение":
+				return false
+			}
+		}
+		return posted
 	}
 	return false
 }
@@ -579,7 +666,84 @@ func (client *SabyClient) readReceipt(ctx context.Context, internalID int64) (ma
 	if document["_type"] == nil {
 		document["_type"] = "record"
 	}
-	return document, sabyLineCount(result), nil
+	readID, err := sabyInt64Field(document, "@Документ")
+	if err != nil || readID != internalID {
+		return nil, 0, errors.New("СБИС вернул другой документ")
+	}
+	if value, ok := sabyNamedValue(document, "Удален"); ok && sabyBool(value) {
+		return nil, 0, errors.New("документ СБИС удалён")
+	}
+	count := sabyLineCount(result)
+	if count > 0 {
+		// Some responses return the rows next to the header, rather than inside
+		// it. Preserve that part for quantity verification too.
+		if sabyLineCount(document) == 0 {
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				return nil, 0, err
+			}
+			var copied any
+			if err = json.Unmarshal(encoded, &copied); err != nil {
+				return nil, 0, err
+			}
+			document["FicusinReceiptRows"] = copied
+		}
+		return document, count, nil
+	}
+	all := []any{}
+	previous := ""
+	for page := 0; page < 100; page++ {
+		var rows any
+		if err := client.rpc(ctx, "РеалВх.DocNomList", map[string]any{
+			"Фильтр": map[string]any{"_type": "record", "d": []any{internalID, int64(0), false, nil}, "s": []any{
+				map[string]any{"n": "СкладскойДокумент", "t": "Число целое"},
+				map[string]any{"n": "Тип", "t": "Число целое"},
+				map[string]any{"n": "ЭтоРасходы", "t": "Логическое"},
+				map[string]any{"n": "Раздел", "t": "Число целое"},
+			}},
+			"Сортировка": nil, "Навигация": sabyRecord(map[string]any{"ЕстьЕще": true, "Страница": int64(page), "РазмерСтраницы": int64(1000)}), "ДопПоля": []any{},
+		}, &rows); err != nil {
+			return nil, 0, fmt.Errorf("прочитать строки поступления: %w", err)
+		}
+		n := sabyLineCount(rows)
+		if n > 0 {
+			record, _ := rows.(map[string]any)
+			fields, _ := record["s"].([]any)
+			data, _ := record["d"].([]any)
+			docIndex := -1
+			for index, raw := range fields {
+				field, _ := raw.(map[string]any)
+				if field["n"] == "СкладскойДокумент" {
+					docIndex = index
+				}
+			}
+			if docIndex < 0 {
+				return nil, 0, errors.New("строки СБИС не содержат идентификатор поступления")
+			}
+			for _, raw := range data {
+				row, _ := raw.([]any)
+				if docIndex >= len(row) {
+					return nil, 0, errors.New("неполная строка поступления СБИС")
+				}
+				id, ok := sabyNestedInt64(row[docIndex], "@Документ")
+				if !ok || id != internalID {
+					return nil, 0, errors.New("СБИС вернул строки другого поступления")
+				}
+			}
+		}
+		encoded, _ := json.Marshal(rows)
+		if page > 0 && n > 0 && string(encoded) == previous {
+			return nil, 0, errors.New("СБИС повторил страницу строк поступления")
+		}
+		previous = string(encoded)
+		all = append(all, rows)
+		count += n
+		if n < 1000 {
+			document["FicusinReceiptRows"] = all
+			return document, count, nil
+		}
+	}
+	return nil, 0, errors.New("слишком много страниц поступления СБИС")
 }
 
 func sabyInt64Field(record map[string]any, name string) (int64, error) {
