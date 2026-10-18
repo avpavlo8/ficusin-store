@@ -1,0 +1,57 @@
+"""Read an existing receipt; log field names, types and counts, never values.
+
+Only two fixed read methods are permitted. No document creation, row writes,
+posting, credentials, personal data or attachment URLs are emitted.
+"""
+import json
+import os
+import urllib.request
+import uuid
+
+
+def request(url, payload, token=None):
+    headers = {"Content-Type": "application/json-rpc;charset=utf-8"}
+    if token:
+        headers["X-SBISAccessToken"] = token
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
+    with urllib.request.urlopen(req, timeout=60) as response:
+        return json.load(response)
+
+
+def shape(value, depth=0):
+    if depth > 12:
+        return type(value).__name__
+    if isinstance(value, dict):
+        if isinstance(value.get("s"), list) and isinstance(value.get("d"), list):
+            fields, data = value["s"], value["d"]
+            recordset = value.get("_type") == "recordset" or bool(data and isinstance(data[0], list))
+            sample = data[0] if recordset and data else data if not recordset else []
+            return {"protocol": value.get("_type"), "rowCount": len(data) if recordset else 1,
+                    "fields": [{"name": f.get("n"), "type": f.get("t"),
+                                "valueShape": shape(sample[i], depth+1) if i < len(sample) else "absent"}
+                               for i, f in enumerate(fields)],
+                    "other": {k: shape(v, depth+1) for k,v in value.items() if k not in ("d","s","_type")}}
+        return {k: shape(v, depth+1) for k,v in value.items()}
+    if isinstance(value, list):
+        return {"count": len(value), "first": shape(value[0], depth+1) if value else None}
+    return type(value).__name__
+
+
+receipt_id = int(os.environ["SABY_RECEIPT_ID"])
+assert receipt_id > 0
+guid = str(uuid.UUID(os.environ["SABY_RECEIPT_GUID"]))
+auth = request("https://online.sbis.ru/oauth/service/", {
+    "app_client_id": os.environ["SABY_APP_CLIENT_ID"],
+    "app_secret": os.environ["SABY_APP_SECRET"],
+    "secret_key": os.environ["SABY_SECRET_KEY"],
+})
+token = auth["token"]
+for method, params in (
+    ("ДокОтгрВх.Прочитать", {"ИдО": receipt_id, "ИмяМетода": "ДокОтгрВх.Список"}),
+    ("СБИС.ПрочитатьДокумент", {"Документ": {"Идентификатор": guid}}),
+):
+    result = request("https://online.sbis.ru/service/?srv=1", {
+        "jsonrpc": "2.0", "protocol": 6, "id": 1, "method": method, "params": params,
+    }, token)
+    print(method)
+    print(json.dumps(shape(result), ensure_ascii=False, indent=2))
