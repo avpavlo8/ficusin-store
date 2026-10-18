@@ -17,7 +17,28 @@ type avitoService interface {
 	ReplaceProducts(context.Context, string, []int64) error
 	Reconcile(context.Context) error
 	SetPublication(context.Context, bool) error
+	SetPaused(context.Context, string, bool) error
 	WriteFeed(context.Context, string, http.ResponseWriter) error
+}
+
+func avitoPauseHandler(administration adminHandlers, service avitoService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := administration.authorize(w, r, admin.PermissionIntegrationsEdit); !ok {
+			return
+		}
+		var input struct {
+			Paused *bool `json:"paused"`
+		}
+		if decodeJSON(r, &input) != nil || input.Paused == nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Укажите paused"})
+			return
+		}
+		if err := service.SetPaused(r.Context(), r.PathValue("itemID"), *input.Paused); err != nil {
+			administration.failed(w, "pause Avito listing", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"paused": *input.Paused})
+	}
 }
 
 func avitoFeedHandler(service avitoService) http.HandlerFunc {

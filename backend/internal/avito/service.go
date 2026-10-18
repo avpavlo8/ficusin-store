@@ -46,6 +46,7 @@ type Listing struct {
 	Status           string     `json:"status"`
 	URL              string     `json:"url"`
 	RemotePrice      float64    `json:"remotePrice"`
+	ManualPaused     bool       `json:"manualPaused"`
 	DesiredPublished *bool      `json:"desiredPublished"`
 	LastReconciledAt *time.Time `json:"lastReconciledAt"`
 	LastError        string     `json:"lastError"`
@@ -67,6 +68,7 @@ type Service struct {
 	clientID, clientSecret, baseURL, siteURL                string
 	address, managerName, contactPhone, category, goodsType string
 	mu                                                      sync.Mutex
+	importMu                                                sync.Mutex
 	token                                                   string
 	tokenUntil                                              time.Time
 }
@@ -121,6 +123,8 @@ type apiItem struct {
 
 func itemID(raw json.RawMessage) string { return strings.Trim(strings.TrimSpace(string(raw)), `"`) }
 func (s *Service) Import(ctx context.Context) (int, error) {
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
 	if !s.Configured() {
 		return 0, errors.New("ключи Avito не настроены")
 	}
@@ -156,7 +160,8 @@ func (s *Service) Import(ctx context.Context) (int, error) {
 					continue
 				}
 				price, _ := strconv.ParseFloat(item.Price.String(), 64)
-				_, err = s.pool.Exec(ctx, `INSERT INTO avito_listings(item_id,title,status,url,remote_price_minor,last_seen_at) VALUES($1,$2,$3,$4,$5,CURRENT_TIMESTAMP) ON CONFLICT(item_id) DO UPDATE SET title=EXCLUDED.title,status=EXCLUDED.status,url=EXCLUDED.url,remote_price_minor=EXCLUDED.remote_price_minor,last_seen_at=CURRENT_TIMESTAMP`, id, item.Title, item.Status, item.URL, int64(price*100))
+				_, err = s.pool.Exec(ctx, `INSERT INTO avito_listings(item_id,title,status,url,remote_price_minor,last_seen_at,manual_paused) VALUES($1,$2,$3,$4,$5,CURRENT_TIMESTAMP,LOWER($3)='old') ON CONFLICT(item_id) DO UPDATE SET title=EXCLUDED.title,status=EXCLUDED.status,url=EXCLUDED.url,remote_price_minor=EXCLUDED.remote_price_minor,last_seen_at=CURRENT_TIMESTAMP,
+				manual_paused=avito_listings.manual_paused OR (LOWER(EXCLUDED.status)='old' AND LOWER(avito_listings.status)='active' AND avito_listings.desired_published IS DISTINCT FROM FALSE)`, id, item.Title, item.Status, item.URL, int64(price*100))
 				if err != nil {
 					return count, err
 				}
@@ -176,7 +181,7 @@ func (s *Service) List(ctx context.Context) ([]Listing, State, error) {
 	if err != nil {
 		return nil, state, err
 	}
-	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,l.status,l.url,l.remote_price_minor,l.desired_published,l.last_reconciled_at,l.last_error,p.id,p.name,p.slug,COALESCE((SELECT MIN(f.base_price_minor) FROM fresh_stock f WHERE f.product_id=p.id AND f.qty>0),0),COALESCE((SELECT SUM(f.qty) FROM fresh_stock f WHERE f.product_id=p.id),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l LEFT JOIN avito_listing_products lp ON lp.item_id=l.item_id LEFT JOIN products p ON p.id=lp.product_id WHERE LOWER(l.status)<>'removed' ORDER BY l.last_seen_at DESC,l.item_id,p.name`)
+	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,l.status,l.url,l.remote_price_minor,l.manual_paused,l.desired_published,l.last_reconciled_at,l.last_error,p.id,p.name,p.slug,COALESCE((SELECT MIN(f.base_price_minor) FROM fresh_stock f WHERE f.product_id=p.id AND f.qty>0),0),COALESCE((SELECT SUM(f.qty) FROM fresh_stock f WHERE f.product_id=p.id),0),COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l LEFT JOIN avito_listing_products lp ON lp.item_id=l.item_id LEFT JOIN products p ON p.id=lp.product_id WHERE LOWER(l.status)<>'removed' ORDER BY l.last_seen_at DESC,l.item_id,p.name`)
 	if err != nil {
 		return nil, state, err
 	}
@@ -189,7 +194,7 @@ func (s *Service) List(ctx context.Context) ([]Listing, State, error) {
 		var name, slug, image *string
 		var remoteMinor int64
 		var productMinor, stock *int64
-		if err := rows.Scan(&l.ItemID, &l.Title, &l.Status, &l.URL, &remoteMinor, &l.DesiredPublished, &l.LastReconciledAt, &l.LastError, &productID, &name, &slug, &productMinor, &stock, &image); err != nil {
+		if err := rows.Scan(&l.ItemID, &l.Title, &l.Status, &l.URL, &remoteMinor, &l.ManualPaused, &l.DesiredPublished, &l.LastReconciledAt, &l.LastError, &productID, &name, &slug, &productMinor, &stock, &image); err != nil {
 			return nil, state, err
 		}
 		pos, ok := index[l.ItemID]
@@ -239,11 +244,36 @@ func (s *Service) ReplaceProducts(ctx context.Context, itemID string, ids []int6
 	return tx.Commit(ctx)
 }
 func (s *Service) SetPublication(ctx context.Context, enabled bool) error {
+	if enabled {
+		items, state, err := s.List(ctx)
+		if err != nil {
+			return err
+		}
+		if !state.Configured || len(items) == 0 || state.LastWorkerAt == nil || state.LastError != "" {
+			return errors.New("сначала импортируйте объявления и проверьте остатки без ошибок")
+		}
+		for _, item := range items {
+			if !item.ManualPaused && item.Status != "blocked" && item.Status != "rejected" && (len(item.Products) == 0 || item.DesiredPublished == nil || item.LastError != "") {
+				return errors.New("сначала свяжите или приостановите все объявления и проверьте остатки")
+			}
+		}
+	}
 	if enabled && (s.address == "" || s.managerName == "" || s.contactPhone == "" || s.category == "" || s.goodsType == "") {
 		return errors.New("для автопубликации заполните адрес, контакт и категорию Avito")
 	}
 	_, err := s.pool.Exec(ctx, `UPDATE avito_integration_state SET publication_enabled=$1 WHERE id=1`, enabled)
 	return err
+}
+
+func (s *Service) SetPaused(ctx context.Context, itemID string, paused bool) error {
+	result, err := s.pool.Exec(ctx, `UPDATE avito_listings SET manual_paused=$2,desired_published=CASE WHEN $2 THEN FALSE ELSE NULL END WHERE item_id=$1`, itemID, paused)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return s.Reconcile(ctx)
 }
 
 type feedAds struct {
@@ -282,6 +312,14 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	if !enabled || token != expected {
 		return pgx.ErrNoRows
 	}
+	// Read remote archives before producing an autoload response so a manual
+	// stop in Avito cannot be undone using yesterday's active mirror.
+	if _, err := s.Import(ctx); err != nil {
+		return err
+	}
+	if err := s.Reconcile(ctx); err != nil {
+		return err
+	}
 	// An incomplete/stale snapshot must not make a previously published ad
 	// disappear from the feed that Avito may consume automatically.
 	var uncertain bool
@@ -301,31 +339,55 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	if uncertain {
 		return errors.New("остаток СБИС не подтверждён для всех размеров; выгрузка Авито временно недоступна")
 	}
-	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,MIN(p.description),l.remote_price_minor,MIN(COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'')) FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id JOIN products p ON p.id=lp.product_id JOIN fresh_stock f ON f.product_id=p.id AND f.qty>0 WHERE l.desired_published IS TRUE AND LOWER(l.status) NOT IN ('blocked','rejected') GROUP BY l.item_id,l.title,l.remote_price_minor ORDER BY l.item_id`)
+	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,p.name,p.description,v.label,f.base_price_minor,f.qty,COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id JOIN products p ON p.id=lp.product_id JOIN fresh_stock f ON f.product_id=p.id AND f.qty>0 JOIN product_variants v ON v.id=f.variant_id WHERE l.desired_published IS TRUE AND NOT l.manual_paused AND LOWER(l.status) NOT IN ('blocked','rejected') ORDER BY l.item_id,p.name,f.base_price_minor,v.id`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	ads := []feedAd{}
+	index := map[string]int{}
 	for rows.Next() {
-		var id, title, description, image string
+		var id, title, name, description, label, image string
 		var price int64
-		if err := rows.Scan(&id, &title, &description, &price, &image); err != nil {
+		var qty int
+		if err := rows.Scan(&id, &title, &name, &description, &label, &price, &qty, &image); err != nil {
 			return err
 		}
-		ad := feedAd{ID: id, AvitoID: id, Title: title, Description: description, Category: s.category, GoodsType: s.goodsType, Condition: "Новое", Price: int((price + 50) / 100), Address: s.address, ManagerName: s.managerName, ContactPhone: s.contactPhone}
+		if (price+50)/100 <= 0 {
+			return errors.New("для доступного размера не задана положительная цена сайта")
+		}
+		pos, exists := index[id]
+		if exists {
+			if value := int((price + 50) / 100); value < ads[pos].Price {
+				ads[pos].Price = value
+			}
+			ads[pos].Description += fmt.Sprintf("\n%s · %s — %s ₽ · в наличии %d шт.", name, label, formatPrice(price), qty)
+			continue
+		}
+		ad := feedAd{ID: id, AvitoID: id, Title: title, Description: description + "\n\nРазмеры и цены в наличии:\n" + fmt.Sprintf("%s · %s — %s ₽ · в наличии %d шт.", name, label, formatPrice(price), qty), Category: s.category, GoodsType: s.goodsType, Condition: "Новое", Price: int((price + 50) / 100), Address: s.address, ManagerName: s.managerName, ContactPhone: s.contactPhone}
 		if image != "" {
 			if !strings.HasPrefix(image, "http") {
 				image = s.siteURL + "/" + strings.TrimLeft(image, "/")
 			}
 			ad.Images.Items = []feedImage{{URL: image}}
 		}
+		index[id] = len(ads)
 		ads = append(ads, ad)
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(xml.Header))
 	return xml.NewEncoder(w).Encode(feedAds{FormatVersion: "3", Target: "Avito.ru", Ads: ads})
+}
+
+func formatPrice(minor int64) string {
+	if minor%100 == 0 {
+		return strconv.FormatInt(minor/100, 10)
+	}
+	return fmt.Sprintf("%d,%02d", minor/100, minor%100)
 }
 
 func (s *Service) UpdatePrice(ctx context.Context, itemID string, price float64) error {
@@ -399,7 +461,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		return nil
 	}
 	_, err := s.pool.Exec(ctx, freshStockCTE+` UPDATE avito_listings l
-		SET desired_published=CASE WHEN LOWER(l.status) IN ('blocked','rejected') THEN NULL ELSE x.in_stock END,
+		SET desired_published=CASE WHEN LOWER(l.status) IN ('blocked','rejected') THEN NULL WHEN l.manual_paused THEN FALSE ELSE x.in_stock END,
 			last_reconciled_at=CURRENT_TIMESTAMP,last_error=''
 		FROM (
 			SELECT lp.item_id,BOOL_OR(f.qty>0) in_stock
