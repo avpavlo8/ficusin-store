@@ -115,7 +115,7 @@ test("production category filters stay scoped and reset keeps the route", async 
   await expect(page.locator(".storefront-head h1")).toContainText("Растения");
   await page.getByRole("button", { name: /Фильтры/ }).click();
   const filters = page.locator(".storefront-attribute-filters").last();
-  await expect(filters).toContainText(/Освещ/);
+  await expect(filters.getByLabel("Уровень освещения",{exact:true})).toBeVisible();
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters).not.toContainText("Материал");
   const reset = page.getByRole("button", { name: "Сбросить фильтры" }).last();
