@@ -1222,10 +1222,21 @@ func (store *PostgresStore) FinishAction(ctx context.Context, actionID int64, ow
 	var returnID *int64
 	var attempts int
 	var channel string
-	if err := tx.QueryRow(ctx, `SELECT batch_id,marketplace_return_id,attempts,channel FROM procurement_action_items WHERE id=$1 AND lock_owner=$2 AND lock_token=$3 FOR UPDATE`, actionID, owner, token).Scan(&batchID, &returnID, &attempts, &channel); errors.Is(err, pgx.ErrNoRows) {
+	var verifyOnly bool
+	if err := tx.QueryRow(ctx, `SELECT batch_id,marketplace_return_id,attempts,channel,COALESCE((payload->>'verifyOnly')::BOOLEAN,FALSE) FROM procurement_action_items WHERE id=$1 AND lock_owner=$2 AND lock_token=$3 FOR UPDATE`, actionID, owner, token).Scan(&batchID, &returnID, &attempts, &channel, &verifyOnly); errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	} else if err != nil {
 		return false, fmt.Errorf("lock finished procurement action: %w", err)
+	}
+	if channel == "saby_receipt" && verifyOnly && result.Completed && batchID != nil {
+		current, err := receiptRecheckStillCurrent(ctx, tx, *batchID)
+		if err != nil {
+			return false, err
+		}
+		if !current {
+			result.Completed = false
+			executeErr = &UserFacingError{Message: "Состав или статус закупки изменился во время проверки СБИС. Закупка не завершена; новый документ не создавался."}
+		}
 	}
 	status, message, delay := "queued", result.PendingMessage, result.RetryAfter
 	if delay <= 0 {

@@ -70,6 +70,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
   const [matchDialog, setMatchDialog] = useState<ProcurementAlias | null>(null);
   const [orderFilter, setOrderFilter] = useProcurementParam("status","active");
   const [orderQuery, setOrderQuery] = useProcurementParam("q","");
+  const [orderWindow, setOrderWindow] = useState({ scope: "", count: 5 });
   const [recommendationQuery, setRecommendationQuery] = useProcurementParam("recommendedQuery","");
   const [recommendationSort, setRecommendationSort] = useProcurementParam("recommendedSort","quantity");
   const [requestFilter, setRequestFilter] = useProcurementParam("requests","active");
@@ -197,6 +198,9 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
     setSelectedRecommendations((current) => allVisibleSelected ? current.filter((key) => !keys.includes(key)) : [...new Set([...current, ...keys])]);
   };
   const visibleOrders = data.orders.filter(item => (orderFilter === "all" || (orderFilter === "active" ? !["received","cancelled"].includes(item.status) : item.status === orderFilter)) && (item.title + " " + item.orderNumber + " " + item.supplierName + " " + item.documentNumber).toLocaleLowerCase("ru").includes(orderQuery.toLocaleLowerCase("ru")));
+  const orderScope = JSON.stringify([orderFilter, orderQuery]);
+  const orderLimit = orderWindow.scope === orderScope ? orderWindow.count : 5;
+  const pagedOrders = visibleOrders.slice(0, orderLimit);
   const visibleRequests = data.requests.filter(item => requestFilter === "all" || (requestFilter === "active" ? ["open","included"].includes(item.status) : ["fulfilled","cancelled"].includes(item.status)));
   const availabilityItems = data.availability.filter((item) => !availabilityDueOnly || item.due);
   const formatTotal = (item: ProcurementOrder) => new Intl.NumberFormat("ru-RU", {
@@ -230,7 +234,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
       <div className="admin-block-heading"><div><h2>Заказы поставщикам</h2></div></div><div className="procurement-filter-bar"><input aria-label="Поиск закупки" value={orderQuery} onChange={event => setOrderQuery(event.target.value)} placeholder="Название, номер, поставщик"/><select aria-label="Статус закупки" value={orderFilter} onChange={event => setOrderFilter(event.target.value)}><option value="active">В работе</option><option value="received">Завершённые</option><option value="cancelled">Отменённые</option><option value="all">Все закупки</option></select><span>Закупок: {visibleOrders.length}</span></div>
       {visibleOrders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
         <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Состав</th><th>Сумма</th><th>Проверка</th>
-      </tr></thead><tbody>{visibleOrders.map((item) => <tr key={item.id}>
+      </tr></thead><tbody>{pagedOrders.map((item) => <tr key={item.id}>
         <td><a className="procurement-order-link" href={procurementOrderHref(item.id)} onClick={event => { if (!event.metaKey && !event.ctrlKey) { event.preventDefault(); setSelectedOrder(item.id); } }}>{item.title || item.orderNumber || `Закупка №${item.id}`}</a><small>{item.title ? item.orderNumber || `№${item.id}` : ""}</small><small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small></td>
         <td><strong>{item.supplierName}</strong><small>{item.currency}</small></td>
         <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
@@ -238,6 +242,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
         <td>{item.units} шт.<small>{quantityLabel(item.lines)}</small></td><td>{formatTotal(item)}{item.pendingReview ? <small>Сумма принятого состава; есть несверенные строки</small> : null}</td>
         <td>{item.failedActions ? <span className="procurement-warning">Ошибка отправки · {item.failedActions}<small>Откройте закупку и проверьте журнал</small></span> : item.pendingReview ? <span className="procurement-warning">Сверить · {item.pendingReview}</span> : item.unmatched ? <span className="procurement-warning">Нет связи с СБИС: {item.unmatched}<small>Выберите карточки товаров в закупке</small></span> : <span>{item.status === "received" ? "Закрыта" : item.status === "cancelled" ? "Отменена" : "—"}</span>}</td>
       </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупки не найдены</h3><p>Измените фильтр или создайте новый заказ.</p></div>}
+      {visibleOrders.length > pagedOrders.length && <div className="dialog-actions"><span>Показано {pagedOrders.length} из {visibleOrders.length}</span><button onClick={() => setOrderWindow({ scope: orderScope, count: orderLimit + 5 })}>Показать ещё закупки</button></div>}
     </section>
 
     {data.review.length>0 && <details className="procurement-section-details procurement-review-details" id="procurement-review" open={reviewExpanded} onToggle={event=>setReviewExpanded(event.currentTarget.open)}><summary>Связи с товарами СБИС <span>{data.review.length}</span></summary><section className="admin-block procurement-block">

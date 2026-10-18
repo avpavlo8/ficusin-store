@@ -716,6 +716,30 @@ func (handlers procurementHandlers) approveBatch(response http.ResponseWriter, r
 	writeJSON(response, http.StatusOK, map[string]any{"batch": item})
 }
 
+func (handlers procurementHandlers) recheckReceipt(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !ok {
+		return
+	}
+	batchID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	service, ok := handlers.service.(interface {
+		RecheckReceipt(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
+	})
+	if !ok {
+		handlers.failed(response, "recheck existing Saby receipt", procurement.ErrInvalidInput)
+		return
+	}
+	item, err := service.RecheckReceipt(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, batchID)
+	if err != nil {
+		handlers.failed(response, "recheck existing Saby receipt", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"batch": item})
+}
+
 func (handlers procurementHandlers) retryBatch(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
 	if !ok {

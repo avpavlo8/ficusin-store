@@ -8,6 +8,12 @@ on:
         description: Название товара для поиска (например, Араукария)
         required: false
         default: Араукария
+      receipt_id:
+        description: Числовой ID существующего поступления (только чтение схемы)
+        required: false
+      receipt_guid:
+        description: UUID существующего поступления (только чтение схемы)
+        required: false
 
 permissions:
   contents: read
@@ -18,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Saby nomenclature
+        if: inputs.receipt_id == ''
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -25,3 +32,12 @@ jobs:
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
           SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-probe.py
+      - name: Probe existing receipt response schema without values
+        if: inputs.receipt_id != ''
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          SABY_RECEIPT_ID: ${{ inputs.receipt_id }}
+          SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
+        run: python3 scripts/saby-receipt-probe.py

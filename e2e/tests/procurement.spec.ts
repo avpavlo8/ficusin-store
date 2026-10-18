@@ -5,6 +5,7 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true,currency:"EUR"});
  await page.goto('/admin?section=procurement&order=4');
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
  await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
@@ -30,8 +31,10 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await expect(dialog).toBeHidden();
  await expect(order.getByRole('tab',{name:'Разобрать миксы 0',exact:true})).toHaveAttribute('aria-selected','true');
  await order.getByRole('tab',{name:/^Все /}).click();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(row).toContainText('Распределено 60 / 60 шт.');
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
 });
 
@@ -39,6 +42,7 @@ test("@desktop @phone accidental card can be detached while waiting for a new Sa
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto('/admin?section=procurement&order=4');
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
  await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
  await page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
@@ -52,6 +56,7 @@ test("@desktop @phone accidental card can be detached while waiting for a new Sa
  await expect(row).not.toContainText('Bonsai Zantaxilum D15');
  await expect(row).toContainText('60 / 60');
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку СБИС');
 });
 
@@ -73,10 +78,12 @@ test("@desktop @phone invoice match exposes missing Saby card and resolves it in
  await expect(picker).toBeHidden();
  await expect(order.getByText('Не выбраны товары СБИС: 1',{exact:true})).toHaveCount(0);
  await order.getByRole('tab',{name:/^Все /}).click();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const matched=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
  await expect(matched).toContainText('Bonsai Zantaxilum D15');
  await expect(matched).toContainText('60 / 60');
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Bonsai Zantaxilum D15');
 });
 
@@ -96,12 +103,15 @@ test("@desktop @phone manager can inspect incoming plants without editing contro
 test("@desktop @phone several invoice rows fulfil one planned quantity",async({page})=>{
  await mockProcurement(page,{invoicePicker:true});
  await page.goto('/admin?section=procurement&order=4');
+ await page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('tab',{name:'Только в закупке 1',exact:true}).click();
  await page.getByRole('button',{name:'Выбрать из инвойса',exact:true}).click();
  const picker=page.getByRole('dialog',{name:'Выбрать строки инвойса',exact:true});
  for(const id of [2000,2001,2002])await picker.getByRole('checkbox',{name:new RegExp(`Добавить строку ${id}:`)}).check();
  await expect(picker.getByText('Выбрано: 3 · +60 шт. · итог 60 / 60 шт.',{exact:true})).toBeVisible();
  await picker.getByRole('button',{name:'Сопоставить выбранные',exact:true}).click();
  await expect(picker).toBeHidden();
+ await page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('tab',{name:/^Все /}).click();
+ await page.getByLabel('Поиск строки закупки').fill('Нижняя строка');
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
@@ -795,6 +805,9 @@ test("@desktop @phone invoice picker stays in viewport from a scrolled row and r
   await mockProcurement(page, { invoicePicker: true });
   await page.goto("/admin?section=procurement&view=orders&order=4");
   const order = page.getByRole("dialog", { name: "TEST-100", exact: true });
+  await expect(order.getByRole("tabpanel")).toBeVisible();
+  const more = order.getByRole("button", { name: "Показать ещё строки закупки", exact: true });
+  while (await more.count()) await more.click();
   const trigger = order.getByRole("button", { name: "Выбрать из инвойса", exact: true });
   await trigger.scrollIntoViewIfNeeded();
   const table = order.locator(".procurement-order-body");
@@ -838,6 +851,7 @@ test("@desktop @phone procurement uses quiet checks, styled controls and a singl
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
  await expect(order.getByText('Проверки пройдены',{exact:true})).toHaveCount(0);
  await expect(order.getByText('Артикул в PDF не указан',{exact:true})).toHaveCount(0);
+ await order.getByRole('tab',{name:'Только в закупке 1',exact:true}).click();
  const row=order.getByRole('row').filter({hasText:'Нижняя строка без инвойса'});
  await row.locator('.procurement-row-more > summary').click();
  await row.getByRole('button',{name:'Исправить размеры',exact:true}).press("Enter");
@@ -868,15 +882,18 @@ test("@desktop @phone purchase tabs switch groups, keep totals and return to all
  const all=tabs.getByRole('tab',{name:'Все 91',exact:true});
  await expect(all).toHaveAttribute('aria-selected','true');
  await expect(tabs.getByRole('tab')).toHaveCount(5);
+ await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
+ await order.getByRole('button',{name:'Показать ещё строки закупки',exact:true}).click();
+ await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(10);
  await tabs.getByRole('tab',{name:'Разобрать миксы 1',exact:true}).click();
  await expect(order.locator('.procurement-order-lines > tbody > tr')).toHaveCount(1);
  await expect(order.getByRole('tabpanel')).toContainText('Товар 1');
  await expect(order.getByRole('tabpanel')).not.toContainText('Товар 4');
  await tabs.getByRole('tab',{name:'Только в инвойсе 30',exact:true}).click();
- await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(30);
- await expect(order.getByRole('button',{name:'Это новая позиция',exact:true})).toHaveCount(30);
+ await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
+ await expect(order.getByRole('button',{name:'Это новая позиция',exact:true})).toHaveCount(5);
  await order.getByLabel('Поиск строки закупки').fill('Added invoice 1');
- await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(11);
+ await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
  await expect(tabs.getByRole('tab',{name:'Только в инвойсе 30',exact:true})).toHaveAttribute('aria-selected','true');
  await tabs.getByRole('tab',{name:'Только в закупке 1',exact:true}).click();
  await expect(order.getByLabel('Поиск строки закупки')).toHaveValue('');
@@ -889,7 +906,7 @@ test("@desktop @phone purchase tabs switch groups, keep totals and return to all
  await tabs.getByRole('tab',{name:'Передать клиенту 1',exact:true}).press('ArrowRight');
  await expect(all).toBeFocused();
  await expect(all).toHaveAttribute('aria-selected','true');
- await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(91);
+ await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
  await expect(all).toBeInViewport();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
@@ -899,6 +916,7 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto("/admin?section=procurement&order=4");
  const order=page.getByRole("dialog",{name:"TEST-100",exact:true});
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
  await row.locator(".procurement-row-more > summary").click();
  await row.getByRole("button",{name:"Расходы продажи",exact:true}).click();
@@ -915,6 +933,7 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await editor.getByRole("button",{name:"Сохранить для пересчёта",exact:true}).click();
  await expect(editor).toBeHidden();
  await page.reload();
+ await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const reloaded=page.getByRole("dialog",{name:"TEST-100",exact:true}).getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
  await reloaded.locator(".procurement-row-more > summary").click();
  await reloaded.getByRole("button",{name:"Расходы продажи",exact:true}).click();
