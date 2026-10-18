@@ -69,7 +69,7 @@ test("@desktop избранное добавляет в корзину без н
   await page.goto("/favorites");
   await page.getByRole("button", { name: "В корзину" }).click();
   await expect(page).toHaveURL(/\/favorites$/);
-  await expect(page.getByRole("button", { name: /Добавить ещё · 1 шт/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Перейти в корзину, 1 шт.", exact: true })).toBeVisible();
   await expect(page.getByLabel(/Корзина, товаров: 1/)).toBeVisible();
 });
 

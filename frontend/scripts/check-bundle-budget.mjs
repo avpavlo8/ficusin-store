@@ -5,8 +5,8 @@ import { join, relative } from "node:path";
 const root = new URL("../dist/", import.meta.url).pathname;
 const limits = {
   entryJS: 105 * 1024,
-  // Original checkout styling with the later category-navigation fixes retained.
-  css: 45 * 1024 + 128,
+  // Compact filters, gradient care indicators and the shared floating cart.
+  css: 47 * 1024,
   // The lazy admin chunk includes procurement planning and locale-safe price fields.
   asyncJS: 38.5 * 1024,
   staticAsset: 900 * 1024,

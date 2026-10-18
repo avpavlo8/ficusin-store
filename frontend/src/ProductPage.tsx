@@ -7,6 +7,7 @@ import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
+import { orderStorefrontCategories } from "./lib/category-order";
 import { track } from "./lib/analytics";
 import { useFavorites } from "./lib/favorites";
 
@@ -49,7 +50,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const headerMenus = useMemo(() => {
     const children = new Map<number|null,typeof categories>();
     categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
-    const order = (items:typeof categories) => [...items].sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ru"));
+    const order = orderStorefrontCategories<typeof categories[number]>;
     const branch = (item:typeof categories[number]):HeaderMenuItem => ({id:item.id,label:item.name,slug:item.slug,children:order(children.get(item.id)||[]).map(branch)});
     const catalog = order(children.get(null)||[]).map(branch);
     const plantRoot = categories.find((item)=>item.parentId==null&&/растен/i.test(item.name));

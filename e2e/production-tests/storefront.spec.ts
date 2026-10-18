@@ -100,7 +100,7 @@ test("production category and collection routes are real and unknown slugs are 4
   const categories = (await categoriesResponse.json()).categories as Array<{ slug: string; name: string }>;
   const category = categories.find((item) => item.slug === "plants") || categories[0]; expect(category?.slug).toBeTruthy();
   await page.goto(`/catalog/${encodeURIComponent(category.slug)}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".catalog-landing-hero h1")).toContainText(category.name); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
+  await expect(page.locator(".storefront-head h1")).toContainText(category.name); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
   const collectionsResponse = await page.request.get("/api/v1/collections"); expect(collectionsResponse.ok()).toBeTruthy();
   const collections = (await collectionsResponse.json()).collections as Array<{ slug: string; title: string; count: number }>;
   const collection = collections.find((item) => item.count > 0) || collections[0]; expect(collection?.slug).toBeTruthy();
@@ -112,10 +112,10 @@ test("production category and collection routes are real and unknown slugs are 4
 
 test("production category filters stay scoped and reset keeps the route", async ({ page }) => {
   await page.goto("/catalog/plants?filter.light_level=low_light", { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".catalog-landing-hero h1")).toContainText("Растения");
+  await expect(page.locator(".storefront-head h1")).toContainText("Растения");
   await page.getByRole("button", { name: /Фильтры/ }).click();
   const filters = page.locator(".storefront-attribute-filters").last();
-  await expect(filters).toContainText(/Освещ/);
+  await expect(filters.getByLabel("Уровень освещения",{exact:true})).toBeVisible();
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters).not.toContainText("Материал");
   const reset = page.getByRole("button", { name: "Сбросить фильтры" }).last();

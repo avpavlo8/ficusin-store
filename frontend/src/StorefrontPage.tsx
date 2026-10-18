@@ -6,10 +6,12 @@ import NotFoundPage from "./NotFoundPage";
 import { searchProducts } from "./lib/search";
 import { useSharedCart } from "./lib/cart";
 import { track } from "./lib/analytics";
-import { attributeLabel, attributeValue } from "./product/types";
+import { attributeLabel } from "./product/types";
+import { CatalogProductCard } from "./CatalogProductCard";
 import { sharedAPIJSON } from "./lib/api";
 import { useFavorites } from "./lib/favorites";
-import { catalogSize, counted } from "./lib/storefront-format";
+import { counted } from "./lib/storefront-format";
+import { orderStorefrontCategories } from "./lib/category-order";
 
 type FilterDisplayMode = "select" | "chips" | "range";
 type FilterDataType = "text" | "number" | "boolean" | "enum" | "multi_enum";
@@ -36,6 +38,7 @@ type Product = {
   image: string;
   size: string;
   stock?: number;
+  heightCm?: number;
   catalogSection: string;
   plantKind?: string;
   lightLevel?: string;
@@ -67,11 +70,28 @@ type Facet = {
   numericValues: number[];
 };
 
-const money = (value: number) => new Intl.NumberFormat("ru-RU", {
-  style: "currency",
-  currency: "RUB",
-  maximumFractionDigits: 0,
-}).format(value);
+const primaryFacetCodes = ["light_level", "care_level", "flowering", "pot_diameter_cm", "height_cm", "watering"];
+const facetTitles: Record<string, string> = { light_level: "Уровень освещения", care_level: "Уровень ухода", flowering: "Цветение", pot_diameter_cm: "Горшок, см", height_cm: "Высота", watering: "Полив" };
+const heightPresets = [
+  { min: "", max: "30", label: "До 30 см" },
+  { min: "30", max: "60", label: "30–60 см" },
+  { min: "60", max: "100", label: "60–100 см" },
+  { min: "100", max: "150", label: "100–150 см" },
+  { min: "150", max: "", label: "От 150 см" },
+];
+const pricePresets = [
+  { min: "", max: "1000", label: "До 1 000" },
+  { min: "", max: "3000", label: "До 3 000" },
+  { min: "", max: "5000", label: "До 5 000" },
+  { min: "5000.01", max: "", label: "Больше 5 000" },
+];
+
+function facetValueLabel(code: string, facet: Facet, value: string): string {
+  if (code === "flowering") return value === "true" ? "Цветущее" : "Не цветущее";
+  if (code === "care_level") return ({ easy: "Лёгкий", medium: "Средний", demanding: "Сложный" } as Record<string, string>)[value] || attributeLabel(value);
+  if (value === "true" || value === "false") return value === "true" ? "Есть" : "Нет";
+  return facet.labels.get(value) || attributeLabel(value);
+}
 
 const categoryIconPaths: Record<string, string> = {
   leaf: "M19 4C11 4 5 8 5 15c5 1 10-2 14-11ZM5 20c2-6 6-9 11-12",
@@ -107,7 +127,7 @@ function initialRangeFilters() {
 function CatalogDropdown({ label, value, options, onChange, className = "" }: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void; className?: string }) {
   const selected = options.find((option) => option.value === value)?.label;
   return <details className={`catalog-dropdown ${className}`}>
-    <summary><span>{selected || label}</span><i>⌄</i></summary>
+    <summary aria-label={selected || label}>{className.includes("home-sort") && <svg className="catalog-sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16m-3-3 3 3 3-3M14 4h7M14 9h5M14 14h3" /></svg>}<span>{selected || label}</span><i>⌄</i></summary>
     <div role="listbox" aria-label={label}>
       <button type="button" className={!value ? "active" : ""} onClick={(event) => { onChange(""); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Все варианты</button>
       {options.map((option) => <button type="button" role="option" aria-selected={value === option.value} className={value === option.value ? "active" : ""} key={option.value} onClick={(event) => { onChange(option.value); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{option.label}<span>{value === option.value ? "✓" : ""}</span></button>)}
@@ -152,6 +172,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
   const [searchDraft, setSearchDraft] = useState(query);
+  const [homeCategory, setHomeCategory] = useState(() => new URLSearchParams(window.location.search).get("category") || "");
+
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [opened, setOpened] = useState<Set<number>>(new Set());
   const [inStockOnly, setInStockOnly] = useState(() => new URLSearchParams(window.location.search).get("stock") === "1");
@@ -210,8 +232,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, [landing?.type, landing?.slug]);
 
   const activeCategory = useMemo(
-    () => landing?.type === "category" ? categories.find((item) => item.slug === landing.slug) ?? null : null,
-    [categories, landing],
+    () => categories.find((item) => landing?.type === "category" ? item.slug === landing.slug : !landing && String(item.id) === homeCategory) ?? null,
+    [categories, landing, homeCategory],
   );
   const category = activeCategory?.id ?? null;
   const categoryName = activeCategory?.name ?? "";
@@ -257,7 +279,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       if (item.categoryId == null) return;
       direct.set(item.categoryId, (direct.get(item.categoryId) ?? 0) + 1);
     });
-    const order = (list: Category[]) => [...list].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+    const order = orderStorefrontCategories<Category>;
     const build = (item: Category): CategoryNode => {
       let children = order(kids.get(item.id) ?? []);
       while (children.length === 1 && (direct.get(children[0].id) ?? 0) === 0) children = order(kids.get(children[0].id) ?? []);
@@ -284,7 +306,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const headerMenus = useMemo(() => {
     const children = new Map<number | null, Category[]>();
     categories.forEach((item) => children.set(item.parentId, [...(children.get(item.parentId) || []), item]));
-    const order = (items: Category[]) => [...items].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"));
+    const order = orderStorefrontCategories<Category>;
     const branch = (item: Category): HeaderMenuItem => ({id:item.id,label:item.name,slug:item.slug,children:order(children.get(item.id) || []).map(branch)});
     const roots = order(children.get(null) || []).map(branch);
     const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
@@ -293,7 +315,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       const nested = children.get(item.id) || [];
       return nested.length ? collectPlantKinds(item.id) : [item];
     });
-    return { catalog: roots, plants: collectPlantKinds(plantRoot.id).map((item) => ({ id: item.id, label: item.name, slug: item.slug })) };
+    return { catalog: roots, plants: order(collectPlantKinds(plantRoot.id)).map((item) => ({ id: item.id, label: item.name, slug: item.slug })) };
   }, [categories]);
 
   const inBranch = useMemo(() => {
@@ -326,6 +348,21 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     return { min: params.get("priceMin") || "", max: params.get("priceMax") || "" };
   });
 
+  useEffect(() => {
+    const restoreLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      setHomeCategory(params.get("category") || "");
+      setQuery(params.get("q") || "");
+      setSearchDraft(params.get("q") || "");
+      setInStockOnly(params.get("stock") === "1");
+      setSort(params.get("sort") || "popular");
+      setPriceRange({ min: params.get("priceMin") || "", max: params.get("priceMax") || "" });
+      setAttributeFilters(initialAttributeFilters());
+      setRangeFilters(initialRangeFilters());
+    };
+    window.addEventListener("popstate", restoreLocation);
+    return () => window.removeEventListener("popstate", restoreLocation);
+  }, []);
   const facets = useMemo(() => {
     const result = new Map<string, Facet>();
     facetPopulation.forEach((product) => product.filterAttributes?.filter((attribute) => attribute.filterable).forEach((attribute) => {
@@ -362,6 +399,10 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     if (routePending || loading) return rangeFilters;
     return Object.fromEntries(Object.entries(rangeFilters).filter(([code]) => facetCodes.has(code)));
   }, [rangeFilters, facetCodes, routePending, loading]);
+
+  // Keep the requested buyer criteria together, even in a category with one value.
+  const hasPlantFacets = facetPopulation.some(product => product.catalogSection === "plants");
+  const primaryFacets = facets.filter(([code, facet]) => primaryFacetCodes.includes(code) || (!hasPlantFacets && facet.values.size > 1)).sort(([a], [b]) => primaryFacetCodes.indexOf(a) - primaryFacetCodes.indexOf(b));
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -442,6 +483,33 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     setPriceRange({ min: "", max: "" });
   };
 
+  const pickHomeCategory = (id: number | null) => {
+    if (landing) return;
+    const url = new URL(window.location.href);
+    if (id == null) url.searchParams.delete("category");
+    else url.searchParams.set("category", String(id));
+    url.searchParams.delete("q");
+    window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    setHomeCategory(id == null ? "" : String(id));
+    setQuery("");
+    setSearchDraft("");
+  };
+  const categoryClick = (event: React.MouseEvent<HTMLAnchorElement>, id: number | null) => {
+    if (landing || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    pickHomeCategory(id);
+  };
+
+  const appliedFilters: Array<{ label: string; remove: () => void }> = [];
+  if (inStockOnly) appliedFilters.push({ label: "В наличии", remove: () => setInStockOnly(false) });
+  if (priceRange.min || priceRange.max) appliedFilters.push({ label: `Цена: ${priceRange.min ? `от ${priceRange.min}` : ""}${priceRange.min && priceRange.max ? " " : ""}${priceRange.max ? `до ${priceRange.max}` : ""} ₽`, remove: () => setPriceRange({ min: "", max: "" }) });
+  facets.forEach(([code, facet]) => {
+    const selected = compatibleAttributeFilters[code];
+    if (selected) appliedFilters.push({ label: `${facet.name}: ${facetValueLabel(code, facet, selected)}`, remove: () => setAttributeFilters((current) => ({ ...current, [code]: "" })) });
+    const range = compatibleRangeFilters[code];
+    if (range?.min || range?.max) appliedFilters.push({ label: `${facet.name}: ${range.min ? `от ${range.min}` : ""}${range.min && range.max ? " " : ""}${range.max ? `до ${range.max}` : ""}${facet.unit ? ` ${facet.unit}` : ""}`, remove: () => setRangeFilters((current) => ({ ...current, [code]: { min: "", max: "" } })) });
+  });
+
   const toggleCategory = (id: number) => setOpened((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id);
@@ -453,8 +521,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     const persistentRoot = depth === 0 && tree.length === 1;
     const expanded = persistentRoot || opened.has(node.id) || activeCategoryPath.has(node.id);
     return <div key={node.id}>
-      <a href={`/catalog/${encodeURIComponent(node.slug)}`} className={category === node.id ? "active" : ""} style={{ paddingLeft: 10 + depth * 14 }} aria-current={category === node.id ? "page" : undefined}>
-        <span>{node.children.length > 0 && !persistentRoot && <i className={expanded ? "twist open" : "twist"} aria-hidden="true" onClick={(event) => { event.preventDefault(); toggleCategory(node.id); }}>›</i>}<CategoryIcon name={node.icon} />{node.name}</span>
+      <a href={`/catalog/${encodeURIComponent(node.slug)}`} onClick={event => categoryClick(event, node.id)} className={category === node.id ? "active" : ""} style={{ paddingLeft: 10 + depth * 14 }} aria-current={category === node.id ? "page" : undefined}>
+        <span>{node.children.length > 0 && !persistentRoot && <i className={expanded ? "twist open" : "twist"} aria-hidden="true" onClick={(event) => { event.preventDefault(); event.stopPropagation(); toggleCategory(node.id); }}>›</i>}<CategoryIcon name={node.icon} />{node.name}</span>
         <small>{node.count}</small>
       </a>
       {expanded && node.children.map((child) => branch(child, depth + 1))}
@@ -462,34 +530,24 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   };
 
   const renderFacet = ([code, facet]: [string, Facet]) => {
-    if (facet.displayMode === "range") {
-      const values = facet.numericValues.filter(Number.isFinite);
-      const minimum = values.length ? Math.min(...values) : undefined;
-      const maximum = values.length ? Math.max(...values) : undefined;
+    const label = facetTitles[code] || facet.name;
+    if (code === "height_cm") {
       const selected = compatibleRangeFilters[code] || { min: "", max: "" };
-      return <fieldset key={code} className="catalog-range-filter"><legend>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}</legend><label>От<input aria-label={`${facet.name}: от`} type="number" min={minimum} max={maximum} value={selected.min} onChange={(event) => setRangeFilters((current) => ({ ...current, [code]: { min: event.target.value, max: current[code]?.max || "" } }))} /></label><label>До<input aria-label={`${facet.name}: до`} type="number" min={minimum} max={maximum} value={selected.max} onChange={(event) => setRangeFilters((current) => ({ ...current, [code]: { min: current[code]?.min || "", max: event.target.value } }))} /></label></fieldset>;
+      const value = selected.min || selected.max ? `${selected.min}:${selected.max}` : "";
+      const custom = value && !heightPresets.some(preset => `${preset.min}:${preset.max}` === value);
+      return <label key={code}>{label}<select aria-label={label} value={value} onChange={event => {
+        const [min = "", max = ""] = event.target.value.split(":");
+        setRangeFilters(current => ({ ...current, [code]: { min, max } }));
+      }}><option value="">Любая</option>{heightPresets.map(preset => <option key={preset.label} value={`${preset.min}:${preset.max}`}>{preset.label}</option>)}{custom && <option value={value}>{selected.min ? `От ${selected.min}` : ""}{selected.min && selected.max ? " " : ""}{selected.max ? `до ${selected.max}` : ""} см</option>}</select></label>;
     }
-    const values = [...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true }));
-    const isBoolean = facet.dataType === "boolean" || values.every((value) => value === "true" || value === "false");
-    if (facet.displayMode === "chips") {
-      return <fieldset key={code} className="catalog-chip-filter"><legend>{facet.name}</legend><div>{values.map((value) => <button type="button" key={value} className={compatibleAttributeFilters[code] === value ? "active" : ""} aria-pressed={compatibleAttributeFilters[code] === value} onClick={() => setAttributeFilters((current) => ({ ...current, [code]: current[code] === value ? "" : value }))}>{isBoolean ? (value === "true" ? "Есть" : "Нет") : facet.labels.get(value) || attributeLabel(value)}</button>)}</div></fieldset>;
-    }
-    return <label key={code}>{facet.name}{facet.unit ? `, ${facet.unit}` : ""}<select value={compatibleAttributeFilters[code] || ""} onChange={(event) => setAttributeFilters((current) => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map((value) => <option key={value} value={value}>{isBoolean ? (value === "true" ? "Есть" : "Нет") : facet.labels.get(value) || attributeLabel(value)}</option>)}</select></label>;
+    const values = [...facet.values].sort((a, b) => code === "care_level" ? ["easy", "medium", "demanding"].indexOf(a) - ["easy", "medium", "demanding"].indexOf(b) : a.localeCompare(b, "ru", { numeric: true }));
+    return <label key={code}>{label}<select aria-label={label} value={compatibleAttributeFilters[code] || ""} onChange={event => setAttributeFilters(current => ({ ...current, [code]: event.target.value }))}><option value="">Любое значение</option>{values.map(value => <option key={value} value={value}>{facetValueLabel(code, facet, value)}</option>)}</select></label>;
   };
 
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
   const addToCart = (product: Product) => {
     track("add_to_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { name: product.name, category: product.catalogSection, list: landing ? landingTitle : categoryName || "catalog" } });
     setCart((current) => ({ ...current, [product.sku]: Math.min(product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20, (current[product.sku] ?? 0) + 1) }));
-  };
-  const changeCartQuantity = (product: Product, delta: number) => {
-    track(delta > 0 ? "add_to_cart" : "remove_from_cart", { productCode: product.id, sku: product.sku, value: product.price, quantity: 1, properties: { name: product.name, category: product.catalogSection, list: landing ? landingTitle : categoryName || "catalog" } });
-    setCart((current) => {
-      const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
-      const nextQuantity = Math.max(0, Math.min(maximum, (current[product.sku] || 0) + delta));
-      if (nextQuantity === 0) { const next = { ...current }; delete next[product.sku]; return next; }
-      return { ...current, [product.sku]: nextQuantity };
-    });
   };
   const toggleFavorite = (id: string) => setFavorites((current) => {
     const next = new Set(current);
@@ -498,75 +556,73 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   if (categoryNotFound || collectionNotFound) return <NotFoundPage />;
+  const CatalogHeading = landing?.type === "category" ? "h1" : "h2";
   const showCategoryPicker = !searching && (!landing || landing.type === "category") && categoryOptions.length > 0;
 
-  if (routePending) return <main className={`storefront${searching ? " searching" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
+  if (routePending) return <main className={`storefront${searching ? " searching" : ""}`}><StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation onHomeCategoryPick={!landing ? (id) => { pickHomeCategory(id); document.getElementById("catalog")?.scrollIntoView({ behavior: "instant" }); } : undefined} catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} /><p className="storefront-empty">Загружаем каталог…</p></main>;
 
   return (
     <main className={`storefront${searching ? " searching" : ""}`}>
-      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
+      <StoreHeader cartCount={cartCount} favoritesCount={favorites.size} query={searchDraft} onQueryChange={updateSearch} onSearch={submitSearch} onSearchClose={cancelSearch} onCartClick={() => window.location.assign("/cart")} homeNavigation onHomeCategoryPick={!landing ? (id) => { pickHomeCategory(id); document.getElementById("catalog")?.scrollIntoView({ behavior: "instant" }); } : undefined} catalogMenuItems={headerMenus.catalog} plantMenuItems={headerMenus.plants} />
 
-      {!searching && (landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
+      {!searching && landing?.type !== "category" && (landing ? <section className="catalog-landing-hero"><nav aria-label="Хлебные крошки"><a href="/">Главная</a><span>/</span><a href="/#catalog">Каталог</a></nav><h1>{landingTitle}</h1><p>{landingDescription}</p></section> : <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy"><h1 id="home-title">Растения,<br />с которыми<br /><em>хорошо</em><i>.</i></h1><p>Живые растения для дома и офиса.<br />Выбираем лучшее и доставляем по всей России.</p><div className="home-hero-actions"><a href="#catalog">Выбрать своё растение <span>→</span></a></div><div className="home-team"><img src="/assets/redesign/team-avatars.webp" alt="Команда Фикусин" /><span>За вашими растениями<br />ухаживает <b>команда Фикусина</b></span></div></div>
         <div className="home-hero-visual"><img src="/assets/redesign/home-hero-4k.webp" alt="Алоказия в керамическом кашпо" /><span className="home-stamp" role="img" aria-label="Живые растения для живых людей"><svg viewBox="0 0 132 132" aria-hidden="true"><defs><path id="stamp-top" d="M25 64 A41 41 0 0 1 107 64" /><path id="stamp-bottom" d="M25 74 A41 41 0 0 0 107 74" /></defs><circle cx="66" cy="66" r="58" /><circle cx="66" cy="66" r="52" strokeDasharray="2 4" /><text><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text><text><textPath href="#stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text><path className="stamp-plant" d="M66 82V55m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM55 85h22" /></svg></span><span className="home-note delivery"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Доставка<br />по всей России</b></span><a className="home-note packing" href="/delivery-and-returns"><svg className="note-icon" viewBox="0 0 48 58" aria-hidden="true"><path d="M9 24 24 16l15 8v25L24 56 9 49V24Zm15-8v40m-15-32 15 8 15-8M24 16V3m0 9c-8 0-11-5-11-10 7 0 11 3 11 10Zm0-2c7 0 10-5 10-9-6 0-10 3-10 9Z" /></svg><b>Как упаковываем<br />и доставляем растения</b><i aria-hidden="true">→</i></a></div>
       </section>)}
 
-      {!searching && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
+      {!searching && landing?.type !== "category" && <CollectionStrip products={products} activeSlug={landing?.type === "collection" ? landing.slug : undefined} />}
 
       <section className={`storefront-shell${showCategoryPicker ? " has-category-picker" : ""}`} id="catalog">
         <aside className="storefront-side">
           {!searching && <nav className="storefront-tree" aria-label="Категории товаров">
-            <a href="/#catalog" className={!landing && category == null ? "active" : ""}><span>Весь каталог</span>{!loading && <small>{products.length}</small>}</a>
+            <a href="/#catalog" onClick={event => categoryClick(event, null)} className={!landing && category == null ? "active" : ""} aria-current={!landing && category == null ? "page" : undefined}><span>Весь каталог</span>{!loading && <small>{products.length}</small>}</a>
             {tree.map((root) => branch(root, 0))}
           </nav>}
 
         </aside>
 
         <div className="storefront-main">
-          <div className="storefront-head"><div><h2>{searching ? "Результаты поиска" : landing ? landingTitle : "Каталог"}</h2><p>{loading ? "Загружаем товары…" : searching ? `Найдено: ${counted(visible.length, ["товар", "товара", "товаров"])}` : counted(visible.length, ["товар", "товара", "товаров"])}{!loading && searching && <span> по запросу «{query.trim()}»</span>}</p>{searching && landing && <p className="catalog-search-scope">Поиск выполняется по всему каталогу, без ограничения текущей {landing.type === "category" ? "категорией" : "подборкой"}.</p>}</div></div>
+          <div className="storefront-head"><div><CatalogHeading>{searching ? "Результаты поиска" : landing ? landingTitle : categoryName || "Каталог"}</CatalogHeading><p>{loading ? "Загружаем товары…" : searching ? `Найдено: ${counted(visible.length, ["товар", "товара", "товаров"])}` : counted(visible.length, ["товар", "товара", "товаров"])}{!loading && searching && <span> по запросу «{query.trim()}»</span>}</p>{searching && landing && <p className="catalog-search-scope">Поиск выполняется по всему каталогу, без ограничения текущей {landing.type === "category" ? "категорией" : "подборкой"}.</p>}</div></div>
 
+
+
+          <div className="home-catalog-toolbar">
+            <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} aria-controls="catalog-filters" aria-label="Фильтры" onClick={() => setFiltersOpen((value) => !value)}><svg className="filter-sliders" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M8 3v6M4 12h16M16 9v6M4 18h16M10 15v6" /></svg><span className="catalog-tool-label">Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
+            <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{ value: "popular", label: "По популярности" }, { value: "cheap", label: "Сначала дешевле" }, { value: "expensive", label: "Сначала дороже" }]} />
+            <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка" aria-pressed={viewMode === "grid"}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></svg></button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список" aria-pressed={viewMode === "list"}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16" /></svg></button></div>
+          </div>
+          <div className="home-filter-panel" id="catalog-filters" hidden={!filtersOpen}>
+            <div className="storefront-attribute-filters">
           {showCategoryPicker && <label className="catalog-category-picker">Категория
-            <select aria-label="Категория" value={activeCategory?.slug || ""} onChange={(event) => window.location.assign(event.target.value ? `/catalog/${encodeURIComponent(event.target.value)}` : "/#catalog")}>
+            <select aria-label="Категория" className={activeCategory ? "has-selection" : undefined} value={activeCategory?.slug || ""} onChange={(event) => { if (!landing) pickHomeCategory(categories.find(item => item.slug === event.target.value)?.id ?? null); else window.location.assign(event.target.value ? `/catalog/${encodeURIComponent(event.target.value)}` : "/#catalog"); }}>
               <option value="">Весь каталог · {products.length}</option>
               {activeCategory && !categoryOptions.some((option) => option.slug === activeCategory.slug) && <option value={activeCategory.slug}>{activeCategory.name} · {contextProducts.length}</option>}
               {categoryOptions.map((option) => <option value={option.slug} key={option.slug}>{option.label}</option>)}
             </select>
           </label>}
-
-          <div className="home-catalog-toolbar">
-            <button type="button" className={filtersOpen ? "home-filter-button active" : "home-filter-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><span className="filter-sliders" aria-hidden="true">☷</span><span>Фильтры</span><i>⌄</i>{activeFilterCount > 0 && <b>{activeFilterCount}</b>}</button>
-            <div className="home-filter-group">{facets.slice(0, 6).filter(([, facet]) => facet.displayMode === "select" && facet.dataType !== "boolean").map(([code, facet]) => <CatalogDropdown key={code} label={facet.name} value={compatibleAttributeFilters[code] || ""} onChange={(value) => setAttributeFilters((current) => ({ ...current, [code]: value }))} options={[...facet.values].sort((a, b) => a.localeCompare(b, "ru", { numeric: true })).map((value) => ({ value, label: `${facet.labels.get(value) || attributeLabel(value)}${facet.unit ? ` ${facet.unit}` : ""}` }))} />)}</div>
-            <CatalogDropdown className="home-sort" label="По популярности" value={sort} onChange={setSort} options={[{ value: "popular", label: "По популярности" }, { value: "cheap", label: "Сначала дешевле" }, { value: "expensive", label: "Сначала дороже" }]} />
-            <div className="catalog-view-toggle" aria-label="Вид каталога"><button type="button" className={viewMode === "grid" ? "active" : ""} onClick={() => setViewMode("grid")} aria-label="Плитка" aria-pressed={viewMode === "grid"}>⊞</button><button type="button" className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")} aria-label="Список" aria-pressed={viewMode === "list"}>☰</button></div>
+              <div className="catalog-light-filter">{primaryFacets.filter(([code]) => code === "light_level").map(renderFacet)}<label className="catalog-stock-switch"><input type="checkbox" role="switch" checked={inStockOnly} onChange={event => setInStockOnly(event.target.checked)} /><span aria-hidden="true" />Только в наличии</label></div>
+              {primaryFacets.filter(([code]) => code !== "light_level").map(renderFacet)}
+            </div>
+            <div className="catalog-budget-row">
+              <fieldset className="catalog-budget"><legend>Цена, ₽</legend><div className="catalog-budget-controls">
+                <input aria-label="Цена: от" placeholder="От" type="number" min="0" inputMode="decimal" value={priceRange.min} onChange={event => setPriceRange(current => ({ ...current, min: event.target.value }))} />
+                <span aria-hidden="true">—</span>
+                <input aria-label="Цена: до" placeholder="До" type="number" min="0" inputMode="decimal" value={priceRange.max} onChange={event => setPriceRange(current => ({ ...current, max: event.target.value }))} />
+                <div className="catalog-price-presets" aria-label="Быстрый выбор цены">{pricePresets.map(preset => <button key={preset.label} type="button" aria-pressed={priceRange.min === preset.min && priceRange.max === preset.max} onClick={() => setPriceRange({ min: preset.min, max: preset.max })}>{preset.label}</button>)}</div>
+              </div></fieldset>
+            </div>
           </div>
-          <div className="home-filter-panel" hidden={!filtersOpen}>
-            <div className="home-filter-panel-heading"><strong>Подобрать под ваши условия</strong><button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button></div>
-            <label className="storefront-check"><input type="checkbox" checked={inStockOnly} onChange={(event) => setInStockOnly(event.target.checked)} />Только в наличии</label>
-            <fieldset className="catalog-range-filter"><legend>Цена, ₽</legend><label>От<input aria-label="Цена: от" type="number" min="0" value={priceRange.min} onChange={(event) => setPriceRange((current) => ({ ...current, min: event.target.value }))} /></label><label>До<input aria-label="Цена: до" type="number" min="0" value={priceRange.max} onChange={(event) => setPriceRange((current) => ({ ...current, max: event.target.value }))} /></label></fieldset>
-            {facets.length > 0 && <div className="storefront-attribute-filters">{facets.map(renderFacet)}</div>}
-            <p className="catalog-filter-result" role="status">{counted(visible.length, ["товар", "товара", "товаров"])} по выбранным условиям</p>
-          </div>
+          {appliedFilters.length > 0 && <div className="catalog-applied-filters" aria-label="Выбранные фильтры">{appliedFilters.map((filter) => <button type="button" key={filter.label} aria-label={`Убрать фильтр: ${filter.label}`} onClick={filter.remove}>{filter.label}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>)}<button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button></div>}
 
           {loading && <p className="storefront-empty">Загружаем каталог…</p>}
           {!loading && error && <p className="storefront-empty">{error}</p>}
           {!loading && !error && visible.length === 0 && <div className="storefront-empty"><strong>{searching ? "Ничего не нашли" : "Здесь пока пусто"}</strong><p>{searching ? "Проверьте написание или поищите короче — например, «фикус» вместо «фикус бенджамина большой»." : activeFilterCount > 0 ? "По текущим фильтрам товаров нет. Сбросьте дополнительные фильтры или измените условия." : landing?.type === "collection" ? "В этой подборке сейчас нет доступных товаров." : "В этой категории сейчас нет доступных товаров."}</p>{activeFilterCount > 0 ? <button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button> : <a href="/#catalog">Показать весь каталог</a>}</div>}
 
-          {!searching && <p className="catalog-purchase-note">Показан размер выбранного варианта. Комплектацию уточним в чате. Под заказ — без оплаты до подтверждения.</p>}
           <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
-            {visible.slice(0, visibleLimit).map((product) => {
-              const inCart = cart[product.sku] ?? 0;
-              const preorder = (product.stock ?? 0) <= 0;
-              return <article key={product.id} className={preorder ? "storefront-card preorder" : "storefront-card"}>
-                <button className={favorites.has(product.id) ? "storefront-fav active" : "storefront-fav"} onClick={() => toggleFavorite(product.id)} aria-label={favorites.has(product.id) ? "Убрать из избранного" : "В избранное"} aria-pressed={favorites.has(product.id)}>♥</button>
-                <a className="storefront-image" href={`/product/${product.id}`} onClick={() => track("select_item", { productCode: product.id, sku: product.sku, value: product.price, properties: { list: landing ? landingTitle : categoryName || "catalog" } })}><img src={product.image} alt={product.name} loading="lazy" /></a>
-                <a className="storefront-name" href={`/product/${product.id}`} onClick={() => track("select_item", { productCode: product.id, sku: product.sku, value: product.price, properties: { list: landing ? landingTitle : categoryName || "catalog" } })}>{product.name}</a>
-                <p className="storefront-size">{catalogSize(product.size)}</p>
-                {product.filterAttributes?.some((attribute) => attribute.badge) && <div className="storefront-attribute-badges">{product.filterAttributes.filter((attribute) => attribute.badge).slice(0, 2).map((attribute) => <span key={attribute.code}>{attribute.name}: {attributeValue(attribute.value, attribute.unit)}</span>)}</div>}
-                {product.latin && <p className="storefront-latin">{product.latin}</p>}
-                {product.reviewsCount > 0 && <p className="storefront-rating"><span>★</span> {product.rating.toFixed(1)} <small>({product.reviewsCount})</small></p>}
-                <div className="storefront-buy"><span className="storefront-price"><strong>{money(product.price)}</strong>{preorder ? <em>Под заказ</em> : <em className="available">В наличии</em>}</span>{inCart > 0 ? <div className="storefront-quantity"><button type="button" onClick={() => changeCartQuantity(product, -1)} aria-label="Уменьшить количество">−</button><button type="button" className="quantity-value" onClick={() => window.location.assign("/cart")} aria-label={`В корзине · ${inCart}`}>{inCart}</button><button type="button" onClick={() => changeCartQuantity(product, 1)} aria-label="Увеличить количество">+</button></div> : <button className={preorder ? "preorder-action" : undefined} onClick={() => addToCart(product)} aria-label={preorder ? "Заказать" : "В корзину"} title={preorder ? "Заказать без оплаты — менеджер уточнит поставку" : `Добавить в корзину · ${catalogSize(product.size)}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg><span className="cart-button-label">{preorder ? "Заказать" : "В корзину"}</span></button>}</div>
-              </article>;
-            })}
+            {visible.slice(0, visibleLimit).map(product => <CatalogProductCard key={product.id} product={product}
+              inCart={cart[product.sku] ?? 0} favorite={favorites.has(product.id)}
+              onFavorite={() => toggleFavorite(product.id)} onAdd={() => addToCart(product)}
+              onSelect={() => track("select_item", { productCode: product.id, sku: product.sku, value: product.price, properties: { list: landing ? landingTitle : categoryName || "catalog" } })} />)}
           </div>
           {visible.length > visibleLimit && <button className="storefront-more" type="button" onClick={() => setVisibleLimit((value) => value + 12)}>Показать ещё растения <span>⌄</span></button>}
         </div>

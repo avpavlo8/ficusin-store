@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
-import { useFavorites, FAVORITES_EVENT } from "./lib/favorites";
+import { useFavorites, useAvailableFavoriteCount, FAVORITES_EVENT } from "./lib/favorites";
 import { useModalFocus } from "./lib/useModalFocus";
+import { sharedAPIJSON } from "./lib/api";
+import { orderStorefrontCategories } from "./lib/category-order";
 
 export type StoreUser = {
   fullName: string;
@@ -23,7 +25,7 @@ function closeOtherHeaderMenus(current: HTMLDetailsElement) {
 
 function HeaderMenuBranch({ item, onPick }: { item: HeaderMenuItem; onPick?: (id: number) => void }) {
   if (item.children?.length) return <details className="header-submenu" onToggle={(event) => { event.stopPropagation(); closeOtherHeaderMenus(event.currentTarget); }}><summary>{item.label}<span>›</span></summary><div>{item.children.map((child) => <HeaderMenuBranch item={child} onPick={onPick} key={child.id} />)}</div></details>;
-  return <a href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={(event) => { if (onPick) { event.preventDefault(); onPick(item.id); } document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); }}>{item.label}<span>→</span></a>;
+  return <a href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={(event) => { if (onPick && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onPick(item.id); } document.querySelectorAll<HTMLDetailsElement>(".header details[open]").forEach((details) => details.removeAttribute("open")); }}>{item.label}<span>→</span></a>;
 }
 
 function AccountBadge({ user }: { user: StoreUser }) {
@@ -114,36 +116,50 @@ function MobileSearch({
   </div>;
 }
 
-function MobileMenu({
-  open,
-  user,
-  favorites,
-  onClose,
-}: {
-  open: boolean;
-  user: StoreUser | null;
-  favorites: number;
-  onClose: () => void;
+function MobileMenu({ view, user, favorites, items, state, onRetry, onView, onClose, onPick }: {
+  view: "menu" | "catalog"; user: StoreUser | null; favorites: number;
+  items: HeaderMenuItem[]; state: "loading" | "ready" | "error";
+  onPick?: (id: number) => void;
+  onRetry: () => void; onView: (view: "menu" | "catalog") => void; onClose: () => void;
 }) {
-  const ref = useModalFocus(onClose, open);
-  return <aside ref={ref} className={`mobile-menu${open ? " open" : ""}`} aria-hidden={!open} inert={!open} role="dialog" aria-modal="true" aria-label="Меню магазина">
-    <button onClick={onClose} aria-label="Закрыть меню">×</button>
-    {user ? <>
-      <a href="/account">{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</a>
-      {(user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner") &&
-        <a href="/admin">Панель управления</a>}
+  const ref = useModalFocus(onClose, view === "catalog");
+  useEffect(() => {
+    if (view !== "menu") return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const outside = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node) && !(event.target instanceof Element && event.target.closest(".menu-button"))) onClose();
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [view, onClose, ref]);
+  const [query, setQuery] = useState("");
+  useEffect(() => { ref.current?.querySelector<HTMLButtonElement>("button")?.focus(); }, [view, ref]);
+  let roots = items;
+  while (roots.length === 1 && roots[0].children?.length) roots = roots[0].children;
+  const links = (nodes: HeaderMenuItem[]): HeaderMenuItem[] => nodes.flatMap(node => [node, ...links(node.children || [])]);
+  const visible = links(roots).filter(item => item.label.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru")));
+  return <aside ref={ref} className="mobile-menu open" role="dialog" aria-modal={view === "catalog" ? true : undefined} aria-label={view === "catalog" ? "Категории каталога" : "Меню магазина"}>
+    <div className="mobile-menu-title"><h2>{view === "catalog" ? "Каталог" : "Меню"}</h2><button type="button" onClick={onClose} aria-label={view === "catalog" ? "Закрыть каталог" : "Закрыть меню"}><Icon path="m6 6 12 12M18 6 6 18" /></button></div>
+    {view === "catalog" ? <>
+      <input className="mobile-category-search" aria-label="Найти категорию" placeholder="Найти категорию" value={query} onChange={event => setQuery(event.target.value)} />
+      <nav className="mobile-category-links" aria-label="Категории товаров"><a href="/#catalog" onClick={onClose}>Весь каталог <span aria-hidden="true">→</span></a>
+        {visible.map(item => <a key={item.id} href={item.slug ? `/catalog/${encodeURIComponent(item.slug)}` : `/?category=${item.id}#catalog`} onClick={event => { if (onPick && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onPick(item.id); } onClose(); }}>{item.label}<span aria-hidden="true">→</span></a>)}
+        {items.length === 0 && state === "loading" && <p role="status">Загружаем категории…</p>}
+        {items.length === 0 && state === "error" && <div role="alert"><p>Не удалось загрузить категории</p><button type="button" onClick={onRetry}>Повторить</button></div>}
+        {items.length > 0 && visible.length === 0 && <p role="status">Категорий с таким названием нет</p>}
+      </nav>
     </> : <>
-      <a href="/login">Войти</a>
-      <a href="/register">Регистрация</a>
+      <div className="mobile-menu-account">{user ? <><a href="/account"><strong>{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</strong><small>Личный кабинет</small></a>{user.adminRole && <a className="mobile-menu-admin" href="/admin">Панель управления <span aria-hidden="true">↗</span></a>}</> : <><a href="/login">Войти в аккаунт</a><a href="/register">Регистрация</a></>}</div>
+      <nav className="mobile-menu-links" aria-label="Покупки"><button type="button" onClick={() => onView("catalog")}>Каталог <span aria-hidden="true">→</span></button><a href="/discounts">Растения со скидкой</a><a href="/favorites">Избранное <small>{favorites}</small></a></nav>
+      <nav className="mobile-menu-links" aria-label="Помощь"><a href="/delivery-and-returns">Доставка и возврат</a><a href="/contacts">Контакты</a></nav>
+      <details className="mobile-menu-documents"><summary>Документы магазина</summary><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></details>
     </>}
-    <a href="/#catalog" onClick={onClose}>Каталог</a><a href="/discounts" onClick={onClose}>Растения со скидкой</a>
-    <a href="/favorites">Избранное ({favorites})</a>
-    <a href="/delivery-and-returns">Доставка и возврат</a>
-    <span className="mobile-menu-heading">О магазине</span>
-    <a href="/contacts">Контакты</a>
-    <a href="/offer">Публичная оферта</a>
-    <a href="/privacy">Политика конфиденциальности</a>
-    <a href="/requisites">Реквизиты</a>
   </aside>;
 }
 
@@ -159,12 +175,16 @@ function MobileTabBar({
   cart,
   onCartClick,
   onSearchClick,
+  onCatalogClick,
+  catalogOpen,
 }: {
   user: StoreUser | null;
   favorites: number;
   cart: number;
   onCartClick?: () => void;
-  onSearchClick: () => void;
+  onSearchClick: (trigger: HTMLButtonElement) => void;
+  onCatalogClick: () => void;
+  catalogOpen: boolean;
 }) {
   const cartInside = <>
     <span className="tab-icon">
@@ -174,15 +194,15 @@ function MobileTabBar({
     <small>Корзина</small>
   </>;
   return <nav className="tab-bar" aria-label="Разделы магазина">
-    <a href="/#catalog">
+    <button type="button" className={window.location.pathname === "/" || window.location.pathname.startsWith("/catalog/") ? "active" : undefined} aria-haspopup="dialog" aria-expanded={catalogOpen} onClick={event => { event.currentTarget.focus(); onCatalogClick(); }}>
       <span className="tab-icon"><Icon path={icons.catalog} /></span>
       <small>Каталог</small>
-    </a>
-    <button type="button" onClick={onSearchClick}>
+    </button>
+    <button type="button" onClick={event => onSearchClick(event.currentTarget)}>
       <span className="tab-icon"><Icon path={icons.search} /></span>
       <small>Поиск</small>
     </button>
-    <a href="/favorites">
+    <a href="/favorites" className={window.location.pathname === "/favorites" ? "active" : undefined}>
       <span className="tab-icon">
         <Icon path={icons.heart} />
         {favorites > 0 && <b>{favorites}</b>}
@@ -240,14 +260,21 @@ export function StoreHeader({
   // showing zeroes.
   const [storedFavorites] = useFavorites();
   const [serverCart] = useSharedCart();
-  const favorites = favoritesCount ?? storedFavorites.size;
+  const availableFavorites = useAvailableFavoriteCount(storedFavorites);
+  const favorites = availableFavorites ?? favoritesCount ?? storedFavorites.size;
   const cart = cartCount ?? Object.values(serverCart).reduce((sum, value) => sum + value, 0);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const [navigation, setNavigation] = useState<"menu" | "catalog" | null>(null);
+  const menuOpen = navigation !== null;
+  const closeMenu = useCallback(() => setNavigation(null), []);
   const [searchOpen, setSearchOpen] = useState(false);
+  const searchTrigger = useRef<HTMLButtonElement | null>(null);
+  const openSearch = (trigger: HTMLButtonElement) => { searchTrigger.current = trigger; setNavigation(null); setSearchOpen(true); };
+  const closeSearch = () => { setSearchOpen(false); searchTrigger.current?.focus({ preventScroll: true }); onSearchClose?.(); };
   const [fallbackMenus, setFallbackMenus] = useState<{catalog:HeaderMenuItem[];plants:HeaderMenuItem[]}>({catalog:[],plants:[]});
+  const [menuState, setMenuState] = useState<"loading" | "ready" | "error">("loading");
+  const [menuReload, setMenuReload] = useState(0);
   const headerRef = useRef<HTMLElement>(null);
-  useBodyLock(menuOpen, "menu-open");
+  useBodyLock(navigation === "catalog", "menu-open");
   useEffect(() => { document.body.classList.toggle("has-store-tabs", showTabBar); return () => document.body.classList.remove("has-store-tabs"); }, [showTabBar]);
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -264,19 +291,21 @@ export function StoreHeader({
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
   }, []);
   useEffect(() => {
-    if (!homeNavigation || catalogMenuItems.length || plantMenuItems.length) return;
-    fetch("/api/v1/categories").then((response) => response.json()).then((body: {categories?:Array<{id:number;parentId:number|null;name:string;slug:string;sortOrder:number}>}) => {
-      const categories = body.categories || [];
+    if ((!homeNavigation && !showTabBar) || catalogMenuItems.length || plantMenuItems.length) return;
+    sharedAPIJSON<{categories?:Array<{id:number;parentId:number|null;name:string;slug:string;sortOrder:number}>}>("/api/v1/categories").then(body => {
+      if (!Array.isArray(body.categories)) throw new Error("Invalid categories");
+      const categories = body.categories;
       const children = new Map<number|null,typeof categories>();
       categories.forEach((item) => children.set(item.parentId,[...(children.get(item.parentId)||[]),item]));
-      const order = (items:typeof categories) => [...items].sort((a,b)=>a.sortOrder-b.sortOrder||a.name.localeCompare(b.name,"ru"));
+      const order = orderStorefrontCategories<typeof categories[number]>;
       const branch = (item:typeof categories[number]):HeaderMenuItem => ({id:item.id,label:item.name,slug:item.slug,children:order(children.get(item.id)||[]).map(branch)});
       const catalog = order(children.get(null)||[]).map(branch);
       const plantRoot = categories.find((item)=>item.parentId==null&&/растен/i.test(item.name));
       const leaves = (parentId:number):typeof categories => order(children.get(parentId)||[]).flatMap((item)=>children.get(item.id)?.length?leaves(item.id):[item]);
-      setFallbackMenus({catalog,plants:plantRoot?leaves(plantRoot.id).map((item)=>({id:item.id,label:item.name,slug:item.slug})):[]});
-    }).catch(() => setFallbackMenus({catalog:[],plants:[]}));
-  },[homeNavigation,catalogMenuItems.length,plantMenuItems.length]);
+      setFallbackMenus({catalog,plants:plantRoot?order(leaves(plantRoot.id)).map((item)=>({id:item.id,label:item.name,slug:item.slug})):[]});
+      setMenuState("ready");
+    }).catch(() => { setFallbackMenus({catalog:[],plants:[]}); setMenuState("error"); });
+  },[homeNavigation,showTabBar,catalogMenuItems.length,plantMenuItems.length,menuReload]);
 
   useEffect(() => { headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => { details.open = false; }); }, [query]);
 
@@ -285,6 +314,7 @@ export function StoreHeader({
   const closeHeaderMenus = () => headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => { details.open = false; });
   const search = (value: string) => {
     closeHeaderMenus();
+    setSearchOpen(false);
     if (onSearch) onSearch(value);
     else window.location.assign(`/?q=${encodeURIComponent(value)}#catalog`);
   };
@@ -294,7 +324,7 @@ export function StoreHeader({
     <header className="header store-header" ref={headerRef} onFocusCapture={(event) => { if (event.target.closest(".catalog-search")) closeHeaderMenus(); }}>
       <button
         className="menu-button"
-        onClick={(event) => { event.currentTarget.focus(); setMenuOpen(true); }}
+        onClick={(event) => { event.currentTarget.focus(); setSearchOpen(false); setNavigation(value => value === "menu" ? null : "menu"); }}
         aria-label="Открыть меню"
         aria-expanded={menuOpen}
       >☰</button>
@@ -309,7 +339,7 @@ export function StoreHeader({
           <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
           <button
             className="search-toggle"
-            onClick={() => setSearchOpen((open) => !open)}
+            onClick={event => searchOpen ? closeSearch() : openSearch(event.currentTarget)}
             aria-label="Поиск по каталогу"
             aria-expanded={searchOpen}
           ><Icon path={icons.search} /></button>
@@ -321,12 +351,14 @@ export function StoreHeader({
           : <a className="cart-button" href="/cart" aria-label={cartLabel}><span><Icon path={icons.bag} /></span>{cart > 0 && <b>{cart}</b>}</a>}
       </div>
     </header>
-    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onSearch={search} onClose={() => { setSearchOpen(false); onSearchClose?.(); }} />}
-    <button className={`overlay mobile-menu-backdrop${menuOpen ? " open" : ""}`} aria-label="Закрыть меню" aria-hidden={!menuOpen} inert={!menuOpen} onClick={closeMenu} />
-    <MobileMenu open={menuOpen} user={user} favorites={favorites} onClose={closeMenu} />
+    {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onSearch={search} onClose={closeSearch} />}
+    <button className={`overlay mobile-menu-backdrop${navigation === "catalog" ? " open" : ""}`} aria-label="Закрыть меню" aria-hidden={navigation !== "catalog"} inert={navigation !== "catalog"} onClick={closeMenu} />
+    {navigation && <MobileMenu view={navigation} user={user} favorites={favorites} items={resolvedCatalogMenuItems} state={resolvedCatalogMenuItems.length ? "ready" : menuState}
+      onRetry={() => { setMenuState("loading"); setMenuReload(value => value + 1); }} onView={setNavigation} onClose={closeMenu} onPick={categoryPick} />}
     {showTabBar && <>
+      {!/^\/(cart|checkout)(\/|$)/.test(window.location.pathname) && <a className="floating-cart" href="/cart" aria-label={`Открыть корзину, товаров: ${cart}`}><Icon path="M3 4h2l2.2 11.4h10.6L20 7H6M9 20h.01M17 20h.01" />{cart > 0 && <b>{cart}</b>}</a>}
       <InstallHint />
-      <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} onSearchClick={() => setSearchOpen(true)} />
+      <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} onSearchClick={openSearch} onCatalogClick={() => { setSearchOpen(false); setNavigation("catalog"); }} catalogOpen={navigation === "catalog"} />
     </>}
   </>;
 }

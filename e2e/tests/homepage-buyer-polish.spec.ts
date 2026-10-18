@@ -7,7 +7,7 @@ test("@desktop @phone a plants-only homepage has useful filters and a budget", a
   await page.goto("/");
   await page.getByRole("button",{name:/Фильтры/}).click();
   const panel=page.locator(".home-filter-panel");
-  await expect(panel).toContainText("Освещение");
+  await expect(panel).toContainText("Уровень освещения");
   await panel.getByLabel("Цена: до",{exact:true}).fill("2000");
   await expect(page.locator(".storefront-card")).toHaveCount(1);
   await expect(page.locator(".storefront-card")).toContainText("Аглаонема");
@@ -15,7 +15,7 @@ test("@desktop @phone a plants-only homepage has useful filters and a budget", a
   await page.reload();
   await expect(page.locator(".storefront-card")).toHaveCount(1);
   await page.getByRole("button",{name:/Фильтры/}).click();
-  await panel.getByRole("button",{name:"Сбросить фильтры"}).click();
+  await page.locator(".catalog-applied-filters").getByRole("button",{name:"Сбросить фильтры"}).click();
   await expect(page.locator(".storefront-card")).toHaveCount(3);
 });
 
@@ -53,7 +53,7 @@ test("@desktop search closes a catalogue menu instead of covering its result", a
   await expect(page.getByRole("heading",{name:"Результаты поиска"})).toBeVisible();
 });
 
-test("@phone mobile menu contains keyboard focus, closes on Escape and restores its trigger", async ({ page }) => {
+test("@phone compact menu allows background focus, closes on Escape and restores its trigger", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   const trigger=page.getByRole("button",{name:"Открыть меню"});
@@ -61,9 +61,7 @@ test("@phone mobile menu contains keyboard focus, closes on Escape and restores 
   const menu=page.getByRole("dialog",{name:"Меню магазина"});
   await expect(menu.getByRole("button",{name:"Закрыть меню"})).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  await expect(menu.getByRole("link",{name:"Реквизиты"})).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(menu.getByRole("button",{name:"Закрыть меню"})).toBeFocused();
+  expect(await menu.evaluate(el => el.contains(document.activeElement))).toBe(false);
   await page.keyboard.press("Escape");
   await expect(menu).not.toBeVisible();
   await expect(trigger).toBeFocused();
@@ -89,7 +87,7 @@ test("@desktop @phone reduced motion keeps content visible without decorative an
   await expect(page.locator(".home-hero-visual > img")).toBeVisible();
   await expect(page.locator(".storefront-card").first()).toBeVisible();
   expect(await page.locator(".home-hero-visual > img").evaluate(el=>getComputedStyle(el).animationName)).toBe("none");
-  await expect(page.locator(".storefront-size").first()).toContainText("Ø 12 см");
+  await expect(page.locator(".storefront-plant-specs").first()).toContainText("Высота: 35 см");
   await expect(page.getByRole("link",{name:/Как упаковываем/})).toHaveAttribute("href","/delivery-and-returns");
 });
 
@@ -100,7 +98,8 @@ test("@desktop @phone purchase icon and label do not overlap", async ({page})=>{
   const button=card.getByRole("button",{name:"В корзину",exact:true});
   await button.scrollIntoViewIfNeeded();
   const geometry=await button.evaluate(el=>({icon:el.querySelector("svg")!.getBoundingClientRect().right,label:el.querySelector(".cart-button-label")!.getBoundingClientRect().left,right:el.getBoundingClientRect().right,card:el.closest("article")!.getBoundingClientRect().right}));
-  expect(geometry.icon).toBeLessThanOrEqual(geometry.label);
+  if ((await page.viewportSize())!.width > 500) expect(geometry.icon).toBeLessThanOrEqual(geometry.label);
+  else await expect(button.locator(".cart-button-label")).toBeHidden();
   expect(geometry.right).toBeLessThanOrEqual(geometry.card);
 });
 
@@ -132,7 +131,7 @@ test("@desktop @phone categories remain visible with one root and nested plant k
   const navigation=page.getByRole("navigation",{name:"Категории товаров"});
   await expect(picker.locator('option[value="ficus"]')).toContainText("Фикус · 2");
   await expect(picker.locator('option[value="empty-category"]')).toHaveCount(0);
-  if(phone) await expect(picker).toBeVisible();
+  if(phone) { await page.getByRole("button",{name:"Фильтры",exact:true}).click(); await expect(picker).toBeVisible(); }
   else {
     await expect(picker).toBeHidden();
     await expect(navigation).toBeVisible();
@@ -142,6 +141,7 @@ test("@desktop @phone categories remain visible with one root and nested plant k
     expect(sidebar!.x+sidebar!.width).toBeLessThan(main!.x);
   }
   await page.goto("/catalog/indoor-plants");
+  if(phone) await page.getByRole("button",{name:"Фильтры",exact:true}).click();
   await expect(picker).toHaveValue("indoor-plants");
   await expect(picker.locator('option[value="indoor-plants"]')).toContainText("Комнатные растения · 3");
   if(phone) await picker.selectOption("ficus");
@@ -152,7 +152,7 @@ test("@desktop @phone categories remain visible with one root and nested plant k
   else await expect(navigation.locator('a[href="/catalog/ficus"]')).toHaveAttribute("aria-current","page");
   await expect(page.locator(".storefront-card")).toHaveCount(2);
   await expect(page.locator(".storefront-card").filter({hasText:"Аглаонема"})).toHaveCount(0);
-  if(phone) await picker.selectOption("");
+  if(phone) { await page.getByRole("button",{name:"Фильтры",exact:true}).click(); await picker.selectOption(""); }
   else await navigation.getByRole("link",{name:/Весь каталог/}).click();
   await expect(page).toHaveURL(/\/#catalog$/);
   await expect(page.locator(".storefront-card")).toHaveCount(catalogue.length);
@@ -186,7 +186,7 @@ test("@desktop left categories and product actions fit narrow desktop screens", 
     await expect(page.locator(".storefront-tree")).toHaveCSS("grid-auto-flow","row");
     const geometry=await page.locator(".storefront-card").first().evaluate(el=>{
       const card=el.getBoundingClientRect();
-      const action=el.querySelector(".storefront-buy > button")!.getBoundingClientRect();
+      const action=el.querySelector(".storefront-buy > button:not(.storefront-fav)")!.getBoundingClientRect();
       return {cardWidth:card.width,actionRight:action.right,cardRight:card.right};
     });
     expect(geometry.cardWidth).toBeGreaterThan(210);

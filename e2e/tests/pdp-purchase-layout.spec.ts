@@ -100,6 +100,7 @@ for (const device of ["@phone", "@desktop"]) {
     await expect(page.locator(".storefront-head")).toContainText("фикус");
     await search.getByRole("combobox").press("Enter");
     await expect(page.getByText("Ничего не нашли", {exact:true})).toBeVisible();
+    if (device === "@phone") await page.locator(".tab-bar").getByRole("button",{name:"Поиск",exact:true}).click();
     await search.getByRole("button",{name:"Очистить поиск"}).click();
     await expect(page.getByText("Ничего не нашли", {exact:true})).toHaveCount(0);
     await expect(page).not.toHaveURL(/q=/);

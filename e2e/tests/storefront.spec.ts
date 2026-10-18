@@ -56,10 +56,10 @@ test("@desktop характеристики подписаны по-русски
   await mockApi(page);
   await page.goto("/");
 
-  const badges = page.locator(".storefront-card", { hasText: "Аглаонема Мария" })
-    .locator(".storefront-attribute-badges span");
-  await expect(badges.first()).toHaveText("Освещение: Полутень");
-  await expect(badges.nth(1)).toHaveText("Сложность ухода: Лёгкий");
+  const specs = page.locator(".storefront-card", { hasText: "Аглаонема Мария" })
+    .locator(".storefront-plant-specs");
+  await expect(specs).toContainText("Высота: 35 см");
+  await expect(specs.getByRole("img", { name: "Сложность ухода: Лёгкий уход, 1 из 3", exact: true })).toBeVisible();
 
   // Ни один код не должен просочиться в сетку целиком.
   await expect(page.locator(".storefront-grid")).not.toContainText("low_light");
@@ -154,7 +154,7 @@ test("@desktop товар без остатка идёт как предзака
 
   const card = page.locator(".storefront-card", { hasText: "Монстера Делициоза" });
   await expect(card).toHaveClass(/preorder/);
-  await expect(card.locator(".storefront-price em")).toHaveText("Под заказ");
+  await expect(card.locator(".storefront-price em")).toHaveText("Нет в наличии");
   await expect(card.locator(".storefront-preorder")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Заказать", exact: true })).toBeVisible();
 
@@ -332,7 +332,7 @@ test("@desktop корзина открывается отдельной стра
 
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
-  await card.getByRole("button", { name: /В корзине/ }).click();
+  await card.getByRole("button", { name: /Перейти в корзину/ }).click();
 
   await expect(page).toHaveURL(/\/cart$/);
   const drawer = page.locator(".drawer.open");
@@ -347,7 +347,7 @@ test("@desktop корзина ведёт в отдельный пошаговы�
 
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
-  await card.getByRole("button", { name: /В корзине/ }).click();
+  await card.getByRole("button", { name: /Перейти в корзину/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
   await expect(page).toHaveURL(/\/checkout$/);
@@ -378,7 +378,7 @@ test("@desktop оформление отправляет заказ с норм�
 
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
-  await card.getByRole("button", { name: /В корзине/ }).click();
+  await card.getByRole("button", { name: /Перейти в корзину/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
   const checkout = page.locator(".checkout-page-panel");
@@ -406,7 +406,7 @@ test("@desktop оформление подставляет профиль авт
 
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
-  await card.getByRole("button", { name: /В корзине/ }).click();
+  await card.getByRole("button", { name: /Перейти в корзину/ }).click();
   await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
 
   const checkout = page.locator(".checkout-page-panel");
