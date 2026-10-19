@@ -76,18 +76,31 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	if s.Economics.Unified == nil || !s.Economics.Unified.Enabled {
 		return nil, nil
 	}
-	rows, err := db.Query(ctx, `SELECT COALESCE(l.canonical_variant_id,0),MIN(l.id),
+	// Closed receipts retain their historical identity and acquisition costs.
+	// Resolve a missing identity for this read-only preview through an exact,
+	// confirmed Saby link; ambiguous directory entries must remain unresolved.
+	rows, err := db.Query(ctx, `WITH directory AS (
+ SELECT saby_id,MIN(variant_id) AS variant_id FROM canonical_product_directory
+ WHERE active AND saby_id<>'' GROUP BY saby_id HAVING COUNT(*)=1
+ ), resolved AS (
+ SELECT l.*,COALESCE(l.canonical_variant_id,d.variant_id) AS preview_variant_id
+ FROM procurement_order_lines l
+ LEFT JOIN procurement_supplier_aliases a ON a.id=l.supplier_alias_id AND a.match_status='confirmed'
+ LEFT JOIN directory d ON d.saby_id=COALESCE(a.matched_saby_id,l.saby_id)
+ WHERE l.procurement_order_id=$1
+ )
+ SELECT COALESCE(l.preview_variant_id,0),MIN(l.id),
  COALESCE(NULLIF(MAX(n.name),''),MAX(l.raw_name)),
  SUM(COALESCE(l.invoiced_qty,l.ordered_qty))::int,
  CASE WHEN COUNT(*) FILTER(WHERE l.unit_cost_rub>0)=COUNT(*) THEN
  SUM(l.unit_cost_rub*COALESCE(l.invoiced_qty,l.ordered_qty))::float8/
  NULLIF(SUM(COALESCE(l.invoiced_qty,l.ordered_qty)),0) ELSE 0 END
- FROM procurement_order_lines l LEFT JOIN saby_nomenclature n ON n.saby_id=l.saby_id
+ FROM resolved l LEFT JOIN saby_nomenclature n ON n.saby_id=l.saby_id
  WHERE l.procurement_order_id=$1 AND l.receiving_mode='catalog' AND l.match_status='confirmed'
  AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
  AND (l.reconciliation_status<>'added' OR l.comparison_accepted)
  AND COALESCE(l.invoiced_qty,l.ordered_qty)>0
- GROUP BY l.canonical_variant_id,CASE WHEN l.canonical_variant_id IS NULL THEN l.id ELSE 0 END`, orderID)
+ GROUP BY l.preview_variant_id,CASE WHEN l.preview_variant_id IS NULL THEN l.id ELSE 0 END`, orderID)
 	if err != nil {
 		return nil, err
 	}

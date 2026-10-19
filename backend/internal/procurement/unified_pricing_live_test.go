@@ -135,4 +135,58 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 	if len(seen) != 2 || altered != 0 {
 		t.Fatal("unlinked rows received publishable prices")
 	}
+	// A confirmed supplier link can restore the read-only price of an already
+	// received Saby-only row, without rewriting the receipt or publishing work.
+	var alias int64
+	must(tx.QueryRow(ctx, `INSERT INTO procurement_supplier_aliases(supplier_id,raw_name,normalized_name,matched_saby_id,match_status) VALUES($1,'Unlinked plant','unlinked plant',$2,'suggested') RETURNING id`, supplier, key).Scan(&alias))
+	_, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET supplier_alias_id=$2 WHERE procurement_order_id=$1 AND canonical_variant_id IS NULL AND ordered_qty=20`, order, alias)
+	must(err)
+	stillMissing, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if stillMissing.PricedUnits != 0 || len(stillMissing.Lines) != 3 {
+		t.Fatal("unconfirmed supplier mapping was used")
+	}
+	_, err = tx.Exec(ctx, `UPDATE procurement_supplier_aliases SET match_status='confirmed' WHERE id=$1`, alias)
+	must(err)
+	_, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET unit_cost_rub=400 WHERE procurement_order_id=$1 AND canonical_variant_id=$2 AND unit_cost_rub IS NULL`, order, variant)
+	must(err)
+	linked, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if linked.Units != 53 || linked.PricedUnits != 23 || len(linked.Lines) != 2 || math.Abs(linked.ContributionRUB-1560) > 0.001 {
+		t.Fatalf("confirmed mapping did not restore received preview: %+v", linked)
+	}
+	for _, line := range linked.Lines {
+		if line.VariantID == variant && (line.Quantity != 23 || math.Abs(line.CostRUB-2600.0/23) > 0.001) {
+			t.Fatalf("mapped invoice costs were not weighted: %+v", line)
+		}
+	}
+	var untouched bool
+	must(tx.QueryRow(ctx, `SELECT canonical_variant_id IS NULL AND unit_cost_rub=100 AND proposed_retail_rub IS NULL FROM procurement_order_lines WHERE procurement_order_id=$1 AND supplier_alias_id=$2`, order, alias).Scan(&untouched))
+	var status string
+	must(tx.QueryRow(ctx, `SELECT status FROM procurement_orders WHERE id=$1`, order).Scan(&status))
+	must(tx.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_action_items`).Scan(&after))
+	must(tx.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, variant).Scan(&price))
+	if !untouched || status != "received" || after != before || price != 99900 {
+		t.Fatal("read-only mapping changed receipt, retail price, or external work")
+	}
+
+	// A historical confirmed Saby row also resolves after its catalog card is
+	// created later. A product-level Saby link shared by sizes is ambiguous.
+	_, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET saby_id=$2 WHERE procurement_order_id=$1 AND canonical_variant_id IS NULL AND ordered_qty=30`, order, key)
+	must(err)
+	complete, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if complete.PricedUnits != 53 || len(complete.Lines) != 1 || math.Abs(complete.ContributionRUB-3360) > 0.001 {
+		t.Fatalf("confirmed Saby identity did not restore all units: %+v", complete)
+	}
+	_, err = tx.Exec(ctx, `UPDATE products SET saby_id=$2 WHERE id=$1`, product, key)
+	must(err)
+	_, err = tx.Exec(ctx, `INSERT INTO product_variants(product_id,label,is_active) VALUES($1,'D14',1)`, product)
+	must(err)
+	ambiguous, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if ambiguous.Units != 53 || ambiguous.PricedUnits != 3 || len(ambiguous.Lines) != 3 {
+		t.Fatal("ambiguous Saby link was guessed or existing canonical identity was lost")
+	}
+
 }
