@@ -105,7 +105,7 @@ test("production category and collection routes are real and unknown slugs are 4
   const collections = (await collectionsResponse.json()).collections as Array<{ slug: string; title: string; count: number }>;
   const collection = collections.find((item) => item.count > 0) || collections[0]; expect(collection?.slug).toBeTruthy();
   await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".catalog-landing-hero h1")).toContainText(collection.title); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: collection.title, exact: true })).toBeVisible(); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
   await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
   await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
 });
