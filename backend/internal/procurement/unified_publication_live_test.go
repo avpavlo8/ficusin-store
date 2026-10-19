@@ -169,6 +169,54 @@ func TestUnifiedReceivedPublicationPreservesReceiptAndGuardsQueuedPrices(t *test
 	if queued != 0 {
 		t.Fatal("stale uploads remained queued")
 	}
+	// A previously received SKU may now be disabled. It remains in the cost
+	// preview but must be an explicit skipped price item, not abort the batch.
+	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET canonical_variant_id=$2 WHERE id=$1`, line, variants[0])
+	must(err)
+	_, err = pool.Exec(ctx, `UPDATE product_variants SET is_active=0 WHERE id=$1`, variants[0])
+	must(err)
+	var extraLine int64
+	must(pool.QueryRow(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,raw_name,ordered_qty,invoiced_qty,unit_cost_rub,canonical_variant_id,match_status,reconciliation_status) VALUES($1,'Active SKU',1,1,743.12,$2,'confirmed','matched') RETURNING id`, order, variants[1]).Scan(&extraLine))
+	inactive, err := store.PrepareBatch(ctx, actor, order, "prices", []string{"ozon"})
+	must(err)
+	if len(inactive.Items) != 2 {
+		t.Fatalf("disabled SKU aborted the remaining proposals: %+v", inactive)
+	}
+	blocked, ready := 0, 0
+	for _, item := range inactive.Items {
+		if item.ErrorMessage != "" {
+			blocked++
+		} else {
+			ready++
+		}
+	}
+	if blocked != 1 || ready != 1 {
+		t.Fatalf("wrong disabled/active split: %+v", inactive)
+	}
+	approvedInactive, err := store.ApproveBatch(ctx, actor, inactive.ID, map[string]bool{"ozon": true})
+	must(err)
+	skippedCount, queuedCount := 0, 0
+	for _, item := range approvedInactive.Items {
+		if item.Status == "skipped" {
+			skippedCount++
+		}
+		if item.Status == "queued" {
+			queuedCount++
+		}
+	}
+	if skippedCount != 1 || queuedCount != 1 {
+		t.Fatalf("inactive SKU queued or active SKU lost: %+v", approvedInactive)
+	}
+
+	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET canonical_variant_id=NULL WHERE id=$1`, line)
+	must(err)
+	_, err = pool.Exec(ctx, `UPDATE product_variants SET is_active=1 WHERE id=$1`, variants[0])
+	must(err)
+	// A historical failed upload stays visible but cannot occupy the active
+	// batch slot forever when the owner prepares a replacement price list.
+	var historicalBatch, historicalItem int64
+	must(pool.QueryRow(ctx, `INSERT INTO procurement_action_batches(procurement_order_id,kind,channel,status,created_by) VALUES($1,'prices','wb','partially_completed',$2) RETURNING id`, order, actorID).Scan(&historicalBatch))
+	must(pool.QueryRow(ctx, `INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,new_value,status,error_message) VALUES($1,$2,'wb','123456',999,'failed','Historical marketplace rejection') RETURNING id`, historicalBatch, line).Scan(&historicalItem))
 	// No WB link means an explicit skipped item, never a made-up nmID.
 	wb, err := store.PrepareBatch(ctx, actor, order, "prices", []string{"wb"})
 	must(err)
@@ -176,6 +224,14 @@ func TestUnifiedReceivedPublicationPreservesReceiptAndGuardsQueuedPrices(t *test
 		if item.ExternalArticle != "" || item.CompareAtValue != nil {
 			t.Fatal("invented WB identity or rounded discount")
 		}
+	}
+	var preserved bool
+	must(pool.QueryRow(ctx, `SELECT b.status='cancelled' AND i.status='failed' AND i.error_message='Historical marketplace rejection' FROM procurement_action_batches b JOIN procurement_action_items i ON i.batch_id=b.id WHERE i.id=$1`, historicalItem).Scan(&preserved))
+	if !preserved {
+		t.Fatal("replacement erased historical outcome")
+	}
+	if _, err = store.RetryBatch(ctx, actor, historicalBatch, map[string]bool{"wb": true}); err == nil {
+		t.Fatal("superseded historical upload can still be retried")
 	}
 	skipped, err := store.ApproveBatch(ctx, actor, wb.ID, map[string]bool{"wb": true})
 	must(err)

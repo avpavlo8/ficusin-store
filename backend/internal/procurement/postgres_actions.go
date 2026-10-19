@@ -1423,10 +1423,14 @@ func (store *PostgresStore) RetryBatch(ctx context.Context, actor Actor, batchID
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var orderID int64
-	if err := tx.QueryRow(ctx, `SELECT procurement_order_id FROM procurement_action_batches WHERE id = $1 FOR UPDATE`, batchID).Scan(&orderID); errors.Is(err, pgx.ErrNoRows) {
+	var batchStatus string
+	if err := tx.QueryRow(ctx, `SELECT procurement_order_id,status FROM procurement_action_batches WHERE id = $1 FOR UPDATE`, batchID).Scan(&orderID, &batchStatus); errors.Is(err, pgx.ErrNoRows) {
 		return ActionBatch{}, ErrNotFound
 	} else if err != nil {
 		return ActionBatch{}, fmt.Errorf("lock retry procurement batch: %w", err)
+	}
+	if batchStatus == "cancelled" {
+		return ActionBatch{}, &UserFacingError{Message: "Этот список отменён или заменён новым. Подготовьте актуальные цены заново."}
 	}
 	var failedReceipt bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM procurement_action_items
