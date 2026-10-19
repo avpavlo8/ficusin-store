@@ -1069,6 +1069,7 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
  await mockProcurement(page,{unified:true,unifiedReceived:true});
  await page.goto('/admin?section=procurement&order=4');
  const dialog=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await dialog.locator('summary').filter({hasText:'Расчёт и доставка'}).click();
  await expect(dialog.getByRole('button',{name:'Рассчитать',exact:true})).toBeDisabled();
  await dialog.getByRole('button',{name:'Подготовить Ozon',exact:true}).click();
  const batch=dialog.locator('.procurement-batch').filter({has:page.getByRole('heading',{name:'Изменение цены · Ozon',exact:true})});
