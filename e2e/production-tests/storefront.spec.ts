@@ -66,7 +66,12 @@ test("production product 5 loads its optimized photo and review section", async 
   page.on("console", (message) => {
     const text = message.text();
     const instrumentationCSP = text.startsWith("Refused to execute a script because its hash, its nonce, or 'unsafe-inline'");
-    if (message.type() === "error" && !guestUnauthorized(text) && !instrumentationCSP) consoleErrors.push(text);
+    const blockedMetricaFrame = text.startsWith("Framing 'https://mc.yandex.ru/' violates the following Content Security Policy directive: \"default-src 'self'\"");
+    if (blockedMetricaFrame) {
+      testInfo.annotations.push({ type: "analytics-csp", description: text });
+      console.log("External analytics iframe blocked by the existing CSP: mc.yandex.ru");
+    }
+    if (message.type() === "error" && !guestUnauthorized(text) && !instrumentationCSP && !blockedMetricaFrame) consoleErrors.push(text);
   });
   const started = Date.now();
   await page.goto("/product/5", { waitUntil: "domcontentloaded" });
@@ -105,7 +110,11 @@ test("production category and collection routes are real and unknown slugs are 4
   const collections = (await collectionsResponse.json()).collections as Array<{ slug: string; title: string; count: number }>;
   const collection = collections.find((item) => item.count > 0) || collections[0]; expect(collection?.slug).toBeTruthy();
   await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".catalog-landing-hero h1")).toContainText(collection.title); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: collection.title, exact: true })).toHaveCount(1);
+  await expect(page.locator(".storefront-head h1")).toHaveText(collection.title);
+  await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
+  if ((page.viewportSize()?.width ?? 0) <= 850) await expect(page.locator(".storefront-side")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
   await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
 });
