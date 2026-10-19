@@ -106,7 +106,7 @@ export type ProcurementChannelQuote = {
   model?:string; targetRub?:number; costs?:ProcurementChannelCosts; notes?:string[]; package?:{lengthCm:number;widthCm:number;heightCm:number;source:string}; manual?:boolean; priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
 };
 export type ProcurementUnifiedPricing = {enabled:boolean;markupRate:number;materialsRub:number;smallBoxRub:number;mediumBoxRub:number;largeBoxRub:number;wbFirstLiterRub:number;wbAdditionalLiterRub:number;wbHandlingRub:number;verifiedAt:string;norms:{maxLiters:number;ozonRub:number;samples:number;source:string}[]};
-export type ProcurementUnifiedPreview = {version:number;markupRate:number;fixedRub:number;units:number;pricedUnits:number;contributionRub:number;lines:{variantId:number;name:string;quantity:number;costRub:number;quotes:Record<string,ProcurementChannelQuote>}[]};
+export type ProcurementUnifiedPreview = {version:number;markupRate:number;fixedRub:number;units:number;pricedUnits:number;contributionRub:number;lines:{variantId:number;sourceLineId?:number;name:string;quantity:number;costRub:number;quotes:Record<string,ProcurementChannelQuote>}[]};
 export type ProcurementEconomics = {monthlyFixedCostsRub:number;channels:Record<string,ProcurementChannelCosts>;unified?:ProcurementUnifiedPricing};
 export type ProcurementSettings = {
   economics?: ProcurementEconomics;

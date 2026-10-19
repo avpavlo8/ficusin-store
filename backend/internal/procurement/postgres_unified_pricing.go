@@ -55,11 +55,12 @@ func loadPricingPackages(ctx context.Context, db pricingReader, ids []int64) (ma
 }
 
 type UnifiedPriceLine struct {
-	VariantID int64                   `json:"variantId"`
-	Name      string                  `json:"name"`
-	Quantity  int                     `json:"quantity"`
-	CostRUB   float64                 `json:"costRub"`
-	Quotes    map[string]ChannelQuote `json:"quotes"`
+	VariantID    int64                   `json:"variantId"`
+	SourceLineID int64                   `json:"sourceLineId"`
+	Name         string                  `json:"name"`
+	Quantity     int                     `json:"quantity"`
+	CostRUB      float64                 `json:"costRub"`
+	Quotes       map[string]ChannelQuote `json:"quotes"`
 }
 type UnifiedOrderPreview struct {
 	Version         int                `json:"version"`
@@ -75,7 +76,7 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	if s.Economics.Unified == nil || !s.Economics.Unified.Enabled {
 		return nil, nil
 	}
-	rows, err := db.Query(ctx, `SELECT l.canonical_variant_id,
+	rows, err := db.Query(ctx, `SELECT COALESCE(l.canonical_variant_id,0),MIN(l.id),
  COALESCE(NULLIF(MAX(n.name),''),MAX(l.raw_name)),
  SUM(COALESCE(l.invoiced_qty,l.ordered_qty))::int,
  CASE WHEN COUNT(*) FILTER(WHERE l.unit_cost_rub>0)=COUNT(*) THEN
@@ -85,9 +86,8 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
  WHERE l.procurement_order_id=$1 AND l.receiving_mode='catalog' AND l.match_status='confirmed'
  AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
  AND (l.reconciliation_status<>'added' OR l.comparison_accepted)
- AND l.canonical_variant_id IS NOT NULL
  AND COALESCE(l.invoiced_qty,l.ordered_qty)>0
- GROUP BY l.canonical_variant_id`, orderID)
+ GROUP BY l.canonical_variant_id,CASE WHEN l.canonical_variant_id IS NULL THEN l.id ELSE 0 END`, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,12 +95,14 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	ids := []int64{}
 	for rows.Next() {
 		var l UnifiedPriceLine
-		if err := rows.Scan(&l.VariantID, &l.Name, &l.Quantity, &l.CostRUB); err != nil {
+		if err := rows.Scan(&l.VariantID, &l.SourceLineID, &l.Name, &l.Quantity, &l.CostRUB); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		preview.Lines = append(preview.Lines, l)
-		ids = append(ids, l.VariantID)
+		if l.VariantID > 0 {
+			ids = append(ids, l.VariantID)
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -113,6 +115,11 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	for i := range preview.Lines {
 		l := &preview.Lines[i]
 		l.Quotes = UnifiedChannelQuotes(s, l.CostRUB, boxes[l.VariantID])
+		if l.VariantID == 0 {
+			for channel := range l.Quotes {
+				l.Quotes[channel] = ChannelQuote{Model: "unified", Missing: []string{"нет связи с вариантом каталога"}}
+			}
+		}
 		preview.Units += l.Quantity
 		if l.Quotes["wb"].PriceRUB != nil && l.Quotes["ozon"].PriceRUB != nil {
 			preview.PricedUnits += l.Quantity
@@ -136,6 +143,9 @@ func saveUnifiedOrderQuotes(ctx context.Context, tx pgx.Tx, s PricingSettings, o
 	// A SKU may occur in multiple invoice rows. The shared policy uses its
 	// quantity-weighted batch cost, exactly as in the preview, for one MP price.
 	for _, line := range preview.Lines {
+		if line.VariantID == 0 {
+			continue
+		}
 		encoded, err := json.Marshal(line.Quotes)
 		if err != nil {
 			return err
