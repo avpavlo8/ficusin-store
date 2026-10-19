@@ -9,6 +9,7 @@ test("PDP purchase layout, nested menu and gallery swipe work live", async ({ pa
   await page.goto("/product/33");
   await expect(page.getByRole("heading", { level:1, name:product.name, exact:true })).toBeVisible();
   await expect(page.locator(".pdp-order-column .pdp-commerce-box")).toBeVisible();
+  await expect(page.locator(".pdp-key-characteristics .care-scale")).toHaveCount(0);
   await expect(page.locator(".pdp-summary .pdp-related")).toHaveCount(1);
   await expect(page.locator(".pdp-summary .pdp-related-track")).toHaveCSS("display","flex");
   const cards = page.locator(".pdp-summary .related-card");

@@ -34,7 +34,7 @@ test("@desktop @phone a small category keeps buyer criteria together and provide
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
-test("@desktop @phone plant cards share the PDP care scale and show confirmed height instead of old care badges", async ({ page }) => {
+test("@desktop @phone plant cards show a care scale while PDP keeps a text level", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   const card = page.locator(".storefront-card").filter({ hasText: "Аглаонема Мария" });
@@ -50,11 +50,11 @@ test("@desktop @phone plant cards share the PDP care scale and show confirmed he
   await expect(unavailable.getByRole("button", { name: "Заказать", exact: true })).toBeVisible();
   await card.getByRole("button", { name: "В корзину", exact: true }).click();
   const added = card.getByRole("button", { name: "Перейти в корзину, 1 шт.", exact: true });
-  await expect(added.locator(".cart-item-count")).toHaveText("1");
-  await expect(added).toContainText("В корзину");
+  await expect(card.locator(".cart-item-count")).toHaveText("1");
+  await expect(added.locator(".catalog-cart-icon")).toBeVisible();
   await page.goto("/product/1");
-  await expect(page.locator(".pdp-key-characteristics").getByRole("img", { name: "Сложность ухода: Лёгкий уход, 1 из 3", exact: true })).toBeVisible();
-  await expect(page.locator(".pdp-key-characteristics .care-scale")).toHaveAttribute("data-level", "1");
+  await expect(page.locator(".pdp-key-characteristics")).toContainText("Лёгкий уход");
+  await expect(page.locator(".pdp-key-characteristics .care-scale")).toHaveCount(0);
 });
 
 test("@desktop @phone height and flowering filter independently while secondary parameters are absent", async ({ page }) => {
@@ -190,7 +190,7 @@ test("@desktop @phone unrated products reserve rating space and keep purchase wi
     const cards=page.locator('.storefront-card');
     const empty=cards.nth(1).locator('.storefront-rating');
     await expect(empty).toHaveAttribute('aria-hidden','true');await expect(empty.locator('svg')).toHaveCount(0);
-    const buttons=await cards.locator('button:not(.storefront-fav)').all();
+    const buttons=await cards.locator('.storefront-buy > button:not(.storefront-fav), .catalog-cart-controls').all();
     const boxes=await Promise.all(buttons.map(button=>button.boundingBox()));
     expect(Math.abs(boxes[0]!.width-boxes[1]!.width)).toBeLessThan(2);
     if (await buttons[0].getAttribute("aria-label") === "В корзину") await buttons[0].click();
