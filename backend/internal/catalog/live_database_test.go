@@ -278,7 +278,7 @@ func TestCatalogQueryPlanOnLiveDatabase(t *testing.T) {
 	}
 	defer pool.Close()
 	var rawPlan []byte
-	if err := pool.QueryRow(ctx, "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "+catalogListQuery).Scan(&rawPlan); err != nil {
+	if err := pool.QueryRow(ctx, "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "+catalogListQuery, "").Scan(&rawPlan); err != nil {
 		t.Fatalf("explain catalog: %v", err)
 	}
 	var plan any
@@ -602,10 +602,11 @@ func TestCatalogCollectionFieldsUsePIMOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var productID int64
+	var code string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO products(name,slug,status,catalog_section)
-		VALUES('PIM collection fixture',$1,'published','plants') RETURNING id
-	`, fmt.Sprintf("pim-collection-%d", unique)).Scan(&productID); err != nil {
+		VALUES('PIM collection fixture',$1,'published','plants') RETURNING id,product_code::text
+	`, fmt.Sprintf("pim-collection-%d", unique)).Scan(&productID, &code); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
@@ -628,7 +629,7 @@ func TestCatalogCollectionFieldsUsePIMOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, product := range products {
-		if product.ID != fmt.Sprint(productID) {
+		if product.ID != code {
 			continue
 		}
 		if product.LightLevel != "low_light" {

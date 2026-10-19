@@ -17,37 +17,49 @@ type CollectionRule struct {
 }
 
 type CollectionDefinition struct {
-	ID        int64            `json:"id"`
-	Slug      string           `json:"slug"`
-	Title     string           `json:"title"`
-	Note      string           `json:"note"`
-	CoverURL  string           `json:"coverUrl"`
-	SortOrder int              `json:"sortOrder"`
-	Active    bool             `json:"active"`
-	Mode      string           `json:"mode"`
-	Rules     []CollectionRule `json:"rules"`
-	Products  []int64          `json:"products"`
+	ID            int64            `json:"id"`
+	Slug          string           `json:"slug"`
+	Title         string           `json:"title"`
+	Note          string           `json:"note"`
+	CoverURL      string           `json:"coverUrl"`
+	CoverPosition string           `json:"coverPosition"`
+	ShowOnHome    bool             `json:"showOnHome"`
+	SortOrder     int              `json:"sortOrder"`
+	Active        bool             `json:"active"`
+	Mode          string           `json:"mode"`
+	Rules         []CollectionRule `json:"rules"`
+	Products      []int64          `json:"products"`
 }
 
 type CollectionDefinitionInput struct {
-	Products  *[]int64         `json:"products,omitempty"`
-	Slug      string           `json:"slug"`
-	Title     string           `json:"title"`
-	Note      string           `json:"note"`
-	CoverURL  string           `json:"coverUrl"`
-	SortOrder int              `json:"sortOrder"`
-	Active    bool             `json:"active"`
-	Mode      string           `json:"mode"`
-	Rules     []CollectionRule `json:"rules"`
+	Products      *[]int64         `json:"products,omitempty"`
+	Slug          string           `json:"slug"`
+	Title         string           `json:"title"`
+	Note          string           `json:"note"`
+	CoverURL      string           `json:"coverUrl"`
+	CoverPosition *string          `json:"coverPosition,omitempty"`
+	ShowOnHome    *bool            `json:"showOnHome,omitempty"`
+	SortOrder     int              `json:"sortOrder"`
+	Active        bool             `json:"active"`
+	Mode          string           `json:"mode"`
+	Rules         []CollectionRule `json:"rules"`
 }
 
 var collectionSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+var collectionCoverPositionPattern = regexp.MustCompile(`^(left|center|right)( (top|center|bottom|100%|[0-9]{1,2}%))?$`)
 
 func validateCollectionDefinition(input *CollectionDefinitionInput) error {
 	input.Slug = strings.ToLower(strings.TrimSpace(input.Slug))
 	input.Title = strings.TrimSpace(input.Title)
 	input.Note = strings.TrimSpace(input.Note)
 	input.CoverURL = strings.TrimSpace(input.CoverURL)
+	if input.CoverPosition != nil {
+		position := strings.TrimSpace(*input.CoverPosition)
+		if !collectionCoverPositionPattern.MatchString(position) {
+			return fmt.Errorf("%w: некорректное кадрирование обложки", ErrInvalidInput)
+		}
+		input.CoverPosition = &position
+	}
 	input.Mode = strings.ToLower(strings.TrimSpace(input.Mode))
 	if input.Mode == "" {
 		input.Mode = "manual"
@@ -109,7 +121,7 @@ func (repository *PostgresRepository) PreviewCollectionRules(ctx context.Context
 
 func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Context) ([]CollectionDefinition, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT collection.id,collection.slug,collection.title,collection.note,collection.cover_url,collection.sort_order,
+		SELECT collection.id,collection.slug,collection.title,collection.note,collection.cover_url,collection.cover_position,collection.show_on_home,collection.sort_order,
 			collection.is_active<>0,collection.mode,collection.rules,
 			CASE WHEN collection.mode='dynamic' THEN
 				COALESCE((SELECT ARRAY_AGG(product.id ORDER BY product.id)
@@ -128,7 +140,7 @@ func (repository *PostgresRepository) ListCollectionDefinitions(ctx context.Cont
 	for rows.Next() {
 		var item CollectionDefinition
 		var raw []byte
-		if err := rows.Scan(&item.ID, &item.Slug, &item.Title, &item.Note, &item.CoverURL, &item.SortOrder, &item.Active, &item.Mode, &raw, &item.Products); err != nil {
+		if err := rows.Scan(&item.ID, &item.Slug, &item.Title, &item.Note, &item.CoverURL, &item.CoverPosition, &item.ShowOnHome, &item.SortOrder, &item.Active, &item.Mode, &raw, &item.Products); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &item.Rules); err != nil {
@@ -152,9 +164,9 @@ func (repository *PostgresRepository) CreateCollectionDefinition(ctx context.Con
 	raw, _ := json.Marshal(input.Rules)
 	var id int64
 	if err := repository.pool.QueryRow(ctx, `
-		INSERT INTO collections(slug,title,note,cover_url,sort_order,is_active,mode,rules,updated_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,CURRENT_TIMESTAMP) RETURNING id
-	`, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw)).Scan(&id); err != nil {
+		INSERT INTO collections(slug,title,note,cover_url,sort_order,is_active,mode,rules,cover_position,show_on_home,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,COALESCE($9,'center'),COALESCE($10,TRUE),CURRENT_TIMESTAMP) RETURNING id
+	`, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw), input.CoverPosition, input.ShowOnHome).Scan(&id); err != nil {
 		return CollectionDefinition{}, fmt.Errorf("create collection: %w", err)
 	}
 	items, err := repository.ListCollectionDefinitions(ctx)
@@ -225,9 +237,10 @@ func (repository *PostgresRepository) UpdateCollectionDefinition(ctx context.Con
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	tag, err := tx.Exec(ctx, `
-		UPDATE collections SET slug=$2,title=$3,note=$4,cover_url=$5,sort_order=$6,is_active=$7,mode=$8,rules=$9::jsonb,updated_at=CURRENT_TIMESTAMP
+		UPDATE collections SET slug=$2,title=$3,note=$4,cover_url=$5,sort_order=$6,is_active=$7,mode=$8,rules=$9::jsonb,
+		 cover_position=COALESCE($10,cover_position),show_on_home=COALESCE($11,show_on_home),updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
-	`, id, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw))
+	`, id, input.Slug, input.Title, input.Note, input.CoverURL, input.SortOrder, boolToSmallInt(input.Active), input.Mode, string(raw), input.CoverPosition, input.ShowOnHome)
 	if err != nil {
 		return CollectionDefinition{}, fmt.Errorf("update collection: %w", err)
 	}

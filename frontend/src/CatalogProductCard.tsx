@@ -10,17 +10,19 @@ export type CatalogCardProduct = {
   filterAttributes?: Array<{ code: string; value: unknown }>;
 };
 
-export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAdd, onDecrease, onSelect }: {
+export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAdd, onDecrease, onSelect, preserveSKU }: {
   product: CatalogCardProduct; inCart: number; favorite: boolean;
   onFavorite: () => void; onAdd: () => void; onDecrease: () => void; onSelect?: () => void;
+  preserveSKU?: boolean;
 }) {
   const preorder = (product.stock ?? 0) <= 0;
   const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
   const cartIcon = <svg className="catalog-cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg>;
   const pot = product.size?.match(/[dдø]\s*(\d+(?:[.,]\d+)?)/i)?.[1];
+  const href = `/product/${product.id}${preserveSKU ? `?sku=${encodeURIComponent(product.sku)}` : ""}`;
   return <article className={preorder ? "storefront-card preorder" : "storefront-card"}>
-    <a className="storefront-image" href={`/product/${product.id}`} onClick={onSelect}><img src={product.image} alt={product.name} loading="lazy" /></a>
-    <a className="storefront-name" href={`/product/${product.id}`} onClick={onSelect}>{product.name}</a>
+    <a className="storefront-image" href={href} onClick={onSelect}><img src={product.image} alt={product.name} loading="lazy" /></a>
+    <a className="storefront-name" href={href} onClick={onSelect}>{product.name}</a>
     {product.catalogSection === "plants" ? <div className="storefront-plant-specs">
       <span className="plant-spec-row"><strong>Высота:</strong> {product.heightCm != null && product.heightCm > 0 ? `${product.heightCm} см` : "Не указана"}</span>
       <span className="plant-spec-row"><strong>Горшок:</strong> {pot ? `D${pot}` : "Не указан"}</span>

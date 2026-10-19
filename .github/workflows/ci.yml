@@ -178,6 +178,17 @@ jobs:
           SQL
             fi
 
+            # Prove the historical PIM backfill before the reviewed release
+            # deliberately replaces those old broad collection rules.
+            if [[ "$(basename "$migration")" == "20261019_reviewed_storefront_collections.sql" ]]; then
+              recovered_collections="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+                "SELECT COUNT(*) FROM collections c WHERE c.slug IN ('bathroom','office','compact','tall') AND EXISTS (SELECT 1 FROM products p WHERE p.slug IN ('ci-legacy-bathroom','ci-legacy-office') AND collection_rules_match_product(p.id,c.rules))")"
+              if [[ "$recovered_collections" != "4" ]]; then
+                echo "Expected all four legacy collection rules to match recovered PIM values, got ${recovered_collections}." >&2
+                exit 1
+              fi
+            fi
+
             echo "::group::${migration}"
             psql \
               -h 127.0.0.1 \
@@ -203,10 +214,12 @@ jobs:
             exit 1
           fi
 
-          recovered_collections="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM collections c WHERE c.slug IN ('bathroom','office','compact','tall') AND EXISTS (SELECT 1 FROM products p WHERE p.slug IN ('ci-legacy-bathroom','ci-legacy-office') AND collection_rules_match_product(p.id,c.rules))")"
-          if [[ "$recovered_collections" != "4" ]]; then
-            echo "Expected all four legacy collection rules to match recovered PIM values, got ${recovered_collections}." >&2
+          reviewed_home="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM collections WHERE show_on_home AND is_active=1")"
+          invented_height="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
+            "SELECT COUNT(*) FROM collections c CROSS JOIN products p WHERE c.slug IN ('compact','tall') AND p.slug IN ('ci-legacy-bathroom','ci-legacy-office') AND collection_rules_match_product(p.id,c.rules)")"
+          if [[ "$reviewed_home" != "19" || "$invented_height" != "0" ]]; then
+            echo "Reviewed collections missing or unknown height inferred: home=${reviewed_home} invented=${invented_height}." >&2
             exit 1
           fi
 

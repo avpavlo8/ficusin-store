@@ -58,7 +58,7 @@ type Product = {
 type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string };
 type CategoryNode = { id: number; name: string; slug: string; icon: string; count: number; children: CategoryNode[] };
 type Landing = { type: "category" | "collection"; slug: string };
-type CollectionMeta = { slug: string; title: string; note: string; count?: number };
+type CollectionMeta = { slug: string; title: string; note: string; count?: number; selectsVariant?: boolean };
 type RangeValue = { min: string; max: string };
 type Facet = {
   name: string;
@@ -167,6 +167,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [collectionMeta, setCollectionMeta] = useState<CollectionMeta | null>(null);
+  const [collectionVariants, setCollectionVariants] = useState<{ slug: string; products: Product[]; failed: boolean } | null>(null);
   const [collectionState, setCollectionState] = useState<"idle" | "loading" | "loaded" | "error">(landing?.type === "collection" ? "loading" : "idle");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -218,6 +219,16 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, []);
 
   useEffect(() => {
+    if (landing?.type !== "collection" || !collectionMeta?.selectsVariant) return;
+    let alive = true;
+    const slug = landing.slug;
+    sharedAPIJSON<{ products?: Product[] }>(`/api/v1/catalog?collection=${encodeURIComponent(slug)}`)
+      .then(data => { if (alive) setCollectionVariants({ slug, products: data.products || [], failed: false }); })
+      .catch(() => { if (alive) setCollectionVariants({ slug, products: [], failed: true }); });
+    return () => { alive = false; };
+  }, [landing, collectionMeta?.selectsVariant]);
+
+  useEffect(() => {
     if (landing?.type !== "collection") return;
     fetch("/api/v1/collections", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("collections unavailable")))
@@ -253,7 +264,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const routePending = landing?.type === "category"
     ? !categoriesLoaded
     : landing?.type === "collection"
-      ? collectionState === "loading"
+      ? collectionState === "loading" || (collectionMeta?.selectsVariant && collectionVariants?.slug !== landing.slug)
       : false;
 
   const activeCategoryPath = useMemo(() => {
@@ -331,11 +342,16 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   }, [categories]);
 
   const contextProducts = useMemo(() => {
-    if (landing?.type === "collection") return products.filter((product) => product.collections?.includes(landing.slug));
+    if (landing?.type === "collection") {
+      const source = collectionMeta?.selectsVariant
+        ? collectionVariants?.slug === landing.slug ? collectionVariants.products : []
+        : products;
+      return source.filter(product => product.collections?.includes(landing.slug));
+    }
     if (landing?.type === "category" && !activeCategory) return [];
     if (category != null) return products.filter((product) => inBranch(product.categoryId, category));
     return products;
-  }, [products, landing, activeCategory, category, inBranch]);
+  }, [products, landing, activeCategory, category, inBranch, collectionMeta?.selectsVariant, collectionVariants]);
 
   // This is the existing documented search rule: search is global even when
   // started from a category or collection. We keep it and explain the scope in
@@ -556,6 +572,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   });
 
   if (categoryNotFound || collectionNotFound) return <NotFoundPage />;
+  const collectionVariantError = !searching && landing?.type === "collection" && collectionVariants?.slug === landing.slug && collectionVariants.failed;
   const CatalogHeading = landing?.type === "category" ? "h1" : "h2";
   const showCategoryPicker = !searching && (!landing || landing.type === "category") && categoryOptions.length > 0;
 
@@ -616,10 +633,11 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
           {loading && <p className="storefront-empty">Загружаем каталог…</p>}
           {!loading && error && <p className="storefront-empty">{error}</p>}
-          {!loading && !error && visible.length === 0 && <div className="storefront-empty"><strong>{searching ? "Ничего не нашли" : "Здесь пока пусто"}</strong><p>{searching ? "Проверьте написание или поищите короче — например, «фикус» вместо «фикус бенджамина большой»." : activeFilterCount > 0 ? "По текущим фильтрам товаров нет. Сбросьте дополнительные фильтры или измените условия." : landing?.type === "collection" ? "В этой подборке сейчас нет доступных товаров." : "В этой категории сейчас нет доступных товаров."}</p>{activeFilterCount > 0 ? <button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button> : <a href="/#catalog">Показать весь каталог</a>}</div>}
+          {collectionVariantError && <p className="storefront-empty" role="alert">Не удалось загрузить размеры подборки. Обновите страницу, чтобы повторить загрузку.</p>}
+          {!loading && !error && !collectionVariantError && visible.length === 0 && <div className="storefront-empty"><strong>{searching ? "Ничего не нашли" : "Здесь пока пусто"}</strong><p>{searching ? "Проверьте написание или поищите короче — например, «фикус» вместо «фикус бенджамина большой»." : activeFilterCount > 0 ? "По текущим фильтрам товаров нет. Сбросьте дополнительные фильтры или измените условия." : landing?.type === "collection" ? "В этой подборке сейчас нет доступных товаров." : "В этой категории сейчас нет доступных товаров."}</p>{activeFilterCount > 0 ? <button type="button" onClick={clearAdditionalFilters}>Сбросить фильтры</button> : <a href="/#catalog">Показать весь каталог</a>}</div>}
 
           <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
-            {visible.slice(0, visibleLimit).map(product => <CatalogProductCard key={product.id} product={product}
+            {visible.slice(0, visibleLimit).map(product => <CatalogProductCard key={product.id} product={product} preserveSKU={!searching && landing?.type === "collection" && collectionMeta?.selectsVariant}
               inCart={cart[product.sku] ?? 0} favorite={favorites.has(product.id)}
               onFavorite={() => toggleFavorite(product.id)} onAdd={() => addToCart(product)} onDecrease={() => setCart(current => {
                 const next = { ...current };
