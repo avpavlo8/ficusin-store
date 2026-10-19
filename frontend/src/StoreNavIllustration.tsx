@@ -14,7 +14,8 @@ export function StoreNavIllustration({ kind }: { kind: NavIllustration }) {
       <linearGradient id={`${id}-glass`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#f5ffff" /><stop offset=".5" stopColor="#c8e7e7" /><stop offset="1" stopColor="#7bb9bd" /></linearGradient>
       <radialGradient id={`${id}-red`} cx=".32" cy=".2" r=".85"><stop stopColor="#ff9290" /><stop offset=".38" stopColor="#f44243" /><stop offset=".75" stopColor="#dc202e" /><stop offset="1" stopColor="#9d172b" /></radialGradient>
       <linearGradient id={`${id}-skin`} x1="0" y1="0" x2="1" y2=".5"><stop stopColor="#ffe4c7" /><stop offset=".6" stopColor="#edb78b" /><stop offset="1" stopColor="#ce8c64" /></linearGradient>
-      <linearGradient id={`${id}-shirt`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#84ac87" /><stop offset=".5" stopColor="#447d61" /><stop offset="1" stopColor="#28503f" /></linearGradient>
+      <linearGradient id={`${id}-shirt`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#efb18b" /><stop offset=".5" stopColor="#cb755b" /><stop offset="1" stopColor="#99513f" /></linearGradient>
+      <linearGradient id={`${id}-steel`} x1="0" y1="0" x2="1" y2=".4"><stop stopColor="#f4f8f9" /><stop offset=".25" stopColor="#a3b5bf" /><stop offset=".5" stopColor="#e8eff2" /><stop offset=".75" stopColor="#8499a6" /><stop offset="1" stopColor="#c5d4db" /></linearGradient>
       <linearGradient id={`${id}-hair`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#8c5d3b" /><stop offset=".5" stopColor="#533827" /><stop offset="1" stopColor="#30261e" /></linearGradient>
     </defs>
     {kind === "catalog" && <>
@@ -47,34 +48,38 @@ export function StoreNavIllustration({ kind }: { kind: NavIllustration }) {
       <path d="M37 26c-2 4-7 9-11 12" fill="none" stroke="#a3172c" strokeWidth="1.7" strokeLinecap="round" opacity=".6" />
     </>}
     {kind === "basket" && <>
-      <ellipse cx="24" cy="44" rx="19" ry="2" fill="#6c5433" opacity=".18" />
-      <path d="M15 25c-4-12 0-21 9-21s13 9 9 21" fill="none" stroke="#925324" strokeWidth="5" />
-      <path d="M15 22c-2-10 1-16 9-16s11 6 9 16" fill="none" stroke="#f0c580" strokeWidth="2" />
-      <path d="M24 28V14m0 9c-8 0-12-5-11-10 7 0 12 4 11 10Zm0-5c0-7 4-11 11-11 0 8-4 12-11 11Z" fill={paint("leaf")} stroke="#37663a" strokeWidth="1" />
-      <path d="m5 23 5 18q14 6 28 0l5-18Z" fill={paint("gold")} stroke="#a56b2d" strokeWidth="1.2" strokeLinejoin="round" />
-      <path d="m11 27 3 14m4-14 1 16m6-16v17m6-17-1 16m7-16-3 14" stroke="#ae722f" strokeWidth="1.7" />
-      <path d="M8 29q16 5 32 0M9 34q15 5 30 0M11 39q13 4 26 0" fill="none" stroke="#f9d58c" strokeWidth="2" />
-      <path d="M7 30q17 5 34 0M9 35q15 5 30 0M10 40q14 5 28 0" fill="none" stroke="#9c632b" strokeWidth=".7" />
-      <path d="M5 23q19 5 38 0" fill="none" stroke="#c28a42" strokeWidth="5" strokeLinecap="round" />
-      <path d="M6 22q18 4 36 0" fill="none" stroke="#ffe1a3" strokeWidth="2" strokeLinecap="round" />
+      <ellipse cx="24" cy="43" rx="19" ry="2.3" fill="#435663" opacity=".16" />
+      <path d="M11 22 17 6q7-5 14 0l6 16" fill="none" stroke="#607885" strokeWidth="3.5" strokeLinejoin="round" />
+      <path d="m11 21 7-15q6-4 12 0l7 15" fill="none" stroke="#dce9ee" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="m18 6 1-2q5-2 10 0l1 2" fill="none" stroke="#da6b2e" strokeWidth="4.5" strokeLinecap="round" />
+      <path d="M5 22 10 39l23 3 10-18-26-5Z" fill="#e0e9eb" fillOpacity=".45" stroke="#687f8c" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="m17 20 3 19m6-18-1 19m10-18-5 19m9-16-6 16M9 25l2 13m3-14 2 15" fill="none" stroke={paint("steel")} strokeWidth="2.2" />
+      <path d="m6 27 28 4 7-5M8 33l25 4 5-5m-28 6 23 3" fill="none" stroke="#8399a5" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="m7 26 27 4 7-5M9 32l24 4 5-5" fill="none" stroke="#f5f9fa" strokeWidth=".8" strokeLinejoin="round" />
+      <path d="m5 22 28 4 10-2-26-5Z" fill="none" stroke="#687f8c" strokeWidth="3" strokeLinejoin="round" />
+      <path d="m5 21 28 4 10-2-26-5Z" fill="none" stroke="#e6f0f4" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="m10 23 8-15q7-5 14 0l7 16" fill="none" stroke="#607885" strokeWidth="3" strokeLinejoin="round" />
+      <path d="m10 22 9-14q6-4 12 0l8 15" fill="none" stroke="#dce9ee" strokeWidth="1" strokeLinejoin="round" />
+      <path d="m19 8 1-2q5-2 10 0l1 2" fill="none" stroke="#e67836" strokeWidth="4" strokeLinecap="round" />
+      <path d="M21 5.5q4-1 7 .2" fill="none" stroke="#ffc38a" strokeWidth="1.1" strokeLinecap="round" />
     </>}
     {kind === "person" && <>
-      <ellipse cx="24" cy="44" rx="19" ry="2" fill="#254c3e" opacity=".15" />
-      <path d="M5 43v-5c0-9 9-13 19-13s19 4 19 13v5q-19 5-38 0Z" fill={paint("shirt")} stroke="#315b48" strokeWidth="1" />
-      <path d="M19 24v7q5 5 10 0v-7" fill={paint("skin")} stroke="#bd875e" strokeWidth=".7" />
-      <path d="m17 29 7 7-6 4-4-10m17-1-7 7 6 4 4-10" fill="#b5d2b0" stroke="#4c7e5c" strokeWidth=".7" strokeLinejoin="round" />
-      <path d="M24 36v10m-12-7v5m24-5v5" stroke="#234d3d" strokeWidth="1" />
-      <circle cx="26" cy="41" r=".8" fill="#d7ddbd" />
-      <ellipse cx="12.5" cy="18.5" rx="2.5" ry="4" fill={paint("skin")} />
-      <ellipse cx="35.5" cy="18.5" rx="2.5" ry="4" fill={paint("skin")} />
-      <path d="M12 16C9 4 17 1 25 2c10 0 14 7 11 18l-3 5H15Z" fill={paint("hair")} stroke="#493023" strokeWidth=".8" />
-      <path d="M14 12v8c0 8 5 12 10 12s10-4 10-12v-8c-7 2-11-2-12-4-1 3-4 4-8 4Z" fill={paint("skin")} stroke="#bd875e" strokeWidth=".7" />
-      <path d="M15 10c6 1 9-4 10-5m-8 0c-3 1-5 4-5 7" fill="none" stroke="#b08756" strokeWidth="1.3" strokeLinecap="round" />
-      <path d="m17 17 4-.5m6 0 4 .5" stroke="#694831" strokeWidth="1.2" strokeLinecap="round" />
-      <ellipse cx="19" cy="20" rx="1" ry="1.3" fill="#443329" /><ellipse cx="29" cy="20" rx="1" ry="1.3" fill="#443329" />
-      <path d="m24 20-1 4h2" fill="none" stroke="#bb825a" strokeWidth=".8" strokeLinecap="round" />
-      <ellipse cx="17.5" cy="24" rx="2" ry="1" fill="#e29a7d" opacity=".6" /><ellipse cx="30.5" cy="24" rx="2" ry="1" fill="#e29a7d" opacity=".6" />
-      <path d="M21 27q3 2 6 0" fill="none" stroke="#9e604d" strokeWidth="1" strokeLinecap="round" />
+      <ellipse cx="24" cy="44" rx="18" ry="2" fill="#674431" opacity=".15" />
+      <path d="M11 29 10 15C9-2 37-3 38 14l-1 16q-13 6-26-1Z" fill={paint("hair")} stroke="#493023" strokeWidth="1" />
+      <path d="M6 43v-5c0-8 8-12 18-12s18 4 18 12v5q-18 5-36 0Z" fill={paint("shirt")} stroke="#a35d48" strokeWidth=".9" />
+      <path d="M19 25v6q5 4 10 0v-6" fill={paint("skin")} stroke="#bd875e" strokeWidth=".7" />
+      <path d="M17 30q7 10 14 0" fill="none" stroke="#f7d5b7" strokeWidth="2.7" strokeLinecap="round" />
+      <path d="m13 37-1 7m23-7 1 7" stroke="#a35d48" strokeWidth="1" strokeLinecap="round" />
+      <ellipse cx="13" cy="19" rx="2.2" ry="3.2" fill={paint("skin")} /><ellipse cx="35" cy="19" rx="2.2" ry="3.2" fill={paint("skin")} />
+      <path d="M14 13v7c0 7 5 12 10 12s10-5 10-12v-7c-6 1-10-4-10-6-2 4-5 6-10 6Z" fill={paint("skin")} stroke="#bd875e" strokeWidth=".7" />
+      <path d="M12 18c-2-9 3-15 12-15 10 0 14 7 12 15-5-2-10-6-12-11-2 6-7 9-12 11Z" fill={paint("hair")} />
+      <path d="M14 12q2-7 9-7m5 1q5 2 6 7" fill="none" stroke="#ad7e50" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="m17 18 4-.6m6 0 4 .6" stroke="#694831" strokeWidth="1" strokeLinecap="round" />
+      <ellipse cx="19" cy="21" rx="1.1" ry="1.4" fill="#403126" /><ellipse cx="29" cy="21" rx="1.1" ry="1.4" fill="#403126" />
+      <circle cx="19.3" cy="20.6" r=".35" fill="#fff9e9" /><circle cx="29.3" cy="20.6" r=".35" fill="#fff9e9" />
+      <path d="m24 21-1 3h2" fill="none" stroke="#be865d" strokeWidth=".8" strokeLinecap="round" />
+      <ellipse cx="17.3" cy="25" rx="2" ry="1.2" fill="#e89b87" opacity=".7" /><ellipse cx="30.7" cy="25" rx="2" ry="1.2" fill="#e89b87" opacity=".7" />
+      <path d="M21 27q3 3 6 0" fill="#fff2dd" stroke="#a56352" strokeWidth=".8" strokeLinecap="round" />
     </>}
   </svg>;
 }
