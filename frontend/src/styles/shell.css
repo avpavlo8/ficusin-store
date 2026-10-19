@@ -221,8 +221,8 @@ body.menu-open, body.drawer-open { overflow: hidden; }
   .mobile-catalog-search { flex:1; min-width:0; }
   .tab-bar { gap:3px; padding:8px 7px calc(8px + env(safe-area-inset-bottom)); border-top:1px solid #d2c4ae; background:#fffaf0; box-shadow:0 -6px 26px #51371e26; }
   .tab-bar > a,.tab-bar > button { --tab-color:#285239; --tab-tint:#e3eddb; min-height:54px; padding:3px 1px; gap:3px; border-radius:11px; color:var(--tab-color); }
-  .tab-bar > :nth-child(2) { --tab-color:#815805; --tab-tint:#fff0c7; }
-  .tab-bar > :nth-child(3) { --tab-color:#cf202d; --tab-tint:#ffe6e6; }
+  .tab-bar > :nth-child(2) { --tab-color:#cf202d; --tab-tint:#ffe6e6; }
+  .tab-bar > :nth-child(3) { --tab-color:#815805; --tab-tint:#fff0c7; }
   .tab-bar > :nth-child(4) { --tab-color:#b54b08; --tab-tint:#ffead2; }
   .tab-bar > :nth-child(5) { --tab-color:#25665d; --tab-tint:#dfefe8; }
   .tab-bar .tab-icon { width:36px; height:36px; }

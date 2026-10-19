@@ -198,10 +198,6 @@ function MobileTabBar({
       <span className="tab-icon"><StoreNavIllustration kind="catalog" /></span>
       <small>Каталог</small>
     </button>
-    <button type="button" onClick={event => onSearchClick(event.currentTarget)}>
-      <span className="tab-icon"><StoreNavIllustration kind="search" /></span>
-      <small>Поиск</small>
-    </button>
     <a href="/favorites" className={window.location.pathname === "/favorites" ? "active" : undefined}>
       <span className="tab-icon">
         <StoreNavIllustration kind="heart" />
@@ -209,6 +205,10 @@ function MobileTabBar({
       </span>
       <small>Избранное</small>
     </a>
+    <button type="button" onClick={event => onSearchClick(event.currentTarget)}>
+      <span className="tab-icon"><StoreNavIllustration kind="search" /></span>
+      <small>Поиск</small>
+    </button>
     {onCartClick
       ? <button type="button" onClick={onCartClick}>{cartInside}</button>
       : <a href="/cart">{cartInside}</a>}
