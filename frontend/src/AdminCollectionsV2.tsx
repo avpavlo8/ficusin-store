@@ -7,6 +7,7 @@ type Rule = { attribute: string; operator: "eq" | "neq" | "in" | "contains" | "g
 type Definition = {
   id: number; slug: string; title: string; note: string; sortOrder: number; active: boolean;
   coverUrl: string; mode: "manual" | "dynamic"; rules: Rule[]; products: number[];
+  coverPosition?: string; showOnHome?: boolean;
 };
 type Attribute = {
   id: number; code: string; name: string; dataType: string; unit: string; active: boolean;
@@ -132,7 +133,7 @@ function CollectionEditor({ owner, item, attributes, products, onSaved, onDelete
     try {
       const result = await api<{ collection: Definition }>(`/api/v1/admin/collection-definitions/${item.id}`, {
         method: "PUT",
-        body: JSON.stringify({ slug: draft.slug, title: draft.title, note: draft.note, coverUrl: draft.coverUrl, sortOrder: draft.sortOrder, active: draft.active, mode: draft.mode, rules: draft.mode === "dynamic" ? normalizedRules : [], products:draft.mode==="manual"?draft.products:undefined }),
+        body: JSON.stringify({ slug: draft.slug, title: draft.title, note: draft.note, coverUrl: draft.coverUrl, coverPosition: draft.coverPosition || "center", showOnHome: draft.showOnHome !== false, sortOrder: draft.sortOrder, active: draft.active, mode: draft.mode, rules: draft.mode === "dynamic" ? normalizedRules : [], products:draft.mode==="manual"?draft.products:undefined }),
       });
       setDraft(structuredClone(result.collection));
       onSaved(result.collection);setNotice("Подборка и состав сохранены");
@@ -174,8 +175,10 @@ function CollectionEditor({ owner, item, attributes, products, onSaved, onDelete
       <label>Режим<select value={draft.mode} onChange={(event) => setDraft({ ...draft, mode: event.target.value as Definition["mode"], rules: event.target.value === "dynamic" && draft.rules.length === 0 ? [{ attribute: attributes[0]?.code || "", operator: "eq", value: "" }] : draft.rules })}><option value="manual">Вручную</option><option value="dynamic">По правилам</option></select></label>
       <label>Порядок<input type="number" value={draft.sortOrder} onChange={(event) => setDraft({ ...draft, sortOrder: Number(event.target.value) })} /></label>
       <label className="admin-checkbox"><input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} />Показывать на витрине</label>
+      <label className="admin-checkbox"><input type="checkbox" checked={draft.showOnHome !== false} onChange={(event) => setDraft({ ...draft, showOnHome: event.target.checked })} />В ленте на главной</label>
+      <label>Кадрирование обложки<select value={draft.coverPosition || "center"} onChange={event => setDraft({ ...draft, coverPosition: event.target.value })}>{[["center top","Сверху"],["center 30%","Выше центра"],["center","По центру"],["center 70%","Ниже центра"],["center bottom","Снизу"]].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <div className="wide collection-cover-editor">
-        <div className="collection-cover-preview" style={draft.coverUrl ? { backgroundImage: `url('${draft.coverUrl}')` } : undefined}><span>{draft.coverUrl ? draft.title : "Нет обложки"}</span></div>
+        <div className="collection-cover-preview" style={draft.coverUrl ? { backgroundImage: `url('${draft.coverUrl}')`, backgroundPosition: draft.coverPosition || "center" } : undefined}><span>{draft.coverUrl ? draft.title : "Нет обложки"}</span></div>
         <div><strong>Обложка подборки</strong><p>Горизонтальное изображение 1600×900 или крупнее. Загрузка файла применяется сразу.</p><label className="admin-upload-button"><input type="file" accept="image/jpeg,image/png,image/gif" disabled={uploading} onChange={(event) => { void uploadCover(event.target.files?.[0]); event.currentTarget.value = ""; }} /><span>{uploading ? "Загружаем…" : "Загрузить обложку"}</span></label><label>Или адрес изображения<input value={draft.coverUrl} placeholder="https://… или /assets/…" onChange={(event) => setDraft({ ...draft, coverUrl: event.target.value })} /></label></div>
       </div>
     </div>

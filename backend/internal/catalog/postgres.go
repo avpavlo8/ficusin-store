@@ -511,7 +511,9 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 }
 
 const catalogListQuery = `
-	WITH popularity AS (
+	WITH requested_collection AS (
+		SELECT * FROM collections WHERE slug=$1 AND is_active=1
+	), popularity AS (
 		SELECT variant.product_id, SUM(oi.quantity * CASE
 			WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' THEN 1.0
 			WHEN o.created_at >= CURRENT_TIMESTAMP - INTERVAL '90 days' THEN 0.5
@@ -535,6 +537,10 @@ const catalogListQuery = `
 			FROM product_variants variant
 			WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
+			AND ($1='' OR EXISTS (SELECT 1 FROM requested_collection collection
+			 WHERE (collection.mode='manual' AND EXISTS (SELECT 1 FROM collection_products member
+			   WHERE member.collection_id=collection.id AND member.product_id=product.id))
+			 OR (collection.mode='dynamic' AND collection_rules_match_variant(product.id,variant.id,collection.rules))))
 			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory
 				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
@@ -634,7 +640,24 @@ const catalogListQuery = `
 `
 
 func (repository *PostgresRepository) ListAvailable(ctx context.Context) ([]Product, error) {
-	rows, err := repository.pool.Query(ctx, catalogListQuery)
+	return repository.listAvailable(ctx, "")
+}
+
+// ListForCollection chooses a qualifying sale variant, preserving its price,
+// height, image and SKU. A small default sibling must not represent a tall tree.
+func (repository *PostgresRepository) ListForCollection(ctx context.Context, slug string) ([]Product, error) {
+	var exists bool
+	if err := repository.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM collections WHERE slug=$1 AND is_active=1)`, slug).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return repository.listAvailable(ctx, slug)
+}
+
+func (repository *PostgresRepository) listAvailable(ctx context.Context, collectionSlug string) ([]Product, error) {
+	rows, err := repository.pool.Query(ctx, catalogListQuery, collectionSlug)
 	if err != nil {
 		return nil, fmt.Errorf("query catalog: %w", err)
 	}
@@ -764,11 +787,18 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 
 func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Collection, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT collection.slug,collection.title,collection.note,collection.cover_url,COUNT(product.id)::INTEGER
+		SELECT collection.slug,collection.title,collection.note,collection.cover_url,collection.cover_position,collection.show_on_home,
+		 EXISTS(SELECT 1 FROM jsonb_array_elements(collection.rules) rule
+		   JOIN attribute_definitions definition ON definition.code=rule->>'attribute'
+		   WHERE definition.value_scope='variant' AND definition.is_active),COUNT(product.id)::INTEGER
 		FROM collections collection
 		JOIN products product ON product.status='published' AND ((collection.mode='manual' AND EXISTS(SELECT 1 FROM collection_products member WHERE member.collection_id=collection.id AND member.product_id=product.id))
 			OR (collection.mode='dynamic' AND collection_rules_match_product(product.id,collection.rules)))
-		WHERE collection.is_active=1 GROUP BY collection.id HAVING COUNT(product.id)>0
+		WHERE collection.is_active=1 AND product.catalog_section='plants'
+		 AND EXISTS (SELECT 1 FROM product_variants variant WHERE variant.product_id=product.id
+		   AND variant.is_active=1 AND variant.archived_at IS NULL
+		   AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id))
+		GROUP BY collection.id HAVING COUNT(product.id)>0
 		ORDER BY collection.sort_order,collection.id
 	`)
 	if err != nil {
@@ -778,7 +808,7 @@ func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Co
 	collections := make([]Collection, 0)
 	for rows.Next() {
 		var item Collection
-		if err := rows.Scan(&item.Slug, &item.Title, &item.Note, &item.CoverURL, &item.Count); err != nil {
+		if err := rows.Scan(&item.Slug, &item.Title, &item.Note, &item.CoverURL, &item.CoverPosition, &item.ShowOnHome, &item.SelectsVariant, &item.Count); err != nil {
 			return nil, fmt.Errorf("scan collection: %w", err)
 		}
 		collections = append(collections, item)
