@@ -794,7 +794,7 @@ func (repository *PostgresRepository) ListCollections(ctx context.Context) ([]Co
 		FROM collections collection
 		JOIN products product ON product.status='published' AND ((collection.mode='manual' AND EXISTS(SELECT 1 FROM collection_products member WHERE member.collection_id=collection.id AND member.product_id=product.id))
 			OR (collection.mode='dynamic' AND collection_rules_match_product(product.id,collection.rules)))
-		WHERE collection.is_active=1 AND product.catalog_section='plants'
+		WHERE collection.is_active=1
 		 AND EXISTS (SELECT 1 FROM product_variants variant WHERE variant.product_id=product.id
 		   AND variant.is_active=1 AND variant.archived_at IS NULL
 		   AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id))
