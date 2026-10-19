@@ -33,7 +33,11 @@ export default function FavoritesPage() {
       {status === "loading" && <p role="status">Загружаем избранное…</p>}
       {status === "error" && <div className="empty-state" role="alert"><strong>Не удалось загрузить избранное</strong><p>Сохранённые товары на месте. Попробуйте загрузить их ещё раз.</p><button type="button" onClick={load}>Повторить</button></div>}
       {status === "ready" && unavailable.length > 0 && <p className="favorites-unavailable" role="status">{counted(unavailable.length, ["сохранённый товар недоступен", "сохранённых товара недоступны", "сохранённых товаров недоступны"])}. <button type="button" aria-label="Убрать недоступные из избранного" onClick={() => setFavorites((current) => new Set([...current].filter((id) => !unavailable.includes(id))))}>Убрать из списка</button></p>}
-      <div className="storefront-grid">{items.map(product => <CatalogProductCard key={product.id} product={product} favorite inCart={cart[product.sku] ?? 0} onFavorite={() => remove(product.id)} onAdd={() => add(product)} />)}</div>
+      <div className="storefront-grid">{items.map(product => <CatalogProductCard key={product.id} product={product} favorite inCart={cart[product.sku] ?? 0} onFavorite={() => remove(product.id)} onAdd={() => add(product)} onDecrease={() => setCart(current => {
+        const next = { ...current };
+        if ((next[product.sku] || 0) <= 1) delete next[product.sku]; else next[product.sku] -= 1;
+        return next;
+      })} />)}</div>
       {status === "ready" && !favorites.size && <div className="empty-state"><strong>В избранном пока пусто</strong><span>Добавляйте товары сердечком в каталоге.</span><a href="/#catalog">Перейти в каталог</a></div>}
     </section>
   </main>;

@@ -158,7 +158,7 @@ function MobileMenu({ view, user, favorites, items, state, onRetry, onView, onCl
       <div className="mobile-menu-account">{user ? <><a href="/account"><strong>{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</strong><small>Личный кабинет</small></a>{user.adminRole && <a className="mobile-menu-admin" href="/admin">Панель управления <span aria-hidden="true">↗</span></a>}</> : <><a href="/login">Войти в аккаунт</a><a href="/register">Регистрация</a></>}</div>
       <nav className="mobile-menu-links" aria-label="Покупки"><button type="button" onClick={() => onView("catalog")}>Каталог <span aria-hidden="true">→</span></button><a href="/discounts">Растения со скидкой</a><a href="/favorites">Избранное <small>{favorites}</small></a></nav>
       <nav className="mobile-menu-links" aria-label="Помощь"><a href="/delivery-and-returns">Доставка и возврат</a><a href="/contacts">Контакты</a></nav>
-      <details className="mobile-menu-documents"><summary>Документы магазина</summary><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></details>
+      <details className="mobile-menu-documents"><summary>О магазине</summary><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></details>
     </>}
   </aside>;
 }

@@ -1,6 +1,7 @@
 import { catalogSize } from "./lib/storefront-format";
 import { CareLevel } from "./product/CareLevel";
 import { money } from "./product/types";
+import { openSavedCart } from "./lib/cart";
 
 export type CatalogCardProduct = {
   id: string; sku: string; name: string; latin: string; price: number;
@@ -9,11 +10,13 @@ export type CatalogCardProduct = {
   filterAttributes?: Array<{ code: string; value: unknown }>;
 };
 
-export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAdd, onSelect }: {
+export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAdd, onDecrease, onSelect }: {
   product: CatalogCardProduct; inCart: number; favorite: boolean;
-  onFavorite: () => void; onAdd: () => void; onSelect?: () => void;
+  onFavorite: () => void; onAdd: () => void; onDecrease: () => void; onSelect?: () => void;
 }) {
   const preorder = (product.stock ?? 0) <= 0;
+  const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
+  const cartIcon = <svg className="catalog-cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg>;
   const pot = product.size?.match(/[dдø]\s*(\d+(?:[.,]\d+)?)/i)?.[1];
   return <article className={preorder ? "storefront-card preorder" : "storefront-card"}>
     <a className="storefront-image" href={`/product/${product.id}`} onClick={onSelect}><img src={product.image} alt={product.name} loading="lazy" /></a>
@@ -32,13 +35,18 @@ export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAd
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg>
       </button>
 
-      <button type="button" className={preorder && inCart === 0 ? "preorder-action" : undefined}
-        onClick={() => inCart > 0 ? window.location.assign("/cart") : onAdd()}
-        aria-label={inCart > 0 ? `Перейти в корзину, ${inCart} шт.` : preorder ? "Заказать" : "В корзину"}
-        title={inCart > 0 ? "Открыть корзину и изменить количество" : preorder ? "Заказать без оплаты — менеджер уточнит поставку" : `Добавить в корзину · ${catalogSize(product.size)}`}>
-        {inCart > 0 && <span className="cart-item-count" aria-hidden="true">{inCart}</span>}<svg className="catalog-cart-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7.5h2l1.4 9.2h9.8l1.8-6.5H7.1M9.5 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg>
-        <span className="cart-button-label">{preorder && inCart === 0 ? "Заказать" : "В корзину"}</span>
-      </button>
+      {inCart > 0 ? <div className="catalog-cart-controls">
+        <button type="button" className="catalog-cart-open" onClick={() => { void openSavedCart(); }} aria-label={`Перейти в корзину, ${inCart} шт.`} title="Открыть корзину">{cartIcon}</button>
+        <div className="catalog-card-quantity" role="group" aria-label={`Количество: ${product.name}`}>
+          <button type="button" onClick={onDecrease} aria-label={`Уменьшить количество: ${product.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg></button>
+          <output className="cart-item-count" aria-live="polite" aria-label="Количество в корзине">{inCart}</output>
+          <button type="button" onClick={onAdd} disabled={inCart >= maximum} aria-label={`Увеличить количество: ${product.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg></button>
+        </div>
+      </div> : <button type="button" className={preorder ? "preorder-action" : undefined}
+        onClick={onAdd} aria-label={preorder ? "Заказать" : "В корзину"}
+        title={preorder ? "Заказать без оплаты — менеджер уточнит поставку" : `Добавить в корзину · ${catalogSize(product.size)}`}>
+        {cartIcon}<span className="cart-button-label">{preorder ? "Заказать" : "В корзину"}</span>
+      </button>}
     </div>
   </article>;
 }

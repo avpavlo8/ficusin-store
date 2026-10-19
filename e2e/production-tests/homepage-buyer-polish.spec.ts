@@ -63,6 +63,8 @@ test("production mobile footer and keyboard menu are reachable", async ({page,re
     const trigger=page.getByRole("button",{name:"Открыть меню",exact:true});
     await trigger.click();
     const menu=page.getByRole("dialog",{name:"Меню магазина"});
+    await expect(menu.locator(".mobile-menu-documents summary")).toHaveText("О магазине");
+    expect(await menu.locator(".mobile-menu-links").evaluateAll(els=>els.every(el=>getComputedStyle(el).gridTemplateColumns.split(" ").length===1))).toBe(true);
     await expect(menu.getByRole("button",{name:"Закрыть меню",exact:true})).toBeFocused();
     const bounds=await menu.boundingBox(),viewport=page.viewportSize()!;
     expect(bounds!.width).toBeLessThan(viewport.width);

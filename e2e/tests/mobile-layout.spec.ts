@@ -117,8 +117,8 @@ test("@phone catalogue quantity control stays inside its product card", async ({
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   const quantity = card.getByRole("button", { name: "Перейти в корзину, 1 шт.", exact: true });
-  await expect(quantity.locator(".cart-item-count")).toHaveText("1");
-  await expect(quantity).toContainText("В корзину");
+  await expect(card.locator(".cart-item-count")).toHaveText("1");
+  await expect(quantity.locator(".catalog-cart-icon")).toBeVisible();
   const [cardBox, quantityBox] = await Promise.all([card.boundingBox(), quantity.boundingBox()]);
   expect(cardBox).not.toBeNull();
   expect(quantityBox).not.toBeNull();

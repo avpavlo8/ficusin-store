@@ -30,6 +30,7 @@ let state: State = { cart: {}, status: "loading", error: "", lines: [], missingS
 let loaded = false;
 let loading: Promise<void> | null = null;
 let writes: Promise<void> = Promise.resolve();
+let writeRevision = 0;
 const listeners = new Set<(next: State) => void>();
 
 function clean(cart: Cart): Cart {
@@ -60,6 +61,7 @@ function loadCart(force = false): Promise<void> {
 
 function saveCart(cart: Cart): Promise<void> {
   const expected = clean(cart);
+  const revision = ++writeRevision;
   writes = writes.then(async () => {
     publish({ status: "saving", error: "" });
     const body = await apiJSON<CartResponse>("/api/v1/cart", {
@@ -69,11 +71,19 @@ function saveCart(cart: Cart): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: expected }),
     });
-    publish({ cart: body.items || expected, lines: body.lines || [], missingSkus: body.missingSkus || [], status: "ready", error: "" });
+    // A newer click may already be visible while this older write is in flight.
+    if (revision === writeRevision) publish({ cart: body.items || expected, lines: body.lines || [], missingSkus: body.missingSkus || [], status: "ready", error: "" });
   }).catch(async (error: Error) => {
-    publish({ status: "error", error: error.message || "Не удалось сохранить корзину" });
+    if (revision === writeRevision) publish({ status: "error", error: error.message || "Не удалось сохранить корзину" });
   });
   return writes;
+}
+
+export async function openSavedCart() {
+  // Finish the latest quantity edit before a full-page navigation unloads it.
+  let pending: Promise<void>;
+  do { pending = writes; await pending; } while (pending !== writes);
+  window.location.assign("/cart");
 }
 
 export function useSharedCart() {

@@ -63,7 +63,7 @@ test("@desktop @phone favorite counts match visible cards and hidden IDs survive
   await expect(page.locator('.favorites-unavailable')).toContainText('1 сохранённый товар недоступен');
   const card=page.locator('.storefront-card').first();
   await card.getByRole('button',{name:'В корзину',exact:true}).click();
-  await expect(card.getByRole('button',{name:'Перейти в корзину, 1 шт.'})).toContainText('В корзину');
+  await expect(card.getByRole('button',{name:'Перейти в корзину, 1 шт.'}).locator('.catalog-cart-icon')).toBeVisible();
   expect(await card.getByRole('button',{name:'Перейти в корзину, 1 шт.'}).evaluate(el=>getComputedStyle(el).backgroundImage)).toContain('linear-gradient');
 });
 
@@ -122,6 +122,8 @@ test("@phone top menu is compact and search leaves the page usable", async ({pag
   await menuTrigger.click();
   const menu = page.getByRole('dialog', {name:'Меню магазина'});
   await expect(menu).toBeVisible();
+  await expect(menu.locator('.mobile-menu-documents summary')).toHaveText('О магазине');
+  expect(await menu.locator('.mobile-menu-links').evaluateAll(els=>els.every(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length===1))).toBe(true);
   const box = await menu.boundingBox(), viewport = page.viewportSize()!;
   expect(box!.height).toBeLessThan(viewport.height * .8);
   expect(box!.width).toBeLessThan(viewport.width);
@@ -134,4 +136,93 @@ test("@phone top menu is compact and search leaves the page usable", async ({pag
   await expect(page.locator('body')).not.toHaveCSS('overflow','hidden');
   await page.locator('.storefront-card').first().getByRole('button',{name:'В избранное',exact:true}).click();
   await expect(page.locator('.storefront-card').first().getByRole('button',{name:'Убрать из избранного',exact:true})).toBeVisible();
+});
+
+
+test("@desktop @phone card quantity persists, respects stock and removes the last unit",async({page})=>{
+  await mockApi(page); await page.goto('/');
+  const card=page.locator('.storefront-card').filter({hasText:'Аглаонема Мария'});
+  await card.getByRole('button',{name:'В корзину',exact:true}).click();
+  const plus=card.getByRole('button',{name:'Увеличить количество: Аглаонема Мария',exact:true});
+  const minus=card.getByRole('button',{name:'Уменьшить количество: Аглаонема Мария',exact:true});
+  await plus.click();await expect(card.locator('.cart-item-count')).toHaveText('2');
+  await page.reload();await expect(card.locator('.cart-item-count')).toHaveText('2');
+  await page.getByRole('button',{name:'Список',exact:true}).click();
+  const cardBounds=await card.boundingBox();
+  for(const control of await card.locator('.catalog-cart-controls button').all()) {
+    const bounds=await control.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(cardBounds!.x);
+    expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(cardBounds!.x+cardBounds!.width+1);
+  }
+
+  await minus.click();await expect(card.locator('.cart-item-count')).toHaveText('1');
+  await card.getByRole('button',{name:'В избранное',exact:true}).click();
+  await page.goto('/favorites');
+  const favorite=page.locator('.storefront-card');
+  await expect(favorite.locator('.cart-item-count')).toHaveText('1');
+  await favorite.getByRole('button',{name:'Увеличить количество: Аглаонема Мария',exact:true}).click();
+  await expect(favorite.locator('.cart-item-count')).toHaveText('2');
+  await favorite.getByRole('button',{name:'Уменьшить количество: Аглаонема Мария',exact:true}).click();
+  const removed=page.waitForResponse(response=>response.url().endsWith('/api/v1/cart') && response.request().method()==='PUT' && Object.keys(response.request().postDataJSON().items).length===0);
+  await favorite.getByRole('button',{name:'Уменьшить количество: Аглаонема Мария',exact:true}).click();
+  await removed;
+  await expect(favorite.getByRole('button',{name:'В корзину',exact:true})).toBeVisible();
+  await page.reload();await expect(favorite.getByRole('button',{name:'В корзину',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test("@desktop @phone card plus disables at the available stock",async({page})=>{
+  await mockApi(page);
+  const {catalogue}=await import('./helpers');
+  await page.route('**/api/v1/catalog',route=>route.fulfill({json:{products:[{...catalogue[0],stock:2}]}}));
+  await page.goto('/');const card=page.locator('.storefront-card');
+  await card.getByRole('button',{name:'В корзину',exact:true}).click();
+  const plus=card.getByRole('button',{name:/Увеличить количество/});
+  await plus.click();await expect(plus).toBeDisabled();
+  await expect(card.locator('.cart-item-count')).toHaveText('2');
+  await card.getByRole('button',{name:/Уменьшить количество/}).click();await expect(plus).toBeEnabled();
+});
+
+test('@desktop @phone delayed cart responses do not rewind rapid quantity clicks',async({page})=>{
+  await mockApi(page);
+  let items:Record<string,number>={};
+  let writes=0;
+  let releaseNavigation!:()=>void;
+  const navigationHeld=new Promise<void>(resolve=>{releaseNavigation=resolve;});
+  let releaseFirst!:()=>void;
+  const held=new Promise<void>(resolve=>{releaseFirst=resolve;});
+  await page.route('**/api/v1/cart',async route=>{
+    if(route.request().method()==='PUT'){
+      const next=route.request().postDataJSON().items;
+      writes++;
+      if(writes===1)await held;
+      if(writes===4)await navigationHeld;
+      items=next;
+    }
+    await route.fulfill({json:{items,lines:[],missingSkus:[]}});
+  });
+  await page.goto('/');
+  const card=page.locator('.storefront-card').filter({hasText:'Аглаонема Мария'});
+  await card.getByRole('button',{name:'В корзину',exact:true}).click();
+  const plus=card.getByRole('button',{name:/Увеличить количество/});
+  await plus.click();await plus.click();
+  const count=card.locator('.cart-item-count');await expect(count).toHaveText('3');
+  await count.evaluate(el=>{
+    const values:string[]=[];
+    (window as typeof window & {quantityValues:string[]}).quantityValues=values;
+    new MutationObserver(()=>values.push(el.textContent||'')).observe(el,{subtree:true,characterData:true,childList:true});
+  });
+  const saved=page.waitForResponse(response=>response.url().endsWith('/api/v1/cart')&&response.request().method()==='PUT'&&response.request().postDataJSON().items['1']===3);
+  releaseFirst();await saved;
+  await expect(count).toHaveText('3');
+  const values=await page.evaluate(()=>(window as typeof window & {quantityValues:string[]}).quantityValues);
+  expect(values.every(value=>value==='3')).toBe(true);
+  await page.reload();await expect(count).toHaveText('3');
+  await card.getByRole('button',{name:/Увеличить количество/}).click();
+  await expect(count).toHaveText('4');
+  await card.getByRole('button',{name:'Перейти в корзину, 4 шт.',exact:true}).click();
+  await expect(page).not.toHaveURL(/\/cart$/);
+  releaseNavigation();await expect(page).toHaveURL(/\/cart$/);
+  if(page.viewportSize()!.width<=850)await expect(page.locator('.tab-bar a[href="/cart"] b')).toHaveText('4');
+  else await expect(page.getByLabel('Корзина, товаров: 4',{exact:true})).toBeVisible();
 });

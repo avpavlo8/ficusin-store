@@ -170,11 +170,11 @@
 .mobile-menu-title button { width:44px; height:44px; display:grid; place-items:center; flex:none; border:1px solid var(--line); border-radius:50%; background:transparent; color:var(--ink); cursor:pointer; }
 .mobile-menu-title svg { width:22px; height:22px; }
 .mobile-menu a,.mobile-menu-links button { min-height:44px; padding:12px 0; display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; background:transparent; color:var(--ink); font-family:inherit; font-size:16px; font-weight:500; line-height:1.4; text-decoration:none; }
-.mobile-menu-account { display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:8px; padding:8px 12px; border-radius:12px; background:#eee9dc; }
+.mobile-menu-account { display:grid; grid-template-columns:1fr; align-items:center; gap:8px; padding:8px 12px; border-radius:12px; background:#eee9dc; }
 .mobile-menu-account a:first-child { align-items:flex-start; flex-direction:column; gap:2px; }
 .mobile-menu-account strong { font-size:18px; }
 .mobile-menu-account small,.mobile-menu .mobile-menu-admin { font-family:inherit; font-size:13px; font-weight:400; line-height:1.4; color:#5d6656; }
-.mobile-menu-links { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+.mobile-menu-links { display:grid; grid-template-columns:1fr; gap:0; padding-bottom:8px; border-bottom:1px solid var(--line); }
 .mobile-menu-links button { grid-column:1/-1; width:100%; cursor:pointer; }
 .mobile-menu-links small { min-width:24px; text-align:center; border-radius:5px; background:#e3e6bf; }
 .mobile-menu-documents summary { min-height:44px; padding:12px 0; color:#606858; font-size:14px; cursor:pointer; }
@@ -185,7 +185,7 @@
 .mobile-category-links a:first-child { color:#a92e1a; font-weight:700; }
 .mobile-menu a:hover,.mobile-menu-links button:hover { color:#a92e1a; }
 
-.floating-cart { position:fixed; z-index:110; right:24px; bottom:24px; width:58px; height:58px; display:grid; place-items:center; border-radius:50%; background:linear-gradient(120deg,#d4411d,#a92e1a); color:#fff; box-shadow:0 6px 18px #84301f38; }
+.floating-cart { position:fixed; z-index:110; right:24px; bottom:24px; width:58px; height:58px; display:grid; place-items:center; border-radius:50%; background:linear-gradient(120deg,#c85105,#af4305); color:#fff; box-shadow:0 6px 18px #84301f38; }
 .floating-cart svg { width:27px; height:27px; }
 .floating-cart b { position:absolute; right:-2px; top:-3px; min-width:20px; height:20px; padding:0 4px; display:grid; place-items:center; border-radius:12px; background:#fffaf3; color:#a92e1a; font-size:11px; }
 .floating-cart:focus-visible { outline:2px solid #31482c; outline-offset:4px; }

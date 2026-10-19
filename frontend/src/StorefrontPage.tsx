@@ -621,7 +621,11 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           <div className={`storefront-grid ${viewMode === "list" ? "list-view" : ""}`}>
             {visible.slice(0, visibleLimit).map(product => <CatalogProductCard key={product.id} product={product}
               inCart={cart[product.sku] ?? 0} favorite={favorites.has(product.id)}
-              onFavorite={() => toggleFavorite(product.id)} onAdd={() => addToCart(product)}
+              onFavorite={() => toggleFavorite(product.id)} onAdd={() => addToCart(product)} onDecrease={() => setCart(current => {
+                const next = { ...current };
+                if ((next[product.sku] || 0) <= 1) delete next[product.sku]; else next[product.sku] -= 1;
+                return next;
+              })}
               onSelect={() => track("select_item", { productCode: product.id, sku: product.sku, value: product.price, properties: { list: landing ? landingTitle : categoryName || "catalog" } })} />)}
           </div>
           {visible.length > visibleLimit && <button className="storefront-more" type="button" onClick={() => setVisibleLimit((value) => value + 12)}>Показать ещё растения <span>⌄</span></button>}
