@@ -27,6 +27,30 @@ type PriceProposal struct {
 
 var ErrPriceChannelUnavailable = fmt.Errorf("канал изменения цены не подключён")
 
+func requireCurrentFormulaProposal(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, proposalID int64, channel string) error {
+	if channel != "wb" && channel != "ozon" {
+		return nil
+	}
+	var variantID int64
+	var price float64
+	if err := db.QueryRow(ctx, `SELECT batch.manual_variant_id,item.new_value::float8
+		FROM procurement_action_items item JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		WHERE item.id=$1 AND batch.source='manual'`, proposalID).Scan(&variantID, &price); err != nil {
+		return err
+	}
+	quotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, db, variantID)
+	if err != nil {
+		return err
+	}
+	if unified && (quotes[channel].PriceRUB == nil || float64(*quotes[channel].PriceRUB) != price) {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // currentAvitoProposal verifies the exact listing, every linked active size's
 // fresh Saby stock, and the cheapest available site price before requeueing.
 func currentAvitoProposal(ctx context.Context, query interface {
@@ -121,6 +145,10 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	retail := float64(newMinor) / 100
 	market := math.Floor((retail + packageRUB + math.Max(height, 0)*math.Max(logisticsRate, 0)) * (1 + returnRate + marketplaceRate + taxRate + reserveRate))
 	strike := math.Floor(market * (1 + strikeRate))
+	unifiedQuotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, tx, variantID)
+	if err != nil {
+		return err
+	}
 	for _, channel := range []struct {
 		name, article string
 		price         float64
@@ -130,6 +158,15 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	} {
 		if marketplaceScope == "site_only" {
 			continue
+		}
+		if unified {
+			q := unifiedQuotes[channel.name]
+			if q.PriceRUB == nil {
+				continue
+			}
+			channel.price = float64(*q.PriceRUB)
+			compare := math.Ceil(channel.price * (1 + strikeRate))
+			channel.compare = &compare
 		}
 		var old *float64
 		message := ""
@@ -218,6 +255,13 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
+	if len(items) == 0 {
+		return items, nil
+	}
+	formulaQuotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, repository.pool, variantID)
+	if err != nil {
+		return nil, err
+	}
 	for index := range items {
 		item := &items[index]
 		currentPrice, currentArticle := states[index].price, states[index].article
@@ -261,6 +305,14 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 				item.CanRetry = true
 			}
 		}
+		if unified && (item.Channel == "wb" || item.Channel == "ozon") && (item.CanApprove || item.CanRetry) {
+			q := formulaQuotes[item.Channel]
+			if q.PriceRUB == nil || float64(*q.PriceRUB) != item.NewValue {
+				item.CanApprove = false
+				item.CanRetry = false
+				item.BlockReason = "Предложение не соответствует общей формуле; нужен новый расчёт"
+			}
+		}
 	}
 	return items, nil
 }
@@ -289,6 +341,9 @@ func (repository *PostgresRepository) RetryManualPriceProposal(ctx context.Conte
 	}
 	if !repository.priceChannelsConfigured[channel] {
 		return ErrPriceChannelUnavailable
+	}
+	if err = requireCurrentFormulaProposal(ctx, tx, proposalID, channel); err != nil {
+		return err
 	}
 	if channel == "avito" {
 		var variantID int64
@@ -367,6 +422,9 @@ func (repository *PostgresRepository) ApproveManualPriceProposal(ctx context.Con
 	}
 	if channel != "saby_price" && !repository.priceChannelsConfigured[channel] {
 		return PriceProposal{}, ErrPriceChannelUnavailable
+	}
+	if err := requireCurrentFormulaProposal(ctx, repository.pool, proposalID, channel); err != nil {
+		return PriceProposal{}, err
 	}
 	if channel == "avito" {
 		var variantID int64

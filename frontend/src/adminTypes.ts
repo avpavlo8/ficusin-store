@@ -99,13 +99,15 @@ export type ProcurementOrder = {
 };
 
 export type ProcurementChannelCosts = {
-  commissionRate?: number | null; acquiringRate?: number | null; packagingRub?: number | null;
+  commissionRate?: number | null; acquiringRate?: number | null; otherRate?:number|null; packagingRub?: number | null;
   logisticsRub?: number | null; lossRub?: number | null;
 };
 export type ProcurementChannelQuote = {
-  manual?:boolean; priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
+  model?:string; targetRub?:number; costs?:ProcurementChannelCosts; notes?:string[]; package?:{lengthCm:number;widthCm:number;heightCm:number;source:string}; manual?:boolean; priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
 };
-export type ProcurementEconomics = {monthlyFixedCostsRub:number;channels:Record<string,ProcurementChannelCosts>};
+export type ProcurementUnifiedPricing = {enabled:boolean;markupRate:number;materialsRub:number;smallBoxRub:number;mediumBoxRub:number;largeBoxRub:number;wbFirstLiterRub:number;wbAdditionalLiterRub:number;wbHandlingRub:number;verifiedAt:string;norms:{maxLiters:number;ozonRub:number;samples:number;source:string}[]};
+export type ProcurementUnifiedPreview = {version:number;markupRate:number;fixedRub:number;units:number;pricedUnits:number;contributionRub:number;lines:{variantId:number;name:string;quantity:number;costRub:number;quotes:Record<string,ProcurementChannelQuote>}[]};
+export type ProcurementEconomics = {monthlyFixedCostsRub:number;channels:Record<string,ProcurementChannelCosts>;unified?:ProcurementUnifiedPricing};
 export type ProcurementSettings = {
   economics?: ProcurementEconomics;
   version: number; defaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; trolleyVolumeCm3: number;
@@ -199,7 +201,7 @@ export type ProcurementOrderLine = {
 
 export type ProcurementValidation = { pendingCatalog?: number; pendingAssortments?: number; pendingHandoffs?: number; canPrepareReceipt?: boolean; canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
 
-export type ProcurementOrderDetail = { order: ProcurementOrder; costs: { additionalCostsRub?:number; supplierChargesRub?:number; returnableDepositRub?:number; exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
+export type ProcurementOrderDetail = { unifiedPreview?:ProcurementUnifiedPreview; order: ProcurementOrder; costs: { additionalCostsRub?:number; supplierChargesRub?:number; returnableDepositRub?:number; exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
 
 export type ProcurementData = {
   summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };

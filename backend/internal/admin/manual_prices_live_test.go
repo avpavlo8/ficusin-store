@@ -172,9 +172,13 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID) }()
-	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor)
-		VALUES($1,$2,$3,'D12',150000) RETURNING id`, productID, sabyID,
+	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,current_unit_cost_rub)
+		VALUES($1,$2,$3,'D12',150000,500) RETURNING id`, productID, sabyID,
 		fmt.Sprintf("7%017d", unique%100000000000000000)).Scan(&variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `INSERT INTO procurement_pricing_packages(variant_id,dimensions)
+		VALUES($1,'{"lengthCm":15,"widthCm":15,"heightCm":40,"source":"Retry test"}')`, variantID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO procurement_product_channels(saby_id,wb_nm_id) VALUES($1,123456789)`, sabyID); err != nil {
@@ -194,7 +198,7 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM procurement_action_batches WHERE id=$1`, batchID)
 	}()
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_action_items(batch_id,channel,external_article,new_value,status,attempts,error_message)
-		VALUES($1,'wb','123456789',1500,'failed',5,'temporary failure') RETURNING id`, batchID).Scan(&proposalID); err != nil {
+		VALUES($1,'wb','123456789',2674,'failed',5,'temporary failure') RETURNING id`, batchID).Scan(&proposalID); err != nil {
 		t.Fatal(err)
 	}
 	repository := NewPostgresRepository(pool).WithPriceChannelsConfigured(map[string]bool{"wb": true})
@@ -202,6 +206,26 @@ func TestManualMarketplacePriceRetryChecksSitePriceAndLink(t *testing.T) {
 	proposals, err := repository.ListManualPriceProposals(ctx, variantID)
 	if err != nil || len(proposals) != 1 || !proposals[0].CanRetry {
 		t.Fatalf("current proposal: %+v, err=%v", proposals, err)
+	}
+	// A stale quote must be blocked even while its site price and link match.
+	if _, err = pool.Exec(ctx, `UPDATE procurement_action_items SET new_value=1500 WHERE id=$1`, proposalID); err != nil {
+		t.Fatal(err)
+	}
+	proposals, err = repository.ListManualPriceProposals(ctx, variantID)
+	if err != nil || len(proposals) != 1 || proposals[0].CanRetry || proposals[0].BlockReason != "Предложение не соответствует общей формуле; нужен новый расчёт" {
+		t.Fatalf("stale formula proposal: %+v, err=%v", proposals, err)
+	}
+	if err = repository.RetryManualPriceProposal(ctx, actor, proposalID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stale formula retry error = %v", err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_action_items SET status='draft' WHERE id=$1`, proposalID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repository.ApproveManualPriceProposal(ctx, actor, proposalID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stale formula approval error = %v", err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_action_items SET new_value=2674,status='failed' WHERE id=$1`, proposalID); err != nil {
+		t.Fatal(err)
 	}
 	// A link edited in the site catalogue must win over the unchanged legacy channel row.
 	if _, err = pool.Exec(ctx, `UPDATE product_external_ids SET status='legacy',is_primary=false

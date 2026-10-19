@@ -1176,20 +1176,33 @@ func (store *PostgresStore) guardClaimedManualPriceActions(ctx context.Context, 
 	var channel string
 	var expectedSitePrice, currentSitePrice int64
 	var externalArticle, currentArticle, marketplaceScope string
+	var variantID int64
+	var proposalPrice float64
 	if err := tx.QueryRow(ctx, `SELECT batch.id,item.channel,
 		batch.manual_site_price_minor,variant.base_price_minor,item.external_article,variant.marketplace_scope,
 		CASE item.channel WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
 			WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1],'')
-			ELSE COALESCE(directory.master_code,'') END
+			ELSE COALESCE(directory.master_code,'') END,variant.id,item.new_value::float8
 		FROM procurement_action_items item
 		JOIN procurement_action_batches batch ON batch.id=item.batch_id AND batch.source='manual'
 		JOIN product_variants variant ON variant.id=batch.manual_variant_id
 		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
 		WHERE item.id=$1 FOR SHARE OF variant`, item.ID).Scan(&batchID, &channel,
-		&expectedSitePrice, &currentSitePrice, &externalArticle, &marketplaceScope, &currentArticle); err != nil {
+		&expectedSitePrice, &currentSitePrice, &externalArticle, &marketplaceScope, &currentArticle, &variantID, &proposalPrice); err != nil {
 		return false, fmt.Errorf("check manual price and link before upload: %w", err)
 	}
-	if expectedSitePrice == currentSitePrice && externalArticle != "" && externalArticle == currentArticle && (!oneOf(channel, "wb", "ozon") || marketplaceScope != "site_only") {
+	formulaCurrent := true
+	if oneOf(channel, "wb", "ozon") {
+		quotes, enabled, err := UnifiedVariantPriceQuotes(ctx, tx, variantID)
+		if err != nil {
+			return false, err
+		}
+		if enabled {
+			q := quotes[channel]
+			formulaCurrent = q.PriceRUB != nil && float64(*q.PriceRUB) == proposalPrice
+		}
+	}
+	if formulaCurrent && expectedSitePrice == currentSitePrice && externalArticle != "" && externalArticle == currentArticle && (!oneOf(channel, "wb", "ozon") || marketplaceScope != "site_only") {
 		return true, tx.Commit(ctx)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE procurement_action_items SET status='skipped',

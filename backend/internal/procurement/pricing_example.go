@@ -16,8 +16,9 @@ type PricingExample struct {
 }
 
 type UnitPriceInput struct {
-	CostRUB   float64 `json:"costRub"`
-	RetailRUB float64 `json:"retailRub"`
+	CostRUB   float64         `json:"costRub"`
+	RetailRUB float64         `json:"retailRub"`
+	Package   *PricingPackage `json:"package,omitempty"`
 }
 
 type UnitPricePreview struct {
@@ -44,6 +45,13 @@ func (store *PostgresStore) PreviewUnitPrice(ctx context.Context, input UnitPric
 		return UnitPricePreview{}, err
 	}
 	retail := roundRetail(input.RetailRUB, settings.RoundPrices)
+	if settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
+		quotes := UnifiedChannelQuotes(settings, input.CostRUB, input.Package)
+		if quotes["site"].PriceRUB != nil {
+			retail = *quotes["site"].PriceRUB
+		}
+		return UnitPricePreview{RetailRUB: retail, Quotes: quotes}, nil
+	}
 	return UnitPricePreview{RetailRUB: retail, Quotes: calculateChannelQuotes(settings, input.CostRUB, retail, nil)}, nil
 }
 

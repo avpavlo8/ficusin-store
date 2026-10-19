@@ -12,6 +12,7 @@ import (
 type ChannelCosts struct {
 	CommissionRate *float64 `json:"commissionRate"`
 	AcquiringRate  *float64 `json:"acquiringRate"`
+	OtherRate      *float64 `json:"otherRate,omitempty"`
 	PackagingRUB   *float64 `json:"packagingRub"`
 	LogisticsRUB   *float64 `json:"logisticsRub"`
 	LossRUB        *float64 `json:"lossRub"`
@@ -20,21 +21,27 @@ type ChannelCosts struct {
 type PricingEconomics struct {
 	MonthlyFixedCostsRUB float64                 `json:"monthlyFixedCostsRub"`
 	Channels             map[string]ChannelCosts `json:"channels"`
+	Unified              *UnifiedPricing         `json:"unified,omitempty"`
 }
 
 type ChannelQuote struct {
-	Manual          bool     `json:"manual"`
-	PriceRUB        *int64   `json:"priceRub,omitempty"`
-	BreakEvenRUB    *int64   `json:"breakEvenRub,omitempty"`
-	ContributionRUB *float64 `json:"contributionRub,omitempty"`
-	CoverUnits      *int64   `json:"coverUnits,omitempty"`
-	Missing         []string `json:"missing"`
+	Model           string          `json:"model,omitempty"`
+	TargetRUB       float64         `json:"targetRub,omitempty"`
+	Costs           *ChannelCosts   `json:"costs,omitempty"`
+	Package         *PricingPackage `json:"package,omitempty"`
+	Notes           []string        `json:"notes,omitempty"`
+	Manual          bool            `json:"manual"`
+	PriceRUB        *int64          `json:"priceRub,omitempty"`
+	BreakEvenRUB    *int64          `json:"breakEvenRub,omitempty"`
+	ContributionRUB *float64        `json:"contributionRub,omitempty"`
+	CoverUnits      *int64          `json:"coverUnits,omitempty"`
+	Missing         []string        `json:"missing"`
 }
 
 func finiteNonnegative(v float64) bool { return v >= 0 && !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 func validateChannelCosts(costs ChannelCosts, tax float64) bool {
-	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate, costs.PackagingRUB, costs.LogisticsRUB, costs.LossRUB} {
+	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate, costs.OtherRate, costs.PackagingRUB, costs.LogisticsRUB, costs.LossRUB} {
 		if v != nil && !finiteNonnegative(*v) {
 			return false
 		}
@@ -43,7 +50,7 @@ func validateChannelCosts(costs ChannelCosts, tax float64) bool {
 		return false
 	}
 	rate := tax
-	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate} {
+	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate, costs.OtherRate} {
 		if v != nil {
 			rate += *v
 		}
@@ -76,7 +83,7 @@ func channelQuote(cost, contribution, tax float64, costs ChannelCosts, fixed flo
 		quote.Missing = []string{"проверьте расходы: сумма удержаний должна быть меньше 100%"}
 		return quote
 	}
-	keep := 1 - tax - *costs.CommissionRate - *costs.AcquiringRate
+	keep := retainedRate(tax, costs)
 	variable := cost + *costs.PackagingRUB + *costs.LogisticsRUB + *costs.LossRUB
 	// Round upwards: rounding a floor down would create a loss at the floor.
 	floor := math.Ceil(variable / keep)
@@ -100,6 +107,9 @@ func channelQuote(cost, contribution, tax float64, costs ChannelCosts, fixed flo
 // contribution as a direct sale after its own fees, unless a market price is explicitly chosen. Overheads are shown once,
 // through the break-even sales volume, rather than a second hidden surcharge.
 func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64, overrides map[string]ChannelCosts, marketPrices ...map[string]int64) map[string]ChannelQuote {
+	if settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
+		return UnifiedChannelQuotes(settings, cost, nil)
+	}
 	profiles := make(map[string]ChannelCosts, 3)
 	for _, channel := range []string{"site", "wb", "ozon"} {
 		profiles[channel] = settings.Economics.Channels[channel]
@@ -117,7 +127,7 @@ func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64
 		}
 		return applyMarketPrices(quotes, settings, cost, profiles, marketPrices)
 	}
-	keep := 1 - settings.TaxRate - *site.CommissionRate - *site.AcquiringRate
+	keep := retainedRate(settings.TaxRate, site)
 	variable := cost + *site.PackagingRUB + *site.LogisticsRUB + *site.LossRUB
 	contribution := float64(retail)*keep - variable
 	if contribution <= 0 {
@@ -161,7 +171,7 @@ func applyMarketPrices(quotes map[string]ChannelQuote, settings PricingSettings,
 		q.Manual = true
 		if q.PriceRUB != nil {
 			q.CoverUnits = nil
-			actual := float64(price)*(1-settings.TaxRate-*costs.CommissionRate-*costs.AcquiringRate) - cost - *costs.PackagingRUB - *costs.LogisticsRUB - *costs.LossRUB
+			actual := float64(price)*retainedRate(settings.TaxRate, costs) - cost - *costs.PackagingRUB - *costs.LogisticsRUB - *costs.LossRUB
 			if actual <= 0 {
 				q.PriceRUB = nil
 				q.ContributionRUB = nil

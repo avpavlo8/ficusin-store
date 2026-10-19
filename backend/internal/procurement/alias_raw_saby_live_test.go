@@ -177,13 +177,18 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 	if lineSabyID != targetSabyID {
 		t.Fatalf("calculation kept stale Saby identity: got %q want %q", lineSabyID, targetSabyID)
 	}
-	if marketplace == nil || *marketplace <= 0 {
-		t.Fatalf("marketplace price was not calculated for remapped Saby-only product: %v", marketplace)
+	// The identity is usable for site pricing, but a Saby-only item has no
+	// verified package. Unified pricing must not invent its marketplace tariff.
+	if marketplace != nil {
+		t.Fatalf("marketplace price invented without package dimensions: %v", *marketplace)
+	}
+	if len(detail.Lines) != 1 || detail.Lines[0].ProposedRetailRUB == nil || *detail.Lines[0].ProposedRetailRUB <= 0 || len(detail.Lines[0].ChannelQuotes["wb"].Missing) == 0 {
+		t.Fatalf("remapped identity lost its site quote or missing-package explanation: %+v", detail.Lines)
 	}
 
 	items, err := store.ListProducts(ctx, supplierID, targetCode)
-	if err != nil || len(items) != 1 || items[0].SuggestedWBRUB == nil {
-		t.Fatalf("product directory still has no marketplace price: items=%+v err=%v", items, err)
+	if err != nil || len(items) != 1 || items[0].SuggestedWBRUB != nil {
+		t.Fatalf("product directory lost identity or invented marketplace price: items=%+v err=%v", items, err)
 	}
 
 	batch, err := store.PrepareBatch(ctx, Actor{CustomerID: actorID}, orderID, "prices", []string{"wb"})

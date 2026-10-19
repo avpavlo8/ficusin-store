@@ -7,15 +7,15 @@ import (
 
 func amount(v float64) *float64 { return &v }
 func zeroCosts() ChannelCosts {
-	return ChannelCosts{amount(0), amount(0), amount(0), amount(0), amount(0)}
+	return ChannelCosts{CommissionRate: amount(0), AcquiringRate: amount(0), PackagingRUB: amount(0), LogisticsRUB: amount(0), LossRUB: amount(0)}
 }
 
 func TestMarketplaceRetainsSameContributionAfterItsOwnDeductions(t *testing.T) {
 	site := zeroCosts()
 	site.AcquiringRate = amount(.02)
-	wb := ChannelCosts{amount(.36), amount(0), amount(150), amount(100), amount(30)}
-	ozon := ChannelCosts{amount(.52), amount(.01), amount(150), amount(200), amount(30)}
-	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{300000, map[string]ChannelCosts{"site": site, "wb": wb, "ozon": ozon}}}
+	wb := ChannelCosts{CommissionRate: amount(.36), AcquiringRate: amount(0), PackagingRUB: amount(150), LogisticsRUB: amount(100), LossRUB: amount(30)}
+	ozon := ChannelCosts{CommissionRate: amount(.52), AcquiringRate: amount(.01), PackagingRUB: amount(150), LogisticsRUB: amount(200), LossRUB: amount(30)}
+	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{MonthlyFixedCostsRUB: 300000, Channels: map[string]ChannelCosts{"site": site, "wb": wb, "ozon": ozon}}}
 	quotes := calculateChannelQuotes(settings, 500, 1000, nil)
 	// Direct 1000 - 8% tax - 2% acquiring - 500 = 400.
 	if *quotes["site"].ContributionRUB != 400 || *quotes["site"].CoverUnits != 750 {
@@ -39,7 +39,7 @@ func TestMarketplaceRetainsSameContributionAfterItsOwnDeductions(t *testing.T) {
 	}
 }
 func TestUnknownChargesBlockQuoteButVerifiedZeroIsAllowed(t *testing.T) {
-	settings := PricingSettings{Economics: PricingEconomics{300000, map[string]ChannelCosts{"site": zeroCosts(), "wb": {}}}}
+	settings := PricingSettings{Economics: PricingEconomics{MonthlyFixedCostsRUB: 300000, Channels: map[string]ChannelCosts{"site": zeroCosts(), "wb": {}}}}
 	q := calculateChannelQuotes(settings, 500, 1000, nil)
 	if q["wb"].PriceRUB != nil || len(q["wb"].Missing) != 5 {
 		t.Fatalf("unknown expenses treated as free: %+v", q["wb"])
@@ -50,7 +50,7 @@ func TestUnknownChargesBlockQuoteButVerifiedZeroIsAllowed(t *testing.T) {
 	}
 }
 func TestNoProfitableQuoteForLossMakingRetailOrImpossibleRates(t *testing.T) {
-	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{300000, map[string]ChannelCosts{"site": zeroCosts(), "wb": zeroCosts()}}}
+	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{MonthlyFixedCostsRUB: 300000, Channels: map[string]ChannelCosts{"site": zeroCosts(), "wb": zeroCosts()}}}
 	q := calculateChannelQuotes(settings, 990, 1000, nil)
 	if q["site"].PriceRUB != nil || q["site"].ContributionRUB != nil || q["site"].CoverUnits != nil || q["wb"].PriceRUB != nil {
 		t.Fatalf("loss presented as profitable: %+v", q)
@@ -124,7 +124,7 @@ func TestDomesticDeliveryAndOtherPurchaseCostsAreNotLostWithoutDimensions(t *tes
 }
 
 func TestMarketPriceCanUseLowerContributionButCannotCreateLoss(t *testing.T) {
-	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{300000, map[string]ChannelCosts{"site": zeroCosts(), "wb": {amount(.36), amount(0), amount(150), amount(100), amount(30)}}}}
+	settings := PricingSettings{TaxRate: .08, Economics: PricingEconomics{MonthlyFixedCostsRUB: 300000, Channels: map[string]ChannelCosts{"site": zeroCosts(), "wb": {CommissionRate: amount(.36), AcquiringRate: amount(0), PackagingRUB: amount(150), LogisticsRUB: amount(100), LossRUB: amount(30)}}}}
 	q := calculateChannelQuotes(settings, 500, 1000, nil, map[string]int64{"wb": 1800})["wb"]
 	if !q.Manual || q.PriceRUB == nil || *q.PriceRUB != 1800 || q.ContributionRUB == nil || math.Abs(*q.ContributionRUB-228) > 1e-9 || *q.CoverUnits != 1316 {
 		t.Fatalf("profitable market price rejected: %+v", q)
