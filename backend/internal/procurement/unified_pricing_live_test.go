@@ -22,6 +22,13 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	live, err := NewPostgresStore(pool).loadSettings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validateUnified(live.Economics.Unified, live.Economics.Channels, live.TaxRate) {
+		t.Fatal("migrated pricing settings cannot calculate")
+	}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -93,5 +100,12 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 	if boxes[variant].Liters() != 1 || boxes[variant].Source != "PIM сайта" {
 		raw, _ := json.Marshal(boxes)
 		t.Fatalf("ignored PIM: %s", raw)
+	}
+	_, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET unit_cost_rub=NULL WHERE procurement_order_id=$1 AND unit_cost_rub=400`, order)
+	must(err)
+	missing, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if missing.Units != 3 || missing.PricedUnits != 0 || len(missing.Lines) != 1 || missing.Lines[0].Quotes["wb"].PriceRUB != nil {
+		t.Fatal("missing cost was silently dropped or treated as free")
 	}
 }

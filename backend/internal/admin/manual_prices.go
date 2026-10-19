@@ -231,6 +231,9 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
+	if len(items) == 0 {
+		return items, nil
+	}
 	formulaQuotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, repository.pool, variantID)
 	if err != nil {
 		return nil, err
