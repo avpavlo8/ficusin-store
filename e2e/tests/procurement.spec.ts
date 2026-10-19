@@ -115,7 +115,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -148,6 +148,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   };
   if(options.unified)Object.assign(procurement.settings.economics,{unified:{enabled:true,markupRate:.6,materialsRub:100,smallBoxRub:30,mediumBoxRub:45,largeBoxRub:60,wbFirstLiterRub:78.2,wbAdditionalLiterRub:23.8,wbHandlingRub:10,verifiedAt:"2026-10-19",norms:[{maxLiters:9,ozonRub:256.35,samples:45}]}});
   if(options.unified)Object.assign(orderDetail,{unifiedPreview:{version:7,markupRate:.6,fixedRub:300000,units:3,pricedUnits:3,contributionRub:360,lines:[{variantId:777,name:"Unified plant D12",quantity:3,costRub:200,quotes:{wb:{priceRub:1705,contributionRub:120.375,missing:[],costs:{packagingRub:145,logisticsRub:278.6},package:{lengthCm:15,widthCm:15,heightCm:40,source:"WB"}},ozon:{priceRub:2191,contributionRub:120.275,missing:[],costs:{packagingRub:145,logisticsRub:256.35}}}}]}});
+  if(options.unifiedReceived)procurement.orders[0].status="received";
   if (options.invoicePicker) {
     procurement.orders[0].status = "review";
     const baseLine = { supplierCategory: "Растения", orderedQuantity: 1, invoicedQuantity: 1, expectedUnitPrice: 4.85, unitPrice: 4.85, potDiameterCm: 14, heightCm: 40, packageCount: 1, unitsPerPackage: 1, loadUnit: "shelf", comparisonAccepted: false, currentRetailRub: 0, matchStatus: "confirmed" };
@@ -294,6 +295,12 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
         procurement.review=[];procurement.summary.unresolvedAliases=0;
         return json({alias:{id:9,...body}});
+      }
+      if(path==="/api/v1/admin/procurement/orders/4/batches" && init?.method==="POST" && orderDetail.order.status==="received") {
+        const body=JSON.parse(String(init.body));
+        if(body.kind!=="prices"||body.channels?.length!==1||body.channels[0]!=="ozon")return Promise.resolve(new Response(JSON.stringify({error:"Wrong channel"}),{status:400}));
+        const batch={id:99,kind:"prices",unified:true,status:"draft",createdAt:"2026-10-19T18:00:00Z",items:[{id:991,lineId:1,productName:"Unified plant D12",productCode:"X1",channel:"ozon",externalArticle:"plant-d12",oldValue:3000,newValue:2191,status:"draft",errorMessage:""}]};
+        Object.assign(orderDetail,{batches:[batch]});return json({batch});
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
       if (path === "/api/v1/admin/procurement/order-lines/1001" && init?.method === "PATCH") {
@@ -1056,4 +1063,21 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
  const wb=page.locator('details').filter({has:page.getByText('Wildberries · FBS',{exact:true})});
  await expect(wb.getByLabel('Упаковка, ₽',{exact:true})).toHaveCount(0);
  await expect(page.getByLabel('Материалы на отправление, ₽')).toHaveValue('100');
+ });
+
+ test("@desktop @phone completed supply prepares only the selected unified channel",async({page})=>{
+ await mockProcurement(page,{unified:true,unifiedReceived:true});
+ await page.goto('/admin?section=procurement&order=4');
+ const dialog=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ await dialog.locator('summary').filter({hasText:'Расчёт и доставка'}).click();
+ await expect(dialog.getByRole('button',{name:'Рассчитать',exact:true})).toBeDisabled();
+ await dialog.getByRole('button',{name:'Подготовить Ozon',exact:true}).click();
+ const batch=dialog.locator('.procurement-batch').filter({has:page.getByRole('heading',{name:'Изменение цены · Ozon',exact:true})});
+ await expect(batch).toContainText('Unified plant D12');
+ await expect(batch).toContainText('2 191');
+ await expect(batch).toContainText('Черновик');
+ await expect(batch.getByRole('button',{name:'Подтвердить 1 строк',exact:true})).toBeEnabled();
+ await expect(dialog.locator('.procurement-batch')).toHaveCount(1);
+ await expect(dialog.getByText('Завершено',{exact:true})).toBeVisible();
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  });

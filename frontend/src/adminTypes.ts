@@ -176,7 +176,7 @@ export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: 
 export type ProcurementActionPreviewLine = { sabyId: string; code: string; name: string; quantity?: number; oldBalance?: number; newBalance?: number; oldPrice?: number; newPrice?: number };
 export type ProcurementActionItem = { id: number; lineId: number; productName: string; productCode: string; channel: string; externalArticle: string; displayArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string; externalOperationId?: string; externalUrl?: string; previewLines?: ProcurementActionPreviewLine[] };
 
-export type ProcurementActionBatch = { id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
+export type ProcurementActionBatch = { unified?:boolean; id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
 
 export type ProcurementReceivingAllocation = {sabyId:string;name:string;code:string;quantity:number};
 export type ProcurementOrderLine = {
