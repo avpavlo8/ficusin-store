@@ -25,7 +25,8 @@ func loadPricingPackages(ctx context.Context, db pricingReader, ids []int64) (ma
  jsonb_build_object('lengthCm',variant_numeric_attribute(v.id,'package_length_cm'),
  'widthCm',variant_numeric_attribute(v.id,'package_width_cm'),
  'heightCm',variant_numeric_attribute(v.id,'package_height_cm'),'source','PIM сайта'),
- wb.package_dimensions,oz.package_dimensions,e.dimensions
+ wb.package_dimensions,oz.package_dimensions,e.dimensions,
+ EXISTS(SELECT 1 FROM procurement_pricing_line_links x WHERE x.saby_id=d.saby_id AND x.requires_pim_package)
 	 FROM product_variants v JOIN products p ON p.id=v.product_id
  LEFT JOIN canonical_product_directory d ON d.variant_id=v.id
  LEFT JOIN procurement_channel_products wb ON wb.channel='wb' AND wb.external_id=d.wb_nm_ids[1]
@@ -40,10 +41,15 @@ func loadPricingPackages(ctx context.Context, db pricingReader, ids []int64) (ma
 		var id int64
 		var category string
 		var pim, wb, oz, evidence *PricingPackage
-		if err := rows.Scan(&id, &category, &pim, &wb, &oz, &evidence); err != nil {
+		var requiresPIM bool
+		if err := rows.Scan(&id, &category, &pim, &wb, &oz, &evidence, &requiresPIM); err != nil {
 			return nil, err
 		}
-		for _, p := range []*PricingPackage{pim, wb, oz, evidence} {
+		candidates := []*PricingPackage{pim, wb, oz, evidence}
+		if requiresPIM {
+			candidates = []*PricingPackage{pim}
+		}
+		for _, p := range candidates {
 			if p.valid() {
 				p.Category = category
 				result[id] = p
@@ -76,18 +82,45 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	if s.Economics.Unified == nil || !s.Economics.Unified.Enabled {
 		return nil, nil
 	}
-	rows, err := db.Query(ctx, `SELECT COALESCE(l.canonical_variant_id,0),MIN(l.id),
+	// Closed receipts retain their historical identity and acquisition costs.
+	// Resolve a missing identity for this read-only preview through an exact,
+	// confirmed Saby link; ambiguous directory entries must remain unresolved.
+	rows, err := db.Query(ctx, `WITH directory AS (
+ SELECT saby_id,MIN(variant_id) AS variant_id FROM canonical_product_directory
+ WHERE active AND saby_id<>'' GROUP BY saby_id HAVING COUNT(*)=1
+ ), complete_links AS (
+ SELECT x.order_line_id FROM procurement_pricing_line_links x
+ JOIN procurement_order_lines l ON l.id=x.order_line_id
+ JOIN procurement_orders o ON o.id=l.procurement_order_id
+ LEFT JOIN directory d ON d.saby_id=x.saby_id
+ WHERE l.procurement_order_id=$1 AND o.status='received' AND l.canonical_variant_id IS NULL
+ GROUP BY x.order_line_id,l.invoiced_qty,l.ordered_qty
+ HAVING SUM(x.quantity)=COALESCE(l.invoiced_qty,l.ordered_qty) AND COUNT(d.variant_id)=COUNT(*)
+ ), source AS (
+ SELECT l.*,CASE WHEN c.order_line_id IS NULL AND EXISTS(SELECT 1 FROM procurement_pricing_line_links pending WHERE pending.order_line_id=l.id)
+ THEN NULL ELSE COALESCE(x.saby_id,a.matched_saby_id,l.saby_id) END AS pricing_saby_id,
+ COALESCE(x.quantity,l.invoiced_qty,l.ordered_qty) AS pricing_qty
+ FROM procurement_order_lines l
+ LEFT JOIN complete_links c ON c.order_line_id=l.id
+ LEFT JOIN procurement_pricing_line_links x ON x.order_line_id=c.order_line_id
+ LEFT JOIN procurement_supplier_aliases a ON a.id=l.supplier_alias_id AND a.match_status='confirmed'
+ WHERE l.procurement_order_id=$1
+ ), resolved AS (
+ SELECT l.*,COALESCE(l.canonical_variant_id,d.variant_id) AS preview_variant_id
+ FROM source l LEFT JOIN directory d ON d.saby_id=l.pricing_saby_id
+ )
+ SELECT COALESCE(l.preview_variant_id,0),MIN(l.id),
  COALESCE(NULLIF(MAX(n.name),''),MAX(l.raw_name)),
- SUM(COALESCE(l.invoiced_qty,l.ordered_qty))::int,
+ SUM(l.pricing_qty)::int,
  CASE WHEN COUNT(*) FILTER(WHERE l.unit_cost_rub>0)=COUNT(*) THEN
- SUM(l.unit_cost_rub*COALESCE(l.invoiced_qty,l.ordered_qty))::float8/
- NULLIF(SUM(COALESCE(l.invoiced_qty,l.ordered_qty)),0) ELSE 0 END
- FROM procurement_order_lines l LEFT JOIN saby_nomenclature n ON n.saby_id=l.saby_id
+ SUM(l.unit_cost_rub*l.pricing_qty)::float8/
+ NULLIF(SUM(l.pricing_qty),0) ELSE 0 END
+ FROM resolved l LEFT JOIN saby_nomenclature n ON n.saby_id=l.pricing_saby_id
  WHERE l.procurement_order_id=$1 AND l.receiving_mode='catalog' AND l.match_status='confirmed'
  AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
  AND (l.reconciliation_status<>'added' OR l.comparison_accepted)
- AND COALESCE(l.invoiced_qty,l.ordered_qty)>0
- GROUP BY l.canonical_variant_id,CASE WHEN l.canonical_variant_id IS NULL THEN l.id ELSE 0 END`, orderID)
+ AND l.pricing_qty>0
+ GROUP BY l.preview_variant_id,CASE WHEN l.preview_variant_id IS NULL THEN l.id ELSE 0 END,CASE WHEN l.preview_variant_id IS NULL THEN l.pricing_saby_id ELSE '' END`, orderID)
 	if err != nil {
 		return nil, err
 	}
