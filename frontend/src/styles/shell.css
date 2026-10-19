@@ -225,13 +225,12 @@ body.menu-open, body.drawer-open { overflow: hidden; }
   .tab-bar > :nth-child(3) { --tab-color:#cf202d; --tab-tint:#ffe6e6; }
   .tab-bar > :nth-child(4) { --tab-color:#b54b08; --tab-tint:#ffead2; }
   .tab-bar > :nth-child(5) { --tab-color:#25665d; --tab-tint:#dfefe8; }
-  .tab-bar .tab-icon { width:30px; height:30px; border-radius:9px; background:var(--tab-tint); }
-  .tab-bar > .active { background:var(--tab-color); color:#fffaf0; }
-  .tab-bar > .active .tab-icon { background:transparent; }
+  .tab-bar .tab-icon { width:36px; height:36px; }
+  .tab-bar > .active { background:var(--tab-tint); color:var(--tab-color); box-shadow:inset 0 -3px var(--tab-color); }
   .tab-bar > :focus-visible { outline:2px solid var(--tab-color); outline-offset:2px; }
-  .tab-bar svg { width:24px; height:24px; }
+  .tab-bar svg { width:36px; height:36px; }
   .tab-bar small { font-size:11px; font-weight:650; }
-  .tab-bar .tab-icon b { background:#b93620; box-shadow:0 0 0 2px #fffaf0; }
+  .tab-bar .tab-icon b { top:-2px; left:24px; background:#b93620; box-shadow:0 0 0 2px #fffaf0; }
 }
 
 @media(max-width:850px) { .mobile-search .catalog-search-options { max-height:calc(100dvh - 160px); overflow-y:auto; } }
