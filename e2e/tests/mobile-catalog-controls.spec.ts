@@ -182,3 +182,37 @@ test("@desktop @phone card plus disables at the available stock",async({page})=>
   await expect(card.locator('.cart-item-count')).toHaveText('2');
   await card.getByRole('button',{name:/Уменьшить количество/}).click();await expect(plus).toBeEnabled();
 });
+
+test('@desktop @phone delayed cart responses do not rewind rapid quantity clicks',async({page})=>{
+  await mockApi(page);
+  let items:Record<string,number>={};
+  let writes=0;
+  let releaseFirst!:()=>void;
+  const held=new Promise<void>(resolve=>{releaseFirst=resolve;});
+  await page.route('**/api/v1/cart',async route=>{
+    if(route.request().method()==='PUT'){
+      const next=route.request().postDataJSON().items;
+      writes++;
+      if(writes===1)await held;
+      items=next;
+    }
+    await route.fulfill({json:{items,lines:[],missingSkus:[]}});
+  });
+  await page.goto('/');
+  const card=page.locator('.storefront-card').filter({hasText:'Аглаонема Мария'});
+  await card.getByRole('button',{name:'В корзину',exact:true}).click();
+  const plus=card.getByRole('button',{name:/Увеличить количество/});
+  await plus.click();await plus.click();
+  const count=card.locator('.cart-item-count');await expect(count).toHaveText('3');
+  await count.evaluate(el=>{
+    const values:string[]=[];
+    (window as typeof window & {quantityValues:string[]}).quantityValues=values;
+    new MutationObserver(()=>values.push(el.textContent||'')).observe(el,{subtree:true,characterData:true,childList:true});
+  });
+  const saved=page.waitForResponse(response=>response.url().endsWith('/api/v1/cart')&&response.request().method()==='PUT'&&response.request().postDataJSON().items['1']===3);
+  releaseFirst();await saved;
+  await expect(count).toHaveText('3');
+  const values=await page.evaluate(()=>(window as typeof window & {quantityValues:string[]}).quantityValues);
+  expect(values.every(value=>value==='3')).toBe(true);
+  await page.reload();await expect(count).toHaveText('3');
+});
