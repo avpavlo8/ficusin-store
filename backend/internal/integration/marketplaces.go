@@ -1183,6 +1183,11 @@ func (executor *MarketplaceExecutor) fetchWBCatalog(ctx context.Context) ([]proc
 		}
 		var response struct {
 			Cards []struct {
+				Dimensions struct {
+					Length float64 `json:"length"`
+					Width  float64 `json:"width"`
+					Height float64 `json:"height"`
+				} `json:"dimensions"`
 				NmID       int64  `json:"nmID"`
 				VendorCode string `json:"vendorCode"`
 				Title      string `json:"title"`
@@ -1205,6 +1210,9 @@ func (executor *MarketplaceExecutor) fetchWBCatalog(ctx context.Context) ([]proc
 				ExternalID: strconv.FormatInt(card.NmID, 10),
 				Article:    strings.TrimSpace(card.VendorCode),
 				Name:       strings.TrimSpace(card.Title),
+			}
+			if card.Dimensions.Length > 0 && card.Dimensions.Width > 0 && card.Dimensions.Height > 0 {
+				item.Package = &procurement.PricingPackage{LengthCM: card.Dimensions.Length, WidthCM: card.Dimensions.Width, HeightCM: card.Dimensions.Height, Source: "Карточка WB, чтение справочника"}
 			}
 			for _, size := range card.Sizes {
 				for _, sku := range size.Skus {

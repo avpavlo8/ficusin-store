@@ -38,6 +38,41 @@ func (store *PostgresStore) PreviewPlan(ctx context.Context, input PlanCreate) (
 		return PlanPreview{}, ErrNotFound
 	}
 	_, preview, err := calculatePlan(settings, kind, input)
+	if err == nil && settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
+		keys := make([]string, 0, len(input.Items))
+		for _, i := range input.Items {
+			if i.SabyID != "" {
+				keys = append(keys, i.SabyID)
+			}
+		}
+		rows, e := store.pool.Query(ctx, `SELECT saby_id,id FROM product_variants WHERE saby_id=ANY($1) AND is_active<>0 AND archived_at IS NULL`, keys)
+		if e != nil {
+			return PlanPreview{}, e
+		}
+		ids := []int64{}
+		mapping := map[string]int64{}
+		for rows.Next() {
+			var key string
+			var id int64
+			if e = rows.Scan(&key, &id); e != nil {
+				rows.Close()
+				return PlanPreview{}, e
+			}
+			mapping[key] = id
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if e = rows.Err(); e != nil {
+			return PlanPreview{}, e
+		}
+		boxes, e := loadPricingPackages(ctx, store.pool, ids)
+		if e != nil {
+			return PlanPreview{}, e
+		}
+		for i := range preview.Lines {
+			preview.Lines[i].ChannelQuotes = UnifiedChannelQuotes(settings, preview.Lines[i].Cost, boxes[mapping[input.Items[i].SabyID]])
+		}
+	}
 	return preview, err
 }
 
