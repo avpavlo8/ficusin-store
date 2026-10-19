@@ -96,7 +96,7 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT id FROM procurement_order_lines WHERE procurement_order_id=$1`, orderID).Scan(&lineID); err != nil {
 		t.Fatal(err)
 	}
-	profiles := map[string]ChannelCosts{"site": zeroCosts(), "wb": {amount(.36), amount(0), amount(150), amount(100), amount(30)}, "ozon": {amount(.52), amount(.01), amount(150), amount(200), amount(30)}}
+	profiles := map[string]ChannelCosts{"site": zeroCosts(), "wb": {CommissionRate: amount(.36), AcquiringRate: amount(0), PackagingRUB: amount(150), LogisticsRUB: amount(100), LossRUB: amount(30)}, "ozon": {CommissionRate: amount(.52), AcquiringRate: amount(.01), PackagingRUB: amount(150), LogisticsRUB: amount(200), LossRUB: amount(30)}}
 	retail := int64(1650)
 	if _, err = store.UpdateOrderLine(ctx, actor, lineID, OrderLineUpdate{ChannelCosts: profiles, RetailOverrideRUB: &retail}); err != nil {
 		t.Fatal(err)

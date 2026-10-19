@@ -1,0 +1,100 @@
+{
+  "taxRate": 0.08,
+  "economics": {
+    "monthlyFixedCostsRub": 300000,
+    "channels": {
+      "site": {
+        "commissionRate": 0,
+        "acquiringRate": 0.03,
+        "otherRate": 0,
+        "packagingRub": 1,
+        "logisticsRub": 0,
+        "lossRub": 5
+      },
+      "wb": {
+        "commissionRate": 0.395,
+        "acquiringRate": 0.03,
+        "otherRate": 0,
+        "packagingRub": 0,
+        "logisticsRub": 0,
+        "lossRub": 100
+      },
+      "ozon": {
+        "commissionRate": 0.52,
+        "acquiringRate": 0.01,
+        "otherRate": 0.015,
+        "packagingRub": 0,
+        "logisticsRub": 0,
+        "lossRub": 100
+      }
+    },
+    "unified": {
+      "enabled": true,
+      "markupRate": 0.6,
+      "materialsRub": 100,
+      "smallBoxRub": 30,
+      "mediumBoxRub": 45,
+      "largeBoxRub": 60,
+      "wbFirstLiterRub": 78.2,
+      "wbAdditionalLiterRub": 23.8,
+      "wbHandlingRub": 10,
+      "verifiedAt": "2026-10-19",
+      "norms": [
+        {
+          "maxLiters": 1.5,
+          "ozonRub": 209.96542,
+          "samples": 20,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 2,
+          "ozonRub": 166.78554166666666,
+          "samples": 36,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 6.75,
+          "ozonRub": 241.514312195122,
+          "samples": 41,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 9,
+          "ozonRub": 256.3517533333333,
+          "samples": 45,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 11.25,
+          "ozonRub": 218.47495,
+          "samples": 4,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 13.5,
+          "ozonRub": 215.9125,
+          "samples": 4,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 16,
+          "ozonRub": 257.61366875,
+          "samples": 32,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 24,
+          "ozonRub": 297.0744,
+          "samples": 9,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        },
+        {
+          "maxLiters": 32,
+          "ozonRub": 269.3766666666666,
+          "samples": 3,
+          "source": "Отчёты, проверка 19.10.2026; средняя стоимость группы коробок, включая обработку и последнюю милю."
+        }
+      ]
+    }
+  }
+}

@@ -328,6 +328,9 @@ func validatePricingSettings(input PricingSettings) (PricingSettings, error) {
 			return PricingSettings{}, ErrInvalidInput
 		}
 	}
+	if !validateUnified(input.Economics.Unified, input.Economics.Channels, input.TaxRate) {
+		return PricingSettings{}, ErrInvalidInput
+	}
 	return input, nil
 }
 

@@ -175,11 +175,12 @@ type OrderCosts struct {
 }
 
 type OrderDetail struct {
-	Order      OrderSummary    `json:"order"`
-	Costs      OrderCosts      `json:"costs"`
-	Validation OrderValidation `json:"validation"`
-	Lines      []OrderLine     `json:"lines"`
-	Batches    []ActionBatch   `json:"batches"`
+	UnifiedPreview *UnifiedOrderPreview `json:"unifiedPreview,omitempty"`
+	Order          OrderSummary         `json:"order"`
+	Costs          OrderCosts           `json:"costs"`
+	Validation     OrderValidation      `json:"validation"`
+	Lines          []OrderLine          `json:"lines"`
+	Batches        []ActionBatch        `json:"batches"`
 }
 
 type OrderValidation struct {
@@ -624,6 +625,7 @@ type ActionPreviewLine struct {
 
 // ChannelProduct — карточка маркетплейса, какой её отдаёт площадка.
 type ChannelProduct struct {
+	Package          *PricingPackage
 	ExternalID       string
 	Article          string
 	Name             string

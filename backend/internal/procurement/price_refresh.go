@@ -96,6 +96,9 @@ func refreshPricesAfterTerminalActions(ctx context.Context, tx pgx.Tx, actor Act
 			return err
 		}
 	}
+	if err := saveUnifiedOrderQuotes(ctx, tx, settings, orderID); err != nil {
+		return err
+	}
 	snapshot, err := json.Marshal(settings)
 	if err != nil {
 		return err

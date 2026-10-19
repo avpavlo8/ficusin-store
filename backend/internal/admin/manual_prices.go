@@ -121,6 +121,10 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	retail := float64(newMinor) / 100
 	market := math.Floor((retail + packageRUB + math.Max(height, 0)*math.Max(logisticsRate, 0)) * (1 + returnRate + marketplaceRate + taxRate + reserveRate))
 	strike := math.Floor(market * (1 + strikeRate))
+	unifiedQuotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, tx, variantID)
+	if err != nil {
+		return err
+	}
 	for _, channel := range []struct {
 		name, article string
 		price         float64
@@ -130,6 +134,15 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 	} {
 		if marketplaceScope == "site_only" {
 			continue
+		}
+		if unified {
+			q := unifiedQuotes[channel.name]
+			if q.PriceRUB == nil {
+				continue
+			}
+			channel.price = float64(*q.PriceRUB)
+			compare := math.Ceil(channel.price * (1 + strikeRate))
+			channel.compare = &compare
 		}
 		var old *float64
 		message := ""
@@ -218,6 +231,10 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
+	formulaQuotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, repository.pool, variantID)
+	if err != nil {
+		return nil, err
+	}
 	for index := range items {
 		item := &items[index]
 		currentPrice, currentArticle := states[index].price, states[index].article
@@ -259,6 +276,14 @@ func (repository *PostgresRepository) ListManualPriceProposals(ctx context.Conte
 				item.CanRetry = item.BlockReason == ""
 			default:
 				item.CanRetry = true
+			}
+		}
+		if unified && (item.Channel == "wb" || item.Channel == "ozon") && (item.CanApprove || item.CanRetry) {
+			q := formulaQuotes[item.Channel]
+			if q.PriceRUB == nil || float64(*q.PriceRUB) != item.NewValue {
+				item.CanApprove = false
+				item.CanRetry = false
+				item.BlockReason = "Предложение не соответствует общей формуле; нужен новый расчёт"
 			}
 		}
 	}

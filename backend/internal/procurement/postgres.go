@@ -657,6 +657,10 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 		line := &detail.Lines[index]
 		line.ComparisonMismatch = !line.InvoiceExcluded && (line.ReconciliationStatus == "changed" || line.ReconciliationStatus == "missing" || line.ReconciliationStatus == "added")
 	}
+	detail.UnifiedPreview, err = loadUnifiedOrderPreview(ctx, store.pool, settings, orderID)
+	if err != nil {
+		return OrderDetail{}, fmt.Errorf("load unified price preview: %w", err)
+	}
 	detail.Batches, err = store.listBatches(ctx, orderID)
 	if err != nil {
 		return OrderDetail{}, err
@@ -1032,6 +1036,9 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		}
 	}
 	if err := syncReceivingChildCosts(ctx, tx, orderID); err != nil {
+		return OrderDetail{}, err
+	}
+	if err := saveUnifiedOrderQuotes(ctx, tx, settings, orderID); err != nil {
 		return OrderDetail{}, err
 	}
 	// A calculation describes the incoming batch. It cannot change the cost

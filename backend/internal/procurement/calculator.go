@@ -87,6 +87,11 @@ func calculateAllocatedLine(
 	unitCost := purchase + trolleyPerUnit + ryazanPerUnit + extra
 	retailBase := unitCost * settings.RetailMarkupMultiplier
 	retail := roundRetail(retailBase, settings.RoundPrices)
+	if settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
+		if q := UnifiedChannelQuotes(settings, unitCost, nil)["site"]; q.PriceRUB != nil {
+			retail = *q.PriceRUB
+		}
+	}
 	return calculatedLine{
 		AdditionalPurchaseUnitRUB: extra, PurchaseUnitRUB: purchase, TrolleyDeliveryUnitRUB: trolleyPerUnit,
 		RyazanDeliveryUnitRUB: ryazanPerUnit, UnitCostRUB: unitCost,
