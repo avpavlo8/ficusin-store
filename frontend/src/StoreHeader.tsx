@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
+import { StoreNavIllustration } from "./StoreNavIllustration";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
 import { useFavorites, useAvailableFavoriteCount, FAVORITES_EVENT } from "./lib/favorites";
@@ -75,9 +76,8 @@ export function AccountMenu({ user, iconOnly = false }: { user: StoreUser | null
   </details>;
 }
 
-// Line icons for the bottom bar. Drawn rather than typed because the text
-// symbols a phone substitutes for these glyphs differ wildly between
-// Android and iOS.
+// Compact header controls use line icons; the bottom bar has its own
+// detailed illustrations so both stay consistent across iOS and Android.
 const icons = {
   catalog: "M3 4h7v7H3V4Zm11 0h7v7h-7V4ZM3 15h7v7H3v-7Zm11 0h7v7h-7v-7Z",
   heart: "M12 20.4 4.3 12.8a4.7 4.7 0 0 1 6.7-6.6l1 1 1-1a4.7 4.7 0 0 1 6.7 6.6L12 20.4Z",
@@ -188,32 +188,32 @@ function MobileTabBar({
 }) {
   const cartInside = <>
     <span className="tab-icon">
-      <Icon path={icons.bag} />
+      <StoreNavIllustration kind="basket" />
       {cart > 0 && <b>{cart}</b>}
     </span>
     <small>Корзина</small>
   </>;
   return <nav className="tab-bar" aria-label="Разделы магазина">
     <button type="button" className={window.location.pathname === "/" || window.location.pathname.startsWith("/catalog/") ? "active" : undefined} aria-haspopup="dialog" aria-expanded={catalogOpen} onClick={event => { event.currentTarget.focus(); onCatalogClick(); }}>
-      <span className="tab-icon"><Icon path={icons.catalog} /></span>
+      <span className="tab-icon"><StoreNavIllustration kind="catalog" /></span>
       <small>Каталог</small>
-    </button>
-    <button type="button" onClick={event => onSearchClick(event.currentTarget)}>
-      <span className="tab-icon"><Icon path={icons.search} /></span>
-      <small>Поиск</small>
     </button>
     <a href="/favorites" className={window.location.pathname === "/favorites" ? "active" : undefined}>
       <span className="tab-icon">
-        <Icon path={icons.heart} />
+        <StoreNavIllustration kind="heart" />
         {favorites > 0 && <b>{favorites}</b>}
       </span>
       <small>Избранное</small>
     </a>
+    <button type="button" onClick={event => onSearchClick(event.currentTarget)}>
+      <span className="tab-icon"><StoreNavIllustration kind="search" /></span>
+      <small>Поиск</small>
+    </button>
     {onCartClick
       ? <button type="button" onClick={onCartClick}>{cartInside}</button>
       : <a href="/cart">{cartInside}</a>}
     <a href={user ? "/account" : "/login"}>
-      <span className="tab-icon"><Icon path={icons.person} /></span>
+      <span className="tab-icon"><StoreNavIllustration kind="person" /></span>
       <small>{user ? "Профиль" : "Войти"}</small>
     </a>
   </nav>;

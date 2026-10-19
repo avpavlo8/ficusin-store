@@ -143,6 +143,16 @@ test("@desktop @phone card quantity persists, respects stock and removes the las
   await mockApi(page); await page.goto('/');
   const card=page.locator('.storefront-card').filter({hasText:'Аглаонема Мария'});
   await card.getByRole('button',{name:'В корзину',exact:true}).click();
+  const quantityBounds=await card.locator('.catalog-card-quantity').boundingBox();
+  const cartBounds=await card.locator('.catalog-cart-open').boundingBox();
+  expect(quantityBounds!.x+quantityBounds!.width).toBeLessThanOrEqual(cartBounds!.x);
+  expect(cartBounds!.width).toBeGreaterThanOrEqual(44);
+  expect(quantityBounds!.width/cartBounds!.width).toBeLessThan(1.5);
+  for(const button of await card.locator('.catalog-card-quantity button').all()) {
+    const bounds=await button.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(quantityBounds!.x);
+    expect(bounds!.x+bounds!.width).toBeLessThanOrEqual(quantityBounds!.x+quantityBounds!.width);
+  }
   const plus=card.getByRole('button',{name:'Увеличить количество: Аглаонема Мария',exact:true});
   const minus=card.getByRole('button',{name:'Уменьшить количество: Аглаонема Мария',exact:true});
   await plus.click();await expect(card.locator('.cart-item-count')).toHaveText('2');

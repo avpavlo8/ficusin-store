@@ -36,12 +36,12 @@ export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAd
       </button>
 
       {inCart > 0 ? <div className="catalog-cart-controls">
-        <button type="button" className="catalog-cart-open" onClick={() => { void openSavedCart(); }} aria-label={`Перейти в корзину, ${inCart} шт.`} title="Открыть корзину">{cartIcon}</button>
         <div className="catalog-card-quantity" role="group" aria-label={`Количество: ${product.name}`}>
           <button type="button" onClick={onDecrease} aria-label={`Уменьшить количество: ${product.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg></button>
           <output className="cart-item-count" aria-live="polite" aria-label="Количество в корзине">{inCart}</output>
           <button type="button" onClick={onAdd} disabled={inCart >= maximum} aria-label={`Увеличить количество: ${product.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg></button>
         </div>
+        <button type="button" className="catalog-cart-open" onClick={() => { void openSavedCart(); }} aria-label={`Перейти в корзину, ${inCart} шт.`} title="Открыть корзину">{cartIcon}</button>
       </div> : <button type="button" className={preorder ? "preorder-action" : undefined}
         onClick={onAdd} aria-label={preorder ? "Заказать" : "В корзину"}
         title={preorder ? "Заказать без оплаты — менеджер уточнит поставку" : `Добавить в корзину · ${catalogSize(product.size)}`}>
