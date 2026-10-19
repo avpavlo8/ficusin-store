@@ -1036,5 +1036,11 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
  await expect(preview).toContainText('Растения не найдены');
  await preview.getByRole('searchbox',{name:'Найти растение в расчёте'}).fill('Unified');
  await expect(preview.getByRole('row').filter({hasText:'Unified plant D12'})).toHaveCount(1);
+ for(const value of ['1 705','2 191']){
+  const box=await preview.getByRole('cell').filter({hasText:value}).boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x+box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+ }
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  });
