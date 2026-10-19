@@ -79,6 +79,13 @@ function saveCart(cart: Cart): Promise<void> {
   return writes;
 }
 
+export async function openSavedCart() {
+  // Finish the latest quantity edit before a full-page navigation unloads it.
+  let pending: Promise<void>;
+  do { pending = writes; await pending; } while (pending !== writes);
+  window.location.assign("/cart");
+}
+
 export function useSharedCart() {
   const [view, setView] = useState<State>(state);
   useEffect(() => {

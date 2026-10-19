@@ -187,6 +187,8 @@ test('@desktop @phone delayed cart responses do not rewind rapid quantity clicks
   await mockApi(page);
   let items:Record<string,number>={};
   let writes=0;
+  let releaseNavigation!:()=>void;
+  const navigationHeld=new Promise<void>(resolve=>{releaseNavigation=resolve;});
   let releaseFirst!:()=>void;
   const held=new Promise<void>(resolve=>{releaseFirst=resolve;});
   await page.route('**/api/v1/cart',async route=>{
@@ -194,6 +196,7 @@ test('@desktop @phone delayed cart responses do not rewind rapid quantity clicks
       const next=route.request().postDataJSON().items;
       writes++;
       if(writes===1)await held;
+      if(writes===4)await navigationHeld;
       items=next;
     }
     await route.fulfill({json:{items,lines:[],missingSkus:[]}});
@@ -215,4 +218,11 @@ test('@desktop @phone delayed cart responses do not rewind rapid quantity clicks
   const values=await page.evaluate(()=>(window as typeof window & {quantityValues:string[]}).quantityValues);
   expect(values.every(value=>value==='3')).toBe(true);
   await page.reload();await expect(count).toHaveText('3');
+  await card.getByRole('button',{name:/Увеличить количество/}).click();
+  await expect(count).toHaveText('4');
+  await card.getByRole('button',{name:'Перейти в корзину, 4 шт.',exact:true}).click();
+  await expect(page).not.toHaveURL(/\/cart$/);
+  releaseNavigation();await expect(page).toHaveURL(/\/cart$/);
+  if(page.viewportSize()!.width<=850)await expect(page.locator('.tab-bar a[href="/cart"] b')).toHaveText('4');
+  else await expect(page.getByLabel('Корзина, товаров: 4',{exact:true})).toBeVisible();
 });

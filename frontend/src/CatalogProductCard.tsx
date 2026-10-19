@@ -1,6 +1,7 @@
 import { catalogSize } from "./lib/storefront-format";
 import { CareLevel } from "./product/CareLevel";
 import { money } from "./product/types";
+import { openSavedCart } from "./lib/cart";
 
 export type CatalogCardProduct = {
   id: string; sku: string; name: string; latin: string; price: number;
@@ -35,7 +36,7 @@ export function CatalogProductCard({ product, inCart, favorite, onFavorite, onAd
       </button>
 
       {inCart > 0 ? <div className="catalog-cart-controls">
-        <button type="button" className="catalog-cart-open" onClick={() => window.location.assign("/cart")} aria-label={`Перейти в корзину, ${inCart} шт.`} title="Открыть корзину">{cartIcon}</button>
+        <button type="button" className="catalog-cart-open" onClick={() => { void openSavedCart(); }} aria-label={`Перейти в корзину, ${inCart} шт.`} title="Открыть корзину">{cartIcon}</button>
         <div className="catalog-card-quantity" role="group" aria-label={`Количество: ${product.name}`}>
           <button type="button" onClick={onDecrease} aria-label={`Уменьшить количество: ${product.name}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg></button>
           <output className="cart-item-count" aria-live="polite" aria-label="Количество в корзине">{inCart}</output>
