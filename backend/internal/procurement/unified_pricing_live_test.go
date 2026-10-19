@@ -108,4 +108,31 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 	if missing.Units != 3 || missing.PricedUnits != 0 || len(missing.Lines) != 1 || missing.Lines[0].Quotes["wb"].PriceRUB != nil {
 		t.Fatal("missing cost was silently dropped or treated as free")
 	}
+	// Saby-only invoice rows must remain visible even without a site variant.
+	// Equal names must not collapse unrelated rows or inflate projected profit.
+	for _, qty := range []int{20, 30} {
+		_, err = tx.Exec(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,raw_name,ordered_qty,invoiced_qty,unit_cost_rub,match_status,reconciliation_status) VALUES($1,'Unlinked plant',$2,$2,100,'confirmed','matched')`, order, qty)
+		must(err)
+	}
+	unlinked, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if unlinked.Units != 53 || unlinked.PricedUnits != 0 || len(unlinked.Lines) != 3 || unlinked.ContributionRUB != 0 {
+		t.Fatalf("unlinked invoice rows were omitted or counted as profit: %+v", unlinked)
+	}
+	seen := map[int64]bool{}
+	for _, line := range unlinked.Lines {
+		if line.VariantID != 0 {
+			continue
+		}
+		if line.SourceLineID == 0 || seen[line.SourceLineID] || line.Quotes["wb"].PriceRUB != nil || line.Quotes["site"].PriceRUB != nil || len(line.Quotes["ozon"].Missing) == 0 {
+			t.Fatalf("missing identity lost its source or explanation: %+v", line)
+		}
+		seen[line.SourceLineID] = true
+	}
+	must(saveUnifiedOrderQuotes(ctx, tx, s, order))
+	var altered int
+	must(tx.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_order_lines WHERE procurement_order_id=$1 AND canonical_variant_id IS NULL AND proposed_retail_rub IS NOT NULL`, order).Scan(&altered))
+	if len(seen) != 2 || altered != 0 {
+		t.Fatal("unlinked rows received publishable prices")
+	}
 }
