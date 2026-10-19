@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mockApi } from "./helpers";
 
-const titles = ["Неприхотливые", "Переносят полутень", "Редкий полив", "Безопасно для питомцев", "Цветущие растения", "Для солнечного окна", "Ампельные — для полок и подвесов", "Для ванной комнаты", "Крупные — от 80 см", "Небольшие — до 40 см", "Бонсай без зимовки", "На рабочий стол", "В подарок", "Необычные растения", "Пёстрые листья", "Зелёная вертикаль", "Деревце для дома", "Цитрусы и плодовые", "Бонсай"];
+const titles = ["На рабочий стол", "Цитрусы и плодовые", "Безопасно для питомцев", "Неприхотливые", "Переносят полутень", "Редкий полив", "Цветущие растения", "Для солнечного окна", "Ампельные — для полок и подвесов", "Для ванной комнаты", "Крупные — от 80 см", "Небольшие — до 40 см", "Бонсай без зимовки", "В подарок", "Необычные растения", "Пёстрые листья", "Зелёная вертикаль", "Деревце для дома", "Бонсай"];
 const small = { id: "1", sku: "small-40", name: "Арека", latin: "Chrysalidocarpus lutescens", category: "Растения", categoryId: 4, catalogSection: "plants", size: "D10", heightCm: 40, price: 1490, stock: 2, image: "/assets/hero-monstera.webp", careLevel: "medium", collections: ["tall"], filterAttributes: [] };
 const tall = { ...small, sku: "tall-150", size: "D24", heightCm: 150, price: 8990 };
 
@@ -16,6 +16,12 @@ test("@desktop @phone 19 подборок сохраняют порядок и �
   await expect(page.locator(".preset-title")).toHaveText(titles);
   await expect(page.locator(".preset[href='/collections/office']")).toHaveCount(0);
   await expect(page.locator(".preset-cover").first()).toHaveCSS("object-position", "50% 30%");
+  await expect(page.locator(".preset-cover").first()).toHaveCSS("object-fit", "contain");
+  const frame = await page.locator(".preset").first().boundingBox();
+  expect(frame).not.toBeNull();
+  expect(frame!.width / frame!.height).toBeCloseTo(1.5, 1);
+  await expect(page.locator(".preset").first()).not.toHaveAttribute("title");
+
   await expect(page.locator(".preset-cover").last()).toHaveAttribute("loading", "lazy");
   await expect.poll(() => page.locator(".preset-cover").first().evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
@@ -48,4 +54,16 @@ test("@desktop ошибка загрузки размера не подменя�
   await expect(page.getByRole("alert")).toContainText("Не удалось загрузить размеры подборки");
   await expect(page.locator(".storefront-card")).toHaveCount(0);
   await expect(page.getByText("Здесь пока пусто")).toHaveCount(0);
+});
+
+test("@desktop широкие карточки сохраняют полный кадр 3:2", async ({ page }) => {
+  await mockApi(page);
+  for (const width of [1024, 1440, 2560]) {
+    await page.setViewportSize({ width, height: 1100 });
+    await page.goto("/");
+    await expect(page.locator(".preset").first()).toBeVisible();
+    const frame = await page.locator(".preset").first().boundingBox();
+    expect(frame!.width / frame!.height).toBeCloseTo(1.5, 1);
+    await expect(page.locator(".preset-cover").first()).toHaveCSS("object-fit", "contain");
+  }
 });
