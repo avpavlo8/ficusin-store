@@ -146,6 +146,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не выбраны товары СБИС: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
     lines: [] as Array<Record<string, unknown>>, batches: [],
   };
+  if(options.unified)Object.assign(procurement.settings.economics,{unified:{enabled:true,markupRate:.6,materialsRub:100,smallBoxRub:30,mediumBoxRub:45,largeBoxRub:60,wbFirstLiterRub:78.2,wbAdditionalLiterRub:23.8,wbHandlingRub:10,verifiedAt:"2026-10-19",norms:[{maxLiters:9,ozonRub:256.35,samples:45}]}});
   if(options.unified)Object.assign(orderDetail,{unifiedPreview:{version:7,markupRate:.6,fixedRub:300000,units:3,pricedUnits:3,contributionRub:360,lines:[{variantId:777,name:"Unified plant D12",quantity:3,costRub:200,quotes:{wb:{priceRub:1705,contributionRub:120.375,missing:[],costs:{packagingRub:145,logisticsRub:278.6},package:{lengthCm:15,widthCm:15,heightCm:40,source:"WB"}},ozon:{priceRub:2191,contributionRub:120.275,missing:[],costs:{packagingRub:145,logisticsRub:256.35}}}}]}});
   if (options.invoicePicker) {
     procurement.orders[0].status = "review";
@@ -1043,4 +1044,16 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
   expect(box!.x+box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
  }
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+ });
+
+ test("@desktop unified settings show the active markup and hide retired rounding",async({page})=>{
+ await mockProcurement(page,{unified:true});
+ await page.goto('/admin?section=procurement');
+ await page.getByRole('button',{name:'Формула цены',exact:true}).click();
+ await expect(page.getByLabel('Заработок от себестоимости, %')).toHaveValue('60');
+ await expect(page.getByLabel('Стартовая наценка на себестоимость, %')).toHaveCount(0);
+ await expect(page.getByLabel('Округлять цены до ближайших 50 или 90')).toHaveCount(0);
+ const wb=page.locator('details').filter({has:page.getByText('Wildberries · FBS',{exact:true})});
+ await expect(wb.getByLabel('Упаковка, ₽',{exact:true})).toHaveCount(0);
+ await expect(page.getByLabel('Материалы на отправление, ₽')).toHaveValue('100');
  });
