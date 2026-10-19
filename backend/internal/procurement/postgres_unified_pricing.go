@@ -82,25 +82,39 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	rows, err := db.Query(ctx, `WITH directory AS (
  SELECT saby_id,MIN(variant_id) AS variant_id FROM canonical_product_directory
  WHERE active AND saby_id<>'' GROUP BY saby_id HAVING COUNT(*)=1
+ ), complete_links AS (
+ SELECT x.order_line_id FROM procurement_pricing_line_links x
+ JOIN procurement_order_lines l ON l.id=x.order_line_id
+ JOIN procurement_orders o ON o.id=l.procurement_order_id
+ LEFT JOIN directory d ON d.saby_id=x.saby_id
+ WHERE l.procurement_order_id=$1 AND o.status='received' AND l.canonical_variant_id IS NULL
+ GROUP BY x.order_line_id,l.invoiced_qty,l.ordered_qty
+ HAVING SUM(x.quantity)=COALESCE(l.invoiced_qty,l.ordered_qty) AND COUNT(d.variant_id)=COUNT(*)
+ ), source AS (
+ SELECT l.*,CASE WHEN c.order_line_id IS NULL AND EXISTS(SELECT 1 FROM procurement_pricing_line_links pending WHERE pending.order_line_id=l.id)
+ THEN NULL ELSE COALESCE(x.saby_id,a.matched_saby_id,l.saby_id) END AS pricing_saby_id,
+ COALESCE(x.quantity,l.invoiced_qty,l.ordered_qty) AS pricing_qty
+ FROM procurement_order_lines l
+ LEFT JOIN complete_links c ON c.order_line_id=l.id
+ LEFT JOIN procurement_pricing_line_links x ON x.order_line_id=c.order_line_id
+ LEFT JOIN procurement_supplier_aliases a ON a.id=l.supplier_alias_id AND a.match_status='confirmed'
+ WHERE l.procurement_order_id=$1
  ), resolved AS (
  SELECT l.*,COALESCE(l.canonical_variant_id,d.variant_id) AS preview_variant_id
- FROM procurement_order_lines l
- LEFT JOIN procurement_supplier_aliases a ON a.id=l.supplier_alias_id AND a.match_status='confirmed'
- LEFT JOIN directory d ON d.saby_id=COALESCE(a.matched_saby_id,l.saby_id)
- WHERE l.procurement_order_id=$1
+ FROM source l LEFT JOIN directory d ON d.saby_id=l.pricing_saby_id
  )
  SELECT COALESCE(l.preview_variant_id,0),MIN(l.id),
  COALESCE(NULLIF(MAX(n.name),''),MAX(l.raw_name)),
- SUM(COALESCE(l.invoiced_qty,l.ordered_qty))::int,
+ SUM(l.pricing_qty)::int,
  CASE WHEN COUNT(*) FILTER(WHERE l.unit_cost_rub>0)=COUNT(*) THEN
- SUM(l.unit_cost_rub*COALESCE(l.invoiced_qty,l.ordered_qty))::float8/
- NULLIF(SUM(COALESCE(l.invoiced_qty,l.ordered_qty)),0) ELSE 0 END
- FROM resolved l LEFT JOIN saby_nomenclature n ON n.saby_id=l.saby_id
+ SUM(l.unit_cost_rub*l.pricing_qty)::float8/
+ NULLIF(SUM(l.pricing_qty),0) ELSE 0 END
+ FROM resolved l LEFT JOIN saby_nomenclature n ON n.saby_id=l.pricing_saby_id
  WHERE l.procurement_order_id=$1 AND l.receiving_mode='catalog' AND l.match_status='confirmed'
  AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
  AND (l.reconciliation_status<>'added' OR l.comparison_accepted)
- AND COALESCE(l.invoiced_qty,l.ordered_qty)>0
- GROUP BY l.preview_variant_id,CASE WHEN l.preview_variant_id IS NULL THEN l.id ELSE 0 END`, orderID)
+ AND l.pricing_qty>0
+ GROUP BY l.preview_variant_id,CASE WHEN l.preview_variant_id IS NULL THEN l.id ELSE 0 END,CASE WHEN l.preview_variant_id IS NULL THEN l.pricing_saby_id ELSE '' END`, orderID)
 	if err != nil {
 		return nil, err
 	}

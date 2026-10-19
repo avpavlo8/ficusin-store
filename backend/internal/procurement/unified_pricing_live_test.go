@@ -179,6 +179,55 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 	if complete.PricedUnits != 53 || len(complete.Lines) != 1 || math.Abs(complete.ContributionRUB-3360) > 0.001 {
 		t.Fatalf("confirmed Saby identity did not restore all units: %+v", complete)
 	}
+	// A pricing-only distribution preserves the original receipt row and total
+	// cost while assigning every confirmed component to its own SKU.
+	var mixLine int64
+	must(tx.QueryRow(ctx, `SELECT id FROM procurement_order_lines WHERE procurement_order_id=$1 AND ordered_qty=20 AND canonical_variant_id IS NULL`, order).Scan(&mixLine))
+	parts := []struct {
+		key     string
+		qty     int
+		variant int64
+	}{{key, 8, variant}, {key + "-lime", 6, 0}, {key + "-lemon", 6, 0}}
+	for i := range parts {
+		part := &parts[i]
+		if i > 0 {
+			var p int64
+			must(tx.QueryRow(ctx, `INSERT INTO products(name,slug,status,catalog_section) VALUES($1,$1,'draft','plants') RETURNING id`, part.key).Scan(&p))
+			_, err = tx.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name) VALUES($1,$1)`, part.key)
+			must(err)
+			must(tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,saby_id,is_active) VALUES($1,'D9',$2,1) RETURNING id`, p, part.key).Scan(&part.variant))
+			_, err = tx.Exec(ctx, `INSERT INTO procurement_pricing_packages(variant_id,dimensions) VALUES($1,'{"lengthCm":10,"widthCm":10,"heightCm":10,"source":"test"}')`, part.variant)
+			must(err)
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO procurement_pricing_line_links(order_line_id,saby_id,quantity,source) VALUES($1,$2,$3,'owner confirmed')`, mixLine, part.key, part.qty)
+		must(err)
+	}
+	distributed, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if distributed.Units != 53 || distributed.PricedUnits != 53 || len(distributed.Lines) != 3 || math.Abs(distributed.ContributionRUB-3360) > 0.001 {
+		t.Fatalf("pricing distribution changed invoice totals: %+v", distributed)
+	}
+	quantities := map[int64]int{}
+	for _, line := range distributed.Lines {
+		quantities[line.VariantID] = line.Quantity
+	}
+	if quantities[variant] != 41 || quantities[parts[1].variant] != 6 || quantities[parts[2].variant] != 6 {
+		t.Fatalf("wrong split: %v", quantities)
+	}
+	must(tx.QueryRow(ctx, `SELECT canonical_variant_id IS NULL AND unit_cost_rub=100 AND invoiced_qty=20 FROM procurement_order_lines WHERE id=$1`, mixLine).Scan(&untouched))
+	if !untouched {
+		t.Fatal("distribution rewrote the receipt")
+	}
+	_, err = tx.Exec(ctx, `UPDATE procurement_pricing_line_links SET quantity=5 WHERE order_line_id=$1 AND saby_id=$2`, mixLine, parts[2].key)
+	must(err)
+	incomplete, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if incomplete.Units != 53 || incomplete.PricedUnits != 33 {
+		t.Fatal("partial distribution was priced or dropped units")
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM procurement_pricing_line_links WHERE order_line_id=$1`, mixLine)
+	must(err)
+
 	_, err = tx.Exec(ctx, `UPDATE products SET saby_id=$2 WHERE id=$1`, product, key)
 	must(err)
 	_, err = tx.Exec(ctx, `INSERT INTO product_variants(product_id,label,is_active) VALUES($1,'D14',1)`, product)
