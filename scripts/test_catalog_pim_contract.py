@@ -105,7 +105,7 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("variant_attribute_values", migration)
         self.assertIn("product_attribute_values", migration)
         self.assertIn("collection_rules_match_product(product.id,collection.rules)", public)
-        self.assertIn('Mode      string', admin)
+        self.assertRegex(admin, r'\bMode\s+string\s+`json:"mode"`')
         self.assertIn('mode: "manual" | "dynamic"', ui)
         self.assertIn("/api/v1/admin/collection-definitions/preview", ui)
         self.assertIn("draft.rules", ui)

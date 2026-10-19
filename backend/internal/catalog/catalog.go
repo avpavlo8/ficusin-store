@@ -62,11 +62,14 @@ type CartProduct struct {
 }
 
 type Collection struct {
-	Slug     string `json:"slug"`
-	Title    string `json:"title"`
-	Note     string `json:"note"`
-	CoverURL string `json:"coverUrl"`
-	Count    int    `json:"count"`
+	Slug           string `json:"slug"`
+	Title          string `json:"title"`
+	Note           string `json:"note"`
+	CoverURL       string `json:"coverUrl"`
+	CoverPosition  string `json:"coverPosition"`
+	ShowOnHome     bool   `json:"showOnHome"`
+	SelectsVariant bool   `json:"selectsVariant"`
+	Count          int    `json:"count"`
 }
 
 // FeedOffer is one sellable SKU exported to search engines. Unlike a catalogue

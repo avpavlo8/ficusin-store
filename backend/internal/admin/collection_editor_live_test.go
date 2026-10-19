@@ -33,7 +33,8 @@ func TestCollectionEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := CollectionDefinitionInput{Title: "Original", Slug: fmt.Sprintf("test-%d", unique), Mode: "manual", CoverURL: "/assets/hero-monstera.webp"}
+	position, home := "center top", false
+	input := CollectionDefinitionInput{CoverPosition: &position, ShowOnHome: &home, Title: "Original", Slug: fmt.Sprintf("test-%d", unique), Mode: "manual", CoverURL: "/assets/hero-monstera.webp"}
 	item, err := repo.CreateCollectionDefinition(ctx, actor, input)
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +45,11 @@ func TestCollectionEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", product.ID)
 		_, _ = pool.Exec(ctx, "DELETE FROM customers WHERE id=$1", actorID)
 	}()
+	if item.ShowOnHome || item.CoverPosition != position {
+		t.Fatalf("new cover metadata: %+v", item)
+	}
+	// Old clients omit these optional fields; membership edits preserve them.
+	input.ShowOnHome, input.CoverPosition = nil, nil
 	members := []int64{product.ID}
 	input.Products = &members
 	input.Title = "Saved together"
@@ -51,7 +57,7 @@ func TestCollectionEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Title != input.Title || len(saved.Products) != 1 || saved.Products[0] != product.ID {
+	if saved.ShowOnHome || saved.CoverPosition != position || saved.Title != input.Title || len(saved.Products) != 1 || saved.Products[0] != product.ID {
 		t.Fatalf("settings and membership diverged: %+v", saved)
 	}
 	invalid := []int64{product.ID, -1}

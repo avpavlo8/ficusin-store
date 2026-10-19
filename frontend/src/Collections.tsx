@@ -23,6 +23,8 @@ type CollectionDefinition = {
   title: string;
   note: string;
   coverUrl?: string;
+  coverPosition?: string;
+  showOnHome?: boolean;
   count: number;
 };
 
@@ -107,7 +109,7 @@ export function CollectionStrip<T extends Product>({
 
   const shown = useMemo(() => {
     if (source !== "server") return [];
-    return serverCollections.map((collection) => {
+    return serverCollections.filter(collection => collection.showOnHome !== false).map((collection) => {
       const preset = serverPreset(collection);
       const firstProductImage = products.find((product) => preset.match(product))?.image;
       return {
@@ -115,6 +117,7 @@ export function CollectionStrip<T extends Product>({
         image: collection.coverUrl || collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp",
         count: collection.count,
         note: collection.note,
+        position: collection.coverPosition || "center",
       };
     }).filter((item) => item.count > 0);
   }, [products, serverCollections, source]);
@@ -126,15 +129,15 @@ export function CollectionStrip<T extends Product>({
     <section className="storefront-preset-carousel" aria-label="Подборки растений">
       <button className="preset-arrow previous" type="button" onClick={() => scroll(-1)} aria-label="Предыдущие подборки" disabled={!scrollEdges.previous}>←</button>
       <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`} ref={rail}>
-      {shown.map(({ preset, image, count, note }) => (
+      {shown.map(({ preset, image, count, note, position }, index) => (
         <a
           key={preset.id}
           href={`/collections/${encodeURIComponent(preset.id)}`}
           className={activeSlug === preset.id ? "preset active" : "preset"}
           aria-current={activeSlug === preset.id ? "page" : undefined}
           title={note || `${preset.title} — ${count}`}
-          style={{ backgroundImage: `url('${image}')` }}
         >
+          <img className="preset-cover" src={image} alt="" aria-hidden="true" width={1536} height={1024} loading={index < 3 ? "eager" : "lazy"} decoding="async" style={{ objectPosition: position }} />
           <span className="preset-title">{preset.title}</span>
           <span className="preset-count">{counted(count, ["растение", "растения", "растений"])}</span>
           <span className="preset-go" aria-hidden="true">→</span>
