@@ -36,12 +36,15 @@ func unifiedPriceSnapshotFor(ctx context.Context, db pricingReader, s PricingSet
 	}
 	for _, line := range preview.Lines {
 		item := unifiedPriceItem{VariantID: line.VariantID, LineID: line.SourceLineID, Quote: line.Quotes[channel]}
-		err = db.QueryRow(ctx, `SELECT CASE WHEN $2='wb' THEN COALESCE(d.wb_nm_ids[1],'') ELSE COALESCE(d.ozon_articles[1],'') END,v.marketplace_scope
-   FROM canonical_product_directory d JOIN product_variants v ON v.id=d.variant_id WHERE d.variant_id=$1 AND d.active`, line.VariantID, channel).Scan(&item.Article, &item.Scope)
+		var active bool
+		err = db.QueryRow(ctx, `SELECT CASE WHEN $2='wb' THEN COALESCE(d.wb_nm_ids[1],'') ELSE COALESCE(d.ozon_articles[1],'') END,v.marketplace_scope,d.active
+   FROM canonical_product_directory d JOIN product_variants v ON v.id=d.variant_id WHERE d.variant_id=$1`, line.VariantID, channel).Scan(&item.Article, &item.Scope, &active)
 		if err != nil {
 			return result, err
 		}
-		if item.Scope == "site_only" {
+		if !active {
+			item.BlockReason = "Размер отключён или находится в архиве"
+		} else if item.Scope == "site_only" {
 			item.BlockReason = "Маркетплейсы отключены для этого размера"
 		} else if item.Article == "" {
 			item.BlockReason = "Нет связи с карточкой маркетплейса"
@@ -89,7 +92,7 @@ func prepareUnifiedPriceBatch(ctx context.Context, tx pgx.Tx, actor Actor, order
 		return 0, err
 	}
 	var busy bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_action_batches WHERE procurement_order_id=$1 AND kind='prices' AND (channel=$2 OR channel='') AND status IN ('approved','processing'))`, orderID, channel).Scan(&busy); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_action_batches WHERE procurement_order_id=$1 AND kind='prices' AND (channel=$2 OR channel='') AND (status IN ('approved','processing') OR EXISTS(SELECT 1 FROM procurement_action_items i WHERE i.batch_id=procurement_action_batches.id AND i.status IN ('queued','processing'))))`, orderID, channel).Scan(&busy); err != nil {
 		return 0, err
 	}
 	if busy {
@@ -103,7 +106,7 @@ func prepareUnifiedPriceBatch(ctx context.Context, tx pgx.Tx, actor Actor, order
 	if err != pgx.ErrNoRows {
 		return 0, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE procurement_action_batches SET status='cancelled',updated_at=now() WHERE procurement_order_id=$1 AND kind='prices' AND channel=$2 AND status='draft'`, orderID, channel); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE procurement_action_batches SET status='cancelled',updated_at=now() WHERE procurement_order_id=$1 AND kind='prices' AND channel=$2 AND status IN ('draft','failed','partially_completed')`, orderID, channel); err != nil {
 		return 0, err
 	}
 	var batchID int64
