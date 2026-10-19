@@ -218,6 +218,24 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 	if !untouched {
 		t.Fatal("distribution rewrote the receipt")
 	}
+	// Known incorrect MP dimensions must not masquerade as a confirmed box.
+	_, err = tx.Exec(ctx, `UPDATE procurement_pricing_line_links SET requires_pim_package=TRUE WHERE order_line_id=$1 AND saby_id=$2`, mixLine, parts[1].key)
+	must(err)
+	pendingBox, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if pendingBox.Units != 53 || pendingBox.PricedUnits != 47 {
+		t.Fatal("unconfirmed packaging was priced")
+	}
+	for _, code := range []string{"package_length_cm", "package_width_cm", "package_height_cm"} {
+		_, err = tx.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source) SELECT $1,id,'10'::jsonb,'import' FROM attribute_definitions WHERE code=$2`, parts[1].variant, code)
+		must(err)
+	}
+	confirmedBox, err := loadUnifiedOrderPreview(ctx, tx, s, order)
+	must(err)
+	if confirmedBox.PricedUnits != 53 {
+		t.Fatal("confirmed PIM box did not restore pricing")
+	}
+
 	_, err = tx.Exec(ctx, `UPDATE procurement_pricing_line_links SET quantity=5 WHERE order_line_id=$1 AND saby_id=$2`, mixLine, parts[2].key)
 	must(err)
 	incomplete, err := loadUnifiedOrderPreview(ctx, tx, s, order)

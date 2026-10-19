@@ -25,7 +25,8 @@ func loadPricingPackages(ctx context.Context, db pricingReader, ids []int64) (ma
  jsonb_build_object('lengthCm',variant_numeric_attribute(v.id,'package_length_cm'),
  'widthCm',variant_numeric_attribute(v.id,'package_width_cm'),
  'heightCm',variant_numeric_attribute(v.id,'package_height_cm'),'source','PIM сайта'),
- wb.package_dimensions,oz.package_dimensions,e.dimensions
+ wb.package_dimensions,oz.package_dimensions,e.dimensions,
+ EXISTS(SELECT 1 FROM procurement_pricing_line_links x WHERE x.saby_id=d.saby_id AND x.requires_pim_package)
 	 FROM product_variants v JOIN products p ON p.id=v.product_id
  LEFT JOIN canonical_product_directory d ON d.variant_id=v.id
  LEFT JOIN procurement_channel_products wb ON wb.channel='wb' AND wb.external_id=d.wb_nm_ids[1]
@@ -40,10 +41,15 @@ func loadPricingPackages(ctx context.Context, db pricingReader, ids []int64) (ma
 		var id int64
 		var category string
 		var pim, wb, oz, evidence *PricingPackage
-		if err := rows.Scan(&id, &category, &pim, &wb, &oz, &evidence); err != nil {
+		var requiresPIM bool
+		if err := rows.Scan(&id, &category, &pim, &wb, &oz, &evidence, &requiresPIM); err != nil {
 			return nil, err
 		}
-		for _, p := range []*PricingPackage{pim, wb, oz, evidence} {
+		candidates := []*PricingPackage{pim, wb, oz, evidence}
+		if requiresPIM {
+			candidates = []*PricingPackage{pim}
+		}
+		for _, p := range candidates {
 			if p.valid() {
 				p.Category = category
 				result[id] = p

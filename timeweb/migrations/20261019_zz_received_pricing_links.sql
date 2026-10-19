@@ -4,6 +4,7 @@ CREATE TABLE procurement_pricing_line_links (
  order_line_id BIGINT NOT NULL REFERENCES procurement_order_lines(id) ON DELETE CASCADE,
  saby_id TEXT NOT NULL REFERENCES saby_nomenclature(saby_id) ON DELETE RESTRICT,
  quantity INTEGER NOT NULL CHECK(quantity>0),
+ requires_pim_package BOOLEAN NOT NULL DEFAULT FALSE,
  source TEXT NOT NULL CHECK(BTRIM(source)<>''),
  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
  PRIMARY KEY(order_line_id,saby_id)
@@ -27,8 +28,10 @@ WITH targets AS (
  AND NOT l.invoice_excluded AND l.reconciliation_status<>'superseded'
  HAVING COUNT(*)=1
 )
-INSERT INTO procurement_pricing_line_links(order_line_id,saby_id,quantity,source)
-SELECT invoice.id,t.saby_id,t.quantity,'Состав 8/6/6 подтверждён владельцем 19.10.2026; только расчёт цен'
+INSERT INTO procurement_pricing_line_links(order_line_id,saby_id,quantity,requires_pim_package,source)
+-- Ozon currently says 150x150x50 mm for a 20-30 cm plant. Require a
+-- manager-confirmed PIM box instead of accepting that impossible MP input.
+SELECT invoice.id,t.saby_id,t.quantity,TRUE,'Состав 8/6/6 подтверждён владельцем 19.10.2026; только расчёт цен'
 FROM invoice CROSS JOIN targets t
 WHERE invoice.id IS NOT NULL AND (SELECT COUNT(*) FROM targets)=3
 ON CONFLICT DO NOTHING;
