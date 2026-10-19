@@ -21,6 +21,21 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	// This regression exercises the supported legacy mode: manual retail,
+	// per-line tariffs and channel overrides. The migrated default is unified,
+	// whose deliberately different behavior is covered by TestUnified*.
+	var originalEconomics []byte
+	if err = pool.QueryRow(ctx, `SELECT economics FROM procurement_pricing_settings WHERE id=1`).Scan(&originalEconomics); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE procurement_pricing_settings SET economics=jsonb_set(jsonb_set(jsonb_set(economics,'{unified,enabled}','false'),'{channels,wb}','{}'),'{channels,ozon}','{}') WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, restoreErr := pool.Exec(ctx, `UPDATE procurement_pricing_settings SET economics=$1::jsonb WHERE id=1`, originalEconomics); restoreErr != nil {
+			t.Errorf("restore pricing mode: %v", restoreErr)
+		}
+	}()
 	store := NewPostgresStore(pool)
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("stage13-invoice-cost-%d", unique)

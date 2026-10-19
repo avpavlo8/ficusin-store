@@ -27,6 +27,30 @@ type PriceProposal struct {
 
 var ErrPriceChannelUnavailable = fmt.Errorf("канал изменения цены не подключён")
 
+func requireCurrentFormulaProposal(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, proposalID int64, channel string) error {
+	if channel != "wb" && channel != "ozon" {
+		return nil
+	}
+	var variantID int64
+	var price float64
+	if err := db.QueryRow(ctx, `SELECT batch.manual_variant_id,item.new_value::float8
+		FROM procurement_action_items item JOIN procurement_action_batches batch ON batch.id=item.batch_id
+		WHERE item.id=$1 AND batch.source='manual'`, proposalID).Scan(&variantID, &price); err != nil {
+		return err
+	}
+	quotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, db, variantID)
+	if err != nil {
+		return err
+	}
+	if unified && (quotes[channel].PriceRUB == nil || float64(*quotes[channel].PriceRUB) != price) {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // currentAvitoProposal verifies the exact listing, every linked active size's
 // fresh Saby stock, and the cheapest available site price before requeueing.
 func currentAvitoProposal(ctx context.Context, query interface {
@@ -318,6 +342,9 @@ func (repository *PostgresRepository) RetryManualPriceProposal(ctx context.Conte
 	if !repository.priceChannelsConfigured[channel] {
 		return ErrPriceChannelUnavailable
 	}
+	if err = requireCurrentFormulaProposal(ctx, tx, proposalID, channel); err != nil {
+		return err
+	}
 	if channel == "avito" {
 		var variantID int64
 		var article string
@@ -395,6 +422,9 @@ func (repository *PostgresRepository) ApproveManualPriceProposal(ctx context.Con
 	}
 	if channel != "saby_price" && !repository.priceChannelsConfigured[channel] {
 		return PriceProposal{}, ErrPriceChannelUnavailable
+	}
+	if err := requireCurrentFormulaProposal(ctx, repository.pool, proposalID, channel); err != nil {
+		return PriceProposal{}, err
 	}
 	if channel == "avito" {
 		var variantID int64
