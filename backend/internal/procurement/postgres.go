@@ -137,8 +137,12 @@ func safeError(value string) string {
 }
 
 func (store *PostgresStore) loadSettings(ctx context.Context) (PricingSettings, error) {
+	return loadPricingSettings(ctx, store.pool)
+}
+
+func loadPricingSettings(ctx context.Context, db pricingReader) (PricingSettings, error) {
 	var item PricingSettings
-	err := store.pool.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT version, default_exchange_rate::DOUBLE PRECISION,
 			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
 			trolley_fill_ratio::DOUBLE PRECISION, return_loss_rate::DOUBLE PRECISION,

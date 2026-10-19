@@ -427,6 +427,22 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 	} else if err != nil {
 		return ActionBatch{}, fmt.Errorf("lock procurement order for batch: %w", err)
 	}
+	if kind == "prices" && len(channels) == 1 && oneOf(channels[0], "wb", "ozon") && status == "received" {
+		settings, err := loadPricingSettings(ctx, tx)
+		if err != nil {
+			return ActionBatch{}, err
+		}
+		if settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
+			batchID, err := prepareUnifiedPriceBatch(ctx, tx, actor, orderID, settings, channels[0])
+			if err != nil {
+				return ActionBatch{}, err
+			}
+			if err = tx.Commit(ctx); err != nil {
+				return ActionBatch{}, err
+			}
+			return store.batchByID(ctx, orderID, batchID)
+		}
+	}
 	if status != "ready_to_receive" {
 		return ActionBatch{}, ErrInvalidInput
 	}
@@ -731,6 +747,19 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 	} else if err != nil {
 		return ActionBatch{}, fmt.Errorf("load procurement batch: %w", err)
 	}
+	var unified bool
+	if err := tx.QueryRow(ctx, `SELECT unified_price_snapshot IS NOT NULL FROM procurement_action_batches WHERE id=$1`, batchID).Scan(&unified); err != nil {
+		return ActionBatch{}, err
+	}
+	if unified {
+		if err := store.approveUnifiedPriceBatch(ctx, tx, actor, batchID, configured); err != nil {
+			return ActionBatch{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return ActionBatch{}, err
+		}
+		return store.batchByID(ctx, orderID, batchID)
+	}
 	var staleCalculation bool
 	if err := tx.QueryRow(ctx, `
 		SELECT batch.calculation_version IS DISTINCT FROM orders.calculation_version
@@ -885,7 +914,7 @@ func (store *PostgresStore) ApproveBatch(ctx context.Context, actor Actor, batch
 
 func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]ActionBatch, error) {
 	rows, err := store.pool.Query(ctx, `
-		SELECT id, kind, status, created_at FROM procurement_action_batches
+		SELECT id, kind, status, created_at, unified_price_snapshot IS NOT NULL FROM procurement_action_batches
 		WHERE procurement_order_id = $1 ORDER BY id DESC
 	`, orderID)
 	if err != nil {
@@ -895,7 +924,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 	batches := make([]ActionBatch, 0)
 	for rows.Next() {
 		var batch ActionBatch
-		if err := rows.Scan(&batch.ID, &batch.Kind, &batch.Status, &batch.CreatedAt); err != nil {
+		if err := rows.Scan(&batch.ID, &batch.Kind, &batch.Status, &batch.CreatedAt, &batch.Unified); err != nil {
 			return nil, fmt.Errorf("scan procurement batch: %w", err)
 		}
 		itemRows, err := store.pool.Query(ctx, `
@@ -911,7 +940,7 @@ func (store *PostgresStore) listBatches(ctx context.Context, orderID int64) ([]A
 			FROM procurement_action_items item
 			JOIN procurement_order_lines line ON line.id = item.procurement_order_line_id
 			LEFT JOIN saby_nomenclature n ON n.saby_id = line.saby_id
-			LEFT JOIN canonical_product_directory directory ON directory.variant_id=line.canonical_variant_id
+			LEFT JOIN canonical_product_directory directory ON directory.variant_id=COALESCE(item.pricing_variant_id,line.canonical_variant_id)
 			LEFT JOIN procurement_channel_products wb_card ON item.channel='wb'
 				AND wb_card.channel='wb' AND wb_card.external_id=item.external_article
 			WHERE item.batch_id = $1 ORDER BY item.channel, item.id
@@ -1063,9 +1092,13 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 		return true, nil
 	}
 	var source string
-	if err := store.pool.QueryRow(ctx, `SELECT batch.source FROM procurement_action_batches batch
-		JOIN procurement_action_items item ON item.batch_id=batch.id WHERE item.id=$1`, items[0].ID).Scan(&source); err != nil {
+	var unified bool
+	if err := store.pool.QueryRow(ctx, `SELECT batch.source,batch.unified_price_snapshot IS NOT NULL FROM procurement_action_batches batch
+		JOIN procurement_action_items item ON item.batch_id=batch.id WHERE item.id=$1`, items[0].ID).Scan(&source, &unified); err != nil {
 		return false, fmt.Errorf("read price action source: %w", err)
+	}
+	if unified {
+		return store.guardUnifiedPriceActions(ctx, items[0])
 	}
 	if source == "manual" {
 		return store.guardClaimedManualPriceActions(ctx, items[0])

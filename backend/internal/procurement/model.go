@@ -579,6 +579,7 @@ type ProductDirectoryUpdate struct {
 }
 
 type ActionBatch struct {
+	Unified   bool         `json:"unified,omitempty"`
 	ID        int64        `json:"id"`
 	Kind      string       `json:"kind"`
 	Status    string       `json:"status"`
