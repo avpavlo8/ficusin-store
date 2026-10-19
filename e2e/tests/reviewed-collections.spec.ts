@@ -244,3 +244,25 @@ test("@desktop смена ширины переключает обложку б�
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   }
 });
+
+
+test("@desktop @phone страница подборки показывает один заголовок и доступные карточки", async ({ page }) => {
+  await mockApi(page);
+  await page.context().route("**/api/v1/collections", route => route.fulfill({ json: { collections: reviewedCovers.map(c => ({ ...c, note: "Условия выращивания подборки" })) } }));
+  await page.context().route("**/api/v1/catalog*", route => route.fulfill({ json: { products: [{ ...small, collections: reviewedCovers.map(c => c.slug) }] } }));
+  for (const collection of reviewedCovers) {
+    await page.goto(`/collections/${collection.slug}`);
+    await expect(page.getByRole("heading", { name: collection.title, exact: true })).toHaveCount(1);
+    await expect(page.locator(".storefront-head h1")).toHaveText(collection.title);
+    await expect(page.locator(".catalog-landing-hero")).toHaveCount(0);
+    await expect(page.locator(".catalog-collection-note")).toHaveText("Условия выращивания подборки");
+    const card = page.locator(".storefront-card").first();
+    await card.scrollIntoViewIfNeeded();
+    await expect(card).toBeInViewport();
+    if ((page.viewportSize()?.width ?? 0) <= 850) await expect(page.locator(".storefront-side")).toBeHidden();
+    const box = await page.locator(".storefront-main").boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  }
+});
