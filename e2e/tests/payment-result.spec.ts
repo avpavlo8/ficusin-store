@@ -8,6 +8,18 @@ const order = {
   refundedAmount: 0, amountDue: 8040,
 };
 
+for (const [returnTo, expectedPath] of [["/?paid=PAYMENT-TEST", "/?paid=PAYMENT-TEST"], ["/\\example.com", "/account"]]) {
+  test(`@desktop @phone login safely returns to ${expectedPath}`, async ({ page }) => {
+    await mockApi(page, owner);
+    await page.route("**/api/v1/auth/request-code", route => route.fulfill({ json: { checkId: "LOCAL-CHECK", callPhonePretty: "+7 800 000-00-00" } }));
+    await page.route("**/api/v1/auth/verify-code", route => route.fulfill({ json: { user: owner.user } }));
+    await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+    await page.getByLabel("Телефон", { exact: true }).fill("9150000000");
+    await page.getByRole("button", { name: "Войти", exact: true }).click();
+    await expect(page).toHaveURL(new URL(expectedPath, "http://127.0.0.1:4173").href, { timeout: 10_000 });
+  });
+}
+
 test("@desktop @phone return URL does not claim payment before sign in", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?paid=PAYMENT-TEST");

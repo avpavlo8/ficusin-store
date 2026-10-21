@@ -69,7 +69,12 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
   }, [cooldown]);
 
   const completeLogin = useCallback(() => {
-    window.location.assign(returnTo);
+    const target = new URL(returnTo, window.location.origin);
+    if (target.origin === window.location.origin) {
+      window.location.assign(target.href);
+    } else {
+      window.location.assign("/account");
+    }
   }, [returnTo]);
 
   useEffect(() => {
