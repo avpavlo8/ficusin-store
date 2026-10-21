@@ -163,6 +163,8 @@ func main() {
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}
+	shippingWorker := order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger)
+	orderService.WithShipmentWake(shippingWorker.Wake)
 	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient).WithPriceChannelsConfigured(map[string]bool{
 		"wb":    cfg.Marketplaces.WBToken != "",
 		"ozon":  cfg.Marketplaces.OzonClientID != "" && cfg.Marketplaces.OzonAPIKey != "",
@@ -250,7 +252,7 @@ func main() {
 	go shopSettings.Run(ctx)
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
 	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
-	go order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger).Run(ctx)
+	go shippingWorker.Run(ctx)
 	go order.NewLetterWorker(pool, mail.NewSender(mail.Config{
 		Host:     cfg.Mail.Host,
 		Port:     cfg.Mail.Port,
