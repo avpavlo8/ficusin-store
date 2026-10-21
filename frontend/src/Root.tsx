@@ -11,6 +11,7 @@ const FavoritesPage = lazy(() => import("./FavoritesPage"));
 const AccountPage = lazy(() => import("./AccountPage"));
 const AccountOrderPage = lazy(() => import("./AccountOrderPage"));
 const CartPage = lazy(() => import("./CartPage"));
+const PaymentResultPage = lazy(() => import("./PaymentResultPage"));
 const LoginPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.LoginPage })));
 const RegisterPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.RegisterPage })));
 const DeliveryPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.DeliveryPage })));
@@ -27,6 +28,13 @@ export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
   const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter /></Suspense>;
+  const query = new URLSearchParams(window.location.search);
+  const paymentPreview = query.get("preview");
+  if (import.meta.env.DEV && path === "/checkout" && (paymentPreview === "payment-success" || paymentPreview === "payment-pending" || paymentPreview === "payment-failed")) {
+    return withFooter(<PaymentResultPage orderNumber="LOCAL-1024" preview={paymentPreview === "payment-success" ? "success" : paymentPreview === "payment-failed" ? "failed" : "pending"} />);
+  }
+  const paymentReturn = path === "/" ? query.get("paid")?.trim() : null;
+  if (paymentReturn) return withFooter(<PaymentResultPage orderNumber={paymentReturn} />);
   if (path === "/discounts") return withFooter(<DiscountPlantsPage />);
   if (path === "/care") return withFooter(<CareArticlePage />);
   if (path.startsWith("/care/")) return withFooter(<CareArticlePage slug={path.slice("/care/".length)} />);

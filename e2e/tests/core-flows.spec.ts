@@ -41,7 +41,8 @@ test("@desktop прямой URL корзины меняет количество
   await drawer.getByRole("button", { name: "Увеличить" }).click();
   await expect(drawer.locator(".quantity span")).toHaveText("2");
   await expect(page.getByLabel(/Корзина, товаров: 2/)).toBeVisible();
-  await expect(drawer.locator(".cart-summary-total strong")).toHaveText("2 980 ₽");
+  await expect(drawer.locator(".order-lamp-scene dl")).toContainText(/Стоимость товаров\s*2.?980/);
+  await expect(drawer.locator(".order-lamp-total strong")).toHaveText(/≈\s*3.?480\s*₽/);
 });
 
 test("@desktop ошибка API корзины не выглядит как пустая корзина", async ({ page }) => {

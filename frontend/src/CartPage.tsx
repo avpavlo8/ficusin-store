@@ -3,6 +3,9 @@ import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { useSharedCart } from "./lib/cart";
 import { orderStorefrontCategories } from "./lib/category-order";
+import "./styles/cart.css";
+import "./styles/order-lamp.css";
+import "./styles/checkout-page.css";
 
 export default function CartPage({ checkout = false }: { checkout?: boolean }) {
   const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; slug:string; sortOrder:number }>>([]);

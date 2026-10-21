@@ -59,9 +59,6 @@ export default function CheckoutHost({
   const cart = externalCart;
   const setCart = onCartChange;
   const [notice, setNotice] = useState("");
-  const [paymentReturn, setPaymentReturn] = useState(
-    () => new URLSearchParams(window.location.search).get("paid") || "",
-  );
   const [user, setUser] = useState<StoreUser | null>(null);
   const [pricingReady, setPricingReady] = useState(false);
   const [pricingError, setPricingError] = useState(false);
@@ -73,15 +70,15 @@ export default function CheckoutHost({
   const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps: user?.retailDiscountBps ?? 0, initialOpen: checkoutPage });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
+  // Local review of the post-order screens without creating an order or clearing the cart.
+  const previewMode = import.meta.env.DEV && checkoutPage
+    ? new URLSearchParams(window.location.search).get("preview")
+    : null;
+  const previewConfirmation = previewMode === "confirmation" || previewMode === "confirmation-pending";
 
   useEffect(() => {
     if ((cartPage || checkoutPage) && cartLines.length) track("view_cart", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
   }, [cartPage, checkoutPage, cartLines.length, cartCount, subtotal]);
-
-  useEffect(() => {
-    if (!new URLSearchParams(window.location.search).has("paid")) return;
-    window.history.replaceState({}, "", window.location.pathname);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,22 +138,8 @@ export default function CheckoutHost({
 
   return (
     <div className="cart-checkout-host">
-      {notice && <div className="toast" role="status">{notice}</div>}
+      {notice && !checkoutPage && <div className="toast" role="status">{notice}</div>}
       {cartStatus === "error" && !cartPage && !checkoutPage && <div className="toast cart-error-toast" role="alert"><span>{cartError || "Изменение корзины не сохранено"}</span>{onCartRetry && <button type="button" onClick={onCartRetry}>Повторить</button>}</div>}
-
-      {paymentReturn && (
-        <div className="payment-return" role="status">
-          <b>Заказ {paymentReturn} оформлен</b>
-          <p>
-            Мы получим подтверждение оплаты в течение минуты. Состояние заказа видно
-            {user ? " в личном кабинете" : ", если войти в личный кабинет"}.
-          </p>
-          <div>
-            {user && <a className="primary-button" href={`/account/orders/${paymentReturn}`}>Открыть заказ</a>}
-            <button onClick={() => setPaymentReturn("")}>Продолжить покупки</button>
-          </div>
-        </div>
-      )}
 
       {((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage && (
         <button
@@ -183,11 +166,12 @@ export default function CheckoutHost({
         onRetry={onCartRetry}
       />}
 
-      {checkoutPage && cartStatus === "loading" ? <section className="checkout-load-state" role="status"><h1>Загружаем оформление…</h1><p>Проверяем состав и актуальные цены корзины.</p></section>
+      {previewConfirmation ? <CheckoutPanel user={!!user} page pricingReady={pricingReady} pricingError={pricingError} {...checkout.panelProps} orderNumber="LOCAL-1024" orderConfirmationPending={previewMode === "confirmation-pending"} orderConfirmationReason={previewMode === "confirmation-pending" ? "preorder" : null} delivery="pickup" paymentMethod="on_delivery" />
+        : checkoutPage && cartStatus === "loading" ? <section className="checkout-load-state" role="status"><h1>Загружаем оформление…</h1><p>Проверяем состав и актуальные цены корзины.</p></section>
         : checkoutPage && cartStatus === "error" ? <section className="checkout-load-state error" role="alert"><h1>Не удалось открыть оформление</h1><p>{cartError}</p>{onCartRetry && <button type="button" className="primary-button" onClick={onCartRetry}>Повторить</button>}</section>
           : checkoutPage && (missingCartItems > 0 || cartLines.some((item) => item.available === false)) ? <section className="checkout-load-state error" role="alert"><h1>Состав корзины изменился</h1><p>Вернитесь в корзину и удалите недоступные товары.</p><a className="primary-button" href="/cart">Вернуться в корзину</a></section>
             : checkoutPage && cartStatus === "ready" && !cartLines.length && !checkout.panelProps.orderNumber ? <section className="checkout-load-state"><h1>Корзина пуста</h1><p>Перед оформлением добавьте товары.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></section>
-              : <CheckoutPanel user={!!user} page={checkoutPage} pricingReady={pricingReady} pricingError={pricingError} {...checkout.panelProps} />}
+              : <CheckoutPanel user={!!user} page={checkoutPage} pricingReady={pricingReady} pricingError={pricingError} {...checkout.panelProps} feedbackMessage={checkoutPage ? notice : ""} />}
     </div>
   );
 }

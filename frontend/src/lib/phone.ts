@@ -2,7 +2,11 @@ export function normalizeRussianPhone(value: string) {
   const digits = value.replace(/\D/g, "");
   let nationalNumber = "";
 
-  if (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8"))) {
+  if (value.trimStart().startsWith("+")) {
+    // An explicit country code is not part of the ten national digits.
+    if (digits.length !== 11 || !digits.startsWith("7")) return null;
+    nationalNumber = digits.slice(1);
+  } else if (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8"))) {
     nationalNumber = digits.slice(1);
   } else if (digits.length === 10) {
     nationalNumber = digits;

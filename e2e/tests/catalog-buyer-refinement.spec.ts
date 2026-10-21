@@ -184,8 +184,10 @@ test("@desktop @phone unrated products reserve rating space and keep purchase wi
   await mockApi(page);
   await page.route('**/api/v1/catalog',route=>route.fulfill({json:{products:[catalogue[0],{...catalogue[0],id:'2',sku:'2',name:'Без отзывов',reviewsCount:0,rating:0}]}}));
   const widths=(await page.viewportSize())!.width>850?[1280]:[375,390];
+  await page.setViewportSize({width:widths[0],height:900});
+  await page.goto('/');
   for(const width of widths){
-    await page.setViewportSize({width,height:900});await page.goto('/');
+    await page.setViewportSize({width,height:900});
     await expect(page.locator('.storefront-card')).toHaveCount(2);
     const cards=page.locator('.storefront-card');
     const empty=cards.nth(1).locator('.storefront-rating');
@@ -193,9 +195,16 @@ test("@desktop @phone unrated products reserve rating space and keep purchase wi
     const buttons=await cards.locator('.storefront-buy > button:not(.storefront-fav), .catalog-cart-controls').all();
     const boxes=await Promise.all(buttons.map(button=>button.boundingBox()));
     expect(Math.abs(boxes[0]!.width-boxes[1]!.width)).toBeLessThan(2);
-    if (await buttons[0].getAttribute("aria-label") === "В корзину") await buttons[0].click();
+    if (width === widths[0]) {
+      const saved = page.waitForResponse(response => response.url().endsWith('/api/v1/cart') && response.request().method() === 'PUT');
+      const add = cards.first().getByRole('button', { name: 'В корзину', exact: true });
+      if (width <= 850) await add.tap(); else await add.click();
+      expect((await saved).ok()).toBe(true);
+    }
     const added=cards.first().getByRole('button',{name:'Перейти в корзину, 1 шт.'});
     await expect(added).toBeVisible();
     const content=await added.evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));expect(content.scroll).toBeLessThanOrEqual(content.width);
   }
+  await page.reload();
+  await expect(page.locator('.storefront-card').first().getByRole('button', { name: 'Перейти в корзину, 1 шт.', exact: true })).toBeVisible();
 });

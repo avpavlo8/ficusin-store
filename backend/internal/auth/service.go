@@ -150,15 +150,35 @@ func (service *Service) ConfirmCall(
 		return "", time.Time{}, false, ErrAccountExists
 	}
 
-	if _, err := service.pool.Exec(ctx, `
-		UPDATE call_checks SET consumed_at = CURRENT_TIMESTAMP WHERE check_id = $1
-	`, checkID); err != nil {
+	transaction, err := service.pool.Begin(ctx)
+	if err != nil {
+		return "", time.Time{}, false, fmt.Errorf("begin verified sign in: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	consumed, err := transaction.Exec(ctx, `
+		UPDATE call_checks SET consumed_at = CURRENT_TIMESTAMP
+		WHERE check_id = $1 AND phone = $2 AND consumed_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+	`, checkID, phone)
+	if err != nil {
 		return "", time.Time{}, false, fmt.Errorf("consume call check: %w", err)
 	}
+	if consumed.RowsAffected() != 1 {
+		return "", time.Time{}, false, ErrInvalidCode
+	}
+	// Only the verified phone links guest orders. Email and profile edits do
+	// not prove ownership, and an order already assigned to someone stays theirs.
+	if _, err := transaction.Exec(ctx, `
+		UPDATE orders SET customer_id = $1 WHERE customer_id IS NULL AND phone = $2
+	`, customerID, phone); err != nil {
+		return "", time.Time{}, false, fmt.Errorf("link verified guest orders: %w", err)
+	}
 
-	token, expiresAt, err = service.createSession(ctx, service.pool, customerID, meta.UserAgent)
+	token, expiresAt, err = service.createSession(ctx, transaction, customerID, meta.UserAgent)
 	if err != nil {
 		return "", time.Time{}, false, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return "", time.Time{}, false, fmt.Errorf("commit verified sign in: %w", err)
 	}
 	return token, expiresAt, false, nil
 }

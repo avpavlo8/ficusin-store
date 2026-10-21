@@ -89,15 +89,19 @@ test("@phone checkout stays below the menu and bottom navigation", async ({ page
     .toBeGreaterThan(await tabBar.evaluate((node) => Number(getComputedStyle(node).zIndex)));
 });
 
-test("@phone all checkout steps fit without a hidden horizontal strip", async ({ page }) => {
+test("@phone the continuous checkout fits a narrow screen without a hidden horizontal strip", async ({ page }) => {
   await setStoredCounts(page, [], { "1": 2 });
   await mockApi(page);
   await page.goto("/checkout");
-  const steps = page.locator(".checkout-steps");
-  await expect(steps.locator("span")).toHaveCount(4);
-  const [clientWidth, scrollWidth] = await steps.evaluate((node) => [node.clientWidth, node.scrollWidth]);
-  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
-  for (const step of await steps.locator("span").all()) await expect(step).toBeInViewport();
+  await expect(page.locator(".checkout-steps")).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 800 });
+  for (const section of [".checkout-contact-section", ".checkout-delivery-section", ".checkout-order-summary", ".checkout-submit-section"]) {
+    const block = page.locator(section);
+    await expect(block).toBeVisible();
+    const [clientWidth, scrollWidth] = await block.evaluate((node) => [node.clientWidth, node.scrollWidth]);
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  }
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
 test("@phone all account sections remain visible without clipping", async ({ page }) => {

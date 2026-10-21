@@ -9,7 +9,9 @@
     "budget": "node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings=0 && npm run lint:css",
-    "lint:css": "node scripts/check-dead-css.mjs"
+    "lint:css": "node scripts/check-dead-css.mjs",
+    "test:phone": "node --experimental-strip-types --test tests/phone.test.mjs",
+    "test:payment-result": "node --experimental-strip-types --test tests/payment-result.test.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

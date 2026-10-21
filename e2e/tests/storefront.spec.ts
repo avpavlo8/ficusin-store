@@ -341,7 +341,7 @@ test("@desktop корзина открывается отдельной стра
   await expect(drawer.locator(".quantity span")).toHaveText("1");
 });
 
-test("@desktop корзина ведёт в отдельный пошаговый checkout", async ({ page }) => {
+test("@desktop корзина ведёт в оформление с контактами и доставкой на одной странице", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
 
@@ -356,13 +356,11 @@ test("@desktop корзина ведёт в отдельный пошаговы�
   await expect(checkout.getByRole("heading", { name: "Оформление заказа" })).toBeVisible();
   await expect(checkout.getByLabel("Имя")).toBeVisible();
   await expect(checkout.getByLabel("Телефон")).toBeVisible();
-  await expect(checkout.getByText("Способ доставки")).toBeHidden();
+  await expect(checkout.getByText("Способ доставки", { exact: true })).toBeVisible();
   await checkout.getByLabel("Имя").fill("Мария");
   await checkout.getByLabel("Телефон").fill("+7 900 123-45-67");
   await checkout.getByLabel("Email для чека").fill("maria@example.ru");
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
-  await expect(checkout.getByText("Способ доставки")).toBeVisible();
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.locator('input[name="delivery"][value="pickup"]').check();
   await expect(checkout.getByText("Способ оплаты")).toBeVisible();
   await expect(checkout.locator('input[name="consent"]')).toBeVisible();
 });
@@ -385,10 +383,9 @@ test("@desktop оформление отправляет заказ с норм�
   await checkout.getByLabel("Имя").fill("Александр");
   await checkout.getByLabel("Телефон").fill("9151234567");
   await checkout.getByLabel("Email для чека").fill("buyer@example.com");
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.locator('input[name="delivery"][value="pickup"]').check();
   await checkout.locator('input[name="consent"]').check();
-  await checkout.getByRole("button", { name: /Продолжить/ }).click();
+  await checkout.getByRole("button", { name: /Оформить заказ/ }).click();
 
   await expect(checkout.getByRole("heading", { name: "Заказ принят" }).last()).toBeVisible();
   await expect(checkout.getByText("#WEB-1001")).toBeVisible();
