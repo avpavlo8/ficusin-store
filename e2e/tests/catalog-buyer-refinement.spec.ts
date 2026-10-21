@@ -184,6 +184,7 @@ test("@desktop @phone unrated products reserve rating space and keep purchase wi
   await mockApi(page);
   await page.route('**/api/v1/catalog',route=>route.fulfill({json:{products:[catalogue[0],{...catalogue[0],id:'2',sku:'2',name:'Без отзывов',reviewsCount:0,rating:0}]}}));
   const widths=(await page.viewportSize())!.width>850?[1280]:[375,390];
+  await page.setViewportSize({width:widths[0],height:900});
   await page.goto('/');
   for(const width of widths){
     await page.setViewportSize({width,height:900});
