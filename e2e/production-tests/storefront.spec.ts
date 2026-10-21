@@ -166,6 +166,20 @@ test("production guest cart keeps an exact SKU and renders the server snapshot",
     await page.getByRole("button", { name: /Оформить заказ/ }).first().click();
     await expect(page.locator(".checkout-order-summary")).toContainText("Выберите способ получения");
     await expect(page.locator(".checkout-order-summary")).toContainText("Растения, без доставки");
+    const contact = page.locator(".checkout-contact-section");
+    await contact.getByLabel("Имя", { exact: true }).fill("Проверка интерфейса");
+    await contact.getByLabel("Телефон", { exact: true }).fill("915123456");
+    await expect(contact.locator("#phone-error")).toHaveText("Укажите номер телефона");
+    await contact.getByLabel("Телефон", { exact: true }).fill("9151234567");
+    await contact.getByLabel("Email для чека", { exact: true }).fill("invalid");
+    await expect(contact.locator("#email-error")).toHaveText("Укажите корректный email для чека");
+    await contact.getByLabel("Email для чека", { exact: true }).fill("smoke@example.invalid");
+    await page.locator('input[name="delivery"][value="pickup"]').check();
+    await page.locator('input[name="paymentMethod"][value="on_delivery"]').check();
+    await expect(page.locator(".checkout-order-summary")).toContainText("Бесплатно");
+    await expect(page.locator('input[name="consent"]')).not.toBeChecked();
+    await expect(page.locator(".checkout-navigation button.primary-button")).toBeDisabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   } finally {
     const cleared = await page.request.put("/api/v1/cart", { data: { items: {} } });
     expect(cleared.ok()).toBeTruthy();
