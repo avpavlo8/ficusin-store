@@ -58,7 +58,7 @@ func (worker *ReconcileWorker) process(ctx context.Context) {
 		WHERE p.status IN ($1,$2) AND p.provider_payment_id<>''
 			AND p.created_at>CURRENT_TIMESTAMP-INTERVAL '8 days'
 			AND (p.created_at>CURRENT_TIMESTAMP-$3::INTERVAL OR
-				(p.request_payload->'metadata'->>'ficusin_capture_mode'='two_stage'
+				(COALESCE(p.request_payload->'Metadata'->>'ficusin_capture_mode',p.request_payload->'metadata'->>'ficusin_capture_mode','')='two_stage'
 				AND p.updated_at<CURRENT_TIMESTAMP-INTERVAL '5 minutes'))
 		ORDER BY p.updated_at,p.id LIMIT 50
 	`, StatusPending, StatusSuperseded, reconcileWindow.String())
