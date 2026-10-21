@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput, normalizeRussianPhone } from "./lib/phone";
 import { StoreHeader } from "./StoreHeader";
 
@@ -39,6 +39,9 @@ const POLL_INTERVAL_MS = 3000;
 
 function AuthPage({ flow }: { flow: AuthFlow }) {
   const isRegistration = flow === "register";
+  const requestedReturn = new URLSearchParams(window.location.search).get("returnTo");
+  const returnTo = requestedReturn?.startsWith("/") && !requestedReturn.startsWith("//") ? requestedReturn : "/account";
+  const switchQuery = returnTo === "/account" ? "" : `?returnTo=${encodeURIComponent(returnTo)}`;
   const [step, setStep] = useState<"form" | "waiting">("form");
   const [phone, setPhone] = useState("");
   const [checkId, setCheckId] = useState("");
@@ -65,12 +68,9 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
     return () => window.clearInterval(timer);
   }, [cooldown]);
 
-  function completeLogin() {
-    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-    window.location.assign(
-      returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/account",
-    );
-  }
+  const completeLogin = useCallback(() => {
+    window.location.assign(returnTo);
+  }, [returnTo]);
 
   useEffect(() => {
     if (step !== "waiting") return;
@@ -109,7 +109,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [step]);
+  }, [step, completeLogin]);
 
   async function requestCall(targetPhone: string, registrationDraft = registration) {
     setError("");
@@ -321,9 +321,9 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
             </button>
             <p className="auth-switch">
               {isRegistration ? (
-                <>Уже зарегистрированы? <a href="/login">Войти</a></>
+                <>Уже зарегистрированы? <a href={`/login${switchQuery}`}>Войти</a></>
               ) : (
-                <>Нет аккаунта? <a href="/register">Зарегистрироваться</a></>
+                <>Нет аккаунта? <a href={`/register${switchQuery}`}>Зарегистрироваться</a></>
               )}
             </p>
           </form>

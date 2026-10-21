@@ -58,8 +58,8 @@ func Methods(delivery string, wholesaleApproved, onlineConfigured bool) []Method
 	if delivery == "pickup" {
 		methods = append(methods, Method{
 			ID:    MethodOnDelivery,
-			Title: "При получении",
-			Note:  "Оплатите, когда заберёте заказ",
+			Title: "Наличными при получении",
+			Note:  "В магазине при самовывозе",
 		})
 	}
 	if wholesaleApproved {
@@ -88,6 +88,21 @@ func Allowed(method, delivery string, wholesaleApproved, onlineConfigured bool) 
 		}
 	}
 	return false
+}
+
+// ResolveMethod preserves an available payment choice for preorders too.
+// A preorder without a choice keeps its future payment method until confirmation.
+func ResolveMethod(requested, delivery string, wholesaleApproved, onlineConfigured, hasPreorder bool) (string, bool) {
+	if Allowed(requested, delivery, wholesaleApproved, onlineConfigured) {
+		return requested, true
+	}
+	if hasPreorder {
+		if onlineConfigured {
+			return MethodOnline, true
+		}
+		return MethodManager, true
+	}
+	return "", false
 }
 
 // InitialStatus is what the order starts with once the method is known.

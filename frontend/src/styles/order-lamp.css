@@ -1,0 +1,143 @@
+/* The same lamp and illuminated paper continue through cart and checkout. */
+.cart-summary .order-lamp-scene,
+.order-lamp-scene {
+  display: block;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 148px 28px 28px;
+  border: 1px solid var(--co-line);
+  border-radius: 16px;
+  background: #fffcf6;
+}
+.order-lamp-scene::before,
+.order-lamp-scene::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+.order-lamp-scene::before {
+  background: radial-gradient(ellipse 180px 142px at 50% 190px, #fff3c6 0%, rgba(255, 246, 213, .88) 48%, transparent 100%);
+}
+.order-lamp-scene::after {
+  background: linear-gradient(180deg, transparent 210px, rgba(69, 60, 38, .025) 280px, rgba(69, 60, 38, .075) 370px, rgba(69, 60, 38, .09));
+}
+.order-lamp-scene.is-lit::before,
+.order-lamp-scene.is-lit::after {
+  opacity: 1;
+}
+.cart-pendant-lamp {
+  width: 148px;
+  height: 148px;
+  max-width: none;
+  position: absolute;
+  z-index: 2;
+  top: -16px;
+  left: calc(50% - 74px);
+  object-fit: contain;
+  pointer-events: none;
+  transition: filter 240ms ease-out;
+}
+.order-lamp-scene:not(.is-lit) .cart-pendant-lamp {
+  filter: brightness(.7);
+}
+.order-lamp-switch {
+  width: 148px;
+  height: 132px;
+  padding: 0;
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: calc(50% - 74px);
+  border: 0;
+  border-radius: 0 0 12px 12px;
+  background: transparent;
+  color: var(--co-green);
+  cursor: pointer;
+}
+.order-lamp-switch svg {
+  width: 16px;
+  height: 16px;
+  position: absolute;
+  bottom: 8px;
+  right: -20px;
+  opacity: .7;
+}
+.order-lamp-switch:hover svg {
+  opacity: 1;
+}
+.order-lamp-switch:focus-visible {
+  outline: 2px solid var(--co-green);
+  outline-offset: -4px;
+}
+.order-lamp-beam {
+  width: 100%;
+  height: 204px;
+  display: block;
+  position: absolute;
+  z-index: -1;
+  top: 112px;
+  left: 0;
+  pointer-events: none;
+  background: conic-gradient(from 142deg at 50% 0, transparent 0deg, rgba(255, 230, 164, .45) 8deg, rgba(255, 243, 203, .95) 26deg, rgba(255, 243, 203, .95) 50deg, rgba(255, 230, 164, .45) 68deg, transparent 76deg);
+  mask-image: linear-gradient(#000 35%, transparent 100%);
+  filter: blur(5px);
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+.order-lamp-scene.is-lit .order-lamp-beam {
+  opacity: 1;
+}
+.order-lamp-total {
+  display: grid;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+  padding: 8px 0 24px;
+  width: 100%;
+  text-align: center;
+  color: var(--co-ink);
+  font-size: 14px;
+}
+.order-lamp-total strong {
+  font: 500 42px/1.15 Georgia, serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 0 2px 12px rgba(255, 253, 233, .9);
+}
+.order-lamp-scene dl {
+  margin-top: 0;
+  padding-top: 24px;
+  gap: 16px;
+  border-top: 1px solid var(--co-line);
+  font-size: 14px;
+}
+.order-lamp-scene dl > div {
+  align-items: baseline;
+}
+.order-lamp-scene dt {
+  max-width: 52%;
+}
+.order-lamp-scene dd {
+  max-width: 58%;
+  font-variant-numeric: tabular-nums;
+}
+.order-lamp-scene p {
+  font-size: 12px;
+}
+
+@media (max-width: 400px) {
+  .cart-summary .order-lamp-scene,
+  .order-lamp-scene { padding-inline: 20px; }
+  .order-lamp-total strong { font-size: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cart-pendant-lamp, .order-lamp-beam, .order-lamp-scene::before, .order-lamp-scene::after { transition: none; }
+}

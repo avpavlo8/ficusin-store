@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
 import { money } from "./lib/money";
+import "./styles/order-detail.css";
 
 type StoreUser = {
   fullName: string;
@@ -9,7 +10,7 @@ type StoreUser = {
   email: string;
 };
 
-type OrderDetail = {
+export type OrderDetail = {
   orderNumber: string;
   deliveryMethod: string;
   address: string;
@@ -20,6 +21,7 @@ type OrderDetail = {
   email: string;
   status: string;
   paymentStatus: string;
+  paymentAttemptStatus?: string;
   paymentMethod: string;
   deliveryFee: number;
   deliveryPayee?: "shop" | "carrier";
@@ -77,18 +79,26 @@ const deliveryPendingText = (order: OrderDetail) => order.deliveryPayee === "car
   : "Менеджер уточнит стоимость доставки и сообщит итоговую сумму заказа до оплаты.";
 
 export default function AccountOrderPage({ orderNumber }: { orderNumber: string }) {
+  const isPreview = import.meta.env.DEV && orderNumber === "LOCAL-1024";
   const [user, setUser] = useState<StoreUser | null>(null);
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
 
-  const payOffer=async(offer:ShipmentOffer)=>{if(order?.status === "cancelled" || !offer.paymentToken)return;setPaying(true);setError("");try{const response=await fetch(`/api/v1/payments/shipment-offers/${encodeURIComponent(offer.paymentToken)}`,{method:"POST",credentials:"same-origin"});const body=await response.json() as {confirmationUrl?:string;error?:string};if(!response.ok||!body.confirmationUrl)throw new Error(body.error||"Не удалось начать оплату растений");window.location.assign(body.confirmationUrl);}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось начать оплату растений");setPaying(false)}};
+  const payOffer=async(offer:ShipmentOffer)=>{if(isPreview || order?.status === "cancelled" || !offer.paymentToken)return;setPaying(true);setError("");try{const response=await fetch(`/api/v1/payments/shipment-offers/${encodeURIComponent(offer.paymentToken)}`,{method:"POST",credentials:"same-origin"});const body=await response.json() as {confirmationUrl?:string;error?:string};if(!response.ok||!body.confirmationUrl)throw new Error(body.error||"Не удалось начать оплату растений");window.location.assign(body.confirmationUrl);}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось начать оплату растений");setPaying(false)}};
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
+      if (import.meta.env.DEV && orderNumber === "LOCAL-1024") {
+        const { getPreviewOrder } = await import("./previewOrder");
+        const previewOrder = getPreviewOrder(new URLSearchParams(window.location.search).get("state"));
+        setOrder(previewOrder);
+        setUser({ fullName: "Анна", lastName: "", phone: previewOrder.phone, email: previewOrder.email });
+        return;
+      }
       const [meResponse, orderResponse] = await Promise.all([
         fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" }),
         fetch(`/api/v1/account/orders/${encodeURIComponent(orderNumber)}`, {
@@ -136,23 +146,27 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
 
   useEffect(() => { void load(); }, [load]);
 
-  // Клиент не редактирует заказ. Пока он ждёт решения менеджера, карточка
-  // сама подхватывает подтверждение: после сохранения в админке кнопка оплаты
-  // появляется без ручного F5. Фокус окна даёт мгновенную проверку, таймер —
-  // запасной путь, если вкладка всё время открыта.
+  // Active orders keep receiving both payment and fulfilment updates.
+  // Focus refreshes immediately; hidden tabs wait until the buyer returns.
   useEffect(() => {
-    if (!order || order.status === "cancelled" || (order.paymentReady && !order.hasPreorder && !order.deliveryFeePending) || order.amountDue <= 0) return;
-    const timer = window.setInterval(() => { void refreshOrder(); }, 8_000);
+    if (isPreview || !order || ["cancelled", "completed"].includes(order.status)) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshOrder();
+    }, 8_000);
     const refreshOnFocus = () => { void refreshOrder(); };
     window.addEventListener("focus", refreshOnFocus);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refreshOnFocus);
     };
-  }, [order, refreshOrder]);
+  }, [isPreview, order, refreshOrder]);
 
   const pay = async () => {
-    if (!order || order.status === "cancelled" || !order.paymentReady || order.hasPreorder || order.deliveryFeePending || order.amountDue <= 0) return;
+    if (isPreview) {
+      window.location.assign("/checkout?preview=payment-success");
+      return;
+    }
+    if (!order || order.paymentMethod === "on_delivery" || order.status === "cancelled" || !order.paymentReady || order.hasPreorder || order.deliveryFeePending || order.amountDue <= 0) return;
     setPaying(true);
     setError("");
     try {
@@ -171,12 +185,33 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
     }
   };
 
-  return <main className="account-page">
+  const cancelled = order?.status === "cancelled";
+  const cashOnPickup = order?.deliveryMethod === "pickup" && order?.paymentMethod === "on_delivery";
+  const needsConfirmation = !!order && !["cancelled", "ready", "shipped", "completed"].includes(order.status) && (order.hasPreorder || order.deliveryFeePending || (!order.paymentReady && !cashOnPickup && order.status === "new" && order.amountDue > 0));
+  const canPay = !!order && !cancelled && !cashOnPickup && order.paymentReady && !order.hasPreorder && !order.deliveryFeePending && order.amountDue > 0;
+  const pickup = order?.deliveryMethod === "pickup";
+  const stages = pickup
+    ? ["Оформлен", "Подтверждён", "Готов к выдаче", "Получен"]
+    : ["Оформлен", "Подтверждён", "Собран", "Передан в доставку", "Получен"];
+  const stageIndex = order ? ({ new: 0, confirmed: 1, assembling: 1, processing: 1, ready: 2, shipped: pickup ? 2 : 3, completed: stages.length - 1 }[order.status] ?? 0) : 0;
+  const statusTitle = needsConfirmation ? "Ждёт подтверждения" : order ? orderStatusLabels[order.status] ?? order.status : "";
+  const statusText = !order ? "" : cancelled
+    ? `${order.cancellationReason ? `${order.cancellationReason}. ` : ""}Заказ отменён. Если растения ещё нужны, оформите новый заказ по актуальным цене и наличию.`
+    : needsConfirmation
+      ? order.hasPreorder ? "Менеджер уточнит наличие растений и свяжется с вами. Оплата пока не требуется." : order.deliveryFeePending ? deliveryPendingText(order) : "Менеджер проверит детали заказа. После подтверждения здесь появится кнопка оплаты."
+      : canPay && order.status === "confirmed" ? "Заказ готов к оплате. Проверьте состав и способ получения."
+      : order.status === "completed" ? "Спасибо, что выбрали Фикусин!"
+      : order.status === "shipped" ? "Заказ передан в доставку. Трек-номер, если он уже доступен, указан ниже."
+      : order.status === "ready" ? pickup ? "Растения готовы к выдаче в магазине." : "Растения собраны и готовы к отправке."
+      : order.status === "assembling" || order.status === "processing" ? "Собираем и проверяем ваши растения."
+      : "Заказ принят. Здесь можно следить за его статусом и деталями.";
+
+  return <main className="account-page order-detail-page">
     <StoreHeader />
     <section className="account-shell">
       <aside className="account-sidebar">
-        <h1>{user ? [user.lastName, user.fullName].filter(Boolean).join(" ") : "Личный кабинет"}</h1>
-        {user && <p>{user.phone}{user.email ? <><br />{user.email}</> : null}</p>}
+        <h1>Личный кабинет</h1>
+        {user && <p>{[user.fullName, user.lastName].filter(Boolean).join(" ")}</p>}
         <nav aria-label="Разделы личного кабинета">
           <a className="active" href="/account"><span>Мои заказы</span></a>
           <a href="/account/profile"><span>Мои данные</span></a>
@@ -185,34 +220,50 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
         </nav>
       </aside>
       <div className="account-content">
-        <a className="text-link account-back-link" href="/account">← Ко всем заказам</a>
-        {loading && <div className="account-title"><div><p className="eyebrow">Заказ</p><h2>Загружаем…</h2></div></div>}
-        {error && <p className="auth-error" role="alert">{error}</p>}
+        <a className="order-detail-back" href="/account"><span aria-hidden="true">←</span> Все заказы</a>
+        {isPreview && <p className="order-preview-note">Демонстрационный заказ · локальный просмотр</p>}
+        {loading && <p className="order-detail-loading" role="status">Загружаем заказ…</p>}
+        {error && <div className="auth-error" role="alert"><p>{error}</p>{!order && <button className="secondary-button" onClick={() => void load()}>Попробовать снова</button>}</div>}
         {!loading && order && <>
-          <div className="account-title">
-            <div>
-              <p className="eyebrow">Оформлен {new Date(order.createdAt).toLocaleDateString("ru-RU")}</p>
-              <h2>Заказ {order.orderNumber}</h2>
+          <header className="order-detail-heading">
+            <h2>Заказ <span>№ {order.orderNumber}</span></h2>
+            <p>Оформлен {new Date(order.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</p>
+          </header>
+          <section className="order-journey" data-cancelled={cancelled} aria-label="Статус заказа">
+            <div className="order-journey-copy" aria-live="polite" aria-atomic="true">
+              <h3>{statusTitle}</h3>
+              {!cancelled && <img className="order-journey-art" src="/assets/redesign/order-plant-parcel-studio-v2.webp" alt="" width={176} height={176} />}
+              <p>{statusText}</p>
+              {canPay && <a className="order-payment-jump" href="#order-payment">Перейти к оплате <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5" /></svg></a>}
             </div>
-            <span>{orderStatusLabels[order.status] ?? order.status}</span>
-          </div>
-          {order.status === "cancelled" && <p className="order-note">{order.cancellationReason ? `${order.cancellationReason}. ` : ""}Заказ отменён. Если растения ещё нужны, оформите новый заказ по актуальным цене и наличию.</p>}
-
-          <section className="order-items">
-            {order.items.map((item, index) => <div className="order-item" key={`${item.productName}-${index}`}>
-              <span>{item.productName}</span>
-              <small>{item.quantity} × {money.format(item.unitPrice)}</small>
-              <strong>{money.format(item.unitPrice * item.quantity)}</strong>
-            </div>)}
+            {!cancelled && <ol className="order-journey-steps" aria-label="Этапы заказа" tabIndex={0}>
+              {stages.map((label, index) => <li key={label} data-state={index < stageIndex ? "done" : index === stageIndex ? "current" : "upcoming"} aria-current={index === stageIndex ? "step" : undefined}>
+                <span className="order-journey-marker" aria-hidden="true">{index < stageIndex ? <svg viewBox="0 0 20 20"><path d="m5 10 3 3 7-7" /></svg> : index + 1}</span>
+                <span>{label}</span>
+              </li>)}
+            </ol>}
           </section>
-
+          <div className="order-detail-layout">
+            <div className="order-detail-main">
+              <section className="order-detail-plants" aria-labelledby="order-plants-title">
+                <header><h3 id="order-plants-title">Ваши растения</h3><span>{order.items.reduce((count, item) => count + item.quantity, 0)} шт.</span></header>
+                <div className="order-detail-table" role="table" aria-label="Состав заказа">
+                  <div className="order-detail-table-head" role="row"><span role="columnheader">Товар</span><span role="columnheader">Цена</span><span role="columnheader">Кол-во</span><span role="columnheader">Сумма</span></div>
+                  {order.items.map((item, index) => <div className="order-detail-item" role="row" key={`${item.productName}-${index}`}>
+                    <strong role="cell">{item.productName}</strong>
+                    <span role="cell"><small>Цена: </small>{money.format(item.unitPrice)}</span>
+                    <span role="cell">{item.quantity}<small> шт.</small></span>
+                    <b role="cell">{money.format(item.unitPrice * item.quantity)}</b>
+                  </div>)}
+                </div>
+              </section>
           {!!order.shipmentOffers?.some((offer) => order.status !== "cancelled" || ["paid", "shipping", "shipped", "ready", "completed"].includes(offer.status))&&<section className="account-shipment-offers">
             <div><p className="eyebrow">Частичная отправка</p><h3>Готовы к отправке</h3></div>
             {order.shipmentOffers.filter((offer) => order.status !== "cancelled" || ["paid", "shipping", "shipped", "ready", "completed"].includes(offer.status)).map(offer=><article className={`account-shipment-offer account-shipment-offer-${offer.status}`} key={offer.id}>
               <div>{offer.items.map((item,index)=><p key={`${item.productName}-${index}`}><strong>{item.productName}</strong><span>{item.quantity} × {money.format(item.unitPrice)}</span>{item.originalUnitPrice!=null&&item.originalUnitPrice!==item.unitPrice&&<small>При оформлении: {money.format(item.originalUnitPrice)} · цена обновлена при поступлении</small>}</p>)}</div>
               <div><span>Растения</span><strong>{money.format(offer.subtotal)}</strong><span>{offer.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"} · {offer.boxes} кор.</span><strong>{money.format(offer.deliveryFee)}</strong><span>{offer.deliveryPayee === "carrier" ? "К оплате за растения" : "К оплате"}</span><strong>{money.format(offer.total)}</strong></div>
               {offer.deliveryPayee === "carrier"&&<p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
-              {order.status !== "cancelled" && offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`${offer.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить отправку"} ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
+              {order.status !== "cancelled" && offer.status==="offered"&&offer.paymentToken&&<><button className="primary-button" disabled={paying || isPreview} onClick={()=>void payOffer(offer)}>{paying?"Открываем оплату…":`${offer.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить отправку"} ${money.format(offer.total)}`}</button>{offer.expiresAt&&<small>Оплатите до {new Date(offer.expiresAt).toLocaleString("ru-RU")}. Наличие проверяется перед оплатой.</small>}</>}
               {offer.status==="payment_pending"&&<p className="order-note">Платёж проверяется. Повторная ссылка не создаётся.</p>}
               {offer.status==="paid"&&<p className="order-note">Эта отправка оплачена.</p>}
               {offer.status==="expired"&&<p className="order-note">Срок предложения истёк. Ожидаемые растения остались в исходном заказе.</p>}
@@ -220,32 +271,37 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             </article>)}
             {order.status !== "cancelled" && order.hasPreorder&&<p className="order-note">Ожидаем поступления остальных растений. Они сохраняются в исходном заказе и будут предложены отдельно.</p>}
           </section>}
-
-          <section className="order-totals">
-            <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>
-            <div><span>{order.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"}</span><span>{order.deliveryFeePending ? "уточняет менеджер" : money.format(order.deliveryFee)}</span></div>
-            <div className="total"><span>{order.status === "cancelled" ? "Сумма отменённого заказа" : order.deliveryPayee === "carrier" ? "К оплате за растения" : "Итого к оплате"}</span><span>{money.format(order.total)}</span></div>
-            {order.paidAmount > 0 && <div><span>Оплачено</span><span>{money.format(order.paidAmount)}</span></div>}
-            {order.refundedAmount > 0 && <div><span>Возвращено</span><span>{money.format(order.refundedAmount)}</span></div>}
-            {order.status !== "cancelled" && order.amountDue > 0 && <div className="total"><span>К доплате</span><span>{money.format(order.amountDue)}</span></div>}
-            {order.status !== "cancelled" && order.hasPreorder && <p className="order-note">В заказе есть товар, наличие которого должен подтвердить менеджер. Оплата откроется после подтверждения.</p>}
-            {order.status !== "cancelled" && order.deliveryFeePending && <p className="order-note">{deliveryPendingText(order)}</p>}
-            {order.status !== "cancelled" && !order.deliveryFeePending && order.deliveryPayee === "carrier" && <p className="order-note">Доставка оплачивается перевозчику при получении.</p>}
-          </section>
-
-          <section className="order-facts">
-            <div><small>Способ получения</small><span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span></div>
-            {order.address && <div><small>Адрес</small><span>{order.address}</span></div>}
-            {order.trackNumber && <div><small>Трек-номер СДЭК</small><span>{order.trackNumber}</span></div>}
-            <div><small>Оплата</small><span className={order.amountDue === 0 ? "payment-state paid" : "payment-state unpaid"}>{order.status === "cancelled" ? "Заказ отменён" : paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span></div>
-            {order.status !== "cancelled" && order.paymentReady && !order.hasPreorder && !order.deliveryFeePending && order.amountDue > 0 && <button className="primary-button" disabled={paying} onClick={() => void pay()}>
-              {paying ? "Открываем оплату…" : `${order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"} ${money.format(order.amountDue)}`}
-            </button>}
-            {order.status !== "cancelled" && !order.paymentReady && order.amountDue > 0 && <p className="order-note">Заказ принят. Менеджер проверит {order.hasPreorder ? "наличие растений" : "детали заказа"}; после его решения здесь появится кнопка оплаты.</p>}
-            {order.status !== "cancelled" && order.amountDue === 0 && order.paymentStatus === "paid" && <p className="order-note">Заказ полностью оплачен.</p>}
-            <div><small>Получатель</small><span>{order.customerName}, {order.phone}</span></div>
-            {order.comment && <div><small>Комментарий</small><span>{order.comment}</span></div>}
-          </section>
+              <section className="order-detail-receiving" aria-labelledby="order-receiving-title">
+                <h3 id="order-receiving-title">Получение заказа</h3>
+                <dl>
+                  <div><dt>Способ получения</dt><dd>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</dd></div>
+                  {order.address && <div><dt>Адрес</dt><dd>{order.address}</dd></div>}
+                  {order.trackNumber && <div><dt>Трек-номер</dt><dd>{order.trackNumber}</dd></div>}
+                  <div><dt>Получатель</dt><dd>{order.customerName}<br />{order.phone}{order.email && <><br />{order.email}</>}</dd></div>
+                  {order.comment && <div><dt>Комментарий</dt><dd>{order.comment}</dd></div>}
+                </dl>
+              </section>
+            </div>
+            <aside className="order-detail-summary" aria-labelledby="order-summary-title">
+              <h3 id="order-summary-title">Ваш заказ</h3>
+              <dl>
+                <div><dt>Стоимость товаров</dt><dd>{money.format(order.subtotal)}</dd></div>
+                <div><dt>{order.deliveryPayee === "carrier" ? "Доставка перевозчику" : "Доставка"}</dt><dd>{order.deliveryFeePending ? cancelled ? "Не рассчитана" : "Уточнит менеджер" : order.deliveryFee === 0 && pickup ? "Бесплатно" : money.format(order.deliveryFee)}</dd></div>
+                <div className="order-detail-total"><dt>{cancelled ? "Сумма отменённого заказа" : order.deliveryPayee === "carrier" ? "К оплате за растения" : order.deliveryFeePending ? "Предварительно" : "Итого"}</dt><dd>{money.format(order.total)}</dd></div>
+                {order.paidAmount > 0 && <div><dt>Оплачено</dt><dd>{money.format(order.paidAmount)}</dd></div>}
+                {order.refundedAmount > 0 && <div><dt>Возвращено</dt><dd>{money.format(order.refundedAmount)}</dd></div>}
+                {!cancelled && order.amountDue > 0 && order.paidAmount > 0 && <div><dt>К доплате</dt><dd>{money.format(order.amountDue)}</dd></div>}
+              </dl>
+              <div className="order-detail-payment" id="order-payment" tabIndex={-1}>
+                <span>{cancelled ? "Заказ отменён" : order.amountDue === 0 && order.paymentStatus === "paid" ? "Заказ полностью оплачен" : cashOnPickup ? "Наличными при получении" : paymentLabels[order.paymentStatus] ?? order.paymentStatus}</span>
+                {needsConfirmation && <p>{cashOnPickup ? "Оплата в магазине после подтверждения заказа." : "Оплата откроется после подтверждения менеджером."}</p>}
+                {!cancelled && order.deliveryFeePending && order.hasPreorder && <p>{deliveryPendingText(order)}</p>}
+                {!cancelled && !order.deliveryFeePending && order.deliveryPayee === "carrier" && <p>Доставка оплачивается перевозчику при получении.</p>}
+                {canPay && <button className="primary-button" disabled={paying} onClick={() => void pay()}><span>{paying ? "Открываем оплату…" : `${order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"} ${money.format(order.amountDue)}`}</span>{!paying && <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5" /></svg>}</button>}
+              </div>
+              <a className="order-detail-help" href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос о заказе <span aria-hidden="true">↗</span></a>
+            </aside>
+          </div>
         </>}
       </div>
     </section>

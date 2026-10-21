@@ -204,7 +204,7 @@ export async function mockApi(page: Page, session: Session = guest) {
   await context.route("**/api/v1/payments/methods?delivery=*", (route) => {
     const delivery = new URL(route.request().url()).searchParams.get("delivery");
     const methods = delivery === "pickup"
-      ? [{ id: "on_delivery", title: "При получении", note: "Оплатите, когда заберёте заказ" }]
+      ? [{ id: "on_delivery", title: "Наличными при получении", note: "В магазине при самовывозе" }]
       : [{ id: "manager_confirmation", title: "После подтверждения менеджером", note: "Оплата после подтверждения заказа менеджером" }];
     return route.fulfill({ json: { methods } });
   });

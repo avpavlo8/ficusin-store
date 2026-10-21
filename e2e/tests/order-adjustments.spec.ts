@@ -1,6 +1,24 @@
 import { expect, test } from "@playwright/test";
 import { mockApi, owner } from "./helpers";
 
+test("@desktop самовывоз с наличными не предлагает оплату картой", async ({ page }) => {
+  await mockApi(page, owner);
+  await page.route("**/api/v1/account/orders/0001-cash", (route) => route.fulfill({ json: {
+    order: {
+      orderNumber: "0001-cash", deliveryMethod: "pickup", address: "Магазин", comment: "",
+      customerName: "Александр", phone: "+79990000000", email: "test@example.com",
+      status: "confirmed", paymentStatus: "on_delivery", paymentMethod: "on_delivery",
+      deliveryFee: 0, hasPreorder: false, deliveryFeePending: false,
+      subtotal: 1490, total: 1490, paidAmount: 0, refundedAmount: 0,
+      amountDue: 1490, paymentReady: true, createdAt: "2026-10-21T12:00:00Z",
+      items: [{ productName: "Аглаонема", unitPrice: 1490, quantity: 1 }], shipmentOffers: [],
+    },
+  } }));
+  await page.goto("/account/orders/0001-cash");
+  await expect(page.getByText("Наличными при получении", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
+});
+
 test("@desktop кабинет показывает возврат и оплачивает только остаток", async ({ page }) => {
   await mockApi(page, owner);
   await page.route("**/api/v1/account/orders/0001-7", (route) => route.fulfill({
@@ -100,7 +118,7 @@ test("@desktop отменённый предзаказ не обещает бу�
 
   await expect(page.getByText("Заказ отменён. Если растения ещё нужны, оформите новый заказ по актуальным цене и наличию.")).toBeVisible();
   await expect(page.getByText("Сумма отменённого заказа")).toBeVisible();
-  await expect(page.locator(".order-totals")).toContainText("3 890,70 ₽");
+  await expect(page.locator(".order-detail-summary")).toContainText("3 890,70 ₽");
   await expect(page.getByText("К доплате")).toHaveCount(0);
   await expect(page.getByText(/Оплата откроется после подтверждения/)).toHaveCount(0);
   await expect(page.getByText(/после его решения здесь появится кнопка оплаты/)).toHaveCount(0);
@@ -140,7 +158,7 @@ test("@desktop открытая карточка сама показывает �
   }));
 
   await page.goto("/account/orders/0001-9");
-  await expect(page.getByText(/Менеджер проверит детали заказа/)).toBeVisible();
+  await expect(page.getByText(/Менеджер уточнит стоимость доставки/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 
   // Имитируем сохранение заказа менеджером, пока клиент не закрывал вкладку.
@@ -151,5 +169,28 @@ test("@desktop открытая карточка сама показывает �
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
   await expect(page.getByRole("button", { name: /Оплатить заказ 3.?970/ })).toBeVisible({ timeout: 5_000 });
-  await expect(page.locator(".order-totals")).toContainText(/Доставка\s*1.?000/);
+  await expect(page.locator(".order-detail-summary")).toContainText(/Доставка\s*1.?000/);
+});
+
+test("@desktop оплаченный заказ продолжает обновлять этап получения", async ({ page }) => {
+  await mockApi(page, owner);
+  let status = "confirmed";
+  await page.route("**/api/v1/account/orders/0001-tracking", (route) => route.fulfill({ json: {
+    order: {
+      orderNumber: "0001-tracking", deliveryMethod: "pickup", address: "Магазин", comment: "",
+      customerName: "Александр", phone: "+79990000000", email: "test@example.com",
+      status, paymentStatus: "paid", paymentMethod: "online",
+      deliveryFee: 0, hasPreorder: false, deliveryFeePending: false,
+      subtotal: 1490, total: 1490, paidAmount: 1490, refundedAmount: 0,
+      amountDue: 0, paymentReady: true, createdAt: "2026-10-21T12:00:00Z",
+      items: [{ productName: "Аглаонема", unitPrice: 1490, quantity: 1 }], shipmentOffers: [],
+    },
+  } }));
+  await page.goto("/account/orders/0001-tracking");
+  await expect(page.getByRole("heading", { name: "Подтверждён", exact: true })).toBeVisible();
+  await page.waitForTimeout(100);
+  status = "ready";
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("heading", { name: "Готов к выдаче", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Оплатить/ })).toHaveCount(0);
 });

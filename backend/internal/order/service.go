@@ -333,21 +333,16 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		items[index].Preorder = preorder
 		hasPreorder = hasPreorder || preorder
 	}
-	// A missing plant prevents payment now. Keep online as the future payment
-	// method when configured, so the customer can pay after manager confirmation.
-	paymentMethod := strings.TrimSpace(input.PaymentMethod)
-	if hasPreorder {
-		if input.OnlinePaymentReady {
-			paymentMethod = payment.MethodOnline
-		} else {
-			paymentMethod = payment.MethodManager
-		}
-	} else if !payment.Allowed(
-		paymentMethod,
+	// Preorders still wait for confirmation, while keeping the customer's
+	// available choice (including cash at the pickup counter).
+	paymentMethod, paymentAllowed := payment.ResolveMethod(
+		strings.TrimSpace(input.PaymentMethod),
 		input.Delivery,
 		input.WholesaleApproved,
 		input.OnlinePaymentReady,
-	) {
+		hasPreorder,
+	)
+	if !paymentAllowed {
 		return Created{}, invalid("Выберите доступный способ оплаты")
 	}
 

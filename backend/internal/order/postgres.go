@@ -78,6 +78,8 @@ func (repository *PostgresRepository) DetailForCustomer(
 		SELECT
 			o.id, o.order_number, o.delivery_method, o.delivery_payee, o.address, o.comment,o.cancellation_reason,
 			o.customer_name, o.phone, o.email, o.status, o.payment_method, o.payment_status,
+			CASE WHEN EXISTS(SELECT 1 FROM payments p WHERE p.order_id=o.id AND p.status='pending')
+				THEN 'pending' ELSE COALESCE((SELECT p.status FROM payments p WHERE p.order_id=o.id ORDER BY p.id DESC LIMIT 1),'') END,
 			COALESCE(o.cdek_track_number, ''), o.has_preorder = 1,
 			o.delivery_fee::DOUBLE PRECISION,
 			o.delivery_fee_pending = 1, o.delivery_repack_requested = 1,
@@ -109,6 +111,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.Status,
 		&detail.PaymentMethod,
 		&detail.PaymentStatus,
+		&detail.PaymentAttemptStatus,
 		&detail.TrackNumber,
 		&detail.HasPreorder,
 		&detail.DeliveryFee,

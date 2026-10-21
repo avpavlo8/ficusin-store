@@ -46,7 +46,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
-  const [orderConfirmationPending, setOrderConfirmationPending] = useState(false);
+  const [orderConfirmationReason, setOrderConfirmationReason] = useState<"preorder" | "delivery" | "manager" | null>(null);
+  const orderConfirmationPending = orderConfirmationReason !== null;
   const [cdekCityQuery, setCdekCityQuery] = useState("");
   const [cdekCities, setCdekCities] = useState<CdekCity[]>([]);
   const [cdekCity, setCdekCity] = useState<CdekCity | null>(null);
@@ -57,7 +58,8 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
   const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
   const [cdekTariffCode, setCdekTariffCode] = useState(0);
   const [cdekRepack, setCdekRepack] = useState(false);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [paymentOptions, setPaymentOptions] = useState<{ delivery: string; methods: PaymentMethod[] }>({ delivery: "", methods: [] });
+  const paymentMethods = paymentOptions.delivery === delivery ? paymentOptions.methods : [];
   const [paymentMethod, setPaymentMethod] = useState("online");
   const [cdekLoading, setCdekLoading] = useState(false);
   const [cdekError, setCdekError] = useState("");
@@ -79,13 +81,13 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       .then((data: { methods?: PaymentMethod[] }) => {
         if (cancelled) return;
         const methods = data.methods ?? [];
-        setPaymentMethods(methods);
+        setPaymentOptions({ delivery, methods });
         setPaymentMethod((current) =>
           methods.some((item) => item.id === current) ? current : (methods[0]?.id ?? "online"),
         );
       })
       .catch(() => {
-        if (!cancelled) setPaymentMethods([]);
+        if (!cancelled) setPaymentOptions({ delivery, methods: [] });
       });
     return () => {
       cancelled = true;
@@ -213,6 +215,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setNotice("");
     setSubmitting(true);
     const form = new FormData(event.currentTarget);
     const phoneInput = event.currentTarget.elements.namedItem("phone") as HTMLInputElement;
@@ -248,7 +251,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
-	  paymentMethod: hasPreorder ? "" : paymentMethod,
+	  paymentMethod: hasPreorder && delivery !== "pickup" ? "" : paymentMethods.some((option) => option.id === paymentMethod) ? paymentMethod : "",
 	  attribution: getAttribution(),
     };
 
@@ -265,7 +268,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       }
 	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
 	  if (!hasPreorder) track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
-      setOrderConfirmationPending(needsManagerConfirmation || deliveryFeePending || data.hasPreorder === true || data.paymentStatus === "manager_confirmation");
+      setOrderConfirmationReason(needsManagerConfirmation || data.hasPreorder === true ? "preorder" : deliveryFeePending ? "delivery" : data.paymentStatus === "manager_confirmation" ? "manager" : null);
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
@@ -297,7 +300,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
   function beginCheckout() {
     setCheckoutOpen(true);
     setOrderNumber("");
-    setOrderConfirmationPending(false);
+    setOrderConfirmationReason(null);
   }
 
   return {
@@ -311,6 +314,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       setCheckoutOpen,
       orderNumber,
       orderConfirmationPending,
+      orderConfirmationReason,
       submitOrder,
       checkoutProfile,
       setCheckoutProfile,
@@ -318,6 +322,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       delivery,
       setDelivery,
       cdekQuote,
+      cdekCity,
       cdekCityQuery,
       setCdekCityQuery,
       setCdekCity,

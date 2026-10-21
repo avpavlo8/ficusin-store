@@ -62,3 +62,24 @@ func TestInitialStatusFollowsTheChosenMethod(t *testing.T) {
 		}
 	}
 }
+
+func TestPreorderKeepsAvailablePaymentChoice(t *testing.T) {
+	for _, tc := range []struct {
+		name, requested, delivery, want string
+		online, preorder, allowed       bool
+	}{
+		{"pickup cash", MethodOnDelivery, "pickup", MethodOnDelivery, true, true, true},
+		{"pickup cash without online", MethodOnDelivery, "pickup", MethodOnDelivery, false, true, true},
+		{"preorder default", "", "pickup", MethodOnline, true, true, true},
+		{"preorder without online", "", "pickup", MethodManager, false, true, true},
+		{"regular CDEK rejects cash", MethodOnDelivery, "cdek", "", true, false, false},
+		{"CDEK preorder uses future online", MethodOnDelivery, "cdek", MethodOnline, true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, allowed := ResolveMethod(tc.requested, tc.delivery, false, tc.online, tc.preorder)
+			if got != tc.want || allowed != tc.allowed {
+				t.Fatalf("got (%q, %v), want (%q, %v)", got, allowed, tc.want, tc.allowed)
+			}
+		})
+	}
+}
