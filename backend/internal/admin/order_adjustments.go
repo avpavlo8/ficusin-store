@@ -182,6 +182,15 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	if err := tx.QueryRow(ctx, `SELECT status,delivery_method,customer_id,delivery_fee::DOUBLE PRECISION,delivery_fee_pending=1 FROM orders WHERE id=$1 FOR UPDATE`, id).Scan(&status, &deliveryMethod, &customerID, &oldDeliveryFee, &oldFeePending); err != nil {
 		return Order{}, err
 	}
+	// A checkout application already contains this composition and delivery fee.
+	// Do not silently leave the carrier with a different order snapshot.
+	var activeCDEK bool
+	if err := tx.QueryRow(ctx, `SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown') FROM orders WHERE id=$1`, id).Scan(&activeCDEK); err != nil {
+		return Order{}, err
+	}
+	if activeCDEK {
+		return Order{}, fmt.Errorf("заявка СДЭК уже создаётся или зарегистрирована: сначала сверьте и отмените её у перевозчика перед изменением состава или доставки")
+	}
 	if status == "cancelled" || status == "completed" || status == "shipped" {
 		return Order{}, fmt.Errorf("состав уже закрытого или отправленного заказа менять нельзя")
 	}

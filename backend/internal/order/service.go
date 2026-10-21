@@ -11,6 +11,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
+	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -25,11 +26,12 @@ type Notifier interface {
 }
 
 type Service struct {
-	pool     *pgxpool.Pool
-	cdek     CDEK
-	notifier Notifier
-	settings settingsReader
-	logger   *slog.Logger
+	pool         *pgxpool.Pool
+	cdek         CDEK
+	notifier     Notifier
+	settings     settingsReader
+	logger       *slog.Logger
+	shipmentWake func()
 }
 
 type CreateInput struct {
@@ -176,6 +178,13 @@ func NewService(
 		settings: shopSettings,
 		logger:   logger,
 	}
+}
+
+// WithShipmentWake nudges the durable shipping queue after a committed checkout.
+// External API calls remain in the worker and cannot delay or fail checkout.
+func (service *Service) WithShipmentWake(wake func()) *Service {
+	service.shipmentWake = wake
+	return service
 }
 
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
@@ -353,6 +362,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if input.CustomerID != nil {
 		customerID = *input.CustomerID
 	}
+	// Snapshot opt-in only for orders placed while automatic creation is enabled.
+	// Enabling the switch later must not register abandoned unpaid orders.
+	checkoutShipment := input.Delivery == "cdek" && service.settings != nil && service.settings.Number(settings.CDEKOrdersEnabled) == 1
 	var orderID int64
 	err = transaction.QueryRow(ctx, `
 		INSERT INTO orders (
@@ -360,11 +372,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
 			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total,
-			payment_method, payment_status, has_preorder, status, delivery_payee
+			payment_method, payment_status, has_preorder, status, delivery_payee, cdek_checkout_requested
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop'
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop', $21
 		)
 		RETURNING id
 	`,
@@ -372,7 +384,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		input.Customer.Email, deliveryAddress, input.Customer.Comment, input.Delivery,
 		deliveryFee, boolToInt(feePending), boolToInt(input.CDEK.Repack && input.Delivery == "cdek"),
 		cityCode, cityName, officeCode, tariffCode, subtotal, total,
-		paymentMethod, payment.InitialStatus(paymentMethod), boolToInt(hasPreorder),
+		paymentMethod, payment.InitialStatus(paymentMethod), boolToInt(hasPreorder), boolToInt(checkoutShipment),
 	).Scan(&orderID)
 	if err != nil {
 		return Created{}, fmt.Errorf("insert order: %w", err)
@@ -425,6 +437,10 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Created{}, fmt.Errorf("commit order: %w", err)
+	}
+
+	if checkoutShipment && service.shipmentWake != nil {
+		service.shipmentWake()
 	}
 
 	notificationItems := make([]integration.TelegramOrderItem, 0, len(items))

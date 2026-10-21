@@ -150,6 +150,9 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 	tx,err:=repository.pool.BeginTx(ctx,pgx.TxOptions{});if err!=nil{return ShipmentOffer{},err};defer func(){_ = tx.Rollback(ctx)}()
 	var revision int;var status,delivery,address,email string;var customerID *int64;var cdekCityCode int
 	if err:=tx.QueryRow(ctx,`SELECT shipment_revision,status,delivery_method,address,COALESCE(email,''),customer_id,COALESCE(cdek_city_code,0) FROM orders WHERE id=$1 FOR UPDATE`,orderID).Scan(&revision,&status,&delivery,&address,&email,&customerID,&cdekCityCode);err!=nil{return ShipmentOffer{},err}
+	var activeCDEK bool
+	if err:=tx.QueryRow(ctx,`SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown') FROM orders WHERE id=$1`,orderID).Scan(&activeCDEK);err!=nil{return ShipmentOffer{},err}
+	if activeCDEK{return ShipmentOffer{},errors.New("для заказа уже создаётся или зарегистрирована заявка СДЭК: сначала сверьте и отмените её у перевозчика")}
 	if status=="cancelled"||status=="completed"||status=="shipped"{return ShipmentOffer{},errors.New("для закрытого или отправленного заказа нельзя создать предложение")}
 	discountBPS:=0;if customerID!=nil{_ = tx.QueryRow(ctx,`SELECT COALESCE(retail_discount_bps,0) FROM customers WHERE id=$1`,*customerID).Scan(&discountBPS)};if discountBPS<0{discountBPS=0};if discountBPS>9000{discountBPS=9000}
 	if delivery=="cdek"&&!input.PackagingRequired&&input.CDEKTariffCode==nil{return ShipmentOffer{},errors.New("выберите пересчитанный тариф СДЭК для этого состава коробок")}

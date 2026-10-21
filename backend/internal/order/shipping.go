@@ -47,7 +47,7 @@ var cdekStatusToOrder = map[string]string{
 	"DELIVERED":                             "completed",
 }
 
-// ShippingWorker hands paid orders to CDEK and keeps their status current.
+// ShippingWorker registers checkout parcels before payment and keeps their status current.
 //
 // It is switched off by default and turned on in the panel, so that test
 // orders during a quiet afternoon do not create real parcels.
@@ -58,6 +58,7 @@ type ShippingWorker struct {
 	notifier statusNotifier
 	logger   *slog.Logger
 	interval time.Duration
+	wake     chan struct{}
 }
 
 type statusNotifier interface {
@@ -77,7 +78,16 @@ func NewShippingWorker(
 		settings: shopSettings,
 		notifier: notifier,
 		logger:   logger,
-		interval: 2 * time.Minute,
+		interval: 30 * time.Second,
+		wake:     make(chan struct{}, 1),
+	}
+}
+
+// Wake is non-blocking; the committed order is the durable queue entry.
+func (worker *ShippingWorker) Wake() {
+	select {
+	case worker.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -91,6 +101,8 @@ func (worker *ShippingWorker) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			worker.sync(ctx)
+		case <-worker.wake:
+			worker.sync(ctx)
 		}
 	}
 }
@@ -101,6 +113,13 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	}
 	// The switch controls creation of real shipments only. Existing parcels
 	// must keep being tracked even if a manager pauses automatic hand-off.
+	// A process may die after POST but before saving the UUID. An expired
+	// creation lease is an unknown outcome, never permission to repeat POST.
+	if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='unknown',cdek_next_attempt_at=CURRENT_TIMESTAMP
+ WHERE cdek_create_state='creating' AND cdek_uuid='' AND cdek_next_attempt_at<=CURRENT_TIMESTAMP`); err != nil {
+		worker.logger.Error("recover interrupted cdek creation failed", "error", err)
+		return
+	}
 	worker.reconcileUnknownShipments(ctx)
 	worker.markStockShortages(ctx)
 	if worker.settings.Enabled(settings.CDEKOrdersEnabled) {
@@ -112,19 +131,19 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	worker.refreshOfferStatuses(ctx)
 }
 
-// A paid shipment is never handed to CDEK when Saby's latest stock snapshot
+// A checkout shipment is never registered with CDEK when Saby's latest stock snapshot
 // cannot cover it. Record the hold where managers and operations health can
 // see it; automatic retries must wait for a manager to resolve the order.
 func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 	_, err := worker.pool.Exec(ctx, `
 		UPDATE orders o SET cdek_create_state='manual_review',
-			cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',
+			cdek_last_error='Остатка растений недостаточно для заявки СДЭК. Проверьте наличие и решите вручную.',
 			cdek_next_attempt_at=NULL
 		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
 			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
-			AND o.payment_status IN ('paid','on_delivery')
-			AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status IN ('paid','shipping','shipped','ready','completed'))
+			AND (o.payment_status IN ('paid','on_delivery') OR (o.payment_status='pending' AND o.cdek_checkout_requested=1))
+			AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status NOT IN ('cancelled','expired','stale'))
 			AND (EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NOT NULL
 					GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
@@ -137,7 +156,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 					),0)))
 	`)
 	if err != nil {
-		worker.logger.Error("mark paid cdek orders short of stock failed", "error", err)
+		worker.logger.Error("mark cdek orders short of stock failed", "error", err)
 	}
 	_, err = worker.pool.Exec(ctx, `
 		UPDATE shipment_offers so SET cdek_create_state='manual_review',
@@ -419,14 +438,14 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 		shipment, findErr := worker.cdek.FindOrderByNumber(ctx, item.number)
 		if findErr == nil && shipment.UUID != "" {
 			nextStatus := item.status
-			if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
+			if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok && item.status != "cancelled" && item.status != "completed" {
 				nextStatus = mapped
 			}
 			_, err = worker.pool.Exec(ctx, `
 				UPDATE orders
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
 					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
-					cdek_synced_at=CURRENT_TIMESTAMP,status=$6
+					cdek_synced_at=CURRENT_TIMESTAMP,status=CASE WHEN status IN ('cancelled','completed') THEN status ELSE $6 END
 				WHERE id=$1 AND cdek_uuid=''`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus)
 			if err != nil {
 				worker.logger.Error("store reconciled cdek order failed", "error", err, "order", item.number)
@@ -580,24 +599,23 @@ func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 	}
 }
 
-// createShipments registers parcels for orders that are ready to travel.
-//
-// Only paid orders, or ones that will be paid at the counter: handing an
-// unpaid parcel to a carrier is giving away a plant and hoping.
+// createShipments registers a CDEK application; registration is not physical
+// hand-off or payment. New opted-in checkouts register while payment is pending.
+// Legacy orders retain their existing paid/on-delivery eligibility.
 func (worker *ShippingWorker) createShipments(ctx context.Context) {
 	rows, err := worker.pool.Query(ctx, `
 		WITH candidates AS (
 			SELECT o.id
 			FROM orders o
 				WHERE o.delivery_method = 'cdek'
-					-- The shop already collected delivery; do not collect it again.
+					-- The shop collects delivery with the order; CDEK must not collect it again.
 					AND o.delivery_payee = 'shop'
 					AND o.cdek_uuid = ''
-					AND o.cdek_create_state NOT IN ('unknown','manual_review')
+					AND o.cdek_create_state NOT IN ('unknown','manual_review','creating','registered')
 				AND o.delivery_fee_pending = 0
 				AND o.has_preorder = 0
 				AND o.status NOT IN ('cancelled', 'completed')
-				AND o.payment_status IN ('paid', 'on_delivery')
+				AND (o.payment_status IN ('paid', 'on_delivery') OR (o.payment_status='pending' AND o.cdek_checkout_requested=1))
 				AND NOT EXISTS (
 					SELECT 1 FROM order_items oi
 					WHERE oi.order_id = o.id AND oi.variant_id IS NULL
@@ -616,7 +634,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 						WHERE i.variant_id=oi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 					), 0)
 				)
-				AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status IN ('paid','shipping','shipped','ready','completed'))
+				AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status NOT IN ('cancelled','expired','stale'))
 				AND (o.cdek_next_attempt_at IS NULL OR o.cdek_next_attempt_at <= CURRENT_TIMESTAMP)
 			ORDER BY o.cdek_next_attempt_at ASC NULLS FIRST, o.id
 			FOR UPDATE SKIP LOCKED
@@ -670,7 +688,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			continue
 		}
 		if short {
-			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='manual_review',cdek_last_error='Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную.',cdek_next_attempt_at=NULL WHERE id=$1 AND cdek_uuid=''`, item.id); err != nil {
+			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='manual_review',cdek_last_error='Остатка растений недостаточно для заявки СДЭК. Проверьте наличие и решите вручную.',cdek_next_attempt_at=NULL WHERE id=$1 AND cdek_uuid=''`, item.id); err != nil {
 				worker.logger.Error("hold cdek order short of stock failed", "error", err, "order_id", item.id)
 			}
 			continue
@@ -709,10 +727,10 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 		}
 		if _, err := worker.pool.Exec(ctx, `
 			UPDATE orders
-			SET cdek_uuid = $2, cdek_synced_at = CURRENT_TIMESTAMP,
+			SET cdek_uuid = $2, cdek_track_number=$3, cdek_status=$4, cdek_status_reason=$5, cdek_synced_at = CURRENT_TIMESTAMP,
 					cdek_create_state = 'registered', cdek_last_error = '', cdek_next_attempt_at = NULL
 			WHERE id = $1 AND cdek_uuid = ''
-		`, item.id, shipment.UUID); err != nil {
+		`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason); err != nil {
 			worker.logger.Error("store cdek uuid failed", "error", err, "order", item.number)
 		}
 	}
@@ -807,7 +825,7 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		}
 		if _, err := worker.pool.Exec(ctx, `
 			UPDATE orders
-			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = $5,
+			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') THEN status ELSE $5 END,
 				cdek_synced_at = CURRENT_TIMESTAMP
 			WHERE id = $1
 		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus); err != nil {
