@@ -18,6 +18,10 @@ type canceller interface {
 // ErrCancelUnsupported — провайдер не умеет отменять платежи.
 var ErrCancelUnsupported = errors.New("провайдер не умеет отменять платежи")
 
+// PaymentRequest is persisted by encoding/json with the Go field name Metadata.
+// Read lowercase metadata too for existing integrations and imported fixtures;
+// a missing capture marker remains a legacy payment requiring review.
+//
 // CancelPending закрывает незавершённые платежи заказа там, где они живут —
 // у провайдера, а не только в нашей таблице.
 //
@@ -36,7 +40,7 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 
 	rows, err := service.pool.Query(ctx, `
 		SELECT id, COALESCE(provider_payment_id, ''),
-			COALESCE(request_payload->'metadata'->>'ficusin_capture_mode','')
+			COALESCE(request_payload->'Metadata'->>'ficusin_capture_mode',request_payload->'metadata'->>'ficusin_capture_mode','')
 		FROM payments
 		WHERE order_id = $1 AND status = $2
 		ORDER BY id
@@ -70,7 +74,7 @@ func (service *Service) CancelPending(ctx context.Context, orderID int64) error 
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 		var localStatus string
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_payment_id,''),COALESCE(request_payload->'metadata'->>'ficusin_capture_mode',''),status FROM payments WHERE id=$1`, current.id).Scan(&current.providerID, &current.mode, &localStatus); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_payment_id,''),COALESCE(request_payload->'Metadata'->>'ficusin_capture_mode',request_payload->'metadata'->>'ficusin_capture_mode',''),status FROM payments WHERE id=$1`, current.id).Scan(&current.providerID, &current.mode, &localStatus); err != nil {
 			return err
 		}
 		if localStatus != StatusPending {
