@@ -196,7 +196,8 @@ test("@desktop @phone unrated products reserve rating space and keep purchase wi
     expect(Math.abs(boxes[0]!.width-boxes[1]!.width)).toBeLessThan(2);
     if (width === widths[0]) {
       const saved = page.waitForResponse(response => response.url().endsWith('/api/v1/cart') && response.request().method() === 'PUT');
-      await cards.first().getByRole('button', { name: 'В корзину', exact: true }).click();
+      const add = cards.first().getByRole('button', { name: 'В корзину', exact: true });
+      if (width <= 850) await add.tap(); else await add.click();
       expect((await saved).ok()).toBe(true);
     }
     const added=cards.first().getByRole('button',{name:'Перейти в корзину, 1 шт.'});
