@@ -45,8 +45,8 @@ test("@desktop @phone plant cards show a care scale while PDP keeps a text level
   await expect(card).not.toContainText("Полив:");
   await expect(card.locator(".storefront-price")).not.toContainText("В наличии");
   const unavailable = page.locator(".storefront-card").filter({ hasText: "Монстера Делициоза" });
-  await expect(unavailable.locator(".storefront-price")).toContainText("≈");
-  await expect(unavailable.locator(".storefront-price")).toContainText("Нет в наличии");
+  await expect(unavailable.locator(".storefront-price")).not.toContainText("≈");
+  await expect(unavailable.locator(".storefront-price")).toContainText("Под заказ · цена ориентировочная");
   await expect(unavailable.getByRole("button", { name: "Заказать", exact: true })).toBeVisible();
   await card.getByRole("button", { name: "В корзину", exact: true }).click();
   const added = card.getByRole("button", { name: "Перейти в корзину, 1 шт.", exact: true });

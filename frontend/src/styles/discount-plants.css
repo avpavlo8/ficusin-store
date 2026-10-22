@@ -12,3 +12,5 @@
 .discount-state h2{font:400 30px/1.15 Georgia,serif;color:#2c4636}
 .discount-state p{font-size:16px;line-height:1.6;color:#344333}
 .discount-state>a{margin:8px 16px 0 0;display:inline-flex;align-items:center;min-height:44px}
+
+.discount-plants-grid del { color: #536052; }

@@ -1,3 +1,4 @@
+import { ProductImage } from "./ProductImage";
 import { FormEvent, KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { searchProducts, suggestions, type Searchable } from "./lib/search";
 import { sharedAPIJSON } from "./lib/api";
@@ -28,12 +29,12 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
   const query = value ?? ownValue;
 
   useEffect(() => {
-    if (selection) return;
+    if (selection || (!open && !query.trim())) return;
     sharedAPIJSON<{ products?: SearchProduct[] }>("/api/v1/catalog")
       .then((data: { products?: SearchProduct[] }) => setProducts(data.products || []))
       .catch(() => setProducts([]))
       .finally(() => setLoaded(true));
-  }, [selection]);
+  }, [selection, open, query]);
   useEffect(() => {
     const close = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
@@ -124,7 +125,7 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
     {open && (selection || query.trim()) && <div className="catalog-search-options" id={listID} role="listbox" aria-label={selection ? "Каталог растений" : undefined}>
       {matches.map((item, index) => <button id={`${listID}-${index}`} role="option" aria-selected={active === index}
         className={active === index ? "active" : ""} key={item.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(index)}>
-        {item.image && <img src={item.image} alt="" />}<span><b>{item.name}</b><small>{item.latin}{selection && item.price != null && ` · ${item.price.toLocaleString("ru-RU")} ₽`}</small></span>
+        <ProductImage src={item.image} alt="" /><span><b>{item.name}</b><small>{item.latin}{selection && item.price != null && ` · ${item.price.toLocaleString("ru-RU")} ₽`}</small></span>
       </button>)}
       {selection && !matches.length && <p className="catalog-search-empty">Совпадений нет. Попробуйте часть названия.</p>}
       {!selection && <button id={`${listID}-${matches.length}`} role="option" aria-selected={active === matches.length}

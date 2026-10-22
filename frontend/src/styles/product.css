@@ -450,3 +450,54 @@
 @media(prefers-reduced-motion:reduce){.pdp-photo-track{transition:none}}
 
 .pdp-lightbox-viewport{width:100%;height:100%;min-height:0;overflow:hidden;touch-action:pan-y pinch-zoom}
+
+/* Recommendations begin with a complete card, with controls outside the text. */
+.product-page .pdp-summary .pdp-related-track { padding: 4px 0 12px; scroll-padding-inline: 0; mask-image: none; }
+.product-page .pdp-summary .pdp-related-carousel::before, .product-page .pdp-summary .pdp-related-carousel::after { display: none; }
+.product-page .pdp-summary .pdp-related-side { top: -48px; }
+.product-page .pdp-summary .pdp-related-side.prev { left: auto; right: 44px; }
+.product-page .pdp-summary .pdp-related-side.next { right: 0; }
+.product-page .pdp-summary .pdp-related-side:disabled { opacity: .3; cursor: default; }
+.product-page .pdp-summary .variant-picker small { color: #625c50; }
+.product-page .pdp-anchor-nav a { display: inline-flex; align-items: center; flex: none; min-height: 52px; padding: 12px 0; color: #31482c; font: 500 16px/1.4 Arial, sans-serif; text-decoration: none; }
+.product-page .pdp-anchor-nav a:hover { color: #a5432d; }
+.product-page .pdp-tab-panel > * + * { margin-top: 40px; }
+.product-page :is(#plant-about, #plant-passport, #reviews, #plant-faq, #characteristics) { scroll-margin-top: 24px; }
+.review-modal-rating { display: flex; gap: 6px; margin: 0 0 16px; }
+.review-modal-rating button { width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #a5432d; font-size: 28px; cursor: pointer; }
+.pdp-mobile-purchase { display: none; }
+@media (max-width: 850px) {
+  .product-page .pdp-gallery { align-self: start; }
+  .product-page .pdp-image { height: clamp(210px, 36svh, 330px); min-height: 0; max-height: 330px; }
+  .product-page .pdp-thumbs { grid-auto-columns: 44px; gap: 7px; }
+  .product-page .pdp-thumbs button { height: 44px; }
+  .product-page .pdp-summary { padding-top: 0; }
+  .product-page .pdp-summary h1 { font-size: 30px; }
+  .product-page .pdp-identity { padding-bottom: 6px; }
+  .product-page .pdp-identity .latin { font-size: 17px; }
+  .product-page .pdp-order-column .pdp-commerce-box { margin-top: 16px; }
+  .product-page .pdp-quantity { width: 144px; }
+  .product-page .pdp-quantity button { width: 44px; }
+  .product-page .pdp-summary .pdp-related-side { display: none; }
+  .pdp-mobile-purchase { position: fixed; z-index: 175; left: 0; right: 0; bottom: var(--store-tab-height, 76px); display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 70px; padding: 10px 16px; border-top: 1px solid #dfd1c0; background: #fffaf3; }
+  .pdp-mobile-purchase strong { display: block; color: #31482c; font: 600 24px/1.1 Georgia, serif; }
+  .pdp-mobile-purchase small { display: block; margin-top: 4px; max-width: 170px; color: #65594f; font-size: 11px; }
+  .pdp-mobile-purchase :is(button, a) { min-height: 44px; padding: 12px 20px; flex: none; border: 0; border-radius: 10px; background: #a5432d; color: #fffaf3; font: 600 14px/1.4 Arial, sans-serif; text-decoration: none; cursor: pointer; }
+  body:has(.pdp-mobile-purchase) { padding-bottom: calc(var(--store-tab-height, 76px) + 80px); }
+  body:is(.menu-open, .modal-open, .quick-chat-open) .pdp-mobile-purchase, body:has(.pdp-lightbox) .pdp-mobile-purchase { display: none; }
+}
+/* An intermediate product layout gives tablets useful columns and bounded controls. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .product-page .pdp-main { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 24px; align-items: start; }
+  .product-page .pdp-gallery { grid-template-columns: 1fr; }
+  .product-page .pdp-thumbs { grid-row: 2; display: flex; overflow-x: auto; }
+  .product-page .pdp-thumbs button { width: 44px; height: 44px; flex: none; }
+  .product-page .pdp-purchase-layout { grid-template-columns: 1fr; gap: 20px; }
+  .product-page .pdp-image { height: 380px; min-height: 0; }
+  .product-page .pdp-key-characteristics { padding: 20px; }
+  .product-page .pdp-actions { grid-template-columns: 132px 1fr 48px; }
+  .product-page .pdp-quantity { width: 132px; }
+  .product-page .pdp-quantity button { width: 40px; }
+}
+
+.product-page .pdp-summary .related-card .latin { color: #71665b; }

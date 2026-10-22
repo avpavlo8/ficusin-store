@@ -141,3 +141,12 @@
 @media (prefers-reduced-motion: reduce) {
   .cart-pendant-lamp, .order-lamp-beam, .order-lamp-scene::before, .order-lamp-scene::after { transition: none; }
 }
+
+@media (max-width: 760px) {
+  .cart-summary .order-lamp-scene { padding: 24px 20px; }
+  .cart-summary .cart-pendant-lamp, .cart-summary .order-lamp-switch { display: none; }
+  .cart-summary .order-lamp-beam { display: none; }
+  .cart-summary .order-lamp-scene::before, .cart-summary .order-lamp-scene::after { display: none; }
+  .cart-summary .order-lamp-total { padding-top: 0; text-align: left; }
+  .cart-summary .order-lamp-total strong { font-size: 36px; }
+}

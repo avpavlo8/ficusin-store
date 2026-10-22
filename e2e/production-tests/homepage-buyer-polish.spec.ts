@@ -25,8 +25,8 @@ test("production homepage filters by budget and shows the live variant height an
   }
   if(current.stock>0) await expect(first.locator(".storefront-price em")).toHaveCount(0);
   else {
-    await expect(first.locator(".storefront-price")).toContainText("≈");
-    await expect(first.locator(".storefront-price")).toContainText("Нет в наличии");
+    await expect(first.locator(".storefront-price")).not.toContainText("≈");
+    await expect(first.locator(".storefront-price")).toContainText("Под заказ · цена ориентировочная");
   }
   await page.getByRole("button",{name:/Фильтры/}).click();
   await page.getByLabel("Цена: до",{exact:true}).fill(String(budget));

@@ -11,7 +11,8 @@ function SocialIcon({ path }: { path: string }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={path} /></svg>;
 }
 
-export function StoreFooter() {
+export function StoreFooter({ compact = false }: { compact?: boolean }) {
+  if (compact) return <footer className="checkout-footer"><span>© Фикусин, {new Date().getFullYear()}</span><a href="/offer">Оферта</a><a href="/privacy">Политика</a><a href="/chat">Помощь с заказом</a></footer>;
   return <footer className="store-footer">
     <div className="store-footer-grid">
       <section className="store-footer-connect">

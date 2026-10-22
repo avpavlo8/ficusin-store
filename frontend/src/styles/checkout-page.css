@@ -899,3 +899,14 @@
     50% { opacity: .65; }
   }
 }
+
+/* Review the actual plants without leaving checkout. */
+.checkout-summary-items { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 16px; }
+.checkout-summary-items li { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 12px; align-items: center; }
+.checkout-summary-items img { grid-row: span 2; width: 48px; height: 60px; border-radius: 8px; object-fit: cover; }
+.checkout-page-panel .checkout-summary-items strong { display: block; font: 500 14px/1.35 Arial, sans-serif; }
+.checkout-summary-items small { display: block; margin-top: 4px; color: #71665b; font-size: 12px; }
+.checkout-summary-items b { grid-column: 2; font-size: 13px; font-weight: 500; }
+.checkout-page-panel .checkout-submit-hint { margin: 14px 0 0; color: #71665b; font-size: 13px; line-height: 1.5; }
+.checkout-page-panel .checkout-navigation .primary-button:disabled { opacity: .65; }
+@media (max-width: 900px) { .checkout-page-panel .checkout-order-summary { max-width: none; } }

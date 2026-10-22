@@ -29,7 +29,7 @@ export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const quickChat = <Suspense fallback={null}><ChatLauncher /></Suspense>;
   const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}{!path.startsWith("/admin") && quickChat}</Suspense>;
-  const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter />{quickChat}</Suspense>;
+  const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter compact={path === "/checkout"} />{quickChat}</Suspense>;
   try { decodeURIComponent(path); } catch { return withFooter(<NotFoundPage />); }
   const query = new URLSearchParams(window.location.search);
   const paymentPreview = query.get("preview");
@@ -49,6 +49,7 @@ export default function Root() {
       orderNumber={decodeURIComponent(path.slice("/account/orders/".length))}
     />);
   }
+  if (path === "/catalog") { window.location.replace("/#catalog"); return <RouteLoading />; }
   if (path === "/") {
     return withFooter(<StorefrontPage />);
   }

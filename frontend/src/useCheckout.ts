@@ -311,6 +311,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     setCheckoutProfile,
     availableDelivery,
     panelProps: {
+      cartLines,
       checkoutOpen,
       setCheckoutOpen,
       orderNumber,

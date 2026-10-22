@@ -218,3 +218,14 @@ body.menu-open, body.drawer-open { overflow: hidden; }
 }
 
 @media(max-width:850px) { .mobile-search .catalog-search-options { max-height:calc(100dvh - 160px); overflow-y:auto; } }
+
+/* One icon language for the header and mobile navigation. */
+.tab-bar > a, .tab-bar > button { --tab-color: #4e5a46; --tab-tint: #e9edde; color: #4e5a46; }
+.tab-bar > :nth-child(n) { --tab-color: #4e5a46; --tab-tint: #e9edde; }
+.tab-bar > .active { color: #a5432d; }
+.tab-bar .tab-icon svg { width: 25px; height: 25px; filter: none; }
+.tab-bar small { font-size: 11px; font-weight: 500; }
+.catalog-search .catalog-search-options { width: 100%; max-height: min(420px, 55dvh); overflow-y: auto; }
+.catalog-search:focus-within { outline: 2px solid #42603a; outline-offset: 3px; }
+.catalog-search input:focus, .header .catalog-search input:focus-visible { outline: none; box-shadow: none; }
+@media (max-width: 350px) { .tab-bar small { font-size: 10px; } }

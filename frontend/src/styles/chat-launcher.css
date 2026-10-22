@@ -14,3 +14,12 @@ body:has(.account-chat-page .chat-compose:focus-within) .chat-launcher { display
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { body:has(.account-chat-page) .chat-launcher { bottom: 8px; } }
 .quick-chat-loading p { margin: 0 0 14px; }
 .quick-chat-loading button { margin: 4px 8px 0 0; padding: 8px 10px; border: 1px solid #c5d4e0; border-radius: 6px; background: #f3f7fa; color: #245c87; cursor: pointer; }
+
+/* A small help strip reserves its own space instead of covering page content. */
+.chat-launcher { position: static; width: fit-content; margin: 16px 24px 24px auto; background: #31482c; box-shadow: none; }
+.chat-launcher:hover { background: #263c23; }
+.chat-launcher:focus-visible { outline-color: #79916a; }
+.chat-launcher b { color: #31482c; }
+body:has(.checkout-page) .chat-launcher, body:has(.auth-page) .chat-launcher { display: none; }
+.quick-chat-open .chat-launcher { position: fixed; right: 24px; bottom: 24px; }
+@media (max-width: 850px) { .chat-launcher { margin-bottom: calc(92px + env(safe-area-inset-bottom)); } }
