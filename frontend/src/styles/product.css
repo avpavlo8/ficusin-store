@@ -461,7 +461,6 @@
 .product-page .pdp-summary .variant-picker small { color: #625c50; }
 .product-page .pdp-anchor-nav a { display: inline-flex; align-items: center; flex: none; min-height: 52px; padding: 12px 0; color: #31482c; font: 500 16px/1.4 Arial, sans-serif; text-decoration: none; }
 .product-page .pdp-anchor-nav a:hover { color: #a5432d; }
-.product-page .pdp-tab-panel > * + * { margin-top: 40px; }
 .product-page :is(#plant-about, #plant-passport, #reviews, #plant-faq, #characteristics) { scroll-margin-top: 24px; }
 .review-modal-rating { display: flex; gap: 6px; margin: 0 0 16px; }
 .review-modal-rating button { width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: #a5432d; font-size: 28px; cursor: pointer; }

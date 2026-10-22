@@ -2,7 +2,7 @@
 .product-page .plant-tabs-shell { width:calc(100% - 64px); }
 .plant-tabs-shell .pdp-anchor-nav { position:sticky; top:0; z-index:9; background:#f8f0e5; }
 .product-page .plant-tabs-shell .pdp-tab-panel { max-width:none; margin:0; padding:28px 0 46px; }
-.plant-tabs-shell [id] { scroll-margin-top:74px; }
+.plant-tabs-shell [id]:not([role="tab"]) { scroll-margin-top:74px; }
 .plant-tabs-shell h2,.plant-tabs-shell h3 { color:var(--plant-ink); font-family:Georgia,serif; font-weight:400; }
 .plant-tabs-shell h2 { margin:10px 0 22px; font-size:40px; line-height:1.15; }
 .plant-tabs-shell h3 { margin:8px 0 18px; font-size:27px; line-height:1.2; }
