@@ -154,7 +154,7 @@ test("@desktop товар без остатка идёт как предзака
 
   const card = page.locator(".storefront-card", { hasText: "Монстера Делициоза" });
   await expect(card).toHaveClass(/preorder/);
-  await expect(card.locator(".storefront-price em")).toHaveText("Нет в наличии");
+  await expect(card.locator(".storefront-price em")).toHaveText("Под заказ · цена ориентировочная");
   await expect(card.locator(".storefront-preorder")).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Заказать", exact: true })).toBeVisible();
 
