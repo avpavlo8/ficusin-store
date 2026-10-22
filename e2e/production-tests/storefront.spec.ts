@@ -169,9 +169,11 @@ test("production guest cart keeps an exact SKU and renders the server snapshot",
     const contact = page.locator(".checkout-contact-section");
     await contact.getByLabel("Имя", { exact: true }).fill("Проверка интерфейса");
     await contact.getByLabel("Телефон", { exact: true }).fill("915123456");
+    await contact.getByLabel("Телефон", { exact: true }).blur();
     await expect(contact.locator("#phone-error")).toHaveText("Укажите номер телефона");
     await contact.getByLabel("Телефон", { exact: true }).fill("9151234567");
     await contact.getByLabel("Email для чека", { exact: true }).fill("invalid");
+    await contact.getByLabel("Email для чека", { exact: true }).blur();
     await expect(contact.locator("#email-error")).toHaveText("Укажите корректный email для чека");
     await contact.getByLabel("Email для чека", { exact: true }).fill("smoke@example.invalid");
     await page.locator('input[name="delivery"][value="pickup"]').check();

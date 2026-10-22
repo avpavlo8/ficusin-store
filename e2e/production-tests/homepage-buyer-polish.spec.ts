@@ -69,10 +69,12 @@ test("production mobile footer and keyboard menu are reachable", async ({page,re
     const bounds=await menu.boundingBox(),viewport=page.viewportSize()!;
     expect(bounds!.width).toBeLessThan(viewport.width);
     expect(bounds!.height).toBeLessThan(viewport.height*.8);
-    await expect(page.locator(".mobile-menu-backdrop")).toBeHidden();
-    await expect(page.locator("body")).not.toHaveCSS("overflow","hidden");
+    await expect(page.locator(".mobile-menu-backdrop")).toBeVisible();
+    await expect(page.locator("body")).toHaveCSS("overflow","hidden");
     await page.keyboard.press("Escape");
     await expect(menu).not.toBeVisible();
+    await expect(page.locator(".mobile-menu-backdrop")).toBeHidden();
+    await expect(page.locator("body")).not.toHaveCSS("overflow","hidden");
     await expect(trigger).toBeFocused();
     await page.getByRole("button",{name:"Поиск",exact:true}).click();
     await expect(page.locator(".mobile-search")).toBeVisible();
