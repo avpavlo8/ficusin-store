@@ -447,9 +447,82 @@ paths:
               type: object
       responses:
         "201":
-          description: Order saved and queued for payment
+          description: Order saved. New guests also receive guestPaymentToken for payment only; it must not be stored in localStorage or analytics.
         "400":
           $ref: "#/components/responses/ValidationError"
+  /payments/orders/{orderNumber}:
+    post:
+      operationId: startOwnedOrderPayment
+      description: Requires the order owner's session or the guest token issued at checkout. Guest tokens stop working after phone-based account linking. Rate limited by IP and, after authorization, by order.
+      parameters:
+        - {in: path, name: orderNumber, required: true, schema: {type: string}}
+        - {in: header, name: X-Order-Payment-Token, required: false, schema: {type: string, minLength: 64, maxLength: 64}}
+      responses:
+        "200": {description: Existing or new confirmationUrl and public payment balance}
+        "404": {description: Order absent or access denied, with the same response}
+        "409": {description: Payment cannot currently be opened}
+        "429": {description: Too many attempts}
+  /admin/orders/{id}/refund:
+    post:
+      operationId: refundOrderAmount
+      description: Requires payments.refund (owner). Persists all split attempts before sending. A pending refund is not a successful refund; read the adjustment balance for history and fiscal tasks.
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, reason, requestId]
+              properties:
+                amount: {type: number, exclusiveMinimum: 0}
+                reason: {type: string}
+                requestId: {type: string, minLength: 16, maxLength: 128}
+      responses:
+        "200": {description: Current balance and refund history; pending may remain}
+        "400": {description: Invalid amount, provider rejection or fiscal composition requires review}
+        "403": {description: payments.refund required}
+  /admin/orders/{id}/refunds/{refundID}/receipt:
+    post:
+      operationId: confirmRefundTillReceipt
+      description: Requires payments.refund. Records confirmation that the shop till has already issued a receipt; does not issue or sign any document.
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: integer}}
+        - {in: path, name: refundID, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmed]
+              properties:
+                confirmed: {const: true}
+      responses:
+        "200": {description: Confirmation and actor saved}
+        "403": {description: payments.refund required}
+        "409": {description: No outstanding fiscal task for this order and refund}
+  /admin/orders/{id}/refunds/{refundID}/resolve:
+    post:
+      operationId: resolveUnknownRefund
+      description: Requires payments.refund. Fetches the supplied refund ID from YooKassa and verifies its payment and amount. Never creates another provider refund.
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: integer}}
+        - {in: path, name: refundID, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerId]
+              properties:
+                providerId: {type: string}
+      responses:
+        "200": {description: Verified provider ID attached and balance reconciled}
+        "403": {description: payments.refund required}
+        "409": {description: Refund does not match the saved attempt}
   /admin/dashboard:
     get:
       operationId: adminDashboard

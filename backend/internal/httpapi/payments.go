@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
@@ -21,14 +22,34 @@ type adjustablePaymentService interface {
 	SyncOutstanding(ctx context.Context, providerPaymentID string) error
 }
 
-type shipmentOfferPaymentService interface { StartShipmentOffer(context.Context,string,int64)(string,error) }
+type shipmentOfferPaymentService interface {
+	StartShipmentOffer(context.Context, string, int64) (string, error)
+}
 
-func startShipmentOfferPaymentHandler(logger *slog.Logger,authentication authService,payments paymentService) http.Handler {
-	return http.HandlerFunc(func(response http.ResponseWriter,request *http.Request){
-		cookie,err:=request.Cookie(auth.CookieName);if err!=nil{writeJSON(response,http.StatusUnauthorized,errorResponse{Error:"Требуется авторизация"});return}
-		user,err:=authentication.UserByToken(request.Context(),cookie.Value);if err!=nil||user==nil{writeJSON(response,http.StatusUnauthorized,errorResponse{Error:"Требуется авторизация"});return}
-		service,ok:=payments.(shipmentOfferPaymentService);if !ok||!available(payments){writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой временно недоступна"});return}
-		url,err:=service.StartShipmentOffer(request.Context(),request.PathValue("token"),user.ID);if err!=nil{logger.Info("shipment offer payment not started","error",err);writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return};writeJSON(response,http.StatusOK,map[string]string{"confirmationUrl":url})
+func startShipmentOfferPaymentHandler(logger *slog.Logger, authentication authService, payments paymentService) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		cookie, err := request.Cookie(auth.CookieName)
+		if err != nil {
+			writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+			return
+		}
+		user, err := authentication.UserByToken(request.Context(), cookie.Value)
+		if err != nil || user == nil {
+			writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+			return
+		}
+		service, ok := payments.(shipmentOfferPaymentService)
+		if !ok || !available(payments) {
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Оплата картой временно недоступна"})
+			return
+		}
+		url, err := service.StartShipmentOffer(request.Context(), request.PathValue("token"), user.ID)
+		if err != nil {
+			logger.Info("shipment offer payment not started", "error", err)
+			writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+			return
+		}
+		writeJSON(response, http.StatusOK, map[string]string{"confirmationUrl": url})
 	})
 }
 
@@ -53,7 +74,8 @@ func paymentMethodsHandler(authentication authService, payments paymentService) 
 // startPaymentHandler hands back the page to pay on. Mutable orders use the
 // outstanding balance, not their original total. Most importantly, an order
 // with a preorder or an unknown delivery price cannot open YooKassa at all.
-func startPaymentHandler(logger *slog.Logger, payments paymentService) http.Handler {
+func startPaymentHandler(logger *slog.Logger, authentication authService, payments paymentService) http.Handler {
+	perOrder := newRateLimiter(10, time.Minute)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if !available(payments) {
 			writeJSON(response, http.StatusServiceUnavailable, errorResponse{
@@ -62,6 +84,34 @@ func startPaymentHandler(logger *slog.Logger, payments paymentService) http.Hand
 			return
 		}
 		orderNumber := strings.TrimSpace(request.PathValue("orderNumber"))
+		var customerID int64
+		if authentication != nil {
+			if cookie, err := request.Cookie(auth.CookieName); err == nil {
+				if user, err := authentication.UserByToken(request.Context(), cookie.Value); err == nil && user != nil {
+					customerID = user.ID
+				}
+			}
+		}
+		access, ok := payments.(interface {
+			AuthorizeOrderPayment(context.Context, string, string, int64) (bool, error)
+		})
+		allowed := false
+		if ok {
+			var err error
+			allowed, err = access.AuthorizeOrderPayment(request.Context(), orderNumber, request.Header.Get("X-Order-Payment-Token"), customerID)
+			if err != nil {
+				logger.Error("authorize order payment failed", "error", err)
+			}
+		}
+		if !allowed {
+			writeJSON(response, http.StatusNotFound, errorResponse{Error: "Заказ недоступен. Войдите по телефону, указанному при оформлении"})
+			return
+		}
+		// Unauthenticated guesses cannot exhaust a real customer's order limit.
+		if !perOrder.allow(orderNumber) {
+			writeJSON(response, http.StatusTooManyRequests, errorResponse{Error: "Слишком много попыток оплаты. Попробуйте позже"})
+			return
+		}
 		if advanced, ok := payments.(adjustablePaymentService); ok {
 			url, balance, err := advanced.StartOutstanding(request.Context(), orderNumber)
 			if err != nil {
@@ -75,6 +125,8 @@ func startPaymentHandler(logger *slog.Logger, payments paymentService) http.Hand
 				writeJSON(response, http.StatusConflict, errorResponse{Error: message})
 				return
 			}
+			balance.Issues = nil
+			balance.Refunds = nil
 			writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
 			return
 		}

@@ -262,7 +262,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await response.json()) as { orderNumber?: string; paymentStatus?: string; hasPreorder?: boolean; error?: string };
+      const data = (await response.json()) as { orderNumber?: string; guestPaymentToken?: string; paymentStatus?: string; hasPreorder?: boolean; error?: string };
       if (!response.ok || !data.orderNumber) {
         throw new Error(data.error || "Не удалось оформить заказ");
       }
@@ -274,8 +274,9 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       window.scrollTo({ top: 0, behavior: "auto" });
       if (!hasPreorder && paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder && !deliveryFeePending) {
         try {
-          const payment = await fetch(`/api/v1/payments/orders/${data.orderNumber}`, {
+          const payment = await fetch(`/api/v1/payments/orders/${encodeURIComponent(data.orderNumber)}`, {
             method: "POST",
+            headers: data.guestPaymentToken ? { "X-Order-Payment-Token": data.guestPaymentToken } : {},
             credentials: "same-origin",
           });
           const result = (await payment.json()) as { confirmationUrl?: string; error?: string };

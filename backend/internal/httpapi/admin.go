@@ -11,6 +11,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
+	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -196,20 +197,29 @@ func (handlers adminHandlers) updateOrder(response http.ResponseWriter, request 
 		// Refund asks to send the customer's money back. Cancelling the
 		// order and returning the money are separate decisions: an order
 		// can be cancelled for a customer who paid at the counter.
-		Refund bool `json:"refund"`
+		Refund    bool   `json:"refund"`
+		RequestID string `json:"requestId"`
 	}
 	if decodeJSON(request, &body) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
 		return
 	}
 	if body.Refund {
+		if !admin.Can(actor.Role, admin.PermissionPaymentsRefund) {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Возврат доступен владельцу"})
+			return
+		}
+		if len(strings.TrimSpace(body.RequestID)) < 16 || len(body.RequestID) > 128 {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите ключ запроса возврата"})
+			return
+		}
 		if handlers.payments == nil {
 			writeJSON(response, http.StatusServiceUnavailable, errorResponse{
 				Error: "Возврат недоступен: оплата не настроена",
 			})
 			return
 		}
-		if err := handlers.payments.Refund(request.Context(), id); err != nil {
+		if err := handlers.payments.Refund(payment.WithRefundRequest(payment.WithRefundActor(request.Context(), actor.CustomerID), strings.TrimSpace(body.RequestID)), id); err != nil {
 			handlers.logger.Error("refund failed", "error", err, "order_id", id)
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
 			return
@@ -725,7 +735,7 @@ func permissionsFor(role string) []string {
 	all := []string{
 		admin.PermissionChat, admin.PermissionDashboard, admin.PermissionCustomersRead, admin.PermissionCustomersEdit,
 		admin.PermissionRolesEdit, admin.PermissionDiscountsEdit, admin.PermissionOrdersRead,
-		admin.PermissionOrdersEdit, admin.PermissionProductsRead, admin.PermissionProductsEdit,
+		admin.PermissionOrdersEdit, admin.PermissionPaymentsRefund, admin.PermissionPaymentsManage, admin.PermissionProductsRead, admin.PermissionProductsEdit,
 		admin.PermissionProductsSync, admin.PermissionProcurementRead,
 		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
 		admin.PermissionAnalyticsRead, admin.PermissionProductsManage, admin.PermissionDelete,

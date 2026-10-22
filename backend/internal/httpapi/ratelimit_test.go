@@ -22,3 +22,15 @@ func TestClientIPUsesNearestPublicAddressBehindPrivateProxy(t *testing.T) {
 		t.Fatalf("clientIP = %q, want nearest public address", got)
 	}
 }
+
+func TestIPv6RateLimitGroupsSubscriberPrefix(t *testing.T) {
+	if rateLimitIP("2001:db8:1234:5678::1") != rateLimitIP("2001:db8:1234:5678:ffff::abcd") {
+		t.Fatal("IPv6 rotation bypasses limit")
+	}
+	if rateLimitIP("2001:db8:1234:5679::1") == rateLimitIP("2001:db8:1234:5678::1") {
+		t.Fatal("different prefixes share limit")
+	}
+	if rateLimitIP("203.0.113.1") != "203.0.113.1" {
+		t.Fatal("IPv4 changed")
+	}
+}
