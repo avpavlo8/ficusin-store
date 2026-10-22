@@ -57,7 +57,7 @@ export function InstallHint() {
   if (hidden) return null;
 
   return <aside className="install-hint" role="complementary">
-    <img src="/icon-192.png" alt="" />
+    <img src="/icon-192.png?v=graphite-v1" alt="" />
     <div>
       <strong>Фикусин на домашний экран</strong>
       {showIOSSteps

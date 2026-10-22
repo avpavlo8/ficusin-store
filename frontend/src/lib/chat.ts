@@ -4,6 +4,7 @@ import { apiJSON } from "./api";
 export type ChatMessage = { id: number; sender: "customer" | "staff"; text: string; contextUrl?: string; contextLabel?: string; hasImage: boolean; attachmentName?: string; attachmentKind?: "image" | "video" | "file"; attachmentSize?: number; createdAt: string };
 export type ChatThreadData = { consentRequired?: boolean; id: number; status: "open" | "closed"; customerReadId: number; staffReadId: number; messages: ChatMessage[]; hasMore: boolean };
 export type ChatContext = { url: string; label: string };
+export const chatModalMedia = '(max-width: 760px), (max-height: 500px) and (pointer: coarse)';
 export const chatHref = (label: string, url = window.location.pathname) => `/chat?${new URLSearchParams({ topic: label.slice(0, 180), from: url.slice(0, 500) })}`;
 export function useChatUnread(staff = false, enabled = true) {
   const [count, setCount] = useState(0);

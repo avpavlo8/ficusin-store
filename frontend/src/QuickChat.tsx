@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import ChatThread, { ChatIcon } from "./ChatThread";
-import type { ChatContext } from "./lib/chat";
+import ChatNotifications from "./ChatNotifications";
+import { chatModalMedia, type ChatContext } from "./lib/chat";
 
 export default function QuickChat({ open, context, onClose }: { open: boolean; context?: ChatContext; onClose: () => void }) {
   const panel = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);
-  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+  const [mobile, setMobile] = useState(() => window.matchMedia(chatModalMedia).matches);
   const closeCallback = useRef(onClose);
   useEffect(() => { closeCallback.current = onClose; }, [onClose]);
-  useEffect(() => { const query = window.matchMedia("(max-width: 760px)"); const update = () => setMobile(query.matches); query.addEventListener("change", update); return () => query.removeEventListener("change", update); }, []);
+  useEffect(() => { const query = window.matchMedia(chatModalMedia); const update = () => setMobile(query.matches); query.addEventListener("change", update); return () => query.removeEventListener("change", update); }, []);
   useEffect(() => {
     const dialog = panel.current;
     if (!open || !dialog) return;
     const background: Array<[HTMLElement, boolean]> = [];
+    const pageScroll = { x: window.scrollX, y: window.scrollY };
+    const body = document.body;
+    const bodyStyle = { position: body.style.position, top: body.style.top, left: body.style.left, width: body.style.width };
     if (mobile) {
+      // overflow:hidden alone still lets iOS scroll the page behind a focused field.
+      Object.assign(body.style, { position: "fixed", top: `${-pageScroll.y}px`, left: `${-pageScroll.x}px`, width: "100%" });
       let branch: HTMLElement = dialog;
       while (branch.parentElement) {
         const parent = branch.parentElement;
@@ -26,6 +32,7 @@ export default function QuickChat({ open, context, onClose }: { open: boolean; c
     const controls = () => [...dialog.querySelectorAll<HTMLElement>('a[href],button,input,textarea,select,summary,[tabindex]')].filter(node => node.tabIndex >= 0 && !node.hasAttribute("disabled") && node.getClientRects().length > 0 && !node.closest("[hidden]"));
     const keydown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('.chat-photo-viewer')) return;
       if (event.key === "Escape" && (mobile || dialog.contains(document.activeElement))) { event.preventDefault(); closeCallback.current(); return; }
       if (!mobile || event.key !== "Tab") return;
       const items = controls();
@@ -36,7 +43,10 @@ export default function QuickChat({ open, context, onClose }: { open: boolean; c
       items[next].focus();
     };
     document.addEventListener("keydown", keydown);
-    return () => { document.removeEventListener("keydown", keydown); background.forEach(([element, inert]) => { element.inert = inert; }); };
+    return () => {
+      document.removeEventListener("keydown", keydown); background.forEach(([element, inert]) => { element.inert = inert; });
+      if (mobile) { Object.assign(body.style, bodyStyle); window.scrollTo({ left: pageScroll.x, top: pageScroll.y, behavior: "instant" }); }
+    };
   }, [open, mobile]);
-  return <section ref={panel} tabIndex={-1} id="quick-chat" className="quick-chat telegram-chat" hidden={!open} role="dialog" aria-modal={mobile || undefined} aria-label="Быстрый чат с Фикусином"><header className="chat-panel-heading"><img className="chat-avatar" src="/icon-192.png" alt="" /><div><h2>Фикусин</h2><p>Сотрудник магазина</p></div><button ref={close} className="chat-header-action" type="button" aria-label="Свернуть чат" onClick={onClose}><ChatIcon name="close" /></button></header><ChatThread context={context} visible={open} /></section>;
+  return <section ref={panel} tabIndex={-1} id="quick-chat" className="quick-chat telegram-chat" hidden={!open} role="dialog" aria-modal={mobile || undefined} aria-label="Быстрый чат с Фикусином"><header className="chat-panel-heading"><img className="chat-avatar" src="/icon-192.png?v=graphite-v1" alt="" /><div><h2>Фикусин</h2><p>Сотрудник магазина</p></div><ChatNotifications /><button ref={close} className="chat-header-action" type="button" aria-label="Свернуть чат" onClick={onClose}><ChatIcon name="close" /></button></header><ChatThread context={context} visible={open} /></section>;
 }

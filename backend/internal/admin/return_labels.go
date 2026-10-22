@@ -1,6 +1,7 @@
 package admin
 
 import (
+	_ "embed"
 	"fmt"
 	"github.com/boombuler/barcode/code128"
 	"github.com/boombuler/barcode/ean"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed assets/ficusin-wordmark-black.png
+var returnLabelLogoPNG []byte
 
 func returnLabelMoney(value float64) string {
 	parts := strings.Split(fmt.Sprintf("%.2f", value), ".")
@@ -32,6 +36,10 @@ func BuildReturnLabels(items []MarketplaceReturn, includeDate bool) ([]byte, err
 	const pageWidth = 58 * 72 / 25.4
 	pdf := &gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: pageWidth, H: 40 * 72 / 25.4}})
+	logo, err := gopdf.ImageHolderByBytes(returnLabelLogoPNG)
+	if err != nil {
+		return nil, fmt.Errorf("load return label logo: %w", err)
+	}
 	regular := strings.TrimSpace(os.Getenv("PROCUREMENT_PDF_FONT"))
 	if regular == "" {
 		regular = "/app/fonts/DejaVuSans.ttf"
@@ -62,10 +70,10 @@ func BuildReturnLabels(items []MarketplaceReturn, includeDate bool) ([]byte, err
 	}
 	for _, item := range items {
 		pdf.AddPage()
-		if err := centre(3, 7.8, "regular", "Магазин комнатных растений"); err != nil {
-			return nil, err
-		}
-		if err := centre(12, 9, "regular", "«Фикусин»"); err != nil {
+		// Keep the original 24-point header area; product, price and barcode
+		// retain their positions on the 58×40 mm thermal label.
+		const logoWidth = 64.0
+		if err := pdf.ImageByHolder(logo, (pageWidth-logoWidth)/2, 1.5, &gopdf.Rect{W: logoWidth, H: logoWidth * 370 / 1186}); err != nil {
 			return nil, err
 		}
 		name := strings.TrimSpace(item.ProductName + " " + item.Label)

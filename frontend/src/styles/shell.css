@@ -145,7 +145,6 @@ body.menu-open, body.drawer-open { overflow: hidden; }
   .favorites-button b { display: inline; }
   .header { grid-template-columns: auto 1fr auto; gap: 6px; }
   .brand { justify-self: center; font-size: 19px; }
-  .brand-mark { width: 27px; height: 33px; font-size: 21px; }
   .account-button { width: 40px; height: 40px; padding: 0; justify-content: center; }
   .account-button > span:last-child { display: none; }
   .mobile-search { top: 0; }

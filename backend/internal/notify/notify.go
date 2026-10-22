@@ -55,6 +55,18 @@ func (service *Service) PublicKey() string {
 	return service.client.PublicKey()
 }
 
+// Deliver exposes delivery errors to the durable chat outbox, which owns retries.
+func (service *Service) Deliver(_ context.Context, subscription Subscription, message Message) error {
+	if service == nil {
+		return errors.New("push notifications are not configured")
+	}
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	return service.client.Send(webpush.Subscription{Endpoint: subscription.Endpoint, P256dh: subscription.P256dh, Auth: subscription.Auth}, payload, 86400)
+}
+
 // Subscribe stores a browser's subscription. The same browser re-subscribing
 // updates the existing row instead of piling up duplicates, which is why the
 // endpoint carries the unique index.

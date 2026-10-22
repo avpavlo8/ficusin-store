@@ -200,6 +200,12 @@ func main() {
 	analyticsStore := commerceanalytics.NewStore(pool)
 	operationsProbe := operations.NewProbe(pool)
 	go avitoService.Run(ctx)
+	chatStore := chat.NewStore(pool)
+	if pushService != nil {
+		for range 4 {
+			go chatStore.RunPush(ctx, pushService, logger)
+		}
+	}
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
 		Catalog:          catalogRepository,
@@ -210,7 +216,7 @@ func main() {
 		Admin:            adminRepository,
 		Saby:             sabyService,
 		Push:             pushService,
-		Chat:             chat.NewStore(pool),
+		Chat:             chatStore,
 		Cart:             cart.NewStore(pool),
 		Packages:         catalogRepository,
 		Collections:      catalogRepository,

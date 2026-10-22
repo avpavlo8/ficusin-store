@@ -14,7 +14,7 @@ func TestChatAdminBoundaryBeforeStorage(t *testing.T) {
 		deps := testDependencies(catalogStub{}, authStub{user: &auth.User{ID: 1, AdminRole: role}})
 		deps.Chat = chat.NewStore(nil)
 		router := NewRouter(discardLogger(), deps)
-		for _, route := range []struct{ method, path string }{{"GET", "/api/v1/admin/chat"}, {"GET", "/api/v1/admin/chat/unread"}, {"GET", "/api/v1/admin/chat/1"}, {"GET", "/api/v1/admin/chat/1/photos/1"}, {"POST", "/api/v1/admin/chat/1/messages"}, {"POST", "/api/v1/admin/chat/1/read"}, {"PATCH", "/api/v1/admin/chat/1"}} {
+		for _, route := range []struct{ method, path string }{{"GET", "/api/v1/admin/chat"}, {"GET", "/api/v1/admin/chat/unread"}, {"GET", "/api/v1/admin/chat/1"}, {"GET", "/api/v1/admin/chat/1/photos/1"}, {"POST", "/api/v1/admin/chat/1/messages"}, {"POST", "/api/v1/admin/chat/1/read"}, {"PATCH", "/api/v1/admin/chat/1"}, {"POST", "/api/v1/admin/chat/notifications"}, {"POST", "/api/v1/admin/chat/notifications/state"}, {"DELETE", "/api/v1/admin/chat/notifications"}} {
 			r := httptest.NewRequest(route.method, route.path, strings.NewReader(`{}`))
 			r.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "test"})
 			w := httptest.NewRecorder()

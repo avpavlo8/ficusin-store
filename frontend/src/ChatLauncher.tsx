@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useChatUnread, type ChatContext } from "./lib/chat";
 import "./styles/chat-launcher.css";
-const QuickChat = lazy(() => import("./QuickChat"));
+function ChatLoadError({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return <>{open && <div className="quick-chat-loading" role="alert"><p>Не удалось открыть чат. Обновите страницу и попробуйте снова.</p><button type="button" onClick={() => window.location.reload()}>Обновить страницу</button><button type="button" onClick={onClose}>Закрыть</button></div>}</>;
+}
+const QuickChat = lazy(() => import("./QuickChat").catch(() => ({ default: ChatLoadError })));
 
 function contextOf(url: URL): ChatContext | undefined {
   const path = url.searchParams.get("from") || "";
@@ -25,9 +28,14 @@ export default function ChatLauncher() {
       event.preventDefault(); trigger.current = link; setContext(contextOf(url)); setStarted(true); setOpen(true);
     };
     document.addEventListener("click", click);
-    const resize = () => document.documentElement.style.setProperty("--chat-viewport-height", `${window.visualViewport?.height || window.innerHeight}px`);
-    resize(); window.visualViewport?.addEventListener("resize", resize); window.addEventListener("resize", resize);
-    return () => { document.removeEventListener("click", click); window.visualViewport?.removeEventListener("resize", resize); window.removeEventListener("resize", resize); };
+    // Safari can pan the visual viewport independently when the keyboard opens.
+    const resize = () => {
+      const viewport = window.visualViewport;
+      document.documentElement.style.setProperty("--chat-viewport-height", `${viewport?.height || window.innerHeight}px`);
+      document.documentElement.style.setProperty("--chat-viewport-top", `${viewport?.offsetTop || 0}px`);
+    };
+    resize(); window.visualViewport?.addEventListener("resize", resize); window.visualViewport?.addEventListener("scroll", resize); window.addEventListener("resize", resize);
+    return () => { document.removeEventListener("click", click); window.visualViewport?.removeEventListener("resize", resize); window.visualViewport?.removeEventListener("scroll", resize); window.removeEventListener("resize", resize); };
   }, []);
   useEffect(() => { document.body.classList.toggle("quick-chat-open", open); return () => document.body.classList.remove("quick-chat-open"); }, [open]);
   return <><button className="chat-launcher" type="button" aria-label={`Написать нам${unread ? `, непрочитанных сообщений: ${unread}` : ""}`} aria-expanded={open} aria-controls="quick-chat" onClick={event => { trigger.current = event.currentTarget; setStarted(true); setOpen(value => !value); }}><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6" /></svg><span>{open ? "Свернуть чат" : "Написать нам"}</span>{unread > 0 && !open && <b>{unread > 99 ? "99+" : unread}</b>}</button>{started && <Suspense fallback={open ? <div className="quick-chat-loading" role="status">Открываем чат…</div> : null}><QuickChat open={open} context={context} onClose={close} /></Suspense>}</>;
