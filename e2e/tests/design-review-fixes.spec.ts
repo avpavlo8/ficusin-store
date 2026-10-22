@@ -28,7 +28,7 @@ test('@desktop @phone cart total includes only merchandise and survives quantity
   await page.reload({waitUntil:'domcontentloaded'}); await expect(total).toHaveText(/2.?980/);
 });
 
-test('@desktop @phone product keeps care visible, sorted sizes and complete recommendations', async ({page}) => {
+test('@desktop @phone product keeps care available in tabs, sorted sizes and complete recommendations', async ({page}) => {
   await mockApi(page);
   await page.route('**/api/v1/products/review',route=>route.fulfill({json:{product:{
     id:'review',name:'Алоказия Регал Шилдс',latin:'Alocasia',catalogSection:'plants',categoryId:4,
@@ -39,7 +39,8 @@ test('@desktop @phone product keeps care visible, sorted sizes and complete reco
   }}}));
   await page.goto('/product/review',{waitUntil:'domcontentloaded'});
   await expect(page.locator('.variant-picker button strong')).toHaveText(['Ø 10 см','Ø 23 см','Ø 32 см']);
-  await expect(page.locator('#plant-passport')).toBeVisible();
+  await expect(page.locator('#plant-passport')).toBeAttached();
+  await expect(page.locator('#pdp-panel-care')).toBeHidden();
   await expect(page.locator('.purchase-review-stars')).toHaveCount(0);
   await expect(page.locator('.pdp-photo-track img')).toHaveAttribute('src','/assets/product-photo-pending-graphite-v1.svg');
   const rail=await page.locator('.pdp-related-track').boundingBox();

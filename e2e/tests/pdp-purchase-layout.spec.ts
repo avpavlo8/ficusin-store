@@ -111,7 +111,7 @@ for (const device of ["@phone", "@desktop"]) {
 test("@desktop шаги первых дней одинаковой ширины и оставляют место фотографии", async ({page}) => {
   await mockApi(page);
   await page.goto("/product/1");
-  await page.getByRole("navigation", {name:"Разделы товара"}).getByRole("link",{name:"Уход",exact:true}).click();
+  await page.getByRole("tab",{name:"Уход",exact:true}).click();
   const steps = await page.locator(".plant-arrival li").evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {width:r.width,right:r.right}}));
   expect(steps).toHaveLength(5);
   expect(steps[3].width).toBeCloseTo(steps[0].width,0);

@@ -15,6 +15,16 @@ import { useFavorites } from "./lib/favorites";
 const plantOnlyAttributeCodes = new Set(["plant_type","height_cm","pot_diameter_cm","light_level","watering","humidity","care_level","toxicity","pet_safety","placement","growth_habit","height_class","flowering"]);
 const PdpAdminTools = lazy(() => import("./PdpAdminTools").then((module) => ({ default: module.PdpAdminTools })));
 
+type ProductTab = "about" | "care" | "characteristics" | "reviews" | "questions";
+function linkedProductTab(hash: string, product: ProductDetail): ProductTab | null {
+  if (hash === "#reviews") return "reviews";
+  if (product.catalogSection !== "plants") return hash === "#characteristics" ? "characteristics" : null;
+  if (hash.startsWith("#plant-about")) return "about";
+  if (hash.startsWith("#plant-")) return "care";
+  if (hash === "#questions" && product.passport.faq?.some(item => item.question.trim() && item.answer.trim())) return "questions";
+  return null;
+}
+
 export default function ProductPage({ slug }: { slug: string }) {
   const [categories, setCategories] = useState<Array<{ id:number; parentId:number|null; name:string; slug:string; sortOrder:number }>>([]);
   const [product, setProduct] = useState<ProductDetail | null>(null);
@@ -25,6 +35,8 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [quantity, setQuantity] = useState(1);
   const [revision, setRevision] = useState(0);
 
+  const [activeTab, setActiveTab] = useState<ProductTab>("about");
+  const linkedCareTarget = useRef<string | null>(null);
   const relatedTrack = useRef<HTMLDivElement>(null);
   const [relatedEdges, setRelatedEdges] = useState({ start: true, end: false });
   useEffect(() => {
@@ -48,7 +60,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       .then((item) => {
         const normalized = { ...item, passport: item.passport || {}, importantWarnings: item.importantWarnings || [], attributes: item.attributes || [], variants: (item.variants || []).map((variant) => ({ ...variant, images: variant.images || [], attributes: variant.attributes || [] })).sort((a, b) => (a.potDiameterCm || Number(a.label.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) || Infinity) - (b.potDiameterCm || Number(b.label.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) || Infinity)), reviews: (item.reviews || []).map((review) => ({ ...review, photos: review.photos || [], media: review.media || [] })), rating: Number(item.rating) || 0, reviewsCount: Number(item.reviewsCount) || 0 };
         const requestedSKU=new URLSearchParams(window.location.search).get("sku");
-        setProduct(normalized); setSelectedID(normalized.variants.find((variant)=>variant.sku===requestedSKU)?.id ?? normalized.variants[0]?.id ?? null); setActiveImage(0);
+        setProduct(normalized); setSelectedID(normalized.variants.find((variant)=>variant.sku===requestedSKU)?.id ?? normalized.variants[0]?.id ?? null); setActiveImage(0); setActiveTab(linkedProductTab(window.location.hash, normalized) ?? (normalized.catalogSection === "plants" ? "about" : "characteristics"));
 		const viewed=normalized.variants.find((variant)=>variant.sku===requestedSKU) ?? normalized.variants[0];
 		track("view_item", { productCode: normalized.id, sku: viewed?.sku, value: viewed?.price, properties: { name: normalized.name, category: normalized.catalogSection } });
       })
@@ -80,17 +92,36 @@ export default function ProductPage({ slug }: { slug: string }) {
 
   useEffect(() => {
     if (!product) return;
-    const followAnchor = () => {
-      const id = decodeURIComponent(window.location.hash.slice(1));
-      if (!id) return;
-      const target = document.getElementById(id);
-      if (target instanceof HTMLDetailsElement) target.open = true;
-      target?.scrollIntoView({ block: "start" });
+    const followLinkedSection = () => {
+      const tab = linkedProductTab(window.location.hash, product);
+      if (!tab) return;
+      try { linkedCareTarget.current = decodeURIComponent(window.location.hash.slice(1)); } catch { return; }
+      setActiveTab(tab);
+      const target = document.getElementById(linkedCareTarget.current);
+      if (target && !target.closest("[hidden]")) {
+        if (target instanceof HTMLDetailsElement) target.open = true;
+        target.scrollIntoView({ block: "start" });
+        linkedCareTarget.current = null;
+      }
     };
-    const frame = requestAnimationFrame(followAnchor);
-    window.addEventListener("hashchange", followAnchor);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener("hashchange", followAnchor); };
+    const frame = requestAnimationFrame(followLinkedSection);
+    window.addEventListener("hashchange", followLinkedSection);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("hashchange", followLinkedSection); };
   }, [product]);
+
+  useEffect(() => {
+    if (!linkedCareTarget.current) return;
+    const frame = requestAnimationFrame(() => {
+      if (!linkedCareTarget.current) return;
+      const target = document.getElementById(linkedCareTarget.current) || document.getElementById(`pdp-panel-${activeTab}`);
+      if (target && !target.closest("[hidden]")) {
+        if (target instanceof HTMLDetailsElement) target.open = true;
+        target.scrollIntoView({ block: "start" });
+        linkedCareTarget.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, product]);
 
   const toggleFavorite = () => {
     if (!product) return;
@@ -136,8 +167,15 @@ export default function ProductPage({ slug }: { slug: string }) {
   const tabs = isPlant
     ? ([['about','О растении'],['care','Уход'],['reviews','Отзывы'],['questions','Вопросы']] as const).filter(([id]) => id !== 'questions' || hasPlantFAQ)
     : ([['characteristics','Характеристики'],['reviews','Отзывы']] as const);
-  const sectionID = (id: string) => ({ about: "plant-about", care: "plant-passport", reviews: "reviews", questions: "questions", characteristics: "characteristics" })[id];
-  const openReviews = () => { document.getElementById("reviews")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }); };
+  const changeTab = (id: ProductTab) => {
+    linkedCareTarget.current = null;
+    setActiveTab(id);
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+  };
+  const openReviews = () => {
+    changeTab("reviews");
+    requestAnimationFrame(() => document.getElementById("reviews")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }));
+  };
   const relatedPlants = product.recommendations.length > 0 && <section className="pdp-related"><header><div><h2>Похожие растения</h2></div></header><div className="pdp-related-carousel"><button type="button" className="pdp-related-side prev" disabled={relatedEdges.start} onClick={()=>relatedTrack.current?.scrollBy({left:-relatedTrack.current.clientWidth*.8,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})} aria-label="Предыдущие похожие растения">←</button><div className="pdp-related-track" ref={relatedTrack}>{product.recommendations.map((item) => <a className="product-card related-card" href={`/product/${item.id}`} onClick={()=>track("select_item",{productCode:item.id,value:item.price,properties:{list:"recommendations"}})} key={item.id}><div className="product-image"><ProductImage src={item.image} alt={item.name} /></div><div className="product-info"><p className="latin">{item.latin}</p><h3>{item.name}</h3><strong>{money(item.price)}</strong></div></a>)}</div><button type="button" className="pdp-related-side next" disabled={relatedEdges.end} onClick={()=>relatedTrack.current?.scrollBy({left:relatedTrack.current.clientWidth*.8,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})} aria-label="Следующие похожие растения">→</button></div></section>;
 
   return <main className="product-page">
@@ -148,13 +186,21 @@ export default function ProductPage({ slug }: { slug: string }) {
       <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
       <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} relatedPlants={relatedPlants} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(1); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
-    <div className={`pdp-tabs-shell${isPlant ? " plant-tabs-shell" : ""}`}><nav className="pdp-anchor-nav" aria-label="Разделы товара">{tabs.map(([id,label])=><a href={`#${sectionID(id)}`} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</a>)}</nav>
+    <div className={`pdp-tabs-shell${isPlant ? " plant-tabs-shell" : ""}`}><nav className="pdp-anchor-nav" role="tablist" aria-label="Разделы товара">{tabs.map(([id,label])=><button type="button" role="tab" className={activeTab===id?'active':''} onClick={()=>changeTab(id)} aria-selected={activeTab===id} tabIndex={activeTab===id?0:-1} onKeyDown={(event)=>{
+        const index=tabs.findIndex(([tab])=>tab===id);
+        const next=event.key==="ArrowRight"?(index+1)%tabs.length:event.key==="ArrowLeft"?(index+tabs.length-1)%tabs.length:event.key==="Home"?0:event.key==="End"?tabs.length-1:null;
+        if(next===null)return;
+        event.preventDefault();
+        changeTab(tabs[next][0]);
+        document.getElementById(`pdp-tab-${tabs[next][0]}`)?.focus({preventScroll:true});
+      }} aria-controls={`pdp-panel-${id}`} id={`pdp-tab-${id}`} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
       <section className="pdp-tab-panel">
-        {isPlant&&<PlantAbout product={product}/>}
-        {isPlant&&<PlantCareGuide product={product}/>}
-        {!isPlant&&<section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики</h2><p>Параметры выбранного варианта и общая информация о товаре</p></header><dl>{customerAttributes.length>0?customerAttributes.map((item)=><div key={`${item.code}-${variant?.sku || 'product'}`}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>):<><div><dt>Освещение</dt><dd>{attributeValue(product.lightLevel||product.passport.lighting||'Не указано')}</dd></div><div><dt>Полив</dt><dd>{attributeValue(product.watering||product.passport.watering||'Не указано')}</dd></div><div><dt>Уровень ухода</dt><dd>{attributeValue(product.careLevel||product.passport.careDifficulty||'Не указано')}</dd></div><div><dt>Безопасность для питомцев</dt><dd>{attributeValue(product.petSafety||product.passport.toxicity||'Не указано')}</dd></div></>}</dl></section>}
-        <ProductReviews reviews={product.reviews}/>
-        {isPlant&&hasPlantFAQ&&<PlantQuestions product={product}/>}
+        {/* Keep text mounted from the product response; tabs only change visibility. */}
+        {isPlant&&<div hidden={activeTab!=="about"} role="tabpanel" id="pdp-panel-about" aria-labelledby="pdp-tab-about"><PlantAbout product={product}/></div>}
+        {isPlant&&<div hidden={activeTab!=="care"} role="tabpanel" id="pdp-panel-care" aria-labelledby="pdp-tab-care"><PlantCareGuide product={product}/></div>}
+        {!isPlant&&<div hidden={activeTab!=="characteristics"} role="tabpanel" id="pdp-panel-characteristics" aria-labelledby="pdp-tab-characteristics"><section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики</h2><p>Параметры выбранного варианта и общая информация о товаре</p></header><dl>{customerAttributes.length>0?customerAttributes.map((item)=><div key={`${item.code}-${variant?.sku || 'product'}`}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>):<><div><dt>Освещение</dt><dd>{attributeValue(product.lightLevel||product.passport.lighting||'Не указано')}</dd></div><div><dt>Полив</dt><dd>{attributeValue(product.watering||product.passport.watering||'Не указано')}</dd></div><div><dt>Уровень ухода</dt><dd>{attributeValue(product.careLevel||product.passport.careDifficulty||'Не указано')}</dd></div><div><dt>Безопасность для питомцев</dt><dd>{attributeValue(product.petSafety||product.passport.toxicity||'Не указано')}</dd></div></>}</dl></section></div>}
+        <div hidden={activeTab!=="reviews"} role="tabpanel" id="pdp-panel-reviews" aria-labelledby="pdp-tab-reviews"><ProductReviews reviews={product.reviews}/></div>
+        {isPlant&&hasPlantFAQ&&<div hidden={activeTab!=="questions"} role="tabpanel" id="pdp-panel-questions" aria-labelledby="pdp-tab-questions"><PlantQuestions product={product}/></div>}
       </section>
     </div>
 

@@ -174,9 +174,9 @@ test("@desktop на карточке товара выбирается коли�
   await expect(page.getByRole("button", { name: "Удалить из корзины" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Корзина, товаров: 2/ })).toBeVisible();
   await expect(page.getByText("Питомцы")).toBeVisible();
-  await page.getByRole("link", { name: "Вопросы" }).click();
+  await page.getByRole("tab", { name: "Вопросы" }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
-  await page.getByRole("link", { name: /Отзывы/ }).click();
+  await page.getByRole("tab", { name: /Отзывы/ }).click();
   await expect(page.locator("#reviews")).toContainText("Подтверждённая покупка");
 });
 
@@ -188,7 +188,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(purchase.getByRole("heading", { level: 1 })).toHaveText("Аглаонема Мария");
   await expect(purchase.locator(".pdp-commerce-box")).toContainText("В наличии");
   await expect(purchase.getByRole("button", { name: "В корзину" })).toBeVisible();
-  await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(4);
+  await expect(page.locator(".pdp-anchor-nav").getByRole("tab")).toHaveCount(4);
   await expect(page.locator(".pdp-anchor-nav")).not.toContainText("Паспорт");
   await expect(page.locator(".review-modal")).toHaveCount(0);
   await page.getByRole("radio", { name: "5 из 5" }).click();
@@ -211,7 +211,7 @@ test("@desktop PDP сохраняет коммерческую иерархию 
 test("@desktop вопросы открываются отдельной вкладкой", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
-  await page.getByRole("link", { name: "Вопросы" }).click();
+  await page.getByRole("tab", { name: "Вопросы" }).click();
   await expect(page.locator("#questions details")).toContainText("Когда пересаживать?");
 });
 
@@ -238,7 +238,7 @@ test("@desktop у кашпо нет растительного ухода и х�
     variants: [{ id: 1, sku: "POT-1", label: "2,5 л", price: 990, stock: 3, wholesaleMinQty: 1, images: [], attributes: [] }],
   } } }));
   await page.goto("/product/pot");
-  await expect(page.locator(".pdp-anchor-nav").getByRole("link")).toHaveCount(2);
+  await expect(page.locator(".pdp-anchor-nav").getByRole("tab")).toHaveCount(2);
   await expect(page.locator(".pdp-anchor-nav")).not.toContainText("О растении");
   await expect(page.locator(".pdp-anchor-nav")).not.toContainText("Вопросы");
   await expect(page.locator(".pdp-key-characteristics")).toContainText("Материал");
@@ -264,9 +264,9 @@ test("@desktop @phone инструкция доступна по QR и раск�
   await expect(page.locator("#plant-repotting")).toHaveCount(0);
   await expect(guide).not.toContainText("Информация для этого растения готовится.");
   await expect(guide.getByRole("link", { name: "Мучнистый червец" })).toHaveAttribute("href", "/care/mealybug?plant=1");
-  await page.getByRole("link", { name: "Вопросы", exact: true }).click();
+  await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
   await expect(page.locator("#questions")).toContainText("Когда пересаживать?");
-  await page.getByRole("link", { name: "Уход", exact: true }).click();
+  await page.getByRole("tab", { name: "Уход", exact: true }).click();
   await expect(guide).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
@@ -281,11 +281,11 @@ test("@desktop незаполненные темы ухода и вопросы 
   const singlePhoto = await page.locator(".pdp-gallery.single .pdp-image").boundingBox();
   expect(singlePhoto?.width || 0).toBeGreaterThan(400);
   await expect(page.locator(".pdp-tab-panel")).not.toContainText("готовится");
-  await page.getByRole("link", { name: "Уход", exact: true }).click();
+  await page.getByRole("tab", { name: "Уход", exact: true }).click();
   await expect(page.locator(".plant-care-panel")).toHaveCount(0);
   await expect(page.locator("#plant-passport")).not.toContainText("готовится");
-  await expect(page.getByRole("link", { name: "Вопросы", exact: true })).toHaveCount(0);
-  await page.getByRole("link", { name: "Отзывы", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
   await expect(page.locator(".purchase-review-meta")).toContainText("Оставить первый отзыв");
 });

@@ -115,3 +115,13 @@ test("@desktop вкладки переключаются стрелками и �
   const accessibility = await new AxeBuilder({ page }).include(".pdp-tabs-shell").withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(accessibility.violations.filter(item => item.impact === "serious" || item.impact === "critical")).toEqual([]);
 });
+
+test("@desktop @phone старые ссылки на разделы открывают соответствующую вкладку", async ({ page }) => {
+  await mockApi(page);
+  for (const [hash, name, panel] of [["plant-about", "О растении", "about"], ["reviews", "Отзывы", "reviews"], ["questions", "Вопросы", "questions"]]) {
+    await page.goto(`/product/1#${hash}`);
+    await expect(page.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(`#pdp-panel-${panel}`)).toBeVisible();
+    await expect(page.getByRole("tabpanel")).toHaveCount(1);
+  }
+});
