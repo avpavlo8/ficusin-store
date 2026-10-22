@@ -69,42 +69,37 @@ test("@desktop @phone длинное описание и отзывы с фот�
 });
 
 
-test("@desktop @phone все тексты загружены до кликов, видна только выбранная вкладка", async ({ page }) => {
+test("@desktop @phone все разделы загружены сразу и сохраняют раскрытые вопросы", async ({ page }) => {
   await mockApi(page);
   let productRequests = 0;
   page.on("request", request => { if (new URL(request.url()).pathname === "/api/v1/products/1") productRequests++; });
   await page.goto("/product/1");
-  await expect(page.locator("#pdp-panel-about")).toBeVisible();
-  // textContent reads the rendered DOM even when the native hidden panel is closed.
-  await expect(page.locator("#pdp-panel-care")).toContainText("После просыхания верхнего слоя");
-  await expect(page.locator("#pdp-panel-questions")).toContainText("Весной, когда корни заполнят горшок.");
-  await expect(page.locator("#pdp-panel-reviews #reviews")).toBeAttached();
-  await expect(page.getByRole("tabpanel")).toHaveCount(1);
+  const nav = page.getByRole("navigation", {name:"Разделы товара"});
+  await expect(page.locator("#plant-about")).toBeVisible();
+  await expect(page.locator("#plant-passport")).toContainText("После просыхания верхнего слоя");
+  await expect(page.locator("#questions")).toContainText("Весной, когда корни заполнят горшок.");
+  await expect(page.locator("#reviews")).toBeAttached();
   const loadedRequests = productRequests;
-  await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
+  await nav.getByRole("link", {name:"Вопросы",exact:true}).click();
   await page.locator("#questions summary").first().click();
-  await page.getByRole("tab", { name: "Уход", exact: true }).click();
-  await expect(page.locator("#pdp-panel-care")).toBeVisible();
-  await expect(page.locator("#pdp-panel-questions")).toBeHidden();
-  await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
+  await nav.getByRole("link", {name:"Уход",exact:true}).click();
+  await expect(page.locator("#plant-passport")).toBeVisible();
+  await nav.getByRole("link", {name:"Вопросы",exact:true}).click();
   await expect(page.locator("#questions details").first()).toHaveAttribute("open", "");
-  await expect(page.getByRole("tabpanel")).toHaveCount(1);
   expect(productRequests).toBe(loadedRequests);
 });
 
-test("@desktop вкладки переключаются стрелками и не оставляют скрытый контент в фокусе", async ({ page }) => {
+test("@desktop навигация разделов доступна с клавиатуры", async ({ page }) => {
   await mockApi(page);
   await page.goto("/product/1");
-  const about = page.getByRole("tab", { name: "О растении", exact: true });
+  const nav = page.getByRole("navigation", {name:"Разделы товара"});
+  const about = nav.getByRole("link", {name:"О растении",exact:true});
   await about.focus();
-  await about.press("ArrowRight");
-  await expect(page.getByRole("tab", { name: "Уход", exact: true })).toBeFocused();
-  await expect(page.locator("#pdp-panel-care")).toBeVisible();
-  await page.keyboard.press("End");
-  await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("Home");
-  await expect(about).toBeFocused();
-  await expect(page.locator("#pdp-panel-about")).toBeVisible();
+  await about.press("Tab");
+  const care = nav.getByRole("link", {name:"Уход",exact:true});
+  await expect(care).toBeFocused();
+  await care.press("Enter");
+  await expect(page).toHaveURL(/#plant-passport$/);
   const accessibility = await new AxeBuilder({ page }).include(".pdp-tabs-shell").withTags(["wcag2a", "wcag2aa"]).analyze();
   expect(accessibility.violations.filter(item => item.impact === "serious" || item.impact === "critical")).toEqual([]);
 });

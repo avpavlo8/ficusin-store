@@ -39,7 +39,7 @@ test("@desktop @phone из ухода в статью и обратно к то�
   await expect(page).toHaveURL(/\/care\/root-problems\?plant=1$/);
   await page.getByRole("link", { name: "← К уходу за вашим растением", exact: true }).first().click();
   await expect(page).toHaveURL(/\/product\/1#plant-passport$/);
-  await expect(page.getByRole("tab", { name: "Уход", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("link", { name: "Уход", exact: true })).toHaveAttribute("href", "#plant-passport");
   await expect(page.locator(".plant-arrival")).toBeVisible();
 });
 

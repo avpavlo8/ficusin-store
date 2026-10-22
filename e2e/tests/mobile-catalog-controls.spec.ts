@@ -68,16 +68,13 @@ test("@desktop @phone favorite counts match visible cards and hidden IDs survive
 });
 
 
-test("@desktop floating cart stays in the lower right and opens the shared cart", async ({page})=>{
+test("@desktop header cart opens the shared cart without covering content", async ({page})=>{
   await mockApi(page);await page.goto('/');
-  const floating=page.getByRole('link',{name:'Открыть корзину, товаров: 0',exact:true});
-  await expect(floating).toBeVisible();await expect(floating).toHaveCSS('position','fixed');
-  const box=await floating.boundingBox(),viewport=page.viewportSize()!;
-  expect(viewport.width-box!.x-box!.width).toBe(24);expect(viewport.height-box!.y-box!.height).toBe(24);
-  await page.locator('.storefront-card').first().getByRole('button',{name:'В корзину',exact:true}).click();
-  await expect(page.locator('.floating-cart b')).toHaveText('1');
-  await page.getByRole('link',{name:'Открыть корзину, товаров: 1',exact:true}).click();await expect(page).toHaveURL(/\/cart$/);
   await expect(page.locator('.floating-cart')).toHaveCount(0);
+  await page.locator('.storefront-card').first().getByRole('button',{name:'В корзину',exact:true}).click();
+  await page.getByRole('link',{name:'Корзина, товаров: 1',exact:true}).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.locator('.cart-line')).toHaveCount(1);
 });
 
 
