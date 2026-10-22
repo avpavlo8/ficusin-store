@@ -32,6 +32,15 @@ func TestCrossOriginMutationIsRejected(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersScopeMapFramesToYandex(t *testing.T) {
+	response := httptest.NewRecorder()
+	securityHeaders(true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/contacts", nil))
+	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "frame-src 'self' https://yandex.ru;") || !strings.Contains(policy, "frame-ancestors 'none';") {
+		t.Fatalf("map frame permission or framing protection missing: %q", policy)
+	}
+}
+
 func TestSameOriginAndServerMutationsAreAllowed(t *testing.T) {
 	for _, origin := range []string{"https://ficusin.ru", ""} {
 		request := httptest.NewRequest(http.MethodPost, "https://ficusin.ru/api/v1/orders", nil)

@@ -114,7 +114,9 @@ test("@phone mobile autocomplete поддерживает тап и Search actio
 test("@desktop кабинет называет, сколько осталось до следующей ступени скидки", async ({ page }) => {
   await mockApi(page, owner);
   await page.goto("/account/profile");
-  await expect(page.getByText(/До 1% осталось ещё/)).toBeVisible();
+  const loyalty = page.locator(".loyalty-card");
+  await expect(loyalty.getByRole("meter")).toHaveAttribute("aria-valuetext", "От 0% до 1%: пройдено 64% пути");
+  await expect(loyalty.locator(".loyalty-next")).toHaveText(/Ещё 3\s600\s₽ до следующего уровня/);
 });
 
 test("@desktop профиль сохраняет адресные подсказки после обновления UI", async ({ page }) => {

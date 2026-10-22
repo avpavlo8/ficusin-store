@@ -180,7 +180,10 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
     </div>
     {newCount > 0 && <button type="button" className="chat-new" onClick={() => { if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; nearBottom.current = true; setNewCount(0); markRead(); }}>Новые сообщения: {newCount}</button>}
     {(error || loadError) && <div className="chat-error" role="alert"><span>{error || loadError}</span><button type="button" onClick={() => void load()}>Обновить</button></div>}
-    <form ref={compose} className="chat-compose" onSubmit={event => void send(event)}>
+    <form ref={compose} className="chat-compose" onSubmit={event => void send(event)} onMouseDown={event => {
+      // Keep focus while activating composer controls without cancelling touch clicks.
+      if ((event.target as HTMLElement).closest("button")) event.preventDefault();
+    }}>
       {topic && <div className="chat-topic"><span>Обсуждаем: <a href={contextHref(topic.url)}>{topic.label}</a></span><button type="button" aria-label="Убрать тему обращения" disabled={sending} onClick={() => setTopic(undefined)}><ChatIcon name="close" /></button></div>}
       {attachment && <div className="chat-preview">{attachment.preview ? <img src={attachment.preview} alt="Фото к отправке" /> : <ChatIcon name={attachment.kind === "video" ? "photo" : "file"} />}<div><strong>{attachment.name}</strong><small>{chatFileSize(attachment.size)}</small></div><button type="button" disabled={sending} aria-label="Убрать вложение" onClick={() => setAttachment(null)}><ChatIcon name="close" /></button></div>}
       {emojiOpen && <div className="chat-emoji-panel" role="group" aria-label="Выбор смайлика" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEmojiOpen(false); textarea.current?.focus(); } }}>

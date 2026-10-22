@@ -1,6 +1,9 @@
+import "./styles/customer-pages.css";
+import { usePageTitle } from "./lib/usePageTitle";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { formatRussianPhoneInput, normalizeRussianPhone } from "./lib/phone";
 import { StoreHeader } from "./StoreHeader";
+import { OrganizationLookup } from "./OrganizationLookup";
 
 type AuthFlow = "login" | "register";
 
@@ -34,11 +37,11 @@ const emptyRegistration: RegistrationDraft = {
   consent: false,
 };
 
-const RESEND_COOLDOWN_SECONDS = 45;
 const POLL_INTERVAL_MS = 3000;
 
 function AuthPage({ flow }: { flow: AuthFlow }) {
   const isRegistration = flow === "register";
+  usePageTitle(isRegistration ? "Регистрация" : "Вход");
   const requestedReturn = new URLSearchParams(window.location.search).get("returnTo");
   const returnTo = requestedReturn?.startsWith("/") && !requestedReturn.startsWith("//") ? requestedReturn : "/account";
   const switchQuery = returnTo === "/account" ? "" : `?returnTo=${encodeURIComponent(returnTo)}`;
@@ -50,7 +53,6 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
   const [accountType, setAccountType] = useState<"retail" | "wholesale">("retail");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const pollStateRef = useRef({
     phone: "",
@@ -59,14 +61,6 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
     registration: emptyRegistration,
   });
   pollStateRef.current = { phone, checkId, flow, registration };
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setCooldown((value) => (value > 0 ? value - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [cooldown]);
 
   const completeLogin = useCallback(() => {
     const target = new URL(returnTo, window.location.origin);
@@ -80,8 +74,11 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
   useEffect(() => {
     if (step !== "waiting") return;
     let cancelled = false;
+    let inFlight = false;
 
     async function poll() {
+      if (inFlight) return;
+      inFlight = true;
       const current = pollStateRef.current;
       try {
         const response = await fetch("/api/v1/auth/verify-code", {
@@ -95,16 +92,20 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
             ...(current.flow === "register" ? current.registration : {}),
           }),
         });
-        if (cancelled || response.status === 202) return;
+        if (cancelled) return;
+        if (response.status === 202) { setError(""); return; }
         const data = (await response.json()) as { error?: string };
+        if (cancelled) return;
         if (!response.ok) {
           setError(data.error || "Не удалось подтвердить звонок");
           setStep("form");
           return;
         }
-        completeLogin();
+        if (!cancelled) completeLogin();
       } catch {
-        // A short network failure is retried on the next polling tick.
+        if (!cancelled) setError("Не удалось проверить звонок. Проверим ещё раз автоматически. Можно проверить введённый телефон через «Изменить данные».");
+      } finally {
+        inFlight = false;
       }
     }
 
@@ -141,7 +142,6 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
       };
       setCheckId(data.checkId);
       setCallPhonePretty(data.callPhonePretty);
-      setCooldown(RESEND_COOLDOWN_SECONDS);
       setStep("waiting");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось подготовить звонок");
@@ -178,16 +178,21 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
         consent: form.get("consent") === "on",
       };
       setRegistration(registrationDraft);
+      if (accountType === "wholesale" && (!registrationDraft.companyName || !registrationDraft.inn)) {
+        setError("Выберите организацию из справочника");
+        return;
+      }
     }
     await requestCall(normalized, registrationDraft);
   }
 
   return (
-    <main className="auth-page">
+    <main className={`auth-page customer-auth customer-auth-centered ${isRegistration ? "customer-auth-register" : ""}`}>
       <StoreHeader />
+      <div className="auth-centered-stage">
       <section className={`auth-shell auth-shell-compact ${isRegistration ? "is-register" : "is-login"}`}>
         <div className="auth-intro">
-          <div className="auth-intro-copy"><p className="eyebrow">Профиль покупателя</p>
+          <div className="auth-intro-copy">
           <h1>
             {step === "waiting"
               ? "Подтвердите номер звонком"
@@ -195,33 +200,40 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
                 ? "Регистрация"
                 : "Вход"}
           </h1>
-          <p>
+          {(step === "waiting" || isRegistration) && <p>
             {step === "waiting"
-              ? "Позвоните с номера " + phone + " на " + callPhonePretty +
-                ". Звонок бесплатный — сервис автоматически его сбросит."
-              : isRegistration
-                ? "Заполните профиль один раз. При следующих заказах данные подставятся автоматически."
-                : "Введите телефон, указанный при регистрации. Пароль не нужен."}
-          </p></div>
+              ? <>Позвоните с номера <span className="auth-confirm-phone">{formatRussianPhoneInput(phone)}</span> на <span className="auth-confirm-phone">{callPhonePretty}</span>. Звонок бесплатный — сервис автоматически его сбросит.</>
+              : "Заполните профиль один раз. При следующих заказах данные подставятся автоматически."}
+          </p>}</div>
         </div>
 
         {step === "form" && (
-          <form className="auth-form" onSubmit={submit}>
+          <form className="auth-form" onSubmit={submit} onChange={event => {
+            if (!isRegistration) return;
+            const values = new FormData(event.currentTarget);
+            setRegistration(current => {
+              const next = { ...current, accountType, consent: values.get("consent") === "on" };
+              for (const key of ["fullName", "lastName", "patronymic", "email", "deliveryAddress"] as const) {
+                if (values.has(key)) next[key] = String(values.get(key) || "");
+              }
+              return next;
+            });
+          }}>
             {isRegistration && (
               <>
                 <div className="field-grid">
                   <label>
                     Фамилия
-                    <input name="lastName" autoComplete="family-name" required maxLength={80} />
+                    <input defaultValue={registration.lastName} name="lastName" autoComplete="family-name" required maxLength={80} />
                   </label>
                   <label>
                     Имя
-                    <input name="fullName" autoComplete="given-name" required minLength={2} maxLength={80} />
+                    <input defaultValue={registration.fullName} name="fullName" autoComplete="given-name" required minLength={2} maxLength={80} />
                   </label>
                 </div>
                 <label>
                   Отчество
-                  <input name="patronymic" autoComplete="additional-name" maxLength={80} />
+                  <input defaultValue={registration.patronymic} name="patronymic" autoComplete="additional-name" maxLength={80} />
                 </label>
               </>
             )}
@@ -230,6 +242,8 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
               <input
                 ref={phoneInputRef}
                 name="phone"
+                type="tel"
+                defaultValue={phone ? formatRussianPhoneInput(phone) : ""}
                 autoComplete="tel"
                 inputMode="tel"
                 required
@@ -245,12 +259,13 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
               <>
                 <label>
                   Email
-                  <input name="email" type="email" autoComplete="email" required maxLength={254} />
+                  <input defaultValue={registration.email} name="email" type="email" autoComplete="email" required maxLength={254} />
                 </label>
                 <label>
                   Адрес доставки
                   <input
                     name="deliveryAddress"
+                    defaultValue={registration.deliveryAddress}
                     autoComplete="street-address"
                     placeholder="Город, улица, дом, квартира"
                   />
@@ -286,32 +301,34 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
                 </fieldset>
                 {accountType === "wholesale" && (
                   <div className="wholesale-fields">
-                    <label>
-                      Название организации
-                      <input name="companyName" required maxLength={160} />
-                    </label>
+                    <OrganizationLookup initialName={registration.companyName}
+                      onClear={() => setRegistration(current => ({ ...current, companyName: "", inn: "", kpp: "", legalAddress: "" }))}
+                      onSelect={organization => setRegistration(current => ({ ...current, companyName: organization.name, inn: organization.inn, kpp: organization.kpp, legalAddress: organization.legalAddress }))} />
+                    {registration.companyName && <div className="organization-details">
+                    <input type="hidden" value={registration.companyName} name="companyName" />
                     <div className="field-grid">
                       <label>
                         ИНН
-                        <input name="inn" required inputMode="numeric" minLength={10} maxLength={12} />
+                        <input value={registration.inn} name="inn" readOnly />
                       </label>
                       <label>
                         КПП
-                        <input name="kpp" inputMode="numeric" minLength={9} maxLength={9} />
+                        <input value={registration.kpp} name="kpp" readOnly placeholder="Из справочника" />
                       </label>
                     </div>
                     <label>
                       Юридический адрес
-                      <input name="legalAddress" required maxLength={300} />
+                      <input value={registration.legalAddress} name="legalAddress" readOnly placeholder="Заполнится из справочника" />
                     </label>
+                    </div>}
                   </div>
                 )}
                 <label className="consent-check">
-                  <input type="checkbox" name="consent" required />
+                  <input type="checkbox" name="consent" required defaultChecked={registration.consent} />
                   <span>
-                    Я принимаю <a href="/offer" target="_blank">оферту</a> и даю
+                    Я принимаю <a href="/offer" target="_blank" rel="noreferrer">оферту</a> и даю
                     согласие на обработку данных, включая сообщения, фотографии, видео и файлы в чате, по{" "}
-                    <a href="/privacy" target="_blank">политике конфиденциальности</a>.
+                    <a href="/privacy" target="_blank" rel="noreferrer">политике конфиденциальности</a>.
                   </span>
                 </label>
               </>
@@ -319,7 +336,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
             {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="primary-button full" disabled={submitting}>
               {submitting
-                ? "Готовим номер…"
+                ? "Запускаем подтверждение…"
                 : isRegistration
                   ? "Зарегистрироваться"
                   : "Войти"}
@@ -337,22 +354,15 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
         {step === "waiting" && (
           <div className="auth-form">
             <p className="auth-call-number" aria-live="polite">
-              <b>{callPhonePretty}</b>
+              <a href={`tel:${callPhonePretty.replace(/[^+0-9]/g, "")}`}>{callPhonePretty}</a>
               <small>Ожидаем звонок и автоматически завершим {isRegistration ? "регистрацию" : "вход"}…</small>
             </p>
             {error && <p className="auth-error" role="alert">{error}</p>}
             <p className="auth-switch">
-              {cooldown > 0 ? (
-                <>Новый номер можно запросить через {cooldown} с.</>
-              ) : (
-                <button type="button" className="text-link" onClick={() => void requestCall(phone, registration)}>
-                  Получить новый номер
-                </button>
-              )}
-              {" · "}
               <button
                 type="button"
                 className="text-link"
+                disabled={submitting}
                 onClick={() => {
                   setStep("form");
                   setError("");
@@ -364,6 +374,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
           </div>
         )}
       </section>
+      </div>
     </main>
   );
 }

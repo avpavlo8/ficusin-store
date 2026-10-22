@@ -140,6 +140,7 @@ for (const device of ['@desktop','@phone']) {
   });
 }
 test('account does not mark offscreen replies read and catches up every message @desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 300 });
   await mockApi(page, owner); let fresh = false; const read: number[] = [];
   const first = { id: 1, sender: 'customer', text: 'Первый вопрос', hasImage: false, createdAt: '2026-10-22T08:00:00Z' };
   const replies = Array.from({ length: 125 }, (_, index) => ({ id: index + 2, sender: 'staff', text: `Ответ ${index + 1}`, hasImage: false, createdAt: '2026-10-22T08:01:00Z' }));
@@ -150,7 +151,11 @@ test('account does not mark offscreen replies read and catches up every message 
   });
   await page.route('**/api/v1/chat/read', route => { read.push(route.request().postDataJSON().through); return route.fulfill({ json: { ok: true } }); });
   await page.goto('/account/chat'); await expect(page.getByText('Первый вопрос', { exact: true })).toBeVisible();
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); fresh = true;
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  // The shorter account menu must not leave the conversation partly visible.
+  const panel = await page.locator('.chat-messages').boundingBox();
+  expect(panel!.y + panel!.height).toBeLessThanOrEqual(0);
+  fresh = true;
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.locator('.chat-message')).toHaveCount(126);
   expect(read).toEqual([]);
@@ -159,6 +164,21 @@ test('account does not mark offscreen replies read and catches up every message 
 });
 
 for (const device of ['@desktop', '@phone']) {
+  test(`account sends an attachment without focusing or typing in the composer ${device}`, async ({ page }) => {
+    await mockApi(page, owner);
+    await page.route(/\/api\/v1\/chat(?:\?.*)?$/, route => route.fulfill({ json: { ...initial, id: 4, consentRequired: false } }));
+    let posted = false;
+    await page.route('**/api/v1/chat/messages', route => {
+      posted = true;
+      return route.fulfill({ json: { ...initial, id: 4, consentRequired: false } });
+    });
+    await page.goto('/account/chat');
+    const account = page.locator('.account-chat-conversation');
+    await account.getByLabel('Добавить фото, видео или файл', { exact: true }).setInputFiles({ name: 'инструкция.txt', mimeType: 'text/plain', buffer: Buffer.from('private file') });
+    await expect(account.locator('.chat-preview')).toBeVisible();
+    await account.getByRole('button', { name: 'Отправить', exact: true }).click();
+    await expect.poll(() => posted).toBe(true);
+  });
   test(`registered user has one-row composer, emoji and attachments without repeated consent ${device}`, async ({ page }) => {
     await mockApi(page, owner);
     let thread = { ...initial, consentRequired: false }; let payload: Record<string, unknown> = {};

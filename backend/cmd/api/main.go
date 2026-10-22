@@ -230,6 +230,7 @@ func main() {
 		CookieSecure:     cfg.Auth.CookieSecure,
 		StaticDir:        cfg.HTTP.StaticDir,
 		YandexSuggestKey: cfg.YandexSuggestKey,
+		DaDataAPIKey:     cfg.DaDataAPIKey,
 		Analytics:        analyticsStore,
 		SiteURL:          cfg.SiteURL,
 		Readiness:        pool,

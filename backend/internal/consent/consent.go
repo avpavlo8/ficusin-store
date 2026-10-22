@@ -15,7 +15,7 @@ import (
 // Version identifies the revision of the legal pages a person saw. Bump it
 // whenever the wording of the privacy policy or the offer changes, so old
 // records keep pointing at the text that was actually agreed to.
-const Version = "2026-10-22"
+const Version = "2026-10-22.1"
 
 // Documents lists what the checkbox covers, in the order the wording names
 // them.

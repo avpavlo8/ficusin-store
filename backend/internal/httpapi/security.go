@@ -8,8 +8,8 @@ import (
 
 // contentSecurityPolicy describes where the page is allowed to load things
 // from. Application code is served from our own origin. The optional Yandex
-// Metrika adapter is the only browser-side third party; address suggestions
-// and delivery quotes still go through our API rather than external hosts.
+// Metrika adapter and embedded Yandex map are browser-side third parties;
+// address suggestions and delivery quotes go through our API.
 //
 //   - img-src also allows https: because product photos come from the
 //     catalogue's own storage, and data: because the avatar editor previews
@@ -23,6 +23,7 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data: https:; " +
 	"font-src 'self' data:; " +
+	"frame-src 'self' https://yandex.ru; " +
 	"connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru wss://mc.yandex.com; " +
 	"manifest-src 'self'; " +
 	"worker-src 'self'; " +

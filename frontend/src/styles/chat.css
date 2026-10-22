@@ -61,7 +61,7 @@
 .quick-chat .chat-composer-bar textarea { max-height: clamp(36px, calc(var(--chat-viewport-height, 100dvh) - 300px), 120px); }
 .quick-chat:focus { outline: none; }
 .quick-chat[hidden] { display: none; }
-.account-chat-title h2 { margin: 0 0 8px; font-size: 30px; font-weight: 400; }
+.account-chat-title h1 { margin: 0 0 8px; font-size: 30px; font-weight: 400; }
 .account-chat-title > p { color: #687681; font-size: 13px; margin: 0 0 22px; }
 .account-messenger { height: max(580px, calc(var(--chat-viewport-height, 100dvh) - 270px)); display: grid; grid-template-columns: minmax(180px, .6fr) minmax(0, 1.4fr); background: #fff; border: 1px solid #e5e9ec; border-radius: 12px; overflow: hidden; }
 .account-chat-list { min-width: 0; border-right: 1px solid var(--chat-line); background: #fff; }
@@ -103,11 +103,11 @@
   .chat-message { display: flow-root; max-width: 91%; }
   .chat-compose { padding: 9px 12px max(10px, env(safe-area-inset-bottom)); }
   .chat-welcome { padding: 28px 12px; }
-  .account-chat-page .account-avatar, .account-chat-page .account-sidebar > h1, .account-chat-page .account-sidebar > p, .account-chat-page .account-help, .account-chat-page .account-switch, .account-chat-page .signout-link { display: none; }
+  .account-chat-page .account-avatar, .account-chat-page .account-sidebar > h1, .account-chat-page .account-sidebar > p, .account-chat-page .account-switch, .account-chat-page .signout-link { display: none; }
   .account-chat-page .account-shell { padding: 12px; gap: 14px; }
   .account-chat-page .account-sidebar { padding: 0; background: transparent; border: 0; box-shadow: none; }
   .account-chat-page .account-sidebar nav { margin: 0; }
-  .account-chat-title h2 { font-size: 24px; margin-bottom: 8px; }
+  .account-chat-title h1 { font-size: 24px; margin-bottom: 8px; }
   .account-chat-title > p { display: none; }
   .account-messenger { display: flex; height: calc(var(--chat-viewport-height, 100dvh) - 228px); min-height: 360px; }
   .account-chat-list { display: none; }
