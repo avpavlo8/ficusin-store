@@ -113,6 +113,8 @@
 .order-packing-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
 .order-packing-tools > small { color: #795433; font-size: 12px; }
 .order-packing-quote-action { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+.order-packing-quote-action > p { flex-basis: 100%; margin: 0 0 6px; padding: 0; border: 0; color: var(--order-muted); font-size: 13px; }
+.order-packing-quote-action > .order-packing-warning { color: #a12f24; }
 .order-packing-quote-action > small { color: var(--order-muted); font-size: 12px; }
 .admin-page .order-packing-button { min-height: 43px; padding: 10px 15px; border: 1px solid #aabda0; border-radius: 7px; background: #edf2e8; color: #244734; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .admin-page .order-packing-button:hover:not(:disabled) { background: #e1ead8; }
