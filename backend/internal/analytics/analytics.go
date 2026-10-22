@@ -50,14 +50,19 @@ type Event struct {
 }
 
 type Attribution struct {
-	VisitorID string `json:"visitorId"`
-	SessionID string `json:"sessionId"`
-	Source    string `json:"source"`
-	Medium    string `json:"medium"`
-	Campaign  string `json:"campaign"`
-	Content   string `json:"content"`
-	Term      string `json:"term"`
-	Referrer  string `json:"referrer"`
+	AnalyticsAllowed bool   `json:"analyticsAllowed"`
+	MetrikaClientID  string `json:"metrikaClientId,omitempty"`
+	// These fields are always replaced by RecordOrder; the browser cannot claim server ownership.
+	MetrikaServer    bool   `json:"metrikaServer,omitempty"`
+	MetrikaCounterID string `json:"metrikaCounterId,omitempty"`
+	VisitorID        string `json:"visitorId"`
+	SessionID        string `json:"sessionId"`
+	Source           string `json:"source"`
+	Medium           string `json:"medium"`
+	Campaign         string `json:"campaign"`
+	Content          string `json:"content"`
+	Term             string `json:"term"`
+	Referrer         string `json:"referrer"`
 }
 
 type Summary struct {
@@ -153,8 +158,9 @@ type DailyRow struct {
 }
 
 type Store struct {
-	pool *pgxpool.Pool
-	now  func() time.Time
+	metrika *MetrikaWorker
+	pool    *pgxpool.Pool
+	now     func() time.Time
 }
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool, now: time.Now} }
@@ -249,6 +255,7 @@ func (store *Store) RecordOrder(ctx context.Context, orderNumber string, total f
 	}
 	attribution.VisitorID = visitor
 	attribution.SessionID = session
+	attribution = store.metrika.orderAttribution(attribution)
 	data, _ := json.Marshal(attribution)
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {

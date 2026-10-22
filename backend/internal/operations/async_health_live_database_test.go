@@ -162,3 +162,30 @@ func affectedForCheck(t *testing.T, ctx context.Context, probe *Probe, code stri
 	}
 	return 0
 }
+
+func TestMetrikaDeliveryReviewOnLiveDatabase(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	probe := NewProbe(pool)
+	baseline := affectedForCheck(t, ctx, probe, "metrika_delivery_review")
+	var id int64
+	err = pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total) VALUES($1,'CI analytics','+79990000001','test@example.invalid','pickup',0,100,100) RETURNING id`, fmt.Sprintf("CI-MP-HEALTH-%d", time.Now().UnixNano())).Scan(&id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id) }()
+	if _, err = pool.Exec(ctx, `INSERT INTO metrika_paid_outbox(order_id,counter_id,client_id,amount,status) VALUES($1,'111907858','123',100,'uncertain')`, id); err != nil {
+		t.Fatal(err)
+	}
+	if got := affectedForCheck(t, ctx, probe, "metrika_delivery_review"); got != baseline+1 {
+		t.Fatalf("review=%d want %d", got, baseline+1)
+	}
+}

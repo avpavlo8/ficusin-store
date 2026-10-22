@@ -80,6 +80,14 @@ FROM (
   WHERE payment.status = 'pending' AND purchase.status <> 'cancelled'
     AND payment.created_at < CURRENT_TIMESTAMP - INTERVAL '30 minutes'
   UNION ALL
+  SELECT 'metrika_delivery_review', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
+  FROM metrika_paid_outbox WHERE status IN ('failed','uncertain')
+  UNION ALL
+  SELECT 'metrika_delivery_overdue', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
+  FROM metrika_paid_outbox WHERE status IN ('pending','sending') AND created_at<CURRENT_TIMESTAMP-INTERVAL '15 minutes'
+  UNION ALL
   SELECT 'stale_outbox', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
   FROM outbox

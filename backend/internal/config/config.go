@@ -16,6 +16,7 @@ type Config struct {
 	TelegramChatID   string
 	TelegramBotToken string
 	YandexSuggestKey string
+	MetrikaMPToken   string
 	DaDataAPIKey     string
 	AdminEmails      []string
 	CDEK             CDEK
@@ -166,6 +167,7 @@ func Load() (Config, error) {
 		TelegramChatID:   defaultString(os.Getenv("TELEGRAM_ORDER_CHAT_ID"), "-5430918511"),
 		TelegramBotToken: strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 		YandexSuggestKey: strings.TrimSpace(os.Getenv("YANDEX_SUGGEST_API_KEY")),
+		MetrikaMPToken:   strings.TrimSpace(os.Getenv("METRIKA_MP_TOKEN")),
 		DaDataAPIKey:     strings.TrimSpace(os.Getenv("DADATA_API_KEY")),
 		AdminEmails:      splitList(os.Getenv("ADMIN_EMAILS")),
 		CDEK: CDEK{

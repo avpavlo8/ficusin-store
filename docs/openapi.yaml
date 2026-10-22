@@ -6,6 +6,49 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /admin/analytics/metrika:
+    get:
+      operationId: metrikaDeliveryStatus
+      description: Requires analytics.read. Counts by durable delivery status; credentials and customer identifiers are never exposed.
+      responses:
+        "200":
+          description: Server payment delivery status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, counts]
+                properties:
+                  enabled: {type: boolean}
+                  counts:
+                    type: object
+                    additionalProperties: {type: integer}
+        "401": {description: Authentication required}
+        "403": {description: analytics.read required}
+        "503": {description: Diagnostics unavailable}
+  /account/orders/{orderNumber}:
+    get:
+      operationId: accountOrderDetail
+      description: An order belonging to the authenticated customer. metrikaServer is true only if the server owns paid conversion delivery for this order. Browser converters must then skip it even if the current integration is disabled.
+      parameters:
+        - in: path
+          name: orderNumber
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Authenticated order detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order:
+                    type: object
+                    properties:
+                      metrikaServer: {type: boolean}
+        "401": {description: Authentication required}
+        "404": {description: Order not found}
   /chat/notifications:
     post:
       operationId: subscribeChatPush
@@ -445,6 +488,15 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                attribution:
+                  type: object
+                  properties:
+                    analyticsAllowed: {type: boolean}
+                    metrikaClientId:
+                      type: string
+                      pattern: '^[0-9]{1,20}$'
+                      description: Actual Yandex visit client ID; omitted when analytics are disabled or no counter cookie exists. Server ownership is determined by the backend.
       responses:
         "201":
           description: Order saved. New guests also receive guestPaymentToken for payment only; it must not be stored in localStorage or analytics.

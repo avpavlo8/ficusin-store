@@ -1,4 +1,5 @@
 export type PaymentResultOrder = {
+  metrikaServer?: boolean;
   orderNumber: string;
   status: string;
   paymentStatus: string;

@@ -93,7 +93,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 			(o.has_preorder=0 AND o.payment_method='online'
 				AND (o.delivery_payee='carrier' OR o.delivery_fee_pending=0)
 				AND o.status NOT IN ('cancelled','completed')),
-			o.created_at
+			o.created_at, COALESCE((o.attribution->>'metrikaServer')='true',false)
 		FROM orders o
 		WHERE o.customer_id = $1 AND o.order_number = $2
 		LIMIT 1
@@ -125,6 +125,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 		&detail.AmountDue,
 		&detail.PaymentReady,
 		&detail.CreatedAt,
+		&detail.MetrikaServer,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

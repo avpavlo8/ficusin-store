@@ -43,6 +43,7 @@ type Detail struct {
 	PaidAmount           float64         `json:"paidAmount"`
 	RefundedAmount       float64         `json:"refundedAmount"`
 	AmountDue            float64         `json:"amountDue"`
+	MetrikaServer        bool            `json:"metrikaServer"`
 	PaymentReady         bool            `json:"paymentReady"`
 	CreatedAt            time.Time       `json:"createdAt"`
 	Items                []Item          `json:"items"`
