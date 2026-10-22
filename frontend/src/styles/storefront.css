@@ -471,6 +471,8 @@
 .storefront-buy > .preorder-action .cart-button-label { color:inherit; }
 @media(max-width:500px) { .storefront-buy > button { width:100%; } }
 @media(hover:none) { .storefront-buy button:hover { transform:none; } }
+/* Keep focused purchase controls clear of the fixed mobile navigation and hint. */
+@media(max-width:850px) { .storefront-buy button { scroll-margin-block:80px 170px; } }
 
 .catalog-category-picker { display:none; }
 
