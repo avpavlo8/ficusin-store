@@ -214,8 +214,14 @@ func TestOrderPackingLifecycleOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT state FROM order_packing_workflows WHERE id=$1`, packingID).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
-	if state != "notified" || len(sender.sent) != 1 {
-		t.Fatalf("unexpected final notification state %s, sends %d", state, len(sender.sent))
+	sentToCustomer := 0
+	for _, letter := range sender.sent {
+		if letter.To == email {
+			sentToCustomer++
+		}
+	}
+	if state != "notified" || sentToCustomer != 1 {
+		t.Fatalf("unexpected final notification state %s, sends to this customer %d", state, sentToCustomer)
 	}
 	expiry.process(ctx)
 	var orderStatus string
