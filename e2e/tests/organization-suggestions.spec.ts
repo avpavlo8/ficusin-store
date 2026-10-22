@@ -10,7 +10,7 @@ async function openWholesale(page: Page) {
   await page.getByRole('radio', { name: /Оптовый/ }).check();
 }
 
-test('@desktop @phone organization name and INN suggestions fill readonly details and survive confirmation', async ({ page }, info) => {
+test('@desktop @phone organization name and INN suggestions fill readonly details and survive confirmation', async ({ page, isMobile }, info) => {
   await openWholesale(page);
   await page.route('**/api/v1/organizations/suggest?*', route => route.fulfill({ json: { available: true, suggestions: [organization, { ...organization, kpp: '773601002', legalAddress: 'г Рязань, Тестовая улица, д 2' }] } }));
   const search = page.getByRole('combobox', { name: 'Название организации или ИНН', exact: true });
@@ -27,7 +27,8 @@ test('@desktop @phone organization name and INN suggestions fill readonly detail
   await search.fill(organization.inn);
   await expect(page.locator('.organization-details')).toHaveCount(0);
   await expect(page.getByRole('option')).toHaveCount(2);
-  await page.getByRole('option', { name: /773601002/ }).click();
+  const branch = page.getByRole('option', { name: /773601002/ });
+  if (isMobile) await branch.tap(); else await branch.click();
   await expect(page.getByLabel('КПП', { exact: true })).toHaveValue('773601002');
   if (process.env.ORG_REVIEW_OUTPUT) await page.screenshot({ path: `${process.env.ORG_REVIEW_OUTPUT}/${info.project.name}-filled.png`, fullPage: true });
   for (const label of ['ИНН', 'КПП', 'Юридический адрес']) await expect(page.getByLabel(label, { exact: true })).toHaveJSProperty('readOnly', true);

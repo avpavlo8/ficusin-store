@@ -71,7 +71,7 @@ export function OrganizationLookup({ initialName, onClear, onSelect }: { initial
       }} />
     <div className="organization-options" id={`${id}-options`} role="listbox" aria-label="Организации" hidden={!open}>
       {suggestions.map((item, index) => <button key={`${item.inn}-${item.kpp}`} id={`${id}-option-${index}`} type="button" role="option" aria-selected={active === index}
-        onPointerDown={event => event.preventDefault()} onClick={() => select(item)}>
+        onMouseDown={event => event.preventDefault()} onClick={() => select(item)}>
         <strong>{item.name}</strong><span>ИНН {item.inn}{item.kpp ? ` · КПП ${item.kpp}` : ""}</span>
         {item.legalAddress && <small>{item.legalAddress}</small>}
       </button>)}
