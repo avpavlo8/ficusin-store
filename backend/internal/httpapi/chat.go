@@ -224,7 +224,14 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 	if before < 0 {
 		before = 0
 	}
-	thread, err := h.store.Read(r.Context(), id, before)
+	after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+	var thread chat.Thread
+	var err error
+	if after > 0 {
+		thread, err = h.store.ReadAfter(r.Context(), id, after)
+	} else {
+		thread, err = h.store.Read(r.Context(), id, before)
+	}
 	if err != nil {
 		h.fail(w, err)
 		return

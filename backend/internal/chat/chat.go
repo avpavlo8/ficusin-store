@@ -154,6 +154,12 @@ func (s *Store) Resolve(ctx context.Context, who Identity) (int64, error) {
 	return id, tx.Commit(ctx)
 }
 func (s *Store) Read(ctx context.Context, id, before int64) (Thread, error) {
+	return s.read(ctx, id, before, 0)
+}
+func (s *Store) ReadAfter(ctx context.Context, id, after int64) (Thread, error) {
+	return s.read(ctx, id, 0, after)
+}
+func (s *Store) read(ctx context.Context, id, before, after int64) (Thread, error) {
 	out := Thread{ID: id, Status: "open", Messages: []Message{}}
 	if id == 0 {
 		return out, nil
@@ -162,7 +168,13 @@ func (s *Store) Read(ctx context.Context, id, before int64) (Thread, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,sender,body,context_url,context_label,image_data IS NOT NULL,created_at FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 51`, id, before)
+	query := `SELECT id,sender,body,context_url,context_label,image_data IS NOT NULL,created_at FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 51`
+	cursor := before
+	if after > 0 {
+		query = `SELECT id,sender,body,context_url,context_label,image_data IS NOT NULL,created_at FROM support_messages WHERE conversation_id=$1 AND id>$2 ORDER BY id ASC LIMIT 51`
+		cursor = after
+	}
+	rows, err := s.pool.Query(ctx, query, id, cursor)
 	if err != nil {
 		return out, err
 	}
@@ -181,7 +193,7 @@ func (s *Store) Read(ctx context.Context, id, before int64) (Thread, error) {
 		out.HasMore = true
 		out.Messages = out.Messages[:50]
 	}
-	for i, j := 0, len(out.Messages)-1; i < j; i, j = i+1, j-1 {
+	for i, j := 0, len(out.Messages)-1; after == 0 && i < j; i, j = i+1, j-1 {
 		out.Messages[i], out.Messages[j] = out.Messages[j], out.Messages[i]
 	}
 	return out, nil

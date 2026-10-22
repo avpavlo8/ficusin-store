@@ -211,3 +211,40 @@ func TestChatConcurrentFirstSendAndHistory(t *testing.T) {
 		t.Fatal("future read swallowed new messages")
 	}
 }
+
+func TestChatIncrementalCatchupHasNoGaps(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	who := Identity{GuestHash: "catchup-guest"}
+	id, err := s.Send(ctx, who, 0, 0, Input{ClientID: "catchup-first-message", Text: "Первое", Consent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := s.Read(ctx, id, 0)
+	after := initial.Messages[0].ID
+	for i := 0; i < 125; i++ {
+		if _, err = s.Send(ctx, Identity{}, 2, id, Input{ClientID: fmt.Sprintf("catchup-reply-%04d", i), Text: "Ответ"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seen := 0
+	for {
+		page, err := s.ReadAfter(ctx, id, after)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, message := range page.Messages {
+			if message.ID <= after {
+				t.Fatal("incremental messages unordered")
+			}
+			after = message.ID
+			seen++
+		}
+		if !page.HasMore {
+			break
+		}
+	}
+	if seen != 125 {
+		t.Fatalf("lost catchup messages: %d", seen)
+	}
+}

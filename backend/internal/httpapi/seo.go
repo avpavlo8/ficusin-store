@@ -35,6 +35,7 @@ var appRoutes = map[string]bool{
 	"/account/profile":      true,
 	"/account/favorites":    true,
 	"/account/reviews":      true,
+	"/account/chat":         true,
 	"/admin":                true,
 	"/cart":                 true,
 	"/checkout":             true,
