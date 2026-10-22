@@ -185,3 +185,11 @@
 .floating-cart:focus-visible { outline:2px solid #31482c; outline-offset:4px; }
 body.menu-open .floating-cart,body.drawer-open .floating-cart { display:none; }
 @media(max-width:850px) { .floating-cart { display:none; } }
+
+/* Opaque navigation works without backdrop-filter support. */
+.mobile-menu { background: #faf7ef; backdrop-filter: none; }
+.mobile-menu-backdrop.open { background: rgb(41 35 28 / 32%); }
+.mobile-menu-documents summary { list-style: none; display: flex; align-items: center; justify-content: space-between; }
+.mobile-menu-documents summary::-webkit-details-marker { display: none; }
+.mobile-menu-documents summary::after { content: ""; width: 7px; height: 7px; margin-right: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.mobile-menu-documents[open] summary::after { transform: rotate(225deg); }

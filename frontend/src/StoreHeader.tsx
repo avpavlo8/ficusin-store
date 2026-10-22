@@ -1,7 +1,7 @@
+import { storeSession } from "./lib/store-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
 import { BrandLogo } from "./BrandLogo";
-import { StoreNavIllustration } from "./StoreNavIllustration";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
 import { useFavorites, useAvailableFavoriteCount, FAVORITES_EVENT } from "./lib/favorites";
@@ -50,7 +50,7 @@ export const STORAGE_EVENT = FAVORITES_EVENT;
 export function useStoreUser() {
   const [user, setUser] = useState<StoreUser | null>(null);
   useEffect(() => {
-    fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" })
+    storeSession()
       .then(async (response) => response.ok ? (await response.json() as { user: StoreUser }).user : null)
       .then(setUser).catch(() => setUser(null));
   }, []);
@@ -158,7 +158,7 @@ function MobileMenu({ view, user, favorites, items, state, onRetry, onView, onCl
     </> : <>
       <div className="mobile-menu-account">{user ? <><a href="/account"><strong>{user.fullName.trim().split(/\s+/)[0] || "Профиль"}</strong><small>Личный кабинет</small></a>{user.adminRole && <a className="mobile-menu-admin" href="/admin">Панель управления <span aria-hidden="true">↗</span></a>}</> : <><a href="/login">Войти в аккаунт</a><a href="/register">Регистрация</a></>}</div>
       <nav className="mobile-menu-links" aria-label="Покупки"><button type="button" onClick={() => onView("catalog")}>Каталог <span aria-hidden="true">→</span></button><a href="/discounts">Растения со скидкой</a><a href="/favorites">Избранное <small>{favorites}</small></a></nav>
-      <nav className="mobile-menu-links" aria-label="Помощь"><a href="/delivery-and-returns">Доставка и возврат</a><a href="/contacts">Контакты</a></nav>
+      <nav className="mobile-menu-links" aria-label="Помощь"><a href="/delivery-and-returns">Доставка и возврат</a><a href="/contacts">Контакты</a><a href="/chat">Написать нам</a></nav>
       <details className="mobile-menu-documents"><summary>О магазине</summary><a href="/offer">Публичная оферта</a><a href="/privacy">Политика конфиденциальности</a><a href="/requisites">Реквизиты</a></details>
     </>}
   </aside>;
@@ -189,32 +189,32 @@ function MobileTabBar({
 }) {
   const cartInside = <>
     <span className="tab-icon">
-      <StoreNavIllustration kind="basket" />
+      <Icon path={icons.bag} />
       {cart > 0 && <b>{cart}</b>}
     </span>
     <small>Корзина</small>
   </>;
   return <nav className="tab-bar" aria-label="Разделы магазина">
     <button type="button" className={window.location.pathname === "/" || window.location.pathname.startsWith("/catalog/") ? "active" : undefined} aria-haspopup="dialog" aria-expanded={catalogOpen} onClick={event => { event.currentTarget.focus(); onCatalogClick(); }}>
-      <span className="tab-icon"><StoreNavIllustration kind="catalog" /></span>
+      <span className="tab-icon"><Icon path={icons.catalog} /></span>
       <small>Каталог</small>
     </button>
     <a href="/favorites" className={window.location.pathname === "/favorites" ? "active" : undefined}>
       <span className="tab-icon">
-        <StoreNavIllustration kind="heart" />
+        <Icon path={icons.heart} />
         {favorites > 0 && <b>{favorites}</b>}
       </span>
       <small>Избранное</small>
     </a>
     <button type="button" onClick={event => onSearchClick(event.currentTarget)}>
-      <span className="tab-icon"><StoreNavIllustration kind="search" /></span>
+      <span className="tab-icon"><Icon path={icons.search} /></span>
       <small>Поиск</small>
     </button>
     {onCartClick
       ? <button type="button" onClick={onCartClick}>{cartInside}</button>
       : <a href="/cart">{cartInside}</a>}
     <a href={user ? "/account" : "/login"}>
-      <span className="tab-icon"><StoreNavIllustration kind="person" /></span>
+      <span className="tab-icon"><Icon path={icons.person} /></span>
       <small>{user ? "Профиль" : "Войти"}</small>
     </a>
   </nav>;
@@ -275,8 +275,16 @@ export function StoreHeader({
   const [menuState, setMenuState] = useState<"loading" | "ready" | "error">("loading");
   const [menuReload, setMenuReload] = useState(0);
   const headerRef = useRef<HTMLElement>(null);
-  useBodyLock(navigation === "catalog", "menu-open");
-  useEffect(() => { document.body.classList.toggle("has-store-tabs", showTabBar); return () => document.body.classList.remove("has-store-tabs"); }, [showTabBar]);
+  useBodyLock(menuOpen, "menu-open");
+  useEffect(() => {
+    document.body.classList.toggle("has-store-tabs", showTabBar);
+    const tabs = document.querySelector<HTMLElement>(".tab-bar");
+    const update = () => document.documentElement.style.setProperty("--store-tab-height", `${tabs?.getBoundingClientRect().height || 0}px`);
+    const observer = new ResizeObserver(update);
+    if (tabs) observer.observe(tabs);
+    update();
+    return () => { observer.disconnect(); document.body.classList.remove("has-store-tabs"); document.documentElement.style.removeProperty("--store-tab-height"); };
+  }, [showTabBar]);
   useEffect(() => {
     const close = (event: PointerEvent) => {
       if (!headerRef.current?.contains(event.target as Node) || (event.target instanceof Element && event.target.closest(".catalog-search"))) headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => details.removeAttribute("open"));
@@ -353,11 +361,10 @@ export function StoreHeader({
       </div>
     </header>
     {showSearch && searchOpen && <MobileSearch query={query} onQueryChange={onQueryChange} onSearch={search} onClose={closeSearch} />}
-    <button className={`overlay mobile-menu-backdrop${navigation === "catalog" ? " open" : ""}`} aria-label="Закрыть меню" aria-hidden={navigation !== "catalog"} inert={navigation !== "catalog"} onClick={closeMenu} />
+    <button className={`overlay mobile-menu-backdrop${menuOpen ? " open" : ""}`} aria-label="Закрыть меню" aria-hidden={!menuOpen} inert={!menuOpen} onClick={closeMenu} />
     {navigation && <MobileMenu view={navigation} user={user} favorites={favorites} items={resolvedCatalogMenuItems} state={resolvedCatalogMenuItems.length ? "ready" : menuState}
       onRetry={() => { setMenuState("loading"); setMenuReload(value => value + 1); }} onView={setNavigation} onClose={closeMenu} onPick={categoryPick} />}
     {showTabBar && <>
-      {!/^\/(cart|checkout)(\/|$)/.test(window.location.pathname) && <a className="floating-cart" href="/cart" aria-label={`Открыть корзину, товаров: ${cart}`}><Icon path="M3 4h2l2.2 11.4h10.6L20 7H6M9 20h.01M17 20h.01" />{cart > 0 && <b>{cart}</b>}</a>}
       <InstallHint />
       <MobileTabBar user={user} favorites={favorites} cart={cart} onCartClick={onCartClick} onSearchClick={openSearch} onCatalogClick={() => { setSearchOpen(false); setNavigation("catalog"); }} catalogOpen={navigation === "catalog"} />
     </>}

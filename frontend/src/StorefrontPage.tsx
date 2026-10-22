@@ -129,7 +129,7 @@ function CatalogDropdown({ label, value, options, onChange, className = "" }: { 
   return <details className={`catalog-dropdown ${className}`}>
     <summary aria-label={selected || label}>{className.includes("home-sort") && <svg className="catalog-sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16m-3-3 3 3 3-3M14 4h7M14 9h5M14 14h3" /></svg>}<span>{selected || label}</span><i>⌄</i></summary>
     <div role="listbox" aria-label={label}>
-      <button type="button" className={!value ? "active" : ""} onClick={(event) => { onChange(""); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Все варианты</button>
+      {className !== "home-sort" && <button type="button" className={!value ? "active" : ""} onClick={(event) => { onChange(""); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Все варианты</button>}
       {options.map((option) => <button type="button" role="option" aria-selected={value === option.value} className={value === option.value ? "active" : ""} key={option.value} onClick={(event) => { onChange(option.value); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{option.label}<span>{value === option.value ? "✓" : ""}</span></button>)}
     </div>
   </details>;
@@ -466,7 +466,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
     }
     if (sort === "cheap") list = [...list].sort((a, b) => a.price - b.price);
     if (sort === "expensive") list = [...list].sort((a, b) => b.price - a.price);
-    if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0));
+    if (sort === "popular") list = [...list].sort((a, b) => (b.popularityScore ?? 0) - (a.popularityScore ?? 0) || Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0));
     return list;
   }, [found, inStockOnly, compatibleAttributeFilters, compatibleRangeFilters, sort, priceRange]);
 
@@ -518,7 +518,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   const appliedFilters: Array<{ label: string; remove: () => void }> = [];
   if (inStockOnly) appliedFilters.push({ label: "В наличии", remove: () => setInStockOnly(false) });
-  if (priceRange.min || priceRange.max) appliedFilters.push({ label: `Цена: ${priceRange.min ? `от ${priceRange.min}` : ""}${priceRange.min && priceRange.max ? " " : ""}${priceRange.max ? `до ${priceRange.max}` : ""} ₽`, remove: () => setPriceRange({ min: "", max: "" }) });
+  if (priceRange.min || priceRange.max) appliedFilters.push({ label: `Цена: ${priceRange.min ? `от ${Number(priceRange.min).toLocaleString("ru-RU")}` : ""}${priceRange.min && priceRange.max ? " " : ""}${priceRange.max ? `до ${Number(priceRange.max).toLocaleString("ru-RU")}` : ""} ₽`, remove: () => setPriceRange({ min: "", max: "" }) });
   facets.forEach(([code, facet]) => {
     const selected = compatibleAttributeFilters[code];
     if (selected) appliedFilters.push({ label: `${facet.name}: ${facetValueLabel(code, facet, selected)}`, remove: () => setAttributeFilters((current) => ({ ...current, [code]: "" })) });

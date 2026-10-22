@@ -621,3 +621,12 @@
 }
 
 .catalog-collection-note { max-width:760px; margin-top:10px !important; color:#655b51; font-size:14px; line-height:1.6; }
+
+/* Preserve the same readable product names in tile and list views. */
+.storefront-grid.list-view .storefront-name { font: 500 18px/1.3 Arial, sans-serif; }
+.storefront-price em { max-width: 180px; font-size: 11px; line-height: 1.4; }
+.storefront-price del, .discount-plants-grid del { color: #71665b; }
+.storefront .catalog-dropdown summary, .storefront .home-filter-panel select { color: #4e493b; }
+
+
+.storefront-grid .preorder-action .cart-button-label { display: inline; color: inherit; font-size: 11px; }
