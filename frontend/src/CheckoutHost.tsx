@@ -1,3 +1,4 @@
+import { storeSession } from "./lib/store-session";
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { CartDrawer, CheckoutPanel } from "./CartCheckout";
 import { useCheckout } from "./useCheckout";
@@ -82,7 +83,7 @@ export default function CheckoutHost({
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" })
+    storeSession()
       .then(async (response) => {
         if (response.status === 401) return null;
         if (!response.ok) throw new Error("Не удалось загрузить профиль");

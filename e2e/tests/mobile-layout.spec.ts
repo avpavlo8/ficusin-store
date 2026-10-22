@@ -159,9 +159,8 @@ test("@phone product purchase panel and recommendations do not collide", async (
   expect(priceBox!.x).toBeGreaterThanOrEqual(relatedBox!.x);
   expect(priceBox!.x + priceBox!.width).toBeLessThanOrEqual(relatedBox!.x + relatedBox!.width + 1);
   const arrow = page.getByRole("button", { name:"Предыдущие похожие растения" });
-  await expect(arrow).toBeVisible();
-  const arrowBox = await arrow.boundingBox();
-  expect(arrowBox!.y + arrowBox!.height).toBeLessThanOrEqual(priceBox!.y);
+  await expect(arrow).toHaveCount(0);
+  expect(await page.locator(".pdp-related-track").evaluate(el => el.scrollWidth)).toBeGreaterThan(relatedBox!.width);
 
 });
 

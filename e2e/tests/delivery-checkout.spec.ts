@@ -101,7 +101,7 @@ test("@desktop стоимость СДЭК входит в сумму онлай
 
   await expect(summary).toContainText(/Растения\s*1.?490/);
   await expect(summary).toContainText(/Доставка\s*590/);
-  await expect(summary).toContainText(/Итого к оплате\s*2.?080/);
+  await expect(summary).toContainText(/Итого\s*2.?080/);
   await expect(submit).toBeDisabled();
   await page.locator('input[name="consent"]').check();
   await expect(submit).toBeEnabled();

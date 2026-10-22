@@ -5,6 +5,7 @@ import { DeliveryArt } from "./DeliveryArt";
 import { formatRussianPhoneInput, normalizeRussianPhone } from "./lib/phone";
 import { formatMoney } from "./lib/money";
 import { track } from "./lib/analytics";
+import { ProductImage } from "./ProductImage";
 
 export type CartLine = {
   id: string;
@@ -80,11 +81,9 @@ export function CartDrawer({
 }: CartDrawerProps) {
   const hasPreorder = lines.some((item) => item.stock !== undefined && item.stock < item.quantity);
   const cartQuantity = lines.reduce((sum, item) => sum + item.quantity, 0);
-  // A display-only delivery estimate requested for the cart, never an order quote.
-  const estimatedDeliveryFee = 500;
   const lineCards = lines.map((item) => (
     <div className={`cart-line ${item.available === false ? "unavailable" : ""}`} key={item.id}>
-      <img src={item.image} alt="" />
+      <ProductImage src={item.image} alt="" />
       <div className="cart-line-copy">
         <h3>{item.name}</h3>
         <small>Вариант: {item.variantLabel || item.id}</small>
@@ -95,8 +94,8 @@ export function CartDrawer({
       <strong className="cart-unit-price">{money(item.price)}</strong>
       <div className="quantity">
         <button type="button" onClick={() => onQuantityChange(item.id, item.quantity - 1)} aria-label={`Уменьшить количество ${item.name}`}>−</button>
-        <span aria-live="polite">{item.quantity}</span>
-        <button type="button" disabled={item.stock !== undefined && item.stock > 0 && item.quantity >= item.stock} onClick={() => onQuantityChange(item.id, item.quantity + 1)} aria-label={`Увеличить количество ${item.name}`}>+</button>
+        <span aria-live="polite" title={item.quantity >= 20 ? "Не более 20 шт. в одной позиции" : undefined}>{item.quantity}</span>
+        <button type="button" disabled={item.quantity >= Math.min(item.stock && item.stock > 0 ? item.stock : 20, 20)} onClick={() => onQuantityChange(item.id, item.quantity + 1)} aria-label={`Увеличить количество ${item.name}`}>+</button>
       </div>
       <strong className="cart-line-total">{money(item.price * item.quantity)}</strong>
       <button className="remove" onClick={() => onQuantityChange(item.id, 0)} aria-label={`Удалить ${item.name}`}><LineIcon name="trash" /></button>
@@ -131,13 +130,13 @@ export function CartDrawer({
           <aside className={`cart-summary ${page ? "cart-summary-lamp" : ""}`} aria-label="Итог корзины">
             {page ? <>
               <h2>Ваш заказ</h2>
-              <OrderLamp label="Итого" amount={<>≈ {money(subtotal + estimatedDeliveryFee)}</>}>
+              <OrderLamp label="Стоимость товаров" amount={money(subtotal)}>
                 <dl>
                   <div><dt>Стоимость товаров</dt><dd>{money(subtotal)}</dd></div>
                   <div><dt>Количество</dt><dd>{cartQuantity}</dd></div>
-                  <div><dt>Доставка</dt><dd>≈ {money(estimatedDeliveryFee)}</dd></div>
+                  <div><dt>Доставка</dt><dd>Рассчитаем при оформлении</dd></div>
                 </dl>
-                <p>Предварительно с доставкой. Точную стоимость рассчитаем при оформлении.</p>
+                <p>Самовывоз из магазина — бесплатно.</p>
                 {hasPreorder && <div className="cart-preorder-note" role="note"><strong>Есть растения под заказ</strong><p>Сейчас платить не нужно. Менеджер проверит поставку, уточнит срок и подтвердит итог заказа до оплаты.</p></div>}
               </OrderLamp>
             </> : <>
@@ -210,6 +209,7 @@ type CheckoutPanelProps = {
   cdekRepack: boolean;
   setCdekRepack: Dispatch<SetStateAction<boolean>>;
   cartCount: number;
+  cartLines: CartLine[];
   hasPreorder: boolean;
   cdekQuotes: CdekQuote[];
   paymentMethods: PaymentMethod[];
@@ -234,16 +234,20 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     setCdekOfficeQuery, setCdekQuotes, setCdekTariffCode, cdekCities, chooseCdekCity,
     cdekLoading, cdekError, cdekOffices, setCdekOfficeListOpen, cdekOfficeListOpen,
     cdekOfficeMatches, selectedOffice, cdekFeePending, cdekRepack, setCdekRepack,
-    cartCount, hasPreorder, cdekQuotes, paymentMethods, paymentMethod, setPaymentMethod, subtotal,
+    cartCount, cartLines, hasPreorder, cdekQuotes, paymentMethods, paymentMethod, setPaymentMethod, subtotal,
     deliveryFee, total, submitting, deliveryFeePending, originalSubtotal, discountAmount, discountBps,
   } = props;
   const [deliveryChosen, setDeliveryChosen] = useState(false);
   const [deliveryAnimationId, setDeliveryAnimationId] = useState(0);
   const [deliveryError, setDeliveryError] = useState("");
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
-  const [formReadiness, setFormReadiness] = useState({ emailValid: false, consentGiven: false });
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [deliveryFocus, setDeliveryFocus] = useState("");
   const handleSubmit: FormEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
+    setSubmitted(true);
     const form = event.currentTarget;
     const fields = Array.from(form.querySelectorAll<HTMLInputElement>("input,textarea,select"));
     const phoneField = fields.find((field) => field.name === "phone");
@@ -252,12 +256,14 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     setContactErrors(errors);
     setDeliveryError(!deliveryChosen ? "Выберите способ получения" : deliveryBlocked ? "Выберите город и пункт выдачи СДЭК" : "");
     const invalidContact = fields.find((field) => ["name", "phone", "email"].includes(field.name) && !field.checkValidity());
+    if (!checkoutProfile.name.trim()) { form.querySelector<HTMLInputElement>('input[name="name"]')?.focus(); return; }
     if (invalidContact) { invalidContact.focus(); return; }
     if (!deliveryChosen) { form.querySelector<HTMLInputElement>('input[name="delivery"]')?.focus(); return; }
     if (deliveryBlocked) { form.querySelector<HTMLInputElement>(cdekCity ? 'input[name="cdekOffice"]' : 'input[name="cdekCity"]')?.focus(); return; }
     if (delivery === "cdek" && cdekLoading) return;
     const invalid = fields.find((field) => !field.checkValidity());
     if (invalid) { invalid.focus(); return; }
+    if (submitHint) return;
     submitOrder(event);
   };
   const selectedDelivery = availableDelivery.find((item) => item.id === delivery);
@@ -268,20 +274,15 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const deliveryNeedsManager = deliveryChosen && !deliveryBlocked && !deliveryCalculating && deliveryFeePending;
   const deliveryUnknown = deliveryNotChosen || deliveryBlocked || deliveryCalculating || deliveryFeePending;
   const deliveryStatus = deliveryNotChosen ? "Выберите способ получения" : deliveryBlocked ? cdekCity ? "Выберите пункт выдачи" : "Выберите город" : deliveryCalculating ? "Рассчитываем…" : deliveryNeedsManager ? "Уточнит менеджер" : deliveryFee === 0 ? "Бесплатно" : money(deliveryFee);
-  const submitHint = !checkoutProfile.name.trim() ? "Укажите имя" : !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : !formReadiness.emailValid ? "Укажите корректный email для чека" : deliveryNotChosen ? "Выберите способ получения" : deliveryBlocked ? cdekCity ? "Выберите пункт выдачи СДЭК" : "Выберите город из списка" : deliveryCalculating ? "Дождитесь расчёта доставки" : !formReadiness.consentGiven ? "Подтвердите согласие перед оформлением" : !pricingReady ? "Проверяем стоимость заказа…" : pricingError ? "Не удалось проверить цену. Обновите страницу" : !hasPreorder && !paymentMethods.length ? "Способы оплаты ещё не загружены" : "";
-  const emailHintActive = submitHint === "Укажите корректный email для чека";
-  const phoneHintActive = submitHint === "Укажите номер телефона";
-  const nameHintActive = submitHint === "Укажите имя";
-  const cityHintActive = submitHint === "Выберите город из списка";
-  const officeHintActive = submitHint === "Выберите пункт выдачи СДЭК";
-  const deliveryChoiceHintActive = submitHint === "Выберите способ получения";
-  const emailError = contactErrors.email || (emailHintActive ? submitHint : "");
-  const phoneError = contactErrors.phone || ((phoneHintActive || checkoutProfile.phone.trim()) && !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : "");
-  const nameError = contactErrors.name || (nameHintActive ? submitHint : "");
-  const cityError = deliveryChosen && delivery === "cdek" && !cdekCity && (cityHintActive || deliveryError) ? "Выберите город из списка" : "";
-  const officeError = deliveryChosen && delivery === "cdek" && cdekCity && !selectedOffice && (officeHintActive || deliveryError) ? "Выберите пункт выдачи СДЭК" : "";
-  const deliveryChoiceError = !deliveryChosen ? deliveryError || (deliveryChoiceHintActive ? submitHint : "") : "";
-  const footerHint = emailHintActive || phoneHintActive || nameHintActive || cityHintActive || officeHintActive || deliveryChoiceHintActive ? "" : submitHint;
+  const submitHint = !checkoutProfile.name.trim() ? "Укажите имя" : !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkoutProfile.email.trim()) ? "Укажите корректный email для чека" : deliveryNotChosen ? "Выберите способ получения" : deliveryBlocked ? cdekCity ? "Выберите пункт выдачи СДЭК" : "Выберите город из списка" : deliveryCalculating ? "Дождитесь расчёта доставки" : !consentGiven ? "Подтвердите согласие перед оформлением" : !pricingReady ? "Проверяем стоимость заказа…" : pricingError ? "Не удалось проверить цену. Обновите страницу" : !hasPreorder && !paymentMethods.length ? "Способы оплаты ещё не загружены" : "";
+  const emailError = contactErrors.email || ((touched.email || submitted) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkoutProfile.email.trim()) ? "Укажите корректный email для чека" : "");
+  const phoneError = contactErrors.phone || ((touched.phone || submitted) && !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : "");
+  const nameError = contactErrors.name || ((touched.name || submitted) && !checkoutProfile.name.trim() ? "Укажите имя" : "");
+  const cityError = deliveryChosen && delivery === "cdek" && !cdekCity && deliveryFocus !== "cdekCity" && !cdekCities.length && !cdekLoading && (touched.cdekCity || submitted) ? "Выберите город из списка" : "";
+  const officeError = deliveryChosen && delivery === "cdek" && cdekCity && !selectedOffice && deliveryFocus !== "cdekOffice" && !cdekOfficeListOpen && (touched.cdekOffice || submitted) ? "Выберите пункт выдачи СДЭК" : "";
+  const deliveryChoiceError = !deliveryChosen && submitted ? deliveryError : "";
+  // Readiness is neutral guidance; an untouched field is never an error.
+  const footerHint = submitHint;
   const confirmationPending = Boolean(orderNumber && orderConfirmationPending);
   const cashOnPickup = delivery === "pickup" && paymentMethod === "on_delivery";
   const confirmationLead = orderConfirmationReason === "preorder"
@@ -321,11 +322,18 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           </div>
         </div>
       ) : (
-        <form className="checkout-layout" onSubmit={handleSubmit} onChange={(event) => {
-          const email = event.currentTarget.elements.namedItem("email") as HTMLInputElement;
-          const consent = event.currentTarget.elements.namedItem("consent") as HTMLInputElement;
-          setFormReadiness({ emailValid: email.validity.valid, consentGiven: consent.checked });
-        }} noValidate>
+        <form className="checkout-layout" onSubmit={handleSubmit} onFocus={(event) => setDeliveryFocus(event.target instanceof HTMLInputElement ? event.target.name : "")}
+          onBlur={(event) => {
+            if (event.target instanceof HTMLInputElement) {
+              const field = event.target.name;
+              setTouched((current) => ({ ...current, [field]: true }));
+            }
+            setDeliveryFocus("");
+          }}
+          onChange={(event) => {
+            const consent = event.currentTarget.elements.namedItem("consent") as HTMLInputElement;
+            setConsentGiven(consent.checked);
+          }} noValidate>
           <div className="checkout-form-main">
           <fieldset className="checkout-form-section checkout-contact-section">
             <legend>Контактные данные</legend>
@@ -379,12 +387,17 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             ))}
           </fieldset>
 
-          {(!hasPreorder || delivery === "pickup") && paymentMethods.length > 0 ? <fieldset className="checkout-form-section checkout-payment-section"><legend>Способ оплаты заказа</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => { setPaymentMethod(option.id); track("add_payment_info",{value:total,quantity:cartCount,properties:{paymentMethod:option.id}}); }} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{hasPreorder && option.id === "online" ? "После подтверждения наличия" : option.note}</small></span></label>)}</div></fieldset> : !hasPreorder && <div className="checkout-form-section payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>}
+          {deliveryChosen && ((!hasPreorder || delivery === "pickup") && paymentMethods.length > 0 ? <fieldset className="checkout-form-section checkout-payment-section"><legend>Способ оплаты заказа</legend><div className="delivery-options">{paymentMethods.map((option) => <label key={option.id} className={paymentMethod === option.id ? "active" : ""}><input type="radio" name="paymentMethod" value={option.id} checked={paymentMethod === option.id} onChange={() => { setPaymentMethod(option.id); track("add_payment_info",{value:total,quantity:cartCount,properties:{paymentMethod:option.id}}); }} /><i className="option-icon"><CheckoutOptionIcon name={option.id === "online" ? "card" : "wallet"} /></i><span><b>{option.title}</b><small>{hasPreorder && option.id === "online" ? "После подтверждения наличия" : option.note}</small></span></label>)}</div></fieldset> : !hasPreorder && <div className="checkout-form-section payment-note"><b>Не удалось загрузить способы оплаты</b><p>Обновите страницу или попробуйте ещё раз позже. Заказ без выбранного способа оплаты не отправится.</p></div>)}
           </div>
           <aside className="checkout-order-summary" aria-label="Итог заказа">
           <div className="checkout-summary-heading"><h2>Ваш заказ</h2></div>
           <div className="checkout-summary-paper">
-            <div className="checkout-summary-total"><span>{hasPreorder ? "Предварительная сумма" : deliveryUnknown ? "Растения, без доставки" : "Итого к оплате"}</span><strong>{pricingReady ? money(deliveryNotChosen || deliveryBlocked || deliveryCalculating ? subtotal : total) : <span>Проверяем цену…</span>}</strong></div>
+            <ul className="checkout-summary-items" aria-label="Состав заказа">{cartLines.map((item) => <li key={item.id}>
+              <ProductImage src={item.image} alt="" />
+              <div><strong>{item.name}</strong><small>{item.variantLabel} · {item.quantity} шт.</small></div>
+              <b>{money(item.price * item.quantity)}</b>
+            </li>)}</ul>
+            <div className="checkout-summary-total"><span>{hasPreorder ? "Предварительная сумма" : deliveryUnknown ? "Растения, без доставки" : "Итого"}</span><strong>{pricingReady ? money(deliveryNotChosen || deliveryBlocked || deliveryCalculating ? subtotal : total) : <span>Проверяем цену…</span>}</strong></div>
             <dl><div><dt>Количество</dt><dd>{cartCount}</dd></div>{discountAmount > 0 && <><div><dt>Растения без скидки</dt><dd>{money(originalSubtotal)}</dd></div><div><dt>Персональная скидка {discountBps / 100}%</dt><dd>−{money(discountAmount)}</dd></div></>}<div><dt>Растения</dt><dd>{money(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{deliveryStatus}</dd></div></dl>
             {pricingError && <p role="alert">Не удалось проверить персональную скидку. Обновите страницу перед оформлением.</p>}
             {hasPreorder ? <div className="checkout-summary-note"><strong>Есть растения под заказ</strong><p>Сейчас платить не нужно. Менеджер проверит наличие и подтвердит итог заказа.</p></div> : deliveryNeedsManager && <p>Менеджер уточнит доставку и сообщит итог до оплаты.</p>}
@@ -395,7 +408,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             {contactErrors.consent && <p className="field-error" id="consent-error">{contactErrors.consent}</p>}
             {footerHint && <p className="checkout-submit-hint" id="checkout-submit-hint" role="status">{footerHint}</p>}
             {feedbackMessage && <p className="field-error" role="alert">{feedbackMessage}</p>}
-            <div className="checkout-navigation"><a href="/cart" aria-label="Назад в корзину"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7" /></svg>Назад</a><button className="primary-button" aria-describedby={nameHintActive ? "name-error" : phoneHintActive ? "phone-error" : emailHintActive ? "email-error" : cityHintActive ? "cdek-city-error" : officeHintActive ? "cdek-office-error" : deliveryChoiceHintActive ? "delivery-error" : footerHint ? "checkout-submit-hint" : undefined} disabled={submitting || !!submitHint}>{submitting ? "Оформляем…" : hasPreorder ? "Отправить заказ →" : "Оформить заказ →"}</button></div>
+            <div className="checkout-navigation"><a href="/cart" aria-label="Назад в корзину"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5m7-7-7 7 7 7" /></svg>Назад</a><button className="primary-button" aria-describedby={footerHint ? "checkout-submit-hint" : undefined} disabled={submitting || !!submitHint}>{submitting ? "Оформляем…" : hasPreorder ? "Отправить заказ →" : "Оформить заказ →"}</button></div>
           </section>
         </form>
       )}

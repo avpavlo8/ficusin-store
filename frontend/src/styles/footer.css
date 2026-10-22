@@ -32,3 +32,7 @@
   body.has-store-tabs .store-footer { padding-bottom:calc(88px + env(safe-area-inset-bottom)); }
   .store-footer-bottom { padding-block:20px; flex-wrap:wrap; }
 }
+
+/* Checkout ends with help and legal links, keeping attention on the order. */
+.checkout-footer { max-width: 1360px; margin: 0 auto; padding: 24px 24px 40px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px 24px; border-top: 1px solid #dfd1c0; color: #65594c; font-size: 12px; }
+.checkout-footer a { color: inherit; text-underline-offset: 3px; }
