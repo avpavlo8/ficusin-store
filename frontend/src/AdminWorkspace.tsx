@@ -1,4 +1,5 @@
 import { useChatUnread } from "./lib/chat";
+import { BrandLogo } from "./BrandLogo";
 import { sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
@@ -35,7 +36,7 @@ export function WorkspaceSidebar({data,section,onNavigate,compact=false}:{data:A
   const active=section===item.id||item.id==="products"&&["categories","collections"].includes(section);
   return <button key={item.id} type="button" className={active?"active":""} aria-current={active?"page":undefined} onClick={()=>{onNavigate(item.id);if(mobileMenu.current)mobileMenu.current.open=false;}}><AdminIcon name={item.id}/>{item.label}{item.id==="chat"&&unread>0&&<b className="workspace-chat-count" aria-label={`Непрочитанных: ${unread}`}>{unread>99?"99+":unread}</b>}</button>;
  });
- return <aside className="account-sidebar"><a className="workspace-skip" href="#workspace-content">К содержимому</a><a className="workspace-brand" href="/" aria-label="Фикусин — в магазин">Фикусин<span aria-hidden="true">✳</span></a><p className="workspace-caption">Рабочее пространство</p>
+ return <aside className="account-sidebar"><a className="workspace-skip" href="#workspace-content">К содержимому</a><a className="workspace-brand" href="/" aria-label="Фикусин — в магазин"><BrandLogo decorative /></a><p className="workspace-caption">Рабочее пространство</p>
  {compact&&<details ref={mobileMenu} className="workspace-mobile-navigation"><summary>Разделы</summary><nav aria-label="Мобильные разделы управления">{links}</nav></details>}
  <nav aria-label="Разделы управления">{links}</nav><div className="workspace-sidebar-bottom"><a className="workspace-store-link" href="/">Вернуться в магазин <AdminIcon name="arrow"/></a><a className="workspace-profile" href="/account"><span className="workspace-avatar" aria-hidden="true">{data.user.fullName.trim().charAt(0)||"Ф"}</span><div><strong>{data.user.fullName}</strong><small>{roleLabel(data.role)} · Личный кабинет</small></div></a></div></aside>;
 }

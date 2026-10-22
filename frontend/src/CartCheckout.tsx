@@ -48,7 +48,7 @@ function CartSignature() {
       <circle cx="66" cy="66" r="58" /><circle cx="66" cy="66" r="52" strokeDasharray="2 4" />
       <text><textPath href="#cart-stamp-top" startOffset="50%" textAnchor="middle">ЖИВЫЕ РАСТЕНИЯ</textPath></text>
       <text><textPath href="#cart-stamp-bottom" startOffset="50%" textAnchor="middle">ДЛЯ ЖИВЫХ ЛЮДЕЙ</textPath></text>
-      <path d="M66 82V55m0 10c-12 0-16-8-16-14 9 0 16 4 16 14Zm0 7c12 0 16-8 16-14-9 0-16 4-16 14ZM55 85h22" />
+      <image href="/assets/brand/graphite-v1/mark-graphite.svg" x="39" y="39" width="54" height="54" />
     </svg>
   </div>;
 }

@@ -2,8 +2,9 @@
 .store-footer::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(12,34,17,.14),rgba(10,27,14,.14) 54%,rgba(9,24,13,.02)); }
 .store-footer-grid,.store-footer-bottom { width:min(1600px,100%); margin:0 auto; position:relative; z-index:1; }
 .store-footer-grid { min-height:430px; padding:52px 0 42px; display:grid; grid-template-columns:minmax(420px,620px) 1fr; align-items:center; }
+.store-footer-brand { display: inline-flex; margin-bottom: 20px; }
+.store-footer-brand:focus-visible { outline: 2px solid #f9f6ec; outline-offset: 5px; }
 .store-footer-connect { max-width:570px; display:grid; justify-items:start; }
-.store-footer-eyebrow { margin:0 0 11px; color:#dce297; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
 .store-footer-connect h2 { margin:0; color:#fff9ef; font:400 clamp(39px,4vw,62px)/.98 Georgia,serif; letter-spacing:-.045em; }
 .store-footer-intro { max-width:480px; margin:20px 0 25px; color:rgba(255,249,239,.8); font-size:15px; line-height:1.55; }
 .store-footer-contact-actions { width:100%; display:grid; grid-template-columns:minmax(260px,1.35fr) minmax(220px,1fr); align-items:stretch; gap:12px; }

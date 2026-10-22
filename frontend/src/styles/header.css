@@ -18,14 +18,7 @@
   box-shadow: none;
   backdrop-filter: none;
 }
-
-.header.store-header .brand-mark,
-.header.store-header .brand-text small { display: none; }
-.header.store-header .brand {
-  color: var(--store-header-ink);
-  font: 700 35px/1 Georgia, serif;
-  letter-spacing: -.04em;
-}
+.header.store-header .brand { min-height: 56px; }
 .header.store-header .desktop-nav {
   justify-self: start;
   align-items: center;
@@ -142,7 +135,8 @@
     gap: 6px;
     grid-template-columns: auto 1fr auto;
   }
-  .header.store-header .brand { justify-self: center; font-size: 24px; }
+  .header.store-header .brand { justify-self: center; min-height: 50px; }
+  .header.store-header .ficusin-logo { width: 160px; }
   .header.store-header .account-button.icon-only,
   .header.store-header .favorites-button,
   .header.store-header .cart-button { display: none; }
