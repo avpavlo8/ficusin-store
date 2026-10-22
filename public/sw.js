@@ -10,7 +10,7 @@
 //     the phone is offline.
 //   * /api/** is never cached. Prices, stock and the session must be live.
 
-const VERSION = "v4-graphite-v1";
+const VERSION = "v5-app-logo-v2";
 const SHELL = `ficusin-shell-${VERSION}`;
 const ASSETS = `ficusin-assets-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
@@ -18,7 +18,7 @@ const OFFLINE_URL = "/offline.html";
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(SHELL);
-    await cache.addAll([OFFLINE_URL, "/assets/brand/graphite-v1/wordmark-graphite.svg", "/icon-192.png?v=graphite-v1", "/push-badge.png?v=graphite-v1"]);
+    await cache.addAll([OFFLINE_URL, "/assets/brand/graphite-v1/wordmark-graphite.svg", "/assets/brand/graphite-v1/app-192-v2.png", "/assets/brand/graphite-v1/push-badge-v2.png"]);
     // Take over as soon as the new worker is ready rather than waiting for
     // every tab to close.
     await self.skipWaiting();
@@ -84,8 +84,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Фикусин";
   event.waitUntil(self.registration.showNotification(title, {
     body: payload.body || "",
-    icon: "/icon-192.png?v=graphite-v1",
-    badge: "/push-badge.png?v=graphite-v1",
+    icon: "/assets/brand/graphite-v1/app-192-v2.png",
+    badge: "/assets/brand/graphite-v1/push-badge-v2.png",
     lang: "ru",
     data: { url: payload.url || "/" },
     tag: payload.tag || "ficusin",

@@ -411,9 +411,17 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}); err != nil {
 		return Created{}, err
 	}
+	// The checkout contact is surname-first. Only the structured profile is
+	// an unambiguous source of a given name; guests get a neutral greeting.
+	var letterName string
+	if input.CustomerID != nil {
+		if err := transaction.QueryRow(ctx, `SELECT full_name FROM customers WHERE id=$1`, input.CustomerID).Scan(&letterName); err != nil {
+			return Created{}, err
+		}
+	}
 	letter := mail.Confirmation(mail.OrderLetter{
 		Number:        orderNumber,
-		CustomerName:  input.Customer.Name,
+		CustomerName:  letterName,
 		Items:         letterLines(items),
 		Subtotal:      subtotal,
 		DeliveryFee:   deliveryFee,

@@ -1242,9 +1242,9 @@ func (repository *PostgresRepository) queueStatusLetter(
 	var letter mail.OrderLetter
 	var email string
 	if err := repository.pool.QueryRow(ctx, `
-		SELECT order_number, customer_name, COALESCE(email, ''), delivery_method,
-			address, COALESCE(cdek_track_number, '')
-		FROM orders WHERE id = $1
+		SELECT o.order_number, COALESCE(c.full_name,''), COALESCE(o.email, ''), o.delivery_method,
+			o.address, COALESCE(o.cdek_track_number, '')
+		FROM orders o LEFT JOIN customers c ON c.id=o.customer_id WHERE o.id = $1
 	`, orderID).Scan(
 		&letter.Number, &letter.CustomerName, &email,
 		&letter.Delivery, &letter.Address, &letter.TrackNumber,

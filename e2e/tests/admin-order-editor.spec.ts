@@ -252,10 +252,10 @@ test("@desktop несохранённый состав защищён при в�
 async function fillPackingBox(page: import("@playwright/test").Page) {
   const packing = page.getByRole("region", { name: "Подготовить заказ к отправке" });
   await expect(packing.getByRole("button", { name: "Рассчитать доставку", exact: true })).toBeDisabled();
-  await packing.getByRole("spinbutton", { name: "Длина коробки, см", exact: true }).fill("40");
-  await packing.getByRole("spinbutton", { name: "Ширина коробки, см", exact: true }).fill("30");
-  await packing.getByRole("spinbutton", { name: "Высота коробки, см", exact: true }).fill("60");
-  await packing.getByRole("spinbutton", { name: "Вес с упаковкой, кг", exact: true }).fill("2.5");
+  await packing.getByRole("textbox", { name: "Длина коробки, см", exact: true }).fill("40");
+  await packing.getByRole("textbox", { name: "Ширина коробки, см", exact: true }).fill("30");
+  await packing.getByRole("textbox", { name: "Высота коробки, см", exact: true }).fill("60");
+  await packing.getByRole("textbox", { name: "Вес с упаковкой, кг", exact: true }).fill("2.5");
   return packing;
 }
 
@@ -322,8 +322,8 @@ test("@desktop ошибка отправки сохраняет коробку �
   const packing = await preparePacking(page);
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByRole("alert")).toContainText("Упаковка не сохранена, повторите попытку");
-  await expect(packing.getByRole("spinbutton", { name: "Длина коробки, см", exact: true })).toHaveValue("40");
-  await expect(packing.getByRole("spinbutton", { name: "Вес с упаковкой, кг", exact: true })).toHaveValue("2.5");
+  await expect(packing.getByRole("textbox", { name: "Длина коробки, см", exact: true })).toHaveValue("40");
+  await expect(packing.getByRole("textbox", { name: "Вес с упаковкой, кг", exact: true })).toHaveValue("2.5");
   await expect(packing.getByRole("radio")).toBeChecked();
   expect(await state.packingFinalizations()).toHaveLength(1);
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
@@ -382,7 +382,7 @@ test("@desktop дробный вес в килограммах сохраняе�
  const state=await mockOrderEditor(page,false,"success");
  await page.goto("/admin?section=orders&order=30");
  const packing=await fillPackingBox(page);
- const weight=packing.getByRole("spinbutton",{name:"Вес с упаковкой, кг",exact:true});
+ const weight=packing.getByRole("textbox",{name:"Вес с упаковкой, кг",exact:true});
  await weight.fill(""); await weight.pressSequentially("0.125");
  await expect(weight).toHaveValue("0.125");
  await packing.getByRole("button",{name:"Рассчитать доставку",exact:true}).click();
@@ -394,4 +394,23 @@ test("@desktop дробный вес в килограммах сохраняе�
  const status=await page.getByRole("combobox",{name:"Статус заказа 0001-30",exact:true}).boundingBox();
  expect(Math.abs(title!.y-status!.y)).toBeLessThan(50);
  expect(status!.x-title!.x-title!.width).toBeLessThan(30);
+});
+
+
+test("@desktop @phone размеры вводятся строкой, а вес с запятой передаётся в граммах", async ({page}, testInfo) => {
+ const state = await mockOrderEditor(page, false, "success");
+ await page.goto("/admin?section=orders&status=new&order=30");
+ const packing = await fillPackingBox(page);
+ const length = packing.getByRole("textbox", {name:"Длина коробки, см",exact:true});
+ await expect(length).toHaveAttribute("inputmode","numeric");
+ await length.press("ArrowUp"); await expect(length).toHaveValue("40");
+ const weight = packing.getByRole("textbox", {name:"Вес с упаковкой, кг",exact:true});
+ await expect(weight).toHaveAttribute("inputmode","decimal");
+ await weight.fill("0,125"); await expect(weight).toHaveValue("0,125");
+ await packing.getByRole("button",{name:"Рассчитать доставку",exact:true}).click();
+ await expect(packing.getByRole("radio")).toBeChecked();
+ await packing.screenshot({path:testInfo.outputPath("packing-text-fields.png")});
+ await packing.getByRole("button",{name:"Сохранить и подтвердить",exact:true}).click();
+ await expect.poll(async()=> (await state.packingFinalizations()).length).toBe(1);
+ expect((await state.packingFinalizations())[0].boxes[0].weightGrams).toBe(125);
 });

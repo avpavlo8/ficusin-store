@@ -7,14 +7,18 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -51,8 +55,7 @@ func (sender *Sender) Configured() bool {
 	return sender != nil && sender.config.Host != "" && sender.config.From != ""
 }
 
-// Letter is one message. Plain text only: a shop confirmation is read in two
-// seconds, and HTML mail is where spam filters get suspicious.
+// Letter stores the durable plain-text message. SMTP sends both text and HTML.
 type Letter struct {
 	To      string
 	Subject string
@@ -136,11 +139,23 @@ func (sender *Sender) compose(letter Letter) string {
 		"From: " + mime.QEncoding.Encode("utf-8", sender.config.FromName) +
 			" <" + sender.config.From + ">",
 		"To: " + letter.To,
+		"Reply-To: info@ficusin.ru",
 		"Subject: " + mime.QEncoding.Encode("utf-8", letter.Subject),
 		"Date: " + time.Now().Format(time.RFC1123Z),
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=utf-8",
-		"Content-Transfer-Encoding: 8bit",
 	}
-	return strings.Join(headers, "\r\n") + "\r\n\r\n" + letter.Body + "\r\n"
+	var body bytes.Buffer
+	alternative := multipart.NewWriter(&body)
+	for _, part := range []struct{ kind, body string }{{"text/plain", letter.Body}, {"text/html", HTML(letter)}} {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Type", part.kind+"; charset=utf-8")
+		header.Set("Content-Transfer-Encoding", "quoted-printable")
+		writer, _ := alternative.CreatePart(header)
+		encoded := quotedprintable.NewWriter(writer)
+		_, _ = encoded.Write([]byte(part.body))
+		_ = encoded.Close()
+	}
+	_ = alternative.Close()
+	headers = append(headers, `Content-Type: multipart/alternative; boundary="`+alternative.Boundary()+`"`)
+	return strings.Join(headers, "\r\n") + "\r\n\r\n" + body.String()
 }

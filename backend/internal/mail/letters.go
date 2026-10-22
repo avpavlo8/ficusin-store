@@ -2,13 +2,14 @@ package mail
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
 // OrderLetter is everything the letters need to know about an order.
 type OrderLetter struct {
 	Number        string
-	CustomerName  string
+	CustomerName  string // Given name only, sourced from the structured profile; empty means a neutral greeting.
 	Items         []OrderLine
 	Subtotal      float64
 	DeliveryFee   float64
@@ -57,6 +58,9 @@ func Confirmation(order OrderLetter) Letter {
 		}
 	}
 
+	if order.TrackNumber != "" {
+		lines = append(lines, "", tracking(order.TrackNumber))
+	}
 	switch {
 	case order.HasPreorder:
 		lines = append(lines, "", "Часть растений сейчас отсутствует. Менеджер проверит заказ и свяжется с вами. Оплата пока не требуется.")
@@ -103,8 +107,7 @@ func StatusChange(order OrderLetter, status string) (Letter, bool) {
 		if order.TrackNumber != "" {
 			lines = append(lines,
 				"",
-				"Трек-номер СДЭК: "+order.TrackNumber,
-				"Отследить: https://www.cdek.ru/ru/tracking?order_id="+order.TrackNumber,
+				tracking(order.TrackNumber),
 			)
 		}
 	case "ready":
@@ -186,10 +189,23 @@ func signature() string {
 	return strings.Join([]string{
 		"—",
 		"Фикусин, комнатные растения",
-		"ficusin.ru",
+		"https://ficusin.ru",
+		"+7 915 615-11-00 · info@ficusin.ru",
+		"Рязань, ул. Новосёлов, 40А",
+		"Ежедневно, 08:00–20:00",
+		"Чат: https://ficusin.ru/chat",
 	}, "\n")
 }
 
 func money(value float64) string {
 	return fmt.Sprintf("%.0f ₽", value)
+}
+
+func tracking(number string) string {
+	return "Трек-номер СДЭК: " + number + "\nОтследить: https://www.cdek.ru/ru/tracking?order_id=" + url.QueryEscape(number)
+}
+
+// Tracking is sent once the asynchronous registration supplies a real track.
+func Tracking(order OrderLetter) Letter {
+	return Letter{Subject: "Трек заказа " + order.Number, Body: strings.Join([]string{greeting(order.CustomerName), "", "Для заказа " + order.Number + " зарегистрирована заявка СДЭК. Это ещё не означает передачу посылки перевозчику.", "", tracking(order.TrackNumber), "", signature()}, "\n")}
 }

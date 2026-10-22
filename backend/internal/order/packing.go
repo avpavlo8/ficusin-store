@@ -217,7 +217,7 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 	if workflowState == "cancelled" || workflowState == "stale" || workflowState == "notification_queued" || workflowState == "notified" {
 		return tx.Commit(ctx)
 	}
-	body := fmt.Sprintf("Упаковка заказа %s подтверждена.\n\nСДЭК: %s.\nРегистрация заявки ещё не означает передачу посылки перевозчику.\n", number, track)
+	body := fmt.Sprintf("Упаковка заказа %s подтверждена.\n\nТрек-номер СДЭК: %s\nОтследить: https://www.cdek.ru/ru/tracking?order_id=%s\nРегистрация заявки ещё не означает передачу посылки перевозчику.\n", number, track, url.QueryEscape(track))
 	if payee == "carrier" {
 		body += fmt.Sprintf("\nДоставка оплачивается перевозчику отдельно. Расчётная стоимость доставки: %.2f ₽.\n", fee)
 	}
@@ -229,6 +229,9 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 	body += "\nВаш заказ: " + worker.siteURL + "/account/orders/" + url.PathEscape(number) + "\n\nФикусин"
 	if email != "" {
 		if _, err = tx.Exec(ctx, `INSERT INTO outbox(recipient,subject,body,order_packing_id) VALUES($1,$2,$3,$4) ON CONFLICT(order_packing_id) WHERE order_packing_id IS NOT NULL DO NOTHING`, email, "Заказ "+number+" подготовлен к оплате и отправке", body, id); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE orders SET cdek_tracking_notified_at=COALESCE(cdek_tracking_notified_at,CURRENT_TIMESTAMP) WHERE id=$1`, orderID); err != nil {
 			return err
 		}
 	}

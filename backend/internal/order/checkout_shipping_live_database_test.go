@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,7 +67,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	sabyID := "checkout-cdek-" + suffix
 	email := sabyID + "@example.invalid"
-	var productID, variantID, warehouseID int64
+	var productID, variantID, warehouseID, customerID int64
 	var sku string
 	if err := pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,category_id,saby_fields) SELECT 'Checkout CDEK test',$1,'published',id,ARRAY['stock']::text[] FROM categories WHERE slug='accessories' RETURNING id`, sabyID).Scan(&productID); err != nil {
 		t.Fatal(err)
@@ -74,6 +75,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	defer func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE email=$1`, email)
 		_, _ = pool.Exec(ctx, `DELETE FROM outbox WHERE recipient=$1`, email)
+		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customerID)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID)
 	}()
@@ -92,6 +94,9 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value) SELECT $1,d.id,to_jsonb(v.n) FROM attribute_definitions d JOIN (VALUES('package_length_cm',40),('package_width_cm',20),('package_height_cm',20),('package_weight_grams',1500))v(code,n) ON v.code=d.code ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, variantID); err != nil {
 		t.Fatal(err)
 	}
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,last_name,consent_at) VALUES($1,$2,'','Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, email, "ci-mail-"+suffix).Scan(&customerID); err != nil {
+		t.Fatal(err)
+	}
 	shop := &checkoutShippingSettings{enabled: true}
 	client := &checkoutCDEK{stage13CDEK: &stage13CDEK{byNumber: map[string]integration.Shipment{}, byUUID: map[string]integration.Shipment{}}}
 	worker := NewShippingWorker(pool, client, shop, nil, quietLogger())
@@ -99,13 +104,20 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	service := NewService(pool, client, liveOrderNotifier{}, shop, quietLogger()).WithShipmentWake(func() { wakes++; worker.Wake() })
 	makeOrder := func(repack bool) int64 {
 		t.Helper()
-		result, err := service.Create(ctx, CreateInput{Customer: CustomerInput{Name: "Checkout test", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, ClientIP: "127.0.0.1"})
+		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, ClientIP: "127.0.0.1"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		var id int64
 		if err := pool.QueryRow(ctx, `SELECT id FROM orders WHERE order_number=$1`, result.OrderNumber).Scan(&id); err != nil {
 			t.Fatal(err)
+		}
+		var confirmation string
+		if err := pool.QueryRow(ctx, `SELECT body FROM outbox WHERE subject=$1 ORDER BY id DESC LIMIT 1`, "Заказ "+result.OrderNumber+" принят").Scan(&confirmation); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(confirmation, "Здравствуйте, Александр!") || strings.Contains(confirmation, "Здравствуйте, Павловский!") {
+			t.Fatal("confirmation uses contact surname instead of structured given name")
 		}
 		return id
 	}
