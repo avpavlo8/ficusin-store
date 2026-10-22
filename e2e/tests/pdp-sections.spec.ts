@@ -7,7 +7,7 @@ test("@desktop @phone вкладка ухода не сдвигает стран
   await page.goto("/product/1");
   const tabs = page.getByRole("tablist", { name: "Разделы товара" });
   await expect(tabs).toBeVisible();
-  await tabs.evaluate(element => window.scrollTo({ top: window.scrollY + element.getBoundingClientRect().top - 240, behavior: "instant" }));
+  await tabs.evaluate(element => window.scrollTo({ top: window.scrollY + element.getBoundingClientRect().top, behavior: "instant" }));
   const before = await page.evaluate(() => window.scrollY);
   for (const name of ["Уход", "О растении", "Уход"]) {
     await page.getByRole("tab", { name, exact: true }).click();
