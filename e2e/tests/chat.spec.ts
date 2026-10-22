@@ -24,7 +24,7 @@ test('quick chat follows the panned keyboard viewport and restores the page @pho
     };
   });
   await mockApi(page); await page.goto('/');
-  await page.locator('.store-footer-chat').scrollIntoViewIfNeeded();
+  await page.locator('.chat-launcher').scrollIntoViewIfNeeded();
   const originalScroll = await page.evaluate(() => scrollY);
   await page.locator('.chat-launcher').click();
   const dialog = page.getByRole('dialog');

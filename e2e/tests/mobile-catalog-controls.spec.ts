@@ -124,8 +124,8 @@ test("@phone top menu is compact and search leaves the page usable", async ({pag
   const box = await menu.boundingBox(), viewport = page.viewportSize()!;
   expect(box!.height).toBeLessThan(viewport.height * .8);
   expect(box!.width).toBeLessThan(viewport.width);
-  await expect(page.locator('.mobile-menu-backdrop')).toBeHidden();
-  await expect(page.locator('body')).not.toHaveCSS('overflow','hidden');
+  await expect(page.locator('.mobile-menu-backdrop')).toBeVisible();
+  await expect(page.locator('body')).toHaveCSS('overflow','hidden');
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0); await expect(menuTrigger).toBeFocused();
   await page.locator('.tab-bar').getByRole('button',{name:'Поиск',exact:true}).click();
