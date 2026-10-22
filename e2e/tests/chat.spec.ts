@@ -164,6 +164,21 @@ test('account does not mark offscreen replies read and catches up every message 
 });
 
 for (const device of ['@desktop', '@phone']) {
+  test(`account sends an attachment without focusing or typing in the composer ${device}`, async ({ page }) => {
+    await mockApi(page, owner);
+    await page.route(/\/api\/v1\/chat(?:\?.*)?$/, route => route.fulfill({ json: { ...initial, id: 4, consentRequired: false } }));
+    let posted = false;
+    await page.route('**/api/v1/chat/messages', route => {
+      posted = true;
+      return route.fulfill({ json: { ...initial, id: 4, consentRequired: false } });
+    });
+    await page.goto('/account/chat');
+    const account = page.locator('.account-chat-conversation');
+    await account.getByLabel('Добавить фото, видео или файл', { exact: true }).setInputFiles({ name: 'инструкция.txt', mimeType: 'text/plain', buffer: Buffer.from('private file') });
+    await expect(account.locator('.chat-preview')).toBeVisible();
+    await account.getByRole('button', { name: 'Отправить', exact: true }).click();
+    await expect.poll(() => posted).toBe(true);
+  });
   test(`registered user has one-row composer, emoji and attachments without repeated consent ${device}`, async ({ page }) => {
     await mockApi(page, owner);
     let thread = { ...initial, consentRequired: false }; let payload: Record<string, unknown> = {};
