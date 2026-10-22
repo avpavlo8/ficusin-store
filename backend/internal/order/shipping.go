@@ -129,6 +129,7 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	worker.cancelShipments(ctx)
 	worker.refreshStatuses(ctx)
 	worker.refreshOfferStatuses(ctx)
+	worker.queueTrackingLetters(ctx)
 }
 
 // A checkout shipment is never registered with CDEK when Saby's latest stock snapshot
@@ -534,20 +535,20 @@ func cdekReconciliationFailure(failure error, attempts int) (string, any) {
 func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 	rows, err := worker.pool.Query(ctx, `
 		WITH candidates AS (
-			SELECT id FROM orders
+			SELECT id, cdek_cancel_state='manual_review' AS review_only FROM orders
 			WHERE status = 'cancelled' AND cdek_uuid <> ''
-				AND cdek_cancel_state NOT IN ('cancelled', 'manual_review')
+				AND cdek_cancel_state <> 'cancelled'
 				AND (cdek_cancel_next_attempt_at IS NULL OR cdek_cancel_next_attempt_at <= CURRENT_TIMESTAMP)
 			ORDER BY cdek_cancel_next_attempt_at ASC NULLS FIRST, id
 			FOR UPDATE SKIP LOCKED LIMIT 20
 		), claimed AS (
-			UPDATE orders o SET cdek_cancel_state = 'cancelling',
-				cdek_cancel_attempts = cdek_cancel_attempts + 1,
+			UPDATE orders o SET cdek_cancel_state = CASE WHEN c.review_only THEN 'manual_review' ELSE 'cancelling' END,
+				cdek_cancel_attempts = cdek_cancel_attempts + CASE WHEN c.review_only THEN 0 ELSE 1 END,
 				cdek_cancel_next_attempt_at = CURRENT_TIMESTAMP + INTERVAL '15 minutes'
 			FROM candidates c WHERE o.id = c.id
-			RETURNING o.id, o.order_number, o.cdek_uuid, o.cdek_cancel_attempts
+			RETURNING o.id, o.order_number, o.cdek_uuid, o.cdek_cancel_attempts, c.review_only
 		)
-		SELECT id, order_number, cdek_uuid, cdek_cancel_attempts FROM claimed
+		SELECT id, order_number, cdek_uuid, cdek_cancel_attempts, review_only FROM claimed
 	`)
 	if err != nil {
 		worker.logger.Error("find cdek cancellations failed", "error", err)
@@ -557,11 +558,12 @@ func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 		id           int64
 		number, uuid string
 		attempts     int
+		reviewOnly   bool
 	}
 	items := make([]cancellation, 0)
 	for rows.Next() {
 		var item cancellation
-		if err := rows.Scan(&item.id, &item.number, &item.uuid, &item.attempts); err != nil {
+		if err := rows.Scan(&item.id, &item.number, &item.uuid, &item.attempts, &item.reviewOnly); err != nil {
 			worker.logger.Error("scan cdek cancellation failed", "error", err)
 			break
 		}
@@ -569,12 +571,34 @@ func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 	}
 	rows.Close()
 	for _, item := range items {
-		if err := worker.cdek.CancelOrder(ctx, item.uuid); err != nil {
-			state := "retry"
-			if item.attempts >= 8 {
-				state = "manual_review"
+		var cancelErr error
+		if item.reviewOnly {
+			// A stopped cancellation can recover by observation only. Never
+			// repeat DELETE automatically after escalation to a manager.
+			shipment, lookupErr := worker.cdek.FetchOrder(ctx, item.uuid)
+			if !errors.Is(lookupErr, integration.ErrCDEKOrderNotFound) && (lookupErr != nil || shipment.Status != "REMOVED") {
+				cancelErr = lookupErr
+				if cancelErr == nil {
+					cancelErr = errors.New("СДЭК ещё не подтвердил удаление заявки; нужна проверка менеджера")
+				}
 			}
+		} else {
+			cancelErr = worker.cdek.CancelOrder(ctx, item.uuid)
+		}
+		if err := cancelErr; err != nil {
+			state := "retry"
 			delay := time.Minute * time.Duration(1<<min(6, max(0, item.attempts-1)))
+			if errors.Is(err, integration.ErrCDEKCancellationPending) {
+				state = "pending"
+				delay = 5 * time.Minute
+				if item.attempts >= 8 {
+					state = "manual_review"
+					delay = time.Hour
+				}
+			} else if item.reviewOnly || item.attempts >= 8 {
+				state = "manual_review"
+				delay = time.Hour
+			}
 			message := err.Error()
 			if len(message) > 1000 {
 				message = message[:1000]
@@ -592,8 +616,8 @@ func (worker *ShippingWorker) cancelShipments(ctx context.Context) {
 		if _, err := worker.pool.Exec(ctx, `
 			UPDATE orders SET cdek_cancel_state = 'cancelled', cdek_last_error = '',
 				cdek_cancel_next_attempt_at = NULL, cdek_synced_at = CURRENT_TIMESTAMP
-			WHERE id = $1
-		`, item.id); err != nil {
+			WHERE id = $1 AND status='cancelled' AND cdek_uuid=$2
+		`, item.id, item.uuid); err != nil {
 			worker.logger.Error("store cdek cancellation failed", "error", err, "order", item.number)
 		}
 	}

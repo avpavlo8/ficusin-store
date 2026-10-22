@@ -1,4 +1,5 @@
 {
+  "id": "/?source=pwa",
   "name": "Фикусин — комнатные растения",
   "short_name": "Фикусин",
   "description": "Комнатные растения, кашпо и уход с доставкой по Рязани и всей России.",
@@ -10,15 +11,60 @@
   "orientation": "portrait",
   "background_color": "#F9F6EC",
   "theme_color": "#353630",
-  "categories": ["shopping", "lifestyle"],
+  "categories": [
+    "shopping",
+    "lifestyle"
+  ],
   "icons": [
-    { "src": "/icon-192.png?v=graphite-v1", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png?v=graphite-v1", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-maskable-512.png?v=graphite-v1", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/assets/brand/graphite-v1/app-192-v2.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/graphite-v1/app-512-v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/graphite-v1/app-maskable-512-v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Каталог", "url": "/#catalog", "icons": [{ "src": "/icon-192.png?v=graphite-v1", "sizes": "192x192" }] },
-    { "name": "Избранное", "url": "/favorites", "icons": [{ "src": "/icon-192.png?v=graphite-v1", "sizes": "192x192" }] },
-    { "name": "Мои заказы", "url": "/account", "icons": [{ "src": "/icon-192.png?v=graphite-v1", "sizes": "192x192" }] }
+    {
+      "name": "Каталог",
+      "url": "/#catalog",
+      "icons": [
+        {
+          "src": "/assets/brand/graphite-v1/app-192-v2.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Избранное",
+      "url": "/favorites",
+      "icons": [
+        {
+          "src": "/assets/brand/graphite-v1/app-192-v2.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Мои заказы",
+      "url": "/account",
+      "icons": [
+        {
+          "src": "/assets/brand/graphite-v1/app-192-v2.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

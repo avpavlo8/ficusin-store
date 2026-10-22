@@ -20,6 +20,7 @@ type OrderAdjustmentState struct {
 	DeliveryMethod     string          `json:"deliveryMethod"`
 	CDEKTariffCode     *int            `json:"cdekTariffCode,omitempty"`
 	CDEKCreateState    string          `json:"cdekCreateState"`
+	CDEKCancelState    string          `json:"cdekCancelState"`
 	CDEKStatus         string          `json:"cdekStatus"`
 	CDEKStatusReason   string          `json:"cdekStatusReason"`
 	CDEKLastError      string          `json:"cdekLastError"`
@@ -32,9 +33,9 @@ func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id in
 	if err := repository.pool.QueryRow(ctx, `
 		SELECT id,order_number,subtotal::DOUBLE PRECISION,delivery_fee::DOUBLE PRECISION,delivery_payee,
 			delivery_fee_pending=1,has_preorder=1,status,delivery_method,cdek_tariff_code,
-			cdek_create_state,cdek_status,cdek_status_reason,cdek_last_error,manager_discount_type,manager_discount_value::double precision,manager_discount_amount::double precision
+			cdek_create_state,cdek_cancel_state,cdek_status,cdek_status_reason,cdek_last_error,manager_discount_type,manager_discount_value::double precision,manager_discount_amount::double precision
 		FROM orders WHERE id=$1
-	`, id).Scan(&state.ID, &state.OrderNumber, &state.Subtotal, &state.DeliveryFee, &state.DeliveryPayee, &state.DeliveryFeePending, &state.HasPreorder, &state.Status, &state.DeliveryMethod, &state.CDEKTariffCode, &state.CDEKCreateState, &state.CDEKStatus, &state.CDEKStatusReason, &state.CDEKLastError, &state.DiscountType, &state.DiscountValue, &state.DiscountAmount); err != nil {
+	`, id).Scan(&state.ID, &state.OrderNumber, &state.Subtotal, &state.DeliveryFee, &state.DeliveryPayee, &state.DeliveryFeePending, &state.HasPreorder, &state.Status, &state.DeliveryMethod, &state.CDEKTariffCode, &state.CDEKCreateState, &state.CDEKCancelState, &state.CDEKStatus, &state.CDEKStatusReason, &state.CDEKLastError, &state.DiscountType, &state.DiscountValue, &state.DiscountAmount); err != nil {
 		return state, err
 	}
 	// Редактор правит SKU, а не карточку товара, поэтому состояние обязано
