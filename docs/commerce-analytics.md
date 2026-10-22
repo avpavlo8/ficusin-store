@@ -48,3 +48,24 @@ performance, zero-result searches, revenue and abandoned checkouts.
 
 Set the Yandex Metrika counter in the store settings panel. An empty value keeps
 the external counter disabled while first-party analytics continues to work.
+
+## Yandex goals configured on 22 October 2026
+
+Counter `111907858` is accessible under the owner's Yandex account
+`svarog62rus`. Existing automatic contact goals remain enabled.
+Manual exact-match goals cover `view_item_list`, `select_item`, `search`,
+`filter`, `view_item`, `add_to_cart`, `remove_from_cart`, `view_cart`,
+`begin_checkout`, `add_shipping_info`, `add_payment_info`, `checkout_error`,
+and `payment_redirect`. The goal named "Сайт: заказ создан" uses
+`add_shipping_info`: the current checkout emits it only after the server has
+successfully created the order, not when delivery is merely selected.
+
+`paid_order` is a separate browser goal with RUB revenue, sent from the payment
+result page only after its authenticated order response passes the existing
+full-payment balance checks. Pending, partial, failed, cancelled, refunded and
+preview states never emit it. Carrier-paid delivery is excluded. The order
+number and customer contacts are not sent as goal parameters. Repeated polling
+and reloads are deduplicated in the same browser (memory/localStorage); clearing
+storage or using another browser can produce another conversion. A customer
+who never returns to the result page is not tracked by this goal. It is not
+an ecommerce `purchase` event or a replacement for the server sales ledger.
