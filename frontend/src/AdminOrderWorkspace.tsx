@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { AdminOrderEditor, type OrderReviewState } from "./AdminOrderEditor";
 import { money, orderStatuses, paymentLabels, paymentMethodLabels, statusLabels } from "./adminShared";
 import type { Order } from "./adminTypes";
-import { WorkspaceStatus } from "./WorkspaceUI";
 import "./styles/admin-order-workspace.css";
 
 type Props = {
@@ -34,7 +33,7 @@ export function AdminOrderWorkspace({ order, onSaved, onError, onStatusChange, r
       if (order.paymentMethod === "invoice") result.push({ title: "Подготовить счёт", text: "Покупатель выбрал оплату по счёту на организацию." });
       if (order.deliveryMethod === "cdek" && review?.cdekCreateState === "manual_review") result.push({ title: "Проверить отправление СДЭК", text: review.cdekLastError || "Нужно сверить отправление в кабинете СДЭК. Новая заявка автоматически не создаётся." });
       if (order.deliveryMethod === "cdek" && review?.cdekCreateState === "unknown") result.push({ title: "Уточняется создание отправления", text: "СДЭК не подтвердил результат. Система ищет заявку по номеру заказа без повторного создания." });
-      if (order.deliveryMethod === "cdek" && review?.cdekCreateState === "retry") result.push({ title: "СДЭК ожидает повторной попытки", text: review.cdekLastError || "Предыдущая попытка создания отправления не завершилась успешно." });
+      if (order.deliveryMethod === "cdek" && review?.cdekCreateState === "retry" && review.cdekLastError !== "не хватает пункта выдачи или тарифа") result.push({ title: "СДЭК ожидает повторной попытки", text: review.cdekLastError || "Предыдущая попытка создания отправления не завершилась успешно." });
     }
     if (review?.paymentIssues.length) result.push({ title: "Уточнить результат оплаты", text: review.paymentIssues.some((issue) => issue.needsReview)
       ? "Автопроверка остановлена. Сверьте платёж с кабинетом ЮKassa в разделе «Оплата»."
@@ -54,16 +53,18 @@ export function AdminOrderWorkspace({ order, onSaved, onError, onStatusChange, r
   return <div className="admin-order-workspace">
     <header className="order-workspace-header">
       <div className="order-workspace-title">
-        <div><h2 tabIndex={-1}>Заказ {order.orderNumber}</h2><WorkspaceStatus status={order.status}>{statusLabels[order.status] || order.status}</WorkspaceStatus></div>
+        <div>
+          <h2 tabIndex={-1}>Заказ {order.orderNumber}</h2>
+          <label className="order-workspace-status">
+            <select aria-label={`Статус заказа ${order.orderNumber}`} value={order.status} disabled={closed || changingStatus || dirty} onChange={(event) => void changeStatus(event.target.value)}>
+              {orderStatuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+            </select>
+            {dirty && <small>Сначала завершите работу с изменениями заказа</small>}
+            {changingStatus && <small role="status">Обновляем статус…</small>}
+          </label>
+        </div>
         <p><time dateTime={order.createdAt}>{dateFormat.format(new Date(order.createdAt))}</time><span>{money.format(order.total)}</span><span>{paymentLabel}</span></p>
       </div>
-      <label className="order-workspace-status">Статус заказа
-        <select aria-label={`Статус заказа ${order.orderNumber}`} value={order.status} disabled={closed || changingStatus || dirty} onChange={(event) => void changeStatus(event.target.value)}>
-          {orderStatuses.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
-        </select>
-        {dirty && <small>Сначала завершите работу с изменениями заказа</small>}
-        {changingStatus && <small role="status">Обновляем статус…</small>}
-      </label>
     </header>
 
     <div className="order-workspace-body">

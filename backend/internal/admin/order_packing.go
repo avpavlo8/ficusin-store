@@ -53,6 +53,8 @@ type OrderPackingState struct {
 	Error         string              `json:"error"`
 	Notification  PackingNotification `json:"notification"`
 	Blockers      []string            `json:"blockers"`
+	QuoteBlockers []string            `json:"quoteBlockers"`
+	Push          PackingNotification `json:"push"`
 }
 
 func (repository *PostgresRepository) WithOrderPacking(shop packingSettings, mailConfigured, paymentConfigured bool, wake func()) *PostgresRepository {
@@ -64,7 +66,7 @@ func (repository *PostgresRepository) WithOrderPacking(shop packingSettings, mai
 }
 
 func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64) (OrderPackingState, error) {
-	state := OrderPackingState{Boxes: []ShipmentBoxInput{}, State: "draft", Notification: PackingNotification{State: "not_queued"}, Blockers: []string{}}
+	state := OrderPackingState{Boxes: []ShipmentBoxInput{}, State: "draft", Notification: PackingNotification{State: "not_queued"}, Blockers: []string{}, QuoteBlockers: []string{}, Push: PackingNotification{State: "unavailable", Error: "Покупатель не включил push-уведомления"}}
 	var delivery, status, method, email, uuid, lastError string
 	var preorder, activeOffers bool
 	err := repository.pool.QueryRow(ctx, `SELECT shipment_revision,COALESCE(cdek_tariff_code,0),delivery_fee::double precision,delivery_payee,COALESCE(cdek_office_code,''),COALESCE(cdek_city_code,0),cdek_create_state,COALESCE(cdek_track_number,''),delivery_method,status,payment_method,COALESCE(email,''),cdek_uuid,cdek_last_error,has_preorder=1,
@@ -94,7 +96,7 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		state.Blockers = append(state.Blockers, "Сначала подтвердите наличие всех растений и сохраните состав заказа")
 	}
 	if email == "" {
-		state.Blockers = append(state.Blockers, "У покупателя не указана почта для отправки ссылки")
+		state.Notification = PackingNotification{State: "unavailable", Error: "Email покупателя не указан"}
 	}
 	if activeOffers {
 		state.Blockers = append(state.Blockers, "Есть отправка, уже предложенная покупателю или оплаченная; сначала завершите её обработку")
@@ -106,13 +108,30 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		state.Blockers = append(state.Blockers, "Автоматическое создание заявок СДЭК выключено в настройках")
 	}
 	if !repository.packingMailConfigured {
-		state.Blockers = append(state.Blockers, "Отправка писем не настроена")
+		state.Notification = PackingNotification{State: "unavailable", Error: "Отправка писем не настроена"}
 	}
 	if repository.packingSettings == nil || !repository.packingSettings.Enabled(settings.PaymentsEnabled) {
 		state.Blockers = append(state.Blockers, "Онлайн-оплата выключена в настройках")
 	}
 	if !repository.packingPaymentConfigured {
 		state.Blockers = append(state.Blockers, "Онлайн-оплата не настроена")
+	}
+	for _, blocker := range state.Blockers {
+		switch blocker {
+		case "Для этого заказа выбрана не доставка СДЭК", "В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК", "Заказ закрыт или уже передан в доставку", "СДЭК не настроен":
+			state.QuoteBlockers = append(state.QuoteBlockers, blocker)
+		}
+	}
+	var subscribed bool
+	if err = repository.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM push_subscriptions s JOIN orders o ON o.customer_id=s.customer_id WHERE o.id=$1 AND s.expired_at IS NULL)`, id).Scan(&subscribed); err != nil {
+		return state, err
+	}
+	if sender, ok := repository.notifier.(interface{ PublicKey() string }); ok && sender.PublicKey() == "" {
+		state.Push.Error = "Push выключен: не настроены ключи VAPID"
+		subscribed = false
+	}
+	if subscribed {
+		state.Push = PackingNotification{State: "not_queued"}
 	}
 	var raw []byte
 	var attempts int
@@ -137,9 +156,36 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 	} else if uuid != "" || state.CDEKState == "creating" || state.CDEKState == "unknown" || state.CDEKState == "registered" {
 		state.Blockers = append(state.Blockers, "Заявка СДЭК уже создаётся или зарегистрирована; сначала сверьте её у перевозчика")
 	}
-	if state.Error == "" {
+	if state.State != "draft" && state.Error == "" {
 		state.Error = lastError
 	}
+	// A historical missing-tariff failure is resolved by the current quote flow.
+	if state.State == "draft" && (uuid != "" || state.CDEKState == "unknown" || state.CDEKState == "creating" || state.CDEKState == "registered") {
+		state.QuoteBlockers = append(state.QuoteBlockers, "Заявка СДЭК уже создаётся или зарегистрирована; сначала сверьте её у перевозчика")
+	}
+	var queued, sent, failed int
+	var pushError string
+	err = repository.pool.QueryRow(ctx, `SELECT COUNT(*) FILTER(WHERE p.sent_at IS NULL AND p.cancelled_at IS NULL AND p.attempts<5),COUNT(*) FILTER(WHERE p.sent_at IS NOT NULL),COUNT(*) FILTER(WHERE p.cancelled_at IS NOT NULL OR p.attempts>=5),COALESCE(MAX(p.last_error),'') FROM order_packing_push_outbox p JOIN order_packing_workflows w ON w.id=p.workflow_id WHERE w.order_id=$1 AND w.state NOT IN ('cancelled','stale')`, id).Scan(&queued, &sent, &failed, &pushError)
+	if err != nil {
+		return state, err
+	}
+	switch {
+	case queued > 0:
+		state.Push = PackingNotification{State: "queued", Error: pushError}
+	case sent > 0:
+		state.Push = PackingNotification{State: "sent"}
+	case failed > 0:
+		state.Push = PackingNotification{State: "failed", Error: pushError}
+	}
+	if state.Notification.State != "sent" && (!repository.packingMailConfigured || email == "") {
+		state.Notification.State = "unavailable"
+		if !repository.packingMailConfigured {
+			state.Notification.Error = "Отправка писем не настроена"
+		} else {
+			state.Notification.Error = "Email покупателя не указан"
+		}
+	}
+
 	return state, nil
 }
 
@@ -232,15 +278,15 @@ func (repository *PostgresRepository) QuoteOrderPacking(ctx context.Context, act
 	}
 	if input.CityCode > 0 && input.OfficeCode != "" {
 		filtered := []string{}
-		for _, blocker := range state.Blockers {
+		for _, blocker := range state.QuoteBlockers {
 			if blocker != "В заказе не указан пункт выдачи СДЭК" && blocker != "В заказе не указан город СДЭК" {
 				filtered = append(filtered, blocker)
 			}
 		}
-		state.Blockers = filtered
+		state.QuoteBlockers = filtered
 	}
-	if len(state.Blockers) > 0 {
-		return ShipmentOfferQuote{}, errors.New(strings.Join(state.Blockers, ". "))
+	if len(state.QuoteBlockers) > 0 {
+		return ShipmentOfferQuote{}, errors.New(strings.Join(state.QuoteBlockers, ". "))
 	}
 	if state.State != "draft" {
 		return ShipmentOfferQuote{}, errors.New("упаковка уже сохранена и передана в обработку")
@@ -315,6 +361,16 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	if err != nil {
 		return OrderPackingState{}, err
 	}
+	finalBlockers := []string{}
+	for _, blocker := range currentState.Blockers {
+		if input.CityCode > 0 && input.OfficeCode != "" && (blocker == "В заказе не указан пункт выдачи СДЭК" || blocker == "В заказе не указан город СДЭК") {
+			continue
+		}
+		finalBlockers = append(finalBlockers, blocker)
+	}
+	if len(finalBlockers) > 0 {
+		return OrderPackingState{}, errors.New(strings.Join(finalBlockers, ". "))
+	}
 	selectedCity, selectedOffice, selectedAddress, selectedCityName, err := repository.packingDestination(ctx, currentState, input)
 	if err != nil {
 		return OrderPackingState{}, err
@@ -374,7 +430,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	if revision != input.Revision {
 		return OrderPackingState{}, errors.New("заказ изменился — обновите карточку")
 	}
-	if status == "cancelled" || status == "completed" || status == "shipped" || delivery != "cdek" || method != "online" || payee != "shop" || email == "" || preorder {
+	if status == "cancelled" || status == "completed" || status == "shipped" || delivery != "cdek" || method != "online" || payee != "shop" || preorder {
 		return OrderPackingState{}, errors.New("условия заказа изменились — обновите карточку и проверьте причины")
 	}
 	if uuid != "" || cdekState == "creating" || cdekState == "unknown" || cdekState == "registered" {

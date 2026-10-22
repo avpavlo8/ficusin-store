@@ -56,7 +56,9 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       revision: 1, boxes: [] as unknown[], tariffCode: 136, tariffName: "Посылка склад-склад",
       deliveryFee: 0, deliveryPayee: order.deliveryPayee, officeCode: packingMode === "destination" ? "" : "RZN1", cityCode: packingMode === "destination" ? 0 : 28,
       state: "draft", cdekState: "", trackNumber: "", paymentUrl: "", error: "",
-      notification: { state: "not_queued", error: "" },
+      notification: { state: "unavailable", error: "Отправка писем не настроена" },
+      push: { state: "not_queued", error: "" },
+      quoteBlockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : [],
       blockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : packingMode ? [] : ["В этом заказе доставка оплачивается перевозчику"],
     };
     let finalized = false;
@@ -91,7 +93,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
             packing.paymentUrl = "https://pay.example.test/order-30-packed";
             packing.notification.state = "queued";
           }
-          if (phase >= 4) { packing.state = "notified"; packing.notification.state = "sent"; }
+          if (phase >= 4) { packing.state = "notification_queued"; packing.notification.state = "failed"; packing.notification.error = "SMTP temporary failure"; packing.push.state = "sent"; }
         }
         return json({ packing, order });
       }
@@ -253,7 +255,7 @@ async function fillPackingBox(page: import("@playwright/test").Page) {
   await packing.getByRole("spinbutton", { name: "Длина коробки, см", exact: true }).fill("40");
   await packing.getByRole("spinbutton", { name: "Ширина коробки, см", exact: true }).fill("30");
   await packing.getByRole("spinbutton", { name: "Высота коробки, см", exact: true }).fill("60");
-  await packing.getByRole("spinbutton", { name: "Вес с упаковкой, г", exact: true }).fill("2500");
+  await packing.getByRole("spinbutton", { name: "Вес с упаковкой, кг", exact: true }).fill("2.5");
   return packing;
 }
 
@@ -278,13 +280,13 @@ test("@desktop упаковка регистрируется один раз и 
     await page.screenshot({ path: `${process.env.FICUSIN_PREVIEW_OUTPUT_DIR}/orders-detail-desktop.png`, fullPage: true });
   }
 
-  await packing.getByRole("button", { name: "Сохранить и отправить клиенту", exact: true }).click();
+  await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("confirmed");
-  await expect(packing.getByText("Ещё не отправлено", { exact: true })).toBeVisible();
+  await expect(packing.getByText("Отправка писем не настроена", { exact: true })).toBeVisible();
   await expect(packing.getByText("40 × 30 × 60 см", { exact: true })).toBeVisible();
   await expect(packing.getByText("Трек в процессе создания", { exact: true })).toBeVisible();
-  await expect(packing.getByRole("button", { name: "Сохранить и отправить клиенту", exact: true })).toHaveCount(0);
+  await expect(packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true })).toHaveCount(0);
   const requests = await state.packingFinalizations();
   expect(requests).toHaveLength(1);
   expect(requests[0].idempotencyKey).toBeTruthy();
@@ -308,7 +310,7 @@ test("@desktop упаковка регистрируется один раз и 
   await expect(packing.getByText("В очереди на отправку", { exact: true })).toBeVisible();
   await page.evaluate(() => { (window as typeof window & { __packingPhase?: number }).__packingPhase = 4; });
   await page.clock.runFor(4100);
-  await expect(packing.getByText("Отправлено", { exact: true })).toBeVisible();
+  await expect(packing.getByText("Отправлен в push-сервис", { exact: true })).toBeVisible();
   expect(await state.packingFinalizations()).toHaveLength(1);
   expect(await state.paymentLinkCalls()).toBe(0);
   expect(await state.packingPolls()).toBeGreaterThanOrEqual(4);
@@ -318,13 +320,13 @@ test("@desktop ошибка отправки сохраняет коробку �
   const state = await mockOrderEditor(page, false, "retry");
   await page.goto("/admin?section=orders&order=30");
   const packing = await preparePacking(page);
-  await packing.getByRole("button", { name: "Сохранить и отправить клиенту", exact: true }).click();
+  await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByRole("alert")).toContainText("Упаковка не сохранена, повторите попытку");
   await expect(packing.getByRole("spinbutton", { name: "Длина коробки, см", exact: true })).toHaveValue("40");
-  await expect(packing.getByRole("spinbutton", { name: "Вес с упаковкой, г", exact: true })).toHaveValue("2500");
+  await expect(packing.getByRole("spinbutton", { name: "Вес с упаковкой, кг", exact: true })).toHaveValue("2.5");
   await expect(packing.getByRole("radio")).toBeChecked();
   expect(await state.packingFinalizations()).toHaveLength(1);
-  await packing.getByRole("button", { name: "Сохранить и отправить клиенту", exact: true }).click();
+  await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("confirmed");
   const requests = await state.packingFinalizations();
@@ -336,7 +338,7 @@ test("@phone упаковка и выбор тарифа помещаются н
   await mockOrderEditor(page, false, "success");
   await page.goto("/admin?section=orders&order=30");
   const packing = await preparePacking(page);
-  await expect(packing.getByRole("button", { name: "Сохранить и отправить клиенту", exact: true })).toBeEnabled();
+  await expect(packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
   if (process.env.FICUSIN_PREVIEW_OUTPUT_DIR) {
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -354,7 +356,7 @@ test("@desktop заказ без пункта СДЭК требует выбор
   await packing.getByRole("combobox", { name: "Пункт выдачи СДЭК", exact: true }).selectOption("MSK1");
   await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
   await expect(packing.getByRole("radio")).toBeChecked();
-  await packing.getByRole("button", { name: "Сохранить и отправить клиенту", exact: true }).click();
+  await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("confirmed");
   const requests = await state.packingFinalizations();
@@ -374,4 +376,22 @@ test("@desktop число коробок ограничено числом по�
  await page.getByRole("button",{name:"Удалить",exact:true}).last().click();
  await page.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toHaveCount(0);
+});
+
+test("@desktop дробный вес в килограммах сохраняется в граммах без округления до килограмма", async ({ page }) => {
+ const state=await mockOrderEditor(page,false,"success");
+ await page.goto("/admin?section=orders&order=30");
+ const packing=await fillPackingBox(page);
+ const weight=packing.getByRole("spinbutton",{name:"Вес с упаковкой, кг",exact:true});
+ await weight.fill(""); await weight.pressSequentially("0.125");
+ await expect(weight).toHaveValue("0.125");
+ await packing.getByRole("button",{name:"Рассчитать доставку",exact:true}).click();
+ await expect(packing.getByRole("radio")).toBeChecked();
+ await packing.getByRole("button",{name:"Сохранить и подтвердить",exact:true}).click();
+ await expect(packing.getByText("Заказ принят в обработку",{exact:true})).toBeVisible();
+ expect((await state.packingFinalizations())[0].boxes[0].weightGrams).toBe(125);
+ const title=await page.getByRole("heading",{name:"Заказ 0001-30",exact:true}).boundingBox();
+ const status=await page.getByRole("combobox",{name:"Статус заказа 0001-30",exact:true}).boundingBox();
+ expect(Math.abs(title!.y-status!.y)).toBeLessThan(50);
+ expect(status!.x-title!.x-title!.width).toBeLessThan(30);
 });

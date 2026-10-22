@@ -3,7 +3,7 @@ import { api, money } from "./adminShared";
 import type { Order } from "./adminTypes";
 
 type Item = { id: number; sku?: string; productName: string; quantity: number };
-type Box = { lengthCm: number; widthCm: number; heightCm: number; weightGrams: number; contents: Array<{ orderItemId: number; quantity: number }> };
+type Box = { lengthCm: number; widthCm: number; heightCm: number; weightGrams: number; weightInput?: string; contents: Array<{ orderItemId: number; quantity: number }> };
 type Quote = { tariffCode: number; tariffName: string; price: number; daysMin: number; daysMax: number };
 type City = { code: number; city: string; region?: string };
 type Office = { code: string; name: string; location: { address: string; address_full?: string }; work_time?: string };
@@ -23,17 +23,19 @@ export type OrderPackingState = {
   error: string;
   notification: { state: string; sentAt?: string; error?: string };
   blockers: string[];
+  quoteBlockers?: string[];
+  push?: { state: string; error?: string };
 };
 
-const activeStates = new Set(["queued", "waiting_cdek", "preparing_payment", "notification_queued"]);
+const activeStates = new Set(["queued", "waiting_cdek", "preparing_payment"]);
 const stateLabels: Record<string, string> = {
   draft: "Подготовка отправления", queued: "Заказ принят в обработку", waiting_cdek: "Регистрируем отправление в СДЭК",
-  preparing_payment: "Готовим ссылку на оплату", notification_queued: "Письмо в очереди на отправку", notified: "Письмо отправлено покупателю",
+  preparing_payment: "Готовим ссылку на оплату", notification_queued: "Заказ подготовлен", notified: "Заказ подготовлен",
   failed: "Обработка остановлена", cancelled: "Обработка отменена", stale: "Состав заказа изменился",
 };
 const emptyBox = (items: Item[] = []): Box => ({ lengthCm: 0, widthCm: 0, heightCm: 0, weightGrams: 0, contents: items.map((item) => ({ orderItemId: item.id, quantity: item.quantity })) });
 
-export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, address, disabled, compositionDirty, onDirtyChange, onBusyChange, onStateChange, onOrderUpdated }: {
+export function AdminOrderPacking({ orderId, items, subtotal, netPaid, address, disabled, compositionDirty, onDirtyChange, onBusyChange, onStateChange, onOrderUpdated }: {
   orderId: number;
   items: Item[];
   subtotal: number;
@@ -94,7 +96,7 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, ad
       setTariffCode(0);
     }
     if (next.state !== "draft") setDirty(false);
-    const signature = `${next.revision}:${next.state}:${next.trackNumber}:${next.notification.state}`;
+    const signature = `${next.revision}:${next.state}:${next.trackNumber}:${next.notification.state}:${next.push?.state}`;
     if (lastReported.current !== signature) {
       lastReported.current = signature;
       stateChange.current?.(next);
@@ -110,7 +112,7 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, ad
   }, [load]);
 
   useEffect(() => {
-    if (!packing || !activeStates.has(packing.state)) return;
+    if (!packing || (!activeStates.has(packing.state) && packing.push?.state !== "queued" && packing.notification.state !== "queued")) return;
     const timer = window.setInterval(() => { void load(false).catch((reason: Error) => setError(`Не удалось обновить статус: ${reason.message}`)); }, 4000);
     return () => window.clearInterval(timer);
   }, [packing, load]);
@@ -148,16 +150,17 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, ad
   const destinationNeeded = !!packing && (!packing.cityCode || !packing.officeCode || editingDestination);
   const destinationOverride = !!city && !!officeCode;
   const blockers = (packing?.blockers ?? []).filter((blocker) => !(destinationOverride && ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"].includes(blocker)));
+  const quoteBlockers = (packing?.quoteBlockers ?? packing?.blockers ?? []).filter((blocker) => !(destinationOverride && ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"].includes(blocker)));
   const maxBoxes = Math.min(20, items.length);
-  const validBoxes = boxes.length > 0 && boxes.length <= maxBoxes && boxes.every((box) => box.lengthCm > 0 && box.widthCm > 0 && box.heightCm > 0 && box.weightGrams > 0 && box.contents.some((line) => line.quantity > 0));
+  const validBoxes = boxes.length > 0 && boxes.length <= maxBoxes && boxes.every((box) => box.lengthCm > 0 && box.widthCm > 0 && box.heightCm > 0 && box.lengthCm <= 300 && box.widthCm <= 300 && box.heightCm <= 300 && box.weightGrams > 0 && box.weightGrams <= 200000 && box.contents.some((line) => line.quantity > 0));
   const allocationComplete = items.every((item) => boxes.reduce((total, box) => total + (box.contents.find((line) => line.orderItemId === item.id)?.quantity ?? 0), 0) === item.quantity);
   const formDisabled = disabled || !!busy || !editable;
-  const canQuote = validBoxes && allocationComplete && !blockers.length && (!destinationNeeded || destinationOverride) && !compositionDirty && !formDisabled;
+  const canQuote = validBoxes && allocationComplete && !quoteBlockers.length && (!destinationNeeded || destinationOverride) && !compositionDirty && !formDisabled;
   const selectedQuote = useMemo(() => quotes.find((quote) => quote.tariffCode === tariffCode), [quotes, tariffCode]);
 
   const changed = () => { setDirty(true); setQuotes([]); setTariffCode(0); setError(""); };
   const updateBox = (index: number, update: Partial<Box>) => { setBoxes((current) => current.map((box, position) => position === index ? { ...box, ...update } : box)); changed(); };
-  const payload = () => ({ revision: packing!.revision, boxes, ...(destinationOverride ? { cityCode: city!.code, officeCode } : {}) });
+  const payload = () => ({ revision: packing!.revision, boxes: boxes.map((box) => ({ lengthCm: box.lengthCm, widthCm: box.widthCm, heightCm: box.heightCm, weightGrams: box.weightGrams, contents: box.contents })), ...(destinationOverride ? { cityCode: city!.code, officeCode } : {}) });
   const quote = async () => {
     if (!canQuote) return;
     setBusy("quote"); onBusyChange(true); setError("");
@@ -172,7 +175,7 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, ad
   };
 
   const finalize = async () => {
-    if (!canQuote || !selectedQuote) return;
+    if (!canQuote || blockers.length || !selectedQuote) return;
     const body = { ...payload(), tariffCode, quotedDeliveryFee: selectedQuote.price };
     const fingerprint = JSON.stringify(body);
     if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, key: crypto.randomUUID() };
@@ -195,7 +198,7 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, ad
     <div className="admin-block-heading"><div><h3 id="order-packing-title">Подготовить заказ к отправке</h3></div></div>
     {!packing ? <div role={error ? "alert" : "status"}><p>{error || "Загружаем условия отправления…"}</p>{error && <button type="button" className="admin-action" onClick={() => void load(true).then(() => setError("")).catch((reason: Error) => setError(reason.message))}>Повторить загрузку</button>}</div> : <>
       {compositionDirty && <p className="order-packing-warning">Сохраните состав заказа перед расчётом доставки.</p>}
-      {!!blockers.length && <div className="order-packing-blockers"><strong>Перед отправкой нужно проверить</strong><ul>{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div>}
+      {!!blockers.length && <div className="order-packing-blockers"><strong>Для подтверждения заказа</strong><ul>{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div>}
       {editable && <>
         <div className="order-packing-destination"><div><strong>Пункт выдачи</strong><p>{address || "Адрес не указан"}</p></div>{!destinationNeeded && <button type="button" className="admin-action" disabled={formDisabled} onClick={() => setEditingDestination(true)}>Изменить</button>}</div>
         {destinationNeeded && <fieldset className="order-packing-destination-form" disabled={formDisabled}>
@@ -212,24 +215,25 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, email, ad
         {boxes.map((box, index) => <fieldset className="order-packing-box" disabled={formDisabled} key={index}>
           <legend>Коробка {index + 1}</legend>
           <div className="order-packing-dimensions">{([
-            ["lengthCm", "Длина", "см", 300], ["widthCm", "Ширина", "см", 300], ["heightCm", "Высота", "см", 300], ["weightGrams", "Вес с упаковкой", "г", 200000],
-          ] as const).map(([field, label, unit, max]) => <label key={field}>{label}, {unit}<input aria-label={boxes.length === 1 ? `${label}${field !== "weightGrams" ? " коробки" : ""}, ${unit}` : `${label} коробки ${index + 1}, ${unit}`} type="number" min="1" max={max} step="1" inputMode="numeric" value={box[field] || ""} placeholder="0" onChange={(event) => updateBox(index, { [field]: Math.max(0, Number(event.target.value) || 0) })} /></label>)}</div>
+            ["lengthCm", "Длина", "см", 300], ["widthCm", "Ширина", "см", 300], ["heightCm", "Высота", "см", 300], ["weightGrams", "Вес с упаковкой", "кг", 200],
+          ] as const).map(([field, label, unit, max]) => <label key={field}>{label}, {unit}<input aria-label={boxes.length === 1 ? `${label}${field !== "weightGrams" ? " коробки" : ""}, ${unit}` : `${label} коробки ${index + 1}, ${unit}`} type="number" min={field === "weightGrams" ? "0.001" : "1"} max={max} step={field === "weightGrams" ? "0.001" : "1"} inputMode={field === "weightGrams" ? "decimal" : "numeric"} value={field === "weightGrams" ? box.weightInput ?? (box.weightGrams ? String(box.weightGrams / 1000) : "") : box[field] || ""} placeholder="0" onChange={(event) => updateBox(index, { [field]: Math.max(0, Math.round((Number(event.target.value) || 0) * (field === "weightGrams" ? 1000 : 1))), ...(field === "weightGrams" ? { weightInput: event.target.value } : {}) })} /></label>)}</div>
           {boxes.length === 1 ? <p className="order-packing-contents">В коробке: {items.reduce((sum, item) => sum + item.quantity, 0)} шт.</p> : <div className="order-packing-allocation">{items.map((item) => <label key={item.id}><span>{item.productName}<small>Всего в заказе: {item.quantity} шт.</small></span><input aria-label={`${item.productName} в коробке ${index + 1}`} type="number" min="0" max={item.quantity} value={box.contents.find((line) => line.orderItemId === item.id)?.quantity ?? 0} onChange={(event) => updateBox(index, { contents: [...box.contents.filter((line) => line.orderItemId !== item.id), { orderItemId: item.id, quantity: Math.max(0, Math.min(item.quantity, Number(event.target.value) || 0)) }] })} /></label>)}<button type="button" className="admin-action" onClick={() => { setBoxes((current) => { const next = current.filter((_, position) => position !== index); return next.length === 1 ? [{ ...next[0], contents: emptyBox(items).contents }] : next; }); changed(); }}>Удалить коробку</button></div>}
         </fieldset>)}
         <div className="order-packing-tools">{boxes.length < maxBoxes && <button type="button" className="admin-action" disabled={formDisabled} onClick={() => { setBoxes((current) => current.length < maxBoxes ? [...current, emptyBox()] : current); changed(); }}>Добавить коробку</button>}{boxes.length > 1 && !allocationComplete && <small>Распределите все растения по коробкам без повторов.</small>}</div>
-        <div className="order-packing-quote-action"><button type="button" className="order-packing-button" disabled={!canQuote} onClick={() => void quote()}>{busy === "quote" ? "Рассчитываем…" : "Рассчитать доставку"}</button></div>
+        <div className="order-packing-quote-action">{!validBoxes && <p className="order-packing-warning">Заполните размеры и вес коробки</p>}{validBoxes && !selectedQuote && !quoteBlockers.length && <p>Рассчитайте доставку, чтобы выбрать тариф СДЭК.</p>}<button type="button" className="order-packing-button" disabled={!canQuote} onClick={() => void quote()}>{busy === "quote" ? "Рассчитываем…" : "Рассчитать доставку"}</button></div>
         {quotes.length > 0 && <div className="order-packing-quotes"><h4>Тариф доставки</h4>{quotes.map((option) => <label key={option.tariffCode}><input type="radio" name={`order-packing-tariff-${orderId}`} value={option.tariffCode} checked={tariffCode === option.tariffCode} disabled={formDisabled} onChange={() => { setTariffCode(option.tariffCode); setDirty(true); }} /><span><strong>{option.tariffName}</strong><small>{option.daysMin}–{option.daysMax} дн.</small></span><strong>{money.format(option.price)}</strong></label>)}</div>}
-        {selectedQuote && <div className="order-packing-submit"><dl className="order-packing-total"><div><dt>Растения</dt><dd>{money.format(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{money.format(selectedQuote.price)}</dd></div><div><dt>Итого с доставкой</dt><dd>{money.format(subtotal + selectedQuote.price)}</dd></div>{netPaid > 0 && <div><dt>К доплате с учётом полученной оплаты</dt><dd>{money.format(Math.max(0, subtotal + selectedQuote.price - netPaid))}</dd></div>}</dl><p>Трек и ссылку на оплату отправим{email ? <> на <strong>{email}</strong></> : " покупателю"}.</p><button type="button" className="order-packing-button primary" disabled={!canQuote} onClick={() => void finalize()}>{busy === "finalize" ? "Передаём в обработку…" : "Сохранить и отправить клиенту"}</button></div>}
+        {selectedQuote && <div className="order-packing-submit"><dl className="order-packing-total"><div><dt>Растения</dt><dd>{money.format(subtotal)}</dd></div><div><dt>Доставка</dt><dd>{money.format(selectedQuote.price)}</dd></div><div><dt>Итого с доставкой</dt><dd>{money.format(subtotal + selectedQuote.price)}</dd></div>{netPaid > 0 && <div><dt>К доплате с учётом полученной оплаты</dt><dd>{money.format(Math.max(0, subtotal + selectedQuote.price - netPaid))}</dd></div>}</dl><p>Покупателю отправим push и письмо, если эти каналы доступны.</p><button type="button" className="order-packing-button primary" disabled={!canQuote || blockers.length > 0} onClick={() => void finalize()}>{busy === "finalize" ? "Передаём в обработку…" : "Сохранить и подтвердить"}</button></div>}
       </>}
       {packing.state !== "draft" && <div className="order-packing-progress" aria-live="polite">
         <strong>{stateLabels[packing.state] || "Проверяем состояние обработки"}</strong>
         <dl><div><dt>Упаковка</dt><dd>{packing.boxes.map((box, index) => <div key={index}>{packing.boxes.length > 1 && <>Коробка {index + 1}: </>}{box.lengthCm} × {box.widthCm} × {box.heightCm} см</div>)}</dd></div>
           <div><dt>СДЭК:</dt><dd>{packing.trackNumber ? <strong>{packing.trackNumber}</strong> : packing.cdekState === "manual_review" ? "Нужна проверка заявки" : "Трек в процессе создания"}</dd></div>
           <div><dt>Оплата</dt><dd>{packing.paymentUrl ? <a href={packing.paymentUrl} target="_blank" rel="noreferrer">Ссылка на оплату готова</a> : subtotal + packing.deliveryFee <= netPaid ? "Оплата не требуется" : "Ссылка ещё не готова"}</dd></div>
-          <div><dt>Письмо покупателю</dt><dd>{packing.notification.state === "sent" ? `Отправлено${packing.notification.sentAt ? ` ${new Date(packing.notification.sentAt).toLocaleString("ru-RU")}` : ""}` : packing.notification.state === "queued" ? "В очереди на отправку" : packing.notification.state === "failed" ? "Не удалось отправить" : "Ещё не отправлено"}</dd></div></dl>
-        {activeStates.has(packing.state) && <p>Обработка продолжается автоматически. Статус обновляется на этой странице.</p>}
+          <div><dt>Push покупателю</dt><dd>{packing.push?.state === "sent" ? "Отправлен в push-сервис" : packing.push?.state === "queued" ? "В очереди на отправку" : packing.push?.state === "failed" ? "Не удалось отправить" : packing.push?.state === "unavailable" ? "Push недоступен" : "Ещё не отправлен"}{packing.push?.error && <small>{packing.push.error}</small>}</dd></div>
+          <div><dt>Письмо покупателю</dt><dd>{packing.notification.state === "sent" ? `Отправлено${packing.notification.sentAt ? ` ${new Date(packing.notification.sentAt).toLocaleString("ru-RU")}` : ""}` : packing.notification.state === "queued" ? "В очереди на отправку" : packing.notification.state === "failed" ? "Не удалось отправить" : packing.notification.state === "unavailable" ? packing.notification.error || "Email недоступен" : "Ещё не отправлено"}</dd></div></dl>
+        {["queued", "waiting_cdek", "preparing_payment"].includes(packing.state) && <p>Обработка продолжается автоматически. Статус обновляется на этой странице.</p>}
       </div>}
-      {(error || packing.error || packing.notification.error) && <div className="order-packing-error" role="alert"><p>{error || packing.error || packing.notification.error}</p><button type="button" className="admin-action" disabled={!!busy} onClick={() => void load(false).then(() => setError("")).catch((reason: Error) => setError(reason.message))}>Проверить статус</button></div>}
+      {(error || packing.error) && <div className="order-packing-error" role="alert"><p>{error || packing.error}</p><button type="button" className="admin-action" disabled={!!busy} onClick={() => void load(false).then(() => setError("")).catch((reason: Error) => setError(reason.message))}>Проверить статус</button></div>}
     </>}
   </section>;
 }
