@@ -80,3 +80,25 @@ func analyticsSummaryHandler(logger *slog.Logger, handlers adminHandlers, store 
 		writeJSON(response, http.StatusOK, summary)
 	}
 }
+
+func analyticsMetrikaStatusHandler(logger *slog.Logger, handlers adminHandlers, store analyticsStore) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if _, _, ok := handlers.authorize(response, request, admin.PermissionAnalyticsRead); !ok {
+			return
+		}
+		probe, ok := store.(interface {
+			MetrikaStatus(context.Context) (commerceanalytics.MetrikaDeliveryStatus, error)
+		})
+		if !ok {
+			writeJSON(response, http.StatusOK, commerceanalytics.MetrikaDeliveryStatus{})
+			return
+		}
+		result, err := probe.MetrikaStatus(request.Context())
+		if err != nil {
+			logger.Error("metrika diagnostics failed", "error", err)
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Диагностика временно недоступна"})
+			return
+		}
+		writeJSON(response, http.StatusOK, result)
+	}
+}

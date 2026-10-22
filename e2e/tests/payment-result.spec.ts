@@ -136,3 +136,17 @@ test("@desktop @phone failed status read retries without creating another paymen
   await expect(page.getByRole("heading", { name: "Оплата прошла", exact: true })).toBeVisible();
   expect(paymentWrites).toBe(0);
 });
+
+test("@desktop @phone server owned paid conversion is never repeated by the browser", async ({ page }) => {
+  await mockApi(page, owner);
+  await captureMetrika(page);
+  await page.route("**/api/v1/account/orders/PAYMENT-TEST", route => route.fulfill({ json: {
+    order: { ...order, paymentStatus: "paid", paidAmount: 8040, amountDue: 0, metrikaServer: true },
+  } }));
+  await page.goto("/?paid=PAYMENT-TEST");
+  await expect(page.getByRole("heading", { name: "Оплата прошла", exact: true })).toBeVisible();
+  expect(await paidGoals(page)).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Оплата прошла", exact: true })).toBeVisible();
+  expect(await paidGoals(page)).toEqual([]);
+});

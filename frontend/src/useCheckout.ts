@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
 import { normalizeRussianPhone } from "./lib/phone";
 import { discountedPrice } from "./lib/checkoutPrice";
-import { getAttribution, track } from "./lib/analytics";
+import { getOrderAttribution, track } from "./lib/analytics";
 
 type Cart = Record<string, number>;
 export type CheckoutProfile = {
@@ -252,7 +252,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
 	  paymentMethod: hasPreorder && delivery !== "pickup" ? "" : paymentMethods.some((option) => option.id === paymentMethod) ? paymentMethod : "",
-	  attribution: getAttribution(),
+	  attribution: getOrderAttribution(),
     };
 
     const needsManagerConfirmation = cartLines.some((item) => item.available === false || (item.stock !== undefined && item.stock < item.quantity));

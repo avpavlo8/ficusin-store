@@ -199,6 +199,8 @@ func main() {
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
 	analyticsStore := commerceanalytics.NewStore(pool)
+	metrikaWorker := analyticsStore.WithMetrika(cfg.MetrikaMPToken, cfg.SiteURL, func() string { return shopSettings.All()[settings.MetrikaID] })
+	go metrikaWorker.Run(ctx, logger)
 	operationsProbe := operations.NewProbe(pool)
 	go avitoService.Run(ctx)
 	chatStore := chat.NewStore(pool)

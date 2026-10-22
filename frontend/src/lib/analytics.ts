@@ -114,6 +114,13 @@ export function getAttribution(): Attribution {
   };
 }
 
+export function getOrderAttribution(): Attribution & {analyticsAllowed: boolean; metrikaClientId: string} {
+  const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
+  const analyticsAllowed = !privacy.globalPrivacyControl && navigator.doNotTrack !== "1";
+  const metrikaClientId = analyticsAllowed ? (document.cookie.match(/(?:^|;\s*)_ym_uid=(\d{1,20})(?:;|$)/)?.[1] || "") : "";
+  return {...getAttribution(), analyticsAllowed, metrikaClientId};
+}
+
 function yandexGoal(name: CommerceEventName, input: EventInput) {
   const ym = (window as unknown as { ym?: (...args: unknown[]) => void }).ym;
   if (yandexCounter && ym) ym(yandexCounter, "reachGoal", name, input);

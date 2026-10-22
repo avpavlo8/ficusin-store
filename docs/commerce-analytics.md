@@ -69,3 +69,50 @@ and reloads are deduplicated in the same browser (memory/localStorage); clearing
 storage or using another browser can produce another conversion. A customer
 who never returns to the result page is not tracked by this goal. It is not
 an ecommerce `purchase` event or a replacement for the server sales ledger.
+
+
+## Server-confirmed purchases (Measurement Protocol)
+
+Set `METRIKA_MP_TOKEN` in the server environment and enable Measurement Protocol
+for the configured counter. Empty token leaves the worker disabled and preserves
+the existing browser conversion. The token is never stored in settings, database,
+request logs, public config or frontend bundles.
+
+New checkout attribution carries the actual `_ym_uid` client ID and explicit
+analytics permission (DNT/GPC opt out). `RecordOrder` sets server ownership only
+when the integration is configured and that client ID is valid. Public ownership
+flags are ignored. Orders without a counter cookie keep browser delivery; this
+integration does not override privacy preferences or reconstruct blocked visits.
+Existing orders are not backfilled, avoiding duplication of old browser events.
+Authenticated order detail exposes `metrikaServer`; for those orders the browser
+never sends `paid_order`, including after a server token is removed.
+
+Every 30 seconds a worker reads the confirmed payment ledger independently of
+buyer navigation. Full settlement, finalized delivery fee and a positive payable
+amount are required. Partial payments, holds, cancelled orders, outstanding
+attempts and refunds are excluded. Carrier delivery is excluded from revenue.
+A durable outbox with a unique order key and atomic claims prevents duplicate
+polls and concurrent dispatch. Enqueued settlement is rechecked before claim.
+
+The worker sends a pageview followed by the `paid_order` goal (RUB value) and an
+ecommerce purchase (opaque UUID transaction ID, no item breakdown). No order
+number, customer contacts or arbitrary attribution strings leave the server.
+A pageview is required when the original visit is over 12 hours old. Events use
+receipt time; long-delayed payments may appear in a new visit, and acquisition
+attribution can differ from the original session. The financial ledger retains
+the real payment time and remains authoritative.
+
+Only HTTP 200 with the documented OK body marks delivery sent. Failed connection
+setup is retried with backoff; an explicit rejection fails visibly. A timeout,
+5xx, unexpected response or interrupted claim becomes `uncertain`: JS goals have
+no documented idempotency key, so automatic replay could duplicate revenue.
+Review these cases in Metrika before any manual recovery. Do not reset uncertain
+rows blindly. Later refunds are not exported as ecommerce refunds in this change.
+
+`GET /api/v1/admin/analytics/metrika` exposes enabled state and outbox counts to
+users with analytics.read. Operations health warns on failed/uncertain delivery
+or an outbox older than 15 minutes. Disabled delivery is not an application fault.
+
+Protocol references:
+- https://yandex.ru/dev/metrika/ru/data-import/measurement-about
+- https://yandex.ru/dev/metrika/ru/data-import/measurement-upload
