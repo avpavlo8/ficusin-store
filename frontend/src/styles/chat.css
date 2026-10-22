@@ -90,7 +90,7 @@
 .admin-chat-item time { font-size: 10px; flex: none; color: #637585; }
 .admin-chat-item p { font-size: 12px; margin: 8px 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .admin-chat-item small { font-size: 10px; color: #637585; }
-.admin-chat-item b { color: var(--chat-blue); }
+.admin-chat-item b { color: #236da8; }
 .admin-chat-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chat-resolve { margin-left: auto; min-height: 36px; padding: 8px; border: 1px solid var(--chat-line); background: #f4f6f8; border-radius: 6px; cursor: pointer; font-size: 11px; }
 .admin-chat-pages { display: flex; align-items: center; justify-content: space-between; padding: 12px; gap: 8px; font-size: 12px; }
