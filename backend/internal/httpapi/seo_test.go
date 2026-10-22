@@ -38,7 +38,7 @@ func (stub sitemapCollectionsStub) ListCollections(context.Context) ([]catalog.C
 }
 
 func TestKnownAppRoutes(t *testing.T) {
-	for _, path := range []string{"/", "/discounts", "/cart", "/checkout", "/contacts", "/account/reviews", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15", "/catalog/ficus", "/collections/easy"} {
+	for _, path := range []string{"/", "/chat", "/discounts", "/cart", "/checkout", "/contacts", "/account/reviews", "/favorites", "/offer", "/product/monstera", "/account/orders/0001-15", "/catalog/ficus", "/collections/easy"} {
 		if !knownAppRoute(path) {
 			t.Errorf("%s — настоящий адрес магазина, а считается выдуманным", path)
 		}

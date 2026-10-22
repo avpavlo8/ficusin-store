@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/perf"
 )
 
@@ -35,6 +36,7 @@ type Dependencies struct {
 	Admin            adminRepository
 	Saby             sabySyncService
 	Push             pushService
+	Chat             *chat.Store
 	Cart             cartStore
 	Packages         packageRepository
 	Collections      collectionRepository
@@ -92,6 +94,24 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /feeds/avito/{token}", avitoFeedHandler(dependencies.Avito))
 	}
 
+	if dependencies.Chat != nil {
+		chatAPI := chatHandlers{store: dependencies.Chat, admin: adminAPI, secure: dependencies.CookieSecure, uploads: newRateLimiter(10, time.Minute)}
+		chatLimiter := newRateLimiter(30, time.Minute)
+		mux.HandleFunc("GET /api/v1/chat", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/chat/unread", chatAPI.serve)
+		mux.HandleFunc("POST /api/v1/chat/messages", chatLimiter.guard("Слишком много сообщений. Подождите минуту", chatAPI.serve))
+		mux.HandleFunc("POST /api/v1/chat/read", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/chat/photos/{messageID}", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/chat/attachments/{messageID}", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/admin/chat", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/admin/chat/unread", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/admin/chat/{id}", chatAPI.serve)
+		mux.HandleFunc("PATCH /api/v1/admin/chat/{id}", chatAPI.serve)
+		mux.HandleFunc("POST /api/v1/admin/chat/{id}/messages", chatAPI.serve)
+		mux.HandleFunc("POST /api/v1/admin/chat/{id}/read", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/admin/chat/{id}/photos/{messageID}", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/admin/chat/{id}/attachments/{messageID}", chatAPI.serve)
+	}
 	callLimiter := newRateLimiter(5, 10*time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)

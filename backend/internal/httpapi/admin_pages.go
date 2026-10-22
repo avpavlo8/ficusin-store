@@ -35,6 +35,8 @@ func guardAdminPages(handlers adminHandlers, next http.Handler) http.Handler {
 		}
 		permission := admin.PermissionDashboard
 		switch section {
+		case "chat":
+			permission = admin.PermissionChat
 		case "analytics":
 			permission = admin.PermissionAnalyticsRead
 		case "procurement":

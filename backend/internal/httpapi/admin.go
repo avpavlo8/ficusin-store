@@ -723,7 +723,7 @@ func pathID(response http.ResponseWriter, request *http.Request) (int64, bool) {
 
 func permissionsFor(role string) []string {
 	all := []string{
-		admin.PermissionDashboard, admin.PermissionCustomersRead, admin.PermissionCustomersEdit,
+		admin.PermissionChat, admin.PermissionDashboard, admin.PermissionCustomersRead, admin.PermissionCustomersEdit,
 		admin.PermissionRolesEdit, admin.PermissionDiscountsEdit, admin.PermissionOrdersRead,
 		admin.PermissionOrdersEdit, admin.PermissionProductsRead, admin.PermissionProductsEdit,
 		admin.PermissionProductsSync, admin.PermissionProcurementRead,

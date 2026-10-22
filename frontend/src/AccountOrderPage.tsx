@@ -1,3 +1,4 @@
+import { chatHref } from "./lib/chat";
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
 import { money } from "./lib/money";
@@ -299,7 +300,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
                 {!cancelled && !order.deliveryFeePending && order.deliveryPayee === "carrier" && <p>Доставка оплачивается перевозчику при получении.</p>}
                 {canPay && <button className="primary-button" disabled={paying} onClick={() => void pay()}><span>{paying ? "Открываем оплату…" : `${order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"} ${money.format(order.amountDue)}`}</span>{!paying && <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5" /></svg>}</button>}
               </div>
-              <a className="order-detail-help" href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос о заказе <span aria-hidden="true">↗</span></a>
+              <a className="order-detail-help" href={chatHref(`Заказ ${orderNumber}`)}>Задать вопрос о заказе <span aria-hidden="true">→</span></a>
             </aside>
           </div>
         </>}

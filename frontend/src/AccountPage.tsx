@@ -1,5 +1,7 @@
+import { useChatUnread } from "./lib/chat";
+const AccountChat = lazy(() => import("./AccountChat"));
 import { useFavorites } from "./lib/favorites";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
 import { PushToggle } from "./PushToggle";
 import { useSharedCart } from "./lib/cart";
@@ -58,7 +60,7 @@ type FavoriteProduct = {
   id: string; sku: string; name: string; latin: string; price: number; image: string; stock: number;
 };
 
-type Section = "orders" | "profile" | "favorites" | "reviews";
+type Section = "chat" | "orders" | "profile" | "favorites" | "reviews";
 
 const orderStatusLabels: Record<string, string> = {
   new: "Новый",
@@ -120,6 +122,7 @@ function fullNameOf(user: StoreUser) {
 }
 
 const accountIcons: Record<Section, string> = {
+  chat: "M5 4h14v14H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
   orders: "M5 4h14v16H5zM8 2v4M16 2v4M8 10h8M8 14h5",
   profile: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0",
   favorites: "M12 21S3 16 3 9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 7-9 12-9 12Z",
@@ -143,11 +146,12 @@ function AccountShell({ user, section, children, onSignOut }: {
   children: React.ReactNode;
   onSignOut: () => void;
 }) {
+  const chatUnread = useChatUnread();
   const staff = user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner";
   const initial = (user.lastName || user.fullName).trim().charAt(0).toUpperCase() || "Ф";
   return (
-    <main className="account-page">
-      <StoreHeader />
+    <main className={`account-page ${section === "chat" ? "account-chat-page" : ""}`}>
+      <StoreHeader showTabBar={section !== "chat"} />
       <section className="account-shell">
         <aside className="account-sidebar">
           <div className="account-avatar">
@@ -161,12 +165,13 @@ function AccountShell({ user, section, children, onSignOut }: {
             {user.email ? <><br />{user.email}</> : null}
           </p>
           <nav aria-label="Разделы личного кабинета">
+            <a className={section === "chat" ? "active" : ""} href="/account/chat" aria-current={section === "chat" ? "page" : undefined}><AccountNavIcon name="chat"/><span>Сообщения{chatUnread > 0 && <b className="account-chat-count">{chatUnread}</b>}</span></a>
             <a className={section === "orders" ? "active" : ""} href="/account"><AccountNavIcon name="orders"/><span>Мои заказы</span></a>
             <a className={section === "profile" ? "active" : ""} href="/account/profile"><AccountNavIcon name="profile"/><span>Мои данные</span></a>
             <a className={section === "favorites" ? "active" : ""} href="/account/favorites"><AccountNavIcon name="favorites"/><span>Избранное</span></a>
             <a className={section === "reviews" ? "active" : ""} href="/account/reviews"><AccountNavIcon name="reviews"/><span>Мои отзывы</span></a>
           </nav>
-          <div className="account-help"><strong>Мы рядом,<br/>если нужен совет</strong><p>Поможем с заказом и уходом за растениями.</p><a href="https://max.ru/channel_ficusin" target="_blank" rel="noreferrer">Написать в чат <span>○</span></a></div>
+          <div className="account-help"><strong>Мы рядом,<br/>если нужен совет</strong><p>Поможем с заказом и уходом за растениями.</p><a href="/chat">Написать в чат <span>○</span></a></div>
           {staff && <a className="account-switch" href="/admin">Панель управления →</a>}
           <button className="signout-link" type="button" onClick={onSignOut}>
             Выйти из аккаунта
@@ -697,6 +702,7 @@ export default function AccountPage({ section, orderNumber }: {
         ? <OrderDetailSection orderNumber={orderNumber} />
         : section === "orders" ? <OrdersSection orders={orders} error={error} />
         : section === "profile" ? <ProfileSection user={user} onUpdated={setUser} />
+        : section === "chat" ? <Suspense fallback={<p role="status">Открываем сообщения…</p>}><AccountChat /></Suspense>
         : section === "reviews" ? <ReviewsSection />
         : <FavoritesSection />}
     </AccountShell>

@@ -15,6 +15,7 @@ const (
 )
 
 const (
+	PermissionChat             = "chat.manage"
 	PermissionDashboard        = "dashboard.read"
 	PermissionCustomersRead    = "customers.read"
 	PermissionCustomersEdit    = "customers.edit"
@@ -54,7 +55,7 @@ func Can(role, permission string) bool {
 	}
 	switch role {
 	case RoleAdministrator:
-		return permission == PermissionDashboard || permission == PermissionCustomersRead ||
+		return permission == PermissionChat || permission == PermissionDashboard || permission == PermissionCustomersRead ||
 			permission == PermissionCustomersEdit || permission == PermissionOrdersRead ||
 			permission == PermissionOrdersEdit || permission == PermissionProductsRead ||
 			permission == PermissionProductsEdit || permission == PermissionReturnsRead ||
@@ -62,7 +63,7 @@ func Can(role, permission string) bool {
 			permission == PermissionProcurementRead || permission == PermissionProcurementEdit ||
 			permission == PermissionAnalyticsRead
 	case RoleManager:
-		return permission == PermissionProcurementRead || permission == PermissionDashboard ||
+		return permission == PermissionChat || permission == PermissionProcurementRead || permission == PermissionDashboard ||
 			permission == PermissionCustomersRead ||
 			permission == PermissionOrdersRead || permission == PermissionOrdersEdit ||
 			permission == PermissionProductsRead || permission == PermissionProductsEdit ||

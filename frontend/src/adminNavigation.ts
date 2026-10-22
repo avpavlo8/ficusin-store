@@ -4,6 +4,7 @@ export const sections: Array<{ id: Section; label: string; permission?: string; 
   { id: "products", label: "Каталог", permission: "products.read" },
   { id: "categories", label: "Категории", permission: "products.read" },
   { id: "collections", label: "Подборки", permission: "products.read" },
+  { id: "chat", label: "Чат", permission: "chat.manage" },
   { id: "orders", label: "Заказы", permission: "orders.read" },
   { id: "procurement", label: "Закупки", permission: "procurement.read" },
   { id: "returns", label: "Возвраты", permission: "returns.read" },

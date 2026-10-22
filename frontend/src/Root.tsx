@@ -1,11 +1,13 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import StorefrontPage from "./StorefrontPage";
 import ProductPage from "./ProductPage";
+
 import NotFoundPage from "./NotFoundPage";
 import { StoreFooter } from "./StoreFooter";
 
 const DiscountPlantsPage = lazy(() => import("./DiscountPlantsPage"));
 const CareArticlePage = lazy(() => import("./care/CareArticlePage"));
+const ChatLauncher = lazy(() => import("./ChatLauncher"));
 const AdminPage = lazy(() => import("./AdminPage"));
 const FavoritesPage = lazy(() => import("./FavoritesPage"));
 const AccountPage = lazy(() => import("./AccountPage"));
@@ -26,8 +28,9 @@ function RouteLoading() {
 
 export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
-  const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter /></Suspense>;
+  const quickChat = <Suspense fallback={null}><ChatLauncher /></Suspense>;
+  const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}{!path.startsWith("/admin") && quickChat}</Suspense>;
+  const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter />{quickChat}</Suspense>;
   const query = new URLSearchParams(window.location.search);
   const paymentPreview = query.get("preview");
   if (import.meta.env.DEV && path === "/checkout" && (paymentPreview === "payment-success" || paymentPreview === "payment-pending" || paymentPreview === "payment-failed")) {
@@ -57,12 +60,16 @@ export default function Root() {
   }
   if (path.startsWith("/admin/")) return ready(<AdminPage />);
   switch (path) {
+    case "/chat":
+      return withFooter(<StorefrontPage />);
     case "/login":
       return ready(<LoginPage />);
     case "/register":
       return ready(<RegisterPage />);
     case "/account":
       return withFooter(<AccountPage section="orders" />);
+    case "/account/chat":
+      return withFooter(<AccountPage section="chat" />);
     case "/account/profile":
       return withFooter(<AccountPage section="profile" />);
     case "/account/favorites":

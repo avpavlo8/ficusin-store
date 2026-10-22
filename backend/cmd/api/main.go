@@ -19,6 +19,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
@@ -209,6 +210,7 @@ func main() {
 		Admin:            adminRepository,
 		Saby:             sabyService,
 		Push:             pushService,
+		Chat:             chat.NewStore(pool),
 		Cart:             cart.NewStore(pool),
 		Packages:         catalogRepository,
 		Collections:      catalogRepository,

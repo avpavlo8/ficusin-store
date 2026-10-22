@@ -6,6 +6,166 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /chat:
+    get:
+      operationId: readMyChat
+      description: Private guest/account human support thread. HttpOnly capability cookie for guests; customer history is bound on login. consentRequired is true only for a guest without a thread. Responses are no-store.
+      parameters:
+        - in: query
+          name: before
+          schema: {type: integer, minimum: 0}
+        - in: query
+          name: after
+          description: Fetch messages newer than this ID, up to 50 per page. Takes precedence over before when positive.
+          schema: {type: integer, minimum: 0}
+      responses:
+        "200":
+          description: Thread with messages, read cursors and hasMore
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChatThread"}
+        "503": {description: Storage unavailable}
+  /chat/messages:
+    post:
+      operationId: sendMyChatMessage
+      description: Send text and/or one private attachment. A guest's first message requires consent; signed-in customers rely on registration consent without a new support_consents record. clientId deduplicates retries. JSON body is limited to 29 MiB. Customer limits per IP per application instance are 30 message attempts and 10 attachment attempts per minute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageInput"
+      responses:
+        "200":
+          description: Saved thread including the message
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChatThread"}
+        "400": {description: Invalid message or missing first-message guest consent}
+        "429": {description: Send rate exceeded}
+        "503": {description: Storage unavailable}
+  /chat/unread:
+    get:
+      operationId: myChatUnread
+      responses:
+        "200": {description: Number of unread staff messages}
+  /chat/read:
+    post:
+      operationId: markMyChatRead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [through]
+              properties:
+                through: {type: integer, minimum: 0}
+      responses:
+        "200": {description: Visible messages marked read}
+  /chat/photos/{messageID}:
+    get:
+      operationId: myChatPhoto
+      description: Backward-compatible private JPEG/PNG route. Same access and response security headers as the attachment route; non-image attachments return 404.
+      parameters:
+        - in: path
+          name: messageID
+          required: true
+          schema: {type: integer}
+      responses:
+        "200": {description: Private JPEG or PNG, no-store}
+        "404": {description: Photo unavailable to this participant}
+  /chat/attachments/{messageID}:
+    get:
+      operationId: myChatAttachment
+      description: Private attachment requiring access to the current guest/account thread. Validated JPEG/PNG and content-sniffed MP4/WebM are inline; all other files are forced application/octet-stream downloads. Responses use no-store, nosniff and CSP default-src 'none'; sandbox. Byte ranges are served by http.ServeContent.
+      parameters:
+        - in: path
+          name: messageID
+          required: true
+          schema: {type: integer}
+        - in: header
+          name: Range
+          schema: {type: string}
+      responses:
+        "200": {description: Private attachment bytes}
+        "206": {description: Requested byte range}
+        "404": {description: Attachment unavailable to this participant}
+        "416": {description: Unsatisfiable byte range}
+  /admin/chat:
+    get:
+      operationId: supportInbox
+      description: Requires chat.manage. Filter by status, search q, paginate with offset; see docs/site-chat.md.
+      responses:
+        "200": {description: Inbox items and hasMore}
+        "401": {description: Sign in required}
+        "403": {description: chat.manage required}
+  /admin/chat/{id}/messages:
+    post:
+      operationId: sendSupportChatMessage
+      description: Staff reply with text and/or one attachment. Requires chat.manage. Same attachment and JSON size limits as customer messages; no consent checkbox is required.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChatMessageInput"}
+      responses:
+        "200":
+          description: Saved thread including the reply
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChatThread"}
+        "400": {description: Invalid message}
+        "401": {description: Sign in required}
+        "403": {description: chat.manage required}
+        "404": {description: Thread not found}
+        "503": {description: Storage unavailable}
+  /admin/chat/{id}/attachments/{messageID}:
+    get:
+      operationId: supportChatAttachment
+      description: Requires chat.manage. Same private content handling, Range support and security headers as the customer attachment route; the message must belong to this thread.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: integer}
+        - in: path
+          name: messageID
+          required: true
+          schema: {type: integer}
+        - in: header
+          name: Range
+          schema: {type: string}
+      responses:
+        "200": {description: Private attachment bytes}
+        "206": {description: Requested byte range}
+        "401": {description: Sign in required}
+        "403": {description: chat.manage required}
+        "404": {description: Attachment not found in this thread}
+        "416": {description: Unsatisfiable byte range}
+  /admin/chat/{id}/photos/{messageID}:
+    get:
+      operationId: supportChatPhoto
+      description: Backward-compatible private JPEG/PNG route requiring chat.manage. Same response security headers as attachments; non-image attachments return 404.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: integer}
+        - in: path
+          name: messageID
+          required: true
+          schema: {type: integer}
+      responses:
+        "200": {description: Private JPEG or PNG, no-store}
+        "401": {description: Sign in required}
+        "403": {description: chat.manage required}
+        "404": {description: Photo not found in this thread}
   /health:
     get:
       operationId: health
@@ -284,6 +444,50 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    ChatMessageInput:
+      type: object
+      required: [clientId]
+      description: Text must be nonempty after trimming unless an attachment or legacy image is supplied. attachment and image are mutually exclusive. Context URLs must start with /product/, /care/ or /account/orders/ and may not contain CR, LF or backslash.
+      properties:
+        clientId: {type: string, minLength: 16, maxLength: 80}
+        text: {type: string, maxLength: 4000}
+        attachment:
+          type: object
+          required: [name, data]
+          properties:
+            name: {type: string, minLength: 1, maxLength: 180, description: Server strips directory components; NUL/CR/LF and empty names are rejected.}
+            data: {type: string, maxLength: 29360128, description: Standard base64 without a data URL prefix. Decoded size must be 1 byte to 20 MiB. Content-sniffed JPEG/PNG must decode successfully and be at most 2 MiB and 16 million pixels. Content-sniffed MP4/WebM are inline video; all other bytes are forced downloads.}
+        image: {type: string, deprecated: true, description: Legacy JPEG/PNG data URL; decoded size at most 2 MiB and 16 million pixels. Cannot be combined with attachment.}
+        consent: {type: boolean, description: Required to be true only for a guest's first message.}
+        contextUrl: {type: string, maxLength: 500, description: Maximum 500 UTF-8 bytes.}
+        contextLabel: {type: string, maxLength: 180}
+    ChatMessage:
+      type: object
+      required: [id, sender, text, hasImage, createdAt]
+      properties:
+        id: {type: integer}
+        sender: {type: string, enum: [customer, staff]}
+        text: {type: string}
+        contextUrl: {type: string}
+        contextLabel: {type: string}
+        hasImage: {type: boolean, description: True for JPEG/PNG including legacy photo messages.}
+        attachmentName: {type: string}
+        attachmentKind: {type: string, enum: [image, video, file]}
+        attachmentSize: {type: integer, minimum: 1, description: Stored attachment size in bytes; also provided for legacy photos when nonzero.}
+        createdAt: {type: string, format: date-time}
+    ChatThread:
+      type: object
+      required: [id, status, customerReadId, staffReadId, messages, hasMore, consentRequired]
+      properties:
+        id: {type: integer, description: Zero before the first message.}
+        status: {type: string, enum: [open, closed]}
+        customerReadId: {type: integer}
+        staffReadId: {type: integer}
+        messages:
+          type: array
+          items: {$ref: "#/components/schemas/ChatMessage"}
+        hasMore: {type: boolean}
+        consentRequired: {type: boolean, description: True only when a guest without an existing thread must consent before sending. False for signed-in customers and staff.}
     Error:
       type: object
       required: [error]

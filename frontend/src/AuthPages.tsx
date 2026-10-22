@@ -310,7 +310,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
                   <input type="checkbox" name="consent" required />
                   <span>
                     Я принимаю <a href="/offer" target="_blank">оферту</a> и даю
-                    согласие на обработку данных по{" "}
+                    согласие на обработку данных, включая сообщения, фотографии, видео и файлы в чате, по{" "}
                     <a href="/privacy" target="_blank">политике конфиденциальности</a>.
                   </span>
                 </label>

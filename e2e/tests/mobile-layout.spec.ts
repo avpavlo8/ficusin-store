@@ -108,7 +108,7 @@ test("@phone all account sections remain visible without clipping", async ({ pag
   await mockApi(page, owner);
   await page.goto("/account/profile");
   const nav = page.locator('.account-sidebar nav[aria-label="Разделы личного кабинета"]');
-  await expect(nav.getByRole("link")).toHaveCount(4);
+  await expect(nav.getByRole("link")).toHaveCount(5);
   for (const link of await nav.getByRole("link").all()) await expect(link).toBeInViewport();
   const [clientWidth, scrollWidth] = await nav.evaluate((node) => [node.clientWidth, node.scrollWidth]);
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
