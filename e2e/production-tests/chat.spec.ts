@@ -5,7 +5,7 @@ test('production support actions open the quick chat without leaving the page', 
   const dialog=page.getByRole('dialog',{name:'Быстрый чат с Фикусином'});await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Загружаем переписку…',{exact:true})).toBeHidden();await expect(dialog.getByRole('alert')).toHaveCount(0);
   const avatar = dialog.locator('.chat-avatar');
-  await expect(avatar).toHaveAttribute('src','/icon-192.png?v=graphite-v1');
+  await expect(avatar).toHaveAttribute('src','/assets/brand/graphite-v1/app-192-v2.png');
   await expect.poll(() => avatar.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(dialog.getByRole('link',{name:'Вся переписка в личном кабинете'})).toHaveCount(0);
   await expect(dialog.getByText('История переписки — в',{exact:false})).toHaveCount(0);
