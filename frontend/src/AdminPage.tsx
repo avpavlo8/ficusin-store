@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { BrandLogo } from "./BrandLogo";
 import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
@@ -51,7 +52,7 @@ export default function AdminPage() {
   const can = useCallback((permission: string) => !!data?.permissions.includes(permission), [data]);
 
   if (!data) return <main className={`account-page admin-page ${section==="returns"?"returns-admin":""}`} onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
-    <a className="workspace-loading-brand" href="/">Фикусин</a>
+    <a className="workspace-loading-brand" href="/" aria-label="Фикусин — в магазин"><BrandLogo decorative /></a>
     <section className="account-shell"><div className="account-content"><WorkspaceState kind={error ? "error" : "loading"} title={error || "Загружаем панель…"} /></div></section>
   </main>;
 

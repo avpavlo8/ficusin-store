@@ -107,7 +107,6 @@
 .storefront { --home-ink:#291d13; --home-green:#273f24; --home-orange:#b93620; max-width:100%; overflow-x:clip; background:#f7efe4; color:var(--home-ink); }
 .storefront > .announcement { display:none; }
 .storefront > .header { max-width:1500px; height:76px; margin:0 auto; padding:0 34px; grid-template-columns:auto 1fr auto; gap:28px; border:0; background:transparent; box-shadow:none; }
-.storefront > .header .brand-mark,.storefront > .header .brand-text small { display:none; }
 .storefront > .header .brand { color:var(--home-ink); font:700 30px/1 Georgia,serif; letter-spacing:-.04em; }
 .storefront > .header .desktop-nav { justify-self:start; gap:32px; }
 .storefront > .header .desktop-nav a { color:var(--home-ink); font-size:13px; }

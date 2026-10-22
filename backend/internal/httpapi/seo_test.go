@@ -53,7 +53,7 @@ func TestKnownAppRoutes(t *testing.T) {
 func TestRouteMetaIndexesStorefrontAndHidesCheckout(t *testing.T) {
 	shell := []byte(`<html><head><title>shop</title><meta name="description" content="shop"></head></html>`)
 	home := string(withRouteMeta("https://ficusin.ru", "/", shell))
-	for _, want := range []string{`rel="canonical" href="https://ficusin.ru/"`, `"@type":"Store"`, `"@type":"WebSite"`} {
+	for _, want := range []string{`rel="canonical" href="https://ficusin.ru/"`, `"@type":"Store"`, `"@type":"WebSite"`, `"logo":"https://ficusin.ru/assets/brand/graphite-v1/wordmark-graphite.png"`, `property="og:image" content="https://ficusin.ru/assets/brand/graphite-v1/og.png"`, `property="og:image:width" content="1200"`, `property="og:image:height" content="630"`} {
 		if !strings.Contains(home, want) {
 			t.Errorf("home meta does not contain %q", want)
 		}
@@ -123,13 +123,35 @@ func TestLandingMetaUsesRealCategoryAndRejectsUnknownSlug(t *testing.T) {
 	if !found {
 		t.Fatal("категория не найдена")
 	}
-	for _, want := range []string{"Фикусы — купить", `rel="canonical" href="https://ficusin.ru/catalog/ficus"`, `"@type":"CollectionPage"`, `"@type":"BreadcrumbList"`} {
+	for _, want := range []string{"Фикусы — купить", `rel="canonical" href="https://ficusin.ru/catalog/ficus"`, `"@type":"CollectionPage"`, `"@type":"BreadcrumbList"`, `property="og:image" content="https://ficusin.ru/assets/brand/graphite-v1/og.png"`} {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("нет %q", want)
 		}
 	}
 	if _, found = withLandingMeta(context.Background(), logger, sitemapCatalogStub{}, nil, "https://ficusin.ru", "/catalog/nope", shell); found {
 		t.Fatal("несуществующая категория индексируется")
+	}
+}
+
+func TestCollectionShareImageUsesCoverBeforeBrandFallback(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	shell := []byte(`<html><head><title>shop</title></head></html>`)
+	for _, cover := range []string{"/images/collection.jpg", "https://images.example.test/collection.jpg", ""} {
+		page, found := withLandingMeta(context.Background(), logger, nil, sitemapCollectionsStub{items: []catalog.Collection{{Slug: "easy", Title: "Неприхотливые", CoverURL: cover}}}, "https://ficusin.ru", "/collections/easy", shell)
+		if !found {
+			t.Fatal("collection not found")
+		}
+		want := "https://ficusin.ru/assets/brand/graphite-v1/og.png"
+		if cover != "" {
+			want = absoluteFeedURL("https://ficusin.ru", cover)
+		}
+		body := string(page)
+		if !strings.Contains(body, `property="og:image" content="`+want+`"`) || strings.Count(body, `property="og:image"`) != 1 {
+			t.Errorf("cover %q: missing or duplicate share image: %s", cover, body)
+		}
+		if cover != "" && strings.Contains(body, brandShareImagePath) {
+			t.Errorf("collection cover was mixed with brand fallback: %s", body)
+		}
 	}
 }
 
@@ -150,8 +172,8 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 		productMetaStub{detail: catalog.ProductDetail{
 			Name:     "Монстера Делициоза",
 			Latin:    "Monstera deliciosa",
-			Images:   []string{"https://example.test/monstera.jpg"},
-			Variants: []catalog.Variant{{Price: 1290, Stock: 3}},
+			Images:   []string{"/assets/product-photo-pending-graphite-v1.svg", "https://example.test/monstera.jpg"},
+			Variants: []catalog.Variant{{Price: 1290, Stock: 3, Images: []string{"/assets/product-photo-pending-graphite-v1.svg", "/images/monstera-d12.jpg"}}},
 			Rating:   4.8, ReviewsCount: 12,
 			Passport: catalog.PlantPassport{FAQ: []catalog.FAQItem{{Question: "Когда пересаживать?", Answer: "Весной."}}},
 		}},
@@ -171,12 +193,36 @@ func TestProductMetaFillsTitleAndSchema(t *testing.T) {
 		"schema.org/InStock",
 		`rel="canonical" href="https://ficusin.ru/product/monstera"`,
 		`property="og:url" content="https://ficusin.ru/product/monstera"`,
+		`property="og:image" content="https://example.test/monstera.jpg"`,
+		`"image":"https://ficusin.ru/images/monstera-d12.jpg"`,
 		`"@type":"AggregateRating"`,
 		`"reviewCount":12`,
 		`"@type":"FAQPage"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("в странице нет %q", want)
+		}
+	}
+	if strings.Count(page, `property="og:image"`) != 1 || strings.Contains(page, brandShareImagePath) {
+		t.Fatal("product photo was mixed with brand fallback")
+	}
+}
+
+func TestProductShareImageFallsBackWithoutPretendingLogoIsProductPhoto(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	shell := []byte(`<html><head><title>shop</title></head></html>`)
+	for _, images := range [][]string{nil, {" "}, {"/assets/hero-monstera.webp"}, {"/assets/product-photo-pending.svg"}, {"/assets/product-photo-pending-logo-v1.svg"}, {"/assets/product-photo-pending-graphite-v1.svg"}, {"https://ficusin.ru/assets/product-photo-pending-graphite-v1.svg?v=1"}} {
+		detail := catalog.ProductDetail{ID: "42", Name: "Монстера", Images: images, Variants: []catalog.Variant{{Price: 1290, Images: images}}}
+		page, _, err := withProductMeta(context.Background(), logger, productMetaStub{detail: detail}, "https://ficusin.ru", "42", shell)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(page)
+		if !strings.Contains(body, `property="og:image" content="https://ficusin.ru/assets/brand/graphite-v1/og.png"`) {
+			t.Errorf("images %v: product without photo has no share image: %s", images, body)
+		}
+		if strings.Contains(body, `"image":`) {
+			t.Errorf("images %v: placeholder was put into Product or Offer schema as a photo: %s", images, body)
 		}
 	}
 }
