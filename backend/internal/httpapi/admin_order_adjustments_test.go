@@ -22,8 +22,8 @@ func (stub *adjustmentRepositoryStub) EditOrder(_ context.Context, _ admin.Actor
 
 func (stub *adjustmentRepositoryStub) OrderAdjustment(_ context.Context, id int64) (admin.OrderAdjustmentState, error) {
 	return admin.OrderAdjustmentState{
-		ID: id,
-		Subtotal: 2970,
+		ID:          id,
+		Subtotal:    2970,
 		DeliveryFee: 1000,
 		Items: []admin.OrderItem{
 			{ProductID: 101, ProductName: "Азалия D9", UnitPrice: 790, Quantity: 1},
@@ -56,9 +56,15 @@ func (stub *adjustmentPaymentsStub) RefundExcess(context.Context, int64, string)
 func (stub *adjustmentPaymentsStub) StartOutstandingForOrderID(context.Context, int64) (string, payment.Balance, error) {
 	return "", payment.Balance{}, nil
 }
-func (stub *adjustmentPaymentsStub) RecoverUnknownForOrder(context.Context, int64, int64) (string,error) { return "",nil }
-func (stub *adjustmentPaymentsStub) ResolveUnknown(context.Context,int64,int64,string) (payment.Balance,error) { return payment.Balance{},nil }
-func (stub *adjustmentPaymentsStub) DismissUnknown(context.Context,int64,int64) (payment.Balance,error) { return payment.Balance{},nil }
+func (stub *adjustmentPaymentsStub) RecoverUnknownForOrder(context.Context, int64, int64) (string, error) {
+	return "", nil
+}
+func (stub *adjustmentPaymentsStub) ResolveUnknown(context.Context, int64, int64, string) (payment.Balance, error) {
+	return payment.Balance{}, nil
+}
+func (stub *adjustmentPaymentsStub) DismissUnknown(context.Context, int64, int64) (payment.Balance, error) {
+	return payment.Balance{}, nil
+}
 
 func TestOrderContentsRetiresOldPendingLinkAndKeepsAddedProduct(t *testing.T) {
 	t.Parallel()
@@ -86,5 +92,25 @@ func TestOrderContentsRetiresOldPendingLinkAndKeepsAddedProduct(t *testing.T) {
 	items := *repository.edits[0].Items
 	if len(items) != 2 || items[1].ProductID != "aglaonema-mariya" {
 		t.Fatalf("added product disappeared before persistence: %+v", items)
+	}
+}
+
+func TestMoneyActionsRequireOwnerPermission(t *testing.T) {
+	for _, role := range []string{admin.RoleManager, admin.RoleAdministrator} {
+		for _, tc := range []struct{ method, path, body string }{
+			{"POST", "/api/v1/admin/orders/7/refund", `{"amount":10,"reason":"fixture"}`},
+			{"PATCH", "/api/v1/admin/orders/7", `{"refund":true}`},
+			{"POST", "/api/v1/admin/orders/7/refunds/1/receipt", `{"confirmed":true}`},
+			{"POST", "/api/v1/admin/orders/7/refunds/1/resolve", `{"providerId":"ref-1"}`},
+			{"POST", "/api/v1/admin/orders/7/payments/1/dismiss", `{"confirmed":true}`},
+		} {
+			deps := adminDependencies(&adminRepositoryStub{}, role, "")
+			deps.Refunds = &adjustmentPaymentsStub{}
+			res := httptest.NewRecorder()
+			NewRouter(discardLogger(), deps).ServeHTTP(res, adminRequest(tc.method, tc.path, tc.body))
+			if res.Code != http.StatusForbidden {
+				t.Fatalf("%s %s: status=%d body=%s", role, tc.path, res.Code, res.Body.String())
+			}
+		}
 	}
 }

@@ -133,6 +133,9 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}
+	if len(created.GuestPaymentToken) != 64 {
+		t.Fatalf("guest payment token missing: %#v", created)
+	}
 	if created.OrderNumber == "" || created.PaymentStatus != payment.StatusOnDelivery || created.Total != 2980 {
 		t.Fatalf("unexpected created order: %#v", created)
 	}

@@ -2,6 +2,9 @@ package order
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -85,10 +88,11 @@ type CDEKInput struct {
 }
 
 type Created struct {
-	OrderNumber   string  `json:"orderNumber"`
-	PaymentStatus string  `json:"paymentStatus"`
-	HasPreorder   bool    `json:"hasPreorder"`
-	Total         float64 `json:"-"`
+	GuestPaymentToken string  `json:"guestPaymentToken,omitempty"`
+	OrderNumber       string  `json:"orderNumber"`
+	PaymentStatus     string  `json:"paymentStatus"`
+	HasPreorder       bool    `json:"hasPreorder"`
+	Total             float64 `json:"-"`
 }
 
 type ValidationError struct {
@@ -360,6 +364,16 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	// Snapshot opt-in only for orders placed while automatic creation is enabled.
 	// Enabling the switch later must not register abandoned unpaid orders.
 	checkoutShipment := input.Delivery == "cdek" && service.settings != nil && service.settings.Number(settings.CDEKOrdersEnabled) == 1
+	guestToken, guestTokenHash := "", ""
+	if input.CustomerID == nil {
+		raw := make([]byte, 32)
+		if _, err := rand.Read(raw); err != nil {
+			return Created{}, err
+		}
+		guestToken = hex.EncodeToString(raw)
+		sum := sha256.Sum256([]byte(guestToken))
+		guestTokenHash = hex.EncodeToString(sum[:])
+	}
 	var orderID int64
 	err = transaction.QueryRow(ctx, `
 		INSERT INTO orders (
@@ -367,11 +381,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
 			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total,
-			payment_method, payment_status, has_preorder, status, delivery_payee, cdek_checkout_requested
+			payment_method, payment_status, has_preorder, status, delivery_payee, cdek_checkout_requested, guest_payment_token_hash
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop', $21
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop', $21, $22
 		)
 		RETURNING id
 	`,
@@ -379,7 +393,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		input.Customer.Email, deliveryAddress, input.Customer.Comment, input.Delivery,
 		deliveryFee, boolToInt(feePending), boolToInt(input.CDEK.Repack && input.Delivery == "cdek"),
 		cityCode, cityName, officeCode, tariffCode, subtotal, total,
-		paymentMethod, payment.InitialStatus(paymentMethod), boolToInt(hasPreorder), boolToInt(checkoutShipment),
+		paymentMethod, payment.InitialStatus(paymentMethod), boolToInt(hasPreorder), boolToInt(checkoutShipment), guestTokenHash,
 	).Scan(&orderID)
 	if err != nil {
 		return Created{}, fmt.Errorf("insert order: %w", err)
@@ -446,33 +460,10 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		service.shipmentWake()
 	}
 
-	notificationItems := make([]integration.TelegramOrderItem, 0, len(items))
-	for _, item := range items {
-		notificationItems = append(notificationItems, integration.TelegramOrderItem{
-			Name: item.Name, Price: item.Price, Quantity: item.Quantity,
-		})
-	}
-	notificationCity := ""
-	if cityName != nil {
-		notificationCity = *cityName
-	}
-	if err := service.notifier.SendOrder(ctx, integration.TelegramOrder{
-		OrderNumber: orderNumber, DeliveryMethod: input.Delivery,
-		DeliveryCity: notificationCity, DeliveryFee: deliveryFee,
-		Subtotal: subtotal, Total: total, Items: notificationItems,
-	}); err == nil {
-		_, _ = service.pool.Exec(ctx, `
-			UPDATE orders SET telegram_notified_at = CURRENT_TIMESTAMP WHERE id = $1
-		`, orderID)
-	} else {
-		service.logger.Error(
-			"send immediate Telegram order failed; background retry scheduled",
-			"order_id", orderID,
-			"error", err,
-		)
-	}
+	// The committed order is the durable Telegram job. The notification worker
+	// retries it without delaying the customer response.
 
-	return Created{OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), HasPreorder: hasPreorder, Total: total}, nil
+	return Created{GuestPaymentToken: guestToken, OrderNumber: orderNumber, PaymentStatus: payment.InitialStatus(paymentMethod), HasPreorder: hasPreorder, Total: total}, nil
 }
 
 func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem) (bool, error) {

@@ -23,6 +23,8 @@ const (
 	PermissionDiscountsEdit    = "discounts.edit"
 	PermissionOrdersRead       = "orders.read"
 	PermissionOrdersEdit       = "orders.edit"
+	PermissionPaymentsRefund   = "payments.refund"
+	PermissionPaymentsManage   = "payments.manage"
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
 	PermissionProductsSync     = "products.sync"

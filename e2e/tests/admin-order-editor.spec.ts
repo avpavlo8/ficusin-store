@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination", dimensionsKnown = false) {
+async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination", dimensionsKnown = false, refundRole?: "owner" | "manager") {
   const dimensions = dimensionsKnown ? { packageLengthCm: 20, packageWidthCm: 20, packageHeightCm: 40, packageWeightGrams: 700 } : {};
   const order = {
     id: 30,
@@ -47,7 +47,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
     }] : [],
   };
 
-  await page.addInitScript(({ user, order, adjustment, packingMode }) => {
+  await page.addInitScript(({ user, order, adjustment, packingMode, refundRole }) => {
     const originalFetch = window.fetch.bind(window);
     const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), {
       status, headers: { "Content-Type": "application/json" },
@@ -61,6 +61,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       quoteBlockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : [],
       blockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : packingMode ? [] : ["В этом заказе доставка оплачивается перевозчику"],
     };
+    const refunds = refundRole ? [{ id: 1, amount: 100, status: "succeeded", providerId: "refund-1", actorId: 1, needsReview: false, receiptRequired: true, lastError: "" }, { id: 2, amount: 40, status: "pending", providerId: "refund-2", actorId: 1, needsReview: false, receiptRequired: false, lastError: "" }] : [];
     let finalized = false;
     let polls = 0;
     let finalizationAttempts = 0;
@@ -71,7 +72,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json({
         user: { fullName: "Александр" }, role: "owner",
-        permissions: ["dashboard.read", "orders.read", "orders.edit"],
+        permissions: ["dashboard.read", "orders.read", "orders.edit", ...(refundRole === "owner" ? ["payments.refund"] : [])],
         dashboard: { products: 0, variants: 0, orders: 1, customers: 0, wholesalePending: 0, lastSync: null, recentOrders: [] },
       });
       if (path === "/api/v1/admin/orders") return json({ orders: [order] });
@@ -120,9 +121,10 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
         adjustment.deliveryFeePending = false;
         return json({ packing, order }, 202);
       }
+      if (path === "/api/v1/admin/orders/30/refunds/1/receipt" && init?.method === "POST") { refunds[0].receiptRequired = false; return json({ ok: true }); }
       if (path === "/api/v1/admin/orders/30/adjustment") return json({
         order: adjustment,
-        payment: { total: order.total, paid: 0, refunded: 0, netPaid: 0, due: order.total, overpaid: 0, ready: false, paymentStatus: "pending" },
+        payment: { total: order.total, paid: refundRole ? 1480 : 0, refunded: refundRole ? 100 : 0, netPaid: refundRole ? 1380 : 0, due: order.total, overpaid: 0, ready: false, paymentStatus: "pending", refunds },
       });
       if (path === "/api/v1/admin/products") return json({ products: [
         { id: 1, slug: "azaliya-d9", sku: "1001", variantLabel: "D9", name: "Азалия D9", price: 790, stock: 4, status: "published" },
@@ -170,7 +172,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, order, adjustment, packingMode });
+  }, { user: owner.user, order, adjustment, packingMode, refundRole });
 
   return {
     savedEdit: async () => page.evaluate(() => (window as typeof window & {
@@ -413,4 +415,27 @@ test("@desktop @phone размеры вводятся строкой, а вес 
  await packing.getByRole("button",{name:"Сохранить и подтвердить",exact:true}).click();
  await expect.poll(async()=> (await state.packingFinalizations()).length).toBe(1);
  expect((await state.packingFinalizations())[0].boxes[0].weightGrams).toBe(125);
+});
+
+test("@desktop @phone возврат ожидает подтверждения, чек закрывается отдельно", async ({page},testInfo) => {
+ await mockOrderEditor(page,false,undefined,false,"owner");
+ await page.goto("/admin?section=orders&order=30");
+ const section=page.getByRole("region",{name:"Оплата и возвраты"});
+ await expect(section.getByText("Деньги возвращены",{exact:false})).toBeVisible();
+ await expect(section.getByText("Ожидает подтверждения ЮKassa",{exact:false})).toBeVisible();
+ await section.getByText("Вернуть деньги покупателю",{exact:true}).click();
+ await expect(section.getByRole("button",{name:"Вернуть через ЮKassa"})).toBeDisabled();
+ if(process.env.FICUSIN_PREVIEW_OUTPUT_DIR) await section.screenshot({path:`${process.env.FICUSIN_PREVIEW_OUTPUT_DIR}/refund-${testInfo.project.name}.png`});
+ page.on("dialog",dialog=>dialog.accept());
+ await section.getByRole("button",{name:"Чек уже сформирован"}).click();
+ await expect(section.getByText("Сформируйте чек",{exact:false})).toHaveCount(0);
+ await expect(section.getByText("Ожидает подтверждения ЮKassa",{exact:false})).toBeVisible();
+});
+test("@desktop менеджер видит возврат без финансовых действий", async ({page})=>{
+ await mockOrderEditor(page,false,undefined,false,"manager");
+ await page.goto("/admin?section=orders&order=30");
+ const section=page.getByRole("region",{name:"Оплата и возвраты"});
+ await expect(section).toBeVisible();
+ await expect(section.getByText("Вернуть деньги покупателю",{exact:true})).toHaveCount(0);
+ await expect(section.getByRole("button",{name:"Чек уже сформирован"})).toHaveCount(0);
 });

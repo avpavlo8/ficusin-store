@@ -36,6 +36,9 @@ func (worker *ReconcileWorker) Run(ctx context.Context) {
 }
 
 func (worker *ReconcileWorker) process(ctx context.Context) {
+	if err := worker.service.reconcileRefunds(ctx); err != nil {
+		worker.logger.Error("reconcile refunds failed", "error", err)
+	}
 	// Offers without a started payment can expire directly. If a payment is
 	// pending or its outcome is unknown, it stays open until the provider is
 	// queried below; expiry never guesses that money did not move.

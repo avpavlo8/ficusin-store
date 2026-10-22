@@ -16,15 +16,16 @@ import (
 // deliberately separate facts: an order may have several successful card
 // charges, partial refunds and a later top-up.
 type Balance struct {
-	Total         float64 `json:"total"`
-	Paid          float64 `json:"paid"`
-	Refunded      float64 `json:"refunded"`
-	NetPaid       float64 `json:"netPaid"`
-	Due           float64 `json:"due"`
-	Overpaid      float64 `json:"overpaid"`
-	Ready         bool    `json:"ready"`
-	PaymentStatus string  `json:"paymentStatus"`
-	Issues        []Issue `json:"issues"`
+	Total         float64       `json:"total"`
+	Paid          float64       `json:"paid"`
+	Refunded      float64       `json:"refunded"`
+	NetPaid       float64       `json:"netPaid"`
+	Due           float64       `json:"due"`
+	Overpaid      float64       `json:"overpaid"`
+	Ready         bool          `json:"ready"`
+	PaymentStatus string        `json:"paymentStatus"`
+	Issues        []Issue       `json:"issues"`
+	Refunds       []RefundIssue `json:"refunds"`
 }
 
 type orderMoneyState struct {
@@ -192,6 +193,10 @@ func (service *Service) Reconcile(ctx context.Context, orderID int64) (Balance, 
 	if err != nil {
 		return Balance{}, fmt.Errorf("load payment issues: %w", err)
 	}
+	balance.Refunds, err = service.refundIssues(ctx, orderID)
+	if err != nil {
+		return Balance{}, err
+	}
 	return balance, nil
 }
 
@@ -204,6 +209,10 @@ func (service *Service) BalanceForOrder(ctx context.Context, orderID int64) (Bal
 	balance.Issues, err = service.paymentIssues(ctx, orderID)
 	if err != nil {
 		return Balance{}, fmt.Errorf("load payment issues: %w", err)
+	}
+	balance.Refunds, err = service.refundIssues(ctx, orderID)
+	if err != nil {
+		return Balance{}, err
 	}
 	return balance, nil
 }
@@ -615,111 +624,6 @@ func (service *Service) refundablePayments(ctx context.Context, orderID int64) (
 		}
 	}
 	return result, rows.Err()
-}
-
-// resumePendingRefunds reuses the same idempotence key after an ambiguous
-// network failure. Creating a new key could return the same money twice.
-func (service *Service) resumePendingRefunds(ctx context.Context, orderID int64) (bool, error) {
-	rows, err := service.pool.Query(ctx, `
-		SELECT r.id,p.provider_payment_id,r.amount::DOUBLE PRECISION,r.idempotence_key
-		FROM payment_refunds r JOIN payments p ON p.id=r.payment_id
-		WHERE r.order_id=$1 AND r.status='pending' ORDER BY r.id
-	`, orderID)
-	if err != nil {
-		return false, err
-	}
-	type pending struct {
-		id       int64
-		provider string
-		amount   float64
-		key      string
-	}
-	items := []pending{}
-	for rows.Next() {
-		var item pending
-		if err := rows.Scan(&item.id, &item.provider, &item.amount, &item.key); err != nil {
-			rows.Close()
-			return false, err
-		}
-		items = append(items, item)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return false, err
-	}
-	if len(items) == 0 {
-		return false, nil
-	}
-	for _, item := range items {
-		if err := service.provider.Refund(ctx, item.provider, item.amount, item.key); err != nil {
-			return true, err
-		}
-		if _, err := service.pool.Exec(ctx, `UPDATE payment_refunds SET status='succeeded' WHERE id=$1`, item.id); err != nil {
-			return true, err
-		}
-	}
-	_, err = service.Reconcile(ctx, orderID)
-	return true, err
-}
-
-// RefundAmount returns an arbitrary part of the money to the same payment
-// method through YooKassa. If several charges funded the order, the refund is
-// split across them without exceeding what each charge still holds.
-func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount float64, reason string) (Balance, error) {
-	if !service.Configured() {
-		return Balance{}, errors.New("возврат недоступен: оплата не настроена")
-	}
-	requested := cents(amount)
-	if requested <= 0 {
-		return Balance{}, errors.New("сумма возврата должна быть больше нуля")
-	}
-	if resumed, err := service.resumePendingRefunds(ctx, orderID); resumed {
-		if err != nil {
-			return Balance{}, err
-		}
-		return service.BalanceForOrder(ctx, orderID)
-	}
-	balance, err := service.BalanceForOrder(ctx, orderID)
-	if err != nil {
-		return Balance{}, err
-	}
-	if requested > cents(balance.NetPaid) {
-		return balance, errors.New("нельзя вернуть больше, чем фактически осталось оплачено")
-	}
-	payments, err := service.refundablePayments(ctx, orderID)
-	if err != nil {
-		return balance, err
-	}
-	remaining := requested
-	for _, payment := range payments {
-		if remaining <= 0 {
-			break
-		}
-		part := min(remaining, payment.available)
-		key, err := idempotenceKey()
-		if err != nil {
-			return balance, err
-		}
-		var refundID int64
-		if err := service.pool.QueryRow(ctx, `
-			INSERT INTO payment_refunds(order_id,payment_id,idempotence_key,amount,reason,status)
-			VALUES($1,$2,$3,$4,$5,'pending') RETURNING id
-		`, orderID, payment.id, key, rublesFromCents(part), strings.TrimSpace(reason)).Scan(&refundID); err != nil {
-			return balance, fmt.Errorf("record refund attempt: %w", err)
-		}
-		if err := service.provider.Refund(ctx, payment.providerID, rublesFromCents(part), key); err != nil {
-			// Keep pending: the same idempotence key is reused on the next try.
-			return balance, err
-		}
-		if _, err := service.pool.Exec(ctx, `UPDATE payment_refunds SET status='succeeded' WHERE id=$1`, refundID); err != nil {
-			return balance, err
-		}
-		remaining -= part
-	}
-	if remaining > 0 {
-		return balance, errors.New("недостаточно возвратных платежей по заказу")
-	}
-	return service.Reconcile(ctx, orderID)
 }
 
 // RefundExcess is used after the manager edits an already paid order. It

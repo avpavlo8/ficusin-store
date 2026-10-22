@@ -12,7 +12,10 @@ export type OrderReviewState = {
   paymentIssues: Array<{ id: number; needsReview: boolean }>;
 };
 
+type RefundEntry = { id: number; amount: number; status: string; providerId: string; actorId?: number; needsReview: boolean; receiptRequired: boolean; lastError: string };
+
 type PaymentBalance = {
+ refunds?: RefundEntry[];
   total: number;
   paid: number;
   refunded: number;
@@ -64,7 +67,8 @@ const emptyPayment: PaymentBalance = {
   issues: [],
 };
 
-export function AdminOrderEditor({ order, onSaved, onError, registerBeforeLeave, onDirtyChange, onReviewState, disabled = false }: {
+export function AdminOrderEditor({ canRefund = false, order, onSaved, onError, registerBeforeLeave, onDirtyChange, onReviewState, disabled = false }: {
+  canRefund?: boolean;
   order: Order;
   onSaved: (order: Order) => void;
   onError: (message: string) => void;
@@ -92,6 +96,45 @@ export function AdminOrderEditor({ order, onSaved, onError, registerBeforeLeave,
   const compositionReadOnly = readOnly || packingFrozen;
   const formDisabled = busy || disabled || compositionReadOnly;
 
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundRequest, setRefundRequest] = useState<{ signature: string; id: string } | null>(null);
+  const [refundMessage, setRefundMessage] = useState("");
+  const [refundProviderIDs, setRefundProviderIDs] = useState<Record<number,string>>({});
+  const [refundBusy, setRefundBusy] = useState(false);
+  const refreshMoney = async () => {
+    const state = await api<{ payment: PaymentBalance }>(`/api/v1/admin/orders/${order.id}/adjustment`);
+    setPayment(state.payment);
+    onSaved({ ...order, paymentStatus: state.payment.paymentStatus });
+  };
+  const sendRefund = async () => {
+    const amount = Number(refundAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > payment.netPaid || !refundReason.trim()) return;
+    if (!window.confirm(`Вернуть ${money.format(amount)} покупателю через ЮKassa?`)) return;
+    const signature = JSON.stringify({ amount, reason: refundReason.trim() });
+    const requestId = refundRequest?.signature === signature ? refundRequest.id : crypto.randomUUID();
+    setRefundRequest({ signature, id: requestId });
+    setRefundBusy(true); setRefundMessage("");
+    try {
+      await api(`/api/v1/admin/orders/${order.id}/refund`, { method: "POST", body: JSON.stringify({ amount, reason: refundReason.trim(), requestId }) });
+      await refreshMoney(); setRefundAmount(""); setRefundReason(""); setRefundRequest(null);
+      setRefundMessage("Запрос принят. Результат возврата указан в истории ниже.");
+    } catch (error) { onError((error as Error).message); await refreshMoney().catch(() => {}); }
+    finally { setRefundBusy(false); }
+  };
+  const resolveRefund = async (id: number) => {
+    setRefundBusy(true);
+    try { await api(`/api/v1/admin/orders/${order.id}/refunds/${id}/resolve`, { method: "POST", body: JSON.stringify({ providerId: refundProviderIDs[id]?.trim() }) }); await refreshMoney(); }
+    catch (error) { onError((error as Error).message); }
+    finally { setRefundBusy(false); }
+  };
+  const confirmReceipt = async (id: number) => {
+    if (!window.confirm("Чек возврата прихода уже сформирован на вашей кассе?")) return;
+    setRefundBusy(true);
+    try { await api(`/api/v1/admin/orders/${order.id}/refunds/${id}/receipt`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); await refreshMoney(); }
+    catch (error) { onError((error as Error).message); }
+    finally { setRefundBusy(false); }
+  };
   const load = async () => {
     setLoadError("");
     try {
@@ -252,6 +295,29 @@ export function AdminOrderEditor({ order, onSaved, onError, registerBeforeLeave,
   </div>;
 
   return <div className="admin-order-editor">
+    {(payment.paid > 0 || (payment.refunds ?? []).length > 0) && <section className="admin-block" aria-label="Оплата и возвраты">
+      <h3>Оплата и возвраты</h3>
+      <p>Получено: {money.format(payment.paid)} · Возвращено: {money.format(payment.refunded)}</p>
+      {payment.overpaid > 0 && <p className="admin-flag">Переплата: {money.format(payment.overpaid)}. Возврат подтверждает владелец.</p>}
+      {refundMessage && <p role="status">{refundMessage}</p>}
+      {(payment.refunds ?? []).map(refund => <article key={refund.id}>
+        <p><strong>{money.format(refund.amount)}</strong> · {refund.needsReview ? "Нужна сверка в ЮKassa" : ({ pending: "Ожидает подтверждения ЮKassa", succeeded: "Деньги возвращены", canceled: "Возврат отменён ЮKassa", failed: "Запрос отклонён" }[refund.status] ?? refund.status)}</p>
+        {refund.actorId && <small>Сотрудник № {refund.actorId}</small>}
+        {refund.providerId && <small> · ID ЮKassa: {refund.providerId}</small>}
+        {refund.lastError && <p>{refund.lastError}</p>}
+        {refund.needsReview && canRefund && <div className="admin-form-grid"><label>ID возврата в ЮKassa<input value={refundProviderIDs[refund.id] ?? ""} onChange={event => setRefundProviderIDs(current => ({...current,[refund.id]:event.target.value}))} disabled={refundBusy} /></label><button type="button" disabled={refundBusy || !refundProviderIDs[refund.id]?.trim()} onClick={() => void resolveRefund(refund.id)}>Сверить с ЮKassa</button></div>}
+        {refund.receiptRequired && <p className="admin-flag">Сформируйте чек «Возврат прихода» на своей кассе. {canRefund && <button type="button" disabled={refundBusy} onClick={() => void confirmReceipt(refund.id)}>Чек уже сформирован</button>}</p>}
+      </article>)}
+      {canRefund && payment.netPaid > 0 && <details><summary>Вернуть деньги покупателю</summary>
+        {(payment.refunds ?? []).some(refund => refund.status === "pending") && <p>Новый возврат доступен после завершения предыдущего.</p>}
+        <div className="admin-form-grid">
+          <label>Сумма возврата, ₽<input type="number" min="0.01" step="0.01" max={payment.netPaid} value={refundAmount} disabled={refundBusy} onChange={event => setRefundAmount(event.target.value)} /></label>
+          <label>Причина возврата<input value={refundReason} disabled={refundBusy} onChange={event => setRefundReason(event.target.value)} /></label>
+        </div>
+        <button type="button" disabled={disabled || busy || refundBusy || hasUnsavedChanges || !Number.isFinite(Number(refundAmount)) || Number(refundAmount) <= 0 || Number(refundAmount) > payment.netPaid || !refundReason.trim() || (payment.refunds ?? []).some(refund => refund.status === "pending")} onClick={() => void sendRefund()}>{refundBusy ? "Отправляем запрос…" : "Вернуть через ЮKassa"}</button>
+      </details>}
+      {(payment.refunds ?? []).some(refund => refund.status === "pending") && <button type="button" disabled={refundBusy} onClick={() => void refreshMoney().catch(error => onError((error as Error).message))}>Обновить статус возврата</button>}
+    </section>}
     {order.deliveryMethod === "cdek" && !readOnly && <AdminOrderPacking orderId={order.id} items={adjustment.items} subtotal={adjustment.subtotal} netPaid={payment.netPaid} email={order.email} address={order.address} disabled={disabled || busy} compositionDirty={hasUnsavedChanges} onDirtyChange={setPackingDirty} onBoxesReadyChange={setPackingBoxesReady} onBusyChange={setBusy} onOrderUpdated={onSaved} onStateChange={(state) => { setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state)); if (state.state !== "draft") void load(); }} />}
     <section className="admin-block">
       <div className="admin-block-heading"><div><h3 id="order-composition" tabIndex={-1}>Состав заказа</h3>{packingFrozen && <small>Упаковка подтверждена</small>}</div><span className="order-line-count">Позиций: {lines.length}</span></div>

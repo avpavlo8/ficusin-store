@@ -168,3 +168,27 @@ test("@desktop самовывоз сохраняет оплату наличны
   expect(submittedPayment).toBe("on_delivery");
   expect(paymentAttempts).toBe(0);
 });
+
+test("@desktop @phone гостевая оплата передаёт отдельный ключ заказа", async ({page})=>{
+ await mockApi(page);
+ const token="a".repeat(64);
+ await page.route("**/api/v1/payments/methods?*",route=>route.fulfill({json:{methods:[{id:"online",title:"Картой на сайте",note:"После оформления"}]}}));
+ await page.route("**/api/v1/orders",route=>route.fulfill({status:201,json:{orderNumber:"0000-101",guestPaymentToken:token,hasPreorder:false,paymentStatus:"pending"}}));
+ let suppliedToken="";
+ await page.route("**/api/v1/payments/orders/0000-101",route=>{
+  suppliedToken=route.request().headers()["x-order-payment-token"] ?? "";
+  return route.fulfill({status:409,json:{error:"Test provider unavailable"}});
+ });
+ await setStoredCounts(page,[],{"1":1});
+ await page.goto("/checkout");
+ await page.getByLabel("Имя",{exact:true}).fill("Тест");
+ await page.getByLabel("Телефон",{exact:true}).fill("9000000000");
+ await page.getByLabel("Email для чека",{exact:true}).fill("guest@example.invalid");
+ await page.locator('input[name="delivery"][value="pickup"]').check();
+ await page.locator('input[name="paymentMethod"][value="online"]').check();
+ await page.locator('input[name="consent"]').check();
+ await page.locator('.checkout-navigation button.primary-button').click();
+ await expect.poll(()=>suppliedToken).toBe(token);
+ const stored=await page.evaluate(()=>JSON.stringify({...localStorage}));
+ expect(stored).not.toContain(token);
+});
