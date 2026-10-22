@@ -45,3 +45,17 @@ ownership, keep the value in settings so verification is not lost later.
 Feeds improve discovery and data accuracy; they do not create demand. Search
 growth still requires useful landing copy, links, reviews, content and ongoing
 query/conversion analysis.
+
+## Product sections
+
+The product page keeps its tab interface. Once product data has loaded, all
+applicable section panels (description, care, reviews and questions) are mounted
+in the rendered HTML; inactive panels use the native `hidden` attribute. Clicking
+a tab only changes visibility and never fetches its text or scrolls the page.
+Keyboard users can switch with Left/Right, Home and End. Incoming care links
+continue to open the care tab and scroll to the requested topic.
+
+This removes the click requirement for content discovery in the rendered DOM.
+It does not introduce server rendering of the product body or guarantee indexing.
+The initial HTTP response still supplies metadata and structured data; full
+server rendering remains a separate technical SEO improvement.

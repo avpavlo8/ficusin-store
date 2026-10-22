@@ -75,7 +75,8 @@ export default function ProductPage({ slug }: { slug: string }) {
         linkedCareTarget.current = window.location.hash.slice(1);
         setActiveTab("care");
         const target = document.getElementById(linkedCareTarget.current);
-        if (target) {
+        if (target && !target.closest("[hidden]")) {
+          if (target instanceof HTMLDetailsElement) target.open = true;
           target.scrollIntoView({ block: "start" });
           linkedCareTarget.current = null;
         }
@@ -162,13 +163,21 @@ export default function ProductPage({ slug }: { slug: string }) {
       <ProductGallery images={gallery} name={product.name} active={Math.min(activeImage, Math.max(gallery.length - 1, 0))} onSelect={setActiveImage} />
       <ProductPurchasePanel product={product} variant={variant} quantity={quantity} favorite={favorites.has(product.id)} inCart={Boolean(variant && cart[variant.sku])} relatedPlants={relatedPlants} reviewComposer={<ReviewComposer slug={slug} rating={product.rating} count={product.reviewsCount} onOpenReviews={openReviews} />} onVariant={(id) => { const selected=product.variants.find((item)=>item.id===id); setSelectedID(id); setQuantity(1); setActiveImage(0); if(selected){const next=new URL(window.location.href);next.searchParams.set("sku",selected.sku);history.replaceState(null,"",next);} }} onQuantity={changeQuantity} onFavorite={toggleFavorite} onBuy={toggleCart} />
     </section>
-    <div className={`pdp-tabs-shell${isPlant ? " plant-tabs-shell" : ""}`}><nav className="pdp-anchor-nav" role="tablist" aria-label="Разделы товара">{tabs.map(([id,label])=><button type="button" role="tab" className={activeTab===id?'active':''} onClick={()=>changeTab(id)} aria-selected={activeTab===id} aria-controls={`pdp-panel-${id}`} id={`pdp-tab-${id}`} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
-      <section className="pdp-tab-panel" aria-live="polite">
-        {isPlant&&activeTab==='about'&&<div role="tabpanel" id="pdp-panel-about" aria-labelledby="pdp-tab-about"><PlantAbout product={product}/></div>}
-        {isPlant&&activeTab==='care'&&<div role="tabpanel" id="pdp-panel-care" aria-labelledby="pdp-tab-care"><PlantCareGuide product={product}/></div>}
-        {activeTab==='characteristics'&&<section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики</h2><p>Параметры выбранного варианта и общая информация о товаре</p></header><dl>{customerAttributes.length>0?customerAttributes.map((item)=><div key={`${item.code}-${variant?.sku || 'product'}`}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>):<><div><dt>Освещение</dt><dd>{attributeValue(product.lightLevel||product.passport.lighting||'Не указано')}</dd></div><div><dt>Полив</dt><dd>{attributeValue(product.watering||product.passport.watering||'Не указано')}</dd></div><div><dt>Уровень ухода</dt><dd>{attributeValue(product.careLevel||product.passport.careDifficulty||'Не указано')}</dd></div><div><dt>Безопасность для питомцев</dt><dd>{attributeValue(product.petSafety||product.passport.toxicity||'Не указано')}</dd></div></>}</dl></section>}
-        {activeTab==='reviews'&&<ProductReviews reviews={product.reviews}/>}
-        {isPlant&&activeTab==='questions'&&<div role="tabpanel" id="pdp-panel-questions" aria-labelledby="pdp-tab-questions"><PlantQuestions product={product}/></div>}
+    <div className={`pdp-tabs-shell${isPlant ? " plant-tabs-shell" : ""}`}><nav className="pdp-anchor-nav" role="tablist" aria-label="Разделы товара">{tabs.map(([id,label])=><button type="button" role="tab" className={activeTab===id?'active':''} onClick={()=>changeTab(id)} aria-selected={activeTab===id} tabIndex={activeTab===id?0:-1} onKeyDown={(event)=>{
+        const index=tabs.findIndex(([tab])=>tab===id);
+        const next=event.key==="ArrowRight"?(index+1)%tabs.length:event.key==="ArrowLeft"?(index+tabs.length-1)%tabs.length:event.key==="Home"?0:event.key==="End"?tabs.length-1:null;
+        if(next===null)return;
+        event.preventDefault();
+        changeTab(tabs[next][0]);
+        document.getElementById(`pdp-tab-${tabs[next][0]}`)?.focus({preventScroll:true});
+      }} aria-controls={`pdp-panel-${id}`} id={`pdp-tab-${id}`} key={id}>{label}{id==='reviews'&&product.reviewsCount>0&&<span>{product.reviewsCount}</span>}</button>)}</nav>
+      <section className="pdp-tab-panel">
+        {/* Keep text mounted from the product response; tabs only change visibility. */}
+        {isPlant&&<div hidden={activeTab!=="about"} role="tabpanel" id="pdp-panel-about" aria-labelledby="pdp-tab-about"><PlantAbout product={product}/></div>}
+        {isPlant&&<div hidden={activeTab!=="care"} role="tabpanel" id="pdp-panel-care" aria-labelledby="pdp-tab-care"><PlantCareGuide product={product}/></div>}
+        {!isPlant&&<div hidden={activeTab!=="characteristics"} role="tabpanel" id="pdp-panel-characteristics" aria-labelledby="pdp-tab-characteristics"><section className="pdp-characteristics-panel pdp-info-card" id="characteristics"><header className="pdp-section-heading"><h2>Характеристики</h2><p>Параметры выбранного варианта и общая информация о товаре</p></header><dl>{customerAttributes.length>0?customerAttributes.map((item)=><div key={`${item.code}-${variant?.sku || 'product'}`}><dt>{item.name}</dt><dd>{attributeValue(item.value,item.unit)}</dd></div>):<><div><dt>Освещение</dt><dd>{attributeValue(product.lightLevel||product.passport.lighting||'Не указано')}</dd></div><div><dt>Полив</dt><dd>{attributeValue(product.watering||product.passport.watering||'Не указано')}</dd></div><div><dt>Уровень ухода</dt><dd>{attributeValue(product.careLevel||product.passport.careDifficulty||'Не указано')}</dd></div><div><dt>Безопасность для питомцев</dt><dd>{attributeValue(product.petSafety||product.passport.toxicity||'Не указано')}</dd></div></>}</dl></section></div>}
+        <div hidden={activeTab!=="reviews"} role="tabpanel" id="pdp-panel-reviews" aria-labelledby="pdp-tab-reviews"><ProductReviews reviews={product.reviews}/></div>
+        {isPlant&&hasPlantFAQ&&<div hidden={activeTab!=="questions"} role="tabpanel" id="pdp-panel-questions" aria-labelledby="pdp-tab-questions"><PlantQuestions product={product}/></div>}
       </section>
     </div>
 
