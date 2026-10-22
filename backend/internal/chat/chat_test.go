@@ -301,3 +301,25 @@ func TestRegisteredChatNeedsNoRepeatedConsentAndStoresPrivateFiles(t *testing.T)
 		}
 	}
 }
+
+func TestNativeMP4BrandDetection(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"phone isom", append([]byte{0, 0, 0, 20}, []byte("ftypisom\x00\x00\x00\x01avc1")...), "video/mp4"},
+		{"browser fragmented iso5", append([]byte{0, 0, 0, 24}, []byte("ftypiso5\x00\x00\x00\x01isomcmfc")...), "video/mp4"},
+		{"compatible brand", append([]byte{0, 0, 0, 20}, []byte("ftypzzzz\x00\x00\x00\x01isom")...), "video/mp4"},
+		{"truncated box", append([]byte{0, 0, 0, 32}, []byte("ftypisom\x00\x00\x00\x01")...), "application/octet-stream"},
+		{"unknown container", append([]byte{0, 0, 0, 16}, []byte("ftypzzzz\x00\x00\x00\x01")...), "application/octet-stream"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := Input{ClientID: "native-mp4-validation", Attachment: &AttachmentInput{Name: "recording.mp4", Data: base64.StdEncoding.EncodeToString(test.data)}}
+			_, got, err := Validate(&input)
+			if err != nil || got != test.want {
+				t.Fatalf("format=%s want=%s error=%v", got, test.want, err)
+			}
+		})
+	}
+}

@@ -7,7 +7,7 @@ const staffToken=process.env.CHAT_STAFF_TOKEN || 'crm-acceptance-manager';
 const customerToken=process.env.CHAT_CUSTOMER_TOKEN || 'crm-acceptance-owner';
 await mkdir(artifacts,{recursive:true});
 // Synthetic three-second VP8 clip, generated from an animated canvas, encoded as opaque VP8 with bundled Playwright FFmpeg.
-const videoBuffer=await readFile(new URL('./fixtures/chat-video.webm',import.meta.url));
+const videoFixtures={webm:await readFile(new URL('./fixtures/chat-video.webm',import.meta.url)),mp4:await readFile(new URL('./fixtures/chat-video.mp4',import.meta.url))};
 
 for(const [engine,name,size] of [[chromium,'desktop',{width:1440,height:1000}],[webkit,'mobile',{width:390,height:844}]]){
  const browser=await engine.launch();
@@ -47,7 +47,8 @@ for(const [engine,name,size] of [[chromium,'desktop',{width:1440,height:1000}],[
   const fileThread=await(await guest.request.get(base+'/api/v1/chat')).json();const fileID=fileThread.messages.at(-1).id;
   const download=await guest.request.get(base+'/api/v1/chat/attachments/'+fileID);assert.equal(download.status(),200);assert.match(download.headers()['content-disposition'],/^attachment;/);assert.equal((await download.body()).toString(),'private customer attachment');assert.equal((await stranger.request.get(base+'/api/v1/chat/attachments/'+fileID)).status(),404);
 
-  await accountThread.getByLabel('Добавить фото, видео или файл',{exact:true}).setInputFiles({name:'plant.webm',mimeType:'video/webm',buffer:videoBuffer});
+  const videoFormat=name==='mobile'?'mp4':'webm';
+  await accountThread.getByLabel('Добавить фото, видео или файл',{exact:true}).setInputFiles({name:`plant.${videoFormat}`,mimeType:`video/${videoFormat}`,buffer:videoFixtures[videoFormat]});
   await accountThread.locator('.chat-preview').waitFor();await Promise.all([page.waitForResponse(response=>response.url()===base+'/api/v1/chat/messages'&&response.request().method()==='POST'),accountThread.getByRole('button',{name:'Отправить',exact:true}).click()]);
   const videoThread=await(await guest.request.get(base+'/api/v1/chat')).json();
   const video=accountThread.locator(`video[src$="/${videoThread.messages.at(-1).id}"]`);await video.waitFor();

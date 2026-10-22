@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"image"
 	_ "image/jpeg"
@@ -119,7 +120,7 @@ func Validate(input *Input) ([]byte, string, error) {
 		if err != nil || len(data) == 0 || len(data) > 20*1024*1024 {
 			return nil, "", ErrInvalid
 		}
-		kind = http.DetectContentType(data)
+		kind = attachmentContentType(data)
 		if kind == "image/jpeg" || kind == "image/png" {
 			cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 			if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > 16000000 || len(data) > 2*1024*1024 {
@@ -133,6 +134,30 @@ func Validate(input *Input) ([]byte, string, error) {
 		return nil, "", ErrInvalid
 	}
 	return data, kind, nil
+}
+
+// DetectContentType recognizes mp4* brands, while phone/browser recordings also
+// use ISO base media brands. Inspect only a complete, bounded ftyp box; never
+// trust the supplied extension or MIME type.
+func attachmentContentType(data []byte) string {
+	kind := http.DetectContentType(data)
+	if kind != "application/octet-stream" || len(data) < 16 || string(data[4:8]) != "ftyp" {
+		return kind
+	}
+	size := int(binary.BigEndian.Uint32(data[:4]))
+	if size < 16 || size > 512 || size > len(data) || size%4 != 0 {
+		return kind
+	}
+	for offset := 8; offset+4 <= size; offset += 4 {
+		if offset == 12 { // minor version, not a compatible brand
+			continue
+		}
+		switch string(data[offset : offset+4]) {
+		case "isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9", "avc1", "mp41", "mp42", "M4V ", "dash", "cmfc", "cmfs":
+			return "video/mp4"
+		}
+	}
+	return kind
 }
 
 // Resolve binds a guest's own history on login, merging into the account's
