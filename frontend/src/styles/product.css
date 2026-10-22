@@ -499,3 +499,5 @@
   .product-page .pdp-quantity { width: 132px; }
   .product-page .pdp-quantity button { width: 40px; }
 }
+
+.product-page .pdp-summary .related-card .latin { color: #71665b; }

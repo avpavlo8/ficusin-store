@@ -72,9 +72,8 @@ test("@desktop header cart opens the shared cart without covering content", asyn
   await mockApi(page);await page.goto('/');
   await expect(page.locator('.floating-cart')).toHaveCount(0);
   await page.locator('.storefront-card').first().getByRole('button',{name:'В корзину',exact:true}).click();
-  await page.getByRole('link',{name:'Корзина, товаров: 1',exact:true}).click();
-  await expect(page).toHaveURL(/\/cart$/);
-  await expect(page.locator('.cart-line')).toHaveCount(1);
+  await page.getByRole('button',{name:'Корзина, товаров: 1',exact:true}).click();
+  await expect(page.locator('.drawer.open .cart-line')).toHaveCount(1);
 });
 
 

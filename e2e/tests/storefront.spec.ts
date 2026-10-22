@@ -258,7 +258,7 @@ test("@desktop @phone инструкция доступна по QR и раск�
     for (const arrow of await guide.locator(".plant-arrival-arrow").all()) await expect(arrow).toBeVisible();
   }
   await expect.poll(async () => (await guide.boundingBox())?.y).toBeLessThan(150);
-  await expect(guide.getByRole("link")).toHaveCount(0);
+  await expect(guide.getByRole("tab")).toHaveCount(0);
   await expect(page.locator("#plant-lighting .plant-copy")).toHaveText("Яркий рассеянный свет");
   await expect(page.locator("#plant-watering .plant-copy")).toHaveText("После просыхания верхнего слоя");
   await expect(page.locator("#plant-repotting")).toHaveCount(0);
