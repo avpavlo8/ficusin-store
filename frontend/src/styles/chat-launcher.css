@@ -9,3 +9,6 @@ body.menu-open .chat-launcher, body.drawer-open .chat-launcher { display: none; 
 @media (max-width: 760px) { .chat-launcher { right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); min-width: 48px; padding: 12px; } .chat-launcher > span { display: none; } .quick-chat-open .chat-launcher { display: none; } body.quick-chat-open { overflow: hidden; } .quick-chat-loading { inset: 20px; width: auto; bottom: auto; } }
 
 @media (max-width: 760px) { body.quick-chat-open .tab-bar, body.quick-chat-open .install-hint { display: none; } }
+body:has(.account-chat-page) .chat-launcher { bottom: 24px; }
+body:has(.account-chat-page .chat-compose:focus-within) .chat-launcher { display: none; }
+@media (max-width: 760px) { body:has(.account-chat-page) .chat-launcher { bottom: 8px; } }
