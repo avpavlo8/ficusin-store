@@ -76,7 +76,7 @@
 .account-chat-conversation { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .account-chat-count { margin-left: 8px; padding: 2px 6px; background: #3390ec; color: #fff; border-radius: 99px; font-size: 10px; }
 .admin-chat-title h1 { margin-bottom: 8px; font-size: 30px; font-weight: 400; }
-.admin-chat-title > p { color: #637585; font-size: 13px; margin-bottom: 24px; }
+.admin-chat-title > p { color: #536777; font-size: 13px; margin-bottom: 24px; }
 .admin-chat-layout { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(0, 1.35fr); height: max(600px, calc(100dvh - 240px)); border: 1px solid var(--chat-line); background: white; border-radius: 12px; overflow: hidden; }
 .admin-chat-inbox { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--chat-line); }
 .admin-chat-filters { padding: 16px; display: grid; gap: 12px; border-bottom: 1px solid var(--chat-line); }
@@ -87,9 +87,9 @@
 .admin-chat-item:hover, .admin-chat-item.active { background: #eef6fd; }
 .admin-chat-item > span, .admin-chat-item > small { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .admin-chat-item strong { font-size: 13px; overflow-wrap: anywhere; }
-.admin-chat-item time { font-size: 10px; flex: none; color: #637585; }
+.admin-chat-item time { font-size: 10px; flex: none; color: #536777; }
 .admin-chat-item p { font-size: 12px; margin: 8px 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.admin-chat-item small { font-size: 10px; color: #637585; }
+.admin-chat-item small { font-size: 10px; color: #536777; }
 .admin-chat-item b { color: #236da8; }
 .admin-chat-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .chat-resolve { margin-left: auto; min-height: 36px; padding: 8px; border: 1px solid var(--chat-line); background: #f4f6f8; border-radius: 6px; cursor: pointer; font-size: 11px; }
