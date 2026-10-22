@@ -27,39 +27,6 @@
   padding-bottom: 30px;
 }
 
-/* Expanded order must stop behaving like a second table layout. */
-.admin-page .admin-table tr.order-details > td {
-  display: table-cell;
-  padding: 24px !important;
-  background: #f8f2e9;
-  border-top: 1px solid #ddcfbd;
-}
-.admin-page .admin-table tr.order-details:hover > td {
-  background: #f8f2e9;
-}
-.admin-page .order-details > td > .admin-order-editor {
-  width: 100%;
-  margin: 0;
-}
-.admin-page .order-details > td > .admin-order-editor + div {
-  margin-top: 16px;
-  padding: 18px 20px;
-  border: 1px solid #ddcfbd;
-  border-radius: 16px;
-  background: rgba(255, 253, 248, .94);
-}
-.admin-page .order-details > td > .admin-order-editor + div strong {
-  display: block;
-  margin-bottom: 6px;
-  color: #294326;
-  font-size: 13px;
-}
-.admin-page .order-details > td > .admin-order-editor + div p {
-  margin: 0;
-  color: #697169;
-  line-height: 1.5;
-}
-
 /* Editor container. Keep the workflow vertical: composition -> delivery ->
    save -> money. It is much easier for a manager during a phone call. */
 .admin-page .admin-order-editor {
@@ -251,18 +218,6 @@
   color: #294326;
   font-weight: 700;
 }
-.admin-page .admin-order-refund-form {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: minmax(150px, 220px) auto auto;
-  gap: 10px;
-  align-items: center;
-}
-.admin-page .admin-order-refund-form input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-}
 
 /* The table itself needs breathing room so opening a row does not look like
    a broken spreadsheet. */
@@ -291,9 +246,6 @@
   .admin-page .account-title {
     margin-top: -122px;
     min-height: 92px;
-  }
-  .admin-page .admin-table tr.order-details > td {
-    padding: 14px !important;
   }
   .admin-page .admin-order-editor > .admin-block {
     padding: 17px;
@@ -324,12 +276,10 @@
   .admin-page .admin-order-edit-line > .admin-action {
     justify-self: start;
   }
-  .admin-page .admin-order-add-line,
-  .admin-page .admin-order-refund-form {
+  .admin-page .admin-order-add-line {
     grid-template-columns: 1fr;
   }
-  .admin-page .admin-order-add-line .admin-action,
-  .admin-page .admin-order-refund-form .admin-action {
+  .admin-page .admin-order-add-line .admin-action {
     width: 100%;
   }
 }

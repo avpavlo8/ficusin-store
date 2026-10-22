@@ -56,6 +56,7 @@ type OrderDetail = {
   paymentReady?: boolean;
   repackRequested?: boolean;
   subtotal: number;
+  discountAmount?: number;
   total: number;
   createdAt: string;
   items: Array<{ productName: string; unitPrice: number; quantity: number }>;
@@ -71,7 +72,7 @@ const orderStatusLabels: Record<string, string> = {
   assembling: "Собирается",
   processing: "Собирается",
   ready: "Готов к выдаче",
-  shipped: "Передан в доставку",
+  shipped: "В доставке",
   completed: "Выполнен",
   cancelled: "Отменён",
 };
@@ -263,7 +264,8 @@ function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
       ))}
     </section>
     <section className="order-totals">
-      <div><span>Товары</span><span>{money.format(order.subtotal)}</span></div>
+      <div><span>Товары</span><span>{money.format(order.subtotal + (order.discountAmount ?? 0))}</span></div>
+      {!!order.discountAmount && <div><span>Скидка</span><span>−{money.format(order.discountAmount)}</span></div>}
       <div><span>{order.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"}</span><span>{order.deliveryFeePending ? "рассчитает менеджер" : order.deliveryFee ? money.format(order.deliveryFee) : "—"}</span></div>
       {order.hasPreorder && <p className="order-note">В заказе есть растения под заказ. Менеджер уточнит срок поставки; до его решения оплата не требуется.</p>}
       {order.deliveryFeePending && <p className="order-note">{order.deliveryPayee === "carrier" ? (order.repackRequested

@@ -1181,6 +1181,13 @@ func (repository *PostgresRepository) SetDeliveryFee(
 	`, id).Scan(&before); err != nil {
 		return Order{}, err
 	}
+	var packingActive bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_packing_workflows WHERE order_id=$1 AND state NOT IN ('cancelled','stale'))`, id).Scan(&packingActive); err != nil {
+		return Order{}, err
+	}
+	if packingActive {
+		return Order{}, fmt.Errorf("упаковка уже подтверждена; доставка зафиксирована")
+	}
 	// Preserve the payment contract of historical shop-paid deliveries.
 	// New orders collect only for plants; the carrier charges transport.
 	if _, err := tx.Exec(ctx, `

@@ -183,6 +183,7 @@ func main() {
 		cfg.SiteURL,
 		logger,
 	)
+	adminRepository.WithOrderPacking(shopSettings, cfg.Mail.Host != "" && cfg.Mail.From != "", paymentService.Configured(), shippingWorker.Wake)
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
 	procurementStore := procurement.NewPostgresStore(pool)
 	marketplaceExecutor := integration.NewMarketplaceExecutor(
@@ -262,6 +263,7 @@ func main() {
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
 	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
 	go shippingWorker.Run(ctx)
+	go order.NewPackingWorker(pool, paymentService, cfg.SiteURL, logger).WithPaymentsEnabled(func() bool { return shopSettings.Enabled(settings.PaymentsEnabled) }).Run(ctx)
 	go order.NewLetterWorker(pool, mail.NewSender(mail.Config{
 		Host:     cfg.Mail.Host,
 		Port:     cfg.Mail.Port,

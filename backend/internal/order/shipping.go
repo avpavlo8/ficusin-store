@@ -40,10 +40,10 @@ var cdekStatusToOrder = map[string]string{
 	"IN_TRANSIT":                            "shipped",
 	"ACCEPTED_IN_TRANSIT_CITY":              "shipped",
 	"ACCEPTED_AT_TRANSIT_WAREHOUSE":         "shipped",
-	"RECEIVED_AT_DELIVERY_WAREHOUSE":        "ready",
-	"ACCEPTED_AT_PICK_UP_POINT":             "ready",
-	"POSTOMAT_POSTED":                       "ready",
-	"READY_FOR_RECIPIENT":                   "ready",
+	"RECEIVED_AT_DELIVERY_WAREHOUSE":        "shipped",
+	"ACCEPTED_AT_PICK_UP_POINT":             "shipped",
+	"POSTOMAT_POSTED":                       "shipped",
+	"READY_FOR_RECIPIENT":                   "shipped",
 	"DELIVERED":                             "completed",
 }
 
@@ -142,7 +142,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
 			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
-			AND (o.payment_status IN ('paid','on_delivery') OR (o.payment_status='pending' AND o.cdek_checkout_requested=1))
+			AND (o.payment_status IN ('paid','on_delivery') OR (o.payment_status IN ('pending','partially_paid') AND o.cdek_checkout_requested=1))
 			AND NOT EXISTS (SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status NOT IN ('cancelled','expired','stale'))
 			AND (EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NOT NULL
@@ -615,7 +615,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 				AND o.delivery_fee_pending = 0
 				AND o.has_preorder = 0
 				AND o.status NOT IN ('cancelled', 'completed')
-				AND (o.payment_status IN ('paid', 'on_delivery') OR (o.payment_status='pending' AND o.cdek_checkout_requested=1))
+				AND (o.payment_status IN ('paid', 'on_delivery') OR (o.payment_status IN ('pending','partially_paid') AND o.cdek_checkout_requested=1))
 				AND NOT EXISTS (
 					SELECT 1 FROM order_items oi
 					WHERE oi.order_id = o.id AND oi.variant_id IS NULL
@@ -693,7 +693,12 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			}
 			continue
 		}
-		items, box, err := worker.shipmentContents(ctx, item.id)
+		packages, err := worker.measuredOrderPackages(ctx, item.id, item.number)
+		var items []integration.ShipmentItem
+		var box integration.Parcel
+		if err == nil && len(packages) == 0 {
+			items, box, err = worker.shipmentContents(ctx, item.id)
+		}
 		if err != nil {
 			worker.logger.Error("load shipment contents failed", "error", err, "order_id", item.id)
 			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, err)
@@ -709,6 +714,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			OfficeCode:        item.office,
 			CityCode:          item.city,
 			Box:               box,
+			Packages:          packages,
 			Items:             items,
 			SenderName:        worker.settings.Value(settings.CDEKSenderName),
 			SenderPhone:       worker.settings.Value(settings.CDEKSenderPhone),
@@ -811,7 +817,7 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 			worker.logger.Error("fetch cdek order failed", "error", err, "order", item.number)
 			continue
 		}
-		if shipment.TrackNumber == item.track && shipment.Status == item.cdekStatus {
+		if mapped := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; shipment.TrackNumber == item.track && shipment.Status == item.cdekStatus && (mapped == "" || mapped == item.status) {
 			if _, err := worker.pool.Exec(ctx, `
 				UPDATE orders SET cdek_synced_at = CURRENT_TIMESTAMP WHERE id = $1
 			`, item.id); err != nil {
@@ -819,13 +825,13 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 			}
 			continue
 		}
-		nextStatus := item.status
+		nextStatus := ""
 		if mapped, known := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; known {
 			nextStatus = mapped
 		}
 		if _, err := worker.pool.Exec(ctx, `
 			UPDATE orders
-			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') THEN status ELSE $5 END,
+			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') OR $5='' THEN status ELSE $5 END,
 				cdek_synced_at = CURRENT_TIMESTAMP
 			WHERE id = $1
 		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus); err != nil {
@@ -834,7 +840,7 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		}
 		// The customer hears about the milestone, not about every scan at
 		// every warehouse along the way.
-		if nextStatus != item.status && item.customerID != nil && worker.notifier != nil {
+		if nextStatus != "" && nextStatus != item.status && item.customerID != nil && worker.notifier != nil {
 			_ = worker.notifier.NotifyOrderStatus(ctx, *item.customerID, item.number, nextStatus)
 		}
 	}
@@ -913,6 +919,9 @@ func (worker *ShippingWorker) shipmentContents(
 	if err := rows.Err(); err != nil {
 		return nil, integration.Parcel{}, err
 	}
-	box, _ := integration.CombineParcels(parcels)
+	box, measured := integration.CombineParcels(parcels)
+	if !measured {
+		return nil, integration.Parcel{}, errors.New("не заполнены размеры и вес упаковки — подтвердите фактические коробки заказа")
+	}
 	return items, box, nil
 }

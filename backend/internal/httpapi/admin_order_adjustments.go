@@ -143,6 +143,19 @@ func (handlers adminHandlers) editOrderContents(response http.ResponseWriter, re
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные заказа"})
 		return
 	}
+	if packing, ok := handlers.repository.(interface {
+		OrderPacking(context.Context, int64) (admin.OrderPackingState, error)
+	}); ok {
+		state, err := packing.OrderPacking(request.Context(), id)
+		if err != nil {
+			handlers.failed(response, "check order packing before edit", err)
+			return
+		}
+		if state.State != "draft" {
+			writeJSON(response, http.StatusConflict, errorResponse{Error: "упаковка уже подтверждена; состав и доставка зафиксированы"})
+			return
+		}
+	}
 	payments, hasPayments := handlers.payments.(adminOrderPaymentService)
 	if hasPayments {
 		// Retire the old attempt under the same lock used for capture before

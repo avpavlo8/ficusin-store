@@ -78,8 +78,10 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 			-- ничего не бросал, а заказ исчезал вместе с резервом.
 			AND payment_method = 'online'
 			AND has_preorder = 0
+			AND delivery_fee_pending = 0
+			AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w LEFT JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') AND b.sent_at IS NULL)
 			AND status NOT IN ('cancelled', 'completed')
-			AND created_at < CURRENT_TIMESTAMP - make_interval(hours => $1)
+			AND COALESCE((SELECT b.sent_at FROM order_packing_workflows w JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at) < CURRENT_TIMESTAMP - make_interval(hours => $1)
 		ORDER BY id
 		LIMIT 100
 	`, hours)
@@ -109,6 +111,28 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 // Everything happens in one transaction: stock released without the order
 // being cancelled would let the same plants be sold twice.
 func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
+	// Recheck a selected candidate under the preparation lock. A manager may
+	// have confirmed packing after the worker selected this older order.
+	if worker.settings != nil && worker.pool != nil {
+		guard, err := worker.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = guard.Rollback(ctx) }()
+		if _, err = guard.Exec(ctx, `SELECT pg_advisory_xact_lock(7241,$1::integer)`, orderID); err != nil {
+			return err
+		}
+		var eligible bool
+		err = guard.QueryRow(ctx, `SELECT payment_status='pending' AND payment_method='online' AND has_preorder=0 AND delivery_fee_pending=0 AND status NOT IN ('cancelled','completed')
+		 AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w LEFT JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') AND b.sent_at IS NULL)
+		 AND COALESCE((SELECT b.sent_at FROM order_packing_workflows w JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at)<CURRENT_TIMESTAMP-make_interval(hours=>$2) FROM orders o WHERE id=$1`, orderID, worker.settings.Number("orders.auto_cancel_hours")).Scan(&eligible)
+		if err != nil {
+			return err
+		}
+		if !eligible {
+			return nil
+		}
+	}
 	// Сначала гасим платёж у провайдера — и только потом трогаем заказ.
 	//
 	// Порядок важен дважды. Во-первых, отказ провайдера означает, что

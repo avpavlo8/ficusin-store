@@ -27,7 +27,7 @@ export const orderStatuses = ["new", "confirmed", "assembling", "ready", "shippe
 
 export const statusLabels: Record<string, string> = {
   new: "Новый", confirmed: "Подтверждён", assembling: "Собирается", ready: "Готов",
-  shipped: "Отправлен", completed: "Завершён", cancelled: "Отменён",
+  shipped: "В доставке", completed: "Завершён", cancelled: "Отменён",
   draft: "Черновик", published: "Опубликован", archived: "В архиве",
 };
 

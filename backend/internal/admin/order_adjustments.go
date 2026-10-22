@@ -33,6 +33,7 @@ type OrderEdit struct {
 	// order must be cancelled instead of becoming a zero-ruble ghost.
 	Items       *[]OrderEditLine `json:"items"`
 	DeliveryFee *float64         `json:"deliveryFee"`
+	Discount    *OrderDiscount   `json:"discount"`
 }
 
 type editableOrderLine struct {
@@ -188,6 +189,13 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	if err := tx.QueryRow(ctx, `SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown') FROM orders WHERE id=$1`, id).Scan(&activeCDEK); err != nil {
 		return Order{}, err
 	}
+	var packingActive bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_packing_workflows WHERE order_id=$1 AND state NOT IN ('cancelled','stale'))`, id).Scan(&packingActive); err != nil {
+		return Order{}, err
+	}
+	if packingActive {
+		return Order{}, errors.New("упаковка уже подтверждена и заказ передан в обработку; состав и доставка зафиксированы")
+	}
 	if activeCDEK {
 		return Order{}, fmt.Errorf("заявка СДЭК уже создаётся или зарегистрирована: сначала сверьте и отмените её у перевозчика перед изменением состава или доставки")
 	}
@@ -199,7 +207,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 
 	var before map[string]any
-	if err := tx.QueryRow(ctx, `SELECT jsonb_build_object('subtotal',subtotal,'deliveryFee',delivery_fee,'total',total,'hasPreorder',has_preorder,'feePending',delivery_fee_pending) FROM orders WHERE id=$1`, id).Scan(&before); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT jsonb_build_object('subtotal',subtotal,'deliveryFee',delivery_fee,'total',total,'hasPreorder',has_preorder,'feePending',delivery_fee_pending,'discountType',manager_discount_type,'discountValue',manager_discount_value,'discountAmount',manager_discount_amount) FROM orders WHERE id=$1`, id).Scan(&before); err != nil {
 		return Order{}, err
 	}
 
@@ -316,17 +324,41 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			return Order{}, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE orders SET subtotal=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0),
-			total=COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0)
-				+ CASE WHEN delivery_payee='shop' THEN delivery_fee ELSE 0 END,
-			shipment_revision=shipment_revision+1
-		WHERE id=$1
-	`, id); err != nil {
+	var gross int64
+	var discount OrderDiscount
+	if err := tx.QueryRow(ctx, `SELECT ROUND(COALESCE((SELECT SUM(unit_price*quantity) FROM order_items WHERE order_id=$1),0)*100)::BIGINT,manager_discount_type,manager_discount_value::double precision FROM orders WHERE id=$1`, id).Scan(&gross, &discount.Type, &discount.Value); err != nil {
 		return Order{}, err
 	}
+	discountChanged := edit.Discount != nil && (discount.Type != edit.Discount.Type || discount.Value != edit.Discount.Value)
+	if edit.Discount != nil {
+		discount = *edit.Discount
+	}
+	amount, err := discountMinor(gross, discount)
+	if err != nil {
+		return Order{}, err
+	}
+	if discountChanged {
+		var legacy bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments WHERE order_id=$1 AND status IN ('pending','superseded') AND (provider_payment_id<>'' OR request_payload IS NOT NULL) AND COALESCE(request_payload->'Metadata'->>'ficusin_capture_mode',request_payload->'metadata'->>'ficusin_capture_mode','')<>'two_stage')`, id).Scan(&legacy); err != nil {
+			return Order{}, err
+		}
+		if legacy {
+			return Order{}, errors.New("сначала сверьте действующую платёжную ссылку старого типа перед изменением скидки")
+		}
+		var paidOrPartial bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments WHERE order_id=$1 AND status='paid') OR EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=$1 AND status NOT IN ('draft','packaging_required','stale','cancelled','expired'))`, id).Scan(&paidOrPartial); err != nil {
+			return Order{}, err
+		}
+		if paidOrPartial {
+			return Order{}, errors.New("скидка доступна до оплаты и отправки заказа")
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE orders SET subtotal=$2::numeric/100,total=$2::numeric/100+CASE WHEN delivery_payee='shop' THEN delivery_fee ELSE 0 END,manager_discount_type=$3,manager_discount_value=$4,manager_discount_amount=$5::numeric/100,shipment_revision=shipment_revision+1 WHERE id=$1`, id, gross-amount, discount.Type, discount.Value, amount); err != nil {
+		return Order{}, err
+	}
+
 	var after map[string]any
-	if err := tx.QueryRow(ctx, `SELECT jsonb_build_object('subtotal',subtotal,'deliveryFee',delivery_fee,'total',total,'hasPreorder',has_preorder,'feePending',delivery_fee_pending) FROM orders WHERE id=$1`, id).Scan(&after); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT jsonb_build_object('subtotal',subtotal,'deliveryFee',delivery_fee,'total',total,'hasPreorder',has_preorder,'feePending',delivery_fee_pending,'discountType',manager_discount_type,'discountValue',manager_discount_value,'discountAmount',manager_discount_amount) FROM orders WHERE id=$1`, id).Scan(&after); err != nil {
 		return Order{}, err
 	}
 	if err := insertAudit(ctx, tx, actor, "order.contents.update", "order", fmt.Sprint(id), before, after); err != nil {
