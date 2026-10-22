@@ -135,15 +135,21 @@ func (client *CDEKClient) Configured() bool {
 }
 
 func (client *CDEKClient) FindCities(ctx context.Context, city string) ([]CDEKCity, error) {
-	query := url.Values{"city": {city}, "country_codes": {"RU"}, "size": {"20"}}
-	var cities []CDEKCity
-	if err := client.request(ctx, http.MethodGet, "/location/cities?"+query.Encode(), nil, &cities); err != nil {
+	// /location/cities requires an exact city name; the suggest endpoint
+	// accepts the partial name entered in the checkout's autocomplete.
+	query := url.Values{"name": {strings.TrimSpace(city)}, "country_code": {"RU"}}
+	var suggestions []struct {
+		Code        int    `json:"code"`
+		FullName    string `json:"full_name"`
+		CountryCode string `json:"country_code"`
+	}
+	if err := client.request(ctx, http.MethodGet, "/location/suggest/cities?"+query.Encode(), nil, &suggestions); err != nil {
 		return nil, err
 	}
-	filtered := cities[:0]
-	for _, item := range cities {
-		if item.CountryCode == "" || item.CountryCode == "RU" {
-			filtered = append(filtered, item)
+	filtered := make([]CDEKCity, 0, len(suggestions))
+	for _, item := range suggestions {
+		if item.Code > 0 && strings.TrimSpace(item.FullName) != "" && (item.CountryCode == "" || item.CountryCode == "RU") {
+			filtered = append(filtered, CDEKCity{Code: item.Code, City: strings.TrimSpace(item.FullName), CountryCode: item.CountryCode})
 		}
 	}
 	return filtered, nil
@@ -204,7 +210,7 @@ func (client *CDEKClient) CalculatePVZPackages(
 		packages = append(packages, map[string]int{
 			"weight": box.WeightGrams,
 			"length": box.LengthCM,
-			"width": box.WidthCM,
+			"width":  box.WidthCM,
 			"height": box.HeightCM,
 		})
 	}
@@ -363,12 +369,12 @@ type Shipment struct {
 
 // ShipmentRequest is everything CDEK needs to accept a parcel.
 type ShipmentRequest struct {
-	OrderNumber   string
-	TariffCode    int
-	OfficeCode    string
-	CityCode      int
-	Box           Parcel
-	Items         []ShipmentItem
+	OrderNumber string
+	TariffCode  int
+	OfficeCode  string
+	CityCode    int
+	Box         Parcel
+	Items       []ShipmentItem
 	// Packages is the measured packing accepted by the customer. When it is
 	// present, CDEK receives these exact places. Box and Items remain as the
 	// backwards-compatible path for ordinary orders.
@@ -418,7 +424,9 @@ func (client *CDEKClient) CreateOrder(
 	}
 	for _, current := range request.Packages {
 		number := current.Number
-		if number == "" { number = request.OrderNumber }
+		if number == "" {
+			number = request.OrderNumber
+		}
 		packages = append(packages, map[string]any{
 			"number": number,
 			"weight": max(1, current.Box.WeightGrams),
@@ -429,15 +437,15 @@ func (client *CDEKClient) CreateOrder(
 		})
 	}
 	body := map[string]any{
-		"type":            1,
-		"number":          request.OrderNumber,
-		"tariff_code":     request.TariffCode,
-		"from_location":   map[string]any{"code": cdekFromCityCode, "address": request.SenderAddress},
-		"delivery_point":  request.OfficeCode,
-		"packages":        packages,
-		"sender":          map[string]any{"name": request.SenderName, "phones": phones(request.SenderPhone)},
-		"recipient":       map[string]any{"name": request.RecipientName, "phones": phones(request.RecipientPhone)},
-		"comment":         "Заказ " + request.OrderNumber + " с сайта ficusin.ru",
+		"type":           1,
+		"number":         request.OrderNumber,
+		"tariff_code":    request.TariffCode,
+		"from_location":  map[string]any{"code": cdekFromCityCode, "address": request.SenderAddress},
+		"delivery_point": request.OfficeCode,
+		"packages":       packages,
+		"sender":         map[string]any{"name": request.SenderName, "phones": phones(request.SenderPhone)},
+		"recipient":      map[string]any{"name": request.RecipientName, "phones": phones(request.RecipientPhone)},
+		"comment":        "Заказ " + request.OrderNumber + " с сайта ficusin.ru",
 	}
 	if request.PaymentOnDelivery > 0 {
 		// Additional shop collection; do not use for the carrier tariff.
@@ -517,9 +525,9 @@ func (client *CDEKClient) FetchOrder(ctx context.Context, uuid string) (Shipment
 	}
 	var result struct {
 		Entity struct {
-			UUID        string `json:"uuid"`
-			CDEKNumber  string `json:"cdek_number"`
-			Statuses    []struct {
+			UUID       string `json:"uuid"`
+			CDEKNumber string `json:"cdek_number"`
+			Statuses   []struct {
 				Code string `json:"code"`
 				Name string `json:"name"`
 			} `json:"statuses"`
@@ -569,12 +577,12 @@ func shipmentItems(items []ShipmentItem) []map[string]any {
 	encoded := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		encoded = append(encoded, map[string]any{
-			"name":        truncateRunes(item.Name, 120),
-			"ware_key":    truncateRunes(item.Name, 20),
-			"payment":     map[string]any{"value": 0},
-			"cost":        item.Price,
-			"weight":      max(1, item.WeightGrams),
-			"amount":      max(1, item.Quantity),
+			"name":     truncateRunes(item.Name, 120),
+			"ware_key": truncateRunes(item.Name, 20),
+			"payment":  map[string]any{"value": 0},
+			"cost":     item.Price,
+			"weight":   max(1, item.WeightGrams),
+			"amount":   max(1, item.Quantity),
 		})
 	}
 	return encoded
