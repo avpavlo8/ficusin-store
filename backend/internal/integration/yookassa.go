@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -286,37 +288,85 @@ func rubles(amount float64) string {
 	return strconv.FormatFloat(amount, 'f', 2, 64)
 }
 
-// Refund sends the money back. YooKassa refuses to refund more than was
-// paid, but we check too: a refund larger than the payment would be a bug
-// that costs real money.
-func (client *YooKassaClient) Refund(
-	ctx context.Context,
-	paymentID string,
-	amount float64,
-	idempotenceKey string,
-) error {
-	if !client.Configured() {
-		return errors.New("оплата не настроена")
+// RefundRequest is persisted before the request leaves the shop.
+type RefundRequest struct {
+	PaymentID      string
+	Amount         float64
+	IdempotenceKey string
+	Receipt        map[string]any `json:",omitempty"`
+}
+type Refund struct {
+	ID        string  `json:"id"`
+	Status    string  `json:"status"`
+	PaymentID string  `json:"payment_id"`
+	Amount    float64 `json:"-"`
+}
+
+func (client *YooKassaClient) RefundUsesReceipt() bool { return client.sendReceipt }
+func (client *YooKassaClient) PrepareRefund(paymentID string, amount float64, key string, original PaymentRequest) (RefundRequest, error) {
+	req := RefundRequest{PaymentID: paymentID, Amount: amount, IdempotenceKey: key}
+	if client.sendReceipt {
+		var total int64
+		for _, item := range original.Items {
+			total += int64(math.Round(item.Price*100)) * int64(item.Quantity)
+		}
+		// A partial refund needs its real item composition, never a fabricated line.
+		if len(original.Items) == 0 || total != int64(math.Round(amount*100)) {
+			return req, errors.New("для частичного возврата нужен состав чека; выполните возврат через кассу с проверкой позиций")
+		}
+		req.Receipt = client.receipt(original)
 	}
-	if strings.TrimSpace(paymentID) == "" || amount <= 0 {
-		return errors.New("нечего возвращать")
+	return req, nil
+}
+func (client *YooKassaClient) CreateRefund(ctx context.Context, request RefundRequest) (Refund, error) {
+	if !client.Configured() || request.PaymentID == "" || request.Amount <= 0 || request.IdempotenceKey == "" {
+		return Refund{}, errors.New("некорректный запрос возврата")
 	}
-	body := map[string]any{
-		"payment_id": paymentID,
-		"amount": map[string]string{
-			"value":    rubles(amount),
-			"currency": "RUB",
-		},
+	body := map[string]any{"payment_id": request.PaymentID, "amount": map[string]string{"value": rubles(request.Amount), "currency": "RUB"}}
+	if request.Receipt != nil {
+		body["receipt"] = request.Receipt
 	}
+	return client.refundResponse(ctx, http.MethodPost, "/refunds", request.IdempotenceKey, body)
+}
+func (client *YooKassaClient) FetchRefund(ctx context.Context, id string) (Refund, error) {
+	if id == "" {
+		return Refund{}, errors.New("не указан возврат")
+	}
+	return client.refundResponse(ctx, http.MethodGet, "/refunds/"+url.PathEscape(id), "", nil)
+}
+func (client *YooKassaClient) refundResponse(ctx context.Context, method, path, key string, body any) (Refund, error) {
 	var response struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
+		ID        string `json:"id"`
+		Status    string `json:"status"`
+		PaymentID string `json:"payment_id"`
+		Amount    struct {
+			Value    string `json:"value"`
+			Currency string `json:"currency"`
+		} `json:"amount"`
 	}
-	if err := client.send(ctx, http.MethodPost, "/refunds", idempotenceKey, body, &response); err != nil {
+	if err := client.send(ctx, method, path, key, body, &response); err != nil {
+		return Refund{}, err
+	}
+	amount, err := strconv.ParseFloat(response.Amount.Value, 64)
+	if err != nil || response.ID == "" || response.PaymentID == "" || response.Amount.Currency != "RUB" || (response.Status != "pending" && response.Status != "succeeded" && response.Status != "canceled") {
+		return Refund{}, fmt.Errorf("%w: некорректный ответ возврата", ErrPaymentOutcomeUnknown)
+	}
+	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: amount}, nil
+}
+
+// Kept for compatibility with callers outside the order workflow. Pending is
+// explicitly not success; order refunds use CreateRefund/FetchRefund instead.
+func (client *YooKassaClient) Refund(ctx context.Context, paymentID string, amount float64, key string) error {
+	req, err := client.PrepareRefund(paymentID, amount, key, PaymentRequest{})
+	if err != nil {
 		return err
 	}
-	if response.Status == "canceled" {
-		return errors.New("ЮKassa отклонила возврат")
+	result, err := client.CreateRefund(ctx, req)
+	if err != nil {
+		return err
+	}
+	if result.Status != "succeeded" {
+		return errors.New("возврат ещё не подтверждён")
 	}
 	return nil
 }

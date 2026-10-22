@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 // The tests run against the real built bundle served by Vite's preview
 // server, so what they check is what a visitor would get.
-const port = 4173;
+const port = Number(process.env.FICUSIN_PREVIEW_PORT || 4173);
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({

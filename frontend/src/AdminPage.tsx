@@ -79,7 +79,7 @@ export default function AdminPage() {
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
 		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
-		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} registerBeforeLeave={registerBeforeLeave} /></Suspense>}
+		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders canRefund={can("payments.refund")} focusOrder={focusOrder} onError={setError} registerBeforeLeave={registerBeforeLeave} /></Suspense>}
           {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}>{can("procurement.edit") ? <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /> : <ProcurementReadOnly onError={setError} />}</Suspense>}
           {section === "products" && <Products can={can} onError={setError} registerBeforeLeave={registerBeforeLeave} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}

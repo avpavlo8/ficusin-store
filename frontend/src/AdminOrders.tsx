@@ -50,8 +50,8 @@ function paymentLabel(order: Order) {
 
 const deliveryLabel = (value: string) => value === "pickup" ? "Самовывоз" : value === "cdek" ? "СДЭК" : value;
 
-export function Orders({ focusOrder, onError, registerBeforeLeave }: {
-  focusOrder?: string; onError: (value: string) => void; registerBeforeLeave?: RegisterGuard;
+export function Orders({ canRefund = false, focusOrder, onError, registerBeforeLeave }: {
+  canRefund?: boolean; focusOrder?: string; onError: (value: string) => void; registerBeforeLeave?: RegisterGuard;
 }) {
   const [items, setItems] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,7 +142,7 @@ export function Orders({ focusOrder, onError, registerBeforeLeave }: {
   if (navigation.orderId) return <>
     {back}
     {loading ? <WorkspaceState kind="loading" title="Загружаем заказ…" /> : loadError ? <WorkspaceState kind="error" title={loadError} /> : selected ?
-      <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказ…" />}><AdminOrderWorkspace key={selected.id} order={selected} onSaved={updateOrder} onError={onError} onStatusChange={updateStatus} registerBeforeLeave={registerGuard} /></Suspense>
+      <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказ…" />}><AdminOrderWorkspace canRefund={canRefund} key={selected.id} order={selected} onSaved={updateOrder} onError={onError} onStatusChange={updateStatus} registerBeforeLeave={registerGuard} /></Suspense>
       : <WorkspaceState kind="empty" title="Заказ не найден" detail="Проверьте ссылку или вернитесь к списку заказов." />}
   </>;
 

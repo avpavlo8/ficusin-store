@@ -22,13 +22,31 @@ type adminShipmentOfferRepository interface {
 	SendShipmentOffer(context.Context, admin.Actor, int64) (admin.ShipmentOffer, error)
 }
 
-func (handlers adminHandlers) quoteShipmentOffer(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionOrdersEdit);if !ok{return}
-	id,ok:=pathID(response,request);if !ok{return}
-	repository,ok:=handlers.repository.(adminShipmentOfferRepository);if !ok{handlers.failed(response,"shipment quote unavailable",errors.New("shipment quote unavailable"));return}
-	var input admin.ShipmentOfferInput;if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный состав отправки"});return}
-	quote,err:=repository.QuoteShipmentOffer(request.Context(),actor,id,input);if err!=nil{writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return}
-	writeJSON(response,http.StatusOK,quote)
+func (handlers adminHandlers) quoteShipmentOffer(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.repository.(adminShipmentOfferRepository)
+	if !ok {
+		handlers.failed(response, "shipment quote unavailable", errors.New("shipment quote unavailable"))
+		return
+	}
+	var input admin.ShipmentOfferInput
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный состав отправки"})
+		return
+	}
+	quote, err := repository.QuoteShipmentOffer(request.Context(), actor, id, input)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(response, http.StatusOK, quote)
 }
 
 type adminOrderPaymentService interface {
@@ -54,44 +72,99 @@ func paymentPathID(response http.ResponseWriter, request *http.Request) (int64, 
 
 func (handlers adminHandlers) recoverUnknownPayment(response http.ResponseWriter, request *http.Request) {
 	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
-	if !ok { return }
-	orderID, ok := pathID(response, request); if !ok { return }
-	paymentID, ok := paymentPathID(response, request); if !ok { return }
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	paymentID, ok := paymentPathID(response, request)
+	if !ok {
+		return
+	}
 	payments, able := handlers.payments.(adminOrderPaymentService)
-	if !able { writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой не настроена"}); return }
+	if !able {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Оплата картой не настроена"})
+		return
+	}
 	url, err := payments.RecoverUnknownForOrder(request.Context(), orderID, paymentID)
-	if err != nil { writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()}); return }
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
 	balance, err := payments.BalanceForOrder(request.Context(), orderID)
-	if err != nil { handlers.failed(response,"load recovered payment",err); return }
-	writeJSON(response,http.StatusOK,map[string]any{"confirmationUrl":url,"payment":balance})
+	if err != nil {
+		handlers.failed(response, "load recovered payment", err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
 }
 
 func (handlers adminHandlers) resolveUnknownPayment(response http.ResponseWriter, request *http.Request) {
-	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
-	if !ok { return }
-	orderID, ok := pathID(response, request); if !ok { return }
-	paymentID, ok := paymentPathID(response, request); if !ok { return }
-	var body struct { ProviderPaymentID string `json:"providerPaymentId"` }
-	if decodeJSON(request,&body)!=nil { writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Укажите ID платежа из ЮKassa"}); return }
+	_, _, ok := handlers.authorize(response, request, admin.PermissionPaymentsManage)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	paymentID, ok := paymentPathID(response, request)
+	if !ok {
+		return
+	}
+	var body struct {
+		ProviderPaymentID string `json:"providerPaymentId"`
+	}
+	if decodeJSON(request, &body) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите ID платежа из ЮKassa"})
+		return
+	}
 	payments, able := handlers.payments.(adminOrderPaymentService)
-	if !able { writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой не настроена"}); return }
-	balance, err := payments.ResolveUnknown(request.Context(),orderID,paymentID,body.ProviderPaymentID)
-	if err != nil { writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()}); return }
-	writeJSON(response,http.StatusOK,map[string]any{"payment":balance})
+	if !able {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Оплата картой не настроена"})
+		return
+	}
+	balance, err := payments.ResolveUnknown(request.Context(), orderID, paymentID, body.ProviderPaymentID)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"payment": balance})
 }
 
 func (handlers adminHandlers) dismissUnknownPayment(response http.ResponseWriter, request *http.Request) {
-	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
-	if !ok { return }
-	orderID, ok := pathID(response, request); if !ok { return }
-	paymentID, ok := paymentPathID(response, request); if !ok { return }
-	var body struct { Confirmed bool `json:"confirmed"` }
-	if decodeJSON(request,&body)!=nil||!body.Confirmed { writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Подтвердите, что платежа нет в кабинете ЮKassa"}); return }
+	_, _, ok := handlers.authorize(response, request, admin.PermissionPaymentsManage)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	paymentID, ok := paymentPathID(response, request)
+	if !ok {
+		return
+	}
+	var body struct {
+		Confirmed bool `json:"confirmed"`
+	}
+	if decodeJSON(request, &body) != nil || !body.Confirmed {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Подтвердите, что платежа нет в кабинете ЮKassa"})
+		return
+	}
 	payments, able := handlers.payments.(adminOrderPaymentService)
-	if !able { writeJSON(response,http.StatusServiceUnavailable,errorResponse{Error:"Оплата картой не настроена"}); return }
-	balance,err:=payments.DismissUnknown(request.Context(),orderID,paymentID)
-	if err!=nil { writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()}); return }
-	writeJSON(response,http.StatusOK,map[string]any{"payment":balance})
+	if !able {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Оплата картой не настроена"})
+		return
+	}
+	balance, err := payments.DismissUnknown(request.Context(), orderID, paymentID)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"payment": balance})
 }
 
 func (handlers adminHandlers) orderAdjustmentState(response http.ResponseWriter, request *http.Request) {
@@ -178,23 +251,15 @@ func (handlers adminHandlers) editOrderContents(response http.ResponseWriter, re
 			handlers.failed(response, "reconcile edited order", err)
 			return
 		}
-		// Refund only after the new order is fully known. If delivery or stock
-		// still needs a manager, a premature refund could be wrong too.
-		if balance.Ready && balance.Overpaid > 0 {
-			balance, err = payments.RefundExcess(request.Context(), id, "Автовозврат после изменения состава или доставки заказа")
-			if err != nil {
-				handlers.logger.Error("automatic order excess refund failed", "error", err, "order_id", id)
-				writeJSON(response, http.StatusBadGateway, errorResponse{Error: "Заказ изменён, но автоматический возврат не прошёл. Повторите возврат из карточки заказа"})
-				return
-			}
-		}
+		// Editing content and returning money are separate actions. The owner
+		// sees the resulting overpayment and confirms the refund explicitly.
 	}
 	state, _ := repository.OrderAdjustment(request.Context(), id)
 	writeJSON(response, http.StatusOK, map[string]any{"order": orderValue, "adjustment": state, "payment": balance})
 }
 
 func (handlers adminHandlers) refundOrderAmount(response http.ResponseWriter, request *http.Request) {
-	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionPaymentsRefund)
 	if !ok {
 		return
 	}
@@ -208,14 +273,15 @@ func (handlers adminHandlers) refundOrderAmount(response http.ResponseWriter, re
 		return
 	}
 	var body struct {
-		Amount float64 `json:"amount"`
-		Reason string  `json:"reason"`
+		RequestID string  `json:"requestId"`
+		Amount    float64 `json:"amount"`
+		Reason    string  `json:"reason"`
 	}
-	if decodeJSON(request, &body) != nil || body.Amount <= 0 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите сумму возврата"})
+	if decodeJSON(request, &body) != nil || body.Amount <= 0 || strings.TrimSpace(body.Reason) == "" || len(strings.TrimSpace(body.RequestID)) < 16 || len(body.RequestID) > 128 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите сумму и причину возврата"})
 		return
 	}
-	balance, err := payments.RefundAmount(request.Context(), id, body.Amount, body.Reason)
+	balance, err := payments.RefundAmount(payment.WithRefundRequest(payment.WithRefundActor(request.Context(), actor.CustomerID), strings.TrimSpace(body.RequestID)), id, body.Amount, body.Reason)
 	if err != nil {
 		handlers.logger.Error("partial refund failed", "error", err, "order_id", id)
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})
@@ -246,19 +312,51 @@ func (handlers adminHandlers) createOrderPaymentLink(response http.ResponseWrite
 	writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
 }
 
-func (handlers adminHandlers) createShipmentOffer(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionOrdersEdit);if !ok{return}
-	id,ok:=pathID(response,request);if !ok{return}
-	repository,ok:=handlers.repository.(adminShipmentOfferRepository);if !ok{handlers.failed(response,"shipment offer unavailable",errors.New("shipment offer unavailable"));return}
-	var input admin.ShipmentOfferInput;if decodeJSON(request,&input)!=nil{writeJSON(response,http.StatusBadRequest,errorResponse{Error:"Некорректный состав отправки"});return}
-	offer,err:=repository.CreateShipmentOffer(request.Context(),actor,id,input);if err!=nil{writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return}
-	writeJSON(response,http.StatusCreated,map[string]any{"offer":offer})
+func (handlers adminHandlers) createShipmentOffer(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.repository.(adminShipmentOfferRepository)
+	if !ok {
+		handlers.failed(response, "shipment offer unavailable", errors.New("shipment offer unavailable"))
+		return
+	}
+	var input admin.ShipmentOfferInput
+	if decodeJSON(request, &input) != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный состав отправки"})
+		return
+	}
+	offer, err := repository.CreateShipmentOffer(request.Context(), actor, id, input)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"offer": offer})
 }
 
-func (handlers adminHandlers) sendShipmentOffer(response http.ResponseWriter,request *http.Request){
-	_,actor,ok:=handlers.authorize(response,request,admin.PermissionOrdersEdit);if !ok{return}
-	id,ok:=pathID(response,request);if !ok{return}
-	repository,ok:=handlers.repository.(adminShipmentOfferRepository);if !ok{handlers.failed(response,"shipment offer unavailable",errors.New("shipment offer unavailable"));return}
-	offer,err:=repository.SendShipmentOffer(request.Context(),actor,id);if err!=nil{writeJSON(response,http.StatusConflict,errorResponse{Error:err.Error()});return}
-	writeJSON(response,http.StatusOK,map[string]any{"offer":offer})
+func (handlers adminHandlers) sendShipmentOffer(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.repository.(adminShipmentOfferRepository)
+	if !ok {
+		handlers.failed(response, "shipment offer unavailable", errors.New("shipment offer unavailable"))
+		return
+	}
+	offer, err := repository.SendShipmentOffer(request.Context(), actor, id)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"offer": offer})
 }

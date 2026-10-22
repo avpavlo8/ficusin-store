@@ -213,6 +213,9 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 		t.Fatalf("paid state is inconsistent: %s", state)
 	}
 
+	if _, err := pool.Exec(ctx, `UPDATE orders SET status='cancelled' WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 	if err := service.Refund(ctx, orderID); err != nil {
 		t.Fatalf("refund payment: %v", err)
 	}
@@ -225,7 +228,7 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	`, orderID).Scan(&state); err != nil {
 		t.Fatalf("read refunded state: %v", err)
 	}
-	if state != "refunded:refunded" {
+	if state != "refunded:paid" {
 		t.Fatalf("refunded state is inconsistent: %s", state)
 	}
 	// A new authorization after stock freshness expires must be canceled

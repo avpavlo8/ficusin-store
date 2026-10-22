@@ -67,7 +67,7 @@ func (limiter *rateLimiter) allow(key string) bool {
 // customer.
 func (limiter *rateLimiter) guard(message string, next http.HandlerFunc) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		if !limiter.allow(clientIP(request)) {
+		if !limiter.allow(rateLimitIP(clientIP(request))) {
 			writeJSON(response, http.StatusTooManyRequests, errorResponse{Error: message})
 			return
 		}
@@ -101,4 +101,12 @@ func clientIP(request *http.Request) string {
 		return real.String()
 	}
 	return remote.String()
+}
+
+func rateLimitIP(value string) string {
+	ip := net.ParseIP(value)
+	if ip == nil || ip.To4() != nil {
+		return value
+	}
+	return (&net.IPNet{IP: ip.Mask(net.CIDRMask(64, 128)), Mask: net.CIDRMask(64, 128)}).String()
 }

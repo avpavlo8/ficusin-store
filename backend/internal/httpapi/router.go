@@ -59,6 +59,7 @@ type Dependencies struct {
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
+	paymentStartLimit := newRateLimiter(30, time.Minute)
 	publicCache := newPublicJSONCache()
 	publicCatalog := dependencies.Catalog
 	invalidateDetails := func() {}
@@ -120,6 +121,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/attachments/{messageID}", chatAPI.serve)
 	}
 	callLimiter := newRateLimiter(5, 10*time.Minute)
+	verifyCallLimiter := newRateLimiter(120, time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
 	organizationLimiter := newRateLimiter(30, time.Minute)
@@ -158,7 +160,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"Слишком много запросов звонка. Попробуйте через несколько минут",
 		authAPI.requestCode,
 	))
-	mux.HandleFunc("POST /api/v1/auth/verify-code", authAPI.verifyCode)
+	mux.HandleFunc("POST /api/v1/auth/verify-code", verifyCallLimiter.guard("Слишком много проверок. Подождите минуту", authAPI.verifyCode))
 	mux.HandleFunc("POST /api/v1/auth/logout", authAPI.logout)
 	mux.HandleFunc("GET /api/v1/auth/me", authAPI.me)
 	mux.Handle(
@@ -202,9 +204,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	)
 	mux.Handle(
 		"POST /api/v1/payments/orders/{orderNumber}",
-		startPaymentHandler(logger, dependencies.Payments),
+		paymentStartLimit.guard("Слишком много попыток оплаты. Попробуйте позже", startPaymentHandler(logger, dependencies.Auth, dependencies.Payments).ServeHTTP),
 	)
-	mux.Handle("POST /api/v1/payments/shipment-offers/{token}", startShipmentOfferPaymentHandler(logger, dependencies.Auth, dependencies.Payments))
+	mux.Handle("POST /api/v1/payments/shipment-offers/{token}", paymentStartLimit.guard("Слишком много попыток оплаты. Попробуйте позже", startShipmentOfferPaymentHandler(logger, dependencies.Auth, dependencies.Payments).ServeHTTP))
 	mux.Handle(
 		"POST /api/v1/payments/yookassa/webhook",
 		yooKassaWebhookHandler(logger, dependencies.Payments),
@@ -239,6 +241,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/orders/{id}/adjustment", adminAPI.orderAdjustmentState)
 	mux.HandleFunc("PATCH /api/v1/admin/orders/{id}/contents", adminAPI.editOrderContents)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refund", adminAPI.refundOrderAmount)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refunds/{refundID}/receipt", adminAPI.confirmRefundReceipt)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refunds/{refundID}/resolve", adminAPI.resolveRefund)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/recover", adminAPI.recoverUnknownPayment)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/resolve", adminAPI.resolveUnknownPayment)

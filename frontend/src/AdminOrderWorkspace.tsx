@@ -5,6 +5,7 @@ import type { Order } from "./adminTypes";
 import "./styles/admin-order-workspace.css";
 
 type Props = {
+ canRefund?: boolean;
   order: Order;
   onSaved: (order: Order) => void;
   onError: (message: string) => void;
@@ -15,7 +16,7 @@ type Props = {
 const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const deliveryLabels: Record<string, string> = { pickup: "Самовывоз", cdek: "СДЭК", courier: "Курьер" };
 
-export function AdminOrderWorkspace({ order, onSaved, onError, onStatusChange, registerBeforeLeave }: Props) {
+export function AdminOrderWorkspace({ canRefund = false, order, onSaved, onError, onStatusChange, registerBeforeLeave }: Props) {
   const [review, setReview] = useState<OrderReviewState | null>(null);
   const [dirty, setDirty] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
@@ -87,7 +88,7 @@ export function AdminOrderWorkspace({ order, onSaved, onError, onStatusChange, r
         {order.comment && <section><h3>Комментарий покупателя</h3><p className="order-customer-comment">{order.comment}</p></section>}
       </aside>
 
-      <AdminOrderEditor order={order} onSaved={onSaved} onError={onError} registerBeforeLeave={registerBeforeLeave} onDirtyChange={setDirty} onReviewState={setReview} disabled={changingStatus} />
+      <AdminOrderEditor canRefund={canRefund} order={order} onSaved={onSaved} onError={onError} registerBeforeLeave={registerBeforeLeave} onDirtyChange={setDirty} onReviewState={setReview} disabled={changingStatus} />
     </div>
   </div>;
 }
