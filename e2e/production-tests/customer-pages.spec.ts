@@ -37,6 +37,6 @@ test("production information pages have navigation and the Yandex organization m
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Информация для покупателей" }).locator('a[aria-current="page"]')).toHaveCount(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
-    if (route === "/contacts") await expect(page.locator(".contacts-map iframe")).toHaveAttribute("src", /yandex\.ru\/map-widget\/v1\/\?.*oid=121536326951/);
+    if (route === "/contacts") await expect(page.locator("iframe.contacts-map")).toHaveAttribute("src", /yandex\.ru\/map-widget\/v1\/\?.*oid=121536326951/);
   }
 });
