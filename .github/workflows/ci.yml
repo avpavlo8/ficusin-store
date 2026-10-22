@@ -57,8 +57,9 @@ jobs:
       - run: npm audit --audit-level=high
         working-directory: e2e
       - name: Run Playwright tests in pinned browser image
+        # Docker must receive CI for configured retries, HTML reports and traces.
         run: >-
-          docker run --rm --ipc=host
+          docker run --rm --ipc=host -e CI=true
           -v "$GITHUB_WORKSPACE:/work"
           -w /work/e2e
           mcr.microsoft.com/playwright:v1.63.0-noble
