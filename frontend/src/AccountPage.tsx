@@ -1,12 +1,17 @@
-import { useChatUnread } from "./lib/chat";
-const AccountChat = lazy(() => import("./AccountChat"));
+import "./styles/customer-pages.css";
+import { usePageTitle } from "./lib/usePageTitle";
 import { useFavorites } from "./lib/favorites";
-import { lazy, Suspense, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, type CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
+import { StoreNavIllustration } from "./StoreNavIllustration";
 import { PushToggle } from "./PushToggle";
 import { useSharedCart } from "./lib/cart";
 import { sharedAPIJSON } from "./lib/api";
 import { money } from "./lib/money";
+import { useChatUnread } from "./lib/chat";
+const AccountChat = lazy(() => import("./AccountChat"));
+import AccountReviews from "./AccountReviews";
+import { CatalogProductCard, type CatalogCardProduct } from "./CatalogProductCard";
 
 export type StoreUser = {
   id: number;
@@ -56,9 +61,7 @@ type OrderDetail = {
   items: Array<{ productName: string; unitPrice: number; quantity: number }>;
 };
 
-type FavoriteProduct = {
-  id: string; sku: string; name: string; latin: string; price: number; image: string; stock: number;
-};
+type FavoriteProduct = CatalogCardProduct;
 
 type Section = "chat" | "orders" | "profile" | "favorites" | "reviews";
 
@@ -121,18 +124,6 @@ function fullNameOf(user: StoreUser) {
   return [user.lastName, user.fullName, user.patronymic].filter(Boolean).join(" ") || user.fullName;
 }
 
-const accountIcons: Record<Section, string> = {
-  chat: "M5 4h14v14H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
-  orders: "M5 4h14v16H5zM8 2v4M16 2v4M8 10h8M8 14h5",
-  profile: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0",
-  favorites: "M12 21S3 16 3 9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 7-9 12-9 12Z",
-  reviews: "M4 5h16v12H8l-4 4V5ZM8 9h8M8 13h5",
-};
-
-function AccountNavIcon({ name }: { name: Section }) {
-  return <svg aria-hidden="true" viewBox="0 0 24 24"><path d={accountIcons[name]} /></svg>;
-}
-
 // ---------------------------------------------------------------- shell
 
 /**
@@ -148,34 +139,37 @@ function AccountShell({ user, section, children, onSignOut }: {
 }) {
   const chatUnread = useChatUnread();
   const staff = user.adminRole === "manager" || user.adminRole === "administrator" || user.adminRole === "owner";
-  const initial = (user.lastName || user.fullName).trim().charAt(0).toUpperCase() || "Ф";
+  const firstName = user.fullName.trim().split(/\s+/)[0] || "Друг";
+  const initial = firstName.charAt(0).toUpperCase();
   return (
-    <main className={`account-page ${section === "chat" ? "account-chat-page" : ""}`}>
+    <main className={`account-page customer-account ${section === "chat" ? "account-chat-page" : ""}`}>
       <StoreHeader showTabBar={section !== "chat"} />
       <section className="account-shell">
-        <aside className="account-sidebar">
-          <div className="account-avatar">
-            {user.avatarUpdatedAt
-              ? <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
-              : <span>{initial}</span>}
+        <aside className="account-sidebar cozy-account-menu" aria-label="Ваш личный кабинет">
+          <div className="cozy-account-identity">
+            <div className="account-avatar">
+              {user.avatarUpdatedAt ? <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" /> : <span>{initial}</span>}
+            </div>
+            <div><p className="account-person-name" title={fullNameOf(user)}>{firstName},<br /> рады вам!</p></div>
           </div>
-          <h1>{fullNameOf(user)}</h1>
-          <p>
-            {user.phone}
-            {user.email ? <><br />{user.email}</> : null}
-          </p>
           <nav aria-label="Разделы личного кабинета">
-            <a className={section === "chat" ? "active" : ""} href="/account/chat" aria-current={section === "chat" ? "page" : undefined}><AccountNavIcon name="chat"/><span>Сообщения{chatUnread > 0 && <b className="account-chat-count">{chatUnread}</b>}</span></a>
-            <a className={section === "orders" ? "active" : ""} href="/account"><AccountNavIcon name="orders"/><span>Мои заказы</span></a>
-            <a className={section === "profile" ? "active" : ""} href="/account/profile"><AccountNavIcon name="profile"/><span>Мои данные</span></a>
-            <a className={section === "favorites" ? "active" : ""} href="/account/favorites"><AccountNavIcon name="favorites"/><span>Избранное</span></a>
-            <a className={section === "reviews" ? "active" : ""} href="/account/reviews"><AccountNavIcon name="reviews"/><span>Мои отзывы</span></a>
+            {([
+              { section: "chat", href: "/account/chat", label: "Сообщения", note: "Переписка с магазином", icon: "messages" },
+              { section: "orders", href: "/account", label: "Мои заказы", note: "Ваши зелёные покупки", icon: "basket" },
+              { section: "profile", href: "/account/profile", label: "Мои данные", note: "Всё о вас — под рукой", icon: "person" },
+              { section: "favorites", href: "/account/favorites", label: "Избранное", note: "Приглянулись и ждут", icon: "heart" },
+              { section: "reviews", href: "/account/reviews", label: "Мои отзывы", note: "Впечатления о покупках", icon: "reviews" },
+            ] as const).map(item => <a key={item.section} aria-current={section === item.section ? "page" : undefined} className={section === item.section ? "active" : ""} href={item.href}>
+              <span className="cozy-nav-icon"><StoreNavIllustration kind={item.icon} /></span>
+              <span className="cozy-nav-copy"><strong>{item.label}{item.section === "chat" && chatUnread > 0 && <b className="account-chat-count" aria-label={`Непрочитанных: ${chatUnread}`}>{chatUnread}</b>}</strong><small>{item.note}</small></span>
+              <svg className="cozy-nav-arrow" viewBox="0 0 20 20" aria-hidden="true"><path d="m7 5 5 5-5 5" /></svg>
+            </a>)}
           </nav>
-          <div className="account-help"><strong>Мы рядом,<br/>если нужен совет</strong><p>Поможем с заказом и уходом за растениями.</p><a href="/chat">Написать в чат <span>○</span></a></div>
-          {staff && <a className="account-switch" href="/admin">Панель управления →</a>}
-          <button className="signout-link" type="button" onClick={onSignOut}>
-            Выйти из аккаунта
-          </button>
+          <a className="cozy-care-link" href="/care">Подсказки по уходу <span aria-hidden="true">↗</span></a>
+          <div className="cozy-account-footer">
+            {staff && <a className="account-switch" href="/admin">Управление магазином ↗</a>}
+            <button className="signout-link" type="button" aria-label="Выйти из аккаунта" onClick={onSignOut}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H4v14h4m3-11 4 4-4 4m-4-4h8" /></svg>Выйти</button>
+          </div>
         </aside>
         <div className="account-content">{children}</div>
       </section>
@@ -183,20 +177,20 @@ function AccountShell({ user, section, children, onSignOut }: {
   );
 }
 
-function SectionHeading({ eyebrow, title, aside }: { eyebrow: string; title: string; aside?: React.ReactNode }) {
+function SectionHeading({ title, aside }: { eyebrow: string; title: string; aside?: React.ReactNode }) {
   return <div className="account-title">
-    <div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div>
+    <div><h1>{title}</h1></div>
     {aside}
   </div>;
 }
 
 // --------------------------------------------------------------- orders
 
-function OrdersSection({ orders, error }: { orders: AccountOrder[]; error: string }) {
+function OrdersSection({ orders, error, onRetry }: { orders: AccountOrder[]; error: string; onRetry: () => void }) {
   return <>
     <SectionHeading eyebrow="История покупок" title="Мои заказы" />
-    {error && <p className="auth-error" role="alert">{error}</p>}
-    <section className="orders-list">
+    {error && <div className="auth-error" role="alert"><p>{error}</p><button type="button" className="secondary-button" onClick={onRetry}>Повторить загрузку</button></div>}
+    {!error && <section className="orders-list">
       {orders.length ? orders.map((order) => (
         <a className="order-row" key={order.orderNumber} href={`/account/orders/${encodeURIComponent(order.orderNumber)}`}>
           <div><small>Заказ</small><strong>{order.orderNumber}</strong></div>
@@ -207,13 +201,12 @@ function OrdersSection({ orders, error }: { orders: AccountOrder[]; error: strin
         </a>
       )) : (
         <div className="orders-empty">
-          <span>⎁</span>
           <h3>Заказов пока нет</h3>
           <p>Новые заказы, оформленные в этом аккаунте, появятся здесь.</p>
           <a className="primary-button" href="/#catalog">Перейти в каталог</a>
         </div>
       )}
-    </section>
+    </section>}
   </>;
 }
 
@@ -376,6 +369,8 @@ function AvatarEditor({ user, onUpdated, onError }: {
   // The picture is downscaled in the browser: the server only stores what
   // it receives, so keeping it small here keeps the database small too.
   async function shrink(file: File): Promise<string> {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Выберите фото JPEG, PNG или WebP");
+    if (file.size > 10 * 1024 * 1024) throw new Error("Фото должно быть меньше 10 МБ");
     const bitmap = await createImageBitmap(file);
     const side = Math.min(bitmap.width, bitmap.height);
     const canvas = document.createElement("canvas");
@@ -444,20 +439,21 @@ function AvatarEditor({ user, onUpdated, onError }: {
         type="file"
         accept="image/jpeg,image/png,image/webp"
         id="avatar-input"
+        hidden
+        disabled={busy}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           if (file) void upload(file);
         }}
       />
-      <label className="secondary-button" htmlFor="avatar-input">
+      <button className="secondary-button avatar-upload-button" type="button" disabled={busy} onClick={() => inputRef.current?.click()}>
         {busy ? "Загружаем…" : user.avatarUpdatedAt ? "Заменить фото" : "Загрузить фото"}
-      </label>
+      </button>
       {user.avatarUpdatedAt && (
         <button className="text-link" type="button" disabled={busy} onClick={() => void remove()}>
           Удалить
         </button>
       )}
-      <small>JPEG, PNG или WebP. Обрежем по центру до квадрата.</small>
     </div>
   </div>;
 }
@@ -468,9 +464,13 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [loyaltyRulesOpen, setLoyaltyRulesOpen] = useState(false);
 
   const discount = user.retailDiscountBps / 100;
   const ladder = discountLadder(user.lifetimeSpendMinor, user.retailDiscountBps);
+  const levelProgress = ladder.top || !ladder.raises ? null : Math.min(100, Math.max(0,
+    (ladder.spend - discount * stepSpend) / ((ladder.next - discount) * stepSpend) * 100,
+  ));
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -502,26 +502,8 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
     <SectionHeading
       eyebrow="Профиль покупателя"
       title="Мои данные"
-      aside={<span>{user.accountType === "wholesale" ? "Оптовый клиент" : "Розничный клиент"}</span>}
+      aside={user.accountType === "wholesale" ? <span>Оптовый клиент</span> : undefined}
     />
-
-    <div className="auth-notice profile-discount">
-      <strong>
-        {user.accountType === "wholesale"
-          ? "Оптовая заявка на проверке"
-          : `Персональная скидка: ${discount.toLocaleString("ru-RU")}%`}
-      </strong>
-      <p>
-        {user.accountType === "wholesale"
-          ? "После проверки реквизитов мы включим оптовые условия."
-          : "Скидка увеличивается автоматически после выполненных заказов."}
-      </p>
-      {user.accountType !== "wholesale" && <p>{ladder.top
-        ? <>Это верхняя ступень: {maxDiscountPercent}% — максимум.</>
-        : ladder.raises
-          ? <>Выполнено заказов на {money.format(ladder.spend)}. До {ladder.next}% осталось ещё {money.format(ladder.remaining)}.</>
-          : <>Скидка назначена вручную и выше накопленной — она не уменьшится.</>}</p>}
-    </div>
 
     <AvatarEditor user={user} onUpdated={onUpdated} onError={setError} />
 
@@ -534,6 +516,38 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
         <div><dt>Электронная почта</dt><dd>{user.email || "—"}</dd></div>
         <div><dt>Адрес доставки</dt><dd>{user.deliveryAddress || "—"}</dd></div>
       </dl>
+      {user.accountType === "wholesale" ? <div className="auth-notice wholesale-conditions">
+        <strong>{user.wholesaleStatus === "approved" ? "Оптовые условия одобрены" : user.wholesaleStatus === "rejected" ? "Оптовая заявка отклонена" : "Оптовая заявка на проверке"}</strong>
+        <p>{user.wholesaleStatus === "approved" ? "Условия для вашего аккаунта согласованы менеджером." : user.wholesaleStatus === "rejected" ? "Свяжитесь с магазином, чтобы уточнить условия и реквизиты." : "После проверки реквизитов мы включим оптовые условия."}</p>
+      </div> : <section className="loyalty-card" aria-labelledby="loyalty-title">
+        <div className="loyalty-copy">
+          <h2 id="loyalty-title">Персональная скидка</h2>
+          {levelProgress === null && <p className="loyalty-value">{discount.toLocaleString("ru-RU")}%</p>}
+          <button className="loyalty-info" type="button" aria-label="Условия персональной скидки" aria-expanded={loyaltyRulesOpen} aria-controls="loyalty-rules" onClick={() => setLoyaltyRulesOpen(open => !open)}>
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><circle cx="10" cy="10" r="7.5" /><path d="M10 9v5M10 5.5v1" /></svg>
+          </button>
+        </div>
+        {levelProgress !== null && !ladder.top && <div className="loyalty-progress">
+          <span aria-hidden="true">{discount.toLocaleString("ru-RU")}%</span>
+          <div className="loyalty-meter" role="meter" aria-label="Персональная скидка" aria-valuemin={0} aria-valuemax={100} aria-valuenow={levelProgress} aria-valuetext={`От ${discount.toLocaleString("ru-RU")}% до ${ladder.next}%: пройдено ${Math.round(levelProgress)}% пути`} style={{ "--loyalty-fill": `${levelProgress}%` } as CSSProperties}>
+            <span aria-hidden="true" />
+          </div>
+          <span aria-hidden="true">{ladder.next}%</span>
+        </div>}
+        <p className="loyalty-next">{ladder.top
+            ? <>Вы на верхней ступени программы. Спасибо, что выбираете нас!</>
+            : ladder.raises
+              ? <>Ещё <strong>{money.format(ladder.remaining)}</strong> до следующего уровня</>
+              : <>Скидка назначена вручную и выше накопленной — она не уменьшится.</>}</p>
+        <div className="loyalty-rules" id="loyalty-rules" hidden={!loyaltyRulesOpen}>
+          <p>Скидка зависит от общей суммы выполненных заказов.</p>
+          <table>
+            <thead><tr><th scope="col">Сумма покупок</th><th scope="col">Скидка</th></tr></thead>
+            <tbody>{Array.from({ length: maxDiscountPercent }, (_, index) => index + 1).map(level => <tr key={level}><td>От {money.format(level * stepSpend)}</td><td>{level}%</td></tr>)}</tbody>
+          </table>
+          <p>Скидка растёт на 1% за каждые {money.format(stepSpend)}, максимум — {maxDiscountPercent}%. Назначенная вручную скидка не уменьшается.</p>
+        </div>
+      </section>}
       {error && <p className="auth-error" role="alert">{error}</p>}
       {saved && !error && <p className="auth-saved" role="status">Данные сохранены</p>}
       <button className="primary-button" type="button" onClick={() => { setForm(profileFormFrom(user)); setSaved(false); setEditing(true); }}>
@@ -571,7 +585,7 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
         {error && <p className="auth-error" role="alert">{error}</p>}
         <div className="form-actions">
           <button className="primary-button" disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</button>
-          <button className="secondary-button" type="button" onClick={() => { setEditing(false); setError(""); }}>
+          <button className="secondary-button" type="button" disabled={saving} onClick={() => { setEditing(false); setError(""); }}>
             Отмена
           </button>
         </div>
@@ -584,66 +598,32 @@ function ProfileSection({ user, onUpdated }: { user: StoreUser; onUpdated: (user
 
 function FavoritesSection() {
   const [products, setProducts] = useState<FavoriteProduct[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [favorites, setFavorites] = useFavorites();
   const [cart, setCart] = useSharedCart();
-
-  useEffect(() => {
-    sharedAPIJSON<{ products?: FavoriteProduct[] }>("/api/v1/catalog")
-      .then((data: { products?: FavoriteProduct[] }) => setProducts(data.products || []))
-      .catch(() => undefined);
+  const load = useCallback((force = false) => {
+    void sharedAPIJSON<{ products?: FavoriteProduct[] }>("/api/v1/catalog", force)
+      .then(data => { setProducts(data.products || []); setStatus("ready"); })
+      .catch(() => setStatus("error"));
   }, []);
-
-  const items = useMemo(
-    () => products.filter((product) => favorites.has(product.id)),
-    [products, favorites],
-  );
-
-  const remove = (id: string) => {
-    const next = new Set(favorites);
-    next.delete(id);
-    setFavorites(next);
-  };
-
+  useEffect(() => { load(); }, [load]);
+  const items = useMemo(() => products.filter(product => favorites.has(String(product.id))), [products, favorites]);
+  const unavailable = [...favorites].filter(id => !products.some(product => String(product.id) === id));
   return <>
     <SectionHeading eyebrow="Сохранённые товары" title="Избранное" />
-    {items.length ? (
-      <div className="product-grid">
-        {items.map((product) => (
-          <article className="product-card" key={product.id}>
-            <button className="favorite-button active" onClick={() => remove(product.id)} aria-label="Убрать из избранного">♥</button>
-            <a className="product-image" href={`/product/${product.id}`}><img src={product.image} alt={product.name} /></a>
-            <h3><a href={`/product/${product.id}`}>{product.name}</a></h3>
-            <p>{product.latin}</p>
-            <strong>{money.format(product.price)}</strong>
-            <button className={cart[product.sku] ? "primary-button" : "secondary-button"} type="button" disabled={product.stock <= 0}
-              onClick={() => setCart((current) => ({ ...current, [product.sku]: Math.min(product.stock, (current[product.sku] || 0) + 1) }))}>
-              {product.stock <= 0 ? "Нет в наличии" : cart[product.sku] ? `Добавить ещё · ${cart[product.sku]}` : "В корзину"}
-            </button>
-          </article>
-        ))}
-      </div>
-    ) : (
-      <div className="orders-empty">
-        <span>♥</span>
-        <h3>В избранном пока пусто</h3>
-        <p>Добавляйте товары сердечком в каталоге — они появятся здесь.</p>
-        <a className="primary-button" href="/#catalog">Перейти в каталог</a>
-      </div>
-    )}
+    <p className="customer-intro">Сохранённые растения на этом устройстве. Список общий с избранным в каталоге.</p>
+    {status === "loading" && <p role="status">Загружаем избранное…</p>}
+    {status === "error" && <div className="auth-error" role="alert"><p>Не удалось загрузить избранное. Сохранённые товары на месте.</p><button type="button" className="secondary-button" onClick={() => { setStatus("loading"); load(true); }}>Повторить загрузку</button></div>}
+    {status === "ready" && unavailable.length > 0 && <p className="favorites-unavailable">Некоторые сохранённые товары сейчас недоступны. <button type="button" onClick={() => setFavorites(current => new Set([...current].filter(id => !unavailable.includes(id))))}>Убрать недоступные</button></p>}
+    {status === "ready" && <div className="storefront-grid customer-favorites-grid">{items.map(product => <CatalogProductCard key={product.id} product={product} favorite inCart={cart[product.sku] || 0}
+      onFavorite={() => setFavorites(current => { const next = new Set(current); next.delete(String(product.id)); return next; })}
+      onAdd={() => setCart(current => ({ ...current, [product.sku]: Math.min(product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20, (current[product.sku] || 0) + 1) }))}
+      onDecrease={() => setCart(current => { const next = { ...current }; if ((next[product.sku] || 0) <= 1) delete next[product.sku]; else next[product.sku] -= 1; return next; })} />)}</div>}
+    {status === "ready" && !favorites.size && <div className="orders-empty"><h2>В избранном пока пусто</h2><p>Добавляйте товары сердечком в каталоге.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></div>}
   </>;
 }
 
 // ----------------------------------------------------------------- page
-
-type AccountReview = { id: number; product: string; slug: string; rating: number; text: string; status: "pending" | "published" | "rejected"; createdAt: string };
-const reviewStatusLabels = { pending: "Опубликован", published: "Опубликован", rejected: "Скрыт" };
-
-function ReviewsSection() {
-  const [items,setItems]=useState<AccountReview[]>([]); const [error,setError]=useState(""); const [editing,setEditing]=useState<AccountReview|null>(null); const [saving,setSaving]=useState(false);
-  useEffect(()=>{fetch("/api/v1/account/reviews",{credentials:"same-origin"}).then(async(response)=>{const body=await response.json() as {reviews?:AccountReview[];error?:string};if(!response.ok)throw new Error(body.error||"Не удалось загрузить отзывы");setItems(body.reviews||[])}).catch((reason)=>setError(reason instanceof Error?reason.message:"Не удалось загрузить отзывы"))},[]);
-  const save=async(event:FormEvent)=>{event.preventDefault();if(!editing)return;setSaving(true);setError("");try{const response=await fetch(`/api/v1/account/reviews/${editing.id}`,{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({rating:editing.rating,text:editing.text})});const body=await response.json() as {error?:string};if(!response.ok)throw new Error(body.error||"Не удалось сохранить");setItems((current)=>current.map((item)=>item.id===editing.id?editing:item));setEditing(null)}catch(reason){setError(reason instanceof Error?reason.message:"Не удалось сохранить")}finally{setSaving(false)}};
-  return <div className="account-reviews"><div className="account-title"><div><p className="eyebrow">После покупки</p><h1>Мои отзывы</h1></div></div>{error&&<p className="form-error" role="alert">{error}</p>}{items.length?items.map((item)=><article key={item.id}><header><div><a href={`/product/${item.slug}#reviews`}>{item.product}</a><time>{formatDate(item.createdAt)}</time></div><span className={`admin-pill ${item.status}`}>{reviewStatusLabels[item.status]}</span></header><div className="account-review-stars">{"★".repeat(item.rating)}{"☆".repeat(5-item.rating)}</div><p>{item.text}</p>{item.status==="published"&&<button type="button" onClick={()=>setEditing({...item})}>Редактировать</button>}</article>):<div className="orders-empty"><h2>Отзывов пока нет</h2><p>Оставить отзыв можно на странице товара после выполненного заказа.</p></div>}{editing&&<div className="account-review-dialog" role="dialog" aria-modal="true" aria-label="Редактировать отзыв"><form onSubmit={(event)=>void save(event)}><header><h2>{editing.product}</h2><button type="button" onClick={()=>setEditing(null)} aria-label="Закрыть">×</button></header><div className="account-review-rating" role="radiogroup">{[1,2,3,4,5].map((value)=><button type="button" role="radio" aria-checked={editing.rating===value} aria-label={`${value} из 5`} className={value<=editing.rating?"active":""} onClick={()=>setEditing({...editing,rating:value})} key={value}>★</button>)}</div><label>Текст отзыва<textarea required minLength={10} maxLength={3000} rows={6} value={editing.text} onChange={(event)=>setEditing({...editing,text:event.target.value})}/></label><button className="primary" disabled={saving}>{saving?"Сохраняем…":"Сохранить"}</button></form></div>}</div>;
-}
 
 export default function AccountPage({ section, orderNumber }: {
   section: Section;
@@ -653,8 +633,11 @@ export default function AccountPage({ section, orderNumber }: {
   const [orders, setOrders] = useState<AccountOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  usePageTitle({ chat: "Сообщения", orders: "Мои заказы", profile: "Мои данные", favorites: "Избранное", reviews: "Мои отзывы" }[section]);
 
   const load = useCallback(async () => {
+    setError("");
     try {
       const response = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
       if (response.status === 401) {
@@ -669,7 +652,7 @@ export default function AccountPage({ section, orderNumber }: {
         const ordersResponse = await fetch("/api/v1/account/orders", { credentials: "same-origin" });
         if (!ordersResponse.ok) throw new Error("Не удалось загрузить заказы");
         const ordersResult = await ordersResponse.json() as { orders: AccountOrder[] };
-        setOrders(ordersResult.orders);
+        setOrders(ordersResult.orders || []);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить профиль");
@@ -681,29 +664,36 @@ export default function AccountPage({ section, orderNumber }: {
   useEffect(() => { void load(); }, [load]);
 
   async function signOut() {
-    await fetch("/api/v1/auth/logout", { method: "POST" });
-    window.location.assign("/");
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const response = await fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" });
+      if (!response.ok) throw new Error("Не удалось выйти. Повторите попытку.");
+      window.location.assign("/");
+    } catch { setError("Не удалось выйти из аккаунта. Проверьте соединение и повторите попытку."); }
+    finally { setSigningOut(false); }
   }
 
-  if (loading) return <main className="account-page" aria-busy="true" />;
+  if (loading) return <main className="account-page customer-account"><StoreHeader /><section className="customer-loading" aria-busy="true"><h1>Личный кабинет</h1><p role="status">Загружаем ваши данные…</p></section></main>;
   if (!user) return (
-    <main className="account-page">
+    <main className="account-page customer-account">
       <StoreHeader />
       <section className="auth-shell">
         <p className="auth-error" role="alert">{error || "Не удалось загрузить профиль"}</p>
-        <a className="primary-button full" href="/login?returnTo=/account">Войти снова</a>
+        <button type="button" className="primary-button" onClick={() => void load()}>Повторить загрузку</button><a className="text-link" href={`/login?returnTo=${encodeURIComponent(window.location.pathname)}`}>Войти снова</a>
       </section>
     </main>
   );
 
   return (
     <AccountShell user={user} section={section} onSignOut={() => void signOut()}>
+      {error && section !== "orders" && <p className="auth-error" role="alert">{error}</p>}
       {orderNumber
         ? <OrderDetailSection orderNumber={orderNumber} />
-        : section === "orders" ? <OrdersSection orders={orders} error={error} />
+        : section === "orders" ? <OrdersSection orders={orders} error={error} onRetry={() => void load()} />
         : section === "profile" ? <ProfileSection user={user} onUpdated={setUser} />
         : section === "chat" ? <Suspense fallback={<p role="status">Открываем сообщения…</p>}><AccountChat /></Suspense>
-        : section === "reviews" ? <ReviewsSection />
+        : section === "reviews" ? <AccountReviews />
         : <FavoritesSection />}
     </AccountShell>
   );

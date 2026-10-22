@@ -14,9 +14,10 @@ for (const [returnTo, expectedPath] of [["/?paid=PAYMENT-TEST", "/?paid=PAYMENT-
     await page.route("**/api/v1/auth/request-code", route => route.fulfill({ json: { checkId: "LOCAL-CHECK", callPhonePretty: "+7 800 000-00-00" } }));
     await page.route("**/api/v1/auth/verify-code", route => route.fulfill({ json: { user: owner.user } }));
     await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+    const expectedURL = new URL(expectedPath, page.url()).href;
     await page.getByLabel("Телефон", { exact: true }).fill("9150000000");
     await page.getByRole("button", { name: "Войти", exact: true }).click();
-    await expect(page).toHaveURL(new URL(expectedPath, "http://127.0.0.1:4173").href, { timeout: 10_000 });
+    await expect(page).toHaveURL(expectedURL, { timeout: 10_000 });
   });
 }
 

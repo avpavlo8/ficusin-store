@@ -49,6 +49,7 @@ type Dependencies struct {
 	CookieSecure     bool
 	StaticDir        string
 	YandexSuggestKey string
+	DaDataAPIKey     string
 	Analytics        analyticsStore
 	SiteURL          string
 	Readiness        readinessChecker
@@ -115,6 +116,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	callLimiter := newRateLimiter(5, 10*time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
+	organizationLimiter := newRateLimiter(30, time.Minute)
 	analyticsLimiter := newRateLimiter(240, time.Minute)
 	mux.HandleFunc("GET /api/v1/health", func(response http.ResponseWriter, _ *http.Request) {
 		writeJSON(response, http.StatusOK, map[string]string{"status": "ok", "version": BuildVersion})
@@ -177,6 +179,11 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		"Слишком много запросов. Введите адрес вручную",
 		addressSuggestHandler(logger, dependencies.YandexSuggestKey).ServeHTTP,
 	))
+	mux.HandleFunc("GET /api/v1/organizations/suggest", organizationLimiter.guard(
+		"Слишком много запросов. Попробуйте позже",
+		organizationSuggestHandler(logger, dependencies.DaDataAPIKey).ServeHTTP,
+	))
+
 	mux.Handle("GET /api/v1/push/key", pushKeyHandler(dependencies.Push))
 	mux.Handle(
 		"POST /api/v1/push/subscribe",

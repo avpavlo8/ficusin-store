@@ -320,3 +320,6 @@ CI (`.github/workflows/ci.yml`) запускается на pull request и на
   мёртвых CSS-классов.
 - Товарная заглушка — только `public/assets/hero-monstera.webp`. Старый PNG
   размером 2,5 МБ и точные дубликаты обложек удалены из production bundle.
+
+- Подсказки организаций DaData: `DADATA_API_KEY` хранится только на сервере.
+  Настройка и границы проверки — `docs/organization-suggestions.md`.

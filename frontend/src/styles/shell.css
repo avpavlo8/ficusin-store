@@ -15,24 +15,8 @@
 .favorites-button b { font-size: 11px; }
 .favorites-button:hover, .favorites-button.active { background: rgba(23,63,50,.08); }
 .product-card { position: relative; }
-.favorite-button {
-  position: absolute;
-  z-index: 3;
-  top: 13px;
-  right: 13px;
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255,255,255,.92);
-  color: var(--green);
-  box-shadow: 0 5px 18px rgba(23,63,50,.12);
-  font-size: 23px;
-  cursor: pointer;
-}
-.favorite-button.active { background: var(--terracotta); color: #fff; }
+
+
 .empty-state { display: flex; flex-direction: column; gap: 9px; }
 .empty-state strong { font: 400 27px Georgia, serif; }
 .empty-state span { color: #6c756f; }
@@ -66,8 +50,8 @@
 .account-menu > div { min-width: 175px; padding: 8px; display: grid; position: absolute; z-index: 50; top: 50px; right: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 16px 40px rgba(23,63,50,.15); }
 .account-menu > div a { padding: 10px 12px; border-radius: 8px; color: var(--green); font-size: 13px; }
 .account-menu > div a:hover { background: var(--cream); }
-.favorites-button, .favorite-button, .pdp-favorite { color: #bd3d3d; }
-.favorite-button.active, .pdp-favorite.active { background: #bd3d3d; color: #fff; }
+.favorites-button, .pdp-favorite { color: #bd3d3d; }
+.pdp-favorite.active { background: #bd3d3d; color: #fff; }
 .favorites-button:hover { background: rgba(189,61,61,.09); }
 .category-toggle { width: 22px; height: 22px; margin-right: 8px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: #58645c; font-weight: 700; line-height: 1; cursor: pointer; }
 .category-toggle.placeholder { border-color: transparent; background: transparent; }
