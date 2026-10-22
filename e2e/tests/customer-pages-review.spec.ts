@@ -18,7 +18,9 @@ for (const route of routes) {
     if (route.startsWith("/account")) await expect(page.locator(".account-content")).toBeVisible();
     await expect(page).not.toHaveTitle("Фикусин — комнатные растения в Рязани");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-    const result = await new AxeBuilder({ page }).include("main").withTags(["wcag2a", "wcag2aa"]).analyze();
+    // The embedded provider renders third-party advertisements outside our UI.
+    // Check our map title and route link separately; do not audit the provider's DOM.
+    const result = await new AxeBuilder({ page }).include("main").exclude(".contacts-map").withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(result.violations.map(item => ({ id: item.id, nodes: item.nodes.map(node => ({ target: node.target, summary: node.failureSummary })) }))).toEqual([]);
     if (process.env.INFORMATION_REVIEW_OUTPUT && ["/delivery-and-returns", "/offer", "/privacy", "/contacts", "/requisites"].includes(route)) {
       await mkdir(process.env.INFORMATION_REVIEW_OUTPUT, { recursive: true });
