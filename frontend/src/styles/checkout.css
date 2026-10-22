@@ -25,10 +25,6 @@
   background: transparent;
   box-shadow: none;
 }
-.cart-page > .header .brand-mark,
-.cart-page > .header .brand-text small {
-  display: none;
-}
 .cart-page > .header .brand {
   color: var(--co-ink);
   font:

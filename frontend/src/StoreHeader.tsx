@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InstallHint } from "./InstallHint";
+import { BrandLogo } from "./BrandLogo";
 import { StoreNavIllustration } from "./StoreNavIllustration";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
@@ -328,7 +329,7 @@ export function StoreHeader({
         aria-label="Открыть меню"
         aria-expanded={menuOpen}
       >☰</button>
-      <a className="brand" href="/"><span className="brand-mark">⌇</span><span className="brand-text"><span>Фикусин</span><small>магазин растений</small></span></a>
+      <a className="brand" href="/" aria-label="Фикусин — главная"><BrandLogo decorative /></a>
       <nav className="desktop-nav">{homeNavigation ? <>
         <details className="header-dropdown" onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}><summary>Каталог <span>⌄</span></summary><div><a href="/#catalog">Весь каталог<span>→</span></a>{resolvedCatalogMenuItems.map((item) => <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />)}<a href="/discounts">Растения со скидкой<span>→</span></a></div></details>
 

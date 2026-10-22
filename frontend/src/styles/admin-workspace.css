@@ -13,8 +13,9 @@
 .admin-page svg { flex-shrink: 0; }
 .admin-page .account-shell { width: 100%; max-width: 1920px; margin: 0 auto; grid-template-columns: 224px minmax(0,1fr); gap: 0; align-items: start; }
 .admin-page .account-sidebar { min-height: 100dvh; height: 100dvh; overflow-y: auto; top: 0; padding: 28px 16px 18px; border: 0; border-right: 1px solid var(--workspace-line); border-radius: 0; background: #f1eee5; color: var(--workspace-ink); box-shadow: none; display: flex; flex-direction: column; }
-.admin-page .workspace-brand { display: flex; gap: 3px; align-items: start; padding: 0 10px; color: #25271f; font: 700 36px/.95 Georgia,serif; letter-spacing: -2px; }
-.admin-page .workspace-brand span { font: 22px Georgia,serif; color: var(--workspace-green); }
+.admin-page .workspace-brand { display: flex; align-items: center; padding: 0 10px; min-height: 56px; }
+.admin-page .workspace-brand .ficusin-logo { width: 160px; }
+
 .admin-page .account-sidebar .workspace-caption { margin: 14px 10px 28px; color: #68705f; font-size: 9px; font-weight: 600; letter-spacing: .17em; text-transform: uppercase; }
 .admin-page .account-sidebar nav { gap: 5px; }
 .admin-page .account-sidebar nav button { display: flex; align-items: center; gap: 13px; min-height: 45px; padding: 11px 14px; border-radius: 7px!important; font-size: 13px; color: #40473b; transition: background .15s,color .15s; }
@@ -137,7 +138,7 @@
 .admin-page .admin-stats article strong, .admin-page .admin-stats button strong { font-size: 33px; }
 .admin-page .admin-primary, .admin-page .admin-settings-actions button { background: var(--workspace-rust); box-shadow: none; }
 .admin-page :where(button,a,input,select,textarea):focus-visible { outline: 2px solid #ac492a; outline-offset: 3px; }
-.workspace-loading-brand { display: block; padding: 28px; font: 700 36px Georgia,serif; }
+.workspace-loading-brand { display: block; width: max-content; padding: 28px; }
 @media(min-width:1600px) { .admin-page .account-shell { grid-template-columns: 246px minmax(0,1fr); }.workspace-body { padding: 36px 38px; }.workspace-dashboard-grid { grid-template-columns: minmax(0,1fr) 302px; gap: 26px; }.workspace-panel { padding: 26px; } }
 @media(max-width:1200px) { .admin-page .account-shell { grid-template-columns: 192px minmax(0,1fr); }.admin-page .account-sidebar { padding-inline: 12px; }.admin-page .workspace-brand { font-size: 31px; }.workspace-toolbar { padding-inline: 22px; }.workspace-body { padding: 26px 22px; }.workspace-dashboard-grid { grid-template-columns: minmax(0,1fr) 230px; gap: 16px; }.workspace-panel { padding: 18px; }.workspace-panel-heading h2 { font-size: 24px; }.workspace-panel-heading { flex-wrap: wrap; }.workspace-order-columns,.admin-page .workspace-recent .admin-order-list button { grid-template-columns: minmax(0,1fr) 80px 86px; gap: 8px; }.workspace-recent .admin-order-list svg { display: none; }.workspace-metrics strong { font-size: 34px; }.workspace-attention { padding-inline: 18px; }.workspace-attention h2 { font-size: 25px; }.workspace-shortcuts>div { grid-template-columns: 1fr; }.workspace-shortcuts button { grid-template-columns: 24px 1fr 16px; align-items: center; padding: 8px 0; column-gap: 10px; }.workspace-shortcuts button>svg:first-child { grid-column: 1; grid-row: 1/3; margin: 0; }.workspace-shortcuts strong { grid-column: 2; }.workspace-shortcuts span { grid-column: 2; }.workspace-shortcuts svg:last-child { grid-column: 3; grid-row: 1/3; } }
 @media(max-width:1050px) { .workspace-dashboard-grid { grid-template-columns: minmax(0,1fr); }.workspace-dashboard-rail { grid-template-columns: 1fr 1fr; align-items: stretch; }.workspace-rail-note { display: none; }.workspace-botanical { min-height: 280px; }.workspace-search { max-width: 45%; }.workspace-welcome { align-items: flex-start; }.workspace-primary { padding: 11px; gap: 8px; }.workspace-metrics button { padding-inline: 14px; } }

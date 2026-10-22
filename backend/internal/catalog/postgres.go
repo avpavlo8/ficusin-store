@@ -32,7 +32,7 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 				WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id=variant.id OR media.variant_id IS NULL)
 				ORDER BY (media.variant_id=variant.id) DESC, media.is_primary DESC, media.sort_order, media.id
 				LIMIT 1
-			), '/assets/product-photo-pending.svg'),
+			), '/assets/product-photo-pending-graphite-v1.svg'),
 			COALESCE((
 				SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0))
 				FROM inventory item
@@ -147,7 +147,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		}
 	}
 	if len(detail.Images) == 0 {
-		detail.Images = append(detail.Images, "/assets/product-photo-pending.svg")
+		detail.Images = append(detail.Images, "/assets/product-photo-pending-graphite-v1.svg")
 	}
 
 	variantRows, err := repository.pool.Query(ctx, `
@@ -372,7 +372,7 @@ const recommendationsQuery = `
 			FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
 			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=chosen.id)
 			ORDER BY (media.variant_id=chosen.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
-		),'/assets/product-photo-pending.svg'),
+		),'/assets/product-photo-pending-graphite-v1.svg'),
 		chosen.label, chosen.stock, product.catalog_section,
 		COALESCE(product.plant_kind,''),COALESCE(product.light_level,''),COALESCE(product.watering,''),
 		COALESCE(product.height_class,''),COALESCE(product.care_level,''),COALESCE(product.placement,''),
@@ -557,7 +557,7 @@ const catalogListQuery = `
 			FROM product_media media LEFT JOIN media_mirror mirror ON mirror.source_url=media.object_key
 			WHERE NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary WHERE supplementary.product_id=media.product_id AND supplementary.object_key=media.object_key) AND media.product_id=product.id AND (media.variant_id IS NULL OR media.variant_id=default_variant.id)
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
-		),'/assets/product-photo-pending.svg'),
+		),'/assets/product-photo-pending-graphite-v1.svg'),
 		default_variant.label, default_variant.stock,
 		NULLIF(GREATEST(variant_numeric_attribute(default_variant.id,'height_cm'),0),0)::double precision,
 		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(NULLIF(pim.light_level,''),product.light_level,''),

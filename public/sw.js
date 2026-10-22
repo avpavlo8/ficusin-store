@@ -4,13 +4,13 @@
 // stale bundle served from cache is far worse than a slow one: a customer
 // would be shopping against yesterday's prices. So:
 //
-//   * /assets/* carry a content hash in the file name, so they can never go
+//   * /assets/* carry a content hash or explicit version in the path, so they can never go
 //     stale — those are cached forever and served from cache first.
 //   * the page shell goes over the network, falling back to cache only when
 //     the phone is offline.
 //   * /api/** is never cached. Prices, stock and the session must be live.
 
-const VERSION = "v2";
+const VERSION = "v4-graphite-v1";
 const SHELL = `ficusin-shell-${VERSION}`;
 const ASSETS = `ficusin-assets-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
@@ -18,7 +18,7 @@ const OFFLINE_URL = "/offline.html";
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(SHELL);
-    await cache.addAll([OFFLINE_URL, "/icon-192.png"]);
+    await cache.addAll([OFFLINE_URL, "/assets/brand/graphite-v1/wordmark-graphite.svg", "/icon-192.png?v=graphite-v1", "/push-badge.png?v=graphite-v1"]);
     // Take over as soon as the new worker is ready rather than waiting for
     // every tab to close.
     await self.skipWaiting();
@@ -84,8 +84,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Фикусин";
   event.waitUntil(self.registration.showNotification(title, {
     body: payload.body || "",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/icon-192.png?v=graphite-v1",
+    badge: "/push-badge.png?v=graphite-v1",
     lang: "ru",
     data: { url: payload.url || "/" },
     tag: payload.tag || "ficusin",

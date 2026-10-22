@@ -1,3 +1,5 @@
+import { BrandLogo } from "./BrandLogo";
+
 const socialIcons = {
   telegram: "M21.5 4.5 18.7 19c-.2 1-1 1.3-1.8.8l-4.3-3.2-2.1 2c-.2.2-.4.3-.7.2l.4-4.7 8.6-7.8c.4-.4-.1-.6-.6-.3L7.6 12.7l-4.4-1.4c-1-.3-1-1 .2-1.5L20.5 3c.8-.3 1.3.2 1 1.5Z",
   vk: "M3 7.5h3.2c.3 0 .5.2.7.6 1.2 2.8 2.7 4.5 3.5 4.5.3 0 .4-.2.4-.7V8.8c-.1-1.2-.7-1.3-.7-1.7 0-.2.2-.4.5-.4h4.9c.5 0 .7.3.7.8v4.2c0 .4.2.6.4.6.8 0 2.3-1.6 3.2-4.3.2-.5.4-.6.9-.6h3.1c.8 0 1 .4.8 1-.4 1.8-3.1 5-3.1 5.5 0 .4 2.5 2.3 3.5 4.1.4.7 0 1.1-.6 1.1h-3.5c-.6 0-.8-.4-1.6-1.2-1.2-1.3-2.4-2.5-3-2.5-.4 0-.5.2-.5.8v1.9c0 .6-.2.9-1.7.9-2.5 0-5.4-1.5-7.4-4.4C4.3 11.3 2.8 8.9 2.8 8c0-.3.1-.5.2-.5Z",
@@ -13,7 +15,7 @@ export function StoreFooter() {
   return <footer className="store-footer">
     <div className="store-footer-grid">
       <section className="store-footer-connect">
-        <p className="store-footer-eyebrow">Фикусин рядом</p>
+        <a className="store-footer-brand" href="/" aria-label="Фикусин — главная"><BrandLogo tone="ivory" decorative /></a>
         <h2>Давайте найдём<br/>ваше растение</h2>
         <p className="store-footer-intro">Подскажем с выбором, доставкой и уходом — по-человечески и без долгого ожидания.</p>
         <div className="store-footer-contact-actions"><a className="store-footer-chat" href="/chat"><i><SocialIcon path={socialIcons.chat}/></i><span><small>На связи в чате сайта</small>Написать в чат</span><b aria-hidden="true">→</b></a><a className="store-footer-phone" href="tel:+79156151100"><small>Позвонить в магазин</small>+7 915 615-11-00</a></div>

@@ -207,6 +207,11 @@ type routeMeta struct {
 	Index              bool
 }
 
+const (
+	brandLogoPath       = "/assets/brand/graphite-v1/wordmark-graphite.png"
+	brandShareImagePath = "/assets/brand/graphite-v1/og.png"
+)
+
 var publicRouteMeta = map[string]routeMeta{
 	"/discounts":            {"Растения со скидкой — Фикусин", "Растения, вернувшиеся после доставки и проходящие восстановление. Индивидуальная скидка с учётом состояния каждого экземпляра. Посмотрите растение в магазине в Рязани.", true},
 	"/care":                 {"Помощь комнатным растениям — Фикусин", "Понятные инструкции: мучнистый червец, паутинный клещ, жёлтые листья и проблемы с корнями. Как распознать причину и помочь растению.", true},
@@ -238,13 +243,13 @@ func withRouteMeta(base, path string, shell []byte) []byte {
 			"headline": strings.TrimSuffix(meta.Title, " — Фикусин"), "description": meta.Description,
 			"url": base + path, "mainEntityOfPage": base + path, "inLanguage": "ru-RU",
 			"datePublished": "2026-10-14", "dateModified": "2026-10-14",
-			"author": map[string]any{"@type": "Organization", "name": "Фикусин", "url": base},
+			"author": map[string]any{"@type": "Organization", "name": "Фикусин", "url": base, "logo": base + brandLogoPath},
 		}
 	}
-	return applyRouteMeta(base, path, shell, meta, structured)
+	return applyRouteMeta(base, path, shell, meta, structured, "")
 }
 
-func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any) []byte {
+func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any, image string) []byte {
 	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
 	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`">`))
 	head := strings.Builder{}
@@ -256,9 +261,10 @@ func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured 
 	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(meta.Title) + `">` + "\n")
 	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(meta.Description) + `">` + "\n")
 	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+path) + `">` + "\n")
+	writeShareImage(&head, base, image)
 	if path == "/" && structured == nil {
 		structured = map[string]any{"@context": "https://schema.org", "@graph": []any{
-			map[string]any{"@type": "Store", "@id": base + "/#organization", "name": "Фикусин", "url": base, "telephone": "+79156151100", "image": base + "/assets/redesign/home-hero-4k.webp", "address": map[string]any{"@type": "PostalAddress", "streetAddress": "ул. Новосёлов, 40А", "addressLocality": "Рязань", "addressCountry": "RU"}, "openingHoursSpecification": []any{map[string]any{"@type": "OpeningHoursSpecification", "dayOfWeek": []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}, "opens": "08:00", "closes": "20:00"}}, "sameAs": []string{"https://t.me/ficusin62"}},
+			map[string]any{"@type": "Store", "@id": base + "/#organization", "name": "Фикусин", "url": base, "telephone": "+79156151100", "logo": base + brandLogoPath, "image": base + "/assets/redesign/home-hero-4k.webp", "address": map[string]any{"@type": "PostalAddress", "streetAddress": "ул. Новосёлов, 40А", "addressLocality": "Рязань", "addressCountry": "RU"}, "openingHoursSpecification": []any{map[string]any{"@type": "OpeningHoursSpecification", "dayOfWeek": []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}, "opens": "08:00", "closes": "20:00"}}, "sameAs": []string{"https://t.me/ficusin62"}},
 			map[string]any{"@type": "WebSite", "@id": base + "/#website", "name": "Фикусин", "url": base, "publisher": map[string]any{"@id": base + "/#organization"}, "inLanguage": "ru-RU"},
 		}}
 	}
@@ -271,7 +277,7 @@ func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured 
 }
 
 func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections, base, path string, shell []byte) ([]byte, bool) {
-	var title, description string
+	var title, description, image string
 	if slug := landingSlug(path, "/catalog/"); slug != "" && repository != nil {
 		items, err := repository.ListCategories(ctx)
 		if err != nil {
@@ -295,6 +301,9 @@ func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitema
 			if item.Slug == slug {
 				title = item.Title
 				description = strings.TrimSpace(item.Note)
+				if strings.TrimSpace(item.CoverURL) != "" {
+					image = absoluteFeedURL(base, item.CoverURL)
+				}
 				if description == "" {
 					description = "Подборка «" + item.Title + "» от магазина растений «Фикусин». Доставка по Рязани и России."
 				}
@@ -314,7 +323,42 @@ func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitema
 			map[string]any{"@type": "ListItem", "position": 3, "name": title, "item": base + path},
 		}},
 	}}
-	return applyRouteMeta(base, path, shell, meta, structured), true
+	return applyRouteMeta(base, path, shell, meta, structured, image), true
+}
+
+func writeShareImage(head *strings.Builder, base, image string) {
+	fallback := image == ""
+	if fallback {
+		image = base + brandShareImagePath
+	}
+	head.WriteString(`<meta property="og:image" content="` + html.EscapeString(image) + `">` + "\n")
+	if fallback {
+		head.WriteString(`<meta property="og:image:width" content="1200">` + "\n")
+		head.WriteString(`<meta property="og:image:height" content="630">` + "\n")
+		head.WriteString(`<meta property="og:image:alt" content="Фикусин — комнатные растения">` + "\n")
+	}
+}
+
+// Catalogue responses include a branded placeholder when no photo exists.
+// Share cards use the brand image in that case; Product/Offer schema must not
+// describe the placeholder as a photograph of the item.
+func productMetaImage(base string, images []string) string {
+	for _, image := range images {
+		image = strings.TrimSpace(image)
+		if image == "" {
+			continue
+		}
+		parsed, err := url.Parse(image)
+		if err != nil {
+			continue
+		}
+		switch parsed.Path {
+		case "/assets/hero-monstera.webp", "/assets/product-photo-pending.svg", "/assets/product-photo-pending-logo-v1.svg", "/assets/product-photo-pending-graphite-v1.svg":
+			continue
+		}
+		return absoluteFeedURL(base, image)
+	}
+	return ""
 }
 
 func productSlug(path string) string {
@@ -438,10 +482,7 @@ func withProductMeta(
 			description = detail.Name + ": купить в магазине «Фикусин» с доставкой по Рязани и России."
 		}
 	}
-	image := ""
-	if len(detail.Images) > 0 {
-		image = absoluteFeedURL(base, detail.Images[0])
-	}
+	image := productMetaImage(base, detail.Images)
 
 	offers := make([]map[string]any, 0, len(detail.Variants))
 	for _, variant := range detail.Variants {
@@ -453,8 +494,8 @@ func withProductMeta(
 		if variant.Price > 0 {
 			offer["price"] = strconv.FormatFloat(variant.Price, 'f', 2, 64)
 		}
-		if len(variant.Images) > 0 {
-			offer["image"] = absoluteFeedURL(base, variant.Images[0])
+		if variantImage := productMetaImage(base, variant.Images); variantImage != "" {
+			offer["image"] = variantImage
 		}
 		offers = append(offers, offer)
 	}
@@ -500,9 +541,7 @@ func withProductMeta(
 	head.WriteString(`<meta property="og:title" content="` + html.EscapeString(title) + "\">\n")
 	head.WriteString(`<meta property="og:description" content="` + html.EscapeString(description) + "\">\n")
 	head.WriteString(`<meta property="og:url" content="` + html.EscapeString(base+canonicalPath) + "\">\n")
-	if image != "" {
-		head.WriteString(`<meta property="og:image" content="` + html.EscapeString(image) + "\">\n")
-	}
+	writeShareImage(&head, base, image)
 	if encoded != nil {
 		head.WriteString(`<script type="application/ld+json">` + string(encoded) + "</script>\n")
 	}
