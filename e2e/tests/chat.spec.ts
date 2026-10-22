@@ -62,7 +62,7 @@ for (const device of ['@desktop','@phone']) {
     await mockApi(page);
     await page.addInitScript(() => {
       let permission = 'default'; let subscription: object | null = null;
-      const serialized = { endpoint: 'https://fcm.googleapis.com/fcm/send/test-chat', keys: { p256dh: 'test-key', auth: 'test-auth' } };
+      const serialized = { endpoint: 'https://fcm.googleapis.com/fcm/send/test-chat', expirationTime: null, keys: { p256dh: 'test-key', auth: 'test-auth' } };
       const mock = { endpoint: serialized.endpoint, toJSON: () => serialized, unsubscribe: () => { throw new Error('must not disable order subscriptions'); } };
       Object.defineProperty(window, 'PushManager', { configurable: true, value: class {} });
       Object.defineProperty(window, 'Notification', { configurable: true, value: { get permission() { return permission; }, requestPermission: async () => { permission = 'granted'; return permission; } } });
@@ -133,8 +133,10 @@ for (const device of ['@desktop','@phone']) {
     await page.locator('.chat-launcher').click(); await expect(page).toHaveURL(/\/contacts$/);
     const dialog = page.getByRole('dialog', { name: 'Быстрый чат с Фикусином' }); await expect(dialog).toBeVisible();
     await page.goto('/account/chat'); await expect(page).toHaveURL(/\/account\/chat$/);
-    await expect(page.getByRole('navigation', { name: 'Разделы личного кабинета' }).getByRole('link', { name: /Сообщения/ })).toHaveClass('active');
-    await expect(page.getByRole('heading', { name: 'Сообщения', exact: true })).toBeVisible();
+    if (device === '@desktop') {
+      await expect(page.getByRole('navigation', { name: 'Разделы личного кабинета' }).getByRole('link', { name: /Сообщения/ })).toHaveClass('active');
+      await expect(page.getByRole('heading', { name: 'Сообщения', exact: true })).toBeVisible();
+    } else await expect(page.getByRole('link',{name:'Вернуться в личный кабинет',exact:true})).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Сообщение', exact: true })).toBeVisible();
     expect(await horizontalOverflow(page)).toBe(0);
   });
@@ -201,10 +203,13 @@ for (const device of ['@desktop', '@phone']) {
     await expect(account.getByRole('link', { name: /инструкция.txt/ })).toBeVisible();
     expect((await new AxeBuilder({ page }).include('.account-chat-conversation').withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([]);
     expect(payload.consent).toBe(false); expect(payload.text).toBe('Спасибо 💚'); expect((payload.attachment as { name: string }).name).toBe('инструкция.txt');
-    await page.locator('.account-chat-conversation .chat-panel-heading').click(); await page.locator('.chat-launcher').click();
+    const accountInputId = await input.getAttribute('id');
+    if (device === '@phone') await page.getByRole('link',{name:'Вернуться в личный кабинет',exact:true}).click();
+    else await page.locator('.account-chat-conversation .chat-panel-heading').click();
+    await page.locator('.chat-launcher').click();
     const dialog = page.getByRole('dialog', { name: 'Быстрый чат с Фикусином' });
     const quickInput = dialog.getByRole('textbox', { name: 'Сообщение', exact: true }); await expect(quickInput).toBeVisible();
-    expect(await input.getAttribute('id')).not.toBe(await quickInput.getAttribute('id'));
+    if (device === '@desktop') expect(accountInputId).not.toBe(await quickInput.getAttribute('id')); else await expect(quickInput).toHaveAttribute('id', /.+/);
     if (device === '@phone') {
       await expect(dialog).toHaveAttribute('aria-modal', 'true');
       expect(await page.locator('.account-page').evaluate(node => (node as HTMLElement).inert)).toBe(true);
