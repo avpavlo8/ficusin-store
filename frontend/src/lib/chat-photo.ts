@@ -1,6 +1,6 @@
 // Re-encode locally to remove EXIF and bound both transfer and database size.
 export async function chatPhoto(file: File): Promise<string> {
-  if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) throw new Error("Выберите фотографию до 15 МБ");
+  if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) throw new Error("Выберите фотографию до 20 МБ");
   const source = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("Не удалось прочитать фотографию")); reader.readAsDataURL(file); });
   const photo = await new Promise<HTMLImageElement>((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error("Не удалось открыть фото. Выберите JPEG, PNG или WebP")); img.src = source; });
   const scale = Math.min(1, 1600 / Math.max(photo.width, photo.height));

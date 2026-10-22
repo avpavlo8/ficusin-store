@@ -1,5 +1,5 @@
-.chat-launcher { position: fixed; z-index: 125; right: 24px; bottom: 94px; display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 12px 18px; border: 0; background: #3390ec; color: #fff; border-radius: 99px; box-shadow: 0 5px 18px #163f6626; font-size: 14px; font-weight: 600; cursor: pointer; }
-.chat-launcher:hover { background: #1678cf; }
+.chat-launcher { position: fixed; z-index: 125; right: 24px; bottom: 94px; display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 12px 18px; border: 0; background: #2178c4; color: #fff; border-radius: 99px; box-shadow: 0 5px 18px #163f6626; font-size: 14px; font-weight: 600; cursor: pointer; }
+.chat-launcher:hover { background: #1669af; }
 .chat-launcher:focus-visible { outline: 3px solid #99c9f6; outline-offset: 4px; }
 .chat-launcher b { min-width: 23px; padding: 3px; text-align: center; border-radius: 99px; background: #fff; color: #2476bf; font-size: 12px; }
 .quick-chat-open .chat-launcher { bottom: 24px; }

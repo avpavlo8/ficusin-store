@@ -4,7 +4,9 @@ test('production support actions open the quick chat without leaving the page', 
   await page.locator('.chat-launcher').click();await expect(page).toHaveURL(/\/contacts$/);
   const dialog=page.getByRole('dialog',{name:'Быстрый чат с Фикусином'});await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Загружаем переписку…',{exact:true})).toBeHidden();await expect(dialog.getByRole('alert')).toHaveCount(0);
-  await expect(dialog.getByRole('link',{name:'Вся переписка в личном кабинете'})).toHaveAttribute('href','/account/chat');
+  await expect(dialog.locator('.chat-avatar')).toHaveAttribute('src','/icon-192.png');
+  await expect(dialog.getByRole('link',{name:'Вся переписка в личном кабинете'})).toHaveCount(0);
+  await expect(dialog.getByText('История переписки — в',{exact:false})).toHaveCount(0);
   await dialog.getByRole('textbox',{name:'Сообщение',exact:true}).fill('Проверка формы без отправки');await expect(dialog.getByRole('button',{name:'Отправить',exact:true})).toBeDisabled();
   await dialog.getByRole('checkbox').check();await expect(dialog.getByRole('button',{name:'Отправить',exact:true})).toBeEnabled();
   const bounds=await dialog.getByRole('button',{name:'Отправить',exact:true}).boundingBox();expect(bounds!.y+bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height+1);

@@ -68,6 +68,13 @@ func testStore(t *testing.T) *Store {
 	if _, err = pool.Exec(ctx, string(migration)); err != nil {
 		t.Fatal(err)
 	}
+	extra, err := os.ReadFile("../../../timeweb/migrations/20261022_site_chat_attachments.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(extra)); err != nil {
+		t.Fatal(err)
+	}
 	return NewStore(pool)
 }
 func TestChatDurabilityIsolationAndLogin(t *testing.T) {
@@ -151,8 +158,8 @@ func TestChatDurabilityIsolationAndLogin(t *testing.T) {
 		t.Fatalf("merged history: %d", len(thread.Messages))
 	}
 	_ = s.pool.QueryRow(ctx, `SELECT count(*) FROM support_consents WHERE conversation_id=$1`, accountID).Scan(&count)
-	if count != 2 {
-		t.Fatalf("lost consent evidence: %d", count)
+	if count != 1 {
+		t.Fatalf("lost guest consent evidence: %d", count)
 	}
 	if guestID, err := s.Resolve(ctx, guest); err != nil || guestID != 0 {
 		t.Fatalf("logout leaked account history: %d %v", guestID, err)
@@ -246,5 +253,51 @@ func TestChatIncrementalCatchupHasNoGaps(t *testing.T) {
 	}
 	if seen != 125 {
 		t.Fatalf("lost catchup messages: %d", seen)
+	}
+}
+
+func TestRegisteredChatNeedsNoRepeatedConsentAndStoresPrivateFiles(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	id, err := s.Send(ctx, Identity{CustomerID: 1}, 0, 0, Input{ClientID: "registered-first-message", Text: "Вопрос без повторного согласия"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var consents int
+	_ = s.pool.QueryRow(ctx, `SELECT count(*) FROM support_consents WHERE conversation_id=$1`, id).Scan(&consents)
+	if consents != 0 {
+		t.Fatal("fabricated a repeated consent for registered account")
+	}
+	data := []byte("%PDF-1.4\nprivate test attachment\n%%EOF")
+	input := Input{ClientID: "registered-file-message", Attachment: &AttachmentInput{Name: "../инструкция.pdf", Data: base64.StdEncoding.EncodeToString(data)}}
+	if _, err = s.Send(ctx, Identity{CustomerID: 1}, 0, 0, input); err != nil {
+		t.Fatal(err)
+	}
+	thread, err := s.Read(ctx, id, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := thread.Messages[1]
+	if file.HasImage || file.AttachmentKind != "file" || file.AttachmentName != "инструкция.pdf" || file.AttachmentSize != len(data) {
+		t.Fatalf("file metadata: %#v", file)
+	}
+	mimeType, name, kind, stored, err := s.Attachment(ctx, id, file.ID)
+	if err != nil || mimeType != "application/octet-stream" || name != "инструкция.pdf" || kind != "file" || !bytes.Equal(stored, data) {
+		t.Fatalf("file storage: %s %s %s %v", mimeType, name, kind, err)
+	}
+	if _, _, _, _, err = s.Attachment(ctx, id+1, file.ID); err == nil {
+		t.Fatal("private file crossed thread boundary")
+	}
+	// Verified video signatures are inline media; arbitrary HTML remains a download.
+	for _, test := range []struct {
+		name string
+		data []byte
+		want string
+	}{{"clip.webm", []byte{0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3}, "video/webm"}, {"page.html", []byte("<!DOCTYPE HTML><script>alert(1)</script>"), "application/octet-stream"}} {
+		in := Input{ClientID: "file-format-identifier", Attachment: &AttachmentInput{Name: test.name, Data: base64.StdEncoding.EncodeToString(test.data)}}
+		_, mimeType, err := Validate(&in)
+		if err != nil || mimeType != test.want {
+			t.Fatalf("file type %s: %s %v", test.name, mimeType, err)
+		}
 	}
 }

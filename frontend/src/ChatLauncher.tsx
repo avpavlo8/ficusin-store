@@ -14,7 +14,7 @@ export default function ChatLauncher() {
   const [context, setContext] = useState<ChatContext | undefined>(() => direct ? contextOf(new URL(window.location.href)) : undefined);
   const unread = useChatUnread();
   const trigger = useRef<HTMLElement | null>(null);
-  const close = () => { setOpen(false); trigger.current?.focus(); };
+  const close = () => { setOpen(false); requestAnimationFrame(() => { (trigger.current?.isConnected ? trigger.current : document.querySelector<HTMLButtonElement>(".chat-launcher"))?.focus(); }); };
   useEffect(() => {
     const click = (event: MouseEvent) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.defaultPrevented) return;

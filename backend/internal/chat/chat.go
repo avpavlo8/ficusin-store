@@ -10,6 +10,8 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"net/http"
+	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -25,33 +27,42 @@ type Identity struct {
 	CustomerID int64
 	GuestHash  string
 }
+type AttachmentInput struct {
+	Name string `json:"name"`
+	Data string `json:"data"`
+}
 type Input struct {
-	ClientID       string `json:"clientId"`
-	Text           string `json:"text"`
-	ContextURL     string `json:"contextUrl"`
-	ContextLabel   string `json:"contextLabel"`
-	Image          string `json:"image"`
-	Consent        bool   `json:"consent"`
-	ConsentVersion string `json:"-"`
-	IP             string `json:"-"`
-	Agent          string `json:"-"`
+	Attachment     *AttachmentInput `json:"attachment,omitempty"`
+	ClientID       string           `json:"clientId"`
+	Text           string           `json:"text"`
+	ContextURL     string           `json:"contextUrl"`
+	ContextLabel   string           `json:"contextLabel"`
+	Image          string           `json:"image"`
+	Consent        bool             `json:"consent"`
+	ConsentVersion string           `json:"-"`
+	IP             string           `json:"-"`
+	Agent          string           `json:"-"`
 }
 type Message struct {
-	ID           int64     `json:"id"`
-	Sender       string    `json:"sender"`
-	Text         string    `json:"text"`
-	ContextURL   string    `json:"contextUrl,omitempty"`
-	ContextLabel string    `json:"contextLabel,omitempty"`
-	HasImage     bool      `json:"hasImage"`
-	CreatedAt    time.Time `json:"createdAt"`
+	AttachmentName string    `json:"attachmentName,omitempty"`
+	AttachmentKind string    `json:"attachmentKind,omitempty"`
+	AttachmentSize int       `json:"attachmentSize,omitempty"`
+	ID             int64     `json:"id"`
+	Sender         string    `json:"sender"`
+	Text           string    `json:"text"`
+	ContextURL     string    `json:"contextUrl,omitempty"`
+	ContextLabel   string    `json:"contextLabel,omitempty"`
+	HasImage       bool      `json:"hasImage"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 type Thread struct {
-	ID             int64     `json:"id"`
-	Status         string    `json:"status"`
-	CustomerReadID int64     `json:"customerReadId"`
-	StaffReadID    int64     `json:"staffReadId"`
-	Messages       []Message `json:"messages"`
-	HasMore        bool      `json:"hasMore"`
+	ConsentRequired bool      `json:"consentRequired"`
+	ID              int64     `json:"id"`
+	Status          string    `json:"status"`
+	CustomerReadID  int64     `json:"customerReadId"`
+	StaffReadID     int64     `json:"staffReadId"`
+	Messages        []Message `json:"messages"`
+	HasMore         bool      `json:"hasMore"`
 }
 type Summary struct {
 	ID        int64     `json:"id"`
@@ -93,6 +104,30 @@ func Validate(input *Input) ([]byte, string, error) {
 			return nil, "", ErrInvalid
 		}
 		kind = "image/" + format
+	}
+	if input.Attachment != nil {
+		if input.Image != "" || len(input.Attachment.Data) > 28*1024*1024 {
+			return nil, "", ErrInvalid
+		}
+		name := strings.TrimSpace(path.Base(strings.ReplaceAll(input.Attachment.Name, "\\", "/")))
+		if name == "" || name == "." || utf8.RuneCountInString(name) > 180 || strings.ContainsAny(name, "\x00\r\n") {
+			return nil, "", ErrInvalid
+		}
+		input.Attachment.Name = name
+		var err error
+		data, err = base64.StdEncoding.DecodeString(input.Attachment.Data)
+		if err != nil || len(data) == 0 || len(data) > 20*1024*1024 {
+			return nil, "", ErrInvalid
+		}
+		kind = http.DetectContentType(data)
+		if kind == "image/jpeg" || kind == "image/png" {
+			cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+			if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > 16000000 || len(data) > 2*1024*1024 {
+				return nil, "", ErrInvalid
+			}
+		} else if kind != "video/mp4" && kind != "video/webm" {
+			kind = "application/octet-stream"
+		}
 	}
 	if input.Text == "" && len(data) == 0 {
 		return nil, "", ErrInvalid
@@ -168,10 +203,10 @@ func (s *Store) read(ctx context.Context, id, before, after int64) (Thread, erro
 	if err != nil {
 		return out, err
 	}
-	query := `SELECT id,sender,body,context_url,context_label,image_data IS NOT NULL,created_at FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 51`
+	query := `SELECT id,sender,body,context_url,context_label,image_type IN ('image/jpeg','image/png') AND image_data IS NOT NULL,created_at,attachment_name,attachment_kind,COALESCE(octet_length(image_data),0) FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 51`
 	cursor := before
 	if after > 0 {
-		query = `SELECT id,sender,body,context_url,context_label,image_data IS NOT NULL,created_at FROM support_messages WHERE conversation_id=$1 AND id>$2 ORDER BY id ASC LIMIT 51`
+		query = `SELECT id,sender,body,context_url,context_label,image_type IN ('image/jpeg','image/png') AND image_data IS NOT NULL,created_at,attachment_name,attachment_kind,COALESCE(octet_length(image_data),0) FROM support_messages WHERE conversation_id=$1 AND id>$2 ORDER BY id ASC LIMIT 51`
 		cursor = after
 	}
 	rows, err := s.pool.Query(ctx, query, id, cursor)
@@ -181,7 +216,7 @@ func (s *Store) read(ctx context.Context, id, before, after int64) (Thread, erro
 	defer rows.Close()
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Sender, &m.Text, &m.ContextURL, &m.ContextLabel, &m.HasImage, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.Sender, &m.Text, &m.ContextURL, &m.ContextLabel, &m.HasImage, &m.CreatedAt, &m.AttachmentName, &m.AttachmentKind, &m.AttachmentSize); err != nil {
 			return out, err
 		}
 		out.Messages = append(out.Messages, m)
@@ -226,7 +261,7 @@ func (s *Store) Send(ctx context.Context, who Identity, staffID, threadID int64,
 			return 0, err
 		}
 		if threadID == 0 {
-			if !input.Consent {
+			if !input.Consent && who.CustomerID == 0 {
 				return 0, ErrConsent
 			}
 			err = tx.QueryRow(ctx, `INSERT INTO support_conversations(customer_id,guest_hash) VALUES(NULLIF($1,0),NULLIF($2,'')) RETURNING id`, who.CustomerID, func() string {
@@ -238,14 +273,27 @@ func (s *Store) Send(ctx context.Context, who Identity, staffID, threadID int64,
 			if err != nil {
 				return 0, err
 			}
-			_, err := tx.Exec(ctx, `INSERT INTO support_consents(conversation_id,document_version,ip_address,user_agent) VALUES($1,$2,$3,$4)`, threadID, input.ConsentVersion, input.IP, input.Agent)
-			if err != nil {
-				return 0, err
+			if who.CustomerID == 0 {
+				_, err := tx.Exec(ctx, `INSERT INTO support_consents(conversation_id,document_version,ip_address,user_agent) VALUES($1,$2,$3,$4)`, threadID, input.ConsentVersion, input.IP, input.Agent)
+				if err != nil {
+					return 0, err
+				}
 			}
 		}
 	}
+	attachmentName, attachmentKind := "", ""
+	if input.Attachment != nil {
+		attachmentName = input.Attachment.Name
+		attachmentKind = "file"
+		if strings.HasPrefix(kind, "image/") {
+			attachmentKind = "image"
+		}
+		if strings.HasPrefix(kind, "video/") {
+			attachmentKind = "video"
+		}
+	}
 	var messageID int64
-	err = tx.QueryRow(ctx, `INSERT INTO support_messages(conversation_id,sender,staff_id,client_id,body,context_url,context_label,image_type,image_data) VALUES($1,$2,NULLIF($3,0),$4,$5,$6,$7,$8,$9) ON CONFLICT(conversation_id,sender,client_id) DO NOTHING RETURNING id`, threadID, sender, staffID, input.ClientID, input.Text, input.ContextURL, input.ContextLabel, kind, data).Scan(&messageID)
+	err = tx.QueryRow(ctx, `INSERT INTO support_messages(conversation_id,sender,staff_id,client_id,body,context_url,context_label,image_type,image_data,attachment_name,attachment_kind) VALUES($1,$2,NULLIF($3,0),$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(conversation_id,sender,client_id) DO NOTHING RETURNING id`, threadID, sender, staffID, input.ClientID, input.Text, input.ContextURL, input.ContextLabel, kind, data, attachmentName, attachmentKind).Scan(&messageID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return threadID, tx.Commit(ctx)
 	}
@@ -273,7 +321,7 @@ func (s *Store) Photo(ctx context.Context, threadID, messageID int64) (string, [
 	return kind, data, err
 }
 func (s *Store) List(ctx context.Context, status, query string, offset int) ([]Summary, error) {
-	rows, err := s.pool.Query(ctx, `SELECT c.id,COALESCE(NULLIF(u.full_name,''),'Посетитель №'||c.id),c.status,COALESCE(NULLIF(LEFT(m.body,160),''),'Фотография'),(SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender='customer' AND id>c.staff_read_id),c.updated_at FROM support_conversations c LEFT JOIN customers u ON u.id=c.customer_id LEFT JOIN LATERAL(SELECT body FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)m ON true WHERE ($1='' OR c.status=$1) AND ($2='' OR COALESCE(u.full_name,'') ILIKE '%'||$2||'%' OR EXISTS(SELECT 1 FROM support_messages WHERE conversation_id=c.id AND body ILIKE '%'||$2||'%') OR c.id::text=$2) ORDER BY c.updated_at DESC,c.id DESC LIMIT 51 OFFSET $3`, status, query, offset)
+	rows, err := s.pool.Query(ctx, `SELECT c.id,COALESCE(NULLIF(u.full_name,''),'Посетитель №'||c.id),c.status,COALESCE(NULLIF(LEFT(m.body,160),''),NULLIF(m.attachment_name,''),'Фотография'),(SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender='customer' AND id>c.staff_read_id),c.updated_at FROM support_conversations c LEFT JOIN customers u ON u.id=c.customer_id LEFT JOIN LATERAL(SELECT body,attachment_name FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)m ON true WHERE ($1='' OR c.status=$1) AND ($2='' OR COALESCE(u.full_name,'') ILIKE '%'||$2||'%' OR EXISTS(SELECT 1 FROM support_messages WHERE conversation_id=c.id AND body ILIKE '%'||$2||'%') OR c.id::text=$2) ORDER BY c.updated_at DESC,c.id DESC LIMIT 51 OFFSET $3`, status, query, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -306,4 +354,17 @@ func (s *Store) Unread(ctx context.Context, id int64, staff bool) (int, error) {
 	}
 	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM support_messages m JOIN support_conversations c ON c.id=m.conversation_id WHERE c.id=$1 AND m.sender='staff' AND m.id>c.customer_read_id`, id).Scan(&count)
 	return count, err
+}
+
+func (s *Store) Attachment(ctx context.Context, threadID, messageID int64) (string, string, string, []byte, error) {
+	var mimeType, name, kind string
+	var data []byte
+	err := s.pool.QueryRow(ctx, `SELECT image_type,attachment_name,attachment_kind,image_data FROM support_messages WHERE conversation_id=$1 AND id=$2 AND image_data IS NOT NULL`, threadID, messageID).Scan(&mimeType, &name, &kind, &data)
+	if kind == "" && strings.HasPrefix(mimeType, "image/") {
+		kind = "image"
+	}
+	if name == "" {
+		name = "photo.jpg"
+	}
+	return mimeType, name, kind, data, err
 }

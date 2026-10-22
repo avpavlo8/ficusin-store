@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"errors"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,9 +19,10 @@ const chatCookieName = "ficusin_chat_session"
 const chatConsentVersion = "2026-10-22-chat"
 
 type chatHandlers struct {
-	store  *chat.Store
-	admin  adminHandlers
-	secure bool
+	store   *chat.Store
+	admin   adminHandlers
+	uploads *rateLimiter
+	secure  bool
 }
 
 func (h chatHandlers) identity(w http.ResponseWriter, r *http.Request, create bool) (chat.Identity, bool) {
@@ -62,7 +65,7 @@ func (h chatHandlers) fail(w http.ResponseWriter, err error) {
 	}
 	if errors.Is(err, chat.ErrInvalid) {
 		status = http.StatusBadRequest
-		message = "Проверьте сообщение: до 4000 символов, фото JPEG или PNG до 2 МБ"
+		message = "Проверьте сообщение: до 4000 символов, вложение до 20 МБ"
 	}
 	if errors.Is(err, chat.ErrConsent) {
 		status = http.StatusBadRequest
@@ -143,9 +146,18 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/messages") && r.Method == http.MethodPost {
+		if r.ContentLength > 3*1024*1024 {
+			controller := http.NewResponseController(w)
+			_ = controller.SetReadDeadline(time.Now().Add(90 * time.Second))
+			_ = controller.SetWriteDeadline(time.Now().Add(90 * time.Second))
+		}
 		var input chat.Input
-		if decodeJSONWithLimit(r, &input, 3*1024*1024) != nil {
+		if decodeJSONWithLimit(r, &input, 29*1024*1024) != nil {
 			h.fail(w, chat.ErrInvalid)
+			return
+		}
+		if input.Attachment != nil && !staff && h.uploads != nil && !h.uploads.allow(clientIP(r)) {
+			writeJSON(w, 429, errorResponse{Error: "Слишком много вложений. Подождите минуту"})
 			return
 		}
 		input.ConsentVersion = chatConsentVersion
@@ -178,16 +190,26 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		kind, data, err := h.store.Photo(r.Context(), id, messageID)
+		kind, name, attachmentKind, data, err := h.store.Attachment(r.Context(), id, messageID)
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
+		if strings.Contains(r.URL.Path, "/photos/") && attachmentKind != "image" {
+			http.NotFound(w, r)
+			return
+		}
+		disposition := "inline"
+		if attachmentKind == "file" {
+			disposition = "attachment"
+			kind = "application/octet-stream"
+		}
 		w.Header().Set("Content-Type", kind)
-		w.Header().Set("Content-Disposition", "inline")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": name}))
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(200)
-		_, _ = w.Write(data)
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(90 * time.Second))
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/read") {
@@ -236,5 +258,6 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
+	thread.ConsentRequired = !staff && who.CustomerID == 0 && thread.ID == 0
 	writeJSON(w, 200, thread)
 }
