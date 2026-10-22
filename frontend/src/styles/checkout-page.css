@@ -693,7 +693,8 @@
     grid-template-columns: 1fr;
   }
   .checkout-page-panel :is(.checkout-form-section, .checkout-submit-section) .checkout-navigation {
-    flex-direction: column-reverse;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: stretch;
     gap: 8px;
   }
@@ -702,9 +703,12 @@
     min-width: 0 !important;
     width: fit-content;
     justify-content: center;
+    padding-inline: 10px;
+    font-size: 14px;
+    line-height: 1.25;
   }
-  .checkout-page-panel .checkout-navigation > a { align-self: flex-start; }
-  .checkout-page-panel .checkout-navigation > button { align-self: flex-end; }
+  .checkout-page-panel .checkout-navigation > a { gap: 6px; }
+  .checkout-page-panel .checkout-navigation > button { justify-self: end; }
   .checkout-page-panel :is(.checkout-form-section, .checkout-submit-section) .delivery-options label {
     grid-template-columns: 20px 36px minmax(0, 1fr);
     gap: 10px;
@@ -811,6 +815,8 @@
   pointer-events: none;
 }
 .checkout-page-panel .checkout-delivery-art img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;

@@ -1,6 +1,38 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockApi, owner, setStoredCounts } from "./helpers";
 
+test("@desktop @phone delivery animations keep one shop image and checkout actions align", async ({ page }) => {
+  await mockApi(page);
+  await setStoredCounts(page, [], { "1": 1 });
+  await page.route("**/api/v1/delivery/cdek?action=status", route => route.fulfill({ json: { available: true } }));
+  await page.goto("/checkout");
+  for (let selection = 0; selection < 3; selection++) {
+    await page.locator('input[name="delivery"][value="pickup"]').check();
+    await expect(page.locator('.checkout-delivery-art[data-kind="pickup"] img')).toHaveCount(1);
+    await expect(page.locator('.delivery-shop-entrance')).toHaveCount(1);
+    await page.locator('input[name="delivery"][value="cdek"]').check();
+  }
+  await page.route("**/api/v1/delivery/cdek?action=cities&city=*", route => {
+    expect(new URL(route.request().url()).searchParams.get("city")).toBe("Ряз");
+    return route.fulfill({ json: { cities: [{ code: 159, city: "Рязань, Рязанская область, Россия" }] } });
+  });
+  await page.getByLabel("Город получения", { exact: true }).fill("Ряз");
+  await expect(page.getByRole("listbox", { name: "Найденные города" }).getByRole("button", { name: /Рязань/ })).toBeVisible();
+  const widths = (page.viewportSize()!.width > 850) ? [1280] : [390, 375, 320];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 844 });
+    const back = (await page.getByRole("link", { name: "Назад в корзину" }).boundingBox())!;
+    const submit = (await page.locator('.checkout-navigation .primary-button').boundingBox())!;
+    expect(Math.abs(back.y - submit.y)).toBeLessThanOrEqual(1);
+    expect(back.x + back.width).toBeLessThanOrEqual(submit.x);
+    expect(submit.x + submit.width).toBeLessThanOrEqual(width);
+    const frame = (await page.locator('.checkout-delivery-art[data-kind="pickup"] .delivery-art-frame').boundingBox())!;
+    const image = (await page.locator('.delivery-shop-image').boundingBox())!;
+    expect(Math.abs(frame.height - image.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(frame.y - image.y)).toBeLessThanOrEqual(1);
+  }
+});
+
 async function openDeliveryStep(page: Page) {
   await setStoredCounts(page, [], { "1": 1 });
   await page.goto("/checkout");
