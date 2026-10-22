@@ -1,3 +1,4 @@
+import { chatHref } from "../lib/chat";
 import { useRef } from "react";
 import { StoreHeader } from "../StoreHeader";
 import NotFoundPage from "../NotFoundPage";
@@ -61,7 +62,7 @@ export default function CareArticlePage({ slug }: { slug?: string }) {
               {section.items && (section.ordered ? <ol className="care-action-list">{section.items.map(item => <li key={item.title}><h3>{item.title}</h3><p>{item.text}</p></li>)}</ol> : <ul className="care-observation-list">{section.items.map(item => <li key={item.title}><h3>{item.title}</h3><p>{item.text}</p></li>)}</ul>)}
               {section.note && <aside className="care-story-note"><CareIcon kind="leaf" /><div><strong>Обратите внимание</strong><p>{section.note}</p></div></aside>}
             </section>)}
-            <section className="care-story-help" id="care-help"><p className="care-kicker">Разберёмся вместе</p><h2>Не уверены, что с растением?</h2><p>Пришлите фото растения целиком и повреждений крупным планом. Напишите, когда поливали, где стоит горшок и чем уже обрабатывали.</p><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Написать в Фикусин <span aria-hidden="true">↗</span></a></section>
+            <section className="care-story-help" id="care-help"><p className="care-kicker">Разберёмся вместе</p><h2>Не уверены, что с растением?</h2><p>Пришлите фото растения целиком и повреждений крупным планом. Напишите, когда поливали, где стоит горшок и чем уже обрабатывали.</p><a href={chatHref(document.title.split(" — ")[0])}>Написать в Фикусин <span aria-hidden="true">→</span></a></section>
 
           </div>
         </div>

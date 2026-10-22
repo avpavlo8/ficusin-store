@@ -148,6 +148,9 @@ export async function mockApi(page: Page, session: Session = guest) {
     diagnostics: { overreserved: [], failedReceipts: [] },
   } }));
 
+  await context.route("**/api/v1/chat", route => route.fulfill({ json: { id: 0, status: "open", customerReadId: 0, staffReadId: 0, messages: [], hasMore: false } }));
+  await context.route("**/api/v1/chat/unread", route => route.fulfill({ json: { unread: 0 } }));
+  await context.route("**/api/v1/admin/chat/unread", route => route.fulfill({ json: { unread: 0 } }));
   await context.route("**/api/v1/catalog", (route) =>
     route.fulfill({ json: { products: [product, ficus, monstera, pot] } }));
 

@@ -166,7 +166,7 @@ function AccountShell({ user, section, children, onSignOut }: {
             <a className={section === "favorites" ? "active" : ""} href="/account/favorites"><AccountNavIcon name="favorites"/><span>Избранное</span></a>
             <a className={section === "reviews" ? "active" : ""} href="/account/reviews"><AccountNavIcon name="reviews"/><span>Мои отзывы</span></a>
           </nav>
-          <div className="account-help"><strong>Мы рядом,<br/>если нужен совет</strong><p>Поможем с заказом и уходом за растениями.</p><a href="https://max.ru/channel_ficusin" target="_blank" rel="noreferrer">Написать в чат <span>○</span></a></div>
+          <div className="account-help"><strong>Мы рядом,<br/>если нужен совет</strong><p>Поможем с заказом и уходом за растениями.</p><a href="/chat">Написать в чат <span>○</span></a></div>
           {staff && <a className="account-switch" href="/admin">Панель управления →</a>}
           <button className="signout-link" type="button" onClick={onSignOut}>
             Выйти из аккаунта

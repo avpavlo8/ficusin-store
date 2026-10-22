@@ -1,3 +1,4 @@
+import { useChatUnread } from "./lib/chat";
 import { sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
@@ -7,6 +8,7 @@ import { roleLabel } from "./adminShared";
 
 export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
   const paths: Record<Section | "search" | "arrow", string> = {
+    chat: "M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
     returns: "M4 8h10a6 6 0 0 1 0 12H9M4 8l5-5M4 8l5 5",
     finance: "M3 6h18v14H3ZM3 10h18M15 15h3",
     marketplaces: "M8 16 16 8M9 5l2-2a5 5 0 0 1 7 7l-2 2M8 12l-2 2a5 5 0 0 0 7 7l2-2",
@@ -27,10 +29,11 @@ export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
 }
 
 export function WorkspaceSidebar({data,section,onNavigate,compact=false}:{data:AdminData;section:Section;onNavigate:(section:Section)=>void;compact?:boolean}) {
+ const unread=useChatUnread(true,data.permissions.includes("chat.manage"));
  const mobileMenu=useRef<HTMLDetailsElement>(null);
  const links=sections.filter(item=>!["categories","collections"].includes(item.id)).filter(item=>(!item.permission||data.permissions.includes(item.permission))&&(!item.owner||data.role==="owner")).map(item=> {
   const active=section===item.id||item.id==="products"&&["categories","collections"].includes(section);
-  return <button key={item.id} type="button" className={active?"active":""} aria-current={active?"page":undefined} onClick={()=>{onNavigate(item.id);if(mobileMenu.current)mobileMenu.current.open=false;}}><AdminIcon name={item.id}/>{item.label}</button>;
+  return <button key={item.id} type="button" className={active?"active":""} aria-current={active?"page":undefined} onClick={()=>{onNavigate(item.id);if(mobileMenu.current)mobileMenu.current.open=false;}}><AdminIcon name={item.id}/>{item.label}{item.id==="chat"&&unread>0&&<b className="workspace-chat-count" aria-label={`Непрочитанных: ${unread}`}>{unread>99?"99+":unread}</b>}</button>;
  });
  return <aside className="account-sidebar"><a className="workspace-skip" href="#workspace-content">К содержимому</a><a className="workspace-brand" href="/" aria-label="Фикусин — в магазин">Фикусин<span aria-hidden="true">✳</span></a><p className="workspace-caption">Рабочее пространство</p>
  {compact&&<details ref={mobileMenu} className="workspace-mobile-navigation"><summary>Разделы</summary><nav aria-label="Мобильные разделы управления">{links}</nav></details>}

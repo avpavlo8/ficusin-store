@@ -6,6 +6,77 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /chat:
+    get:
+      operationId: readMyChat
+      description: Private guest/account support thread. HttpOnly capability cookie for guests; customer history is bound on login. See docs/site-chat.md for message and inbox contracts.
+      parameters:
+        - in: query
+          name: before
+          schema: {type: integer, minimum: 0}
+      responses:
+        "200": {description: Thread with messages, read cursors and hasMore}
+        "503": {description: Storage unavailable}
+  /chat/messages:
+    post:
+      operationId: sendMyChatMessage
+      description: Send text and optional private JPEG/PNG. Requires consent for a new thread. clientId deduplicates retries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientId, text]
+              properties:
+                clientId: {type: string, minLength: 16, maxLength: 80}
+                text: {type: string, maxLength: 4000}
+                image: {type: string, description: Optional base64 data URL, decoded size at most 2 MiB}
+                consent: {type: boolean}
+                contextUrl: {type: string, maxLength: 500}
+                contextLabel: {type: string, maxLength: 180}
+      responses:
+        "200": {description: Saved thread including the message}
+        "400": {description: Invalid message or missing consent}
+        "429": {description: Send rate exceeded}
+  /chat/unread:
+    get:
+      operationId: myChatUnread
+      responses:
+        "200": {description: Number of unread staff messages}
+  /chat/read:
+    post:
+      operationId: markMyChatRead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [through]
+              properties:
+                through: {type: integer, minimum: 0}
+      responses:
+        "200": {description: Visible messages marked read}
+  /chat/photos/{messageID}:
+    get:
+      operationId: myChatPhoto
+      parameters:
+        - in: path
+          name: messageID
+          required: true
+          schema: {type: integer}
+      responses:
+        "200": {description: Private JPEG or PNG, no-store}
+        "404": {description: Photo unavailable to this participant}
+  /admin/chat:
+    get:
+      operationId: supportInbox
+      description: Requires chat.manage. Filter by status, search q, paginate with offset; see docs/site-chat.md.
+      responses:
+        "200": {description: Inbox items and hasMore}
+        "401": {description: Sign in required}
+        "403": {description: chat.manage required}
   /health:
     get:
       operationId: health

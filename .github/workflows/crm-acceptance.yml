@@ -60,6 +60,11 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8080/api/v1/ready
           psql -h 127.0.0.1 -U postgres -d ficusin_crm_test -v ON_ERROR_STOP=1 -f scripts/seed-crm-acceptance.sql
+      - name: Verify private chat persistence and isolation on PostgreSQL
+        env:
+          CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
+        run: go test ./internal/chat -count=1
+        working-directory: backend
       - name: Verify durable synchronization coordination
         env:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_crm_test?sslmode=disable
@@ -138,7 +143,7 @@ jobs:
           -v "$GITHUB_WORKSPACE:/work" -w /work/e2e
           -e GITHUB_SHA -e CRM_ARTIFACT_DIR=/work/crm-artifacts
           mcr.microsoft.com/playwright:v1.63.0-noble
-          bash -c 'npm ci && node verify-crm-acceptance.mjs && node verify-return-recovery.mjs && node verify-return-edits.mjs'
+          bash -c 'npm ci && node verify-crm-acceptance.mjs && node verify-return-recovery.mjs && node verify-return-edits.mjs && CHAT_ARTIFACT_DIR=/work/crm-artifacts/chat node verify-chat-acceptance.mjs'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

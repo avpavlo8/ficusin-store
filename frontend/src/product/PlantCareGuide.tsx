@@ -1,3 +1,4 @@
+import { chatHref } from "../lib/chat";
 import type { ProductDetail } from "./types";
 import "./plant-layout.css";
 
@@ -86,11 +87,11 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
     <div className="plant-care-panels">{panels}</div>
     {product.careInstructions?.trim() && <aside className="plant-care-note"><h3>На заметку</h3><CareCopy text={product.careInstructions} /></aside>}
     <section className="plant-help" aria-labelledby="plant-help-title"><header><h3 id="plant-help-title">Если что-то не так</h3></header><div>{helpArticles.map(([icon,title,note,url]) => <a href={`${url}?plant=${encodeURIComponent(product.id)}`} key={url}><i aria-hidden="true"><HelpIcon type={icon}/></i><span><strong>{title}</strong><small>{note}</small></span><b aria-hidden="true">↗</b></a>)}</div></section>
-    <aside className="plant-care-contact"><div><h3>Остались вопросы?</h3><p>Поможем подобрать уход именно для вашего растения.</p></div><a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Напишите нам <span aria-hidden="true">→</span></a></aside>
+    <aside className="plant-care-contact"><div><h3>Остались вопросы?</h3><p>Поможем подобрать уход именно для вашего растения.</p></div><a href={chatHref(product.name)}>Напишите нам <span aria-hidden="true">→</span></a></aside>
   </div>;
 }
 
 export function PlantQuestions({ product }: { product: ProductDetail }) {
   const faq = (product.passport.faq || []).filter(item => item.question.trim() && item.answer.trim());
-  return <section className="plant-questions" id="questions" aria-labelledby="plant-questions-title"><p className="plant-eyebrow">Отвечаем на вопросы</p><h2 id="plant-questions-title">Вопросы о растении</h2>{faq.map((item,index) => <details key={`${item.question}-${index}`}><summary>{item.question}</summary><p className="plant-copy">{item.answer}</p></details>)}<a href="https://t.me/ficusin62" target="_blank" rel="noreferrer">Задать вопрос ↗</a></section>;
+  return <section className="plant-questions" id="questions" aria-labelledby="plant-questions-title"><p className="plant-eyebrow">Отвечаем на вопросы</p><h2 id="plant-questions-title">Вопросы о растении</h2>{faq.map((item,index) => <details key={`${item.question}-${index}`}><summary>{item.question}</summary><p className="plant-copy">{item.answer}</p></details>)}<a href={chatHref(product.name)}>Задать вопрос →</a></section>;
 }

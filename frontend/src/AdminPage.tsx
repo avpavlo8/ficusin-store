@@ -16,6 +16,7 @@ const AdminMarketplaces = lazy(() => import("./AdminMarketplaces").then((module)
 const AdminReturns = lazy(() => import("./AdminReturns").then((module) => ({ default: module.AdminReturns })));
 const AdminFinance = lazy(() => import("./AdminFinance").then((module) => ({ default: module.AdminFinance })));
 const AdminAvito = lazy(() => import("./AdminAvito").then((module) => ({ default: module.AdminAvito })));
+const AdminChat = lazy(() => import("./AdminChat"));
 const Customers = lazy(() => import("./AdminSales").then((module) => ({ default: module.Customers })));
 const Orders = lazy(() => import("./AdminSales").then((module) => ({ default: module.Orders })));
 
@@ -70,6 +71,7 @@ export default function AdminPage() {
           {section === "finance" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем финансы…" />}><AdminFinance onError={setError} /></Suspense>}
           {section === "marketplaces" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем маркетплейсы…" />}><AdminMarketplaces onError={setError} /></Suspense>}
           {section === "avito" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}><AdminAvito onError={setError} /></Suspense>}
+          {section === "chat" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем чат…" />}><AdminChat /></Suspense>}
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
 		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
