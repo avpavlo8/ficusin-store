@@ -132,11 +132,6 @@
 .admin-review-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .admin-review-media { display:flex; gap:8px; margin-top:10px; }
 .admin-review-media img,.admin-review-media video { width:96px; height:96px; object-fit:cover; border-radius:8px; background:#edf0ec; }
-.order-details td { background: #faf8f3; }
-.order-details td { display: table-cell; }
-.order-details td > div { width: 50%; padding-right: 30px; display: inline-block; vertical-align: top; }
-.order-details p { margin: 8px 0; color: #69736b; }
-.order-details p span { float: right; }
 .admin-dialog-backdrop { position: fixed; z-index: 110; inset: 0; border: 0; background: rgba(17,34,28,.55); }
 .admin-dialog { width: min(760px, calc(100vw - 36px)); max-height: calc(100vh - 50px); padding: 24px; position: fixed; z-index: 111; top: 50%; left: 50%; overflow: auto; transform: translate(-50%,-50%); border-radius: 18px; background: #fbfaf7; box-shadow: 0 30px 100px rgba(0,0,0,.25); }
 .admin-dialog > header { margin-bottom: 22px; display: flex; justify-content: space-between; align-items: center; }

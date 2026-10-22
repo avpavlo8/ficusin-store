@@ -185,7 +185,7 @@ func (service *Service) Reconcile(ctx context.Context, orderID int64) (Balance, 
 		return Balance{}, err
 	}
 	balance := balanceFromState(state)
-	if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_status=$2 WHERE id=$1`, orderID, balance.PaymentStatus); err != nil {
+	if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_status=$2,status=CASE WHEN $2='paid' AND status IN ('new','confirmed') AND delivery_fee_pending=0 AND has_preorder=0 THEN 'assembling' ELSE status END WHERE id=$1`, orderID, balance.PaymentStatus); err != nil {
 		return Balance{}, fmt.Errorf("reconcile order payment status: %w", err)
 	}
 	balance.Issues, err = service.paymentIssues(ctx, orderID)
@@ -215,6 +215,21 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 		return "", Balance{}, errors.New("оплата картой временно недоступна")
 	}
 	state, err := service.moneyStateByOrderNumber(ctx, orderNumber)
+	if err != nil {
+		return "", Balance{}, err
+	}
+	// Share the preparation lock with packaging confirmation. It serializes
+	// concurrent link requests and prevents changing the amount during issuance.
+	guard, err := service.lockOrderPreparation(ctx, state.id)
+	if err != nil {
+		return "", Balance{}, err
+	}
+	defer func() { _ = guard.Rollback(ctx) }()
+	return service.startOutstandingLocked(ctx, state.id)
+}
+
+func (service *Service) startOutstandingLocked(ctx context.Context, orderID int64) (string, Balance, error) {
+	state, err := service.moneyStateByOrderID(ctx, orderID)
 	if err != nil {
 		return "", Balance{}, err
 	}
@@ -276,7 +291,7 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 		ReturnURL:      service.returnURL + "/?paid=" + state.number,
 		Email:          state.email, Phone: state.phone,
 		// The outstanding balance includes delivery when the shop collects it.
-		Items: []integration.PaymentItem{{Name: "Доплата по заказу " + state.number, Price: balance.Due, Quantity: 1}},
+		Items: []integration.PaymentItem{{Name: "Оплата по заказу " + state.number, Price: balance.Due, Quantity: 1}},
 	})
 	if err != nil {
 		return "", balance, err

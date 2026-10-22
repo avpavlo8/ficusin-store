@@ -151,6 +151,36 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 	if !service.Configured() {
 		return "", errors.New("оплата картой временно недоступна")
 	}
+	var id int64
+	if err := service.pool.QueryRow(ctx, `SELECT id FROM orders WHERE order_number=$1`, orderNumber).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", errors.New("заказ не найден")
+		}
+		return "", err
+	}
+	guard, err := service.lockOrderPreparation(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = guard.Rollback(ctx) }()
+	state, err := service.moneyStateByOrderID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	// A customer reopening a partly paid order owes only the outstanding
+	// balance, including newly approved delivery, never the plants again.
+	var discounted bool
+	if err := service.pool.QueryRow(ctx, `SELECT manager_discount_amount>0 FROM orders WHERE id=$1`, id).Scan(&discounted); err != nil {
+		return "", err
+	}
+	if balanceFromState(state).NetPaid > 0 || discounted {
+		link, _, err := service.startOutstandingLocked(ctx, id)
+		return link, err
+	}
+	return service.startLocked(ctx, orderNumber)
+}
+
+func (service *Service) startLocked(ctx context.Context, orderNumber string) (string, error) {
 	var (
 		orderID       int64
 		amount        float64
@@ -256,7 +286,7 @@ func (service *Service) Start(ctx context.Context, orderNumber string) (string, 
 			if cancelErr := service.CancelPending(ctx, orderID); cancelErr != nil {
 				return "", fmt.Errorf("не удалось закрыть прежнюю ссылку на оплату: %w", cancelErr)
 			}
-			return service.Start(ctx, orderNumber)
+			return service.startLocked(ctx, orderNumber)
 		}
 		if err == nil && existingURL != "" {
 			return existingURL, nil
@@ -362,7 +392,8 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 	if paid {
 		if _, err := transaction.Exec(ctx, `
 			UPDATE orders
-			SET payment_status = $2, paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP)
+			SET payment_status = $2, paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP),
+                status = CASE WHEN status IN ('new','confirmed') AND delivery_fee_pending=0 AND has_preorder=0 THEN 'assembling' ELSE status END
 			WHERE id = $1
 		`, orderID, StatusPaid); err != nil {
 			return fmt.Errorf("mark order paid: %w", err)

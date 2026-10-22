@@ -1,14 +1,7 @@
-import { WorkspaceState, WorkspaceStatus, WorkspaceTable, WorkspaceTasks, WorkspaceForm } from "./WorkspaceUI";
-import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Dialog, PageHeading, api, money, orderStatuses, paymentLabels, paymentMethodLabels, roleLabel, roles, statusLabels } from "./adminShared";
+import { WorkspaceState, WorkspaceTable, WorkspaceTasks, WorkspaceForm } from "./WorkspaceUI";
+import { useEffect, useRef, useState } from "react";
+import { Dialog, PageHeading, api, money, roleLabel, roles, statusLabels } from "./adminShared";
 import type { Customer, Order, Role } from "./adminTypes";
-
-const AdminOrderEditor = lazy(() => import("./AdminOrderEditor").then((module) => ({ default: module.AdminOrderEditor })));
-const deliveryMethodLabel = (value: string) => value === "pickup" ? "Самовывоз" : value === "cdek" ? "СДЭК" : value;
-const finalOrderStatuses = ["cancelled", "completed"];
-const orderPaymentLabel = (order: Order) => order.status === "cancelled" && ["pending", "manager_confirmation", "payment_provider_pending"].includes(order.paymentStatus)
-  ? "Оплата не требуется" : order.status === "cancelled" && order.paymentStatus === "on_delivery"
-    ? "Оплата не требуется" : paymentLabels[order.paymentStatus] ?? order.paymentStatus;
 
 export function Customers({ can, wholesaleOnly, onError }: { can: (permission: string) => boolean; wholesaleOnly?: boolean; onError: (value: string) => void }) {
   const [items, setItems] = useState<Customer[]>([]);
@@ -92,32 +85,4 @@ export function CustomerDialog({ readOnly = false, customer, owner, onClose, onS
   </WorkspaceForm><WorkspaceTasks title="Заказы клиента"><section className="customer-orders">{orders.length === 0 ? <p>Заказов пока нет.</p> : orders.map((order) => <article key={order.id}><div><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleDateString("ru-RU")}</small></div><span>{money.format(order.total)}</span><b>{statusLabels[order.status] || order.status}</b></article>)}</section></WorkspaceTasks><div className="dialog-actions"><button onClick={onClose}>{readOnly ? "Закрыть" : "Отмена"}</button>{!readOnly && <button className="primary" onClick={save}>Сохранить</button>}</div></Dialog>;
 }
 
-export function Orders({ focusOrder, onError }: { focusOrder?: string; onError: (value: string) => void }) {
-  const [items, setItems] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
-  const [opened, setOpened] = useState<number | null>(null);
-  useEffect(() => {
-    api<{ orders: Order[] }>("/api/v1/admin/orders").then((data) => {
-      setItems(data.orders);
-      if (focusOrder) {
-        const match = data.orders.find((order) => focusOrder.startsWith("id:") ? order.id === Number(focusOrder.slice(3)) : order.orderNumber === focusOrder);
-        if (match) setOpened(match.id);
-      }
-    }).catch((error) => { setLoadError(error.message); onError(error.message); }).finally(() => setLoading(false));
-  }, [onError, focusOrder]);
-  const updateStatus = async (order: Order, status: string) => {
-    const confirmPickupPayment = status === "completed" && order.deliveryMethod === "pickup" && order.paymentMethod === "on_delivery" && order.paymentStatus !== "paid";
-    if (confirmPickupPayment && !window.confirm(`Подтвердите, что покупатель оплатил заказ ${order.orderNumber} при выдаче.`)) return;
-    try { const result = await api<{ order: Order }>(`/api/v1/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status, paymentStatus: confirmPickupPayment ? "paid" : "" }) }); setItems((current) => current.map((item) => item.id === order.id ? result.order : item)); }
-    catch (error) { onError((error as Error).message); }
-  };
-  const updateOrder = (value: Order) => setItems((current) => current.map((item) => item.id === value.id ? value : item));
-  return <><PageHeading eyebrow="Продажи" title="Заказы" text="Состав заказа, контакты, доставка, оплата и текущий статус" />
-    <div className="admin-toolbar"><input aria-label="Найти заказ" placeholder="Найти заказ" value={query} onChange={event => setQuery(event.target.value)} /></div>
-    {loading ? <WorkspaceState kind="loading" title="Загружаем заказы…" /> : loadError ? <WorkspaceState kind="error" title={loadError} /> : <WorkspaceTable label="Заказы"><thead><tr><th>Заказ</th><th>Клиент</th><th>Получение</th><th>Сумма</th><th>Статус</th><th /></tr></thead><tbody>{items.filter(order => `${order.orderNumber} ${order.customerName}`.toLowerCase().includes(query.toLowerCase())).map((order) => <Fragment key={order.id}>
-      <tr className="clickable" onClick={() => setOpened(opened === order.id ? null : order.id)}><td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small></td><td><strong>{order.customerName}</strong><a href={`tel:${order.phone}`} onClick={(event) => event.stopPropagation()}>{order.phone}</a><small>{order.email}</small></td><td><strong>{deliveryMethodLabel(order.deliveryMethod)}</strong><small>{order.address}</small>{order.trackNumber && <small>Трек: {order.trackNumber}</small>}{order.status !== "cancelled" && order.hasPreorder && <small className="admin-flag">Есть позиции под заказ</small>}{order.status !== "cancelled" && order.deliveryFeePending && <small className="admin-flag">{order.repackRequested ? "Просят одну коробку — посчитайте доставку" : "Доставку нужно посчитать вручную"}</small>}</td><td><strong>{money.format(order.total)}</strong><small className={order.paymentStatus === "paid" ? "payment-state paid" : order.status !== "cancelled" && (order.paymentStatus === "pending" || order.paymentStatus === "partially_paid") ? "payment-state unpaid" : "payment-state"}>{orderPaymentLabel(order)}</small>{order.status !== "cancelled" && order.paymentMethod && order.paymentMethod !== "online" && <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>}</td><td onClick={(event) => event.stopPropagation()}><WorkspaceStatus status={order.status}>{statusLabels[order.status] || order.status}</WorkspaceStatus><select aria-label={`Статус заказа ${order.orderNumber}`} value={order.status} disabled={finalOrderStatuses.includes(order.status)} onChange={(event) => updateStatus(order, event.target.value)}>{orderStatuses.map((status) => <option value={status} key={status}>{statusLabels[status]}</option>)}</select></td><td><button type="button" className="admin-action" aria-expanded={opened === order.id}>{opened === order.id ? "Закрыть" : "Открыть"}</button></td></tr>
-      {opened === order.id && <tr className="order-details" key={`${order.id}-details`}><td colSpan={6}><Suspense fallback={<p>Загружаем заказ…</p>}><AdminOrderEditor order={order} onSaved={updateOrder} onError={onError} /></Suspense><div><strong>Комментарий</strong><p>{order.comment || "Нет комментария"}</p></div></td></tr>}
-    </Fragment>)}{!items.some(order => `${order.orderNumber} ${order.customerName}`.toLowerCase().includes(query.toLowerCase())) && <tr><td colSpan={6}><WorkspaceState kind="empty" title={query ? "Заказы не найдены" : "Заказов пока нет"} /></td></tr>}</tbody></WorkspaceTable>}</>;
-}
+export { Orders } from "./AdminOrders";

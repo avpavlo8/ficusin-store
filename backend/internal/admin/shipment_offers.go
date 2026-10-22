@@ -150,6 +150,9 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context,ac
 	tx,err:=repository.pool.BeginTx(ctx,pgx.TxOptions{});if err!=nil{return ShipmentOffer{},err};defer func(){_ = tx.Rollback(ctx)}()
 	var revision int;var status,delivery,address,email string;var customerID *int64;var cdekCityCode int
 	if err:=tx.QueryRow(ctx,`SELECT shipment_revision,status,delivery_method,address,COALESCE(email,''),customer_id,COALESCE(cdek_city_code,0) FROM orders WHERE id=$1 FOR UPDATE`,orderID).Scan(&revision,&status,&delivery,&address,&email,&customerID,&cdekCityCode);err!=nil{return ShipmentOffer{},err}
+	var packingActive bool
+ if err:=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM order_packing_workflows WHERE order_id=$1 AND state NOT IN ('cancelled','stale'))`,orderID).Scan(&packingActive);err!=nil{return ShipmentOffer{},err}
+ if packingActive{return ShipmentOffer{},errors.New("для заказа уже подтверждена полная отправка")}
 	var activeCDEK bool
 	if err:=tx.QueryRow(ctx,`SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown') FROM orders WHERE id=$1`,orderID).Scan(&activeCDEK);err!=nil{return ShipmentOffer{},err}
 	if activeCDEK{return ShipmentOffer{},errors.New("для заказа уже создаётся или зарегистрирована заявка СДЭК: сначала сверьте и отмените её у перевозчика")}
