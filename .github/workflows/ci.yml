@@ -27,6 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test:phone && npm run test:payment-result
+      - run: node ../e2e/verify-chat-notification-worker.mjs
       - run: npm run build
       - run: npm run budget
       # Build tools process repository-controlled input in CI too, so high
