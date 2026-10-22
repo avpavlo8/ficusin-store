@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { StoreHeader } from "./StoreHeader";
 import { money } from "./lib/money";
 import { netOrderPayment, paymentResultState, readPaymentResultOrder, type PaymentResultOrder } from "./lib/payment-result";
+import { reportPaidOrder } from "./lib/metrika-payment";
 import "./styles/payment-result.css";
 
 type ResultView =
@@ -53,6 +54,7 @@ export default function PaymentResultPage({ orderNumber, preview }: { orderNumbe
         if (disposed) return;
         const order = readPaymentResultOrder(body.order, orderNumber);
         if (!order) throw new Error("Не удалось проверить данные оплаты.");
+        void reportPaidOrder(order);
         const autoChecking = ["pending", "partial"].includes(paymentResultState(order)) && attempts < 20;
         setView({ kind: "order", order, autoChecking });
         if (autoChecking) timer = setTimeout(() => void checkPayment(), 3000);
