@@ -60,7 +60,9 @@ for (const device of ['@desktop','@phone']) {
 
 test('iPhone offers installation with actionable steps and respects later dismissal @phone',async({page},info)=>{
   await mockApi(page);await page.addInitScript(()=>{Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});Object.defineProperty(navigator,'standalone',{value:false});});
-  await page.clock.install();await page.goto('/');await page.clock.fastForward(8100);
+  await page.clock.install();await page.goto('/');
+  // Start advancing the installation timer after the React storefront has mounted.
+  await expect(page.locator('.storefront-shell')).toBeVisible();await page.clock.fastForward(8100);
   const invitation=page.getByRole('complementary',{name:'Установить приложение Фикусин',exact:true});await expect(invitation).toBeVisible();
   await invitation.getByRole('button',{name:'Как установить',exact:true}).click();await expect(invitation).toContainText('Откройте меню «Поделиться»');await expect(invitation).toContainText('На экран Домой');expect(await horizontalOverflow(page)).toBe(0);
   await page.screenshot({path:info.outputPath('install-invitation.png')});
