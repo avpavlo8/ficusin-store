@@ -14,6 +14,15 @@ test('account chat stays above a panned iPhone keyboard and restores navigation 
     await page.evaluate(({height,top})=>(window as unknown as {panAccount:(height:number,top:number)=>void}).panAccount(height,top),viewport);
     await expect.poll(async()=>{const box=await input.boundingBox();return !!box&&box.y>=viewport.top&&box.y+box.height<=viewport.top+viewport.height+1;}).toBe(true);
     const send=await page.getByRole('button',{name:'Отправить',exact:true}).boundingBox();expect(send!.y+send!.height).toBeLessThanOrEqual(viewport.top+viewport.height+1);
+    // Focus scrolling must not pan a hidden wrapper and leave a gap below the composer.
+    const wrappers = ['.account-chat-view','.account-messenger','.chat-thread'];
+    for (const selector of wrappers) {
+      const wrapper = page.locator(selector);
+      await wrapper.evaluate(element => { element.scrollTop = 80; });
+      expect(await wrapper.evaluate(element => element.scrollTop)).toBe(0);
+    }
+    const composer = await page.locator('.chat-compose').boundingBox();
+    expect(Math.abs(composer!.y + composer!.height - viewport.top - viewport.height)).toBeLessThanOrEqual(1);
     await expect(page.locator('.store-footer')).toBeHidden(); expect(await horizontalOverflow(page)).toBe(0);
   }
   await expect(page.locator('body')).toHaveClass(/account-chat-mobile/);
