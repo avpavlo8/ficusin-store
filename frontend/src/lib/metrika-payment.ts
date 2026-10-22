@@ -7,7 +7,7 @@ const reported = new Set<string>();
 // authenticated server response may establish payment success.
 export async function reportPaidOrder(order: PaymentResultOrder): Promise<void> {
   const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
-  if (privacy.globalPrivacyControl || navigator.doNotTrack === "1" || paymentResultState(order) !== "success") return;
+  if (order.metrikaServer === true || privacy.globalPrivacyControl || navigator.doNotTrack === "1" || paymentResultState(order) !== "success") return;
   const key = `ficusin-metrika-paid:${order.orderNumber}`;
   if (reported.has(key)) return;
   try { if (localStorage.getItem(key)) return; } catch { /* Memory still prevents repeated polling events. */ }
@@ -26,8 +26,8 @@ export async function reportPaidOrder(order: PaymentResultOrder): Promise<void> 
       ym = (window as unknown as { ym?: Metrika }).ym;
     }
     if (!ym) return;
-    // Never transmit the order number: it is a guest capability. Carrier
-    // delivery and accidental overpayments are not shop revenue.
+    // Keep order identifiers and payment credentials out of external analytics.
+    // Carrier delivery and accidental overpayments are not shop revenue.
     ym(counter, "reachGoal", "paid_order", {
       order_price: order.deliveryPayee === "carrier" ? order.subtotal : order.total,
       currency: "RUB",
