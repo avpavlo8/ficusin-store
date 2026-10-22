@@ -6,9 +6,11 @@
 .quick-chat-open .floating-cart { display: none; }
 .quick-chat-loading { position: fixed; right: 24px; bottom: 90px; z-index: 130; width: 300px; padding: 28px; background: #fff; color: #637585; box-shadow: 0 12px 48px #182b3a33; border-radius: 12px; }
 body.menu-open .chat-launcher, body.drawer-open .chat-launcher { display: none; }
-@media (max-width: 760px) { .chat-launcher { right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); min-width: 48px; padding: 12px; } .chat-launcher > span { display: none; } .quick-chat-open .chat-launcher { display: none; } body.quick-chat-open { overflow: hidden; } .quick-chat-loading { inset: 20px; width: auto; bottom: auto; } }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { .chat-launcher { right: 16px; bottom: calc(96px + env(safe-area-inset-bottom)); min-width: 48px; padding: 12px; } .chat-launcher > span { display: none; } .quick-chat-open .chat-launcher { display: none; } body.quick-chat-open { overflow: hidden; } .quick-chat-loading { inset: 20px; width: auto; bottom: auto; } }
 
-@media (max-width: 760px) { body.quick-chat-open .tab-bar, body.quick-chat-open .install-hint { display: none; } }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { body.quick-chat-open .tab-bar, body.quick-chat-open .install-hint { display: none; } }
 body:has(.account-chat-page) .chat-launcher { bottom: 24px; }
 body:has(.account-chat-page .chat-compose:focus-within) .chat-launcher { display: none; }
-@media (max-width: 760px) { body:has(.account-chat-page) .chat-launcher { bottom: 8px; } }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { body:has(.account-chat-page) .chat-launcher { bottom: 8px; } }
+.quick-chat-loading p { margin: 0 0 14px; }
+.quick-chat-loading button { margin: 4px 8px 0 0; padding: 8px 10px; border: 1px solid #c5d4e0; border-radius: 6px; background: #f3f7fa; color: #245c87; cursor: pointer; }

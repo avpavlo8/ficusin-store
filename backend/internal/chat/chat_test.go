@@ -75,6 +75,16 @@ func testStore(t *testing.T) *Store {
 	if _, err = pool.Exec(ctx, string(extra)); err != nil {
 		t.Fatal(err)
 	}
+	extra, err = os.ReadFile("../../../timeweb/migrations/20261022_site_chat_notifications.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(extra)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, `CREATE TABLE auth_sessions(token_hash TEXT PRIMARY KEY,customer_id BIGINT,expires_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP+INTERVAL '1 day'); INSERT INTO auth_sessions(token_hash,customer_id) VALUES('buyer-session',1),('staff-session',2); CREATE TABLE admin_users(customer_id BIGINT PRIMARY KEY,role TEXT,is_active BOOLEAN DEFAULT TRUE); INSERT INTO admin_users(customer_id,role) VALUES(2,'manager')`); err != nil {
+		t.Fatal(err)
+	}
 	return NewStore(pool)
 }
 func TestChatDurabilityIsolationAndLogin(t *testing.T) {

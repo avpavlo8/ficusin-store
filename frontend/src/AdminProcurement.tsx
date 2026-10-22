@@ -3,7 +3,6 @@ import { procurementOrderHref, quantityLabel } from "./procurementUX";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { ProcurementMatchDialog, ProcurementOrderDetailDialog, ProcurementOrderDialog, ProcurementPlanDialog, ProcurementRequestDialog, ProcurementUploadDialog, SupplierDialog } from "./AdminProcurementDialogs";
 import { ProcurementSettingsPanel, availabilityLabel, integrationChannelLabel, recommendationEmptyText, recommendationEmptyTitle, recommendationStatusLabel, salesChannelLabel, salesSyncLabel, setExclusion, updateAvailability, updateRequestStatus } from "./AdminProcurementPanels";
-import { ProcurementUnlinkedSales } from "./AdminProcurementSales";
 import { ProcurementCostCalculator, type ProcurementCalculatorDraft } from "./ProcurementCostCalculator";
 import { PageHeading, api } from "./adminShared";
 import type { IntegrationHealth, ProcurementAlias, ProcurementAvailability, ProcurementData, ProcurementOrder, ProcurementOrderDetail, RecommendationStatus, ProcurementRequest } from "./adminTypes";
@@ -13,6 +12,7 @@ import "./styles/admin-procurement-review.css";
 import "./styles/admin-procurement-workspace.css";
 
 const ProcurementProducts = lazy(() => import("./AdminProcurementProducts").then((module) => ({ default: module.ProcurementProducts })));
+const ProcurementUnlinkedSales = lazy(() => import("./AdminProcurementSales").then(module => ({ default: module.ProcurementUnlinkedSales })));
 
 export function normalizeProcurementOrderDetail(item: ProcurementOrderDetail): ProcurementOrderDetail {
   return {
@@ -288,7 +288,7 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
 
     {view === "products" && <Suspense fallback={<section className="admin-block procurement-block"><p className="admin-hint">Загружаем каталог Saby…</p></section>}><ProcurementProducts suppliers={activeSuppliers} onError={onError} onSaved={() => void load()} /></Suspense>}
 
-    {view === "unlinkedSales" && <ProcurementUnlinkedSales onError={onError} />}
+    {view === "unlinkedSales" && <Suspense fallback={<p className="admin-hint">Загружаем продажи…</p>}><ProcurementUnlinkedSales onError={onError} /></Suspense>}
 
     {view === "requests" && <section className="admin-block procurement-block">
       <div className="admin-block-heading"><div><p className="eyebrow">Приоритет закупки</p><h2>Под заказ и идеи магазина</h2></div><button className="admin-primary" onClick={() => setRequestDialog(true)}>Добавить</button></div>

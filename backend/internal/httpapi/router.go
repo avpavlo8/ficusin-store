@@ -95,7 +95,13 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	}
 
 	if dependencies.Chat != nil {
-		chatAPI := chatHandlers{store: dependencies.Chat, admin: adminAPI, secure: dependencies.CookieSecure, uploads: newRateLimiter(10, time.Minute)}
+		chatAPI := chatHandlers{store: dependencies.Chat, admin: adminAPI, push: dependencies.Push, secure: dependencies.CookieSecure, uploads: newRateLimiter(10, time.Minute)}
+		notificationLimiter := newRateLimiter(20, time.Minute)
+		for _, prefix := range []string{"/api/v1/chat/notifications", "/api/v1/admin/chat/notifications"} {
+			mux.HandleFunc("POST "+prefix, notificationLimiter.guard("Слишком много запросов. Подождите минуту", chatAPI.notifications))
+			mux.HandleFunc("DELETE "+prefix, notificationLimiter.guard("Слишком много запросов. Подождите минуту", chatAPI.notifications))
+			mux.HandleFunc("POST "+prefix+"/state", chatAPI.notifications)
+		}
 		chatLimiter := newRateLimiter(30, time.Minute)
 		mux.HandleFunc("GET /api/v1/chat", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/chat/unread", chatAPI.serve)

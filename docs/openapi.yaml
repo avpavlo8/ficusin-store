@@ -6,6 +6,67 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /chat/notifications:
+    post:
+      operationId: subscribeChatPush
+      description: Opt-in browser subscription for the current customer or guest. Requires configured VAPID. Text previews are delivered through the durable chat queue.
+      requestBody: &chatPushBody
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint: {type: string, format: uri}
+                keys:
+                  type: object
+                  required: [p256dh, auth]
+                  properties:
+                    p256dh: {type: string}
+                    auth: {type: string}
+      responses:
+        "200": {description: Browser opted in}
+        "400": {description: Invalid subscription}
+        "503": {description: Push is not configured}
+    delete:
+      operationId: unsubscribeChatPush
+      requestBody: *chatPushBody
+      responses:
+        "200": {description: Current recipient's chat subscription disabled; order subscriptions unchanged}
+  /chat/notifications/state:
+    post:
+      operationId: chatPushState
+      requestBody: *chatPushBody
+      responses:
+        "200":
+          description: Whether the supplied endpoint is subscribed for the current recipient
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscribed: {type: boolean}
+  /admin/chat/notifications:
+    post:
+      operationId: subscribeStaffChatPush
+      description: Requires chat.manage; permissions are rechecked at delivery.
+      requestBody: *chatPushBody
+      responses:
+        "200": {description: Staff browser subscribed}
+        "401": {description: Authentication required}
+        "403": {description: chat.manage required}
+    delete:
+      operationId: unsubscribeStaffChatPush
+      requestBody: *chatPushBody
+      responses:
+        "200": {description: Staff browser unsubscribed from chat only}
+  /admin/chat/notifications/state:
+    post:
+      operationId: staffChatPushState
+      requestBody: *chatPushBody
+      responses:
+        "200": {description: Returns subscribed boolean for the current authorized staff member and browser}
   /chat:
     get:
       operationId: readMyChat

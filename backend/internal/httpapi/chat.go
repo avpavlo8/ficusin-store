@@ -12,6 +12,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
+	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -23,6 +24,68 @@ type chatHandlers struct {
 	admin   adminHandlers
 	uploads *rateLimiter
 	secure  bool
+	push    pushService
+}
+
+func (h chatHandlers) notifications(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	staff := strings.HasPrefix(r.URL.Path, "/api/v1/admin/")
+	who := chat.Identity{}
+	if staff {
+		user, _, ok := h.admin.authorize(w, r, admin.PermissionChat)
+		if !ok {
+			return
+		}
+		who.CustomerID = user.ID
+		if cookie, err := r.Cookie(auth.CookieName); err == nil {
+			who.SessionHash = hashCartToken(cookie.Value)
+		}
+	} else {
+		var ok bool
+		who, ok = h.identity(w, r, true)
+		if !ok {
+			return
+		}
+		if who.CustomerID > 0 {
+			if _, err := h.store.Resolve(r.Context(), who); err != nil {
+				h.fail(w, err)
+				return
+			}
+		}
+	}
+	var body subscriptionBody
+	if decodeJSON(r, &body) != nil || !chat.ValidPushEndpoint(body.Endpoint) {
+		writeJSON(w, 400, errorResponse{Error: "Некорректная подписка"})
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/state") {
+		enabled, err := h.store.PushState(r.Context(), who, staff, body.Endpoint)
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"subscribed": enabled})
+		return
+	}
+	var err error
+	if r.Method == http.MethodDelete {
+		err = h.store.UnsubscribePush(r.Context(), who, staff, body.Endpoint)
+	} else {
+		if h.push == nil || h.push.PublicKey() == "" {
+			writeJSON(w, 503, errorResponse{Error: "Уведомления пока не настроены"})
+			return
+		}
+		err = h.store.SubscribePush(r.Context(), who, staff, notify.Subscription{Endpoint: body.Endpoint, P256dh: body.Keys.P256dh, Auth: body.Keys.Auth})
+	}
+	if err != nil {
+		if errors.Is(err, chat.ErrInvalid) {
+			writeJSON(w, 400, errorResponse{Error: "Некорректная подписка"})
+		} else {
+			h.fail(w, err)
+		}
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 func (h chatHandlers) identity(w http.ResponseWriter, r *http.Request, create bool) (chat.Identity, bool) {
@@ -36,6 +99,7 @@ func (h chatHandlers) identity(w http.ResponseWriter, r *http.Request, create bo
 		}
 		if user != nil {
 			who.CustomerID = user.ID
+			who.SessionHash = hashCartToken(cookie.Value)
 		}
 	}
 	token := ""

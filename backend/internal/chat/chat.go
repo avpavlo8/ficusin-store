@@ -25,8 +25,9 @@ var ErrInvalid = errors.New("invalid chat message")
 var ErrConsent = errors.New("chat consent required")
 
 type Identity struct {
-	CustomerID int64
-	GuestHash  string
+	CustomerID  int64
+	GuestHash   string
+	SessionHash string
 }
 type AttachmentInput struct {
 	Name string `json:"name"`
@@ -167,6 +168,11 @@ func (s *Store) resolve(ctx context.Context, tx pgx.Tx, who Identity) (int64, er
 	if who.CustomerID > 0 {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, who.CustomerID); err != nil {
 			return 0, err
+		}
+		if who.GuestHash != "" {
+			if _, err := tx.Exec(ctx, `UPDATE support_push_subscriptions SET customer_id=$1,guest_hash='',session_hash=$3 WHERE NOT staff AND customer_id IS NULL AND guest_hash=$2`, who.CustomerID, who.GuestHash, who.SessionHash); err != nil {
+				return 0, err
+			}
 		}
 		err := tx.QueryRow(ctx, `SELECT id FROM support_conversations WHERE customer_id=$1 FOR UPDATE`, who.CustomerID).Scan(&id)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -326,6 +332,10 @@ func (s *Store) Send(ctx context.Context, who Identity, staffID, threadID int64,
 		return 0, err
 	}
 	_, err = tx.Exec(ctx, `UPDATE support_conversations SET status='open',updated_at=CURRENT_TIMESTAMP WHERE id=$1`, threadID)
+	if err != nil {
+		return 0, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO support_push_deliveries(message_id,subscription_id) SELECT m.id,s.id FROM support_messages m JOIN support_conversations c ON c.id=m.conversation_id CROSS JOIN support_push_subscriptions s WHERE m.id=$1 AND `+pushRecipientSQL+` ON CONFLICT DO NOTHING`, messageID)
 	if err != nil {
 		return 0, err
 	}

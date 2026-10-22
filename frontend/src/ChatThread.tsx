@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type 
 import { apiJSON } from "./lib/api";
 import { chatFileSize, prepareChatAttachment, type PreparedAttachment } from "./lib/chat-attachment";
 import { chatRequest } from "./lib/chat-api";
+import ChatPhotoViewer from "./ChatPhotoViewer";
 import type { ChatContext, ChatThreadData } from "./lib/chat";
 import "./styles/chat.css";
 
@@ -35,6 +36,8 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
   const [text, setText] = useState("");
   const [attachment, setAttachment] = useState<PreparedAttachment | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const photoTrigger = useRef<HTMLButtonElement>(null);
   const inputID = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const [consent, setConsent] = useState(false);
@@ -42,7 +45,17 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
   const [newCount, setNewCount] = useState(0);
   useEffect(() => { const timer = window.setTimeout(() => setTopic(context), 0); return () => window.clearTimeout(timer); }, [context]);
   const scroll = useRef<HTMLDivElement>(null);
+  const compose = useRef<HTMLFormElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const form = compose.current;
+    const frame = scroll.current?.parentElement;
+    if (!form || !frame) return;
+    const resize = () => form.style.setProperty('--chat-emoji-max-height', `${Math.max(0, frame.clientHeight - form.offsetHeight - 12)}px`);
+    const observer = new ResizeObserver(resize);
+    observer.observe(form); observer.observe(frame); resize();
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => { const field = textarea.current; if (field) { field.style.height = "auto"; field.style.height = `${Math.min(120, Math.max(36, field.scrollHeight))}px`; } }, [text]);
   const pending = useRef<{ signature: string; clientId: string; attachment: PreparedAttachment | null }>({ signature: "", clientId: "", attachment: null });
   const latest = useRef(empty);
@@ -154,9 +167,8 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
         return <div className="chat-message-group" key={message.id}>
           {(index === 0 || day(thread.messages[index - 1].createdAt) !== day(message.createdAt)) && <p className="chat-date">{day(message.createdAt)}</p>}
           <article data-message-id={message.id} data-chat-incoming={!own} className={`chat-message ${own ? "chat-message-own" : "chat-message-other"}`} aria-label={`${message.sender === "staff" ? "Фикусин" : "Покупатель"}, ${moment(message.createdAt)}`}>
-            <span className="chat-sender">{message.sender === "staff" ? "Фикусин" : own ? "Вы" : "Покупатель"}</span>
             {message.contextUrl && <a className="chat-context-link" href={contextHref(message.contextUrl)}>{message.contextLabel || "Страница обращения"}</a>}
-            {message.hasImage && <a className="chat-image-link" href={`${base}/photos/${message.id}`} target="_blank" rel="noreferrer"><img src={`${base}/photos/${message.id}`} alt="Фотография в переписке — открыть целиком" loading="lazy" onLoad={() => { if (nearBottom.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }} /></a>}
+            {message.hasImage && <button type="button" className="chat-image-link" aria-label="Открыть фотографию" onClick={event => { photoTrigger.current = event.currentTarget; setEmojiOpen(false); setPhoto(`${base}/photos/${message.id}`); }}><img src={`${base}/photos/${message.id}`} alt="Фотография в переписке — открыть целиком" loading="lazy" onLoad={() => { if (nearBottom.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }} /></button>}
             {message.attachmentKind === "video" && <div className="chat-video"><video controls playsInline preload="metadata" src={`${base}/attachments/${message.id}`} aria-label={message.attachmentName || "Видео в переписке"} /><a href={`${base}/attachments/${message.id}`} download>{message.attachmentName || "Открыть видео"}</a></div>}
             {message.attachmentKind === "file" && <a className="chat-file-link" href={`${base}/attachments/${message.id}`} download><ChatIcon name="file" /><span><strong>{message.attachmentName || "Файл"}</strong><small>{chatFileSize(message.attachmentSize || 0)} · Скачать</small></span></a>}
             {message.text && <p>{message.text}</p>}
@@ -168,7 +180,7 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
     </div>
     {newCount > 0 && <button type="button" className="chat-new" onClick={() => { if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; nearBottom.current = true; setNewCount(0); markRead(); }}>Новые сообщения: {newCount}</button>}
     {(error || loadError) && <div className="chat-error" role="alert"><span>{error || loadError}</span><button type="button" onClick={() => void load()}>Обновить</button></div>}
-    <form className="chat-compose" onSubmit={event => void send(event)}>
+    <form ref={compose} className="chat-compose" onSubmit={event => void send(event)}>
       {topic && <div className="chat-topic"><span>Обсуждаем: <a href={contextHref(topic.url)}>{topic.label}</a></span><button type="button" aria-label="Убрать тему обращения" disabled={sending} onClick={() => setTopic(undefined)}><ChatIcon name="close" /></button></div>}
       {attachment && <div className="chat-preview">{attachment.preview ? <img src={attachment.preview} alt="Фото к отправке" /> : <ChatIcon name={attachment.kind === "video" ? "photo" : "file"} />}<div><strong>{attachment.name}</strong><small>{chatFileSize(attachment.size)}</small></div><button type="button" disabled={sending} aria-label="Убрать вложение" onClick={() => setAttachment(null)}><ChatIcon name="close" /></button></div>}
       {emojiOpen && <div className="chat-emoji-panel" role="group" aria-label="Выбор смайлика" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEmojiOpen(false); textarea.current?.focus(); } }}>
@@ -185,5 +197,6 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
       {!staff && !thread.id && !loading && thread.consentRequired && <label className="chat-consent"><input type="checkbox" checked={consent} disabled={sending} onChange={event => setConsent(event.target.checked)} /><span>Согласен на обработку данных из переписки по <a href="/privacy" target="_blank" rel="noreferrer">политике конфиденциальности</a>.</span></label>}
 
     </form>
+    {photo && <ChatPhotoViewer src={photo} onClose={() => { setPhoto(null); requestAnimationFrame(() => photoTrigger.current?.focus({ preventScroll: true })); }} />}
   </div>;
 }
