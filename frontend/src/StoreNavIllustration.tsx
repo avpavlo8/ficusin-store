@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-type NavIllustration = "catalog" | "search" | "heart" | "basket" | "person";
+type NavIllustration = "catalog" | "search" | "heart" | "basket" | "person" | "reviews" | "messages";
 
 // Small, shaded illustrations stay identical on iOS and Android.
 export function StoreNavIllustration({ kind }: { kind: NavIllustration }) {
@@ -62,6 +62,17 @@ export function StoreNavIllustration({ kind }: { kind: NavIllustration }) {
       <path d="m10 22 9-14q6-4 12 0l8 15" fill="none" stroke="#dce9ee" strokeWidth="1" strokeLinejoin="round" />
       <path d="m19 8 1-2q5-2 10 0l1 2" fill="none" stroke="#e67836" strokeWidth="4" strokeLinecap="round" />
       <path d="M21 5.5q4-1 7 .2" fill="none" stroke="#ffc38a" strokeWidth="1.1" strokeLinecap="round" />
+    </>}
+    {(kind === "reviews" || kind === "messages") && <>
+      <ellipse cx="24" cy="44" rx="18" ry="2.2" fill="#6c5433" opacity=".15" />
+      <path d="M8 8q0-4 4-4h25q4 0 4 4v25q0 4-4 4H24l-12 8 2-8h-2q-4 0-4-4Z" fill="#ad7a45" stroke="#8d633b" strokeWidth=".9" strokeLinejoin="round" />
+      <path d="M6 6q0-4 4-4h25q4 0 4 4v25q0 4-4 4H22l-12 8 2-8h-2q-4 0-4-4Z" fill={paint("glass")} stroke="#709b96" strokeWidth=".9" strokeLinejoin="round" />
+      <path d="M10 12V7q0-1 2-1h19" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" opacity=".85" />
+      {kind === "reviews" ? <>
+      <path d="m23 8 3.2 6.5 7.2 1.1-5.2 5.1 1.2 7.2-6.4-3.4-6.4 3.4 1.2-7.2-5.2-5.1 7.2-1.1Z" fill={paint("gold")} stroke="#ac7337" strokeWidth=".9" strokeLinejoin="round" />
+      <path d="m20 15 3-5 1.4 3.3" fill="none" stroke="#fff0c3" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      </> : <path d="M14 13h17m-17 7h17m-17 7h10" fill="none" stroke="#477f77" strokeWidth="2.2" strokeLinecap="round" />}
+      <path d="M17 31h13" fill="none" stroke="#719a8f" strokeWidth="1.7" strokeLinecap="round" />
     </>}
     {kind === "person" && <>
       <ellipse cx="24" cy="44" rx="18" ry="2" fill="#674431" opacity=".15" />

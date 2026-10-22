@@ -10,5 +10,5 @@ test("@desktop @phone discount plants show an instance price and a shop visit in
 });
 
 test("@desktop discount page distinguishes an empty list from a failed request", async ({page})=>{
- await mockApi(page);await page.route("**/api/v1/discount-plants",route=>route.fulfill({json:{items:[]}}));await page.goto("/discounts");await expect(page.getByText("Сейчас растений на восстановлении со скидкой нет. Загляните позже.")).toBeVisible();await page.unroute("**/api/v1/discount-plants");await page.route("**/api/v1/discount-plants",route=>route.fulfill({status:503,json:{error:"unavailable"}}));await page.reload();await expect(page.getByRole("alert")).toContainText("Не удалось загрузить растения");
+ await mockApi(page);await page.route("**/api/v1/discount-plants",route=>route.fulfill({json:{items:[]}}));await page.goto("/discounts");await expect(page.getByRole("heading",{name:"Сейчас таких растений нет"})).toBeVisible();await page.unroute("**/api/v1/discount-plants");await page.route("**/api/v1/discount-plants",route=>route.fulfill({status:503,json:{error:"unavailable"}}));await page.reload();await expect(page.getByRole("alert")).toContainText("Не удалось загрузить растения");
 });

@@ -1,1 +1,14 @@
 .discount-plants{max-width:1300px;margin:auto;padding:48px 28px 80px;color:#234b38}.discount-plants>header{max-width:750px;margin-bottom:32px}.discount-plants h1{font-size:clamp(32px,5vw,56px);line-height:1.05;margin:12px 0 24px;font-weight:500}.discount-plants>header p{line-height:1.6}.discount-plants>header>p:first-child{color:#b03d22;font-size:13px;text-transform:uppercase;letter-spacing:.08em}.discount-plants-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.discount-plants-grid article{overflow:hidden;border:1px solid #dce4db;background:#fffdf8;border-radius:14px}.discount-plant-image{position:relative}.discount-plant-image img{width:100%;height:270px;object-fit:cover}.discount-plant-image span{position:absolute;top:12px;left:12px;background:#c83e1c;color:white;padding:8px 12px;border-radius:8px;font-weight:700}.discount-plants-grid article>div:last-child{padding:18px}.discount-plants-grid small{color:#627265;font-size:12px}.discount-plants-grid h2{font-size:22px;margin:10px 0}.discount-plants-grid strong{font-size:24px}.discount-plants-grid del{color:#7d837a}.discount-plants-grid a{color:#b2381b}.discount-plants-grid p{margin:16px 0}@media(max-width:900px){.discount-plants-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.discount-plants{padding:28px 18px 50px}.discount-plants-grid{grid-template-columns:1fr}.discount-plant-image img{height:320px}}
+
+.discount-plants>header>p:first-child{color:#344333;font-size:17px;text-transform:none;letter-spacing:normal}
+.discount-plants>header>p{font-size:17px;color:#344333}
+.discount-plants>header>a,.discount-plants-grid a{display:inline-flex;min-height:44px;align-items:center;text-decoration:underline;text-underline-offset:4px}
+.discount-plants-grid article{border:0;box-shadow:none;background:#efece3}
+.discount-plants-grid small{font-size:14px;color:#536052;line-height:1.5}
+.discount-plants-grid h2,.discount-plant-description{overflow-wrap:anywhere}
+.discount-plant-image{min-height:230px;background:#e4e9dc;display:grid;place-items:center}
+.discount-plant-image>p{padding:36px;color:#344333;font-size:16px;line-height:1.6}
+.discount-state{max-width:750px;margin:24px 0;padding:32px;background:#efece3;border-radius:12px}
+.discount-state h2{font:400 30px/1.15 Georgia,serif;color:#2c4636}
+.discount-state p{font-size:16px;line-height:1.6;color:#344333}
+.discount-state>a{margin:8px 16px 0 0;display:inline-flex;align-items:center;min-height:44px}

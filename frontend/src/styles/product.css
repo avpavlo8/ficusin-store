@@ -178,7 +178,7 @@
 @media (max-width: 1050px) {
   .desktop-nav { display: none; }
   .header { grid-template-columns: 1fr auto; }
-  .product-grid { grid-template-columns: repeat(2,1fr); }
+
   .account-shell { grid-template-columns: 250px 1fr; }
   .orders-list article { grid-template-columns: 1fr 1fr; }
   .admin-stats { grid-template-columns: 1fr 1fr; }
@@ -206,7 +206,7 @@
   .account-button { width: 38px; padding: 0; justify-content: center; }
   .cart-button { padding: 0 6px; border: 0; }
   .text-link { width: max-content; align-self: center; }
-  .product-grid { grid-template-columns: 1fr; gap: 34px; }
+
   .product-image { aspect-ratio: 1/1; }
   footer { grid-template-columns: 1fr 1fr; padding: 55px 18px 25px; }
   .drawer, .checkout { padding: 22px 18px; }
@@ -244,7 +244,7 @@
 	.pdp-anchor-nav { top:0; padding:0 18px; gap:24px; }
 	.pdp-anchor-nav a { min-height:48px; }
 	.pdp-section-heading { margin-bottom:28px; align-items:start; flex-direction:column; gap:16px; }
-	
+
 	.plant-passport,.pdp-reviews { padding:60px 18px; }
 	.passport-sections dl > div { grid-template-columns:1fr; gap:6px; padding:12px 0; }
 	.passport-faq { margin:38px 0 0; }
