@@ -34,7 +34,9 @@ func pushKeyHandler(push pushService) http.Handler {
 
 type subscriptionBody struct {
 	Endpoint string `json:"endpoint"`
-	Keys     struct {
+	// Standard PushSubscription.toJSON metadata; null on Safari and Chromium.
+	ExpirationTime *float64 `json:"expirationTime,omitempty"`
+	Keys           struct {
 		P256dh string `json:"p256dh"`
 		Auth   string `json:"auth"`
 	} `json:"keys"`

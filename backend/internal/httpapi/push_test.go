@@ -58,3 +58,27 @@ func TestPushUnsubscribeRejectsInvalidEndpoint(t *testing.T) {
 		t.Fatalf("status=%d unsubscribe=%q", response.Code, stub.unsubscribed)
 	}
 }
+
+// Native browsers include expirationTime in PushSubscription.toJSON(). Strict
+// JSON decoding must accept the standard field in both notification channels.
+func TestBrowserPushExpirationMetadata(t *testing.T) {
+	for _, expiration := range []string{"null", "1792680000000"} {
+		body := `{"endpoint":"https://web.push.apple.com/native-test","expirationTime":` + expiration + `,"keys":{"p256dh":"browser-key","auth":"auth-key"}}`
+		recorder := httptest.NewRecorder()
+		pushSubscribeHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &pushStub{}).ServeHTTP(recorder, httptest.NewRequest("POST", "/api/v1/push/subscribe", strings.NewReader(body)))
+		if recorder.Code != 200 {
+			t.Fatalf("standard subscription rejected: expiration=%s status=%d body=%s", expiration, recorder.Code, recorder.Body.String())
+		}
+		recorder = httptest.NewRecorder()
+		(chatHandlers{}).notifications(recorder, httptest.NewRequest("POST", "/api/v1/chat/notifications", strings.NewReader(body)))
+		// Parsing reaches the configuration check, without requiring a live store.
+		if recorder.Code != 503 {
+			t.Fatalf("chat rejected standard metadata: %d %s", recorder.Code, recorder.Body.String())
+		}
+	}
+	recorder := httptest.NewRecorder()
+	(chatHandlers{}).notifications(recorder, httptest.NewRequest("POST", "/api/v1/chat/notifications", strings.NewReader(`{"endpoint":"https://web.push.apple.com/test","expirationTime":null,"unexpected":true}`)))
+	if recorder.Code != 400 {
+		t.Fatal("unknown JSON field accepted")
+	}
+}

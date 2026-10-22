@@ -139,7 +139,7 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
     try {
       const data = await chatRequest<ChatThreadData>(base + "/messages", { clientId: pending.current.clientId, text: text.trim(), attachment: attachment ? { name: attachment.name, data: attachment.data } : undefined, consent, contextUrl: topic?.url || "", contextLabel: topic?.label || "" });
       if (!active.current) return;
-      nearBottom.current = true; if (latest.current.messages.length) await load(); else accept(data); setText(""); setAttachment(null); setTopic(undefined); pending.current = { signature: "", clientId: "", attachment: null }; onUpdateRef.current?.(); textarea.current?.focus();
+      nearBottom.current = true; if (latest.current.messages.length) await load(); else accept(data); setText(""); setAttachment(null); setTopic(undefined); pending.current = { signature: "", clientId: "", attachment: null }; onUpdateRef.current?.(); textarea.current?.focus({ preventScroll: true });
     } catch (caught) { if (active.current) setError(`${(caught as Error).message}. Текст сохранён — можно отправить повторно.`); }
     finally { if (active.current) setSending(false); }
   };
@@ -156,7 +156,7 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
     } catch (caught) { if (active.current) setError((caught as Error).message); }
     finally { if (active.current) setOlder(false); }
   };
-  return <div className="chat-thread" onKeyDown={event => { if (emojiOpen && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEmojiOpen(false); textarea.current?.focus(); } }}>
+  return <div className="chat-thread" onKeyDown={event => { if (emojiOpen && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEmojiOpen(false); textarea.current?.focus({ preventScroll: true }); } }}>
     <div className="chat-messages" ref={scroll} role="log" aria-label="Переписка с магазином" aria-live="polite" aria-relevant="additions" tabIndex={0} onScroll={() => { const el = scroll.current; if (el) { nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 70; if (nearBottom.current) { setNewCount(0); markRead(); } } }}>
       {loading && <p className="chat-state" role="status">Загружаем переписку…</p>}
       {!loading && !thread.messages.length && <div className="chat-welcome"><ChatIcon name="chat" /><h2>{staff ? "Начало переписки" : "Растения, заказы и добрый совет"}</h2><p>{staff ? "Здесь появятся сообщения покупателя." : "Напишите, чем помочь. Сотрудник магазина ответит здесь. Для вопроса об уходе можно прикрепить фото."}</p></div>}
@@ -186,8 +186,8 @@ export default function ChatThread({ threadId, context, onUpdate, visible = true
     }}>
       {topic && <div className="chat-topic"><span>Обсуждаем: <a href={contextHref(topic.url)}>{topic.label}</a></span><button type="button" aria-label="Убрать тему обращения" disabled={sending} onClick={() => setTopic(undefined)}><ChatIcon name="close" /></button></div>}
       {attachment && <div className="chat-preview">{attachment.preview ? <img src={attachment.preview} alt="Фото к отправке" /> : <ChatIcon name={attachment.kind === "video" ? "photo" : "file"} />}<div><strong>{attachment.name}</strong><small>{chatFileSize(attachment.size)}</small></div><button type="button" disabled={sending} aria-label="Убрать вложение" onClick={() => setAttachment(null)}><ChatIcon name="close" /></button></div>}
-      {emojiOpen && <div className="chat-emoji-panel" role="group" aria-label="Выбор смайлика" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEmojiOpen(false); textarea.current?.focus(); } }}>
-        {["😀","😊","🙂","😉","😍","🥰","😂","😅","🤔","😔","😢","😮","👍","👎","🙏","🤝","❤️","💚","✨","🌿","🌱","🪴","🌸","☀️","💧","📦","✅","❓","🙌","🎉","👋","🤗"].map(emoji => <button type="button" key={emoji} aria-label={`Вставить ${emoji}`} onClick={() => { const field = textarea.current; const start = field?.selectionStart ?? text.length; const end = field?.selectionEnd ?? start; const next = text.slice(0, start) + emoji + text.slice(end); if (next.length > 4000) return; setText(next); setEmojiOpen(false); requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(start + emoji.length, start + emoji.length); }); }}>{emoji}</button>)}
+      {emojiOpen && <div className="chat-emoji-panel" role="group" aria-label="Выбор смайлика" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setEmojiOpen(false); textarea.current?.focus({ preventScroll: true }); } }}>
+        {["😀","😊","🙂","😉","😍","🥰","😂","😅","🤔","😔","😢","😮","👍","👎","🙏","🤝","❤️","💚","✨","🌿","🌱","🪴","🌸","☀️","💧","📦","✅","❓","🙌","🎉","👋","🤗"].map(emoji => <button type="button" key={emoji} aria-label={`Вставить ${emoji}`} onClick={() => { const field = textarea.current; const start = field?.selectionStart ?? text.length; const end = field?.selectionEnd ?? start; const next = text.slice(0, start) + emoji + text.slice(end); if (next.length > 4000) return; setText(next); setEmojiOpen(false); requestAnimationFrame(() => { field?.focus({ preventScroll: true }); field?.setSelectionRange(start + emoji.length, start + emoji.length); }); }}>{emoji}</button>)}
       </div>}
       <div className="chat-composer-bar">
         <button className="chat-compose-icon" type="button" disabled={sending || preparing} aria-label="Прикрепить фото, видео или файл" title="Фото, видео или файл до 20 МБ" onClick={() => fileInput.current?.click()}><ChatIcon name="clip" /></button>

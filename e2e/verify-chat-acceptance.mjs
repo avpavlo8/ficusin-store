@@ -37,7 +37,13 @@ for(const [engine,name,size] of [[chromium,'desktop',{width:1440,height:1000}],[
   if(name==='mobile') {await page.setViewportSize({width:390,height:430});box=await dialog.getByRole('button',{name:'Отправить',exact:true}).boundingBox();assert.ok(box.y+box.height<=431,'short viewport/keyboard composer');await page.setViewportSize(size);}
   // Logging in binds the guest history to the account, including on another device.
   await guest.addCookies([{name:'ficusin_session',value:customerToken,url:base}]);await page.goto(base+'/account/chat');
-  await page.getByRole('heading',{name:'Сообщения',exact:true}).waitFor();await page.getByText(message,{exact:true}).waitFor();
+  if(name==='mobile') {
+   await page.getByRole('link',{name:'Вернуться в личный кабинет',exact:true}).waitFor();
+   await page.setViewportSize({width:390,height:430});
+   box=await page.locator('.account-chat-conversation').getByRole('button',{name:'Отправить',exact:true}).boundingBox();assert.ok(box.y+box.height<=431,'account composer below keyboard viewport');
+   await page.setViewportSize(size);
+  } else await page.getByRole('heading',{name:'Сообщения',exact:true}).waitFor();
+  await page.getByText(message,{exact:true}).waitFor();
 
   const accountThread=page.locator('.account-chat-conversation');
   assert.equal(await accountThread.getByRole('checkbox').count(),0,'registered account must not repeat consent');
