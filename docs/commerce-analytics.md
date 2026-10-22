@@ -95,7 +95,7 @@ A durable outbox with a unique order key and atomic claims prevents duplicate
 polls and concurrent dispatch. Enqueued settlement is rechecked before claim.
 
 The worker sends a pageview followed by the `paid_order` goal (RUB value) and an
-ecommerce purchase (opaque UUID transaction ID, no item breakdown). No order
+ecommerce purchase with canonical SKU, unit price and quantity snapshots (opaque UUID transaction ID). Lines without SKU are omitted; if none remain, only the valid paid goal is sent. No order
 number, customer contacts or arbitrary attribution strings leave the server.
 A pageview is required when the original visit is over 12 hours old. Events use
 receipt time; long-delayed payments may appear in a new visit, and acquisition

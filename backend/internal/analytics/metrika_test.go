@@ -72,7 +72,7 @@ func TestMetrikaDeliveryWireAndResponse(t *testing.T) {
 					if i == 1 && (v.Get("ea") != "paid_order" || v.Get("ev") != "7450.00") {
 						t.Error(v)
 					}
-					if i == 2 && (v.Get("ti") != "opaque-uuid" || v.Get("tr") != "7450.00") {
+					if i == 2 && (v.Get("ti") != "opaque-uuid" || v.Get("tr") != "7450.00" || v.Get("pr1id") != "SKU-123" || v.Get("pr1qt") != "1" || v.Get("pr1pr") != "7450.00") {
 						t.Error(v)
 					}
 				}
@@ -82,7 +82,7 @@ func TestMetrikaDeliveryWireAndResponse(t *testing.T) {
 			defer server.Close()
 			w := NewStore(nil).WithMetrika("secret", "https://ficusin.ru", func() string { return "111907858" })
 			w.endpoint = server.URL
-			status, reason := w.send(context.Background(), metrikaDelivery{EventID: "opaque-uuid", CounterID: "111907858", ClientID: "123456", Amount: "7450.00", Attempts: 1})
+			status, reason := w.send(context.Background(), metrikaDelivery{EventID: "opaque-uuid", CounterID: "111907858", ClientID: "123456", Amount: "7450.00", Attempts: 1, Products: []metrikaProduct{{SKU: "SKU-123", Price: "7450.00", Quantity: 1}}})
 			if status != tc.status || reason != tc.reason {
 				t.Fatalf("got %s/%s", status, reason)
 			}
@@ -106,5 +106,13 @@ func TestMetrikaAmbiguousTransportIsNotRetried(t *testing.T) {
 	status, reason := w.send(context.Background(), metrikaDelivery{CounterID: "111907858", ClientID: "123", Amount: "100.00", Attempts: 1})
 	if status != "uncertain" || reason != "transport_unknown" {
 		t.Fatalf("got %s/%s", status, reason)
+	}
+}
+
+func TestMetrikaGoalWithoutProductIdentity(t *testing.T) {
+	w := NewStore(nil).WithMetrika("test", "https://ficusin.ru", func() string { return "111907858" })
+	body := w.payload(metrikaDelivery{ClientID: "123", Amount: "100.00"})
+	if strings.Contains(body, "pa=purchase") || !strings.Contains(body, "ea=paid_order") || len(strings.Split(body, "\n")) != 2 {
+		t.Fatalf("invalid fallback payload: %s", body)
 	}
 }

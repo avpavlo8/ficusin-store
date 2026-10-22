@@ -3,9 +3,12 @@ package analytics
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -130,7 +133,20 @@ func TestMetrikaPaymentWithoutBuyerReturnOnLiveDatabase(t *testing.T) {
 	for _, tc := range []struct{ name, body, status string }{{"accepted", "<!-- OK -->", "sent"}, {"ambiguous", "unexpected body", "uncertain"}} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, r *http.Request) { calls.Add(1); _, _ = res.Write([]byte(tc.body)) }))
+			server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				payload, _ := io.ReadAll(r.Body)
+				hits := strings.Split(string(payload), "\n")
+				if len(hits) != 3 {
+					t.Errorf("expected pageview, goal and SKU purchase, got %d hits", len(hits))
+				} else {
+					purchase, _ := url.ParseQuery(hits[2])
+					if purchase.Get("pr1id") == "" || purchase.Get("pr1pr") != "100.00" || purchase.Get("pr1qt") != "1" {
+						t.Error("missing canonical product snapshot", purchase)
+					}
+				}
+				_, _ = res.Write([]byte(tc.body))
+			}))
 			defer server.Close()
 			s := NewStore(pool)
 			w := s.WithMetrika("test", "https://ficusin.ru", func() string { return "111907858" })
@@ -145,6 +161,9 @@ func TestMetrikaPaymentWithoutBuyerReturnOnLiveDatabase(t *testing.T) {
 				_, _ = pool.Exec(ctx, `DELETE FROM analytics_events WHERE order_number=$1`, number)
 				_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id)
 			}()
+			if _, err = pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,unit_price,quantity) SELECT $1,p.id,v.id,v.sku,p.name,100,1 FROM product_variants v JOIN products p ON p.id=v.product_id ORDER BY v.id LIMIT 1`, id); err != nil {
+				t.Fatal(err)
+			}
 			if err = s.RecordOrder(ctx, number, 100, Attribution{AnalyticsAllowed: true, MetrikaClientID: "123456"}); err != nil {
 				t.Fatal(err)
 			}

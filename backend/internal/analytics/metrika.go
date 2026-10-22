@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -59,8 +60,9 @@ const metrikaSettlement = `o.status<>'cancelled' AND o.payment_status='paid'
  AND NOT EXISTS(SELECT 1 FROM payments p WHERE p.order_id=o.id AND p.status='pending')`
 
 func (w *MetrikaWorker) enqueue(ctx context.Context) error {
-	_, err := w.store.pool.Exec(ctx, `INSERT INTO metrika_paid_outbox(order_id,counter_id,client_id,amount)
- SELECT o.id,o.attribution->>'metrikaCounterId',o.attribution->>'metrikaClientId',CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END FROM orders o
+	_, err := w.store.pool.Exec(ctx, `INSERT INTO metrika_paid_outbox(order_id,counter_id,client_id,amount,products)
+ SELECT o.id,o.attribution->>'metrikaCounterId',o.attribution->>'metrikaClientId',CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END,
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('sku',i.sku,'price',i.unit_price::text,'quantity',i.quantity) ORDER BY i.id) FROM order_items i WHERE i.order_id=o.id AND i.sku IS NOT NULL AND i.sku<>'' AND i.quantity>0),'[]'::jsonb) FROM orders o
  WHERE o.attribution->>'metrikaServer'='true' AND o.attribution->>'analyticsAllowed'='true'
  AND o.attribution->>'metrikaCounterId'=$1 AND o.attribution->>'metrikaClientId' ~ '^[0-9]{1,20}$'
  AND `+metrikaSettlement+` AND NOT EXISTS(SELECT 1 FROM metrika_paid_outbox b WHERE b.order_id=o.id)
@@ -68,7 +70,14 @@ func (w *MetrikaWorker) enqueue(ctx context.Context) error {
 	return err
 }
 
+type metrikaProduct struct {
+	SKU      string `json:"sku"`
+	Price    string `json:"price"`
+	Quantity int    `json:"quantity"`
+}
+
 type metrikaDelivery struct {
+	Products                             []metrikaProduct
 	OrderID                              int64
 	EventID, CounterID, ClientID, Amount string
 	Attempts                             int
@@ -82,13 +91,20 @@ func (w *MetrikaWorker) claim(ctx context.Context) (*metrikaDelivery, error) {
 		return nil, err
 	}
 	var d metrikaDelivery
+	var products []byte
 	err := w.store.pool.QueryRow(ctx, `UPDATE metrika_paid_outbox b SET status='sending',claimed_at=CURRENT_TIMESTAMP,attempts=attempts+1 WHERE b.order_id=(
  SELECT q.order_id FROM metrika_paid_outbox q JOIN orders o ON o.id=q.order_id WHERE q.status='pending' AND q.counter_id=$1 AND q.next_attempt_at<=CURRENT_TIMESTAMP AND `+metrikaSettlement+` ORDER BY q.created_at FOR UPDATE OF q SKIP LOCKED LIMIT 1)
- RETURNING b.order_id,b.event_id::text,b.counter_id,b.client_id,b.amount::text,b.attempts`, w.counter()).Scan(&d.OrderID, &d.EventID, &d.CounterID, &d.ClientID, &d.Amount, &d.Attempts)
+ RETURNING b.order_id,b.event_id::text,b.counter_id,b.client_id,b.amount::text,b.attempts,b.products`, w.counter()).Scan(&d.OrderID, &d.EventID, &d.CounterID, &d.ClientID, &d.Amount, &d.Attempts, &products)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	return &d, err
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(products, &d.Products); err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 func (w *MetrikaWorker) payload(d metrikaDelivery) string {
 	hit := func(fields url.Values) string {
@@ -99,11 +115,23 @@ func (w *MetrikaWorker) payload(d metrikaDelivery) string {
 	}
 	// A pageview creates a session for a visit older than 12h. The receipt date
 	// is intentional: MP cannot backdate older events. No guest capability/PII.
-	return strings.Join([]string{
+	hits := []string{
 		hit(url.Values{"t": {"pageview"}, "dt": {"Подтверждённая оплата (сервер)"}}),
 		hit(url.Values{"t": {"event"}, "ea": {"paid_order"}, "ev": {d.Amount}}),
-		hit(url.Values{"t": {"event"}, "pa": {"purchase"}, "ti": {d.EventID}, "tr": {d.Amount}}),
-	}, "\n")
+	}
+	// Ecommerce requires actual product identifiers. Legacy lines without SKU
+	// still get the paid goal, without an invalid purchase rejecting the batch.
+	if len(d.Products) > 0 {
+		purchase := url.Values{"t": {"event"}, "pa": {"purchase"}, "ti": {d.EventID}, "tr": {d.Amount}}
+		for i, p := range d.Products {
+			prefix := "pr" + strconv.Itoa(i+1)
+			purchase.Set(prefix+"id", p.SKU)
+			purchase.Set(prefix+"pr", p.Price)
+			purchase.Set(prefix+"qt", strconv.Itoa(p.Quantity))
+		}
+		hits = append(hits, hit(purchase))
+	}
+	return strings.Join(hits, "\n")
 }
 func (w *MetrikaWorker) send(ctx context.Context, d metrikaDelivery) (string, string) {
 	endpoint, err := url.Parse(w.endpoint)
