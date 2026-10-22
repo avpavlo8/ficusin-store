@@ -83,6 +83,7 @@ export function AdminOrderEditor({ order, onSaved, onError, registerBeforeLeave,
   const [addProduct, setAddProduct] = useState("");
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [packingBoxesReady, setPackingBoxesReady] = useState(false);
   const [packingDirty, setPackingDirty] = useState(false);
   const [packingFrozen, setPackingFrozen] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -154,12 +155,12 @@ export function AdminOrderEditor({ order, onSaved, onError, registerBeforeLeave,
     onReviewState?.({
       hasPreorder: adjustment.hasPreorder,
       deliveryFeePending: adjustment.deliveryFeePending,
-      packagingDimensionsMissing: adjustment.items.some((item) => [item.packageLengthCm, item.packageWidthCm, item.packageHeightCm, item.packageWeightGrams].some((value) => !Number.isFinite(value) || value <= 0)),
+      packagingDimensionsMissing: !packingBoxesReady && adjustment.items.some((item) => [item.packageLengthCm, item.packageWidthCm, item.packageHeightCm, item.packageWeightGrams].some((value) => !Number.isFinite(value) || value <= 0)),
       cdekCreateState: adjustment.cdekCreateState,
       cdekLastError: adjustment.cdekLastError,
       paymentIssues: payment.issues ?? [],
     });
-  }, [adjustment, payment.issues, onReviewState]);
+  }, [adjustment, payment.issues, onReviewState, packingBoxesReady]);
 
 
   const compositionChanged = () => setSaved(false);
@@ -251,7 +252,7 @@ export function AdminOrderEditor({ order, onSaved, onError, registerBeforeLeave,
   </div>;
 
   return <div className="admin-order-editor">
-    {order.deliveryMethod === "cdek" && !readOnly && <AdminOrderPacking orderId={order.id} items={adjustment.items} subtotal={adjustment.subtotal} netPaid={payment.netPaid} email={order.email} address={order.address} disabled={disabled || busy} compositionDirty={hasUnsavedChanges} onDirtyChange={setPackingDirty} onBusyChange={setBusy} onOrderUpdated={onSaved} onStateChange={(state) => { setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state)); if (state.state !== "draft") void load(); }} />}
+    {order.deliveryMethod === "cdek" && !readOnly && <AdminOrderPacking orderId={order.id} items={adjustment.items} subtotal={adjustment.subtotal} netPaid={payment.netPaid} email={order.email} address={order.address} disabled={disabled || busy} compositionDirty={hasUnsavedChanges} onDirtyChange={setPackingDirty} onBoxesReadyChange={setPackingBoxesReady} onBusyChange={setBusy} onOrderUpdated={onSaved} onStateChange={(state) => { setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state)); if (state.state !== "draft") void load(); }} />}
     <section className="admin-block">
       <div className="admin-block-heading"><div><h3 id="order-composition" tabIndex={-1}>Состав заказа</h3>{packingFrozen && <small>Упаковка подтверждена</small>}</div><span className="order-line-count">Позиций: {lines.length}</span></div>
       {lines.map((line, index) => <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>

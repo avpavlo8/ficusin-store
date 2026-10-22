@@ -35,7 +35,7 @@ const stateLabels: Record<string, string> = {
 };
 const emptyBox = (items: Item[] = []): Box => ({ lengthCm: 0, widthCm: 0, heightCm: 0, weightGrams: 0, contents: items.map((item) => ({ orderItemId: item.id, quantity: item.quantity })) });
 
-export function AdminOrderPacking({ orderId, items, subtotal, netPaid, address, disabled, compositionDirty, onDirtyChange, onBusyChange, onStateChange, onOrderUpdated }: {
+export function AdminOrderPacking({ orderId, items, subtotal, netPaid, address, disabled, compositionDirty, onDirtyChange, onBusyChange, onStateChange, onBoxesReadyChange, onOrderUpdated }: {
   orderId: number;
   items: Item[];
   subtotal: number;
@@ -47,6 +47,7 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, address, 
   onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
   onStateChange?: (packing: OrderPackingState) => void;
+  onBoxesReadyChange?: (ready: boolean) => void;
   onOrderUpdated: (order: Order) => void;
 }) {
   const [packing, setPacking] = useState<OrderPackingState | null>(null);
@@ -153,6 +154,7 @@ export function AdminOrderPacking({ orderId, items, subtotal, netPaid, address, 
   const quoteBlockers = (packing?.quoteBlockers ?? packing?.blockers ?? []).filter((blocker) => !(destinationOverride && ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"].includes(blocker)));
   const maxBoxes = Math.min(20, items.length);
   const validBoxes = boxes.length > 0 && boxes.length <= maxBoxes && boxes.every((box) => box.lengthCm > 0 && box.widthCm > 0 && box.heightCm > 0 && box.lengthCm <= 300 && box.widthCm <= 300 && box.heightCm <= 300 && box.weightGrams > 0 && box.weightGrams <= 200000 && box.contents.some((line) => line.quantity > 0));
+  useEffect(() => { onBoxesReadyChange?.(validBoxes); }, [validBoxes, onBoxesReadyChange]);
   const allocationComplete = items.every((item) => boxes.reduce((total, box) => total + (box.contents.find((line) => line.orderItemId === item.id)?.quantity ?? 0), 0) === item.quantity);
   const formDisabled = disabled || !!busy || !editable;
   const canQuote = validBoxes && allocationComplete && !quoteBlockers.length && (!destinationNeeded || destinationOverride) && !compositionDirty && !formDisabled;
