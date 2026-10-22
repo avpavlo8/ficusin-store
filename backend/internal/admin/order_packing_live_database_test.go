@@ -87,6 +87,37 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 		fee := 840.0
 		return orderID, OrderPackingInput{Revision: 1, TariffCode: 136, QuotedDeliveryFee: &fee, IdempotencyKey: "prepare-" + unique + suffix, Boxes: []ShipmentBoxInput{{LengthCM: 42, WidthCM: 25, HeightCM: 35, WeightGrams: 2000, Contents: []ShipmentBoxContent{{OrderItemID: itemID, Quantity: 1}}}}}
 	}
+	t.Run("quote and confirmation do not depend on mail", func(t *testing.T) {
+		id, input := create("no-mail")
+		defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id) }()
+		if _, err := pool.Exec(ctx, `UPDATE orders SET email='',cdek_tariff_code=NULL,cdek_last_error='не хватает пункта выдачи или тарифа' WHERE id=$1`, id); err != nil {
+			t.Fatal(err)
+		}
+		repo := NewPostgresRepository(pool).WithShipmentQuotes(quote).WithOrderPacking(packingSettingsStub{}, false, true, nil)
+		state, err := repo.OrderPacking(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(state.Blockers) != 0 || len(state.QuoteBlockers) != 0 || state.Error != "" || state.Notification.State != "unavailable" {
+			t.Fatalf("mail or historical error blocks preparation: %+v", state)
+		}
+		if _, err = repo.QuoteOrderPacking(ctx, actor, id, input); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = repo.FinalizeOrderPacking(ctx, actor, id, input); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("payment configuration gates confirmation but not quotation", func(t *testing.T) {
+		id, input := create("no-payment")
+		repo := NewPostgresRepository(pool).WithShipmentQuotes(quote).WithOrderPacking(packingSettingsStub{}, false, false, nil)
+		if _, err := repo.QuoteOrderPacking(ctx, actor, id, input); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repo.FinalizeOrderPacking(ctx, actor, id, input); err == nil {
+			t.Fatal("confirmation bypassed payment configuration")
+		}
+	})
 	t.Run("discount is exact repeatable and survives delivery finalization", func(t *testing.T) {
 		id, input := create("discount")
 		for range 2 {

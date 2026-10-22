@@ -79,9 +79,9 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 			AND payment_method = 'online'
 			AND has_preorder = 0
 			AND delivery_fee_pending = 0
-			AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w LEFT JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') AND b.sent_at IS NULL)
+			AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') AND w.notified_at IS NULL)
 			AND status NOT IN ('cancelled', 'completed')
-			AND COALESCE((SELECT b.sent_at FROM order_packing_workflows w JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at) < CURRENT_TIMESTAMP - make_interval(hours => $1)
+			AND COALESCE((SELECT w.notified_at FROM order_packing_workflows w WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at) < CURRENT_TIMESTAMP - make_interval(hours => $1)
 		ORDER BY id
 		LIMIT 100
 	`, hours)
@@ -124,8 +124,8 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 		}
 		var eligible bool
 		err = guard.QueryRow(ctx, `SELECT payment_status='pending' AND payment_method='online' AND has_preorder=0 AND delivery_fee_pending=0 AND status NOT IN ('cancelled','completed')
-		 AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w LEFT JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') AND b.sent_at IS NULL)
-		 AND COALESCE((SELECT b.sent_at FROM order_packing_workflows w JOIN outbox b ON b.order_packing_id=w.id WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at)<CURRENT_TIMESTAMP-make_interval(hours=>$2) FROM orders o WHERE id=$1`, orderID, worker.settings.Number("orders.auto_cancel_hours")).Scan(&eligible)
+		 AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') AND w.notified_at IS NULL)
+		 AND COALESCE((SELECT w.notified_at FROM order_packing_workflows w WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at)<CURRENT_TIMESTAMP-make_interval(hours=>$2) FROM orders o WHERE id=$1`, orderID, worker.settings.Number("orders.auto_cancel_hours")).Scan(&eligible)
 		if err != nil {
 			return err
 		}

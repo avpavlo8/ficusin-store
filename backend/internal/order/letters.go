@@ -125,7 +125,7 @@ func (worker *LetterWorker) process(ctx context.Context) {
 			_, err = tx.Exec(ctx, `UPDATE shipment_offers SET status='offered',notified_at=COALESCE(notified_at,CURRENT_TIMESTAMP),expires_at=COALESCE(expires_at,CURRENT_TIMESTAMP+INTERVAL '48 hours'),updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='notifying'`, *item.shipmentOfferID)
 		}
 		if err == nil && command.RowsAffected() == 1 {
-			_, err = tx.Exec(ctx, `UPDATE order_packing_workflows SET state='notified',updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT order_packing_id FROM outbox WHERE id=$1) AND state='notification_queued'`, item.id)
+			_, err = tx.Exec(ctx, `UPDATE order_packing_workflows SET state='notified',notified_at=COALESCE(notified_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT order_packing_id FROM outbox WHERE id=$1) AND state IN ('notification_queued','notified')`, item.id)
 		}
 		if err == nil {
 			err = tx.Commit(ctx)

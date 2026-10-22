@@ -415,8 +415,11 @@ func (client *CDEKClient) CreateOrder(
 	if !client.Configured() {
 		return Shipment{}, errors.New("СДЭК не настроен")
 	}
-	if request.OfficeCode == "" || request.TariffCode <= 0 {
-		return Shipment{}, errors.New("не хватает пункта выдачи или тарифа")
+	if request.OfficeCode == "" {
+		return Shipment{}, errors.New("Выберите пункт выдачи СДЭК")
+	}
+	if request.TariffCode <= 0 {
+		return Shipment{}, errors.New("Рассчитайте доставку и выберите тариф СДЭК")
 	}
 	packages := make([]map[string]any, 0, max(1, len(request.Packages)))
 	if len(request.Packages) == 0 {

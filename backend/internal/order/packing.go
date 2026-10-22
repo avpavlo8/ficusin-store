@@ -178,10 +178,10 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 		return err
 	}
 	if worker.paymentsEnabled != nil && !worker.paymentsEnabled() {
-		return errors.New("онлайн-оплата выключена в настройках; письмо ещё не отправлено")
+		return errors.New("онлайн-оплата выключена в настройках; подготовка приостановлена")
 	}
 	if worker.payments == nil || !worker.payments.Configured() {
-		return errors.New("онлайн-оплата не настроена; письмо ещё не отправлено")
+		return errors.New("онлайн-оплата не настроена; подготовка приостановлена")
 	}
 	balance, err := worker.payments.BalanceForOrder(ctx, orderID)
 	if err != nil {
@@ -195,7 +195,7 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 		}
 		parsed, parseErr := url.Parse(paymentURL)
 		if parseErr != nil || parsed.Scheme != "https" || parsed.Host == "" {
-			return errors.New("платёжный сервис ещё не выдал ссылку; письмо не отправлено")
+			return errors.New("платёжный сервис ещё не выдал ссылку; подготовка приостановлена")
 		}
 	}
 	tx, err := worker.pool.Begin(ctx)
@@ -217,7 +217,7 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 	if workflowState == "cancelled" || workflowState == "stale" || workflowState == "notification_queued" || workflowState == "notified" {
 		return tx.Commit(ctx)
 	}
-	body := fmt.Sprintf("Упаковка заказа %s подтверждена.\n\nЗаявка СДЭК зарегистрирована. Трек-номер: %s.\nРегистрация заявки ещё не означает передачу посылки перевозчику.\n", number, track)
+	body := fmt.Sprintf("Упаковка заказа %s подтверждена.\n\nСДЭК: %s.\nРегистрация заявки ещё не означает передачу посылки перевозчику.\n", number, track)
 	if payee == "carrier" {
 		body += fmt.Sprintf("\nДоставка оплачивается перевозчику отдельно. Расчётная стоимость доставки: %.2f ₽.\n", fee)
 	}
@@ -227,13 +227,15 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 		body += "\nЗаказ полностью оплачен.\n"
 	}
 	body += "\nВаш заказ: " + worker.siteURL + "/account/orders/" + url.PathEscape(number) + "\n\nФикусин"
-	if email == "" {
-		return errors.New("в заказе не указана почта; уведомление не отправлено")
+	if email != "" {
+		if _, err = tx.Exec(ctx, `INSERT INTO outbox(recipient,subject,body,order_packing_id) VALUES($1,$2,$3,$4) ON CONFLICT(order_packing_id) WHERE order_packing_id IS NOT NULL DO NOTHING`, email, "Заказ "+number+" подготовлен к оплате и отправке", body, id); err != nil {
+			return err
+		}
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO outbox(recipient,subject,body,order_packing_id) VALUES($1,$2,$3,$4) ON CONFLICT(order_packing_id) WHERE order_packing_id IS NOT NULL DO NOTHING`, email, "Заказ "+number+" подготовлен к оплате и отправке", body, id); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO order_packing_push_outbox(workflow_id,subscription_id) SELECT $1,s.id FROM push_subscriptions s JOIN orders o ON o.customer_id=s.customer_id WHERE o.id=$2 AND s.expired_at IS NULL ON CONFLICT DO NOTHING`, id, orderID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE order_packing_workflows SET state='notification_queued',payment_url=$2,last_error='',locked_until=NULL,next_attempt_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, paymentURL); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE order_packing_workflows SET state='notification_queued',prepared_at=CURRENT_TIMESTAMP,payment_url=$2,last_error='',locked_until=NULL,next_attempt_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, paymentURL); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
