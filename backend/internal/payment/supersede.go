@@ -25,6 +25,20 @@ func (service *Service) SupersedePending(ctx context.Context, orderID int64) err
 	if service == nil || service.pool == nil {
 		return nil
 	}
+	// An editor preflight can race with packing confirmation. Recheck while
+	// holding the same order lock before retiring any customer payment link.
+	guard, err := service.lockOrderPreparation(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = guard.Rollback(ctx) }()
+	var packed bool
+	if err = guard.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_packing_workflows WHERE order_id=$1 AND state NOT IN ('cancelled','stale'))`, orderID).Scan(&packed); err != nil {
+		return err
+	}
+	if packed {
+		return fmt.Errorf("упаковка уже подтверждена; платёжная ссылка и состав зафиксированы")
+	}
 	rows, err := service.pool.Query(ctx, `SELECT id FROM payments WHERE order_id=$1 AND status=$2 ORDER BY id`, orderID, StatusPending)
 	if err != nil {
 		return err

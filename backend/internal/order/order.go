@@ -38,6 +38,7 @@ type Detail struct {
 	DeliveryFeePending   bool            `json:"deliveryFeePending"`
 	RepackRequested      bool            `json:"repackRequested"`
 	Subtotal             float64         `json:"subtotal"`
+	DiscountAmount       float64         `json:"discountAmount"`
 	Total                float64         `json:"total"`
 	PaidAmount           float64         `json:"paidAmount"`
 	RefundedAmount       float64         `json:"refundedAmount"`

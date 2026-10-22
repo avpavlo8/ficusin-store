@@ -145,9 +145,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); box-shad
 .cdek-quote b { font-size: 18px; }
 .cdek-quote span { font-weight: 700; }
 .cdek-quote small { grid-column: 1 / -1; color: #687269; }
-.admin-refund { margin-bottom: 16px; padding: 14px 16px; display: grid; gap: 8px; max-width: 460px; border: 1px solid #e3c9c0; border-radius: 12px; background: #fbf0ec; }
-.admin-refund button { padding: 10px 16px; justify-self: start; border: 1px solid #9a4f34; border-radius: 10px; background: white; color: #9a4f34; font: inherit; font-weight: 700; cursor: pointer; }
-.admin-refund small { color: #7a5245; font-size: 12px; }
 
 /* Unified information pages: shared storefront header and a bright delivery scene. */
 .legal-page{background:#f8f0e5;color:#2b2118}.legal-page>.store-header{margin-bottom:0}

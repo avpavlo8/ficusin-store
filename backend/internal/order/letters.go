@@ -3,6 +3,7 @@ package order
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
@@ -87,7 +88,18 @@ func (worker *LetterWorker) process(ctx context.Context) {
 	}
 	rows.Close()
 
+	sort.Slice(letters, func(i, j int) bool { return letters[i].id < letters[j].id })
 	for _, item := range letters {
+		// Earlier letters can take time: cancellation or a different worker may
+		// have invalidated this claim since the batch was read.
+		var current bool
+		if err := worker.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM outbox WHERE id=$1 AND lock_token=$2 AND sent_at IS NULL AND cancelled_at IS NULL)`, item.id, item.lockToken).Scan(&current); err != nil {
+			worker.logger.Error("recheck queued letter failed", "error", err, "letter_id", item.id)
+			continue
+		}
+		if !current {
+			continue
+		}
 		err := worker.sender.Send(ctx, mail.Letter{
 			To: item.recipient, Subject: item.subject, Body: item.body,
 		})
@@ -98,15 +110,28 @@ func (worker *LetterWorker) process(ctx context.Context) {
 			if _, failed := worker.pool.Exec(ctx, `
 				UPDATE outbox SET attempts=attempts+1,last_error=$2,lock_token='',locked_until=NULL
 				WHERE id=$1 AND lock_token=$3 AND sent_at IS NULL AND cancelled_at IS NULL
-			`, item.id, err.Error(),item.lockToken); failed != nil {
+			`, item.id, err.Error(), item.lockToken); failed != nil {
 				worker.logger.Error("record letter failure", "error", failed)
 			}
 			continue
 		}
-		tx,err:=worker.pool.Begin(ctx);if err!=nil{worker.logger.Error("begin letter completion failed","error",err);continue}
-		command,err:=tx.Exec(ctx,`UPDATE outbox SET sent_at=CURRENT_TIMESTAMP,lock_token='',locked_until=NULL WHERE id=$1 AND lock_token=$2 AND cancelled_at IS NULL AND sent_at IS NULL`,item.id,item.lockToken)
-		if err==nil&&command.RowsAffected()==1&&item.shipmentOfferID!=nil{_,err=tx.Exec(ctx,`UPDATE shipment_offers SET status='offered',notified_at=COALESCE(notified_at,CURRENT_TIMESTAMP),expires_at=COALESCE(expires_at,CURRENT_TIMESTAMP+INTERVAL '48 hours'),updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='notifying'`,*item.shipmentOfferID)}
-		if err==nil{err=tx.Commit(ctx)}else{_ = tx.Rollback(ctx)}
+		tx, err := worker.pool.Begin(ctx)
+		if err != nil {
+			worker.logger.Error("begin letter completion failed", "error", err)
+			continue
+		}
+		command, err := tx.Exec(ctx, `UPDATE outbox SET sent_at=CURRENT_TIMESTAMP,lock_token='',locked_until=NULL WHERE id=$1 AND lock_token=$2 AND cancelled_at IS NULL AND sent_at IS NULL`, item.id, item.lockToken)
+		if err == nil && command.RowsAffected() == 1 && item.shipmentOfferID != nil {
+			_, err = tx.Exec(ctx, `UPDATE shipment_offers SET status='offered',notified_at=COALESCE(notified_at,CURRENT_TIMESTAMP),expires_at=COALESCE(expires_at,CURRENT_TIMESTAMP+INTERVAL '48 hours'),updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='notifying'`, *item.shipmentOfferID)
+		}
+		if err == nil && command.RowsAffected() == 1 {
+			_, err = tx.Exec(ctx, `UPDATE order_packing_workflows SET state='notified',updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT order_packing_id FROM outbox WHERE id=$1) AND state='notification_queued'`, item.id)
+		}
+		if err == nil {
+			err = tx.Commit(ctx)
+		} else {
+			_ = tx.Rollback(ctx)
+		}
 		if err != nil {
 			worker.logger.Error("mark letter sent failed", "error", err, "letter_id", item.id)
 		}

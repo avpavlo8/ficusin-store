@@ -31,6 +31,7 @@ export type OrderDetail = {
   deliveryFeePending?: boolean;
   repackRequested?: boolean;
   subtotal: number;
+  discountAmount?: number;
   total: number;
   paidAmount: number;
   refundedAmount: number;
@@ -49,7 +50,7 @@ const orderStatusLabels: Record<string, string> = {
   assembling: "Собирается",
   processing: "Собирается",
   ready: "Готов к выдаче",
-  shipped: "Передан в доставку",
+  shipped: "В доставке",
   completed: "Выполнен",
   cancelled: "Отменён",
 };
@@ -286,7 +287,8 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
             <aside className="order-detail-summary" aria-labelledby="order-summary-title">
               <h3 id="order-summary-title">Ваш заказ</h3>
               <dl>
-                <div><dt>Стоимость товаров</dt><dd>{money.format(order.subtotal)}</dd></div>
+                <div><dt>Стоимость товаров</dt><dd>{money.format(order.subtotal + (order.discountAmount ?? 0))}</dd></div>
+                {!!order.discountAmount && <div><dt>Скидка</dt><dd>−{money.format(order.discountAmount)}</dd></div>}
                 <div><dt>{order.deliveryPayee === "carrier" ? "Доставка перевозчику" : "Доставка"}</dt><dd>{order.deliveryFeePending ? cancelled ? "Не рассчитана" : "Уточнит менеджер" : order.deliveryFee === 0 && pickup ? "Бесплатно" : money.format(order.deliveryFee)}</dd></div>
                 <div className="order-detail-total"><dt>{cancelled ? "Сумма отменённого заказа" : order.deliveryPayee === "carrier" ? "К оплате за растения" : order.deliveryFeePending ? "Предварительно" : "Итого"}</dt><dd>{money.format(order.total)}</dd></div>
                 {order.paidAmount > 0 && <div><dt>Оплачено</dt><dd>{money.format(order.paidAmount)}</dd></div>}

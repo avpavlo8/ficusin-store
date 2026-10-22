@@ -26,7 +26,8 @@ export default function AdminPage() {
   const [section, setSection] = useState<Section>(currentAdminSection);
   const [error, setError] = useState("");
   const beforeLeave = useRef<(()=>Promise<boolean>)|null>(null);
-  const registerBeforeLeave = useCallback((flush:()=>Promise<boolean>)=>{beforeLeave.current=flush;return()=>{if(beforeLeave.current===flush)beforeLeave.current=null;};},[]);
+  const currentUrl = useRef(window.location.pathname + window.location.search);
+  const registerBeforeLeave = useCallback((flush:()=>Promise<boolean>)=>{beforeLeave.current=flush;currentUrl.current=window.location.pathname+window.location.search;return()=>{if(beforeLeave.current===flush)beforeLeave.current=null;};},[]);
   // Set when the operator arrives from a dashboard shortcut, so the target
   // section can open on the right row instead of a blank list.
   const [focusOrder, setFocusOrder] = useState(() => {const id=new URLSearchParams(window.location.search).get("customerOrderId");return id && /^\d+$/.test(id) ? `id:${id}` : "";});
@@ -38,14 +39,16 @@ export default function AdminPage() {
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Не удалось загрузить панель"));
   }, []);
 
-  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products","collections"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {if(!["products","collections"].includes(section))window.history.pushState(null,"",`/admin?section=${section}`);return;}setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
+  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products","collections","orders"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {window.history.pushState(null,"",currentUrl.current);return;}currentUrl.current=window.location.pathname+window.location.search;setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
 
   const go = async (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
-    if(["returns","products","collections"].includes(section) && beforeLeave.current && !await beforeLeave.current()) return;
+    if(["returns","products","collections","orders"].includes(section) && beforeLeave.current && !await beforeLeave.current()) return;
     setFocusOrder(options?.orderNumber || "");
     setWholesaleOnly(Boolean(options?.wholesaleOnly));
     setError("");
     window.history.pushState(null, "", `/admin?section=${next}`);
+    currentUrl.current = window.location.pathname + window.location.search;
+    window.dispatchEvent(new Event("admin:navigate"));
     setSection(next);
   };
 
@@ -76,7 +79,7 @@ export default function AdminPage() {
           {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
           {section === "analytics" && <Analytics onError={setError} />}
 		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
-		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} /></Suspense>}
+		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders focusOrder={focusOrder} onError={setError} registerBeforeLeave={registerBeforeLeave} /></Suspense>}
           {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}>{can("procurement.edit") ? <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /> : <ProcurementReadOnly onError={setError} />}</Suspense>}
           {section === "products" && <Products can={can} onError={setError} registerBeforeLeave={registerBeforeLeave} />}
           {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
