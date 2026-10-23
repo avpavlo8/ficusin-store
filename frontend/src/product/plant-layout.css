@@ -62,8 +62,8 @@
 .plant-care-panel .plant-copy { color:#50554c; font-size:17px; line-height:1.8; }
 .plant-care .plant-copy p { margin:0; }
 .plant-care .plant-copy p+p { margin-top:16px; }
-.plant-care-panel[data-topic="growthRate"] { min-height:0; }
-.plant-care-panel[data-topic="growthRate"] .plant-care-text { width:100%; max-width:850px; }
+.plant-care-panel:not(:has(.plant-care-art)) { min-height:0; }
+.plant-care-panel:not(:has(.plant-care-art)) .plant-care-text { width:100%; max-width:850px; }
 .plant-climate-copy+.plant-climate-copy { margin-top:22px; }
 .plant-climate-copy h4 { margin:0 0 6px; color:#34432f; font:21px/1.3 Georgia,serif; }
 .plant-care-note { padding:26px 0 8px; max-width:850px; }
@@ -144,4 +144,4 @@
   .plant-questions { padding:38px 0; }
 }
 
-@media(max-width:700px) { .plant-care-panel[data-topic="growthRate"] .plant-care-heading { min-height:0; padding-right:0; } }
+@media(max-width:700px) { .plant-care-panel:not(:has(.plant-care-art)) .plant-care-heading { min-height:0; padding-right:0; } }

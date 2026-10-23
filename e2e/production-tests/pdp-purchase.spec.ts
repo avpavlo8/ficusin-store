@@ -62,7 +62,11 @@ test("Product tabs keep all text mounted and show one section at a time live", a
   await page.goto("/product/33");
   const tabs = page.getByRole("tablist", { name: "Разделы товара" });
   await expect(tabs).toBeVisible();
+  await expect(page.locator("[data-product-html]")).toHaveCount(0);
   await expect(page.locator("#pdp-panel-care #plant-passport")).toBeAttached();
+  for (const value of Object.values(product.passport)) {
+    if (typeof value === "string") for (const paragraph of value.split(/\n\s*\n/).filter(value => value.trim())) await expect(page.locator("#pdp-panel-care")).toContainText(paragraph);
+  }
   const care = Object.values(product.passport).find(value => typeof value === "string" && value.trim());
   expect(care).toBeTruthy();
   if (product.passport.watering?.trim()) await expect(page.locator("#pdp-panel-care")).toContainText(product.passport.watering);
@@ -82,4 +86,24 @@ test("Product tabs keep all text mounted and show one section at a time live", a
   await expect(page.getByRole("tabpanel")).toHaveCount(1);
   await page.getByRole("tab", { name: "О растении", exact: true }).click();
   await expect(page.locator("#pdp-panel-about")).toBeVisible();
+});
+
+test("Product content is readable without JavaScript live", async ({ browser, request }) => {
+  const response = await request.get("/api/v1/products/33");
+  expect(response.ok()).toBeTruthy();
+  const { product } = await response.json();
+  const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
+  try {
+    const page = await context.newPage();
+    const navigation = await page.goto(`${process.env.FICUSIN_BASE_URL || "https://www.ficusin.ru"}/product/33`, { waitUntil: "domcontentloaded" });
+    expect(navigation?.status()).toBe(200);
+    const content = page.locator("[data-product-html]");
+    await expect(content).toBeVisible();
+    await expect(content.getByRole("heading", { level: 1 })).toHaveText(product.name);
+    const texts = [product.description, product.careInstructions, ...Object.values(product.passport).filter(value => typeof value === "string"),
+      ...(product.passport.faq || []).flatMap((item: { question: string; answer: string }) => [item.question, item.answer]),
+      ...(product.reviews || []).map((item: { text: string }) => item.text)];
+    for (const text of texts) if (typeof text === "string" && text.trim()) await expect(content).toContainText(text);
+    await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
+  } finally { await context.close(); }
 });

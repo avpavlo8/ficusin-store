@@ -8,6 +8,20 @@ const baseProduct = {
   rating: 0, reviewsCount: 0, reviews: [], catalogSection: "plants",
 };
 
+test("@desktop @phone все заполненные поля паспорта доступны до переключения вкладки", async ({ page }, testInfo) => {
+  await mockApi(page);
+  const passport = { origin: "Влажные леса Южной Америки.", careDifficulty: "Подходит начинающим.", matureSize: "В комнате до 80 см.", toxicity: "Беречь от детей и питомцев.", problems: "При переливе проверьте корни.", pests: "Осматривайте нижнюю сторону листьев." };
+  await page.route("**/api/v1/products/care-layout", route => route.fulfill({ json: { product: { ...baseProduct, passport } } }));
+  await page.goto("/product/care-layout");
+  await expect(page.locator("#pdp-panel-care")).toBeHidden();
+  for (const value of Object.values(passport)) await expect(page.locator("#pdp-panel-care")).toContainText(value);
+  await page.getByRole("tab", { name: "Уход", exact: true }).click();
+  await page.locator("#plant-toxicity").scrollIntoViewIfNeeded();
+  await expect(page.locator("#plant-toxicity")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("complete-passport.png") });
+});
+
 test("@desktop @phone длинный уход растягивает блок, сохраняя текст и пропорции фотографии", async ({ page }) => {
   await mockApi(page);
   let soil = "Рыхлая смесь с корой и перлитом.";

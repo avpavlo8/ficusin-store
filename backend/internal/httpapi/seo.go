@@ -550,5 +550,63 @@ func withProductMeta(
 	page = descriptionPattern.ReplaceAll(
 		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+`">`),
 	)
-	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1), canonicalSlug, nil
+	page = bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
+	// Serve the same public catalogue text to every visitor, without requiring
+	// JavaScript or a bot-specific response. React replaces this initial body
+	// with the interactive product page and its preloaded tab panels.
+	page = bytes.Replace(page, []byte(`<div id="root"></div>`), []byte(`<div id="root">`+productHTML(detail)+`</div>`), 1)
+	return page, canonicalSlug, nil
+}
+
+func productHTML(detail catalog.ProductDetail) string {
+	var body strings.Builder
+	text := func(tag, value string) {
+		if strings.TrimSpace(value) != "" {
+			body.WriteString("<" + tag + ">" + html.EscapeString(value) + "</" + tag + ">")
+		}
+	}
+	body.WriteString(`<main class="document-page customer-information" data-product-html><article>`)
+	text("h1", detail.Name)
+	text("p", detail.Latin)
+	text("p", detail.ShortDescription)
+	text("h2", "О товаре")
+	text("p", detail.Description)
+	if detail.CatalogSection == "plants" {
+		text("h2", "Уход")
+		text("p", detail.CareInstructions)
+		passport := detail.Passport
+		for _, field := range [][2]string{
+			{"Происхождение", passport.Origin}, {"Освещение", passport.Lighting},
+			{"Полив", passport.Watering}, {"Влажность", passport.Humidity},
+			{"Температура", passport.Temperature}, {"Грунт", passport.Soil},
+			{"Удобрение", passport.Fertilizer}, {"Пересадка", passport.Repotting},
+			{"Сложность ухода", passport.CareDifficulty}, {"Скорость роста", passport.GrowthRate},
+			{"Взрослый размер", passport.MatureSize}, {"Токсичность", passport.Toxicity},
+			{"Типичные проблемы и решения", passport.Problems}, {"Вредители", passport.Pests},
+		} {
+			if strings.TrimSpace(field[1]) != "" {
+				text("h3", field[0])
+				text("p", field[1])
+			}
+		}
+		for _, warning := range detail.ImportantWarnings {
+			text("p", warning)
+		}
+	}
+	if len(detail.Passport.FAQ) > 0 {
+		text("h2", "Вопросы")
+		for _, question := range detail.Passport.FAQ {
+			text("h3", question.Question)
+			text("p", question.Answer)
+		}
+	}
+	if len(detail.Reviews) > 0 {
+		text("h2", "Отзывы")
+		for _, review := range detail.Reviews {
+			text("h3", review.Author)
+			text("p", review.Text)
+		}
+	}
+	body.WriteString("</article></main>")
+	return body.String()
 }
