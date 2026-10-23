@@ -76,7 +76,7 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
     </div>
   </section>;
   const panels = availableTopics.map(([key, title]) => <section className="plant-care-panel" data-topic={key} id={`plant-${key}`} aria-labelledby={`plant-${key}-title`} key={key}>
-    {key !== "growthRate" && <img className="plant-care-art" src={`/assets/care/guide-v4/${key}.jpg`} alt="" width="1200" height="600" loading="lazy" />}
+    <img className="plant-care-art" src={`/assets/care/guide-v4/${key}.jpg`} alt="" width="1200" height="600" loading="lazy" />
     <div className="plant-care-text"><h3 className="plant-care-heading" id={`plant-${key}-title`}>{title}</h3><CareCopy text={passport[key] || ""} /></div>
   </section>);
   // Keep climate in reading order even when lighting or watering is unfilled.
@@ -93,7 +93,7 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
       </div>
     </section>
     {product.importantWarnings.length > 0 && <aside className="plant-warning"><strong>Важно перед началом</strong><ul>{product.importantWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></aside>}
-    <div className="plant-care-panels">{panels}{additionalTopics.filter(([key]) => passport[key]?.trim()).map(([key, title]) => <section className="plant-care-panel" data-topic={key} id={`plant-${key}`} aria-labelledby={`plant-${key}-title`} key={key}><div className="plant-care-text"><h3 className="plant-care-heading" id={`plant-${key}-title`}>{title}</h3><CareCopy text={passport[key] || ""} /></div></section>)}</div>
+    <div className="plant-care-panels">{panels}{additionalTopics.filter(([key]) => passport[key]?.trim()).map(([key, title]) => <section className="plant-care-panel" data-topic={key} id={`plant-${key}`} aria-labelledby={`plant-${key}-title`} key={key}><img className="plant-care-art" src={`/assets/care/guide-v4/${key}.jpg`} alt="" width="1200" height="600" loading="lazy" /><div className="plant-care-text"><h3 className="plant-care-heading" id={`plant-${key}-title`}>{title}</h3><CareCopy text={passport[key] || ""} /></div></section>)}</div>
     {product.careInstructions?.trim() && <aside className="plant-care-note"><h3>На заметку</h3><CareCopy text={product.careInstructions} /></aside>}
     <section className="plant-help" aria-labelledby="plant-help-title"><header><h3 id="plant-help-title">Если что-то не так</h3></header><div>{helpArticles.map(([icon,title,note,url]) => <a href={`${url}?plant=${encodeURIComponent(product.id)}`} key={url}><i aria-hidden="true"><HelpIcon type={icon}/></i><span><strong>{title}</strong><small>{note}</small></span><b aria-hidden="true">↗</b></a>)}</div></section>
     <aside className="plant-care-contact"><div><h3>Остались вопросы?</h3><p>Поможем подобрать уход именно для вашего растения.</p></div><a href={chatHref(product.name)}>Напишите нам <span aria-hidden="true">→</span></a></aside>
