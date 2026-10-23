@@ -18,7 +18,7 @@ func TestBuildSabyPriceXLSXUsesOfficialCodeAndHighestPrice(t *testing.T) {
 		{CanonicalVariantID: &variantID, SabyID: "99", SabyCode: "X99", MatchStatus: "ignored", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},
 		{SabyID: "100", SabyCode: "X100", MatchStatus: "confirmed", ProposedRetailRUB: &ignored, PriceChangeNeeded: true},
 	})
-	if err != nil || count != 1 {
+	if err != nil || count != 2 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
 	reader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
@@ -49,8 +49,8 @@ func TestBuildSabyPriceXLSXUsesOfficialCodeAndHighestPrice(t *testing.T) {
 	if strings.Contains(sheet, "X99") {
 		t.Fatalf("ignored product leaked into sheet: %s", sheet)
 	}
-	if strings.Contains(sheet, "X100") {
-		t.Fatalf("unlinked Saby product leaked into sheet: %s", sheet)
+	if !strings.Contains(sheet, "X100") {
+		t.Fatalf("confirmed Saby-only first price missing from sheet: %s", sheet)
 	}
 	if strings.Contains(sheet, "X77") {
 		t.Fatalf("unchanged price leaked into sheet: %s", sheet)

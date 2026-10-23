@@ -117,6 +117,25 @@ func (service *Service) SabyPriceXLSX(ctx context.Context, orderID int64) ([]byt
 	return content, name, nil
 }
 
+// FirstSabyPriceXLSX confirms only exact file prices for cards without a site SKU.
+func (service *Service) FirstSabyPriceXLSX(ctx context.Context, actor Actor, orderID int64, prices []SabyFirstPrice) ([]byte, string, error) {
+	if orderID <= 0 {
+		return nil, "", ErrInvalidInput
+	}
+	store, ok := service.store.(interface {
+		FirstSabyPriceExportLines(context.Context, Actor, int64, []SabyFirstPrice) ([]OrderLine, error)
+	})
+	if !ok {
+		return nil, "", ErrInvalidInput
+	}
+	lines, err := store.FirstSabyPriceExportLines(ctx, actor, orderID, prices)
+	if err != nil {
+		return nil, "", err
+	}
+	content, count, err := BuildSabyPriceXLSX(lines)
+	return content, fmt.Sprintf("saby-prices-%d-%d-items.xlsx", orderID, count), err
+}
+
 func (service *Service) ReceivingPDF(ctx context.Context, orderID int64) ([]byte, string, error) {
 	if orderID <= 0 {
 		return nil, "", ErrInvalidInput

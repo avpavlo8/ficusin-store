@@ -26,6 +26,7 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		{"PATCH", "/api/v1/admin/procurement/order-lines/18", `{"invoiceLineIds":[1,2]}`},
 		{"POST", "/api/v1/admin/procurement/orders", "{}"},
 		{"GET", "/api/v1/admin/procurement/orders/18/saby-prices.xlsx", ""},
+		{"POST", "/api/v1/admin/procurement/orders/18/saby-prices.xlsx", `{ "firstPrices": [{"sabyId":"3892","priceRub":636}] }`},
 		{"GET", "/api/v1/admin/procurement/orders/18/receiving.pdf", ""},
 		{"POST", "/api/v1/admin/procurement/batches/1/retry", "{}"},
 		{"POST", "/api/v1/admin/products/sync", `{"productIds":[1],"fields":["price"]}`},

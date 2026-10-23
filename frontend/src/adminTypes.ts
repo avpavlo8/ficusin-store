@@ -827,6 +827,7 @@ export type ProcurementReceivingAllocation = {
   quantity: number;
 };
 export type ProcurementOrderLine = {
+  canonicalVariantId?: number;
   receivingMode?: "catalog" | "assortment" | "customer_handoff" | "awaiting_catalog";
   receivingAllocations?: ProcurementReceivingAllocation[];
   customerHandedOver?: boolean;
