@@ -273,15 +273,16 @@ func (handlers adminHandlers) refundOrderAmount(response http.ResponseWriter, re
 		return
 	}
 	var body struct {
-		RequestID string  `json:"requestId"`
-		Amount    float64 `json:"amount"`
-		Reason    string  `json:"reason"`
+		Selections []payment.RefundSelection `json:"selections"`
+		RequestID  string                    `json:"requestId"`
+		Amount     float64                   `json:"amount"`
+		Reason     string                    `json:"reason"`
 	}
 	if decodeJSON(request, &body) != nil || body.Amount <= 0 || strings.TrimSpace(body.Reason) == "" || len(strings.TrimSpace(body.RequestID)) < 16 || len(body.RequestID) > 128 {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Укажите сумму и причину возврата"})
 		return
 	}
-	balance, err := payments.RefundAmount(payment.WithRefundRequest(payment.WithRefundActor(request.Context(), actor.CustomerID), strings.TrimSpace(body.RequestID)), id, body.Amount, body.Reason)
+	balance, err := payments.RefundAmount(payment.WithRefundSelections(payment.WithRefundRequest(payment.WithRefundActor(request.Context(), actor.CustomerID), strings.TrimSpace(body.RequestID)), body.Selections), id, body.Amount, body.Reason)
 	if err != nil {
 		handlers.logger.Error("partial refund failed", "error", err, "order_id", id)
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: err.Error()})

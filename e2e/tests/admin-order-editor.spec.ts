@@ -61,7 +61,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       quoteBlockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : [],
       blockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : packingMode ? [] : ["В этом заказе доставка оплачивается перевозчику"],
     };
-    const refunds = refundRole ? [{ id: 1, amount: 100, status: "succeeded", providerId: "refund-1", actorId: 1, needsReview: false, receiptRequired: true, lastError: "" }, { id: 2, amount: 40, status: "pending", providerId: "refund-2", actorId: 1, needsReview: false, receiptRequired: false, lastError: "" }] : [];
+    const refunds = refundRole ? [{ id: 1, amount: 100, status: "succeeded", providerId: "refund-1", actorId: 1, needsReview: false, receiptStatus: "pending", lastError: "" }, { id: 2, amount: 40, status: "pending", providerId: "refund-2", actorId: 1, needsReview: false, receiptStatus: "pending", lastError: "" }] : [];
     let finalized = false;
     let polls = 0;
     let finalizationAttempts = 0;
@@ -122,7 +122,6 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
         adjustment.deliveryFeePending = false;
         return json({ packing, order }, 202);
       }
-      if (path === "/api/v1/admin/orders/30/refunds/1/receipt" && init?.method === "POST") { refunds[0].receiptRequired = false; return json({ ok: true }); }
       if (path === "/api/v1/admin/orders/30/adjustment") return json({
         order: adjustment,
         payment: { total: order.total, paid: refundRole ? 1480 : 0, refunded: refundRole ? 100 : 0, netPaid: refundRole ? 1380 : 0, due: order.total, overpaid: 0, ready: false, paymentStatus: "pending", refunds },
@@ -418,7 +417,7 @@ test("@desktop @phone размеры вводятся строкой, а вес 
  expect((await state.packingFinalizations())[0].boxes[0].weightGrams).toBe(125);
 });
 
-test("@desktop @phone возврат ожидает подтверждения, чек закрывается отдельно", async ({page},testInfo) => {
+test("@desktop @phone возврат и чек ожидают отдельного подтверждения ЮKassa", async ({page},testInfo) => {
  await mockOrderEditor(page,false,undefined,false,"owner");
  await page.goto("/admin?section=orders&order=30");
  const section=page.getByRole("region",{name:"Оплата и возвраты"});
@@ -427,9 +426,6 @@ test("@desktop @phone возврат ожидает подтверждения, 
  await section.getByText("Вернуть деньги покупателю",{exact:true}).click();
  await expect(section.getByRole("button",{name:"Вернуть через ЮKassa"})).toBeDisabled();
  if(process.env.FICUSIN_PREVIEW_OUTPUT_DIR) await section.screenshot({path:`${process.env.FICUSIN_PREVIEW_OUTPUT_DIR}/refund-${testInfo.project.name}.png`});
- page.on("dialog",dialog=>dialog.accept());
- await section.getByRole("button",{name:"Чек уже сформирован"}).click();
- await expect(section.getByText("Сформируйте чек",{exact:false})).toHaveCount(0);
  await expect(section.getByText("Ожидает подтверждения ЮKassa",{exact:false})).toBeVisible();
 });
 test("@desktop менеджер видит возврат без финансовых действий", async ({page})=>{
@@ -489,4 +485,70 @@ test("@desktop без атрибутов коробки распределены
   await expect(packing.locator(".order-packing-box")).toHaveCount(2);
   await expect(packing.getByRole("button", { name: "Рассчитать доставку", exact: true })).toBeDisabled();
   await expect(packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 1", exact: true })).toHaveValue("1");
+});
+
+test('@desktop @phone частичный возврат передаёт выбранные позиции и точную сумму',async({page})=>{
+ await mockOrderEditor(page,false,undefined,false,'owner');
+ await page.addInitScript(()=>{
+  const original=window.fetch.bind(window);const requests:unknown[]=[];
+  Object.defineProperty(window,'fiscalRefundRequests',{value:requests});
+  window.fetch=async(input,init)=>{
+   const path=typeof input==='string'?input:input instanceof URL?input.pathname:input.url;
+   if(path==='/api/v1/admin/orders/30/refund'&&init?.method==='POST'){
+    requests.push(JSON.parse(String(init.body)));return new Response(JSON.stringify({payment:{}}),{status:200,headers:{'Content-Type':'application/json'}});
+   }
+   const response=await original(input,init);
+   if(path==='/api/v1/admin/orders/30/adjustment'){
+    const body=await response.json();body.payment.refunds=[];
+    body.payment.refundOptions=[{paymentId:11,itemIndex:0,quantity:2,name:'Растение из платежа',price:100.01},{paymentId:11,itemIndex:1,quantity:1,name:'Доставка',price:25}];
+    return new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
+   }
+   return response;
+  };
+ });
+ await page.goto('/admin?section=orders&order=30');
+ const section=page.getByRole('region',{name:'Оплата и возвраты'});
+ await section.getByText('Вернуть деньги покупателю',{exact:true}).click();
+ await section.getByLabel('Вернуть: Растение из платежа, платёж 11').fill('1');
+ await expect(section.getByLabel('Сумма возврата, ₽')).toHaveValue('100.01');
+ await expect(section.getByLabel('Сумма возврата, ₽')).toBeDisabled();
+ await section.getByLabel('Причина возврата',{exact:true}).fill('Возврат одной позиции');
+ page.on('dialog',dialog=>dialog.accept());
+ await section.getByRole('button',{name:'Вернуть через ЮKassa',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'fiscalRefundRequests').length)).toBe(1);
+ const [request]=await page.evaluate(()=>Reflect.get(window,'fiscalRefundRequests'));
+ expect(request.amount).toBe(100.01);expect(request.selections).toEqual([{paymentId:11,itemIndex:0,quantity:1}]);expect(request.requestId.length).toBeGreaterThanOrEqual(16);
+});
+
+test('@desktop @phone чек зачёта ЮKassa создаётся только после подтверждения владельца',async({page},info)=>{
+ await mockOrderEditor(page,false,undefined,false,'owner');
+ await page.addInitScript(()=>{
+  const original=window.fetch.bind(window);const requests:unknown[]=[];
+  Object.defineProperty(window,'settlementRequests',{value:requests});
+  window.fetch=async(input,init)=>{
+   const path=typeof input==='string'?input:input instanceof URL?input.pathname:input.url;
+   if(path==='/api/v1/admin/orders/30/payments/11/settlement-receipt'&&init?.method==='POST'){
+    requests.push(JSON.parse(String(init.body)));return new Response(JSON.stringify({ok:true}),{status:200,headers:{'Content-Type':'application/json'}});
+   }
+   const response=await original(input,init);
+   if(path==='/api/v1/admin/orders/30/adjustment'){
+    const body=await response.json();body.payment.refunds=[];
+    body.payment.fiscalTasks=[{paymentId:11,kind:'income',status:'succeeded',reference:''},{paymentId:11,kind:'settlement',status:requests.length?'pending':'ready',reference:''}];
+    return new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
+   }
+   return response;
+  };
+ });
+ await page.goto('/admin?section=orders&order=30');
+ const section=page.getByRole('region',{name:'Оплата и возвраты'});
+ const button=section.getByRole('button',{name:'Сформировать чек зачёта в ЮKassa',exact:true});
+ await expect(button).toBeVisible();
+ page.once('dialog',dialog=>dialog.dismiss());await button.click();
+ expect(await page.evaluate(()=>Reflect.get(window,'settlementRequests').length)).toBe(0);
+ page.once('dialog',dialog=>dialog.accept());await button.click();
+ await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'settlementRequests').length)).toBe(1);
+ expect(await page.evaluate(()=>Reflect.get(window,'settlementRequests')[0])).toEqual({confirmed:true});
+ await expect(section.getByText('Ожидает регистрации ЮKassa',{exact:true})).toBeVisible();
+ await expect(section.getByRole('button',{name:'Чек уже сформирован'})).toHaveCount(0);
+ await section.screenshot({path:info.outputPath('yookassa-only-fiscal-state.png')});
 });

@@ -2312,6 +2312,13 @@ paths:
                   type: string
                   minLength: 16
                   maxLength: 128
+                selections:
+                  type: array
+                  maxItems: 1000
+                  description: Exact original payment line indexes and quantities. The server validates prices, remaining
+                    units and the total in kopecks.
+                  items:
+                    $ref: "#/components/schemas/payment.RefundSelection"
       responses:
         "200":
           description: Current balance and refund history; pending may remain
@@ -2329,56 +2336,6 @@ paths:
         "403":
           description: payments.refund required
       x-source: backend/internal/httpapi/admin_order_adjustments.go#refundOrderAmount
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - payments.refund
-  /admin/orders/{id}/refunds/{refundID}/receipt:
-    post:
-      operationId: confirmRefundTillReceipt
-      description: Requires payments.refund. Records confirmation that the shop till has already issued a
-        receipt; does not issue or sign any document.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: integer
-        - in: path
-          name: refundID
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - confirmed
-              properties:
-                confirmed:
-                  const: true
-      responses:
-        "200":
-          description: Confirmation and actor saved
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - ok
-                properties:
-                  ok:
-                    const: true
-        "403":
-          description: payments.refund required
-        "409":
-          description: No outstanding fiscal task for this order and refund
-      x-source: backend/internal/httpapi/admin_refund_receipt.go#confirmRefundReceipt
       tags:
         - Administration
       security:
@@ -6405,6 +6362,53 @@ paths:
           required: true
           schema:
             type: string
+  /admin/orders/{id}/payments/{paymentID}/settlement-receipt:
+    post:
+      operationId: settlePaymentReceipt
+      description: Owner confirms actual delivery and creation of a prepayment settlement receipt in YooKassa.
+        Exact composition, actor and key are persisted before POST. Known receipt IDs use GET only.
+        Workers never create receipts.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: paymentID
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - confirmed
+              properties:
+                confirmed:
+                  type: boolean
+                  const: true
+      responses:
+        "200":
+          description: Request persisted or known receipt reconciled; read fiscalTasks for registration status
+        "400":
+          description: Confirmation missing
+        "403":
+          description: Owner permission required
+        "409":
+          description: Receipt composition, delivery, income registration or recovery requires review
+        "503":
+          description: Receipt service unavailable
+      security:
+        - Session: []
+      tags:
+        - Administration
+      x-source: backend/internal/httpapi/admin_refund_receipt.go#settlePaymentReceipt
+      x-permissions:
+        - payments.refund
 components:
   responses:
     ValidationError:
@@ -7767,6 +7771,39 @@ components:
         total:
           $ref: "#/components/schemas/RUBAmount"
       type: object
+    payment.FiscalTask:
+      properties:
+        kind:
+          type: string
+        paymentId:
+          type: integer
+        reference:
+          type: string
+        status:
+          type: string
+      type: object
+    payment.RefundSelection:
+      properties:
+        itemIndex:
+          type: integer
+        paymentId:
+          type: integer
+        quantity:
+          type: integer
+      type: object
+    payment.RefundOption:
+      properties:
+        itemIndex:
+          type: integer
+        name:
+          type: string
+        paymentId:
+          type: integer
+        price:
+          $ref: "#/components/schemas/RUBAmount"
+        quantity:
+          type: integer
+      type: object
     payment.Balance:
       properties:
         due:
@@ -7793,6 +7830,14 @@ components:
           type: array
         total:
           $ref: "#/components/schemas/RUBAmount"
+        fiscalTasks:
+          items:
+            $ref: "#/components/schemas/payment.FiscalTask"
+          type: array
+        refundOptions:
+          items:
+            $ref: "#/components/schemas/payment.RefundOption"
+          type: array
       type: object
     payment.Issue:
       properties:
@@ -7834,10 +7879,11 @@ components:
           type: boolean
         providerId:
           type: string
-        receiptRequired:
-          type: boolean
         status:
           type: string
+        receiptStatus:
+          type: string
+          description: Fiscal registration status from YooKassa, separate from money status.
       type: object
     procurement.AliasResolution:
       properties:

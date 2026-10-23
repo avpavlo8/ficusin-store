@@ -19,11 +19,25 @@ type RefundEntry = {
   providerId: string;
   actorId?: number;
   needsReview: boolean;
-  receiptRequired: boolean;
+  receiptStatus?: string;
   lastError: string;
 };
 
+type RefundOption = {
+  paymentId: number;
+  itemIndex: number;
+  quantity: number;
+  name: string;
+  price: number;
+};
 type PaymentBalance = {
+  fiscalTasks?: Array<{
+    paymentId: number;
+    kind: "income" | "settlement";
+    status: string;
+    reference: string;
+  }>;
+  refundOptions?: RefundOption[];
   refunds?: RefundEntry[];
   total: number;
   paid: number;
@@ -165,6 +179,21 @@ export function AdminOrderEditor({
   const formDisabled = busy || disabled || compositionReadOnly;
 
   const [refundAmount, setRefundAmount] = useState("");
+  const [refundQuantities, setRefundQuantities] = useState<Record<string, number>>({});
+  const refundSelections = (payment.refundOptions ?? [])
+    .map((item) => ({
+      paymentId: item.paymentId,
+      itemIndex: item.itemIndex,
+      quantity: refundQuantities[`${item.paymentId}:${item.itemIndex}`] ?? 0,
+    }))
+    .filter((item) => item.quantity > 0);
+  const selectedMinor = (payment.refundOptions ?? []).reduce(
+    (sum, item) =>
+      sum +
+      Math.round(item.price * 100) * (refundQuantities[`${item.paymentId}:${item.itemIndex}`] ?? 0),
+    0,
+  );
+  const requestedRefund = refundSelections.length ? selectedMinor / 100 : Number(refundAmount);
   const [refundReason, setRefundReason] = useState("");
   const [refundRequest, setRefundRequest] = useState<{ signature: string; id: string } | null>(
     null,
@@ -180,11 +209,15 @@ export function AdminOrderEditor({
     onSaved({ ...order, paymentStatus: state.payment.paymentStatus });
   };
   const sendRefund = async () => {
-    const amount = Number(refundAmount);
+    const amount = requestedRefund;
     if (!Number.isFinite(amount) || amount <= 0 || amount > payment.netPaid || !refundReason.trim())
       return;
     if (!window.confirm(`Вернуть ${money.format(amount)} покупателю через ЮKassa?`)) return;
-    const signature = JSON.stringify({ amount, reason: refundReason.trim() });
+    const signature = JSON.stringify({
+      amount,
+      reason: refundReason.trim(),
+      selections: refundSelections,
+    });
     const requestId =
       refundRequest?.signature === signature ? refundRequest.id : crypto.randomUUID();
     setRefundRequest({ signature, id: requestId });
@@ -193,10 +226,16 @@ export function AdminOrderEditor({
     try {
       await api(`/api/v1/admin/orders/${order.id}/refund`, {
         method: "POST",
-        body: JSON.stringify({ amount, reason: refundReason.trim(), requestId }),
+        body: JSON.stringify({
+          amount,
+          reason: refundReason.trim(),
+          requestId,
+          selections: refundSelections,
+        }),
       });
       await refreshMoney();
       setRefundAmount("");
+      setRefundQuantities({});
       setRefundReason("");
       setRefundRequest(null);
       setRefundMessage("Запрос принят. Результат возврата указан в истории ниже.");
@@ -221,11 +260,12 @@ export function AdminOrderEditor({
       setRefundBusy(false);
     }
   };
-  const confirmReceipt = async (id: number) => {
-    if (!window.confirm("Чек возврата прихода уже сформирован на вашей кассе?")) return;
+  const settleReceipt = async (paymentId: number) => {
+    if (!window.confirm("Товар уже выдан покупателю? Сформировать чек зачёта предоплаты в ЮKassa?"))
+      return;
     setRefundBusy(true);
     try {
-      await api(`/api/v1/admin/orders/${order.id}/refunds/${id}/receipt`, {
+      await api(`/api/v1/admin/orders/${order.id}/payments/${paymentId}/settlement-receipt`, {
         method: "POST",
         body: JSON.stringify({ confirmed: true }),
       });
@@ -466,6 +506,43 @@ export function AdminOrderEditor({
             </p>
           )}
           {refundMessage && <p role="status">{refundMessage}</p>}
+          {(payment.fiscalTasks ?? []).map((task) => (
+            <article key={`${task.paymentId}:${task.kind}`}>
+              <strong>
+                {task.kind === "income" ? "Чек прихода" : "Чек зачёта предоплаты"} · платёж №
+                {task.paymentId}
+              </strong>
+              <p>
+                {(
+                  {
+                    ready: "Ожидает формирования чека зачёта в ЮKassa",
+                    failed: "Чек не принят — нужна сверка в ЮKassa",
+                    manual_review: "Нужна ручная сверка чека в ЮKassa",
+                    succeeded: "Зарегистрирован ЮKassa",
+                    pending: "Ожидает регистрации ЮKassa",
+                    canceled: "Не зарегистрирован — нужна проверка в ЮKassa",
+                    unknown: "Регистрация ЮKassa пока не подтверждена",
+
+                    legacy_unverified: "Исторический платёж: сверьте чек в ЮKassa",
+                  } as Record<string, string>
+                )[task.status] ?? "Требуется проверка"}
+                {task.reference ? ` · ${task.reference}` : ""}
+              </p>
+              {canRefund &&
+                task.kind === "settlement" &&
+                ["ready", "pending"].includes(task.status) && (
+                  <button
+                    type="button"
+                    disabled={refundBusy}
+                    onClick={() => void settleReceipt(task.paymentId)}
+                  >
+                    {task.status === "ready"
+                      ? "Сформировать чек зачёта в ЮKassa"
+                      : "Сверить / повторить запрос чека с тем же ключом"}
+                  </button>
+                )}
+            </article>
+          ))}
           {(payment.refunds ?? []).map((refund) => (
             <article key={refund.id}>
               <p>
@@ -506,18 +583,18 @@ export function AdminOrderEditor({
                   </button>
                 </div>
               )}
-              {refund.receiptRequired && (
-                <p className="admin-flag">
-                  Сформируйте чек «Возврат прихода» на своей кассе.{" "}
-                  {canRefund && (
-                    <button
-                      type="button"
-                      disabled={refundBusy}
-                      onClick={() => void confirmReceipt(refund.id)}
-                    >
-                      Чек уже сформирован
-                    </button>
-                  )}
+              {refund.receiptStatus && (
+                <p>
+                  Чек:{" "}
+                  {(
+                    {
+                      succeeded: "зарегистрирован ЮKassa",
+                      pending: "ожидает регистрации",
+                      canceled: "не зарегистрирован — нужна проверка в ЮKassa",
+                      unknown: "статус регистрации не подтверждён",
+                      legacy_unverified: "Сверьте регистрацию чека в ЮKassa",
+                    } as Record<string, string>
+                  )[refund.receiptStatus] ?? "нужна проверка"}
                 </p>
               )}
             </article>
@@ -528,6 +605,38 @@ export function AdminOrderEditor({
               {(payment.refunds ?? []).some((refund) => refund.status === "pending") && (
                 <p>Новый возврат доступен после завершения предыдущего.</p>
               )}
+              {(payment.refundOptions ?? []).length > 0 && (
+                <fieldset>
+                  <legend>Позиции исходных платежей</legend>
+                  <p>
+                    Выберите возвращаемое количество. Цены взяты из сохранённых платежей, включая
+                    скидки. Доставка выбирается отдельно.
+                  </p>
+                  {payment.refundOptions!.map((item) => (
+                    <label key={`${item.paymentId}:${item.itemIndex}`}>
+                      {item.name} · {money.format(item.price)} · платёж №{item.paymentId}
+                      <input
+                        aria-label={`Вернуть: ${item.name}, платёж ${item.paymentId}`}
+                        type="number"
+                        min="0"
+                        max={item.quantity}
+                        step="1"
+                        value={refundQuantities[`${item.paymentId}:${item.itemIndex}`] ?? 0}
+                        disabled={refundBusy}
+                        onChange={(event) =>
+                          setRefundQuantities((current) => ({
+                            ...current,
+                            [`${item.paymentId}:${item.itemIndex}`]: Math.max(
+                              0,
+                              Math.min(item.quantity, Math.trunc(Number(event.target.value) || 0)),
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </fieldset>
+              )}
               <div className="admin-form-grid">
                 <label>
                   Сумма возврата, ₽
@@ -536,8 +645,8 @@ export function AdminOrderEditor({
                     min="0.01"
                     step="0.01"
                     max={payment.netPaid}
-                    value={refundAmount}
-                    disabled={refundBusy}
+                    value={refundSelections.length ? requestedRefund : refundAmount}
+                    disabled={refundBusy || refundSelections.length > 0}
                     onChange={(event) => setRefundAmount(event.target.value)}
                   />
                 </label>
@@ -557,9 +666,9 @@ export function AdminOrderEditor({
                   busy ||
                   refundBusy ||
                   hasUnsavedChanges ||
-                  !Number.isFinite(Number(refundAmount)) ||
-                  Number(refundAmount) <= 0 ||
-                  Number(refundAmount) > payment.netPaid ||
+                  !Number.isFinite(requestedRefund) ||
+                  requestedRefund <= 0 ||
+                  requestedRefund > payment.netPaid ||
                   !refundReason.trim() ||
                   (payment.refunds ?? []).some((refund) => refund.status === "pending")
                 }

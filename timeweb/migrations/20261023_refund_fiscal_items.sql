@@ -1,0 +1,21 @@
+ALTER TABLE payment_refunds
+ ADD COLUMN IF NOT EXISTS selections JSONB NOT NULL DEFAULT '[]'::jsonb,
+ ADD COLUMN IF NOT EXISTS receipt_status TEXT NOT NULL DEFAULT '',
+ ADD COLUMN IF NOT EXISTS receipt_checked_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS operations_alert_state (
+ id BOOLEAN PRIMARY KEY DEFAULT true CHECK(id),
+ fingerprint TEXT NOT NULL DEFAULT '',
+ notified_at TIMESTAMPTZ
+);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS receipt_status TEXT NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS receipt_checked_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS payment_settlement_receipts (
+ payment_id BIGINT PRIMARY KEY REFERENCES payments(id),
+ idempotence_key TEXT NOT NULL UNIQUE,
+ request_payload JSONB NOT NULL,
+ provider_receipt_id TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'pending',
+ actor_id BIGINT NOT NULL REFERENCES customers(id),
+ last_error TEXT NOT NULL DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

@@ -95,7 +95,7 @@ func TestRefundRecoveryOnLiveDatabase(t *testing.T) {
 	if err != nil || balance.Refunded != 40 || len(provider.keys) != 2 || provider.fetches != 1 {
 		t.Fatalf("not reconciled %+v %v", balance, err)
 	}
-	if len(balance.Refunds) != 1 || !balance.Refunds[0].ReceiptRequired {
+	if len(balance.Refunds) != 1 || balance.Refunds[0].ReceiptStatus != "legacy_unverified" {
 		t.Fatalf("receipt task missing: %+v", balance.Refunds)
 	}
 	_, err = pool.Exec(ctx, `UPDATE payment_refunds SET status='pending',created_at=CURRENT_TIMESTAMP-INTERVAL '2 days' WHERE order_id=$1`, orderID)
@@ -216,7 +216,5 @@ func TestConcurrentRefundsOnLiveDatabase(t *testing.T) {
 	if _, err = service.RefundAmount(ctx, orderID, 10, "concurrent fixture"); err == nil {
 		t.Fatal("request ID reused with a different amount")
 	}
-	if err = service.ConfirmRefundReceipt(ctx, orderID, balance.Refunds[0].ID, actorID); err != nil {
-		t.Fatal(err)
-	}
+
 }

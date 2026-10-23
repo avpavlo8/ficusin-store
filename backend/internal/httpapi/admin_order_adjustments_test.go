@@ -100,7 +100,7 @@ func TestMoneyActionsRequireOwnerPermission(t *testing.T) {
 		for _, tc := range []struct{ method, path, body string }{
 			{"POST", "/api/v1/admin/orders/7/refund", `{"amount":10,"reason":"fixture"}`},
 			{"PATCH", "/api/v1/admin/orders/7", `{"refund":true}`},
-			{"POST", "/api/v1/admin/orders/7/refunds/1/receipt", `{"confirmed":true}`},
+			{"POST", "/api/v1/admin/orders/7/payments/1/settlement-receipt", `{"confirmed":true}`},
 			{"POST", "/api/v1/admin/orders/7/refunds/1/resolve", `{"providerId":"ref-1"}`},
 			{"POST", "/api/v1/admin/orders/7/payments/1/dismiss", `{"confirmed":true}`},
 		} {
@@ -112,5 +112,38 @@ func TestMoneyActionsRequireOwnerPermission(t *testing.T) {
 				t.Fatalf("%s %s: status=%d body=%s", role, tc.path, res.Code, res.Body.String())
 			}
 		}
+	}
+}
+
+type settlementPaymentsStub struct {
+	adjustmentPaymentsStub
+	calls int
+}
+
+func (s *settlementPaymentsStub) SettlePaymentReceipt(context.Context, int64, int64, int64) error {
+	s.calls++
+	return nil
+}
+func TestSettlementReceiptRequiresExplicitConfirmation(t *testing.T) {
+	stub := &settlementPaymentsStub{}
+	deps := adminDependencies(&adminRepositoryStub{}, admin.RoleOwner, "")
+	deps.Refunds = stub
+	router := NewRouter(discardLogger(), deps)
+	for _, body := range []string{`{}`, `{"confirmed":false}`} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, adminRequest("POST", "/api/v1/admin/orders/7/payments/1/settlement-receipt", body))
+		if response.Code != 400 || stub.calls != 0 {
+			t.Fatalf("unconfirmed fiscal action: %d calls=%d", response.Code, stub.calls)
+		}
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, adminRequest("POST", "/api/v1/admin/orders/7/payments/1/settlement-receipt", `{"confirmed":true}`))
+	if response.Code != 200 || stub.calls != 1 {
+		t.Fatalf("confirmed request: %d calls=%d %s", response.Code, stub.calls, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, adminRequest("POST", "/api/v1/admin/orders/7/refunds/1/receipt", `{"confirmed":true}`))
+	if response.Code != 404 {
+		t.Fatal("obsolete own-till route still registered")
 	}
 }

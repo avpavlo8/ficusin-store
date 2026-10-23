@@ -20,6 +20,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
       - name: Verify runtime, database, commerce invariants, catalogue and guest cart
         id: critical_reads
         shell: bash
@@ -57,6 +58,7 @@ jobs:
           commerce_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$work/operations.json")"
           echo "commerce_status=${commerce_status}" >>"$GITHUB_OUTPUT"
       - name: Open or update the production incident
+        id: incident
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,10 +73,14 @@ jobs:
             'The scheduled external monitor could not verify runtime, database, commerce invariants, catalogue and guest cart.' \
             "Run: ${RUN_URL}" "Commit: ${GITHUB_SHA}" "Detected: $(date -u +%FT%TZ)" \
             'Treat this as customer-impacting until the failed request is identified and the commerce queues are reconciled.')"
-          if [[ -n "$issue" ]]; then
-            gh issue comment "$issue" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
+          if [[ -z "$issue" ]]; then
+            issue_url="$(gh issue create --title "$title" --body "$body")"
+            issue="${issue_url##*/}"
+          fi
+          echo "issue=${issue}" >>"$GITHUB_OUTPUT"
+          notified="$(gh api "repos/${GH_REPO}/issues/${issue}/comments" --paginate --jq '.[] | select(.body == "Production outage notification delivered to Telegram.") | .id' | head -1)"
+          if [[ -z "$notified" ]]; then
+            echo 'notify=failure' >>"$GITHUB_OUTPUT"
           fi
       - name: Notify the external incident webhook
         if: failure()
@@ -109,9 +115,7 @@ jobs:
           body="$(printf '%s\n\n%s\n%s' \
             'The commerce invariant probe reports delayed or exhausted asynchronous work.' \
             "Run: ${RUN_URL}" "Detected: $(date -u +%FT%TZ)")"
-          if [[ -n "$issue" ]]; then
-            gh issue comment "$issue" --body "$body"
-          else
+          if [[ -z "$issue" ]]; then
             gh issue create --title "$title" --body "$body"
           fi
       - name: Close the degraded-commerce incident after recovery
@@ -128,6 +132,7 @@ jobs:
             gh issue close "$issue" --comment "Commerce queues recovered at $(date -u +%FT%TZ). Verification: ${RUN_URL}"
           fi
       - name: Close the incident after recovery
+        id: recovery
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,4 +144,20 @@ jobs:
             --jq '.[] | select(.title == "[Sev-1] Production critical reads are failing") | .number' | head -1)"
           if [[ -n "$issue" ]]; then
             gh issue close "$issue" --comment "External checks recovered at $(date -u +%FT%TZ). Verification: ${RUN_URL}"
+            echo 'notify=recovery' >>"$GITHUB_OUTPUT"
           fi
+      - name: Notify Telegram on external outage or recovery
+        id: telegram
+        if: always() && (steps.incident.outputs.notify == 'failure' || steps.recovery.outputs.notify == 'recovery')
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ vars.PRODUCTION_TELEGRAM_CHAT_ID || '-5430918511' }}
+          ALERT_EVENT: ${{ steps.incident.outputs.notify || steps.recovery.outputs.notify }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/notify-production-telegram.py
+      - name: Record successful external alert delivery
+        if: always() && steps.telegram.outcome == 'success' && steps.incident.outputs.notify == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.incident.outputs.issue }}
+        run: gh issue comment "$ISSUE" --body 'Production outage notification delivered to Telegram.'

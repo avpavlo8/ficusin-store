@@ -60,6 +60,11 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 		// Persist the mode with the exact request. Legacy one-stage links lack
 		// this marker and cannot be treated as cancellable authorizations.
 		proposed.Metadata["ficusin_capture_mode"] = "two_stage"
+		if fiscal, ok := service.provider.(interface {
+			SnapshotReceipt(integration.PaymentRequest) integration.PaymentRequest
+		}); ok {
+			proposed = fiscal.SnapshotReceipt(proposed)
+		}
 		encoded, err := json.Marshal(proposed)
 		if err != nil {
 			return integration.Payment{}, fmt.Errorf("encode payment request: %w", err)
@@ -107,6 +112,12 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 		WHERE id=$1 RETURNING create_attempts
 	`, paymentID).Scan(&attempt); err != nil {
 		return integration.Payment{}, err
+	}
+	if _, fiscal := service.provider.(interface {
+		SnapshotReceipt(integration.PaymentRequest) integration.PaymentRequest
+	}); fiscal && (request.ReceiptEnabled == nil || !*request.ReceiptEnabled) {
+		_, _ = service.pool.Exec(ctx, `UPDATE payments SET next_recovery_at=NULL,recovery_locked_until=NULL,last_error=$2 WHERE id=$1`, paymentID, "Исторический запрос оплаты требует сверки чека в ЮKassa; повтор не отправлен")
+		return integration.Payment{}, ErrPaymentNeedsReview
 	}
 	created, err := service.provider.CreatePayment(ctx, request)
 	if err != nil {

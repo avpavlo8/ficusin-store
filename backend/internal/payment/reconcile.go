@@ -36,6 +36,12 @@ func (worker *ReconcileWorker) Run(ctx context.Context) {
 }
 
 func (worker *ReconcileWorker) process(ctx context.Context) {
+	if err := worker.service.reconcileSettlementReceipts(ctx); err != nil {
+		worker.logger.Error("reconcile settlement receipts failed", "error", err)
+	}
+	if err := worker.service.reconcilePaymentReceipts(ctx); err != nil {
+		worker.logger.Error("reconcile payment receipts failed", "error", err)
+	}
 	if err := worker.service.reconcileRefunds(ctx); err != nil {
 		worker.logger.Error("reconcile refunds failed", "error", err)
 	}

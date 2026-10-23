@@ -16,16 +16,18 @@ import (
 // deliberately separate facts: an order may have several successful card
 // charges, partial refunds and a later top-up.
 type Balance struct {
-	Total         float64       `json:"total"`
-	Paid          float64       `json:"paid"`
-	Refunded      float64       `json:"refunded"`
-	NetPaid       float64       `json:"netPaid"`
-	Due           float64       `json:"due"`
-	Overpaid      float64       `json:"overpaid"`
-	Ready         bool          `json:"ready"`
-	PaymentStatus string        `json:"paymentStatus"`
-	Issues        []Issue       `json:"issues"`
-	Refunds       []RefundIssue `json:"refunds"`
+	Total         float64        `json:"total"`
+	Paid          float64        `json:"paid"`
+	Refunded      float64        `json:"refunded"`
+	NetPaid       float64        `json:"netPaid"`
+	Due           float64        `json:"due"`
+	Overpaid      float64        `json:"overpaid"`
+	Ready         bool           `json:"ready"`
+	PaymentStatus string         `json:"paymentStatus"`
+	Issues        []Issue        `json:"issues"`
+	FiscalTasks   []FiscalTask   `json:"fiscalTasks"`
+	RefundOptions []RefundOption `json:"refundOptions"`
+	Refunds       []RefundIssue  `json:"refunds"`
 }
 
 type orderMoneyState struct {
@@ -193,6 +195,14 @@ func (service *Service) Reconcile(ctx context.Context, orderID int64) (Balance, 
 	if err != nil {
 		return Balance{}, fmt.Errorf("load payment issues: %w", err)
 	}
+	balance.FiscalTasks, err = service.fiscalTasks(ctx, orderID)
+	if err != nil {
+		return Balance{}, err
+	}
+	balance.RefundOptions, err = service.refundOptions(ctx, orderID)
+	if err != nil {
+		return Balance{}, err
+	}
 	balance.Refunds, err = service.refundIssues(ctx, orderID)
 	if err != nil {
 		return Balance{}, err
@@ -209,6 +219,14 @@ func (service *Service) BalanceForOrder(ctx context.Context, orderID int64) (Bal
 	balance.Issues, err = service.paymentIssues(ctx, orderID)
 	if err != nil {
 		return Balance{}, fmt.Errorf("load payment issues: %w", err)
+	}
+	balance.FiscalTasks, err = service.fiscalTasks(ctx, orderID)
+	if err != nil {
+		return Balance{}, err
+	}
+	balance.RefundOptions, err = service.refundOptions(ctx, orderID)
+	if err != nil {
+		return Balance{}, err
 	}
 	balance.Refunds, err = service.refundIssues(ctx, orderID)
 	if err != nil {
@@ -282,6 +300,24 @@ func (service *Service) startOutstandingLocked(ctx context.Context, orderID int6
 		return "", balance, fmt.Errorf("load pending payment: %w", err)
 	}
 
+	fiscalItems := []integration.PaymentItem{{Name: "Оплата по заказу " + state.number, Price: balance.Due, Quantity: 1}}
+	if fiscal, ok := service.provider.(interface{ RefundUsesReceipt() bool }); ok && fiscal.RefundUsesReceipt() {
+		if cents(balance.NetPaid) != 0 {
+			return "", balance, errors.New("для доплаты с чеком ЮKassa требуется точный состав новых оплачиваемых позиций; используйте отдельную отправку с точными позициями")
+		}
+		fiscalItems, err = service.orderItems(ctx, state.id)
+		if err != nil {
+			return "", balance, err
+		}
+		var fee float64
+		var payee string
+		if err = service.pool.QueryRow(ctx, `SELECT delivery_fee::double precision,delivery_payee FROM orders WHERE id=$1`, state.id).Scan(&fee, &payee); err != nil {
+			return "", balance, err
+		}
+		if payee == "shop" && fee > 0 {
+			fiscalItems = append(fiscalItems, integration.PaymentItem{Name: "Доставка", Price: fee, Quantity: 1, Subject: "service"})
+		}
+	}
 	key, err := idempotenceKey()
 	if err != nil {
 		return "", balance, err
@@ -300,7 +336,7 @@ func (service *Service) startOutstandingLocked(ctx context.Context, orderID int6
 		ReturnURL:      service.returnURL + "/?paid=" + state.number,
 		Email:          state.email, Phone: state.phone,
 		// The outstanding balance includes delivery when the shop collects it.
-		Items: []integration.PaymentItem{{Name: "Оплата по заказу " + state.number, Price: balance.Due, Quantity: 1}},
+		Items: fiscalItems,
 	})
 	if err != nil {
 		return "", balance, err
@@ -392,7 +428,7 @@ func (service *Service) StartShipmentOffer(ctx context.Context, token string, cu
 			return "", err
 		}
 		if fee > 0 {
-			items = append(items, integration.PaymentItem{Name: "Доставка", Price: fee, Quantity: 1})
+			items = append(items, integration.PaymentItem{Name: "Доставка", Subject: "service", Price: fee, Quantity: 1})
 		}
 	}
 	if paymentID == 0 {
