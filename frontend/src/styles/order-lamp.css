@@ -24,10 +24,21 @@
   transition: opacity 240ms ease-out;
 }
 .order-lamp-scene::before {
-  background: radial-gradient(ellipse 180px 142px at 50% 190px, #fff3c6 0%, rgba(255, 246, 213, .88) 48%, transparent 100%);
+  background: radial-gradient(
+    ellipse 180px 142px at 50% 190px,
+    #fff3c6 0%,
+    rgba(255, 246, 213, 0.88) 48%,
+    transparent 100%
+  );
 }
 .order-lamp-scene::after {
-  background: linear-gradient(180deg, transparent 210px, rgba(69, 60, 38, .025) 280px, rgba(69, 60, 38, .075) 370px, rgba(69, 60, 38, .09));
+  background: linear-gradient(
+    180deg,
+    transparent 210px,
+    rgba(69, 60, 38, 0.025) 280px,
+    rgba(69, 60, 38, 0.075) 370px,
+    rgba(69, 60, 38, 0.09)
+  );
 }
 .order-lamp-scene.is-lit::before,
 .order-lamp-scene.is-lit::after {
@@ -46,7 +57,7 @@
   transition: filter 240ms ease-out;
 }
 .order-lamp-scene:not(.is-lit) .cart-pendant-lamp {
-  filter: brightness(.7);
+  filter: brightness(0.7);
 }
 .order-lamp-switch {
   width: 148px;
@@ -68,7 +79,7 @@
   position: absolute;
   bottom: 8px;
   right: -20px;
-  opacity: .7;
+  opacity: 0.7;
 }
 .order-lamp-switch:hover svg {
   opacity: 1;
@@ -86,7 +97,15 @@
   top: 112px;
   left: 0;
   pointer-events: none;
-  background: conic-gradient(from 142deg at 50% 0, transparent 0deg, rgba(255, 230, 164, .45) 8deg, rgba(255, 243, 203, .95) 26deg, rgba(255, 243, 203, .95) 50deg, rgba(255, 230, 164, .45) 68deg, transparent 76deg);
+  background: conic-gradient(
+    from 142deg at 50% 0,
+    transparent 0deg,
+    rgba(255, 230, 164, 0.45) 8deg,
+    rgba(255, 243, 203, 0.95) 26deg,
+    rgba(255, 243, 203, 0.95) 50deg,
+    rgba(255, 230, 164, 0.45) 68deg,
+    transparent 76deg
+  );
   mask-image: linear-gradient(#000 35%, transparent 100%);
   filter: blur(5px);
   opacity: 0;
@@ -107,10 +126,12 @@
   font-size: 14px;
 }
 .order-lamp-total strong {
-  font: 500 42px/1.15 Georgia, serif;
+  font:
+    500 42px/1.15 Georgia,
+    serif;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  text-shadow: 0 2px 12px rgba(255, 253, 233, .9);
+  text-shadow: 0 2px 12px rgba(255, 253, 233, 0.9);
 }
 .order-lamp-scene dl {
   margin-top: 0;
@@ -135,18 +156,42 @@
 
 @media (max-width: 400px) {
   .cart-summary .order-lamp-scene,
-  .order-lamp-scene { padding-inline: 20px; }
-  .order-lamp-total strong { font-size: 36px; }
+  .order-lamp-scene {
+    padding-inline: 20px;
+  }
+  .order-lamp-total strong {
+    font-size: 36px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cart-pendant-lamp, .order-lamp-beam, .order-lamp-scene::before, .order-lamp-scene::after { transition: none; }
+  .cart-pendant-lamp,
+  .order-lamp-beam,
+  .order-lamp-scene::before,
+  .order-lamp-scene::after {
+    transition: none;
+  }
 }
 
 @media (max-width: 760px) {
-  .cart-summary .order-lamp-scene { padding: 24px 20px; }
-  .cart-summary .cart-pendant-lamp, .cart-summary .order-lamp-switch { display: none; }
-  .cart-summary .order-lamp-beam { display: none; }
-  .cart-summary .order-lamp-scene::before, .cart-summary .order-lamp-scene::after { display: none; }
-  .cart-summary .order-lamp-total { padding-top: 0; text-align: left; }
-  .cart-summary .order-lamp-total strong { font-size: 36px; }
+  .cart-summary .order-lamp-scene {
+    padding: 24px 20px;
+  }
+  .cart-summary .cart-pendant-lamp,
+  .cart-summary .order-lamp-switch {
+    display: none;
+  }
+  .cart-summary .order-lamp-beam {
+    display: none;
+  }
+  .cart-summary .order-lamp-scene::before,
+  .cart-summary .order-lamp-scene::after {
+    display: none;
+  }
+  .cart-summary .order-lamp-total {
+    padding-top: 0;
+    text-align: left;
+  }
+  .cart-summary .order-lamp-total strong {
+    font-size: 36px;
+  }
 }

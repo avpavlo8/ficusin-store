@@ -68,10 +68,11 @@ export function CollectionStrip<T extends Product>({
   useEffect(() => {
     const element = rail.current;
     if (!element) return;
-    const update = () => setScrollEdges({
-      previous: element.scrollLeft > 2,
-      next: element.scrollLeft + element.clientWidth < element.scrollWidth - 2,
-    });
+    const update = () =>
+      setScrollEdges({
+        previous: element.scrollLeft > 2,
+        next: element.scrollLeft + element.clientWidth < element.scrollWidth - 2,
+      });
     update();
     element.addEventListener("scroll", update, { passive: true });
     const observer = new ResizeObserver(update);
@@ -87,13 +88,20 @@ export function CollectionStrip<T extends Product>({
     const card = element?.querySelector<HTMLElement>(".preset");
     if (!element || !card) return;
     const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
-    element.scrollBy({ left: direction * (card.offsetWidth + gap), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    element.scrollBy({
+      left: direction * (card.offsetWidth + gap),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+    });
   };
 
   useEffect(() => {
     let alive = true;
     fetch("/api/v1/collections")
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("collections unavailable")))
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error("collections unavailable")),
+      )
       .then((data: { collections?: CollectionDefinition[] }) => {
         if (!alive) return;
         if (!Array.isArray(data.collections)) throw new Error("collections contract unavailable");
@@ -105,24 +113,33 @@ export function CollectionStrip<T extends Product>({
         setServerCollections([]);
         setSource("error");
       });
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const shown = useMemo(() => {
     if (source !== "server") return [];
-    return serverCollections.filter(collection => collection.showOnHome !== false).map((collection) => {
-      const preset = serverPreset(collection);
-      const firstProductImage = products.find((product) => preset.match(product))?.image;
-      const image = collection.coverUrl || collectionImages[collection.slug] || firstProductImage || "/assets/redesign/collection-easy-4k.webp";
-      const covers = panoramicCollectionCovers[collection.slug];
-      return {
-        preset,
-        image,
-        desktopImage: covers?.original === image ? covers.desktop : undefined,
-        count: collection.count,
-        position: collection.coverPosition || "center",
-      };
-    }).filter((item) => item.count > 0);
+    return serverCollections
+      .filter((collection) => collection.showOnHome !== false)
+      .map((collection) => {
+        const preset = serverPreset(collection);
+        const firstProductImage = products.find((product) => preset.match(product))?.image;
+        const image =
+          collection.coverUrl ||
+          collectionImages[collection.slug] ||
+          firstProductImage ||
+          "/assets/redesign/collection-easy-4k.webp";
+        const covers = panoramicCollectionCovers[collection.slug];
+        return {
+          preset,
+          image,
+          desktopImage: covers?.original === image ? covers.desktop : undefined,
+          count: collection.count,
+          position: collection.coverPosition || "center",
+        };
+      })
+      .filter((item) => item.count > 0);
   }, [products, serverCollections, source]);
 
   if (shown.length === 0) return null;
@@ -130,26 +147,59 @@ export function CollectionStrip<T extends Product>({
 
   return (
     <section className="storefront-preset-carousel" aria-label="Подборки растений">
-      <button className="preset-arrow previous" type="button" onClick={() => scroll(-1)} aria-label="Предыдущие подборки" disabled={!scrollEdges.previous}>←</button>
-      <div className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`} ref={rail}>
-      {shown.map(({ preset, image, desktopImage, count, position }, index) => (
-        <a
-          key={preset.id}
-          href={`/collections/${encodeURIComponent(preset.id)}`}
-          className={activeSlug === preset.id ? "preset active" : "preset"}
-          aria-current={activeSlug === preset.id ? "page" : undefined}
-        >
-          <picture>
-            {desktopImage && <source media="(min-width: 851px)" srcSet={desktopImage} />}
-            <img className={`preset-cover${desktopImage ? " preset-cover-responsive" : ""}`} src={image} alt="" aria-hidden="true" width={1536} height={1024} loading={index < 3 ? "eager" : "lazy"} decoding="async" style={{ objectPosition: position }} />
-          </picture>
-          <span className="preset-title">{preset.title}</span>
-          <span className="preset-count">{counted(count, ["растение", "растения", "растений"])}</span>
-          <span className="preset-go" aria-hidden="true">→</span>
-        </a>
-      ))}
+      <button
+        className="preset-arrow previous"
+        type="button"
+        onClick={() => scroll(-1)}
+        aria-label="Предыдущие подборки"
+        disabled={!scrollEdges.previous}
+      >
+        ←
+      </button>
+      <div
+        className={`storefront-presets${scrollEdges.previous ? " can-scroll-previous" : ""}${canScrollNext ? " can-scroll-next" : ""}`}
+        ref={rail}
+      >
+        {shown.map(({ preset, image, desktopImage, count, position }, index) => (
+          <a
+            key={preset.id}
+            href={`/collections/${encodeURIComponent(preset.id)}`}
+            className={activeSlug === preset.id ? "preset active" : "preset"}
+            aria-current={activeSlug === preset.id ? "page" : undefined}
+          >
+            <picture>
+              {desktopImage && <source media="(min-width: 851px)" srcSet={desktopImage} />}
+              <img
+                className={`preset-cover${desktopImage ? " preset-cover-responsive" : ""}`}
+                src={image}
+                alt=""
+                aria-hidden="true"
+                width={1536}
+                height={1024}
+                loading={index < 3 ? "eager" : "lazy"}
+                decoding="async"
+                style={{ objectPosition: position }}
+              />
+            </picture>
+            <span className="preset-title">{preset.title}</span>
+            <span className="preset-count">
+              {counted(count, ["растение", "растения", "растений"])}
+            </span>
+            <span className="preset-go" aria-hidden="true">
+              →
+            </span>
+          </a>
+        ))}
       </div>
-      <button className="preset-arrow next" type="button" onClick={() => scroll(1)} aria-label="Следующие подборки" disabled={!canScrollNext}>→</button>
+      <button
+        className="preset-arrow next"
+        type="button"
+        onClick={() => scroll(1)}
+        aria-label="Следующие подборки"
+        disabled={!canScrollNext}
+      >
+        →
+      </button>
     </section>
   );
 }

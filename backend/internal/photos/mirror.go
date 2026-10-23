@@ -58,9 +58,9 @@ func NewMirror(store Store, storage *Storage, logger *slog.Logger) *Mirror {
 		client:  client,
 		// A deployment must drain a normal catalogue in one pass. Downloads
 		// stay deliberately sequential and Pause caps pressure on Saby/S3.
-		Batch:   250,
-		Every:   5 * time.Minute,
-		Pause:   500 * time.Millisecond,
+		Batch: 250,
+		Every: 5 * time.Minute,
+		Pause: 500 * time.Millisecond,
 	}
 }
 
@@ -169,8 +169,12 @@ func (mirror *Mirror) copies(
 
 func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, string, error) {
 	parsed, err := url.Parse(source)
-	if err != nil { return nil, "", errors.New("некорректная ссылка") }
-	if err := validateSourceURL(parsed); err != nil { return nil, "", err }
+	if err != nil {
+		return nil, "", errors.New("некорректная ссылка")
+	}
+	if err := validateSourceURL(parsed); err != nil {
+		return nil, "", err
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return nil, "", err
@@ -210,12 +214,16 @@ func (mirror *Mirror) download(ctx context.Context, source string) ([]byte, stri
 // media is writable by integrations/admins, so neither the initial URL nor a
 // redirect may turn the application into a proxy to internal infrastructure.
 func validateSourceURL(source *url.URL) error {
-	if source.Scheme != "https" { return errors.New("ссылка не по https") }
+	if source.Scheme != "https" {
+		return errors.New("ссылка не по https")
+	}
 	host := strings.ToLower(strings.TrimSuffix(source.Hostname(), "."))
 	if host != "sbis.ru" && !strings.HasSuffix(host, ".sbis.ru") && host != "s3.twcstorage.ru" {
 		return errors.New("домен источника фотографий не разрешён")
 	}
-	if source.User != nil || source.Port() != "" { return errors.New("небезопасный адрес фотографии") }
+	if source.User != nil || source.Port() != "" {
+		return errors.New("небезопасный адрес фотографии")
+	}
 	return nil
 }
 

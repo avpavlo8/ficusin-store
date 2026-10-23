@@ -36,7 +36,9 @@ func safeAdminProductUpdateHandler(adminAPI adminHandlers) http.HandlerFunc {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
 			return
 		}
-		if !validateManagerProductFields(response, actor, fields) { return }
+		if !validateManagerProductFields(response, actor, fields) {
+			return
+		}
 		if encoded, present := fields["image"]; present {
 			var incoming string
 			if json.Unmarshal(encoded, &incoming) == nil {

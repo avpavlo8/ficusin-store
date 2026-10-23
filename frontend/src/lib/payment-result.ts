@@ -14,16 +14,38 @@ export type PaymentResultOrder = {
   amountDue: number;
 };
 
-export type PaymentResultState = "success" | "pending" | "failed" | "partial" | "cancelled" | "refunded" | "unconfirmed";
+export type PaymentResultState =
+  | "success"
+  | "pending"
+  | "failed"
+  | "partial"
+  | "cancelled"
+  | "refunded"
+  | "unconfirmed";
 
-export function readPaymentResultOrder(value: unknown, expectedNumber: string): PaymentResultOrder | null {
+export function readPaymentResultOrder(
+  value: unknown,
+  expectedNumber: string,
+): PaymentResultOrder | null {
   if (!value || typeof value !== "object") return null;
   const order = value as Record<string, unknown>;
   if (order.orderNumber !== expectedNumber) return null;
-  if (!["status", "paymentStatus", "deliveryMethod"].every((key) => typeof order[key] === "string")) return null;
-  if (order.paymentAttemptStatus != null && typeof order.paymentAttemptStatus !== "string") return null;
-  if (!["subtotal", "total", "paidAmount", "refundedAmount", "amountDue"].every((key) => typeof order[key] === "number" && Number.isFinite(order[key]) && order[key] >= 0)) return null;
-  if (order.deliveryPayee != null && order.deliveryPayee !== "shop" && order.deliveryPayee !== "carrier") return null;
+  if (!["status", "paymentStatus", "deliveryMethod"].every((key) => typeof order[key] === "string"))
+    return null;
+  if (order.paymentAttemptStatus != null && typeof order.paymentAttemptStatus !== "string")
+    return null;
+  if (
+    !["subtotal", "total", "paidAmount", "refundedAmount", "amountDue"].every(
+      (key) => typeof order[key] === "number" && Number.isFinite(order[key]) && order[key] >= 0,
+    )
+  )
+    return null;
+  if (
+    order.deliveryPayee != null &&
+    order.deliveryPayee !== "shop" &&
+    order.deliveryPayee !== "carrier"
+  )
+    return null;
   return order as PaymentResultOrder;
 }
 
@@ -35,10 +57,12 @@ export function netOrderPayment(order: PaymentResultOrder): number {
 // payment status and the order balance, including refunds and carrier fees.
 export function paymentResultState(order: PaymentResultOrder): PaymentResultState {
   const net = toKopecks(netOrderPayment(order));
-  if (order.paymentStatus === "refunded" && order.refundedAmount > 0 && net === 0) return "refunded";
+  if (order.paymentStatus === "refunded" && order.refundedAmount > 0 && net === 0)
+    return "refunded";
   if (order.status === "cancelled") return "cancelled";
   const expected = toKopecks(order.deliveryPayee === "carrier" ? order.subtotal : order.total);
-  if (order.paymentStatus === "paid" && order.amountDue === 0 && expected > 0 && net >= expected) return "success";
+  if (order.paymentStatus === "paid" && order.amountDue === 0 && expected > 0 && net >= expected)
+    return "success";
   if (net > 0 && order.amountDue > 0) return "partial";
   if (["on_delivery", "invoice"].includes(order.paymentStatus)) return "unconfirmed";
   const attempt = order.paymentAttemptStatus;

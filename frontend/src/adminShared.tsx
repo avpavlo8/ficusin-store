@@ -4,47 +4,87 @@ import type { Role } from "./adminTypes";
 export { money } from "./lib/money";
 
 // Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
-export const sabyFieldLabels: Record<string, string> = { stock: "остаток", price: "цена", name: "название", description: "описание", photo: "фото" };
+export const sabyFieldLabels: Record<string, string> = {
+  stock: "остаток",
+  price: "цена",
+  name: "название",
+  description: "описание",
+  photo: "фото",
+};
 
 export const roles: Array<{ value: Role; label: string }> = [
-  { value: "", label: "Без доступа" }, { value: "manager", label: "Менеджер" }, { value: "administrator", label: "Администратор" },
+  { value: "", label: "Без доступа" },
+  { value: "manager", label: "Менеджер" },
+  { value: "administrator", label: "Администратор" },
 ];
 
-export const roleLabel = (role: Role) => role === "owner" ? "Владелец" : roles.find((item) => item.value === role)?.label || "Клиент";
+export const roleLabel = (role: Role) =>
+  role === "owner" ? "Владелец" : roles.find((item) => item.value === role)?.label || "Клиент";
 
 export const paymentLabels: Record<string, string> = {
-  pending: "Ожидает оплаты", paid: "Оплачен", on_delivery: "При получении",
-  invoice: "По счёту", cancelled: "Оплата отменена",
-  payment_provider_pending: "Без онлайн-оплаты", refunded: "Возвращён",
+  pending: "Ожидает оплаты",
+  paid: "Оплачен",
+  on_delivery: "При получении",
+  invoice: "По счёту",
+  cancelled: "Оплата отменена",
+  payment_provider_pending: "Без онлайн-оплаты",
+  refunded: "Возвращён",
 };
 
 export const paymentMethodLabels: Record<string, string> = {
-  on_delivery: "Оплатит при получении", invoice: "Нужен счёт на организацию",
+  on_delivery: "Оплатит при получении",
+  invoice: "Нужен счёт на организацию",
   manager_confirmation: "Оплата после подтверждения менеджером",
 };
 
-export const orderStatuses = ["new", "confirmed", "assembling", "ready", "shipped", "completed", "cancelled"];
+export const orderStatuses = [
+  "new",
+  "confirmed",
+  "assembling",
+  "ready",
+  "shipped",
+  "completed",
+  "cancelled",
+];
 
 export const statusLabels: Record<string, string> = {
-  new: "Новый", confirmed: "Подтверждён", assembling: "Собирается", ready: "Готов",
-  shipped: "В доставке", completed: "Завершён", cancelled: "Отменён",
-  draft: "Черновик", published: "Опубликован", archived: "В архиве",
+  new: "Новый",
+  confirmed: "Подтверждён",
+  assembling: "Собирается",
+  ready: "Готов",
+  shipped: "В доставке",
+  completed: "Завершён",
+  cancelled: "Отменён",
+  draft: "Черновик",
+  published: "Опубликован",
+  archived: "В архиве",
 };
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
-  if (!(options?.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (!(options?.body instanceof FormData) && !headers.has("Content-Type"))
+    headers.set("Content-Type", "application/json");
   const response = await fetch(path, {
-    credentials: "same-origin", cache: "no-store", ...options,
+    credentials: "same-origin",
+    cache: "no-store",
+    ...options,
     headers,
   });
-  if (response.status === 401) { window.location.assign("/login?returnTo=/admin"); throw new Error("Требуется вход"); }
+  if (response.status === 401) {
+    window.location.assign("/login?returnTo=/admin");
+    throw new Error("Требуется вход");
+  }
   if (response.status === 403) throw new Error("Недостаточно прав для этого действия");
   const text = response.status === 204 ? "" : await response.text();
   let result = {} as T & { error?: string };
   if (text) {
-    try { result = JSON.parse(text) as T & { error?: string }; }
-    catch { throw new Error(response.ok ? "Сервер вернул некорректный ответ" : "Не удалось выполнить операцию"); }
+    try {
+      result = JSON.parse(text) as T & { error?: string };
+    } catch {
+      throw new Error(
+        response.ok ? "Сервер вернул некорректный ответ" : "Не удалось выполнить операцию",
+      );
+    }
   }
   if (!response.ok) throw new Error(result.error || "Не удалось выполнить операцию");
   return result;
@@ -55,38 +95,170 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
 // on focus/click makes the next digit replace it in every admin form.
 export function selectZeroNumberInput(event: React.SyntheticEvent<HTMLElement>) {
   const input = event.target;
-  if (input instanceof HTMLInputElement && input.type === "number" && Number(input.value) === 0) input.select();
+  if (input instanceof HTMLInputElement && input.type === "number" && Number(input.value) === 0)
+    input.select();
 }
 
 // Shares the account page's heading block so both areas read identically.
-export function PageHeading({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
-  return <div className="account-title"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p className="account-title-note">{text}</p></div></div>;
-}
-
-export function ConfirmDialog({ title, text, confirmLabel, busy, danger, onCancel, onConfirm }: {
-  title: string; text: ReactNode; confirmLabel: string; busy?: boolean; danger?: boolean;
-  onCancel: () => void; onConfirm: () => void;
+export function PageHeading({
+  eyebrow,
+  title,
+  text,
+}: {
+  eyebrow: string;
+  title: string;
+  text: string;
 }) {
-  const panel = useProcurementDialog(() => {if (!busy) onCancel();});
-  return <><button tabIndex={-1} className="admin-dialog-backdrop confirm-backdrop" aria-label="Закрыть подтверждение" onClick={onCancel} disabled={busy} />
-    <div ref={panel} className="admin-dialog confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-text">
-      <header><h2 id="confirm-dialog-title">{title}</h2><button onClick={onCancel} aria-label="Закрыть" disabled={busy}>×</button></header>
-      <div id="confirm-dialog-text">{text}</div>
-      <div className="dialog-actions"><button onClick={onCancel} disabled={busy}>Отмена</button><button className={danger ? "danger-primary" : "primary"} onClick={onConfirm} disabled={busy}>{confirmLabel}</button></div>
-    </div></>;
+  return (
+    <div className="account-title">
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+        <p className="account-title-note">{text}</p>
+      </div>
+    </div>
+  );
 }
 
-export function Dialog({ title, onClose, children, className = "" }: { title: string; onClose: () => void; children: React.ReactNode; className?: string }) {
+export function ConfirmDialog({
+  title,
+  text,
+  confirmLabel,
+  busy,
+  danger,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  text: ReactNode;
+  confirmLabel: string;
+  busy?: boolean;
+  danger?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const panel = useProcurementDialog(() => {
+    if (!busy) onCancel();
+  });
+  return (
+    <>
+      <button
+        tabIndex={-1}
+        className="admin-dialog-backdrop confirm-backdrop"
+        aria-label="Закрыть подтверждение"
+        onClick={onCancel}
+        disabled={busy}
+      />
+      <div
+        ref={panel}
+        className="admin-dialog confirm-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-text"
+      >
+        <header>
+          <h2 id="confirm-dialog-title">{title}</h2>
+          <button onClick={onCancel} aria-label="Закрыть" disabled={busy}>
+            ×
+          </button>
+        </header>
+        <div id="confirm-dialog-text">{text}</div>
+        <div className="dialog-actions">
+          <button onClick={onCancel} disabled={busy}>
+            Отмена
+          </button>
+          <button
+            className={danger ? "danger-primary" : "primary"}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function Dialog({
+  title,
+  onClose,
+  children,
+  className = "",
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
   const titleId = useId();
   const panel = useRef<HTMLElement>(null);
-  useEffect(() => { const previous = document.activeElement; panel.current?.focus(); return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }; }, []);
-  return <><button className="admin-dialog-backdrop" aria-label="Закрыть" onClick={onClose} tabIndex={-1} /><section ref={panel} tabIndex={-1} className={`admin-dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={event => {
-    if (event.key === "Escape") { event.stopPropagation(); onClose(); }
-    if (event.key !== "Tab") return;
-    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(element => element.getClientRects().length && !element.closest('fieldset:disabled'));
-    const first = controls[0], last = controls.at(-1);
-    if (!first) { event.preventDefault(); return; }
-    if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
-    if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel.current)) { event.preventDefault(); first.focus(); }
-  }}><header><h2 id={titleId}>{title}</h2><button onClick={onClose} aria-label="Закрыть">×</button></header>{children}</section></>;
+  useEffect(() => {
+    const previous = document.activeElement;
+    panel.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  return (
+    <>
+      <button
+        className="admin-dialog-backdrop"
+        aria-label="Закрыть"
+        onClick={onClose}
+        tabIndex={-1}
+      />
+      <section
+        ref={panel}
+        tabIndex={-1}
+        className={`admin-dialog ${className}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+          }
+          if (event.key !== "Tab") return;
+          const controls = Array.from(
+            event.currentTarget.querySelectorAll<HTMLElement>(
+              'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+            ),
+          ).filter(
+            (element) => element.getClientRects().length && !element.closest("fieldset:disabled"),
+          );
+          const first = controls[0],
+            last = controls.at(-1);
+          if (!first) {
+            event.preventDefault();
+            return;
+          }
+          if (
+            event.shiftKey &&
+            (document.activeElement === first || document.activeElement === panel.current)
+          ) {
+            event.preventDefault();
+            last?.focus();
+          }
+          if (
+            !event.shiftKey &&
+            (document.activeElement === last || document.activeElement === panel.current)
+          ) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+      >
+        <header>
+          <h2 id={titleId}>{title}</h2>
+          <button onClick={onClose} aria-label="Закрыть">
+            ×
+          </button>
+        </header>
+        {children}
+      </section>
+    </>
+  );
 }

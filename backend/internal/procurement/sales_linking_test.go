@@ -24,7 +24,9 @@ func (stub *salesLinkStoreStub) ListUnlinkedSales(_ context.Context, channel str
 	return []UnlinkedSale{{Channel: channel, ExternalID: "fikus-benjamina-12", Units: 4}}, nil
 }
 
-func (stub *salesLinkStoreStub) IgnoreSalesProduct(context.Context, Actor, string, string, bool) error { return nil }
+func (stub *salesLinkStoreStub) IgnoreSalesProduct(context.Context, Actor, string, string, bool) error {
+	return nil
+}
 func (stub *salesLinkStoreStub) ListUnlinkedSalesIncludingIgnored(ctx context.Context, channel string, limit int) ([]UnlinkedSale, error) {
 	return stub.ListUnlinkedSales(ctx, channel, limit)
 }

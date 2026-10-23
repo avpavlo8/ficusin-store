@@ -26,13 +26,23 @@ type variantMediaRepository interface {
 func listVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, _, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		variantID, ok := pathID(response, request)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		provider, ok := adminAPI.repository.(variantMediaRepository)
-		if !ok { adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable")); return }
+		if !ok {
+			adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable"))
+			return
+		}
 		items, err := provider.ListVariantMedia(request.Context(), variantID)
-		if err != nil { adminAPI.failed(response, "list variant media", err); return }
+		if err != nil {
+			adminAPI.failed(response, "list variant media", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"media": items})
 	}
 }
@@ -40,22 +50,32 @@ func listVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 func uploadVariantMediaHandler(adminAPI adminHandlers, storage productPhotoStorage) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		variantID, ok := pathID(response, request)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		if storage == nil || !storage.Configured() {
 			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Хранилище фотографий не настроено"})
 			return
 		}
 		provider, ok := adminAPI.repository.(variantMediaRepository)
-		if !ok { adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable")); return }
+		if !ok {
+			adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable"))
+			return
+		}
 		request.Body = http.MaxBytesReader(response, request.Body, maxProductPhotoBytes+1<<20)
 		if err := request.ParseMultipartForm(maxProductPhotoBytes); err != nil {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Файл слишком большой или повреждён"})
 			return
 		}
 		file, _, err := request.FormFile("file")
-		if err != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите фотографию"}); return }
+		if err != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите фотографию"})
+			return
+		}
 		defer file.Close()
 		raw, err := io.ReadAll(io.LimitReader(file, maxProductPhotoBytes+1))
 		if err != nil || len(raw) == 0 || len(raw) > maxProductPhotoBytes {
@@ -68,18 +88,36 @@ func uploadVariantMediaHandler(adminAPI adminHandlers, storage productPhotoStora
 			return
 		}
 		large, err := photos.Prepare(raw, photos.SizeLarge.MaxSide)
-		if err != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось прочитать фотографию"}); return }
+		if err != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось прочитать фотографию"})
+			return
+		}
 		card, err := photos.Prepare(raw, photos.SizeCard.MaxSide)
-		if err != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось подготовить фотографию"}); return }
+		if err != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Не удалось подготовить фотографию"})
+			return
+		}
 		tokenBytes := make([]byte, 16)
-		if _, err := rand.Read(tokenBytes); err != nil { adminAPI.failed(response, "create variant media token", err); return }
+		if _, err := rand.Read(tokenBytes); err != nil {
+			adminAPI.failed(response, "create variant media token", err)
+			return
+		}
 		token := hex.EncodeToString(tokenBytes)
 		prefix := fmt.Sprintf("variants/%d/%s", variantID, token)
 		cardKey, largeKey := prefix+"-card.jpg", prefix+"-large.jpg"
-		if err := storage.Put(request.Context(), cardKey, card, "image/jpeg"); err != nil { adminAPI.failed(response, "upload variant card image", err); return }
-		if err := storage.Put(request.Context(), largeKey, large, "image/jpeg"); err != nil { adminAPI.failed(response, "upload variant large image", err); return }
+		if err := storage.Put(request.Context(), cardKey, card, "image/jpeg"); err != nil {
+			adminAPI.failed(response, "upload variant card image", err)
+			return
+		}
+		if err := storage.Put(request.Context(), largeKey, large, "image/jpeg"); err != nil {
+			adminAPI.failed(response, "upload variant large image", err)
+			return
+		}
 		item, err := provider.AddUploadedVariantMedia(request.Context(), actor, variantID, "upload://variant/"+token, storage.PublicURL(cardKey), storage.PublicURL(largeKey))
-		if err != nil { adminAPI.failed(response, "save variant media", err); return }
+		if err != nil {
+			adminAPI.failed(response, "save variant media", err)
+			return
+		}
 		writeJSON(response, http.StatusCreated, map[string]any{"media": item})
 	}
 }
@@ -87,16 +125,30 @@ func uploadVariantMediaHandler(adminAPI adminHandlers, storage productPhotoStora
 func deleteVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionDelete)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		variantID, ok := pathID(response, request)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		mediaID, err := strconv.ParseInt(strings.TrimSpace(request.PathValue("mediaId")), 10, 64)
-		if err != nil || mediaID < 1 { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная фотография"}); return }
+		if err != nil || mediaID < 1 {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная фотография"})
+			return
+		}
 		provider, ok := adminAPI.repository.(variantMediaRepository)
-		if !ok { adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable")); return }
+		if !ok {
+			adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable"))
+			return
+		}
 		if err := provider.DeleteVariantMedia(request.Context(), actor, variantID, mediaID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) { writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фотография не найдена"}); return }
-			adminAPI.failed(response, "delete variant media", err); return
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фотография не найдена"})
+				return
+			}
+			adminAPI.failed(response, "delete variant media", err)
+			return
 		}
 		writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
 	}
@@ -105,16 +157,30 @@ func deleteVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 func primaryVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		variantID, ok := pathID(response, request)
-		if !ok { return }
+		if !ok {
+			return
+		}
 		mediaID, err := strconv.ParseInt(strings.TrimSpace(request.PathValue("mediaId")), 10, 64)
-		if err != nil || mediaID < 1 { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная фотография"}); return }
+		if err != nil || mediaID < 1 {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная фотография"})
+			return
+		}
 		provider, ok := adminAPI.repository.(variantMediaRepository)
-		if !ok { adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable")); return }
+		if !ok {
+			adminAPI.failed(response, "variant media unavailable", errors.New("variant media unavailable"))
+			return
+		}
 		if err := provider.SetPrimaryVariantMedia(request.Context(), actor, variantID, mediaID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) { writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фотография не найдена"}); return }
-			adminAPI.failed(response, "set primary variant media", err); return
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фотография не найдена"})
+				return
+			}
+			adminAPI.failed(response, "set primary variant media", err)
+			return
 		}
 		writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
 	}

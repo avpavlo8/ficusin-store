@@ -66,13 +66,19 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 
 func (handlers procurementHandlers) ignoreSales(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	service, able := handlers.service.(ignoredSalesService)
 	if !able {
 		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Исключение продаж пока недоступно"})
 		return
 	}
-	var input struct { Channel string `json:"channel"`; ExternalID string `json:"externalId"`; Ignored bool `json:"ignored"` }
+	var input struct {
+		Channel    string `json:"channel"`
+		ExternalID string `json:"externalId"`
+		Ignored    bool   `json:"ignored"`
+	}
 	if decodeJSON(request, &input) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар для исключения"})
 		return

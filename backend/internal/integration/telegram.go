@@ -38,8 +38,8 @@ type TelegramOrder struct {
 	// box. It is the one thing in this message that needs an answer.
 	RepackRequested bool
 	Subtotal        float64
-	Total        float64
-	Items        []TelegramOrderItem
+	Total           float64
+	Items           []TelegramOrderItem
 }
 
 type TelegramOrderItem struct {

@@ -29,8 +29,8 @@ func TestCDEKFindOrderByMerchantNumberIsReadOnly(t *testing.T) {
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body: io.NopCloser(strings.NewReader(`{"entity":{"uuid":"uuid-13","cdek_number":"track-13","statuses":[{"code":"CREATED","name":"Created"}]}}`)),
-			Header: make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"entity":{"uuid":"uuid-13","cdek_number":"track-13","statuses":[{"code":"CREATED","name":"Created"}]}}`)),
+			Header:     make(http.Header),
 		}, nil
 	})}
 

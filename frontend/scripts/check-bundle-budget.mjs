@@ -26,9 +26,16 @@ for (const path of files(root)) {
   const gzip = gzipSync(bytes).length;
   let maximum = limits.staticAsset;
   let measured = bytes.length;
-  if (/^assets\/index-.*\.js$/.test(name)) { maximum = limits.entryJS; measured = gzip; }
-  else if (name.endsWith(".css")) { maximum = limits.css; measured = gzip; }
-  else if (name.endsWith(".js")) { maximum = limits.asyncJS; measured = gzip; }
+  if (/^assets\/index-.*\.js$/.test(name)) {
+    maximum = limits.entryJS;
+    measured = gzip;
+  } else if (name.endsWith(".css")) {
+    maximum = limits.css;
+    measured = gzip;
+  } else if (name.endsWith(".js")) {
+    maximum = limits.asyncJS;
+    measured = gzip;
+  }
   if (measured > maximum) failures.push(`${name}: ${measured} bytes, budget ${maximum}`);
 }
 

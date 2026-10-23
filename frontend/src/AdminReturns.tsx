@@ -1,72 +1,965 @@
-import {ReturnReceiptBadge, ReturnStateIcon} from "./ReturnState";
+import { ReturnReceiptBadge, ReturnStateIcon } from "./ReturnState";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Dialog } from "./adminShared";
 import { ReturnIntakeDialog } from "./ReturnIntakeDialog";
 import { ReturnDetails } from "./ReturnDetails";
 import { downloadReturnLabels, returnMoney } from "./returnHelpers";
-import { plantCount, receiptLabel, returnChannels, returnConditions, returnDate } from "./returnWorkspace";
+import {
+  plantCount,
+  receiptLabel,
+  returnChannels,
+  returnConditions,
+  returnDate,
+} from "./returnWorkspace";
 import type { MarketplaceReturn, ReturnIntake } from "./adminTypes";
 import "./styles/admin-returns.css";
 
-type Status = MarketplaceReturn["condition"]|"all";
-type View = "plants"|"documents"|"archive";
-type Archive = {items:MarketplaceReturn[];documents:ReturnIntake[]};
-type DeleteRequest = {ids?:number[];documentId?:string;all?:boolean;count:number;documents:number};
-export function AdminReturns({can,onError,registerBeforeLeave,canFinance=false}:{canFinance?:boolean;can:(permission:string)=>boolean;onError:(message:string)=>void;registerBeforeLeave?:(flush:()=>Promise<boolean>)=>()=>void}) {
- const [items,setItems]=useState<MarketplaceReturn[]>([]),[documents,setDocuments]=useState<ReturnIntake[]>([]),[archive,setArchive]=useState<Archive>({items:[],documents:[]});
- const [view,setView]=useState<View>("plants"),[status,setStatus]=useState<Status>("all"),[selectedID,setSelectedID]=useState<number>();
- const [query,setQuery]=useState(""),[channel,setChannel]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState(""),[receiptFilter,setReceiptFilter]=useState("");
- const [checked,setChecked]=useState<number[]>([]),[mobileOpen,setMobileOpen]=useState(false),[creating,setCreating]=useState(false),[intakeID,setIntakeID]=useState<string>();
- const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(""),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[menu,setMenu]=useState(false),[includeDate,setIncludeDate]=useState(true);
- const [deletion,setDeletion]=useState<DeleteRequest>(),[batch,setBatch]=useState<number[]>(),[modalError,setModalError]=useState("");
- const flushRef=useRef<(()=>Promise<void>)|null>(null),intakeFlushRef=useRef<(()=>Promise<void>)|null>(null),selectedButton=useRef<HTMLButtonElement|null>(null),listScroll=useRef(0),detailHeading=useRef<HTMLDivElement>(null);
- const canDelete=can("returns.delete");
- const registerFlush=useCallback((flush:()=>Promise<void>)=>{flushRef.current=flush;return()=>{if(flushRef.current===flush)flushRef.current=null;};},[]);
- const registerIntakeFlush=useCallback((flush:()=>Promise<void>)=>{intakeFlushRef.current=flush;return()=>{if(intakeFlushRef.current===flush)intakeFlushRef.current=null;};},[]);
- const guard=useCallback(async()=>{try{await intakeFlushRef.current?.();await flushRef.current?.();return true;}catch(cause){onError(cause instanceof Error?cause.message:"Сначала сохраните изменения. Они остаются в форме.");return false;}},[onError]);
- useEffect(()=>registerBeforeLeave?.(guard),[guard,registerBeforeLeave]);
- // Same-tab links also await the current assessment. New tabs do not discard it.
- useEffect(()=>{const click=(event:MouseEvent)=>{const anchor=(event.target as Element).closest?.('a[href]') as HTMLAnchorElement|null;if(!anchor||anchor.target==="_blank"||event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey||!flushRef.current)return;const href=anchor.getAttribute("href")||"";if(href.startsWith("#"))return;event.preventDefault();void guard().then(ok=>{if(ok)window.location.assign(anchor.href);});};document.addEventListener("click",click);return()=>document.removeEventListener("click",click);},[guard]);
- const refresh=useCallback(async()=>{
-  const [returns,docs,deleted]=await Promise.all([api<{items:MarketplaceReturn[]}>("/api/v1/admin/returns"),api<{items:ReturnIntake[]}>("/api/v1/admin/returns/documents"),canDelete?api<Archive>("/api/v1/admin/returns/archive"):Promise.resolve({items:[],documents:[]})]);
-  setItems(returns.items||[]);setDocuments(docs.items||[]);setArchive({items:deleted.items||[],documents:deleted.documents||[]});setLoadError("");
- },[canDelete]);
- const load=useCallback(async()=>{setLoading(true);try{await refresh();}catch(cause){setLoadError(cause instanceof Error?cause.message:"Не удалось загрузить возвраты");}finally{setLoading(false);}},[refresh]);
- useEffect(()=>{void load();},[load]);
- useEffect(()=>{if(!items.some(item=>["queued","checking"].includes(item.receiptStatus)))return;const timer=window.setInterval(()=>void refresh().catch(cause=>onError(cause.message)),3000);return()=>window.clearInterval(timer);},[items,refresh,onError]);
- const change=async(action:()=>void)=>{if(await guard()){action();setChecked([]);setNotice("");}};
- const perform=async(action:()=>Promise<void>,message="",inDialog=false)=>{if(busy||!await guard())return;setBusy(true);if(inDialog)setModalError("");try{await action();await refresh();setChecked([]);setNotice(message);}catch(cause){(inDialog?setModalError:onError)(cause instanceof Error?cause.message:"Не удалось выполнить действие");}finally{setBusy(false);}};
- const search=query.trim().toLocaleLowerCase("ru").replace(/ё/g,"е");
- const matches=(text:string)=>text.toLocaleLowerCase("ru").replace(/ё/g,"е").includes(search);
- const matchesDate=(date:string)=>{const day=date.slice(0,10);return(!from||day>=from)&&(!to||day<=to);};
- const receiptMatches=(item:MarketplaceReturn)=>!receiptFilter||(receiptFilter==="none"?item.receiptStatus==="none":receiptFilter==="posted"?item.receiptStatus==="posted":receiptFilter==="attention"?["failed","correction_required"].includes(item.receiptStatus):item.receiptStatus!=="none"&&item.receiptStatus!=="posted");
- const visible=items.filter(item=>(status==="all"||item.condition===status)&&(!channel||item.channel===channel)&&matchesDate(item.returnedAt)&&matches(`${item.productName} ${item.label||""} ${item.article||""}`)&&receiptMatches(item));
- const selected=visible.find(item=>item.id===selectedID)||visible[0];
- const picked=visible.filter(item=>checked.includes(item.id)),eligible=picked.filter(item=>item.condition==="ready"&&item.receiptStatus==="none"),labelItems=picked.filter(item=>item.condition==="restoring");
- const visibleDocs=documents.filter(doc=>(!channel||doc.data.channel===channel)&&matchesDate(doc.createdAt||"")&&matches(`${doc.documentNumber} ${doc.data.rows.map(row=>row.name).join(" ")}`)&&(!receiptFilter||doc.items.some(receiptMatches)));
- const archivedItems=archive.items.filter(item=>(!channel||item.channel===channel)&&matchesDate(item.returnedAt)&&matches(`${item.productName} ${item.article}`));
- const archivedDocs=archive.documents.filter(doc=>(!channel||doc.data.channel===channel)&&matchesDate(doc.createdAt||"")&&matches(`${doc.documentNumber} ${doc.data.rows.map(row=>row.name).join(" ")}`));
- const saved=(item:MarketplaceReturn)=>{const old=items.find(next=>next.id===item.id);setItems(current=>current.map(next=>next.id===item.id?item:next));setSelectedID(item.id);if(old&&old.condition!==item.condition&&status!=="all")setStatus(item.condition);};
- const openDocument=(id?:string)=>void change(()=>{setIntakeID(id);setCreating(true);setMenu(false);});
- const openItem=(item:MarketplaceReturn,button?:HTMLButtonElement)=>void change(()=>{listScroll.current=window.scrollY;setSelectedID(item.id);setMobileOpen(true);selectedButton.current=button||null;window.setTimeout(()=>{if(window.matchMedia("(max-width:900px)").matches){detailHeading.current?.focus();detailHeading.current?.scrollIntoView({block:"start"});}},0);});
- const back=()=>void change(()=>{setMobileOpen(false);window.setTimeout(()=>{window.scrollTo({top:listScroll.current});selectedButton.current?.focus({preventScroll:true});},0);});
- const reset=()=>void change(()=>{setQuery("");setChannel("");setFrom("");setTo("");setReceiptFilter("");});
- const deleteRecords=()=>{if(!deletion)return;const request=deletion;void perform(async()=>{await api("/api/v1/admin/returns",{method:"DELETE",body:JSON.stringify({ids:request.ids,documentId:request.documentId,all:request.all})});setDeletion(undefined);setMobileOpen(false);},"Записи перенесены в удалённые. Их можно восстановить.",true);};
- const restore=(input:{ids?:number[];documentId?:string;all?:boolean})=>void perform(async()=>{await api("/api/v1/admin/returns/restore",{method:"POST",body:JSON.stringify(input)});},"Записи восстановлены. Проверьте состояние поступления перед дальнейшей работой.");
- const filtersActive=Boolean(query||channel||from||to||receiptFilter);
- return <div className={`returns-workspace ${mobileOpen?"is-detail-open":""}`}>
-  <div className="returns-heading"><div><p className="return-eyebrow">Приёмка и забота о растениях</p><h2>Возвраты растений</h2><p>Примите растения, оцените состояние и оформите дальнейшие действия.</p></div><div className="returns-heading-actions">{can("returns.edit")&&<button type="button" className="returns-create" onClick={()=>openDocument()}>+ Принять возврат</button>}{canDelete&&<div className="return-menu"><button type="button" aria-label="Действия раздела возвратов" aria-expanded={menu} onClick={()=>setMenu(!menu)}>•••</button>{menu&&<div><button type="button" disabled={busy||!items.length&&!documents.length} onClick={()=>void change(()=>{setMenu(false);setModalError("");setDeletion({all:true,count:items.length,documents:documents.length});})}>Удалить все записи раздела</button><button type="button" onClick={()=>void change(()=>{setView("archive");setMenu(false);setMobileOpen(false);})}>Открыть удалённые записи</button></div>}</div>}</div></div>
-  <nav className="returns-views" aria-label="Журналы возвратов">{([['plants','Растения',items.length],['documents','Документы',documents.length],...(canDelete?[['archive','Удалённые',archive.items.length]]:[])] as Array<[View,string,number]>).map(([next,label,count])=><button type="button" key={next} aria-current={view===next?"page":undefined} className={view===next?"active":""} onClick={()=>void change(()=>{setView(next);setMobileOpen(false);})}>{label}<span>{count}</span></button>)}</nav>
-  {view==="plants"&&<nav className="returns-tabs" aria-label="Состояния возвратов"><button type="button" className={status==="all"?"active":""} aria-pressed={status==="all"} onClick={()=>void change(()=>{setStatus("all");setMobileOpen(false);})}>Все<span>{items.length}</span></button>{Object.entries(returnConditions).map(([next,meta])=><button type="button" key={next} className={status===next?"active":""} aria-pressed={status===next} onClick={()=>void change(()=>{setStatus(next as Status);setMobileOpen(false);})}>{meta.tab}<span>{items.filter(item=>item.condition===next).length}</span></button>)}</nav>}
-  <div className="returns-filters"><label className="returns-search"><span className="return-visually-hidden">Поиск возвратов</span><input type="search" aria-label="Поиск возвратов" value={query} onChange={event=>{const value=event.target.value;void change(()=>setQuery(value));}} placeholder={view==="documents"?"Номер документа или растение":"Название, размер или RET-артикул"}/></label><select aria-label="Канал возврата" value={channel} onChange={event=>{const value=event.target.value;void change(()=>setChannel(value));}}><option value="">Все каналы</option>{Object.entries(returnChannels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select><details className="return-filter-more"><summary>Фильтры{from||to||receiptFilter?" · включены":""}</summary><div><label>С даты<input type="date" aria-label="Возвраты с даты" value={from} max={to||undefined} onChange={event=>{const value=event.target.value;void change(()=>setFrom(value));}}/></label><label>По дату<input type="date" aria-label="Возвраты по дату" value={to} min={from||undefined} onChange={event=>{const value=event.target.value;void change(()=>setTo(value));}}/></label>{view!=="archive"&&<label>Поступление<select aria-label="Статус поступления" value={receiptFilter} onChange={event=>{const value=event.target.value;void change(()=>setReceiptFilter(value));}}><option value="">Все статусы</option><option value="none">Документ не создан</option><option value="draft">Создаётся / черновик</option><option value="posted">Проведено</option><option value="attention">Нужно проверить</option></select></label>}{filtersActive&&<button type="button" onClick={reset}>Сбросить фильтры</button>}</div></details></div>
-  {notice&&<div className="return-notice" role="status">{notice}</div>}
-  {loading?<p className="returns-empty" role="status">Загружаем журнал возвратов…</p>:loadError?<div className="returns-empty" role="alert"><p>{loadError}</p><button type="button" onClick={()=>void load()}>Попробовать снова</button></div>:view==="plants"?<>
-   <div className="return-list-summary"><span>Показано {plantCount(visible.length)}{filtersActive?` из ${items.length}`:""}</span>{filtersActive&&<button type="button" onClick={reset}>Сбросить фильтры</button>}</div>
-   {visible.length>0&&<div className="return-bulk-actions"><label className="return-check"><input type="checkbox" aria-label="Выбрать все растения" checked={picked.length===visible.length} ref={element=>{if(element)element.indeterminate=picked.length>0&&picked.length<visible.length;}} onChange={event=>setChecked(event.target.checked?visible.map(item=>item.id):[])}/><span>Выбрать все</span></label>{picked.length>0&&<><strong>Выбрано: {picked.length}</strong>{can("returns.receipt.create")&&eligible.length>0&&<button type="button" className="returns-action" disabled={busy} onClick={()=>void change(()=>{setModalError("");setBatch(eligible.map(item=>item.id));})}>Создать поступление · {eligible.length}</button>}{labelItems.length>0&&<><label className="return-check"><input type="checkbox" checked={includeDate} onChange={event=>setIncludeDate(event.target.checked)}/><span>Печатать дату</span></label><button type="button" disabled={busy} onClick={()=>void perform(()=>downloadReturnLabels(labelItems.map(item=>item.id),includeDate),"Этикетки скачаны.")}>Скачать этикетки · {labelItems.length}</button></>}{canDelete&&<button type="button" className="return-delete" disabled={busy} onClick={()=>void change(()=>{setModalError("");setDeletion({ids:picked.map(item=>item.id),count:picked.length,documents:0});})}>Удалить выбранные</button>}<button type="button" onClick={()=>setChecked([])}>Снять выбор</button><p>{eligible.length>0?`В новое поступление: ${eligible.length}. `:""}Уже оформлено или выполняется: {picked.filter(item=>item.receiptStatus!=="none").length}. Восстановление и списание в поступление не попадут. Этикетки — только для восстановления.</p></>}</div>}
-   <div className="returns-layout"><section className="returns-list" aria-label="Список возвратов">{visible.map(item=><div className="return-unit" key={item.id}><label className="return-check"><input type="checkbox" aria-label={`Выбрать ${item.article||item.id}`} checked={checked.includes(item.id)} onChange={event=>setChecked(current=>event.target.checked?[...current,item.id]:current.filter(id=>id!==item.id))}/></label><button type="button" className={selected?.id===item.id?"selected":""} onClick={event=>openItem(item,event.currentTarget)}><span className={`return-state ${returnConditions[item.condition].className}`}><ReturnStateIcon condition={item.condition}/></span><span className="return-card-main"><strong>{item.productName}</strong><span className="return-card-meta">{item.label&&<span className="return-size">{item.label}</span>}<b>{returnMoney(item.discountedPrice??item.price)}</b></span><small>{item.article} · {returnChannels[item.channel]} · {returnDate(item.returnedAt)}</small><span className="return-card-badges"><span className={`return-condition-badge ${returnConditions[item.condition].className}`}>{returnConditions[item.condition].label}</span>{item.condition==="ready"&&<ReturnReceiptBadge item={item}/>}</span></span></button></div>)}{!visible.length&&<div className="returns-empty"><strong>{filtersActive?"Ничего не найдено":status==="all"?"Возвратов пока нет":"В этой группе нет растений"}</strong><p>{filtersActive?"Измените название, канал или период.":"Принятые растения и их дальнейшие действия появятся здесь."}</p>{filtersActive?<button type="button" onClick={reset}>Сбросить фильтры</button>:can("returns.edit")&&<button type="button" onClick={()=>openDocument()}>Принять возврат</button>}</div>}</section><div ref={detailHeading} tabIndex={-1} className="return-detail-host">{selected?<ReturnDetails key={selected.id} item={selected} canFinance={canFinance} canEdit={can("returns.edit")} canReceipt={can("returns.receipt.create")} onSaved={saved} onDocument={openDocument} onBack={back} registerFlush={registerFlush} onSell={async id=>{await api("/api/v1/admin/returns/receipt-batch",{method:"POST",body:JSON.stringify({ids:[id],sell:true})});await refresh();setStatus("ready");setSelectedID(id);}}/>:<aside className="return-detail returns-empty">Выберите растение из списка</aside>}</div></div>
-  </>:view==="documents"?<section className="return-documents" aria-label="Документы приёмки">{visibleDocs.map(doc=><article key={doc.id}><button type="button" onClick={()=>openDocument(doc.id)}><strong>Документ приёмки №{doc.documentNumber}</strong><span>{returnDate(doc.createdAt||"")} · {returnChannels[doc.data.channel]} · {plantCount(doc.data.rows.reduce((sum,row)=>sum+row.quantity,0))}</span><small>{doc.data.rows.slice(0,3).map(row=>`${row.name} × ${row.quantity}`).join("; ")}{doc.data.rows.length>3?` · ещё ${doc.data.rows.length-3}`:""}</small><span className="return-document-statuses">{doc.items.some(item=>item.receiptStatus==="none"&&item.condition==="ready")&&<span>Есть растения без поступления</span>}{doc.items.some(item=>item.receiptStatus!=="none")&&<span>Есть операции СБИС</span>}</span></button>{canDelete&&<button type="button" className="return-icon-button" aria-label={`Удалить документ ${doc.documentNumber}`} disabled={busy} onClick={()=>void change(()=>{setModalError("");setDeletion({documentId:doc.id,count:doc.items.length,documents:1});})}>×</button>}</article>)}{!visibleDocs.length&&<div className="returns-empty"><strong>{filtersActive?"Документы не найдены":"Документов приёмки пока нет"}</strong><p>После сохранения приёмки можно вернуться к её составу и оформить поступление.</p>{filtersActive&&<button type="button" onClick={reset}>Сбросить фильтры</button>}</div>}</section>:<section className="return-archive"><p>Удалённые записи сохранены с историей. Восстановление не создаёт повторные документы СБИС.</p>{archivedDocs.length>0&&<h3>Документы приёмки</h3>}{archivedDocs.map(doc=><article key={doc.id}><div><strong>Документ приёмки №{doc.documentNumber}</strong><p>{returnDate(doc.createdAt||"")} · {returnChannels[doc.data.channel]} · {plantCount(doc.items.length)}</p></div><button type="button" disabled={busy} onClick={()=>restore({documentId:doc.id})}>Восстановить документ</button></article>)}{archivedItems.length>0&&<h3>Экземпляры</h3>}{archivedItems.map(item=><article key={item.id}><div><strong>{item.productName}{item.label&&` · ${item.label}`}</strong><p>{item.article} · {item.deletedAt?`Удалён ${returnDate(item.deletedAt)}`:"Удалён"}</p></div><button type="button" disabled={busy} onClick={()=>restore({ids:[item.id]})}>Восстановить экземпляр</button></article>)}{!archivedItems.length&&!archivedDocs.length&&<p className="returns-empty">{filtersActive?"Удалённые записи не найдены":"Удалённых записей нет"}</p>}</section>}
-  {creating&&<ReturnIntakeDialog canDelete={canDelete} intakeID={intakeID} canReceipt={can("returns.receipt.create")} registerFlush={registerIntakeFlush} onItem={item=>{setCreating(false);setView("plants");setStatus("all");setQuery("");setChannel("");setFrom("");setTo("");setReceiptFilter("");setSelectedID(item.id);setMobileOpen(true);window.setTimeout(()=>{detailHeading.current?.focus();if(window.matchMedia("(max-width:900px)").matches)detailHeading.current?.scrollIntoView({block:"start"});},0);}} onClose={()=>setCreating(false)} onCreated={created=>{setCreating(false);setView("documents");setMobileOpen(false);setSelectedID(created[0]?.id);void refresh().catch(cause=>onError(cause.message));}}/>}
-  {deletion&&<Dialog title="Удалить записи возвратов?" className="return-confirm-dialog" onClose={()=>{if(!busy)setDeletion(undefined);}}><p>Удаление затронет {plantCount(deletion.count)}.{deletion.documents>0?` Документов приёмки: ${deletion.documents}.`:""}{deletion.all&&" Это весь раздел, включая записи за пределами текущего фильтра."}</p><p>Записи останутся в «Удалённых», откуда их можно восстановить. Документы СБИС сохранятся в СБИС.</p>{modalError&&<p role="alert" className="return-inline-error">{modalError}</p>}<footer><button type="button" disabled={busy} onClick={()=>setDeletion(undefined)}>Отмена</button><button type="button" className="return-danger-action" disabled={busy} onClick={deleteRecords}>{busy?"Удаляем…":"Удалить записи"}</button></footer></Dialog>}
-  {batch&&<Dialog title="Состав нового поступления" className="return-confirm-dialog" onClose={()=>{if(!busy)setBatch(undefined);}}><p>В одном документе СБИС: {plantCount(batch.length)}. Уже оформленные экземпляры исключены.</p><ul>{items.filter(item=>batch.includes(item.id)).map(item=><li key={item.id}><strong>{item.productName} {item.label}</strong><span>{item.article} · {receiptLabel(item)}</span></li>)}</ul><p>После создания нужно открыть и провести документ в СБИС.</p>{modalError&&<p role="alert" className="return-inline-error">{modalError} Проверьте связь растения с СБИС в каталоге и повторите создание.</p>}<footer><button type="button" disabled={busy} onClick={()=>setBatch(undefined)}>Отмена</button><button type="button" className="returns-action" disabled={busy} onClick={()=>void perform(async()=>{await api("/api/v1/admin/returns/receipt-batch",{method:"POST",body:JSON.stringify({ids:batch})});setSelectedID(batch[0]);setBatch(undefined);},"Поступление отправлено на создание. Статус появится рядом с растением.",true)}>{busy?"Создаём…":"Создать поступление"}</button></footer></Dialog>}
- </div>;
+type Status = MarketplaceReturn["condition"] | "all";
+type View = "plants" | "documents" | "archive";
+type Archive = { items: MarketplaceReturn[]; documents: ReturnIntake[] };
+type DeleteRequest = {
+  ids?: number[];
+  documentId?: string;
+  all?: boolean;
+  count: number;
+  documents: number;
+};
+export function AdminReturns({
+  can,
+  onError,
+  registerBeforeLeave,
+  canFinance = false,
+}: {
+  canFinance?: boolean;
+  can: (permission: string) => boolean;
+  onError: (message: string) => void;
+  registerBeforeLeave?: (flush: () => Promise<boolean>) => () => void;
+}) {
+  const [items, setItems] = useState<MarketplaceReturn[]>([]),
+    [documents, setDocuments] = useState<ReturnIntake[]>([]),
+    [archive, setArchive] = useState<Archive>({ items: [], documents: [] });
+  const [view, setView] = useState<View>("plants"),
+    [status, setStatus] = useState<Status>("all"),
+    [selectedID, setSelectedID] = useState<number>();
+  const [query, setQuery] = useState(""),
+    [channel, setChannel] = useState(""),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [receiptFilter, setReceiptFilter] = useState("");
+  const [checked, setChecked] = useState<number[]>([]),
+    [mobileOpen, setMobileOpen] = useState(false),
+    [creating, setCreating] = useState(false),
+    [intakeID, setIntakeID] = useState<string>();
+  const [loading, setLoading] = useState(true),
+    [loadError, setLoadError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState(""),
+    [menu, setMenu] = useState(false),
+    [includeDate, setIncludeDate] = useState(true);
+  const [deletion, setDeletion] = useState<DeleteRequest>(),
+    [batch, setBatch] = useState<number[]>(),
+    [modalError, setModalError] = useState("");
+  const flushRef = useRef<(() => Promise<void>) | null>(null),
+    intakeFlushRef = useRef<(() => Promise<void>) | null>(null),
+    selectedButton = useRef<HTMLButtonElement | null>(null),
+    listScroll = useRef(0),
+    detailHeading = useRef<HTMLDivElement>(null);
+  const canDelete = can("returns.delete");
+  const registerFlush = useCallback((flush: () => Promise<void>) => {
+    flushRef.current = flush;
+    return () => {
+      if (flushRef.current === flush) flushRef.current = null;
+    };
+  }, []);
+  const registerIntakeFlush = useCallback((flush: () => Promise<void>) => {
+    intakeFlushRef.current = flush;
+    return () => {
+      if (intakeFlushRef.current === flush) intakeFlushRef.current = null;
+    };
+  }, []);
+  const guard = useCallback(async () => {
+    try {
+      await intakeFlushRef.current?.();
+      await flushRef.current?.();
+      return true;
+    } catch (cause) {
+      onError(
+        cause instanceof Error
+          ? cause.message
+          : "Сначала сохраните изменения. Они остаются в форме.",
+      );
+      return false;
+    }
+  }, [onError]);
+  useEffect(() => registerBeforeLeave?.(guard), [guard, registerBeforeLeave]);
+  // Same-tab links also await the current assessment. New tabs do not discard it.
+  useEffect(() => {
+    const click = (event: MouseEvent) => {
+      const anchor = (event.target as Element).closest?.("a[href]") as HTMLAnchorElement | null;
+      if (
+        !anchor ||
+        anchor.target === "_blank" ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey ||
+        !flushRef.current
+      )
+        return;
+      const href = anchor.getAttribute("href") || "";
+      if (href.startsWith("#")) return;
+      event.preventDefault();
+      void guard().then((ok) => {
+        if (ok) window.location.assign(anchor.href);
+      });
+    };
+    document.addEventListener("click", click);
+    return () => document.removeEventListener("click", click);
+  }, [guard]);
+  const refresh = useCallback(async () => {
+    const [returns, docs, deleted] = await Promise.all([
+      api<{ items: MarketplaceReturn[] }>("/api/v1/admin/returns"),
+      api<{ items: ReturnIntake[] }>("/api/v1/admin/returns/documents"),
+      canDelete
+        ? api<Archive>("/api/v1/admin/returns/archive")
+        : Promise.resolve({ items: [], documents: [] }),
+    ]);
+    setItems(returns.items || []);
+    setDocuments(docs.items || []);
+    setArchive({ items: deleted.items || [], documents: deleted.documents || [] });
+    setLoadError("");
+  }, [canDelete]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      await refresh();
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : "Не удалось загрузить возвраты");
+    } finally {
+      setLoading(false);
+    }
+  }, [refresh]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    if (!items.some((item) => ["queued", "checking"].includes(item.receiptStatus))) return;
+    const timer = window.setInterval(
+      () => void refresh().catch((cause) => onError(cause.message)),
+      3000,
+    );
+    return () => window.clearInterval(timer);
+  }, [items, refresh, onError]);
+  const change = async (action: () => void) => {
+    if (await guard()) {
+      action();
+      setChecked([]);
+      setNotice("");
+    }
+  };
+  const perform = async (action: () => Promise<void>, message = "", inDialog = false) => {
+    if (busy || !(await guard())) return;
+    setBusy(true);
+    if (inDialog) setModalError("");
+    try {
+      await action();
+      await refresh();
+      setChecked([]);
+      setNotice(message);
+    } catch (cause) {
+      (inDialog ? setModalError : onError)(
+        cause instanceof Error ? cause.message : "Не удалось выполнить действие",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const search = query.trim().toLocaleLowerCase("ru").replace(/ё/g, "е");
+  const matches = (text: string) =>
+    text.toLocaleLowerCase("ru").replace(/ё/g, "е").includes(search);
+  const matchesDate = (date: string) => {
+    const day = date.slice(0, 10);
+    return (!from || day >= from) && (!to || day <= to);
+  };
+  const receiptMatches = (item: MarketplaceReturn) =>
+    !receiptFilter ||
+    (receiptFilter === "none"
+      ? item.receiptStatus === "none"
+      : receiptFilter === "posted"
+        ? item.receiptStatus === "posted"
+        : receiptFilter === "attention"
+          ? ["failed", "correction_required"].includes(item.receiptStatus)
+          : item.receiptStatus !== "none" && item.receiptStatus !== "posted");
+  const visible = items.filter(
+    (item) =>
+      (status === "all" || item.condition === status) &&
+      (!channel || item.channel === channel) &&
+      matchesDate(item.returnedAt) &&
+      matches(`${item.productName} ${item.label || ""} ${item.article || ""}`) &&
+      receiptMatches(item),
+  );
+  const selected = visible.find((item) => item.id === selectedID) || visible[0];
+  const picked = visible.filter((item) => checked.includes(item.id)),
+    eligible = picked.filter((item) => item.condition === "ready" && item.receiptStatus === "none"),
+    labelItems = picked.filter((item) => item.condition === "restoring");
+  const visibleDocs = documents.filter(
+    (doc) =>
+      (!channel || doc.data.channel === channel) &&
+      matchesDate(doc.createdAt || "") &&
+      matches(`${doc.documentNumber} ${doc.data.rows.map((row) => row.name).join(" ")}`) &&
+      (!receiptFilter || doc.items.some(receiptMatches)),
+  );
+  const archivedItems = archive.items.filter(
+    (item) =>
+      (!channel || item.channel === channel) &&
+      matchesDate(item.returnedAt) &&
+      matches(`${item.productName} ${item.article}`),
+  );
+  const archivedDocs = archive.documents.filter(
+    (doc) =>
+      (!channel || doc.data.channel === channel) &&
+      matchesDate(doc.createdAt || "") &&
+      matches(`${doc.documentNumber} ${doc.data.rows.map((row) => row.name).join(" ")}`),
+  );
+  const saved = (item: MarketplaceReturn) => {
+    const old = items.find((next) => next.id === item.id);
+    setItems((current) => current.map((next) => (next.id === item.id ? item : next)));
+    setSelectedID(item.id);
+    if (old && old.condition !== item.condition && status !== "all") setStatus(item.condition);
+  };
+  const openDocument = (id?: string) =>
+    void change(() => {
+      setIntakeID(id);
+      setCreating(true);
+      setMenu(false);
+    });
+  const openItem = (item: MarketplaceReturn, button?: HTMLButtonElement) =>
+    void change(() => {
+      listScroll.current = window.scrollY;
+      setSelectedID(item.id);
+      setMobileOpen(true);
+      selectedButton.current = button || null;
+      window.setTimeout(() => {
+        if (window.matchMedia("(max-width:900px)").matches) {
+          detailHeading.current?.focus();
+          detailHeading.current?.scrollIntoView({ block: "start" });
+        }
+      }, 0);
+    });
+  const back = () =>
+    void change(() => {
+      setMobileOpen(false);
+      window.setTimeout(() => {
+        window.scrollTo({ top: listScroll.current });
+        selectedButton.current?.focus({ preventScroll: true });
+      }, 0);
+    });
+  const reset = () =>
+    void change(() => {
+      setQuery("");
+      setChannel("");
+      setFrom("");
+      setTo("");
+      setReceiptFilter("");
+    });
+  const deleteRecords = () => {
+    if (!deletion) return;
+    const request = deletion;
+    void perform(
+      async () => {
+        await api("/api/v1/admin/returns", {
+          method: "DELETE",
+          body: JSON.stringify({
+            ids: request.ids,
+            documentId: request.documentId,
+            all: request.all,
+          }),
+        });
+        setDeletion(undefined);
+        setMobileOpen(false);
+      },
+      "Записи перенесены в удалённые. Их можно восстановить.",
+      true,
+    );
+  };
+  const restore = (input: { ids?: number[]; documentId?: string; all?: boolean }) =>
+    void perform(async () => {
+      await api("/api/v1/admin/returns/restore", { method: "POST", body: JSON.stringify(input) });
+    }, "Записи восстановлены. Проверьте состояние поступления перед дальнейшей работой.");
+  const filtersActive = Boolean(query || channel || from || to || receiptFilter);
+  return (
+    <div className={`returns-workspace ${mobileOpen ? "is-detail-open" : ""}`}>
+      <div className="returns-heading">
+        <div>
+          <p className="return-eyebrow">Приёмка и забота о растениях</p>
+          <h2>Возвраты растений</h2>
+          <p>Примите растения, оцените состояние и оформите дальнейшие действия.</p>
+        </div>
+        <div className="returns-heading-actions">
+          {can("returns.edit") && (
+            <button type="button" className="returns-create" onClick={() => openDocument()}>
+              + Принять возврат
+            </button>
+          )}
+          {canDelete && (
+            <div className="return-menu">
+              <button
+                type="button"
+                aria-label="Действия раздела возвратов"
+                aria-expanded={menu}
+                onClick={() => setMenu(!menu)}
+              >
+                •••
+              </button>
+              {menu && (
+                <div>
+                  <button
+                    type="button"
+                    disabled={busy || (!items.length && !documents.length)}
+                    onClick={() =>
+                      void change(() => {
+                        setMenu(false);
+                        setModalError("");
+                        setDeletion({
+                          all: true,
+                          count: items.length,
+                          documents: documents.length,
+                        });
+                      })
+                    }
+                  >
+                    Удалить все записи раздела
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void change(() => {
+                        setView("archive");
+                        setMenu(false);
+                        setMobileOpen(false);
+                      })
+                    }
+                  >
+                    Открыть удалённые записи
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <nav className="returns-views" aria-label="Журналы возвратов">
+        {(
+          [
+            ["plants", "Растения", items.length],
+            ["documents", "Документы", documents.length],
+            ...(canDelete ? [["archive", "Удалённые", archive.items.length]] : []),
+          ] as Array<[View, string, number]>
+        ).map(([next, label, count]) => (
+          <button
+            type="button"
+            key={next}
+            aria-current={view === next ? "page" : undefined}
+            className={view === next ? "active" : ""}
+            onClick={() =>
+              void change(() => {
+                setView(next);
+                setMobileOpen(false);
+              })
+            }
+          >
+            {label}
+            <span>{count}</span>
+          </button>
+        ))}
+      </nav>
+      {view === "plants" && (
+        <nav className="returns-tabs" aria-label="Состояния возвратов">
+          <button
+            type="button"
+            className={status === "all" ? "active" : ""}
+            aria-pressed={status === "all"}
+            onClick={() =>
+              void change(() => {
+                setStatus("all");
+                setMobileOpen(false);
+              })
+            }
+          >
+            Все<span>{items.length}</span>
+          </button>
+          {Object.entries(returnConditions).map(([next, meta]) => (
+            <button
+              type="button"
+              key={next}
+              className={status === next ? "active" : ""}
+              aria-pressed={status === next}
+              onClick={() =>
+                void change(() => {
+                  setStatus(next as Status);
+                  setMobileOpen(false);
+                })
+              }
+            >
+              {meta.tab}
+              <span>{items.filter((item) => item.condition === next).length}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="returns-filters">
+        <label className="returns-search">
+          <span className="return-visually-hidden">Поиск возвратов</span>
+          <input
+            type="search"
+            aria-label="Поиск возвратов"
+            value={query}
+            onChange={(event) => {
+              const value = event.target.value;
+              void change(() => setQuery(value));
+            }}
+            placeholder={
+              view === "documents"
+                ? "Номер документа или растение"
+                : "Название, размер или RET-артикул"
+            }
+          />
+        </label>
+        <select
+          aria-label="Канал возврата"
+          value={channel}
+          onChange={(event) => {
+            const value = event.target.value;
+            void change(() => setChannel(value));
+          }}
+        >
+          <option value="">Все каналы</option>
+          {Object.entries(returnChannels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <details className="return-filter-more">
+          <summary>Фильтры{from || to || receiptFilter ? " · включены" : ""}</summary>
+          <div>
+            <label>
+              С даты
+              <input
+                type="date"
+                aria-label="Возвраты с даты"
+                value={from}
+                max={to || undefined}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  void change(() => setFrom(value));
+                }}
+              />
+            </label>
+            <label>
+              По дату
+              <input
+                type="date"
+                aria-label="Возвраты по дату"
+                value={to}
+                min={from || undefined}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  void change(() => setTo(value));
+                }}
+              />
+            </label>
+            {view !== "archive" && (
+              <label>
+                Поступление
+                <select
+                  aria-label="Статус поступления"
+                  value={receiptFilter}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    void change(() => setReceiptFilter(value));
+                  }}
+                >
+                  <option value="">Все статусы</option>
+                  <option value="none">Документ не создан</option>
+                  <option value="draft">Создаётся / черновик</option>
+                  <option value="posted">Проведено</option>
+                  <option value="attention">Нужно проверить</option>
+                </select>
+              </label>
+            )}
+            {filtersActive && (
+              <button type="button" onClick={reset}>
+                Сбросить фильтры
+              </button>
+            )}
+          </div>
+        </details>
+      </div>
+      {notice && (
+        <div className="return-notice" role="status">
+          {notice}
+        </div>
+      )}
+      {loading ? (
+        <p className="returns-empty" role="status">
+          Загружаем журнал возвратов…
+        </p>
+      ) : loadError ? (
+        <div className="returns-empty" role="alert">
+          <p>{loadError}</p>
+          <button type="button" onClick={() => void load()}>
+            Попробовать снова
+          </button>
+        </div>
+      ) : view === "plants" ? (
+        <>
+          <div className="return-list-summary">
+            <span>
+              Показано {plantCount(visible.length)}
+              {filtersActive ? ` из ${items.length}` : ""}
+            </span>
+            {filtersActive && (
+              <button type="button" onClick={reset}>
+                Сбросить фильтры
+              </button>
+            )}
+          </div>
+          {visible.length > 0 && (
+            <div className="return-bulk-actions">
+              <label className="return-check">
+                <input
+                  type="checkbox"
+                  aria-label="Выбрать все растения"
+                  checked={picked.length === visible.length}
+                  ref={(element) => {
+                    if (element)
+                      element.indeterminate = picked.length > 0 && picked.length < visible.length;
+                  }}
+                  onChange={(event) =>
+                    setChecked(event.target.checked ? visible.map((item) => item.id) : [])
+                  }
+                />
+                <span>Выбрать все</span>
+              </label>
+              {picked.length > 0 && (
+                <>
+                  <strong>Выбрано: {picked.length}</strong>
+                  {can("returns.receipt.create") && eligible.length > 0 && (
+                    <button
+                      type="button"
+                      className="returns-action"
+                      disabled={busy}
+                      onClick={() =>
+                        void change(() => {
+                          setModalError("");
+                          setBatch(eligible.map((item) => item.id));
+                        })
+                      }
+                    >
+                      Создать поступление · {eligible.length}
+                    </button>
+                  )}
+                  {labelItems.length > 0 && (
+                    <>
+                      <label className="return-check">
+                        <input
+                          type="checkbox"
+                          checked={includeDate}
+                          onChange={(event) => setIncludeDate(event.target.checked)}
+                        />
+                        <span>Печатать дату</span>
+                      </label>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void perform(
+                            () =>
+                              downloadReturnLabels(
+                                labelItems.map((item) => item.id),
+                                includeDate,
+                              ),
+                            "Этикетки скачаны.",
+                          )
+                        }
+                      >
+                        Скачать этикетки · {labelItems.length}
+                      </button>
+                    </>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="return-delete"
+                      disabled={busy}
+                      onClick={() =>
+                        void change(() => {
+                          setModalError("");
+                          setDeletion({
+                            ids: picked.map((item) => item.id),
+                            count: picked.length,
+                            documents: 0,
+                          });
+                        })
+                      }
+                    >
+                      Удалить выбранные
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setChecked([])}>
+                    Снять выбор
+                  </button>
+                  <p>
+                    {eligible.length > 0 ? `В новое поступление: ${eligible.length}. ` : ""}Уже
+                    оформлено или выполняется:{" "}
+                    {picked.filter((item) => item.receiptStatus !== "none").length}. Восстановление
+                    и списание в поступление не попадут. Этикетки — только для восстановления.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+          <div className="returns-layout">
+            <section className="returns-list" aria-label="Список возвратов">
+              {visible.map((item) => (
+                <div className="return-unit" key={item.id}>
+                  <label className="return-check">
+                    <input
+                      type="checkbox"
+                      aria-label={`Выбрать ${item.article || item.id}`}
+                      checked={checked.includes(item.id)}
+                      onChange={(event) =>
+                        setChecked((current) =>
+                          event.target.checked
+                            ? [...current, item.id]
+                            : current.filter((id) => id !== item.id),
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className={selected?.id === item.id ? "selected" : ""}
+                    onClick={(event) => openItem(item, event.currentTarget)}
+                  >
+                    <span className={`return-state ${returnConditions[item.condition].className}`}>
+                      <ReturnStateIcon condition={item.condition} />
+                    </span>
+                    <span className="return-card-main">
+                      <strong>{item.productName}</strong>
+                      <span className="return-card-meta">
+                        {item.label && <span className="return-size">{item.label}</span>}
+                        <b>{returnMoney(item.discountedPrice ?? item.price)}</b>
+                      </span>
+                      <small>
+                        {item.article} · {returnChannels[item.channel]} ·{" "}
+                        {returnDate(item.returnedAt)}
+                      </small>
+                      <span className="return-card-badges">
+                        <span
+                          className={`return-condition-badge ${returnConditions[item.condition].className}`}
+                        >
+                          {returnConditions[item.condition].label}
+                        </span>
+                        {item.condition === "ready" && <ReturnReceiptBadge item={item} />}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              ))}
+              {!visible.length && (
+                <div className="returns-empty">
+                  <strong>
+                    {filtersActive
+                      ? "Ничего не найдено"
+                      : status === "all"
+                        ? "Возвратов пока нет"
+                        : "В этой группе нет растений"}
+                  </strong>
+                  <p>
+                    {filtersActive
+                      ? "Измените название, канал или период."
+                      : "Принятые растения и их дальнейшие действия появятся здесь."}
+                  </p>
+                  {filtersActive ? (
+                    <button type="button" onClick={reset}>
+                      Сбросить фильтры
+                    </button>
+                  ) : (
+                    can("returns.edit") && (
+                      <button type="button" onClick={() => openDocument()}>
+                        Принять возврат
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+            </section>
+            <div ref={detailHeading} tabIndex={-1} className="return-detail-host">
+              {selected ? (
+                <ReturnDetails
+                  key={selected.id}
+                  item={selected}
+                  canFinance={canFinance}
+                  canEdit={can("returns.edit")}
+                  canReceipt={can("returns.receipt.create")}
+                  onSaved={saved}
+                  onDocument={openDocument}
+                  onBack={back}
+                  registerFlush={registerFlush}
+                  onSell={async (id) => {
+                    await api("/api/v1/admin/returns/receipt-batch", {
+                      method: "POST",
+                      body: JSON.stringify({ ids: [id], sell: true }),
+                    });
+                    await refresh();
+                    setStatus("ready");
+                    setSelectedID(id);
+                  }}
+                />
+              ) : (
+                <aside className="return-detail returns-empty">Выберите растение из списка</aside>
+              )}
+            </div>
+          </div>
+        </>
+      ) : view === "documents" ? (
+        <section className="return-documents" aria-label="Документы приёмки">
+          {visibleDocs.map((doc) => (
+            <article key={doc.id}>
+              <button type="button" onClick={() => openDocument(doc.id)}>
+                <strong>Документ приёмки №{doc.documentNumber}</strong>
+                <span>
+                  {returnDate(doc.createdAt || "")} · {returnChannels[doc.data.channel]} ·{" "}
+                  {plantCount(doc.data.rows.reduce((sum, row) => sum + row.quantity, 0))}
+                </span>
+                <small>
+                  {doc.data.rows
+                    .slice(0, 3)
+                    .map((row) => `${row.name} × ${row.quantity}`)
+                    .join("; ")}
+                  {doc.data.rows.length > 3 ? ` · ещё ${doc.data.rows.length - 3}` : ""}
+                </small>
+                <span className="return-document-statuses">
+                  {doc.items.some(
+                    (item) => item.receiptStatus === "none" && item.condition === "ready",
+                  ) && <span>Есть растения без поступления</span>}
+                  {doc.items.some((item) => item.receiptStatus !== "none") && (
+                    <span>Есть операции СБИС</span>
+                  )}
+                </span>
+              </button>
+              {canDelete && (
+                <button
+                  type="button"
+                  className="return-icon-button"
+                  aria-label={`Удалить документ ${doc.documentNumber}`}
+                  disabled={busy}
+                  onClick={() =>
+                    void change(() => {
+                      setModalError("");
+                      setDeletion({ documentId: doc.id, count: doc.items.length, documents: 1 });
+                    })
+                  }
+                >
+                  ×
+                </button>
+              )}
+            </article>
+          ))}
+          {!visibleDocs.length && (
+            <div className="returns-empty">
+              <strong>
+                {filtersActive ? "Документы не найдены" : "Документов приёмки пока нет"}
+              </strong>
+              <p>После сохранения приёмки можно вернуться к её составу и оформить поступление.</p>
+              {filtersActive && (
+                <button type="button" onClick={reset}>
+                  Сбросить фильтры
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="return-archive">
+          <p>
+            Удалённые записи сохранены с историей. Восстановление не создаёт повторные документы
+            СБИС.
+          </p>
+          {archivedDocs.length > 0 && <h3>Документы приёмки</h3>}
+          {archivedDocs.map((doc) => (
+            <article key={doc.id}>
+              <div>
+                <strong>Документ приёмки №{doc.documentNumber}</strong>
+                <p>
+                  {returnDate(doc.createdAt || "")} · {returnChannels[doc.data.channel]} ·{" "}
+                  {plantCount(doc.items.length)}
+                </p>
+              </div>
+              <button type="button" disabled={busy} onClick={() => restore({ documentId: doc.id })}>
+                Восстановить документ
+              </button>
+            </article>
+          ))}
+          {archivedItems.length > 0 && <h3>Экземпляры</h3>}
+          {archivedItems.map((item) => (
+            <article key={item.id}>
+              <div>
+                <strong>
+                  {item.productName}
+                  {item.label && ` · ${item.label}`}
+                </strong>
+                <p>
+                  {item.article} ·{" "}
+                  {item.deletedAt ? `Удалён ${returnDate(item.deletedAt)}` : "Удалён"}
+                </p>
+              </div>
+              <button type="button" disabled={busy} onClick={() => restore({ ids: [item.id] })}>
+                Восстановить экземпляр
+              </button>
+            </article>
+          ))}
+          {!archivedItems.length && !archivedDocs.length && (
+            <p className="returns-empty">
+              {filtersActive ? "Удалённые записи не найдены" : "Удалённых записей нет"}
+            </p>
+          )}
+        </section>
+      )}
+      {creating && (
+        <ReturnIntakeDialog
+          canDelete={canDelete}
+          intakeID={intakeID}
+          canReceipt={can("returns.receipt.create")}
+          registerFlush={registerIntakeFlush}
+          onItem={(item) => {
+            setCreating(false);
+            setView("plants");
+            setStatus("all");
+            setQuery("");
+            setChannel("");
+            setFrom("");
+            setTo("");
+            setReceiptFilter("");
+            setSelectedID(item.id);
+            setMobileOpen(true);
+            window.setTimeout(() => {
+              detailHeading.current?.focus();
+              if (window.matchMedia("(max-width:900px)").matches)
+                detailHeading.current?.scrollIntoView({ block: "start" });
+            }, 0);
+          }}
+          onClose={() => setCreating(false)}
+          onCreated={(created) => {
+            setCreating(false);
+            setView("documents");
+            setMobileOpen(false);
+            setSelectedID(created[0]?.id);
+            void refresh().catch((cause) => onError(cause.message));
+          }}
+        />
+      )}
+      {deletion && (
+        <Dialog
+          title="Удалить записи возвратов?"
+          className="return-confirm-dialog"
+          onClose={() => {
+            if (!busy) setDeletion(undefined);
+          }}
+        >
+          <p>
+            Удаление затронет {plantCount(deletion.count)}.
+            {deletion.documents > 0 ? ` Документов приёмки: ${deletion.documents}.` : ""}
+            {deletion.all && " Это весь раздел, включая записи за пределами текущего фильтра."}
+          </p>
+          <p>
+            Записи останутся в «Удалённых», откуда их можно восстановить. Документы СБИС сохранятся
+            в СБИС.
+          </p>
+          {modalError && (
+            <p role="alert" className="return-inline-error">
+              {modalError}
+            </p>
+          )}
+          <footer>
+            <button type="button" disabled={busy} onClick={() => setDeletion(undefined)}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="return-danger-action"
+              disabled={busy}
+              onClick={deleteRecords}
+            >
+              {busy ? "Удаляем…" : "Удалить записи"}
+            </button>
+          </footer>
+        </Dialog>
+      )}
+      {batch && (
+        <Dialog
+          title="Состав нового поступления"
+          className="return-confirm-dialog"
+          onClose={() => {
+            if (!busy) setBatch(undefined);
+          }}
+        >
+          <p>
+            В одном документе СБИС: {plantCount(batch.length)}. Уже оформленные экземпляры
+            исключены.
+          </p>
+          <ul>
+            {items
+              .filter((item) => batch.includes(item.id))
+              .map((item) => (
+                <li key={item.id}>
+                  <strong>
+                    {item.productName} {item.label}
+                  </strong>
+                  <span>
+                    {item.article} · {receiptLabel(item)}
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <p>После создания нужно открыть и провести документ в СБИС.</p>
+          {modalError && (
+            <p role="alert" className="return-inline-error">
+              {modalError} Проверьте связь растения с СБИС в каталоге и повторите создание.
+            </p>
+          )}
+          <footer>
+            <button type="button" disabled={busy} onClick={() => setBatch(undefined)}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="returns-action"
+              disabled={busy}
+              onClick={() =>
+                void perform(
+                  async () => {
+                    await api("/api/v1/admin/returns/receipt-batch", {
+                      method: "POST",
+                      body: JSON.stringify({ ids: batch }),
+                    });
+                    setSelectedID(batch[0]);
+                    setBatch(undefined);
+                  },
+                  "Поступление отправлено на создание. Статус появится рядом с растением.",
+                  true,
+                )
+              }
+            >
+              {busy ? "Создаём…" : "Создать поступление"}
+            </button>
+          </footer>
+        </Dialog>
+      )}
+    </div>
+  );
 }

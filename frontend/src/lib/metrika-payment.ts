@@ -7,16 +7,26 @@ const reported = new Set<string>();
 // authenticated server response may establish payment success.
 export async function reportPaidOrder(order: PaymentResultOrder): Promise<void> {
   const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
-  if (order.metrikaServer === true || privacy.globalPrivacyControl || navigator.doNotTrack === "1" || paymentResultState(order) !== "success") return;
+  if (
+    order.metrikaServer === true ||
+    privacy.globalPrivacyControl ||
+    navigator.doNotTrack === "1" ||
+    paymentResultState(order) !== "success"
+  )
+    return;
   const key = `ficusin-metrika-paid:${order.orderNumber}`;
   if (reported.has(key)) return;
-  try { if (localStorage.getItem(key)) return; } catch { /* Memory still prevents repeated polling events. */ }
+  try {
+    if (localStorage.getItem(key)) return;
+  } catch {
+    /* Memory still prevents repeated polling events. */
+  }
   reported.add(key);
   let sent = false;
   try {
     const response = await fetch("/api/v1/analytics/config", { cache: "no-store" });
     if (!response.ok) return;
-    const config = await response.json() as { yandexMetrikaId?: number };
+    const config = (await response.json()) as { yandexMetrikaId?: number };
     const counter = Number(config.yandexMetrikaId);
     if (!Number.isSafeInteger(counter) || counter <= 0) return;
     // The async first-party loader may not have installed its queue yet.
@@ -33,7 +43,14 @@ export async function reportPaidOrder(order: PaymentResultOrder): Promise<void> 
       currency: "RUB",
     });
     sent = true;
-    try { localStorage.setItem(key, "1"); } catch { /* Optional analytics cannot interrupt payment UI. */ }
-  } catch { /* A blocked counter or unavailable config must not affect the order. */ }
-  finally { if (!sent) reported.delete(key); }
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      /* Optional analytics cannot interrupt payment UI. */
+    }
+  } catch {
+    /* A blocked counter or unavailable config must not affect the order. */
+  } finally {
+    if (!sent) reported.delete(key);
+  }
 }

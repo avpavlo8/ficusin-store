@@ -104,9 +104,9 @@ func TestPublicCatalogCachePerformanceGate(t *testing.T) {
 	products := make([]catalog.Product, 643)
 	for index := range products {
 		products[index] = catalog.Product{
-			ID: fmt.Sprint(index + 1), Name: fmt.Sprintf("Товар %d", index + 1),
-			SKU: fmt.Sprintf("SKU-%d", index + 1), Price: 1490, Stock: 5,
-			Image: "https://s3.example.invalid/products/card.jpg",
+			ID: fmt.Sprint(index + 1), Name: fmt.Sprintf("Товар %d", index+1),
+			SKU: fmt.Sprintf("SKU-%d", index+1), Price: 1490, Stock: 5,
+			Image:            "https://s3.example.invalid/products/card.jpg",
 			FilterAttributes: []catalog.ProductAttribute{{Code: "light", Name: "Свет", Value: "Рассеянный", Filterable: true}},
 		}
 	}

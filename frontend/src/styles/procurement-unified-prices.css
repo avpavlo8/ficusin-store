@@ -19,24 +19,53 @@
   padding: 12px 10px;
   overflow-wrap: anywhere;
 }
-.admin-dialog table.procurement-unified-prices th:first-child { width: 26%; }
-.admin-dialog table.procurement-unified-prices small { white-space: normal; font-size: 12px; }
+.admin-dialog table.procurement-unified-prices th:first-child {
+  width: 26%;
+}
+.admin-dialog table.procurement-unified-prices small {
+  white-space: normal;
+  font-size: 12px;
+}
 @media (max-width: 700px) {
   .admin-dialog table.procurement-unified-prices,
-  .admin-dialog table.procurement-unified-prices tbody { display: block; }
-  .admin-dialog table.procurement-unified-prices thead { display: none; }
-  .admin-dialog table.procurement-unified-prices caption { display: block; width: auto; }
+  .admin-dialog table.procurement-unified-prices tbody {
+    display: block;
+  }
+  .admin-dialog table.procurement-unified-prices thead {
+    display: none;
+  }
+  .admin-dialog table.procurement-unified-prices caption {
+    display: block;
+    width: auto;
+  }
   .admin-dialog table.procurement-unified-prices tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     border-bottom: 1px solid #d9dfd6;
   }
-  .admin-dialog table.procurement-unified-prices td { display: block; border: 0; }
-  .admin-dialog table.procurement-unified-prices td:first-child { grid-column: 1 / -1; }
-  .admin-dialog table.procurement-unified-prices td:nth-child(2) { grid-column: 1; grid-row: 3; }
-  .admin-dialog table.procurement-unified-prices td:nth-child(3) { grid-column: 1; grid-row: 2; }
-  .admin-dialog table.procurement-unified-prices td:nth-child(4) { grid-column: 2; grid-row: 2; }
-  .admin-dialog table.procurement-unified-prices td:nth-child(5) { grid-column: 2; grid-row: 3; }
+  .admin-dialog table.procurement-unified-prices td {
+    display: block;
+    border: 0;
+  }
+  .admin-dialog table.procurement-unified-prices td:first-child {
+    grid-column: 1 / -1;
+  }
+  .admin-dialog table.procurement-unified-prices td:nth-child(2) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .admin-dialog table.procurement-unified-prices td:nth-child(3) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .admin-dialog table.procurement-unified-prices td:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .admin-dialog table.procurement-unified-prices td:nth-child(5) {
+    grid-column: 2;
+    grid-row: 3;
+  }
   .admin-dialog table.procurement-unified-prices td::before {
     content: attr(data-label);
     display: block;
@@ -45,5 +74,7 @@
     font-size: 12px;
     line-height: 1.4;
   }
-  .admin-dialog table.procurement-unified-prices td:first-child::before { display: none; }
+  .admin-dialog table.procurement-unified-prices td:first-child::before {
+    display: none;
+  }
 }

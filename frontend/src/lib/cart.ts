@@ -34,7 +34,11 @@ let writeRevision = 0;
 const listeners = new Set<(next: State) => void>();
 
 function clean(cart: Cart): Cart {
-  return Object.fromEntries(Object.entries(cart).filter(([id, quantity]) => id && Number.isInteger(quantity) && quantity > 0));
+  return Object.fromEntries(
+    Object.entries(cart).filter(
+      ([id, quantity]) => id && Number.isInteger(quantity) && quantity > 0,
+    ),
+  );
 }
 
 function publish(next: Partial<State>) {
@@ -48,41 +52,62 @@ function loadCart(force = false): Promise<void> {
   if (!loaded) publish({ status: "loading", error: "" });
   loading = apiJSON<CartResponse>("/api/v1/cart", { credentials: "same-origin", cache: "no-store" })
     .then((body) => {
-      publish({ cart: body.items || {}, lines: body.lines || [], missingSkus: body.missingSkus || [], status: "ready", error: "" });
+      publish({
+        cart: body.items || {},
+        lines: body.lines || [],
+        missingSkus: body.missingSkus || [],
+        status: "ready",
+        error: "",
+      });
       loaded = true;
     })
     .catch((error: Error) => {
       publish({ status: "error", error: error.message || "Не удалось загрузить корзину" });
       throw error;
     })
-    .finally(() => { loading = null; });
+    .finally(() => {
+      loading = null;
+    });
   return loading;
 }
 
 function saveCart(cart: Cart): Promise<void> {
   const expected = clean(cart);
   const revision = ++writeRevision;
-  writes = writes.then(async () => {
-    publish({ status: "saving", error: "" });
-    const body = await apiJSON<CartResponse>("/api/v1/cart", {
-      method: "PUT",
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: expected }),
+  writes = writes
+    .then(async () => {
+      publish({ status: "saving", error: "" });
+      const body = await apiJSON<CartResponse>("/api/v1/cart", {
+        method: "PUT",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: expected }),
+      });
+      // A newer click may already be visible while this older write is in flight.
+      if (revision === writeRevision)
+        publish({
+          cart: body.items || expected,
+          lines: body.lines || [],
+          missingSkus: body.missingSkus || [],
+          status: "ready",
+          error: "",
+        });
+    })
+    .catch(async (error: Error) => {
+      if (revision === writeRevision)
+        publish({ status: "error", error: error.message || "Не удалось сохранить корзину" });
     });
-    // A newer click may already be visible while this older write is in flight.
-    if (revision === writeRevision) publish({ cart: body.items || expected, lines: body.lines || [], missingSkus: body.missingSkus || [], status: "ready", error: "" });
-  }).catch(async (error: Error) => {
-    if (revision === writeRevision) publish({ status: "error", error: error.message || "Не удалось сохранить корзину" });
-  });
   return writes;
 }
 
 export async function openSavedCart() {
   // Finish the latest quantity edit before a full-page navigation unloads it.
   let pending: Promise<void>;
-  do { pending = writes; await pending; } while (pending !== writes);
+  do {
+    pending = writes;
+    await pending;
+  } while (pending !== writes);
   window.location.assign("/cart");
 }
 
@@ -94,7 +119,9 @@ export function useSharedCart() {
     const sync = (next: State) => setView(next);
     listeners.add(sync);
     void loadCart().catch(() => undefined);
-    return () => { listeners.delete(sync); };
+    return () => {
+      listeners.delete(sync);
+    };
   }, []);
   const setCart = useCallback((update: CartUpdate) => {
     const apply = () => {
@@ -102,8 +129,24 @@ export function useSharedCart() {
       publish({ cart: next });
       void saveCart(next);
     };
-    if (loaded) apply(); else void loadCart().then(apply).catch(() => undefined);
+    if (loaded) apply();
+    else
+      void loadCart()
+        .then(apply)
+        .catch(() => undefined);
   }, []);
-  const retry = useCallback(() => { void loadCart(true).catch(() => undefined); }, []);
-  return [view.cart, setCart, { status: view.status, error: view.error, lines: view.lines, missingSkus: view.missingSkus, retry }] as const;
+  const retry = useCallback(() => {
+    void loadCart(true).catch(() => undefined);
+  }, []);
+  return [
+    view.cart,
+    setCart,
+    {
+      status: view.status,
+      error: view.error,
+      lines: view.lines,
+      missingSkus: view.missingSkus,
+      retry,
+    },
+  ] as const;
 }

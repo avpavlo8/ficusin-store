@@ -70,16 +70,30 @@ export default function CheckoutHost({
     .map((product) => ({ ...product, id: product.sku, quantity: cart[product.sku] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = sumMoney(cartLines);
-  const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps: user?.retailDiscountBps ?? 0, initialOpen: checkoutPage });
+  const checkout = useCheckout({
+    cartLines,
+    cartCount,
+    setCart,
+    setNotice,
+    discountBps: user?.retailDiscountBps ?? 0,
+    initialOpen: checkoutPage,
+  });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
   // Local review of the post-order screens without creating an order or clearing the cart.
-  const previewMode = import.meta.env.DEV && checkoutPage
-    ? new URLSearchParams(window.location.search).get("preview")
-    : null;
-  const previewConfirmation = previewMode === "confirmation" || previewMode === "confirmation-pending";
+  const previewMode =
+    import.meta.env.DEV && checkoutPage
+      ? new URLSearchParams(window.location.search).get("preview")
+      : null;
+  const previewConfirmation =
+    previewMode === "confirmation" || previewMode === "confirmation-pending";
 
   useEffect(() => {
-    if ((cartPage || checkoutPage) && cartLines.length) track("view_cart", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
+    if ((cartPage || checkoutPage) && cartLines.length)
+      track("view_cart", {
+        value: subtotal,
+        quantity: cartCount,
+        properties: { items: cartLines.length },
+      });
   }, [cartPage, checkoutPage, cartLines.length, cartCount, subtotal]);
 
   useEffect(() => {
@@ -112,7 +126,10 @@ export default function CheckoutHost({
   }, [setCheckoutProfile]);
 
   useEffect(() => {
-    document.body.classList.toggle("drawer-open", ((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage);
+    document.body.classList.toggle(
+      "drawer-open",
+      ((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage,
+    );
     return () => document.body.classList.remove("drawer-open");
   }, [cartOpen, cartPage, checkoutOpen, checkoutPage]);
 
@@ -120,8 +137,14 @@ export default function CheckoutHost({
     setCart((current) => {
       const next = { ...current };
       if (quantity <= 0) {
-		const removed = products.find((item) => item.sku === sku);
-		track("remove_from_cart", { productCode: removed?.id, sku, value: removed?.price, quantity: current[sku] || 1, properties: { location: "cart" } });
+        const removed = products.find((item) => item.sku === sku);
+        track("remove_from_cart", {
+          productCode: removed?.id,
+          sku,
+          value: removed?.price,
+          quantity: current[sku] || 1,
+          properties: { location: "cart" },
+        });
         delete next[sku];
       } else {
         const product = products.find((item) => item.sku === sku);
@@ -133,15 +156,37 @@ export default function CheckoutHost({
   }
 
   function beginCheckout() {
-	if (cartStatus !== "ready" || missingCartItems > 0 || cartLines.some((item) => item.available === false)) return;
-	track("begin_checkout", { value: subtotal, quantity: cartCount, properties: { items: cartLines.length } });
+    if (
+      cartStatus !== "ready" ||
+      missingCartItems > 0 ||
+      cartLines.some((item) => item.available === false)
+    )
+      return;
+    track("begin_checkout", {
+      value: subtotal,
+      quantity: cartCount,
+      properties: { items: cartLines.length },
+    });
     window.location.assign("/checkout");
   }
 
   return (
     <div className="cart-checkout-host">
-      {notice && !checkoutPage && <div className="toast" role="status">{notice}</div>}
-      {cartStatus === "error" && !cartPage && !checkoutPage && <div className="toast cart-error-toast" role="alert"><span>{cartError || "Изменение корзины не сохранено"}</span>{onCartRetry && <button type="button" onClick={onCartRetry}>Повторить</button>}</div>}
+      {notice && !checkoutPage && (
+        <div className="toast" role="status">
+          {notice}
+        </div>
+      )}
+      {cartStatus === "error" && !cartPage && !checkoutPage && (
+        <div className="toast cart-error-toast" role="alert">
+          <span>{cartError || "Изменение корзины не сохранено"}</span>
+          {onCartRetry && (
+            <button type="button" onClick={onCartRetry}>
+              Повторить
+            </button>
+          )}
+        </div>
+      )}
 
       {((cartOpen && !cartPage) || checkoutOpen) && !checkoutPage && (
         <button
@@ -154,26 +199,80 @@ export default function CheckoutHost({
         />
       )}
 
-      {!checkoutPage && <CartDrawer
-        open={cartOpen}
-        lines={cartLines}
-        subtotal={subtotal}
-        onClose={() => onCartOpenChange(false)}
-        onQuantityChange={setQuantity}
-        onCheckout={beginCheckout}
-        page={cartPage}
-        status={cartStatus}
-        error={cartError}
-        missingCount={missingCartItems}
-        onRetry={onCartRetry}
-      />}
+      {!checkoutPage && (
+        <CartDrawer
+          open={cartOpen}
+          lines={cartLines}
+          subtotal={subtotal}
+          onClose={() => onCartOpenChange(false)}
+          onQuantityChange={setQuantity}
+          onCheckout={beginCheckout}
+          page={cartPage}
+          status={cartStatus}
+          error={cartError}
+          missingCount={missingCartItems}
+          onRetry={onCartRetry}
+        />
+      )}
 
-      {previewConfirmation ? <CheckoutPanel user={!!user} page pricingReady={pricingReady} pricingError={pricingError} {...checkout.panelProps} orderNumber="LOCAL-1024" orderConfirmationPending={previewMode === "confirmation-pending"} orderConfirmationReason={previewMode === "confirmation-pending" ? "preorder" : null} delivery="pickup" paymentMethod="on_delivery" />
-        : checkoutPage && cartStatus === "loading" ? <section className="checkout-load-state" role="status"><h1>Загружаем оформление…</h1><p>Проверяем состав и актуальные цены корзины.</p></section>
-        : checkoutPage && cartStatus === "error" ? <section className="checkout-load-state error" role="alert"><h1>Не удалось открыть оформление</h1><p>{cartError}</p>{onCartRetry && <button type="button" className="primary-button" onClick={onCartRetry}>Повторить</button>}</section>
-          : checkoutPage && (missingCartItems > 0 || cartLines.some((item) => item.available === false)) ? <section className="checkout-load-state error" role="alert"><h1>Состав корзины изменился</h1><p>Вернитесь в корзину и удалите недоступные товары.</p><a className="primary-button" href="/cart">Вернуться в корзину</a></section>
-            : checkoutPage && cartStatus === "ready" && !cartLines.length && !checkout.panelProps.orderNumber ? <section className="checkout-load-state"><h1>Корзина пуста</h1><p>Перед оформлением добавьте товары.</p><a className="primary-button" href="/#catalog">Перейти в каталог</a></section>
-              : <CheckoutPanel user={!!user} page={checkoutPage} pricingReady={pricingReady} pricingError={pricingError} {...checkout.panelProps} feedbackMessage={checkoutPage ? notice : ""} />}
+      {previewConfirmation ? (
+        <CheckoutPanel
+          user={!!user}
+          page
+          pricingReady={pricingReady}
+          pricingError={pricingError}
+          {...checkout.panelProps}
+          orderNumber="LOCAL-1024"
+          orderConfirmationPending={previewMode === "confirmation-pending"}
+          orderConfirmationReason={previewMode === "confirmation-pending" ? "preorder" : null}
+          delivery="pickup"
+          paymentMethod="on_delivery"
+        />
+      ) : checkoutPage && cartStatus === "loading" ? (
+        <section className="checkout-load-state" role="status">
+          <h1>Загружаем оформление…</h1>
+          <p>Проверяем состав и актуальные цены корзины.</p>
+        </section>
+      ) : checkoutPage && cartStatus === "error" ? (
+        <section className="checkout-load-state error" role="alert">
+          <h1>Не удалось открыть оформление</h1>
+          <p>{cartError}</p>
+          {onCartRetry && (
+            <button type="button" className="primary-button" onClick={onCartRetry}>
+              Повторить
+            </button>
+          )}
+        </section>
+      ) : checkoutPage &&
+        (missingCartItems > 0 || cartLines.some((item) => item.available === false)) ? (
+        <section className="checkout-load-state error" role="alert">
+          <h1>Состав корзины изменился</h1>
+          <p>Вернитесь в корзину и удалите недоступные товары.</p>
+          <a className="primary-button" href="/cart">
+            Вернуться в корзину
+          </a>
+        </section>
+      ) : checkoutPage &&
+        cartStatus === "ready" &&
+        !cartLines.length &&
+        !checkout.panelProps.orderNumber ? (
+        <section className="checkout-load-state">
+          <h1>Корзина пуста</h1>
+          <p>Перед оформлением добавьте товары.</p>
+          <a className="primary-button" href="/#catalog">
+            Перейти в каталог
+          </a>
+        </section>
+      ) : (
+        <CheckoutPanel
+          user={!!user}
+          page={checkoutPage}
+          pricingReady={pricingReady}
+          pricingError={pricingError}
+          {...checkout.panelProps}
+          feedbackMessage={checkoutPage ? notice : ""}
+        />
+      )}
     </div>
   );
 }

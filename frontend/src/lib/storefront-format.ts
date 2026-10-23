@@ -5,6 +5,8 @@ export function counted(count: number, forms: readonly [string, string, string])
 
 export function catalogSize(label: string) {
   if (!label) return "Размер уточняется";
-  const size = label.replace(/\bD\s*(\d+(?:[.,]\d+)?)/gi, "Ø $1 см").replace(/\bH\s*(\d+(?:[.,]\d+)?)/gi, "высота $1 см");
+  const size = label
+    .replace(/\bD\s*(\d+(?:[.,]\d+)?)/gi, "Ø $1 см")
+    .replace(/\bH\s*(\d+(?:[.,]\d+)?)/gi, "высота $1 см");
   return /^Ø \d+(?:[.,]\d+)? см$/.test(size) ? `Горшок ${size}` : size;
 }

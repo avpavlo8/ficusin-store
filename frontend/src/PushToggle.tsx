@@ -13,9 +13,18 @@ export function PushToggle() {
   useEffect(() => {
     let cancelled = false;
     pushState()
-      .then((next) => { if (!cancelled) { setState(next); setReady(true); } })
-      .catch(() => { if (!cancelled) setReady(true); });
-    return () => { cancelled = true; };
+      .then((next) => {
+        if (!cancelled) {
+          setState(next);
+          setReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function toggle() {
@@ -37,26 +46,37 @@ export function PushToggle() {
   // Safari only delivers notifications to a site kept on the home screen,
   // so on iPhone there is no point offering the switch before that.
   if (isIOS() && !isStandalone()) {
-    return <div className="push-toggle">
-      <div>
-        <strong>Уведомления о заказе</strong>
-        <span>Чтобы получать их на iPhone, добавьте «Фикусин» на домашний экран: «Поделиться» → «На экран „Домой“».</span>
+    return (
+      <div className="push-toggle">
+        <div>
+          <strong>Уведомления о заказе</strong>
+          <span>
+            Чтобы получать их на iPhone, добавьте «Фикусин» на домашний экран: «Поделиться» → «На
+            экран „Домой“».
+          </span>
+        </div>
       </div>
-    </div>;
+    );
   }
 
-  return <div className="push-toggle">
-    <div>
-      <strong>Уведомления о заказе</strong>
-      <span>{state.blocked
-        ? "Уведомления запрещены в настройках браузера — разрешите их для ficusin.ru."
-        : "Сообщим, когда заказ будет готов, отправлен или получен. Ничего рекламного."}</span>
-      {error && <em className="push-toggle-error">{error}</em>}
+  return (
+    <div className="push-toggle">
+      <div>
+        <strong>Уведомления о заказе</strong>
+        <span>
+          {state.blocked
+            ? "Уведомления запрещены в настройках браузера — разрешите их для ficusin.ru."
+            : "Сообщим, когда заказ будет готов, отправлен или получен. Ничего рекламного."}
+        </span>
+        {error && <em className="push-toggle-error">{error}</em>}
+      </div>
+      <button
+        className={state.subscribed ? "ghost-button" : "primary-button"}
+        onClick={toggle}
+        disabled={busy || state.blocked}
+      >
+        {busy ? "…" : state.subscribed ? "Выключить" : "Включить"}
+      </button>
     </div>
-    <button
-      className={state.subscribed ? "ghost-button" : "primary-button"}
-      onClick={toggle}
-      disabled={busy || state.blocked}
-    >{busy ? "…" : state.subscribed ? "Выключить" : "Включить"}</button>
-  </div>;
+  );
 }

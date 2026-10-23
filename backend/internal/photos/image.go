@@ -7,9 +7,9 @@ import (
 	"image/color"
 	"image/jpeg"
 	// Форматы регистрируются ради их декодировщиков: СБИС отдаёт и то, и другое.
+	_ "golang.org/x/image/webp"
 	_ "image/gif"
 	_ "image/png"
-	_ "golang.org/x/image/webp"
 )
 
 // Size — один из размеров, в которых храним фотографию.

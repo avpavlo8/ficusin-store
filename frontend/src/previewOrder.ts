@@ -31,15 +31,27 @@ const previewOrder: OrderDetail = {
 
 export function getPreviewOrder(state: string | null): OrderDetail {
   if (state === "cancelled") return { ...previewOrder, status: "cancelled" };
-  if (state === "confirmed" || state === "shipped" || state === "paid" || state === "payment-failed") {
+  if (
+    state === "confirmed" ||
+    state === "shipped" ||
+    state === "paid" ||
+    state === "payment-failed"
+  ) {
     const paid = state === "shipped" || state === "paid";
     return {
-      ...previewOrder, deliveryMethod: "cdek", address: "Москва, пункт выдачи СДЭК",
-      status: state === "shipped" ? "shipped" : "confirmed", hasPreorder: false,
-      paymentMethod: "online", paymentStatus: paid ? "paid" : "pending",
+      ...previewOrder,
+      deliveryMethod: "cdek",
+      address: "Москва, пункт выдачи СДЭК",
+      status: state === "shipped" ? "shipped" : "confirmed",
+      hasPreorder: false,
+      paymentMethod: "online",
+      paymentStatus: paid ? "paid" : "pending",
       paymentAttemptStatus: paid ? "paid" : state === "payment-failed" ? "canceled" : "pending",
-      paymentReady: true, deliveryFee: 590, total: 8040,
-      amountDue: paid ? 0 : 8040, paidAmount: paid ? 8040 : 0,
+      paymentReady: true,
+      deliveryFee: 590,
+      total: 8040,
+      amountDue: paid ? 0 : 8040,
+      paidAmount: paid ? 8040 : 0,
       trackNumber: state === "shipped" ? "LOCAL-CDEK-1024" : undefined,
     };
   }

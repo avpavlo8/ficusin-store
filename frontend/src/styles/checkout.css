@@ -1047,7 +1047,6 @@
     flex: none;
     justify-content: center;
   }
-
 }
 
 /* Checkout step 1 follows the approved cart composition: quiet form on the
@@ -1120,10 +1119,7 @@
   color: var(--co-ink);
   text-decoration: none;
 }
-.checkout-page-panel
-  [data-checkout-step="1"]
-  .checkout-navigation
-  .primary-button {
+.checkout-page-panel [data-checkout-step="1"] .checkout-navigation .primary-button {
   min-width: 330px;
   display: flex;
   align-items: center;
@@ -1175,10 +1171,7 @@
     padding: 18px;
   }
   .checkout-page-panel [data-checkout-step="1"] .checkout-navigation > a,
-  .checkout-page-panel
-    [data-checkout-step="1"]
-    .checkout-navigation
-    .primary-button {
+  .checkout-page-panel [data-checkout-step="1"] .checkout-navigation .primary-button {
     width: 100%;
     min-width: 0;
     justify-content: center;
@@ -1230,18 +1223,11 @@
   background: rgba(255, 255, 255, 0.42);
   cursor: pointer;
 }
-.checkout-page-panel
-  [data-checkout-step="2"]
-  > .delivery-options
-  label.selected {
+.checkout-page-panel [data-checkout-step="2"] > .delivery-options label.selected {
   border-color: #e45638;
   box-shadow: inset 0 0 0 1px #e45638;
 }
-.checkout-page-panel
-  [data-checkout-step="2"]
-  > .delivery-options
-  label
-  > strong {
+.checkout-page-panel [data-checkout-step="2"] > .delivery-options label > strong {
   display: none;
 }
 .checkout-page-panel .delivery-options .option-icon {
@@ -1326,14 +1312,8 @@
   border-top: 1px solid var(--co-line);
   background: rgba(255, 255, 255, 0.18);
 }
-.checkout-page-panel
-  [data-checkout-step="2"]
-  > .checkout-navigation
-  > button:not(.primary-button),
-.checkout-page-panel
-  [data-checkout-step="3"]
-  > .checkout-navigation
-  > button:not(.primary-button) {
+.checkout-page-panel [data-checkout-step="2"] > .checkout-navigation > button:not(.primary-button),
+.checkout-page-panel [data-checkout-step="3"] > .checkout-navigation > button:not(.primary-button) {
   min-width: 190px;
   min-height: 54px;
   padding: 0 24px;
@@ -1341,14 +1321,8 @@
   background: #f2e7d7;
   color: var(--co-ink);
 }
-.checkout-page-panel
-  [data-checkout-step="2"]
-  > .checkout-navigation
-  .primary-button,
-.checkout-page-panel
-  [data-checkout-step="3"]
-  > .checkout-navigation
-  .primary-button {
+.checkout-page-panel [data-checkout-step="2"] > .checkout-navigation .primary-button,
+.checkout-page-panel [data-checkout-step="3"] > .checkout-navigation .primary-button {
   min-width: 330px;
 }
 .checkout-page-panel [data-checkout-step="3"] > fieldset {
@@ -1415,10 +1389,7 @@
     padding: 18px;
   }
   .checkout-page-panel [data-checkout-step="2"] > .checkout-navigation > button,
-  .checkout-page-panel
-    [data-checkout-step="3"]
-    > .checkout-navigation
-    > button {
+  .checkout-page-panel [data-checkout-step="3"] > .checkout-navigation > button {
     width: 100%;
     min-width: 0 !important;
   }
@@ -1431,11 +1402,7 @@
   position: relative;
   isolation: isolate;
   background:
-    radial-gradient(
-      circle at 8% 3%,
-      rgba(223, 193, 145, 0.18),
-      transparent 25%
-    ),
+    radial-gradient(circle at 8% 3%, rgba(223, 193, 145, 0.18), transparent 25%),
     linear-gradient(145deg, rgba(255, 252, 246, 0.9), rgba(246, 237, 223, 0.74));
 }
 .cart-page-panel:before,
@@ -1613,11 +1580,7 @@
 .checkout-page-panel [data-checkout-step="3"] .delivery-options label {
   overflow: hidden;
   border-color: rgba(179, 155, 127, 0.4);
-  background: linear-gradient(
-    145deg,
-    rgba(255, 253, 248, 0.88),
-    rgba(246, 237, 222, 0.62)
-  );
+  background: linear-gradient(145deg, rgba(255, 253, 248, 0.88), rgba(246, 237, 222, 0.62));
   box-shadow: 0 10px 25px rgba(70, 52, 34, 0.04);
   transition:
     transform 0.2s ease,
@@ -1630,28 +1593,15 @@
   border-color: #a89982;
   box-shadow: 0 14px 30px rgba(70, 52, 34, 0.08);
 }
-.checkout-page-panel
-  [data-checkout-step="2"]
-  > .delivery-options
-  label.selected,
+.checkout-page-panel [data-checkout-step="2"] > .delivery-options label.selected,
 .checkout-page-panel [data-checkout-step="3"] .delivery-options label.active {
-  background: linear-gradient(
-    145deg,
-    rgba(255, 252, 245, 0.96),
-    rgba(244, 225, 198, 0.74)
-  );
+  background: linear-gradient(145deg, rgba(255, 252, 245, 0.96), rgba(244, 225, 198, 0.74));
   box-shadow:
     inset 0 0 0 1px var(--co-orange),
     0 14px 32px rgba(167, 72, 43, 0.08);
 }
-.checkout-page-panel
-  [data-checkout-step="2"]
-  > .delivery-options
-  label.selected:after,
-.checkout-page-panel
-  [data-checkout-step="3"]
-  .delivery-options
-  label.active:after {
+.checkout-page-panel [data-checkout-step="2"] > .delivery-options label.selected:after,
+.checkout-page-panel [data-checkout-step="3"] .delivery-options label.active:after {
   content: "✓";
   width: 27px;
   height: 27px;
@@ -1784,11 +1734,7 @@
   background-color: #aeb67a;
   background-image:
     url("/assets/redesign/checkout-success-art.png"),
-    radial-gradient(
-      circle at 18% 20%,
-      rgba(255, 255, 255, 0.12),
-      transparent 28%
-    ),
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.12), transparent 28%),
     linear-gradient(125deg, rgba(255, 255, 255, 0.08), transparent 45%);
   background-repeat: no-repeat;
   background-position:
@@ -2289,15 +2235,24 @@
   font-weight: 400;
 }
 
-
-
-
-
-
 /* Totals stay on a quiet surface, with room for delivery explanations. */
-.cart-summary,.checkout-order-summary { background:#f3eee4; }
-.cart-summary dl > div,.checkout-order-summary dl > div { gap:16px; }
-.cart-summary dd,.checkout-order-summary dd { max-width:65%; overflow-wrap:normal; }
+.cart-summary,
+.checkout-order-summary {
+  background: #f3eee4;
+}
+.cart-summary dl > div,
+.checkout-order-summary dl > div {
+  gap: 16px;
+}
+.cart-summary dd,
+.checkout-order-summary dd {
+  max-width: 65%;
+  overflow-wrap: normal;
+}
 
 /* A closed purchase panel must not cast its shadow over the catalogue. */
-.drawer:not(.open),.checkout:not(.open) { visibility:hidden; box-shadow:none; }
+.drawer:not(.open),
+.checkout:not(.open) {
+  visibility: hidden;
+  box-shadow: none;
+}

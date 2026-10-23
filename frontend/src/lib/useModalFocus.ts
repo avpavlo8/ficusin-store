@@ -12,22 +12,41 @@ export function useModalFocus(onClose: () => void, enabled = true) {
     let branch: HTMLElement = panel;
     while (branch.parentElement && branch.parentElement !== document.body) {
       for (const sibling of branch.parentElement.children) {
-        if (sibling instanceof HTMLElement && sibling !== branch && !sibling.classList.contains("overlay")) {
+        if (
+          sibling instanceof HTMLElement &&
+          sibling !== branch &&
+          !sibling.classList.contains("overlay")
+        ) {
           background.push([sibling, sibling.inert]);
           sibling.inert = true;
         }
       }
       branch = branch.parentElement;
     }
-    const controls = () => [...panel.querySelectorAll<HTMLElement>('a[href],:is(button,input,textarea,select):enabled,summary,[tabindex="0"]')].filter((element) => element.getClientRects().length > 0 && (!element.closest("details:not([open])") || element.tagName === "SUMMARY"));
+    const controls = () =>
+      [
+        ...panel.querySelectorAll<HTMLElement>(
+          'a[href],:is(button,input,textarea,select):enabled,summary,[tabindex="0"]',
+        ),
+      ].filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          (!element.closest("details:not([open])") || element.tagName === "SUMMARY"),
+      );
     controls()[0]?.focus();
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
       if (event.key !== "Tab") return;
       const items = controls();
       const first = items[0];
       const last = items.at(-1);
-      if (!first || !last) { event.preventDefault(); return; }
+      if (!first || !last) {
+        event.preventDefault();
+        return;
+      }
       const boundary = event.shiftKey ? first : last;
       if (document.activeElement === boundary || !panel.contains(document.activeElement)) {
         event.preventDefault();
@@ -37,7 +56,9 @@ export function useModalFocus(onClose: () => void, enabled = true) {
     document.addEventListener("keydown", keydown);
     return () => {
       document.removeEventListener("keydown", keydown);
-      background.forEach(([element, inert]) => { element.inert = inert; });
+      background.forEach(([element, inert]) => {
+        element.inert = inert;
+      });
       if (previous?.isConnected) previous.focus();
     };
   }, [onClose, enabled]);
