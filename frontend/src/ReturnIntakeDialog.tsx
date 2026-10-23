@@ -274,7 +274,7 @@ export function ReturnIntakeDialog({
       products.map((product) => ({
         id: String(product.variantId),
         name: product.name,
-        latin: product.label,
+        latin: [product.label, product.sku].filter(Boolean).join(" · "),
         price: product.price,
         catalogSection: "plants",
       })),
