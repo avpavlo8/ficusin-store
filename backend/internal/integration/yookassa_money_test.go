@@ -27,6 +27,7 @@ func TestPaymentRejectsInvalidProviderMoney(t *testing.T) {
 	for _, amount := range []string{"NaN", "Infinity", "100.001", "1e2", "-1.00", ""} {
 		var p yooKassaPayment
 		p.Amount.Value = amount
+		p.Amount.Currency = "RUB"
 		if _, err := p.toPayment(); err == nil {
 			t.Fatalf("accepted %q", amount)
 		}
@@ -50,6 +51,21 @@ func TestRefundOneKopeckPayloadAndReceipt(t *testing.T) {
 	})
 	result, err := client.CreateRefund(context.Background(), request)
 	if err != nil || result.Amount != 0.29 {
+		t.Fatalf("%+v %v", result, err)
+	}
+}
+
+func TestPaymentCurrencyIsRUB(t *testing.T) {
+	var p yooKassaPayment
+	p.Amount.Value = "100.00"
+	for _, currency := range []string{"", "USD", "EUR"} {
+		p.Amount.Currency = currency
+		if _, err := p.toPayment(); err == nil {
+			t.Fatalf("accepted %q", currency)
+		}
+	}
+	p.Amount.Currency = "RUB"
+	if result, err := p.toPayment(); err != nil || result.Amount != 100 {
 		t.Fatalf("%+v %v", result, err)
 	}
 }

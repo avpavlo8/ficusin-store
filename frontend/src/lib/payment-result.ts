@@ -36,7 +36,11 @@ export function readPaymentResultOrder(
     return null;
   if (
     !["subtotal", "total", "paidAmount", "refundedAmount", "amountDue"].every(
-      (key) => typeof order[key] === "number" && Number.isFinite(order[key]) && order[key] >= 0,
+      (key) =>
+        typeof order[key] === "number" &&
+        Number.isFinite(order[key]) &&
+        order[key] >= 0 &&
+        order[key] <= 1e12,
     )
   )
     return null;

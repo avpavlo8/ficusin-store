@@ -51,13 +51,13 @@ func validateChannelCosts(costs ChannelCosts, tax float64) bool {
 	if !finiteNonnegative(tax) || tax >= 1 {
 		return false
 	}
-	rate := tax
+	rate := money.Decimal(tax)
 	for _, v := range []*float64{costs.CommissionRate, costs.AcquiringRate, costs.OtherRate} {
 		if v != nil {
-			rate += *v
+			rate.Add(rate, money.Decimal(*v))
 		}
 	}
-	return rate < 1
+	return rate.Cmp(big.NewRat(1, 1)) < 0
 }
 
 func (costs ChannelCosts) missing() []string {

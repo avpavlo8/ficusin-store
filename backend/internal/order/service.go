@@ -309,7 +309,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 	subtotalMinor = 0
 	for _, item := range items {
-		subtotalMinor += item.PriceMinor * int64(item.Quantity)
+		lineMinor := item.PriceMinor * int64(item.Quantity)
+		if subtotalMinor > money.MaxMinor-lineMinor {
+			return Created{}, invalid("Сумма заказа слишком велика")
+		}
+		subtotalMinor += lineMinor
 	}
 
 	// Availability is a checkout snapshot only. No order reserves stock; availability
@@ -343,6 +347,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	// The shop collects the delivery charge together with the plants. If the
 	// quote is pending, payment stays unavailable until a manager sets it.
 	subtotal, deliveryFee := money.Rubles(subtotalMinor), money.Rubles(deliveryMinor)
+	if deliveryMinor < 0 || subtotalMinor > money.MaxMinor-deliveryMinor {
+		return Created{}, invalid("Проверьте сумму доставки")
+	}
 	total := money.Rubles(subtotalMinor + deliveryMinor)
 	var customerID any
 	if input.CustomerID != nil {
@@ -565,6 +572,9 @@ func loadCheckoutItems(ctx context.Context, reader checkoutItemReader, requested
 			return nil, fmt.Errorf("load order product: %w", err)
 		}
 		item.Quantity = max(1, min(20, requested.Quantity))
+		if priceMinor < 0 || priceMinor > money.MaxMinor/int64(item.Quantity) {
+			return nil, invalid("Проверьте цену товара")
+		}
 		item.PriceMinor = discountedMinor(priceMinor, discountBPS)
 		items = append(items, item)
 	}

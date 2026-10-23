@@ -32,7 +32,7 @@ func TestYooKassaCreatePaymentUsesTwoStages(t *testing.T) {
 		if body["capture"] != false {
 			t.Fatalf("capture = %v, want false", body["capture"])
 		}
-		return yooKassaTestResponse(`{"id":"pay-1","status":"pending","paid":false,"amount":{"value":"1000.00"},"confirmation":{"confirmation_url":"https://example.test/pay"}}`), nil
+		return yooKassaTestResponse(`{"id":"pay-1","status":"pending","paid":false,"amount":{"value":"1000.00","currency":"RUB"},"confirmation":{"confirmation_url":"https://example.test/pay"}}`), nil
 	})
 	payment, err := client.CreatePayment(context.Background(), PaymentRequest{IdempotenceKey: "attempt-1", Amount: 1000, ReturnURL: "https://example.test/return"})
 	if err != nil || payment.ID != "pay-1" || payment.Status != "pending" {
@@ -45,7 +45,7 @@ func TestYooKassaCaptureAndFetchWaitingForCapture(t *testing.T) {
 	client.httpClient.Transport = yooKassaRoundTrip(func(request *http.Request) (*http.Response, error) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/v3/payments/pay-1":
-			return yooKassaTestResponse(`{"id":"pay-1","status":"waiting_for_capture","paid":true,"amount":{"value":"1000.00"}}`), nil
+			return yooKassaTestResponse(`{"id":"pay-1","status":"waiting_for_capture","paid":true,"amount":{"value":"1000.00","currency":"RUB"}}`), nil
 		case request.Method == http.MethodPost && request.URL.Path == "/v3/payments/pay-1/capture":
 			if request.Header.Get("Idempotence-Key") != "capture-attempt-1" {
 				t.Fatalf("wrong capture idempotence key: %q", request.Header.Get("Idempotence-Key"))
@@ -54,7 +54,7 @@ func TestYooKassaCaptureAndFetchWaitingForCapture(t *testing.T) {
 			if err != nil || len(body) != 0 {
 				t.Fatalf("capture must have an empty body: %q %v", body, err)
 			}
-			return yooKassaTestResponse(`{"id":"pay-1","status":"succeeded","paid":true,"amount":{"value":"1000.00"}}`), nil
+			return yooKassaTestResponse(`{"id":"pay-1","status":"succeeded","paid":true,"amount":{"value":"1000.00","currency":"RUB"}}`), nil
 		default:
 			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
 			return nil, nil

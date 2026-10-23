@@ -158,3 +158,11 @@ func TestQuoteExactDecimalBoundaryDoesNotAddRuble(t *testing.T) {
 		t.Fatalf("binary rate added a ruble: %+v", q)
 	}
 }
+
+func TestDecimalRatesAtOneHundredPercentAreRejected(t *testing.T) {
+	costs := ChannelCosts{CommissionRate: amount(.3), AcquiringRate: amount(.6), PackagingRUB: amount(0), LogisticsRUB: amount(0), LossRUB: amount(0)}
+	q := channelQuote(100, 0, .1, costs, 0)
+	if q.PriceRUB != nil || len(q.Missing) == 0 {
+		t.Fatalf("100 percent fees accepted: %+v", q)
+	}
+}

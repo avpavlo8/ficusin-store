@@ -274,7 +274,8 @@ type yooKassaPayment struct {
 	Description string            `json:"description"`
 	Metadata    map[string]string `json:"metadata"`
 	Amount      struct {
-		Value string `json:"value"`
+		Value    string `json:"value"`
+		Currency string `json:"currency"`
 	} `json:"amount"`
 	Confirmation struct {
 		ConfirmationURL string `json:"confirmation_url"`
@@ -283,7 +284,7 @@ type yooKassaPayment struct {
 
 func (payment yooKassaPayment) toPayment() (Payment, error) {
 	amount, err := money.Parse(payment.Amount.Value)
-	if err != nil || amount <= 0 {
+	if err != nil || amount <= 0 || payment.Amount.Currency != "RUB" {
 		return Payment{}, fmt.Errorf("%w: некорректная сумма платежа", ErrPaymentOutcomeUnknown)
 	}
 	return Payment{
