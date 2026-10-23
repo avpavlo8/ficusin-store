@@ -93,7 +93,7 @@ func TestInvoiceFirstCompositionOnLiveDatabase(t *testing.T) {
 			if err != nil || !duplicate.Duplicate || duplicate.Order.ID != imported.Order.ID {
 				t.Fatalf("duplicate=%+v err=%v", duplicate, err)
 			}
-			// Replacing an invoice-only document must still yield accepted composition.
+			// Replacing an accepted document keeps its existing review gate and history.
 			if mode == "new" {
 				upload.OrderID = imported.Order.ID
 				upload.Content = append(upload.Content, '2')
@@ -106,7 +106,7 @@ func TestInvoiceFirstCompositionOnLiveDatabase(t *testing.T) {
 					t.Fatal(err)
 				}
 				replaced, err := store.OrderDetail(ctx, imported.Order.ID)
-				if err != nil || replaced.Order.Units != 5 || replaced.Order.Total != 1750 || replaced.Validation.ComparisonMismatch != 0 {
+				if err != nil || replaced.Order.PendingReview != 2 || len(replaced.Lines) != 2 || replaced.Lines[0].Quantity != 3 {
 					t.Fatalf("replacement=%+v err=%v", replaced, err)
 				}
 			}

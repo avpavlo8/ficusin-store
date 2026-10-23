@@ -1314,7 +1314,7 @@ func (store *PostgresStore) ImportDocument(
 				) VALUES ($1, $2, $3, NULLIF($4, ''),(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3), $5, $6, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,CASE WHEN $16 THEN 'added' ELSE 'matched' END)
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
 				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
-				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM, hasPlan,
+				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM, hasPlan || previousDocumentID > 0,
 			)
 		}
 		if err != nil {
