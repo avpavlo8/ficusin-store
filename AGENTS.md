@@ -274,15 +274,12 @@ Push сделан на стандартной библиотеке Go без в�
 
 ## Проверки
 
-CI (`.github/workflows/ci.yml`) запускается на pull request и на push в
-`main`. На PR идут три задачи, четвёртая — только при вливании:
-
-- `frontend` — `npm ci`, `npm run lint`, `npm run build`
-- `layout` — Playwright-тесты вёрстки на iPhone, Android и десктопе
-- `backend` — `go test ./...`, `go vet ./...`, `go build ./cmd/api`
-- `image` — сборка Docker-образа, **только на `main`**: на ветках она
-  проверяла Dockerfile, который меняется раз в месяц, и стоила минуты
-  на каждом коммите
+CI (`.github/workflows/ci.yml`) запускается на pull request и вручную через
+workflow_dispatch. Проверяются frontend lint/build/budget, backend test/vet/build,
+браузерная вёрстка двумя shard, чистая установка миграций и Docker-образ. Образ
+проверяется и на PR; это не публикация production. Дополнительно выполняются
+CodeQL и отдельный workflow `crm-live`. Слияние в main запускает автоматический
+деплой Timeweb и production smoke.
 
 Полезно знать заранее:
 
@@ -294,13 +291,12 @@ CI (`.github/workflows/ci.yml`) запускается на pull request и на
   разметкой. Класс, который собирается в рантайме
   (``className={`sales-sync-${status}`}``), статикой не виден — впишите его
   префикс в `dynamicPrefixes` внутри скрипта, иначе проверка упадёт.
-  В шаг CI проверка пока не заведена: сначала нужно вычистить те правила,
-  которые она уже находит (см. «Что сейчас известно и не исправлено»).
+  Проверка включена в `npm run lint`, поэтому выполняется в CI.
 - **Тесты вёрстки живут в `e2e/`** — отдельный проект со своим
-  `package.json`, ставится через `npm install` (не `ci`, lock-файла нет).
+  `package.json` и `package-lock.json`, устанавливается через `npm ci`.
   Гоняются против собранного бандла на `vite preview`, API замокан в
   `e2e/tests/helpers.ts` — при изменении формата ответа поправьте моки.
-  Локально: `npm install && npx playwright install && npm test` в `e2e/`.
+  Локально: `npm ci && npx playwright install && npm test` в `e2e/`.
 - **Интерфейс `authService` в `httpapi` реализуют четыре заглушки в тестах**
   (`router_test.go`, `auth_test.go`, `admin_test.go`, плюс встроенная в
   `orders_test.go`). Добавили метод в интерфейс — обновите все.
@@ -317,7 +313,8 @@ CI (`.github/workflows/ci.yml`) запускается на pull request и на
 - **Бизнес-логика** — `docs/business-logic.md`: как считается заказ, кто что
   видит, почему уведомления приходят не на каждый статус. Начинайте оттуда,
   если беретесь за поведение магазина, а не за код.
-- **Открытые проблемы** — `docs/audit-2026-08-03.md`.
+- **Текущие исправления и ограничения** — `docs/commerce-audit-remediation.md`.
+  `docs/audit-2026-08-03.md` — исторический снимок, не актуальная очередь задач.
 - **SKU, внешние ID и атрибуты** — `docs/catalog-identity.md`: инварианты
   каталога, mapping интеграций и переход от typed-колонок к category schema.
 - **Витрина, поиск, карточка товара** — `docs/storefront.md`.
@@ -337,7 +334,8 @@ CI (`.github/workflows/ci.yml`) запускается на pull request и на
 
 ## Что сейчас известно и не исправлено
 
-Список открытых проблем с приоритетами — в `docs/audit-2026-08-03.md`.
+Текущий статус исправлений — в `docs/commerce-audit-remediation.md`;
+`docs/audit-2026-08-03.md` сохраняется как исторический снимок.
 Прежде чем браться за задачу, загляните туда: возможно, она уже описана.
 
 Сверх того:

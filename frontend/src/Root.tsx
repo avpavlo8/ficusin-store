@@ -50,7 +50,7 @@ export default function Root() {
       orderNumber={decodeURIComponent(path.slice("/account/orders/".length))}
     />);
   }
-  if (path === "/catalog") { window.location.replace("/#catalog"); return <RouteLoading />; }
+  if (path === "/catalog") { window.location.replace("/" + window.location.search + "#catalog"); return <RouteLoading />; }
   if (path === "/") {
     return withFooter(<StorefrontPage />);
   }

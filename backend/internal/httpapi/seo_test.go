@@ -441,3 +441,20 @@ func TestProductMetaPreservesLiteralDollarAndEscapesHTML(t *testing.T) {
 		t.Fatalf("corrupted title: %s", page)
 	}
 }
+
+func TestBareCatalogRedirectsBeforeJavaScriptAndPreservesQuery(t *testing.T) {
+	for _, path := range []string{"/catalog", "/catalog/", "/catalog?search=ficus"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(method, path, nil)
+			spaFallback(slog.Default(), http.NotFoundHandler(), t.TempDir(), nil, nil, nil, nil, nil, nil, "https://ficusin.ru").ServeHTTP(w, r)
+			target := "/#catalog"
+			if strings.Contains(path, "?") {
+				target = "/?search=ficus#catalog"
+			}
+			if w.Code != http.StatusMovedPermanently || w.Header().Get("Location") != target {
+				t.Fatalf("%s %s: %d %s", method, path, w.Code, w.Header().Get("Location"))
+			}
+		}
+	}
+}
