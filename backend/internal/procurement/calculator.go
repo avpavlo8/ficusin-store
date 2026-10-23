@@ -2,7 +2,6 @@ package procurement
 
 import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
-	"math"
 	"math/big"
 	"sort"
 )
@@ -66,7 +65,7 @@ func allocateMoneyPerUnit(total float64, weights []allocationWeight) map[int64]f
 		eligible[i%int64(len(eligible))].cents++
 	}
 	for _, v := range eligible {
-		result[v.item.ID] = float64(v.cents) / 100 / float64(v.item.Quantity)
+		result[v.item.ID] = decimalFloat(big.NewRat(v.cents, 100*int64(v.item.Quantity)))
 	}
 	return result
 }
@@ -92,10 +91,10 @@ func calculateAllocatedLine(
 	unitDecimal.Add(unitDecimal, money.Decimal(ryazanPerUnit))
 	unitDecimal.Add(unitDecimal, money.Decimal(extra))
 	unitCost, _ := unitDecimal.Float64()
-	retailBase, _ := new(big.Rat).Mul(unitDecimal, money.Decimal(settings.RetailMarkupMultiplier)).Float64()
-	retail := roundRetail(retailBase, settings.RoundPrices)
+	retailBase := new(big.Rat).Mul(unitDecimal, money.Decimal(settings.RetailMarkupMultiplier))
+	retail := roundRetailDecimal(retailBase, settings.RoundPrices)
 	if settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
-		if q := UnifiedChannelQuotes(settings, unitCost, nil)["site"]; q.PriceRUB != nil {
+		if q := unifiedChannelQuotesDecimal(settings, unitCost, nil, unitDecimal)["site"]; q.PriceRUB != nil {
 			retail = *q.PriceRUB
 		}
 	}
@@ -107,27 +106,30 @@ func calculateAllocatedLine(
 }
 
 func roundRetail(value float64, enabled bool) int64 {
-	if value <= 0 {
+	if !finiteNonnegative(value) || value > 1e12 {
+		return 0
+	}
+	return roundRetailDecimal(money.Decimal(value), enabled)
+}
+func roundRetailDecimal(value *big.Rat, enabled bool) int64 {
+	if value.Sign() <= 0 || value.Cmp(big.NewRat(1_000_000_000_000, 1)) > 0 {
 		return 0
 	}
 	if !enabled {
-		return int64(math.Round(value))
+		return money.Round(value)
 	}
-
-	// Prices are rounded to the nearest positive value ending in 50 or 90.
-	// If two candidates are equally close, prefer the higher one so rounding
-	// never loses margin merely because a value sits exactly in the middle.
-	hundred := int64(math.Floor(value/100)) * 100
-	candidates := []int64{hundred - 50, hundred - 10, hundred + 50, hundred + 90, hundred + 150}
+	hundred := new(big.Int).Quo(value.Num(), new(big.Int).Mul(value.Denom(), big.NewInt(100))).Int64() * 100
 	best := int64(0)
-	bestDistance := math.MaxFloat64
-	for _, candidate := range candidates {
+	var distance *big.Rat
+	for _, candidate := range []int64{hundred - 50, hundred - 10, hundred + 50, hundred + 90, hundred + 150} {
 		if candidate <= 0 {
 			continue
 		}
-		distance := math.Abs(value - float64(candidate))
-		if distance < bestDistance || distance == bestDistance && candidate > best {
-			best, bestDistance = candidate, distance
+		delta := new(big.Rat).Sub(value, new(big.Rat).SetInt64(candidate))
+		delta.Abs(delta)
+		if distance == nil || delta.Cmp(distance) < 0 || delta.Cmp(distance) == 0 && candidate > best {
+			best = candidate
+			distance = delta
 		}
 	}
 	return best
@@ -137,7 +139,7 @@ func deliveryPerTrolley(total float64, trolleyCount int) float64 {
 	if total <= 0 || trolleyCount <= 0 {
 		return 0
 	}
-	return total / float64(trolleyCount)
+	return decimalFloat(new(big.Rat).Quo(money.Decimal(total), new(big.Rat).SetInt64(int64(trolleyCount))))
 }
 
 func priceChangeNeeded(current float64, proposed int64, threshold float64) bool {
@@ -147,5 +149,7 @@ func priceChangeNeeded(current float64, proposed int64, threshold float64) bool 
 	if current <= 0 {
 		return true
 	}
-	return math.Abs(float64(proposed)-current) > current*threshold
+	difference := new(big.Rat).Sub(new(big.Rat).SetInt64(proposed), money.Decimal(current))
+	difference.Abs(difference)
+	return difference.Cmp(new(big.Rat).Mul(money.Decimal(current), money.Decimal(threshold))) > 0
 }

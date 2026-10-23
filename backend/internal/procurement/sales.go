@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"log/slog"
 	"strings"
 	"time"
@@ -275,7 +276,15 @@ func normalizeSalesRecords(records []SalesRecord, from, to time.Time) ([]SalesRe
 			item.SabyID = record.SabyID
 		}
 		item.Units += record.Units
-		item.GrossRUB += record.GrossRUB
+		minor, amountErr := money.Minor(record.GrossRUB)
+		if amountErr != nil {
+			return nil, ErrInvalidInput
+		}
+		previous, amountErr := money.Minor(item.GrossRUB)
+		if amountErr != nil || minor > money.MaxMinor-previous || minor < -money.MaxMinor-previous {
+			return nil, ErrInvalidInput
+		}
+		item.GrossRUB = money.Rubles(previous + minor)
 		aggregated[itemKey] = item
 	}
 	result := make([]SalesRecord, 0, len(aggregated))

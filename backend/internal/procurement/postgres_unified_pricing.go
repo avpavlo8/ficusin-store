@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
+	"math/big"
 	"sort"
 
 	"github.com/jackc/pgx/v5"
@@ -145,6 +147,7 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 	if err != nil {
 		return nil, err
 	}
+	contribution := new(big.Rat)
 	for i := range preview.Lines {
 		l := &preview.Lines[i]
 		l.Quotes = UnifiedChannelQuotes(s, l.CostRUB, boxes[l.VariantID])
@@ -156,9 +159,12 @@ func loadUnifiedOrderPreview(ctx context.Context, db pricingReader, s PricingSet
 		preview.Units += l.Quantity
 		if l.Quotes["wb"].PriceRUB != nil && l.Quotes["ozon"].PriceRUB != nil {
 			preview.PricedUnits += l.Quantity
-			preview.ContributionRUB += l.CostRUB * s.Economics.Unified.MarkupRate * float64(l.Quantity)
+			part := new(big.Rat).Mul(money.Decimal(l.CostRUB), money.Decimal(s.Economics.Unified.MarkupRate))
+			part.Mul(part, new(big.Rat).SetInt64(int64(l.Quantity)))
+			contribution.Add(contribution, part)
 		}
 	}
+	preview.ContributionRUB = decimalFloat(contribution)
 	sort.Slice(preview.Lines, func(i, j int) bool { return preview.Lines[i].Name < preview.Lines[j].Name })
 	return preview, nil
 }

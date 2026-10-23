@@ -18,3 +18,15 @@ test("decimal rounding and integer cart sums", () => {
   assert.equal(sumMoney([{ price: discountedPrice(1, 3333), quantity: 3 }]), 2.01);
   for (const value of [Infinity, NaN, 1e14]) assert.throws(() => toKopecks(value));
 });
+
+test("discount keeps large and half-kopeck boundaries exact", () => {
+  assert.equal(discountedPrice(0.01, 5000), 0.01);
+  assert.equal(discountedPrice(0.03, 5000), 0.02);
+  assert.equal(discountedPrice(999999999999.99, 1), 999899999999.99);
+  assert.equal(discountedPrice(999999999999.95, 8999), 100099999999.99);
+  assert.equal(discountedPrice(100, 9999), 10);
+  assert.equal(
+    addMoney(sumMoney([{ price: discountedPrice(0.03, 5000), quantity: 3 }]), 0.29),
+    0.35,
+  );
+});

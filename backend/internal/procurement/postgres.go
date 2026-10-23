@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
+	"math/big"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -702,6 +704,7 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 	`, orderID).Scan(&documents, &result.ArithmeticMismatch); err != nil {
 		return OrderValidation{}, fmt.Errorf("validate procurement documents: %w", err)
 	}
+	allocatedTrolley, allocatedRyazan := new(big.Rat), new(big.Rat)
 	for _, line := range detail.Lines {
 		if line.InvoiceExcluded {
 			continue
@@ -744,16 +747,18 @@ func (store *PostgresStore) loadOrderValidation(ctx context.Context, orderID int
 		}
 		quantity := float64(line.Quantity)
 		if line.TrolleyDeliveryUnitRUB != nil {
-			result.AllocatedTrolleyRUB += *line.TrolleyDeliveryUnitRUB * quantity
+			allocatedTrolley.Add(allocatedTrolley, new(big.Rat).Mul(money.Decimal(*line.TrolleyDeliveryUnitRUB), money.Decimal(quantity)))
 		}
 		if line.RyazanDeliveryUnitRUB != nil {
-			result.AllocatedRyazanRUB += *line.RyazanDeliveryUnitRUB * quantity
+			allocatedRyazan.Add(allocatedRyazan, new(big.Rat).Mul(money.Decimal(*line.RyazanDeliveryUnitRUB), money.Decimal(quantity)))
 		}
 	}
+	result.AllocatedTrolleyRUB = decimalFloat(allocatedTrolley)
+	result.AllocatedRyazanRUB = decimalFloat(allocatedRyazan)
 	if kind == KindInternational {
 		result.ExpectedTrolleyRUB = detail.Costs.DeliveryToMoscowRUB
 		if result.ExpectedTrolleyRUB == 0 {
-			result.ExpectedTrolleyRUB = float64(result.TrolleyCount) * detail.Costs.TrolleyCostRUB
+			result.ExpectedTrolleyRUB = decimalProduct(float64(result.TrolleyCount), detail.Costs.TrolleyCostRUB)
 		}
 	} else {
 		result.ExpectedTrolleyRUB = detail.Costs.DeliveryToMoscowRUB
@@ -975,7 +980,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	extraWeights := []allocationWeight{}
 	for _, line := range lines {
 		if line.matchStatus == "confirmed" || line.matchStatus == "deferred" {
-			extraWeights = append(extraWeights, allocationWeight{ID: line.id, Weight: line.unitPrice * float64(line.quantity), Quantity: line.quantity})
+			extraWeights = append(extraWeights, allocationWeight{ID: line.id, Weight: decimalProduct(line.unitPrice, float64(line.quantity)), Quantity: line.quantity})
 		}
 	}
 	extraPerUnit := allocateMoneyPerUnit(supplierCharges+input.AdditionalCostsRUB, extraWeights)
@@ -994,8 +999,8 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 				Weight: unitVolume * float64(line.quantity) / loadVolumes[line.loadUnit] / float64(len(loadVolumes)), Quantity: line.quantity})
 		}
 		if kind == KindDomestic {
-			moscowWeights = append(moscowWeights, allocationWeight{ID: line.id, Weight: line.unitPrice * float64(line.quantity), Quantity: line.quantity})
-			ryazanWeights = append(ryazanWeights, allocationWeight{ID: line.id, Weight: line.unitPrice * float64(line.quantity), Quantity: line.quantity})
+			moscowWeights = append(moscowWeights, allocationWeight{ID: line.id, Weight: decimalProduct(line.unitPrice, float64(line.quantity)), Quantity: line.quantity})
+			ryazanWeights = append(ryazanWeights, allocationWeight{ID: line.id, Weight: decimalProduct(line.unitPrice, float64(line.quantity)), Quantity: line.quantity})
 		} else if totalHeightUnits > 0 {
 			ryazanWeights = append(ryazanWeights, allocationWeight{ID: line.id,
 				Weight: line.height * float64(line.quantity), Quantity: line.quantity})

@@ -33,3 +33,11 @@ func retainedDecimal(tax float64, c ChannelCosts) *big.Rat {
 func contributionDecimal(price, cost, tax float64, c ChannelCosts) *big.Rat {
 	return new(big.Rat).Sub(new(big.Rat).Mul(money.Decimal(price), retainedDecimal(tax, c)), decimalSum(cost, *c.PackagingRUB, *c.LogisticsRUB, *c.LossRUB))
 }
+
+func decimalProduct(values ...float64) float64 {
+	product := big.NewRat(1, 1)
+	for _, v := range values {
+		product.Mul(product, money.Decimal(v))
+	}
+	return decimalFloat(product)
+}
