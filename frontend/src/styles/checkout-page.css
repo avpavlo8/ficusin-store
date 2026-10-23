@@ -579,6 +579,9 @@
   line-height: 1.55;
   cursor: pointer;
 }
+.checkout-page-panel .checkout-submit-section .consent-check + .consent-check {
+  margin-top: 12px;
+}
 .checkout-page-panel .checkout-submit-section .consent-check input {
   appearance: none;
   -webkit-appearance: none;
