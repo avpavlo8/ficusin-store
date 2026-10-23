@@ -13,52 +13,123 @@ const AccountPage = lazy(() => import("./AccountPage"));
 const AccountOrderPage = lazy(() => import("./AccountOrderPage"));
 const CartPage = lazy(() => import("./CartPage"));
 const PaymentResultPage = lazy(() => import("./PaymentResultPage"));
-const LoginPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.LoginPage })));
-const RegisterPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.RegisterPage })));
-const DeliveryPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.DeliveryPage })));
-const OfferPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.OfferPage })));
-const PersonalDataConsentPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.PersonalDataConsentPage })));
-const PrivacyPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.PrivacyPage })));
-const RequisitesPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.RequisitesPage })));
-const ContactsPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.ContactsPage })));
+const LoginPage = lazy(() =>
+  import("./AuthPages").then((module) => ({ default: module.LoginPage })),
+);
+const RegisterPage = lazy(() =>
+  import("./AuthPages").then((module) => ({ default: module.RegisterPage })),
+);
+const DeliveryPage = lazy(() =>
+  import("./LegalPages").then((module) => ({ default: module.DeliveryPage })),
+);
+const OfferPage = lazy(() =>
+  import("./LegalPages").then((module) => ({ default: module.OfferPage })),
+);
+const PersonalDataConsentPage = lazy(() =>
+  import("./LegalPages").then((module) => ({ default: module.PersonalDataConsentPage })),
+);
+const PrivacyPage = lazy(() =>
+  import("./LegalPages").then((module) => ({ default: module.PrivacyPage })),
+);
+const RequisitesPage = lazy(() =>
+  import("./LegalPages").then((module) => ({ default: module.RequisitesPage })),
+);
+const ContactsPage = lazy(() =>
+  import("./LegalPages").then((module) => ({ default: module.ContactsPage })),
+);
 
 function RouteLoading() {
-  return <main className="route-loading" aria-live="polite"><span>Загружаем…</span></main>;
+  return (
+    <main className="route-loading" aria-live="polite">
+      <span>Загружаем…</span>
+    </main>
+  );
 }
 
 export default function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  const quickChat = <Suspense fallback={null}><ChatLauncher /></Suspense>;
-  const ready = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}{!path.startsWith("/admin") && quickChat}</Suspense>;
-  const withFooter = (page: ReactNode) => <Suspense fallback={<RouteLoading />}>{page}<StoreFooter compact={path === "/checkout"} />{quickChat}</Suspense>;
-  try { decodeURIComponent(path); } catch { return withFooter(<NotFoundPage />); }
+  const quickChat = (
+    <Suspense fallback={null}>
+      <ChatLauncher />
+    </Suspense>
+  );
+  const ready = (page: ReactNode) => (
+    <Suspense fallback={<RouteLoading />}>
+      {page}
+      {!path.startsWith("/admin") && quickChat}
+    </Suspense>
+  );
+  const withFooter = (page: ReactNode) => (
+    <Suspense fallback={<RouteLoading />}>
+      {page}
+      <StoreFooter compact={path === "/checkout"} />
+      {quickChat}
+    </Suspense>
+  );
+  try {
+    decodeURIComponent(path);
+  } catch {
+    return withFooter(<NotFoundPage />);
+  }
   const query = new URLSearchParams(window.location.search);
   const paymentPreview = query.get("preview");
-  if (import.meta.env.DEV && path === "/checkout" && (paymentPreview === "payment-success" || paymentPreview === "payment-pending" || paymentPreview === "payment-failed")) {
-    return withFooter(<PaymentResultPage orderNumber="LOCAL-1024" preview={paymentPreview === "payment-success" ? "success" : paymentPreview === "payment-failed" ? "failed" : "pending"} />);
+  if (
+    import.meta.env.DEV &&
+    path === "/checkout" &&
+    (paymentPreview === "payment-success" ||
+      paymentPreview === "payment-pending" ||
+      paymentPreview === "payment-failed")
+  ) {
+    return withFooter(
+      <PaymentResultPage
+        orderNumber="LOCAL-1024"
+        preview={
+          paymentPreview === "payment-success"
+            ? "success"
+            : paymentPreview === "payment-failed"
+              ? "failed"
+              : "pending"
+        }
+      />,
+    );
   }
   const paymentReturn = path === "/" ? query.get("paid")?.trim() : null;
   if (paymentReturn) return withFooter(<PaymentResultPage orderNumber={paymentReturn} />);
   if (path === "/discounts") return withFooter(<DiscountPlantsPage />);
   if (path === "/care") return withFooter(<CareArticlePage />);
-  if (path.startsWith("/care/")) return withFooter(<CareArticlePage slug={path.slice("/care/".length)} />);
+  if (path.startsWith("/care/"))
+    return withFooter(<CareArticlePage slug={path.slice("/care/".length)} />);
   if (path.startsWith("/product/")) {
     return withFooter(<ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />);
   }
   if (path.startsWith("/account/orders/")) {
-    return withFooter(<AccountOrderPage
-      orderNumber={decodeURIComponent(path.slice("/account/orders/".length))}
-    />);
+    return withFooter(
+      <AccountOrderPage orderNumber={decodeURIComponent(path.slice("/account/orders/".length))} />,
+    );
   }
-  if (path === "/catalog") { window.location.replace("/" + window.location.search + "#catalog"); return <RouteLoading />; }
+  if (path === "/catalog") {
+    window.location.replace("/" + window.location.search + "#catalog");
+    return <RouteLoading />;
+  }
   if (path === "/") {
     return withFooter(<StorefrontPage />);
   }
   if (path.startsWith("/catalog/")) {
-    return withFooter(<StorefrontPage landing={{ type:"category", slug:decodeURIComponent(path.slice("/catalog/".length)) }} />);
+    return withFooter(
+      <StorefrontPage
+        landing={{ type: "category", slug: decodeURIComponent(path.slice("/catalog/".length)) }}
+      />,
+    );
   }
   if (path.startsWith("/collections/")) {
-    return withFooter(<StorefrontPage landing={{ type:"collection", slug:decodeURIComponent(path.slice("/collections/".length)) }} />);
+    return withFooter(
+      <StorefrontPage
+        landing={{
+          type: "collection",
+          slug: decodeURIComponent(path.slice("/collections/".length)),
+        }}
+      />,
+    );
   }
   if (path.startsWith("/admin/")) return ready(<AdminPage />);
   switch (path) {

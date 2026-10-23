@@ -247,10 +247,14 @@ func TestDownloadRefusesPlainHTTP(t *testing.T) {
 func TestDownloadRefusesNonSabyAndUnsafeRedirectTargets(t *testing.T) {
 	worker := NewMirror(newMemoryStore(), NewStorage("https://s3.example", "ru-1", "b", "k", "s"), quiet())
 	for _, source := range []string{"https://127.0.0.1/a.jpg", "https://metadata.google.internal/a", "https://evil.example/a.jpg", "https://disk.sbis.ru:8443/a.jpg"} {
-		if _, _, err := worker.download(context.Background(), source); err == nil { t.Fatalf("небезопасный URL принят: %s", source) }
+		if _, _, err := worker.download(context.Background(), source); err == nil {
+			t.Fatalf("небезопасный URL принят: %s", source)
+		}
 	}
 	redirectTarget, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1/private", nil)
-	if err := worker.client.CheckRedirect(redirectTarget, nil); err == nil { t.Fatal("небезопасный redirect принят") }
+	if err := worker.client.CheckRedirect(redirectTarget, nil); err == nil {
+		t.Fatal("небезопасный redirect принят")
+	}
 }
 
 // Имя файла выводится из ссылки: повторный перенос обязан лечь на то же

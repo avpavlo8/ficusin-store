@@ -39,7 +39,6 @@ func TestOzonPostingWithoutCreatedAtStillCounts(t *testing.T) {
 	}
 }
 
-
 func TestOzonCountsShipmentAfterItLeavesSeller(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")

@@ -52,7 +52,7 @@ func TestCartReturnsSelfContainedVariantLines(t *testing.T) {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
 	var body struct {
-		Items map[string]int       `json:"items"`
+		Items map[string]int        `json:"items"`
 		Lines []catalog.CartProduct `json:"lines"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {

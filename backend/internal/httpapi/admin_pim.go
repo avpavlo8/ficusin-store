@@ -50,158 +50,350 @@ func pimPathID(response http.ResponseWriter, request *http.Request, name string)
 func attributeDefinitionsHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
-		if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		if request.Method == http.MethodGet {
 			items, err := repository.ListAttributeDefinitions(request.Context())
-			if err != nil { adminAPI.failed(response, "list attributes", err); return }
+			if err != nil {
+				adminAPI.failed(response, "list attributes", err)
+				return
+			}
 			writeJSON(response, http.StatusOK, map[string]any{"attributes": items})
 			return
 		}
-		if actor.Role != admin.RoleOwner { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять структуру атрибутов"}); return }
+		if actor.Role != admin.RoleOwner {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять структуру атрибутов"})
+			return
+		}
 		var input admin.AttributeDefinitionInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
 		item, err := repository.CreateAttributeDefinition(request.Context(), actor, input)
-		if err != nil { adminAPI.failed(response, "create attribute", err); return }
+		if err != nil {
+			adminAPI.failed(response, "create attribute", err)
+			return
+		}
 		writeJSON(response, http.StatusCreated, map[string]any{"attribute": item})
 	}
 }
 
 func attributeDefinitionHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead); if !ok { return }
-		if actor.Role != admin.RoleOwner { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять структуру атрибутов"}); return }
-		id, ok := pimPathID(response, request, "attributeId"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
+		if !ok {
+			return
+		}
+		if actor.Role != admin.RoleOwner {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять структуру атрибутов"})
+			return
+		}
+		id, ok := pimPathID(response, request, "attributeId")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		if request.Method == http.MethodDelete {
-			if err := repository.ArchiveAttributeDefinition(request.Context(), actor, id); err != nil { adminAPI.failed(response, "archive attribute", err); return }
-			writeJSON(response, http.StatusOK, map[string]bool{"archived": true}); return
+			if err := repository.ArchiveAttributeDefinition(request.Context(), actor, id); err != nil {
+				adminAPI.failed(response, "archive attribute", err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]bool{"archived": true})
+			return
 		}
 		var input admin.AttributeDefinitionInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
 		item, err := repository.UpdateAttributeDefinition(request.Context(), actor, id, input)
-		if err != nil { adminAPI.failed(response, "update attribute", err); return }
+		if err != nil {
+			adminAPI.failed(response, "update attribute", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"attribute": item})
 	}
 }
 
 func effectiveCategoryAttributesHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, _, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead); if !ok { return }
-		categoryID, ok := pimPathID(response, request, "id"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		_, _, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
+		if !ok {
+			return
+		}
+		categoryID, ok := pimPathID(response, request, "id")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		items, err := repository.EffectiveCategoryAttributes(request.Context(), categoryID)
-		if err != nil { adminAPI.failed(response, "effective category attributes", err); return }
+		if err != nil {
+			adminAPI.failed(response, "effective category attributes", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"attributes": items})
 	}
 }
 
 func categoryAttributeAssignmentHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead); if !ok { return }
-		if actor.Role != admin.RoleOwner { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять схему категории"}); return }
-		categoryID, ok := pimPathID(response, request, "id"); if !ok { return }
-		attributeID, ok := pimPathID(response, request, "attributeId"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
+		if !ok {
+			return
+		}
+		if actor.Role != admin.RoleOwner {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять схему категории"})
+			return
+		}
+		categoryID, ok := pimPathID(response, request, "id")
+		if !ok {
+			return
+		}
+		attributeID, ok := pimPathID(response, request, "attributeId")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		if request.Method == http.MethodDelete {
-			if err := repository.RemoveCategoryAttribute(request.Context(), actor, categoryID, attributeID); err != nil { adminAPI.failed(response, "remove category attribute", err); return }
-			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true}); return
+			if err := repository.RemoveCategoryAttribute(request.Context(), actor, categoryID, attributeID); err != nil {
+				adminAPI.failed(response, "remove category attribute", err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
+			return
 		}
 		var input admin.CategoryAttributeInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
 		input.AttributeID = attributeID
-		if err := repository.SetCategoryAttribute(request.Context(), actor, categoryID, input); err != nil { adminAPI.failed(response, "set category attribute", err); return }
+		if err := repository.SetCategoryAttribute(request.Context(), actor, categoryID, input); err != nil {
+			adminAPI.failed(response, "set category attribute", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 
 func productVariantsHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead); if !ok { return }
-		productID, ok := pimPathID(response, request, "id"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
+		if !ok {
+			return
+		}
+		productID, ok := pimPathID(response, request, "id")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		if request.Method == http.MethodGet {
 			items, err := repository.ListProductVariants(request.Context(), productID)
-			if err != nil { adminAPI.failed(response, "list product variants", err); return }
-			writeJSON(response, http.StatusOK, map[string]any{"variants": items}); return
+			if err != nil {
+				adminAPI.failed(response, "list product variants", err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]any{"variants": items})
+			return
 		}
-		if !admin.Can(actor.Role, admin.PermissionProductsManage) { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав"}); return }
+		if !admin.Can(actor.Role, admin.PermissionProductsManage) {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав"})
+			return
+		}
 		var input admin.VariantInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
 		item, err := repository.CreateProductVariant(request.Context(), actor, productID, input)
-		if err != nil { adminAPI.failed(response, "create product variant", err); return }
+		if err != nil {
+			adminAPI.failed(response, "create product variant", err)
+			return
+		}
 		writeJSON(response, http.StatusCreated, map[string]any{"variant": item})
 	}
 }
 
 func productVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit); if !ok { return }
-		variantID, ok := pimPathID(response, request, "variantId"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
-		if request.Method == http.MethodDelete {
-			if !admin.Can(actor.Role, admin.PermissionDelete) { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Удаление доступно владельцу"}); return }; if err := repository.DeleteProductVariant(request.Context(), actor, variantID); err != nil { adminAPI.failed(response, "delete product variant", err); return }
-			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true}); return
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
+		if !ok {
+			return
 		}
-		if actor.Role == admin.RoleManager { managerVariantContent(adminAPI, response, request, actor, variantID); return }
+		variantID, ok := pimPathID(response, request, "variantId")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
+		if request.Method == http.MethodDelete {
+			if !admin.Can(actor.Role, admin.PermissionDelete) {
+				writeJSON(response, http.StatusForbidden, errorResponse{Error: "Удаление доступно владельцу"})
+				return
+			}
+			if err := repository.DeleteProductVariant(request.Context(), actor, variantID); err != nil {
+				adminAPI.failed(response, "delete product variant", err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
+			return
+		}
+		if actor.Role == admin.RoleManager {
+			managerVariantContent(adminAPI, response, request, actor, variantID)
+			return
+		}
 		var input admin.VariantInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
 		item, err := repository.UpdateProductVariant(request.Context(), actor, variantID, input)
-		if err != nil { adminAPI.failed(response, "update product variant", err); return }
+		if err != nil {
+			adminAPI.failed(response, "update product variant", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"variant": item})
 	}
 }
 
 func copyProductVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage); if !ok { return }
-		variantID, ok := pimPathID(response, request, "variantId"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage)
+		if !ok {
+			return
+		}
+		variantID, ok := pimPathID(response, request, "variantId")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		item, err := repository.CopyProductVariant(request.Context(), actor, variantID)
-		if err != nil { adminAPI.failed(response, "copy product variant", err); return }
+		if err != nil {
+			adminAPI.failed(response, "copy product variant", err)
+			return
+		}
 		writeJSON(response, http.StatusCreated, map[string]any{"variant": item})
 	}
 }
 
 func archiveProductVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage); if !ok { return }
-		variantID, ok := pimPathID(response, request, "variantId"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
-		if err := repository.ArchiveProductVariant(request.Context(), actor, variantID); err != nil { adminAPI.failed(response, "archive product variant", err); return }
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage)
+		if !ok {
+			return
+		}
+		variantID, ok := pimPathID(response, request, "variantId")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
+		if err := repository.ArchiveProductVariant(request.Context(), actor, variantID); err != nil {
+			adminAPI.failed(response, "archive product variant", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]bool{"archived": true})
 	}
 }
 
 func catalogFiltersHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
-		if request.Method == http.MethodGet {
-			items, err := repository.ListCatalogFilters(request.Context()); if err != nil { adminAPI.failed(response, "list catalog filters", err); return }
-			writeJSON(response, http.StatusOK, map[string]any{"filters": items}); return
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
+		if !ok {
+			return
 		}
-		if actor.Role != admin.RoleOwner { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять фильтры"}); return }
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
+		if request.Method == http.MethodGet {
+			items, err := repository.ListCatalogFilters(request.Context())
+			if err != nil {
+				adminAPI.failed(response, "list catalog filters", err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]any{"filters": items})
+			return
+		}
+		if actor.Role != admin.RoleOwner {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять фильтры"})
+			return
+		}
 		var input admin.CatalogFilterInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
-		item, err := repository.CreateCatalogFilter(request.Context(), actor, input); if err != nil { adminAPI.failed(response, "create catalog filter", err); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
+		item, err := repository.CreateCatalogFilter(request.Context(), actor, input)
+		if err != nil {
+			adminAPI.failed(response, "create catalog filter", err)
+			return
+		}
 		writeJSON(response, http.StatusCreated, map[string]any{"filter": item})
 	}
 }
 
 func catalogFilterHandler(adminAPI adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead); if !ok { return }
-		if actor.Role != admin.RoleOwner { writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять фильтры"}); return }
-		id, ok := pimPathID(response, request, "filterId"); if !ok { return }
-		repository, ok := pimRepository(adminAPI, response); if !ok { return }
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsRead)
+		if !ok {
+			return
+		}
+		if actor.Role != admin.RoleOwner {
+			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять фильтры"})
+			return
+		}
+		id, ok := pimPathID(response, request, "filterId")
+		if !ok {
+			return
+		}
+		repository, ok := pimRepository(adminAPI, response)
+		if !ok {
+			return
+		}
 		if request.Method == http.MethodDelete {
-			if err := repository.DeleteCatalogFilter(request.Context(), actor, id); err != nil { adminAPI.failed(response, "delete catalog filter", err); return }
-			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true}); return
+			if err := repository.DeleteCatalogFilter(request.Context(), actor, id); err != nil {
+				adminAPI.failed(response, "delete catalog filter", err)
+				return
+			}
+			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
+			return
 		}
 		var input admin.CatalogFilterInput
-		if decodeJSON(request, &input) != nil { writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"}); return }
-		item, err := repository.UpdateCatalogFilter(request.Context(), actor, id, input); if err != nil { adminAPI.failed(response, "update catalog filter", err); return }
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+			return
+		}
+		item, err := repository.UpdateCatalogFilter(request.Context(), actor, id, input)
+		if err != nil {
+			adminAPI.failed(response, "update catalog filter", err)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"filter": item})
 	}
 }

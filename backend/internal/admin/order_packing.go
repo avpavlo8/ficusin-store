@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
 	"strings"
 	"time"
@@ -354,7 +355,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	if chosen == nil {
 		return OrderPackingState{}, errors.New("выберите доступный тариф из расчёта СДЭК")
 	}
-	if math.Round(*input.QuotedDeliveryFee*100) != float64(chosen.Price*100) {
+	if money.Kopecks(*input.QuotedDeliveryFee) != int64(chosen.Price)*100 {
 		return OrderPackingState{}, errors.New("стоимость тарифа СДЭК изменилась — пересчитайте доставку и подтвердите новую сумму")
 	}
 	currentState, err := repository.OrderPacking(ctx, id)
@@ -454,7 +455,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 		return OrderPackingState{}, err
 	}
 	fee := float64(chosen.Price)
-	if payee == "shop" && math.Round(fee*100) != math.Round(oldFee*100) {
+	if payee == "shop" && money.Kopecks(fee) != money.Kopecks(oldFee) {
 		var legacyPayment bool
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments WHERE order_id=$1 AND status='pending' AND (provider_payment_id<>'' OR request_payload IS NOT NULL) AND COALESCE(request_payload->'Metadata'->>'ficusin_capture_mode',request_payload->'metadata'->>'ficusin_capture_mode','')<>'two_stage')`, id).Scan(&legacyPayment); err != nil {
 			return OrderPackingState{}, err

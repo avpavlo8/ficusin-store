@@ -1,13 +1,47 @@
 export type Role = "owner" | "administrator" | "manager" | "";
 
-export type Section = "chat" | "dashboard" | "analytics" | "products" | "categories" | "orders" | "customers" | "settings" | "collections" | "procurement" | "returns" | "finance" | "marketplaces" | "avito";
+export type Section =
+  | "chat"
+  | "dashboard"
+  | "analytics"
+  | "products"
+  | "categories"
+  | "orders"
+  | "customers"
+  | "settings"
+  | "collections"
+  | "procurement"
+  | "returns"
+  | "finance"
+  | "marketplaces"
+  | "avito";
 
-export type Category = { id: number; parentId: number | null; name: string; slug: string; sortOrder: number; icon: string; productsCount: number; childrenCount: number };
+export type Category = {
+  id: number;
+  parentId: number | null;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  icon: string;
+  productsCount: number;
+  childrenCount: number;
+};
 
 export type CategoryAttribute = {
-  code: string; name: string; dataType: "text" | "string" | "number" | "boolean" | "enum" | "multi_enum";
-  unit: string; options: string[]; optionLabels: Record<string, string>; audience: "customer" | "technical"; scope: "product" | "variant";
-  required: boolean; filterable: boolean; showOnPdp: boolean; keyCharacteristic: boolean; badge: boolean; sortOrder: number;
+  code: string;
+  name: string;
+  dataType: "text" | "string" | "number" | "boolean" | "enum" | "multi_enum";
+  unit: string;
+  options: string[];
+  optionLabels: Record<string, string>;
+  audience: "customer" | "technical";
+  scope: "product" | "variant";
+  required: boolean;
+  filterable: boolean;
+  showOnPdp: boolean;
+  keyCharacteristic: boolean;
+  badge: boolean;
+  sortOrder: number;
 };
 
 export type AdminData = {
@@ -15,125 +49,513 @@ export type AdminData = {
   role: Role;
   permissions: string[];
   dashboard: {
-    products: number; variants: number; orders: number; customers: number;
+    products: number;
+    variants: number;
+    orders: number;
+    customers: number;
     wholesalePending: number;
     lastSync: null | { status: string; itemsUpdated: number };
-    recentOrders: Array<{ orderNumber: string; customerName: string; total: number; status: string }>;
+    recentOrders: Array<{
+      orderNumber: string;
+      customerName: string;
+      total: number;
+      status: string;
+    }>;
   };
 };
 
 export type MarketplaceReturn = {
-  version?: string; publicComment?: string; deletedAt?: string;
-  label?: string; price?: number; discountPercent?: number; discountedPrice?: number; article?: string; intakeId?: string;
-  id: number; channel: string; channelComment?: string; sourceReturnId: string; sourceShipmentId: string; sourceUnitIndex: number;
-  salesEventId?: number; variantId: number; productName: string; sku: string; returnedAt: string;
-  condition: "inspection" | "ready" | "restoring" | "dead"; comment: string; unitCost?: number;
-  costOutcome: "unknown" | "restored" | "lost"; financialStatus: "linked" | "incomplete";
-  receiptStatus: "none" | "queued" | "checking" | "draft_created" | "posted" | "failed" | "correction_required";
-  receiptExternalUrl?: string; photoIds: number[];
+  version?: string;
+  publicComment?: string;
+  deletedAt?: string;
+  label?: string;
+  price?: number;
+  discountPercent?: number;
+  discountedPrice?: number;
+  article?: string;
+  intakeId?: string;
+  id: number;
+  channel: string;
+  channelComment?: string;
+  sourceReturnId: string;
+  sourceShipmentId: string;
+  sourceUnitIndex: number;
+  salesEventId?: number;
+  variantId: number;
+  productName: string;
+  sku: string;
+  returnedAt: string;
+  condition: "inspection" | "ready" | "restoring" | "dead";
+  comment: string;
+  unitCost?: number;
+  costOutcome: "unknown" | "restored" | "lost";
+  financialStatus: "linked" | "incomplete";
+  receiptStatus:
+    | "none"
+    | "queued"
+    | "checking"
+    | "draft_created"
+    | "posted"
+    | "failed"
+    | "correction_required";
+  receiptExternalUrl?: string;
+  photoIds: number[];
   history: Array<{ from: string; to: string; comment: string; createdAt: string }>;
 };
 
-export type ReturnProduct = { price?: number; variantId: number; name: string; sku: string; label: string };
-export type ReturnIntakeRow = { itemIds?: number[]; discountPercent?: number; key: string; variantId: number; name: string; sku: string; search: string; quantity: number; condition: "inspection" | "ready" | "restoring" | "dead"; comment: string };
-export type ReturnIntakeData = { channel: "ozon" | "wb" | "other"; channelComment: string; rows: ReturnIntakeRow[] };
-export type ReturnIntake = { documentNumber?: number; createdAt?: string; id: string; revision: number; data: ReturnIntakeData; status: "draft" | "saved"; receiptStatus: MarketplaceReturn["receiptStatus"]; receiptExternalUrl?: string; receiptError?: string; items: MarketplaceReturn[] };
-export type FinanceImport = { id:number; bank:string; accountNumber:string; fileName:string; status:"preview"|"confirmed"|"failed"; rowsTotal:number; rowsNew:number; rowsDuplicate:number; rowsReview:number; createdAt:string; openingBalance?:number; incomingTotal?:number; outgoingTotal?:number; closingBalance?:number; balanceValid?:boolean };
-export type FinanceTransaction = { id:number; importId:number; bank:string; operationDate:string; documentNumber:string; counterparty:string; purpose:string; currency:string; debit:number; credit:number; classification:string; pnlEffect:string; reviewReason:string; confirmed:boolean };
-export type FinanceCashEntry = { id:number; operationDate:string; kind:string; direction:"in"|"out"; amount:number; purpose:string; linkedTransactionId?:number };
-export type FinanceOverview = { imports:FinanceImport[]|null; transactions:FinanceTransaction[]|null; cash:FinanceCashEntry[]|null; income:number; expense:number; cashBalance:number; reviewCount:number };
-export type PnLReport = { monthlyFixedCostBudgetRub?:number; from:string; to:string; preliminary:boolean; revenue:number; cogs:number; grossProfit:number; marketplaceCosts:number; packaging:number; returnLoss:number; operatingExpenses:number; profitBeforeTax:number; actualTax?:number|null; netProfit?:number|null; cashFlow:number; taxRegime:string; taxRate:number; actualCostUnits:number; estimatedCostUnits:number; unknownCostUnits:number; actualCostAmount:number; estimatedCostAmount:number; warnings:string[]|null; channels:Array<{channel:string;revenue:number;cogs:number;costs:number;profit:number}>|null; products:Array<{variantId:number;product:string;sku:string;units:number;revenue:number;cogs:number;packaging:number;marketplaceCosts:number;returnLoss:number;otherCosts:number;profit:number;costSource:string;estimated:boolean;unknownUnits:number}>|null };
-export type SupplierAccountOperation = { id:number;operationDate:string;kind:string;originalAmountEur:number;normalizedAmountEur:number;linkedTopupId?:number;procurementOrderId?:number;sourceReference:string;comment:string };
-export type SupplierAccountOverview = { balanceEur:number;originalBalanceEur?:number|null;reservedEur?:number|null;availableEur?:number|null;reconciliationDifferenceEur?:number|null;lastReconciledAt?:string;operations:SupplierAccountOperation[]|null };
+export type ReturnProduct = {
+  price?: number;
+  variantId: number;
+  name: string;
+  sku: string;
+  label: string;
+};
+export type ReturnIntakeRow = {
+  itemIds?: number[];
+  discountPercent?: number;
+  key: string;
+  variantId: number;
+  name: string;
+  sku: string;
+  search: string;
+  quantity: number;
+  condition: "inspection" | "ready" | "restoring" | "dead";
+  comment: string;
+};
+export type ReturnIntakeData = {
+  channel: "ozon" | "wb" | "other";
+  channelComment: string;
+  rows: ReturnIntakeRow[];
+};
+export type ReturnIntake = {
+  documentNumber?: number;
+  createdAt?: string;
+  id: string;
+  revision: number;
+  data: ReturnIntakeData;
+  status: "draft" | "saved";
+  receiptStatus: MarketplaceReturn["receiptStatus"];
+  receiptExternalUrl?: string;
+  receiptError?: string;
+  items: MarketplaceReturn[];
+};
+export type FinanceImport = {
+  id: number;
+  bank: string;
+  accountNumber: string;
+  fileName: string;
+  status: "preview" | "confirmed" | "failed";
+  rowsTotal: number;
+  rowsNew: number;
+  rowsDuplicate: number;
+  rowsReview: number;
+  createdAt: string;
+  openingBalance?: number;
+  incomingTotal?: number;
+  outgoingTotal?: number;
+  closingBalance?: number;
+  balanceValid?: boolean;
+};
+export type FinanceTransaction = {
+  id: number;
+  importId: number;
+  bank: string;
+  operationDate: string;
+  documentNumber: string;
+  counterparty: string;
+  purpose: string;
+  currency: string;
+  debit: number;
+  credit: number;
+  classification: string;
+  pnlEffect: string;
+  reviewReason: string;
+  confirmed: boolean;
+};
+export type FinanceCashEntry = {
+  id: number;
+  operationDate: string;
+  kind: string;
+  direction: "in" | "out";
+  amount: number;
+  purpose: string;
+  linkedTransactionId?: number;
+};
+export type FinanceOverview = {
+  imports: FinanceImport[] | null;
+  transactions: FinanceTransaction[] | null;
+  cash: FinanceCashEntry[] | null;
+  income: number;
+  expense: number;
+  cashBalance: number;
+  reviewCount: number;
+};
+export type PnLReport = {
+  monthlyFixedCostBudgetRub?: number;
+  from: string;
+  to: string;
+  preliminary: boolean;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  marketplaceCosts: number;
+  packaging: number;
+  returnLoss: number;
+  operatingExpenses: number;
+  profitBeforeTax: number;
+  actualTax?: number | null;
+  netProfit?: number | null;
+  cashFlow: number;
+  taxRegime: string;
+  taxRate: number;
+  actualCostUnits: number;
+  estimatedCostUnits: number;
+  unknownCostUnits: number;
+  actualCostAmount: number;
+  estimatedCostAmount: number;
+  warnings: string[] | null;
+  channels: Array<{
+    channel: string;
+    revenue: number;
+    cogs: number;
+    costs: number;
+    profit: number;
+  }> | null;
+  products: Array<{
+    variantId: number;
+    product: string;
+    sku: string;
+    units: number;
+    revenue: number;
+    cogs: number;
+    packaging: number;
+    marketplaceCosts: number;
+    returnLoss: number;
+    otherCosts: number;
+    profit: number;
+    costSource: string;
+    estimated: boolean;
+    unknownUnits: number;
+  }> | null;
+};
+export type SupplierAccountOperation = {
+  id: number;
+  operationDate: string;
+  kind: string;
+  originalAmountEur: number;
+  normalizedAmountEur: number;
+  linkedTopupId?: number;
+  procurementOrderId?: number;
+  sourceReference: string;
+  comment: string;
+};
+export type SupplierAccountOverview = {
+  balanceEur: number;
+  originalBalanceEur?: number | null;
+  reservedEur?: number | null;
+  availableEur?: number | null;
+  reconciliationDifferenceEur?: number | null;
+  lastReconciledAt?: string;
+  operations: SupplierAccountOperation[] | null;
+};
 
 export type Customer = {
-  id: number; email: string; phone: string; fullName: string; lastName: string;
-  patronymic: string; deliveryAddress: string; accountType: string;
-  wholesaleStatus: string; retailDiscountBps: number; lifetimeSpend: number;
-  active: boolean; adminRole: Role; ordersCount: number; createdAt: string;
+  id: number;
+  email: string;
+  phone: string;
+  fullName: string;
+  lastName: string;
+  patronymic: string;
+  deliveryAddress: string;
+  accountType: string;
+  wholesaleStatus: string;
+  retailDiscountBps: number;
+  lifetimeSpend: number;
+  active: boolean;
+  adminRole: Role;
+  ordersCount: number;
+  createdAt: string;
 };
 
 export type Order = {
-  id: number; orderNumber: string; customerId?: number; customerName: string;
-  phone: string; email: string; address: string; comment: string;
-  deliveryMethod: string; deliveryFeePending?: boolean; repackRequested?: boolean;
-  paymentMethod?: string; paymentStatus: string; trackNumber?: string; hasPreorder?: boolean;
-  status: string; total: number;
-  createdAt: string; items: Array<{ productId: number; sku: string; variantLabel: string; productName: string; unitPrice: number; quantity: number }>;
+  id: number;
+  orderNumber: string;
+  customerId?: number;
+  customerName: string;
+  phone: string;
+  email: string;
+  address: string;
+  comment: string;
+  deliveryMethod: string;
+  deliveryFeePending?: boolean;
+  repackRequested?: boolean;
+  paymentMethod?: string;
+  paymentStatus: string;
+  trackNumber?: string;
+  hasPreorder?: boolean;
+  status: string;
+  total: number;
+  createdAt: string;
+  items: Array<{
+    productId: number;
+    sku: string;
+    variantLabel: string;
+    productName: string;
+    unitPrice: number;
+    quantity: number;
+  }>;
 };
 
 export type Product = {
- totalStock?:number;minPrice?:number;maxPrice?:number;variantsReady?:boolean;
-  id: number; sabyId: string; slug: string; productCode?: string; name: string; latinName: string;
-  shortDescription: string; description: string; careInstructions: string;
-  status: string; featured: boolean; image: string; price: number; stock: number;
-  sku: string; variantLabel: string; heightCm?: number; potDiameterCm?: number;
-  packageLengthCm?: number; packageWidthCm?: number; packageHeightCm?: number;
-  packageWeightGrams?: number; wholesaleMinQty: number; overrideFields: string[];
-  sabyFields: string[]; sabyCode: string;
-  catalogSection: string; plantKind?: string; lightLevel?: string; watering?: string;
-  heightClass?: string; careLevel?: string; placement?: string; petSafety?: string;
-  growthHabit?: string; sabyUpdatedAt?: string;
+  totalStock?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  variantsReady?: boolean;
+  id: number;
+  sabyId: string;
+  slug: string;
+  productCode?: string;
+  name: string;
+  latinName: string;
+  shortDescription: string;
+  description: string;
+  careInstructions: string;
+  status: string;
+  featured: boolean;
+  image: string;
+  price: number;
+  stock: number;
+  sku: string;
+  variantLabel: string;
+  heightCm?: number;
+  potDiameterCm?: number;
+  packageLengthCm?: number;
+  packageWidthCm?: number;
+  packageHeightCm?: number;
+  packageWeightGrams?: number;
+  wholesaleMinQty: number;
+  overrideFields: string[];
+  sabyFields: string[];
+  sabyCode: string;
+  catalogSection: string;
+  plantKind?: string;
+  lightLevel?: string;
+  watering?: string;
+  heightClass?: string;
+  careLevel?: string;
+  placement?: string;
+  petSafety?: string;
+  growthHabit?: string;
+  sabyUpdatedAt?: string;
   categoryId?: number;
-  passport: PlantPassport; importantWarnings: string[];
+  passport: PlantPassport;
+  importantWarnings: string[];
   externalIds: Array<{ provider: string; type: string; externalId: string }>;
   attributes: Record<string, string | number | boolean | string[]>;
-  variantTasks?: string[]; variantCount?: number; stockUpdatedAt?: string; updatedAt?: string;
+  variantTasks?: string[];
+  variantCount?: number;
+  stockUpdatedAt?: string;
+  updatedAt?: string;
   variantStage1Missing?: boolean;
   unknownEnumValues?: boolean;
 };
 
-export type PlantPassport = { origin: string; lighting: string; watering: string; humidity: string; temperature: string; soil: string; fertilizer: string; repotting: string; careDifficulty: string; growthRate: string; matureSize: string; toxicity: string; problems: string; pests: string; faq: Array<{ question: string; answer: string }> };
-export type ReviewModerationItem = { id: number; product: string; author: string; rating: number; text: string; status: "published" | "rejected"; createdAt: string; media: Array<{ url: string; contentType: string }> };
+export type PlantPassport = {
+  origin: string;
+  lighting: string;
+  watering: string;
+  humidity: string;
+  temperature: string;
+  soil: string;
+  fertilizer: string;
+  repotting: string;
+  careDifficulty: string;
+  growthRate: string;
+  matureSize: string;
+  toxicity: string;
+  problems: string;
+  pests: string;
+  faq: Array<{ question: string; answer: string }>;
+};
+export type ReviewModerationItem = {
+  id: number;
+  product: string;
+  author: string;
+  rating: number;
+  text: string;
+  status: "published" | "rejected";
+  createdAt: string;
+  media: Array<{ url: string; contentType: string }>;
+};
 
 export type ProcurementSupplier = {
-  id: number; name: string; kind: "international" | "domestic"; countryCode: string; taxId: string; kpp: string;
-  defaultCurrency: "EUR" | "USD" | "RUB"; active: boolean; createdAt: string;
+  id: number;
+  name: string;
+  kind: "international" | "domestic";
+  countryCode: string;
+  taxId: string;
+  kpp: string;
+  defaultCurrency: "EUR" | "USD" | "RUB";
+  active: boolean;
+  createdAt: string;
 };
 
 export type ProcurementOrder = {
-  title?: string; pendingReview?: number; failedActions?: number;
-  id: number; supplierId: number; supplierName: string; orderNumber: string;
-  documentNumber: string; documentDate?: string; sourceKind: string; currency: string;
-  status: string; lines: number; units: number; total: number; unmatched: number; createdAt: string;
+  title?: string;
+  pendingReview?: number;
+  failedActions?: number;
+  id: number;
+  supplierId: number;
+  supplierName: string;
+  orderNumber: string;
+  documentNumber: string;
+  documentDate?: string;
+  sourceKind: string;
+  currency: string;
+  status: string;
+  lines: number;
+  units: number;
+  total: number;
+  unmatched: number;
+  createdAt: string;
 };
 
 export type ProcurementChannelCosts = {
-  commissionRate?: number | null; acquiringRate?: number | null; otherRate?:number|null; packagingRub?: number | null;
-  logisticsRub?: number | null; lossRub?: number | null;
+  commissionRate?: number | null;
+  acquiringRate?: number | null;
+  otherRate?: number | null;
+  packagingRub?: number | null;
+  logisticsRub?: number | null;
+  lossRub?: number | null;
 };
 export type ProcurementChannelQuote = {
-  model?:string; targetRub?:number; costs?:ProcurementChannelCosts; notes?:string[]; package?:{lengthCm:number;widthCm:number;heightCm:number;source:string}; manual?:boolean; priceRub?: number; breakEvenRub?: number; contributionRub?: number; coverUnits?: number; missing: string[];
+  model?: string;
+  targetRub?: number;
+  costs?: ProcurementChannelCosts;
+  notes?: string[];
+  package?: { lengthCm: number; widthCm: number; heightCm: number; source: string };
+  manual?: boolean;
+  priceRub?: number;
+  breakEvenRub?: number;
+  contributionRub?: number;
+  coverUnits?: number;
+  missing: string[];
 };
-export type ProcurementUnifiedPricing = {enabled:boolean;markupRate:number;materialsRub:number;smallBoxRub:number;mediumBoxRub:number;largeBoxRub:number;wbFirstLiterRub:number;wbAdditionalLiterRub:number;wbHandlingRub:number;verifiedAt:string;norms:{maxLiters:number;ozonRub:number;samples:number;source:string}[]};
-export type ProcurementUnifiedPreview = {version:number;markupRate:number;fixedRub:number;units:number;pricedUnits:number;contributionRub:number;lines:{variantId:number;sourceLineId?:number;name:string;quantity:number;costRub:number;quotes:Record<string,ProcurementChannelQuote>}[]};
-export type ProcurementEconomics = {monthlyFixedCostsRub:number;channels:Record<string,ProcurementChannelCosts>;unified?:ProcurementUnifiedPricing};
+export type ProcurementUnifiedPricing = {
+  enabled: boolean;
+  markupRate: number;
+  materialsRub: number;
+  smallBoxRub: number;
+  mediumBoxRub: number;
+  largeBoxRub: number;
+  wbFirstLiterRub: number;
+  wbAdditionalLiterRub: number;
+  wbHandlingRub: number;
+  verifiedAt: string;
+  norms: { maxLiters: number; ozonRub: number; samples: number; source: string }[];
+};
+export type ProcurementUnifiedPreview = {
+  version: number;
+  markupRate: number;
+  fixedRub: number;
+  units: number;
+  pricedUnits: number;
+  contributionRub: number;
+  lines: {
+    variantId: number;
+    sourceLineId?: number;
+    name: string;
+    quantity: number;
+    costRub: number;
+    quotes: Record<string, ProcurementChannelQuote>;
+  }[];
+};
+export type ProcurementEconomics = {
+  monthlyFixedCostsRub: number;
+  channels: Record<string, ProcurementChannelCosts>;
+  unified?: ProcurementUnifiedPricing;
+};
 export type ProcurementSettings = {
   economics?: ProcurementEconomics;
-  version: number; defaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; trolleyVolumeCm3: number;
-  trolleyFillRatio: number; returnLossRate: number; marketplaceCostRate: number; taxRate: number;
-  reserveRate: number; packageRub: number; priceChangeThreshold: number; domesticRetailMultiplier: number;
-  internationalCostMultiplier: number; internationalRetailMultiplier: number; marketplaceStrikeMarkup: number;
-  retailRoundStep: number; avoidRoundHundreds: boolean; recommendationDays: number; targetCoverDays: number;
-  retailMarkupMultiplier: number; roundPrices: boolean; marketplaceLogisticsPerCm: number;
+  version: number;
+  defaultExchangeRate: number;
+  trolleyCostCurrency: number;
+  trolleyCostRub: number;
+  trolleyVolumeCm3: number;
+  trolleyFillRatio: number;
+  returnLossRate: number;
+  marketplaceCostRate: number;
+  taxRate: number;
+  reserveRate: number;
+  packageRub: number;
+  priceChangeThreshold: number;
+  domesticRetailMultiplier: number;
+  internationalCostMultiplier: number;
+  internationalRetailMultiplier: number;
+  marketplaceStrikeMarkup: number;
+  retailRoundStep: number;
+  avoidRoundHundreds: boolean;
+  recommendationDays: number;
+  targetCoverDays: number;
+  retailMarkupMultiplier: number;
+  roundPrices: boolean;
+  marketplaceLogisticsPerCm: number;
 };
 
 export type ProcurementAlias = {
-  id: number; supplierId: number; supplierName: string; rawName: string; supplierArticle: string;
-  potDiameterCm?: number; heightCm?: number; suggestedSabyId: string; suggestedSabyName: string;
-  matchStatus: string; confidence: number; availabilityStatus: string; lastSeenAt?: string;
+  id: number;
+  supplierId: number;
+  supplierName: string;
+  rawName: string;
+  supplierArticle: string;
+  potDiameterCm?: number;
+  heightCm?: number;
+  suggestedSabyId: string;
+  suggestedSabyName: string;
+  matchStatus: string;
+  confidence: number;
+  availabilityStatus: string;
+  lastSeenAt?: string;
 };
 
 export type ProcurementDocument = {
-  id: number; supplierId: number; supplierName: string; orderId: number; fileName: string;
-  parserKind: string; parseStatus: string; arithmeticStatus: string; documentNumber: string;
-  documentDate?: string; currency: string; lines: number; units: number; productSubtotal: number;
-  packageTotal: number; documentTotal: number; calculatedTotal: number; parseError: string; revisionNo: number; superseded: boolean; createdAt: string;
+  id: number;
+  supplierId: number;
+  supplierName: string;
+  orderId: number;
+  fileName: string;
+  parserKind: string;
+  parseStatus: string;
+  arithmeticStatus: string;
+  documentNumber: string;
+  documentDate?: string;
+  currency: string;
+  lines: number;
+  units: number;
+  productSubtotal: number;
+  packageTotal: number;
+  documentTotal: number;
+  calculatedTotal: number;
+  parseError: string;
+  revisionNo: number;
+  superseded: boolean;
+  createdAt: string;
 };
 
 export type NomenclatureCandidate = {
-  variantId: number; sabyId: string; code: string; article: string; name: string; balance: number; price: number; totalSales: number;
-  sabySales: number; wbSales: number; ozonSales: number; siteSales: number; supplierLinked: boolean;
+  variantId: number;
+  sabyId: string;
+  code: string;
+  article: string;
+  name: string;
+  balance: number;
+  price: number;
+  totalSales: number;
+  sabySales: number;
+  wbSales: number;
+  ozonSales: number;
+  siteSales: number;
+  supplierLinked: boolean;
 };
 
 // Внешний код маркетплейса, продажи которого не дошли до товара СБИС.
@@ -142,79 +564,408 @@ export type NomenclatureCandidate = {
 // карточки с площадки: у Wildberries код числовой, и без неё непонятно,
 // какое растение разбираешь.
 export type UnlinkedSale = {
-  channel: string; externalId: string; article: string; name: string;
-  days: number; units: number; grossRub: number; lastSale: string;
-	ignored: boolean;
+  channel: string;
+  externalId: string;
+  article: string;
+  name: string;
+  days: number;
+  units: number;
+  grossRub: number;
+  lastSale: string;
+  ignored: boolean;
 };
 
 // Итог связывания. takenFrom не пустой, когда код пришлось отобрать у
 // другого товара: карточка маркетплейса продаёт ровно одно растение.
 export type SalesLinkResult = {
-  channel: string; externalId: string; sabyId: string; sabyName: string;
-  linkedRows: number; linkedUnits: number; takenFrom: string; remaining: number;
+  channel: string;
+  externalId: string;
+  sabyId: string;
+  sabyName: string;
+  linkedRows: number;
+  linkedUnits: number;
+  takenFrom: string;
+  remaining: number;
 };
 
-export type ProcurementRequestAllocation = { procurementOrderId: number; orderNumber: string; quantity: number; status: string };
+export type ProcurementRequestAllocation = {
+  procurementOrderId: number;
+  orderNumber: string;
+  quantity: number;
+  status: string;
+};
 export type ProcurementRequest = {
-  history?: {at:string;status:string;quantity:number;name:string;notes:string;dueDate?:string;assignee?:string}[];
-  dueDate?: string; assignee?: string; id: number; kind: string; sabyId: string; requestedName: string; quantity: number; status: string; notes: string; createdAt: string; customerOrderId?: number; customerName: string; source: string; allocatedQuantity: number; remainingQuantity: number; allocations: ProcurementRequestAllocation[] };
+  history?: {
+    at: string;
+    status: string;
+    quantity: number;
+    name: string;
+    notes: string;
+    dueDate?: string;
+    assignee?: string;
+  }[];
+  dueDate?: string;
+  assignee?: string;
+  id: number;
+  kind: string;
+  sabyId: string;
+  requestedName: string;
+  quantity: number;
+  status: string;
+  notes: string;
+  createdAt: string;
+  customerOrderId?: number;
+  customerName: string;
+  source: string;
+  allocatedQuantity: number;
+  remainingQuantity: number;
+  allocations: ProcurementRequestAllocation[];
+};
 
-export type ProcurementRecommendation = { aliasId: number; supplierId: number; sabyId: string; name: string; supplierArticle: string; dutchName: string; potDiameterCm?: number; heightCm?: number; lastUnitPrice?: number; availability: string; balance: number; balanceKnown: boolean; balanceAsOf?: string; incoming: number; siteSales: number; sabySales: number; wbSales: number; ozonSales: number; totalSales: number; grossSales: number; returns: number; customerRequests: number; staffRequests: number; openRequests: number; allocatedRequests: number; minimumOrderQty: number; orderMultiple: number; suggestedQty: number; demandQty: number; needBeforeIncoming: number; uncoveredQty: number; quantityKnown: boolean; roundingExplanation: string; dailySales: number; daysOfCover?: number; lastSaleAt?: string; lastOrderedAt?: string; status: RecommendationStatus; reason: string };
+export type ProcurementRecommendation = {
+  aliasId: number;
+  supplierId: number;
+  sabyId: string;
+  name: string;
+  supplierArticle: string;
+  dutchName: string;
+  potDiameterCm?: number;
+  heightCm?: number;
+  lastUnitPrice?: number;
+  availability: string;
+  balance: number;
+  balanceKnown: boolean;
+  balanceAsOf?: string;
+  incoming: number;
+  siteSales: number;
+  sabySales: number;
+  wbSales: number;
+  ozonSales: number;
+  totalSales: number;
+  grossSales: number;
+  returns: number;
+  customerRequests: number;
+  staffRequests: number;
+  openRequests: number;
+  allocatedRequests: number;
+  minimumOrderQty: number;
+  orderMultiple: number;
+  suggestedQty: number;
+  demandQty: number;
+  needBeforeIncoming: number;
+  uncoveredQty: number;
+  quantityKnown: boolean;
+  roundingExplanation: string;
+  dailySales: number;
+  daysOfCover?: number;
+  lastSaleAt?: string;
+  lastOrderedAt?: string;
+  status: RecommendationStatus;
+  reason: string;
+};
 
-export type RecommendationStatus = "recommended" | "already_ordered" | "check_availability" | "supplier_unavailable" | "excluded";
+export type RecommendationStatus =
+  | "recommended"
+  | "already_ordered"
+  | "check_availability"
+  | "supplier_unavailable"
+  | "excluded";
 
-export type ProcurementAvailability = { supplierId: number; supplierName: string; sabyId: string; name: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; unavailableSince: string; balance: number; lastSeenAt?: string; reason: string; comment: string; lastAction: string; lastActionAt?: string; due: boolean };
+export type ProcurementAvailability = {
+  supplierId: number;
+  supplierName: string;
+  sabyId: string;
+  name: string;
+  supplierArticle: string;
+  availabilityStatus: string;
+  checkAfter: string;
+  unavailableSince: string;
+  balance: number;
+  lastSeenAt?: string;
+  reason: string;
+  comment: string;
+  lastAction: string;
+  lastActionAt?: string;
+  due: boolean;
+};
 
-export type SalesSyncStatus = { channel: string; status: string; lastAttemptAt?: string; lastSuccessAt?: string; lastError: string; rowsSynced: number; rowsLinked: number; rowsUnlinked: number; periodFrom: string; periodTo: string; latestSale: string; nextAttemptAt?: string; nextDeepAt?: string; mode?: string; freshness: "fresh" | "stale" | "unknown" };
+export type SalesSyncStatus = {
+  channel: string;
+  status: string;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  lastError: string;
+  rowsSynced: number;
+  rowsLinked: number;
+  rowsUnlinked: number;
+  periodFrom: string;
+  periodTo: string;
+  latestSale: string;
+  nextAttemptAt?: string;
+  nextDeepAt?: string;
+  mode?: string;
+  freshness: "fresh" | "stale" | "unknown";
+};
 
-export type IntegrationHealth = { channel: "saby" | "wb" | "ozon"; configured: boolean; lastCheckedAt?: string; lastSuccessAt?: string; lastError: string };
-export type IntegrationSyncStatus = { channel: "saby" | "wb" | "ozon"; resource: "catalog" | "sales"; status: string; priority: "background" | "interactive"; requestedGeneration: number; activeGeneration: number; completedGeneration: number; lastAttemptAt?: string; lastSuccessAt?: string; nextAttemptAt?: string; nextDeepAt?: string; cooldownUntil?: string; periodFrom: string; periodTo: string; latestEventAt?: string; rowsSynced: number; lastError: string };
+export type IntegrationHealth = {
+  channel: "saby" | "wb" | "ozon";
+  configured: boolean;
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  lastError: string;
+};
+export type IntegrationSyncStatus = {
+  channel: "saby" | "wb" | "ozon";
+  resource: "catalog" | "sales";
+  status: string;
+  priority: "background" | "interactive";
+  requestedGeneration: number;
+  activeGeneration: number;
+  completedGeneration: number;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  nextAttemptAt?: string;
+  nextDeepAt?: string;
+  cooldownUntil?: string;
+  periodFrom: string;
+  periodTo: string;
+  latestEventAt?: string;
+  rowsSynced: number;
+  lastError: string;
+};
 
 export type SabyCatalogFolder = { id: string; parentId: string; name: string; path: string[] };
-export type ProcurementProduct = { variantId: number; sabyId: string; sabyCode: string; sabyArticle: string; name: string; sabySection: string; folderId: string; sectionPath: string[]; siteStatus: string; balance: number; currentPriceRub: number; supplierId: number; supplierName: string; supplierArticle: string; availabilityStatus: string; checkAfter: string; hollandArticle: string; wbNmId?: number; wbVendorCode: string; ozonOfferId: string; wbArticles: string[]; wbLegacyArticles: string[]; ozonArticles: string[]; ozonLegacyArticles: string[]; sabySales: number; siteSales: number; wbSales: number; ozonSales: number; minimumOrderQty: number; orderMultiple: number; aliases: string[]; aliasIds: number[]; supplierCategory: string; expectedUnitPrice?: number; potDiameterCm?: number; heightCm?: number; unitsPerPackage?: number; latestOrderId: number; latestOrderNumber: string; latestUnitCostRub?: number; suggestedWbRub?:number; suggestedOzonRub?:number; suggestedMarketplaceRub?: number; suggestedMarketplaceStrikeRub?: number };
-
-export type ProcurementActionPreviewLine = { sabyId: string; code: string; name: string; quantity?: number; oldBalance?: number; newBalance?: number; oldPrice?: number; newPrice?: number };
-export type ProcurementActionItem = { id: number; lineId: number; productName: string; productCode: string; channel: string; externalArticle: string; displayArticle: string; oldValue?: number; newValue: number; compareAtValue?: number; quantity?: number; status: string; errorMessage: string; externalOperationId?: string; externalUrl?: string; previewLines?: ProcurementActionPreviewLine[] };
-
-export type ProcurementActionBatch = { unified?:boolean; id: number; kind: string; status: string; createdAt: string; items: ProcurementActionItem[] };
-
-export type ProcurementReceivingAllocation = {sabyId:string;name:string;code:string;quantity:number};
-export type ProcurementOrderLine = {
- receivingMode?: "catalog" | "assortment" | "customer_handoff" | "awaiting_catalog";
- receivingAllocations?: ProcurementReceivingAllocation[];
- customerHandedOver?: boolean;
-  matchAlias?: ProcurementAlias;
-  id: number; sabyId: string; sabyCode: string; sabyName: string; rawName: string; supplierArticle: string; quantity: number;
-  supplierCategory: string; packageCount?: number; unitsPerPackage?: number;
-  invoiceRawName: string; invoiceSupplierArticle: string; reconciliationStatus: string;
-  invoiceComponents?: Array<{rawName:string; quantity:number; unitPrice:number; lineTotal:number; sourcePage?:number; sourceLine?:number}>;
-  invoiceExcluded: boolean; invoiceExclusionReason: string;
-  unitPrice: number; expectedUnitPrice?: number; orderedQuantity: number; invoicedQuantity?: number;
-  loadUnit: string; potDiameterCm?: number; heightCm?: number; matchStatus: string;
-  purchaseUnitRub?: number; trolleyDeliveryUnitRub?: number; ryazanDeliveryUnitRub?: number; unitCostRub?: number;
-  currentUnitCostRub?: number; currentUnitCostKind: string; currentUnitCostEffectiveAt?: string;
-  channelPrices?:Record<string,number>; additionalPurchaseUnitRub?:number; retailOverrideRub?:number; channelCosts?: Record<string,ProcurementChannelCosts>; channelQuotes?:Record<string,ProcurementChannelQuote>; dimensionWarning?:string; catalogueLabel?:string; dimensionsReviewed?:boolean;
-  currentRetailRub: number; proposedRetailRub?: number; proposedMarketplaceRub?: number;
-  proposedMarketplaceStrikeRub?: number; priceChangeNeeded: boolean; customerRequest: boolean;
-  comparisonMismatch: boolean; comparisonAccepted: boolean; comparisonNote: string;
+export type ProcurementProduct = {
+  variantId: number;
+  sabyId: string;
+  sabyCode: string;
+  sabyArticle: string;
+  name: string;
+  sabySection: string;
+  folderId: string;
+  sectionPath: string[];
+  siteStatus: string;
+  balance: number;
+  currentPriceRub: number;
+  supplierId: number;
+  supplierName: string;
+  supplierArticle: string;
+  availabilityStatus: string;
+  checkAfter: string;
+  hollandArticle: string;
+  wbNmId?: number;
+  wbVendorCode: string;
+  ozonOfferId: string;
+  wbArticles: string[];
+  wbLegacyArticles: string[];
+  ozonArticles: string[];
+  ozonLegacyArticles: string[];
+  sabySales: number;
+  siteSales: number;
+  wbSales: number;
+  ozonSales: number;
+  minimumOrderQty: number;
+  orderMultiple: number;
+  aliases: string[];
+  aliasIds: number[];
+  supplierCategory: string;
+  expectedUnitPrice?: number;
+  potDiameterCm?: number;
+  heightCm?: number;
+  unitsPerPackage?: number;
+  latestOrderId: number;
+  latestOrderNumber: string;
+  latestUnitCostRub?: number;
+  suggestedWbRub?: number;
+  suggestedOzonRub?: number;
+  suggestedMarketplaceRub?: number;
+  suggestedMarketplaceStrikeRub?: number;
 };
 
-export type ProcurementValidation = { pendingCatalog?: number; pendingAssortments?: number; pendingHandoffs?: number; canPrepareReceipt?: boolean; canCalculate: boolean; canPrepareActions: boolean; blockers: string[] | null; arithmeticMismatch: number; comparisonMismatch: number; missingDimensions: number; missingLoadUnits: number; invalidLines: number; unmatched: number; trolleyCount: number; expectedTrolleyRub: number; allocatedTrolleyRub: number; expectedRyazanRub: number; allocatedRyazanRub: number };
+export type ProcurementActionPreviewLine = {
+  sabyId: string;
+  code: string;
+  name: string;
+  quantity?: number;
+  oldBalance?: number;
+  newBalance?: number;
+  oldPrice?: number;
+  newPrice?: number;
+};
+export type ProcurementActionItem = {
+  id: number;
+  lineId: number;
+  productName: string;
+  productCode: string;
+  channel: string;
+  externalArticle: string;
+  displayArticle: string;
+  oldValue?: number;
+  newValue: number;
+  compareAtValue?: number;
+  quantity?: number;
+  status: string;
+  errorMessage: string;
+  externalOperationId?: string;
+  externalUrl?: string;
+  previewLines?: ProcurementActionPreviewLine[];
+};
 
-export type ProcurementOrderDetail = { unifiedPreview?:ProcurementUnifiedPreview; order: ProcurementOrder; costs: { additionalCostsRub?:number; supplierChargesRub?:number; returnableDepositRub?:number; exchangeRate: number; currentDefaultExchangeRate: number; trolleyCostCurrency: number; trolleyCostRub: number; deliveryToMoscowRub: number; deliveryToRyazanRub: number }; validation: ProcurementValidation; lines: ProcurementOrderLine[]; batches: ProcurementActionBatch[] };
+export type ProcurementActionBatch = {
+  unified?: boolean;
+  id: number;
+  kind: string;
+  status: string;
+  createdAt: string;
+  items: ProcurementActionItem[];
+};
+
+export type ProcurementReceivingAllocation = {
+  sabyId: string;
+  name: string;
+  code: string;
+  quantity: number;
+};
+export type ProcurementOrderLine = {
+  receivingMode?: "catalog" | "assortment" | "customer_handoff" | "awaiting_catalog";
+  receivingAllocations?: ProcurementReceivingAllocation[];
+  customerHandedOver?: boolean;
+  matchAlias?: ProcurementAlias;
+  id: number;
+  sabyId: string;
+  sabyCode: string;
+  sabyName: string;
+  rawName: string;
+  supplierArticle: string;
+  quantity: number;
+  supplierCategory: string;
+  packageCount?: number;
+  unitsPerPackage?: number;
+  invoiceRawName: string;
+  invoiceSupplierArticle: string;
+  reconciliationStatus: string;
+  invoiceComponents?: Array<{
+    rawName: string;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+    sourcePage?: number;
+    sourceLine?: number;
+  }>;
+  invoiceExcluded: boolean;
+  invoiceExclusionReason: string;
+  unitPrice: number;
+  expectedUnitPrice?: number;
+  orderedQuantity: number;
+  invoicedQuantity?: number;
+  loadUnit: string;
+  potDiameterCm?: number;
+  heightCm?: number;
+  matchStatus: string;
+  purchaseUnitRub?: number;
+  trolleyDeliveryUnitRub?: number;
+  ryazanDeliveryUnitRub?: number;
+  unitCostRub?: number;
+  currentUnitCostRub?: number;
+  currentUnitCostKind: string;
+  currentUnitCostEffectiveAt?: string;
+  channelPrices?: Record<string, number>;
+  additionalPurchaseUnitRub?: number;
+  retailOverrideRub?: number;
+  channelCosts?: Record<string, ProcurementChannelCosts>;
+  channelQuotes?: Record<string, ProcurementChannelQuote>;
+  dimensionWarning?: string;
+  catalogueLabel?: string;
+  dimensionsReviewed?: boolean;
+  currentRetailRub: number;
+  proposedRetailRub?: number;
+  proposedMarketplaceRub?: number;
+  proposedMarketplaceStrikeRub?: number;
+  priceChangeNeeded: boolean;
+  customerRequest: boolean;
+  comparisonMismatch: boolean;
+  comparisonAccepted: boolean;
+  comparisonNote: string;
+};
+
+export type ProcurementValidation = {
+  pendingCatalog?: number;
+  pendingAssortments?: number;
+  pendingHandoffs?: number;
+  canPrepareReceipt?: boolean;
+  canCalculate: boolean;
+  canPrepareActions: boolean;
+  blockers: string[] | null;
+  arithmeticMismatch: number;
+  comparisonMismatch: number;
+  missingDimensions: number;
+  missingLoadUnits: number;
+  invalidLines: number;
+  unmatched: number;
+  trolleyCount: number;
+  expectedTrolleyRub: number;
+  allocatedTrolleyRub: number;
+  expectedRyazanRub: number;
+  allocatedRyazanRub: number;
+};
+
+export type ProcurementOrderDetail = {
+  unifiedPreview?: ProcurementUnifiedPreview;
+  order: ProcurementOrder;
+  costs: {
+    additionalCostsRub?: number;
+    supplierChargesRub?: number;
+    returnableDepositRub?: number;
+    exchangeRate: number;
+    currentDefaultExchangeRate: number;
+    trolleyCostCurrency: number;
+    trolleyCostRub: number;
+    deliveryToMoscowRub: number;
+    deliveryToRyazanRub: number;
+  };
+  validation: ProcurementValidation;
+  lines: ProcurementOrderLine[];
+  batches: ProcurementActionBatch[];
+};
 
 export type ProcurementData = {
-  summary: { openOrders: number; unresolvedAliases: number; availabilityChecks: number; openRequests: number };
+  summary: {
+    openOrders: number;
+    unresolvedAliases: number;
+    availabilityChecks: number;
+    openRequests: number;
+  };
   integrations: { wb: boolean; ozon: boolean; saby: boolean };
-  settings: ProcurementSettings; suppliers: ProcurementSupplier[]; orders: ProcurementOrder[];
-  documents: ProcurementDocument[]; review: ProcurementAlias[]; requests: ProcurementRequest[];
-  availability: ProcurementAvailability[]; recommendations: ProcurementRecommendation[]; salesSync: SalesSyncStatus[];
+  settings: ProcurementSettings;
+  suppliers: ProcurementSupplier[];
+  orders: ProcurementOrder[];
+  documents: ProcurementDocument[];
+  review: ProcurementAlias[];
+  requests: ProcurementRequest[];
+  availability: ProcurementAvailability[];
+  recommendations: ProcurementRecommendation[];
+  salesSync: SalesSyncStatus[];
   integrationHealth: IntegrationHealth[];
   integrationSync: IntegrationSyncStatus[];
 };
 
-export type AdminCollection = { id: number; slug: string; title: string; note: string; active: boolean; products: number[] };
+export type AdminCollection = {
+  id: number;
+  slug: string;
+  title: string;
+  note: string;
+  active: boolean;
+  products: number[];
+};
 
 export type SettingDefinition = { key: string; title: string; note: string; kind: string };
 
-export type ImportEntry = { code: string; status: string; name: string; price: number; stock: number; productId?: number; slug: string };
+export type ImportEntry = {
+  code: string;
+  status: string;
+  name: string;
+  price: number;
+  stock: number;
+  productId?: number;
+  slug: string;
+};

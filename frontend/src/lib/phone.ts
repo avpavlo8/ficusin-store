@@ -14,10 +14,7 @@ export function normalizeRussianPhone(value: string) {
     return null;
   }
 
-  if (
-    !/^[3-9]\d{9}$/.test(nationalNumber) ||
-    /^(\d)\1{9}$/.test(nationalNumber)
-  ) {
+  if (!/^[3-9]\d{9}$/.test(nationalNumber) || /^(\d)\1{9}$/.test(nationalNumber)) {
     return null;
   }
 
@@ -29,9 +26,7 @@ export function formatRussianPhoneInput(value: string) {
   if (!digits) return "";
 
   const nationalNumber = (
-    digits.startsWith("7") || digits.startsWith("8")
-      ? digits.slice(1)
-      : digits
+    digits.startsWith("7") || digits.startsWith("8") ? digits.slice(1) : digits
   ).slice(0, 10);
 
   let formatted = "+7";

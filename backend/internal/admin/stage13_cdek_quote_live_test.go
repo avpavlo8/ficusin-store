@@ -55,9 +55,9 @@ func TestStage13ShipmentOfferUsesServerCDEKQuoteForExactBoxes(t *testing.T) {
 	quoter := &stage13ShipmentQuoter{}
 	repository := NewPostgresRepository(pool).WithShipmentQuotes(quoter)
 	input := ShipmentOfferInput{
-		Items: []ShipmentOfferLineInput{{OrderItemID: itemID, Quantity: 1}},
-		Boxes: []ShipmentBoxInput{{LengthCM: 55, WidthCM: 25, HeightCM: 30, WeightGrams: 1800, Contents: []ShipmentBoxContent{{OrderItemID: itemID, Quantity: 1}}}},
-		DeliveryFee: 1,
+		Items:          []ShipmentOfferLineInput{{OrderItemID: itemID, Quantity: 1}},
+		Boxes:          []ShipmentBoxInput{{LengthCM: 55, WidthCM: 25, HeightCM: 30, WeightGrams: 1800, Contents: []ShipmentBoxContent{{OrderItemID: itemID, Quantity: 1}}}},
+		DeliveryFee:    1,
 		CDEKTariffCode: func() *int { value := 136; return &value }(),
 	}
 	preview, err := repository.QuoteShipmentOffer(ctx, Actor{CustomerID: customerID, Role: RoleManager}, orderID, input)

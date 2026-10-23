@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"strings"
 	"time"
 
@@ -31,9 +31,9 @@ type Balance struct {
 type orderMoneyState struct {
 	id            int64
 	number        string
-	total         float64
-	paid          float64
-	refunded      float64
+	total         int64
+	paid          int64
+	refunded      int64
 	feePending    bool
 	hasPreorder   bool
 	deliveryPayee string
@@ -43,13 +43,13 @@ type orderMoneyState struct {
 	phone         string
 }
 
-func cents(value float64) int64           { return int64(math.Round(value * 100)) }
-func rublesFromCents(value int64) float64 { return float64(value) / 100 }
+func cents(value float64) int64           { return money.Kopecks(value) }
+func rublesFromCents(value int64) float64 { return money.Rubles(value) }
 
 func balanceFromState(state orderMoneyState) Balance {
-	total := cents(state.total)
-	paid := cents(state.paid)
-	refunded := cents(state.refunded)
+	total := state.total
+	paid := state.paid
+	refunded := state.refunded
 	net := paid - refunded
 	if net < 0 {
 		net = 0
@@ -92,11 +92,11 @@ func balanceFromState(state orderMoneyState) Balance {
 func (service *Service) moneyStateByOrderID(ctx context.Context, orderID int64) (orderMoneyState, error) {
 	var state orderMoneyState
 	err := service.pool.QueryRow(ctx, `
-		SELECT o.id, o.order_number, (CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END)::DOUBLE PRECISION,
-			COALESCE((SELECT SUM(p.amount) FROM payments p
-				WHERE p.order_id=o.id AND p.status='paid'),0)::DOUBLE PRECISION,
-			COALESCE((SELECT SUM(r.amount) FROM payment_refunds r
-				WHERE r.order_id=o.id AND r.status='succeeded'),0)::DOUBLE PRECISION,
+		SELECT o.id, o.order_number, ROUND((CASE WHEN o.delivery_payee='carrier' THEN o.subtotal ELSE o.total END)*100)::BIGINT,
+			ROUND(COALESCE((SELECT SUM(p.amount) FROM payments p
+				WHERE p.order_id=o.id AND p.status='paid'),0)*100)::BIGINT,
+			ROUND(COALESCE((SELECT SUM(r.amount) FROM payment_refunds r
+				WHERE r.order_id=o.id AND r.status='succeeded'),0)*100)::BIGINT,
 			o.delivery_fee_pending=1, o.has_preorder=1, o.delivery_payee, o.payment_method, o.status,
 			COALESCE(o.email,''), COALESCE(o.phone,'')
 		FROM orders o WHERE o.id=$1
@@ -562,7 +562,7 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		_, _ = service.pool.Exec(ctx, `UPDATE payments SET updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentRowID)
 		return nil
 	}
-	paid := payment.Paid && payment.Status == "succeeded" && cents(payment.Amount) >= cents(expected)
+	paid := payment.Paid && payment.Status == "succeeded" && cents(payment.Amount) == cents(expected)
 	status := payment.Status
 	var paidAt any
 	if paid {

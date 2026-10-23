@@ -4,18 +4,39 @@ import { Dialog, api } from "./adminShared";
 import { ProductMediaManager } from "./ProductMediaManager";
 import type { Product } from "./adminTypes";
 
-function ProductMediaDialog({ owner, product, onClose, onChanged }: {
-  owner: boolean; product: Product; onClose: () => void; onChanged: () => void;
+function ProductMediaDialog({
+  owner,
+  product,
+  onClose,
+  onChanged,
+}: {
+  owner: boolean;
+  product: Product;
+  onClose: () => void;
+  onChanged: () => void;
 }) {
   const [error, setError] = useState("");
-  return <Dialog title={`Фотографии · ${product.name}`} onClose={onClose}>
-    {error && <p className="admin-error">{error}</p>}
-    <ProductMediaManager canDelete={owner} productId={product.id} onError={setError} onChanged={onChanged} />
-  </Dialog>;
+  return (
+    <Dialog title={`Фотографии · ${product.name}`} onClose={onClose}>
+      {error && <p className="admin-error">{error}</p>}
+      <ProductMediaManager
+        canDelete={owner}
+        productId={product.id}
+        onError={setError}
+        onChanged={onChanged}
+      />
+    </Dialog>
+  );
 }
 
-export function PdpAdminTools({ slug, adminRole, onChanged }: {
-  slug: string; adminRole?: string; onChanged: () => void;
+export function PdpAdminTools({
+  slug,
+  adminRole,
+  onChanged,
+}: {
+  slug: string;
+  adminRole?: string;
+  onChanged: () => void;
 }) {
   const allowed = adminRole === "owner" || adminRole === "administrator" || adminRole === "manager";
   const [product, setProduct] = useState<Product | null>(null);
@@ -25,34 +46,55 @@ export function PdpAdminTools({ slug, adminRole, onChanged }: {
 
   const open = async (next: "edit" | "media") => {
     if (!allowed) return;
-    setLoading(true); setError("");
+    setLoading(true);
+    setError("");
     try {
       const data = await api<{ products: Product[] }>("/api/v1/admin/products");
       const found = data.products.find((item) => (item.productCode || item.slug) === slug);
       if (!found) throw new Error("Карточка не найдена в редакторе");
-      setProduct(found); setMode(next);
-    } catch (reason) { setError((reason as Error).message); }
-    finally { setLoading(false); }
+      setProduct(found);
+      setMode(next);
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!allowed) return null;
-  return <>
-    <div className="pdp-admin-toolbar" aria-label="Управление товаром">
-      <span>Режим администратора</span>
-      <button type="button" disabled={loading} onClick={() => void open("edit")}>Редактировать карточку</button>
-      <button type="button" disabled={loading} onClick={() => void open("media")}>Фотографии</button>
-      {error && <small>{error}</small>}
-    </div>
-    {product && mode === "edit" && <ProductDialog owner={adminRole === "owner"}
-      product={product}
-      onClose={() => setMode("")}
-      onError={setError}
-      onSaved={(saved) => { setProduct(saved); setMode(""); onChanged(); }}
-    />}
-    {product && mode === "media" && <ProductMediaDialog owner={adminRole === "owner"}
-      product={product}
-      onClose={() => setMode("")}
-      onChanged={onChanged}
-    />}
-  </>;
+  return (
+    <>
+      <div className="pdp-admin-toolbar" aria-label="Управление товаром">
+        <span>Режим администратора</span>
+        <button type="button" disabled={loading} onClick={() => void open("edit")}>
+          Редактировать карточку
+        </button>
+        <button type="button" disabled={loading} onClick={() => void open("media")}>
+          Фотографии
+        </button>
+        {error && <small>{error}</small>}
+      </div>
+      {product && mode === "edit" && (
+        <ProductDialog
+          owner={adminRole === "owner"}
+          product={product}
+          onClose={() => setMode("")}
+          onError={setError}
+          onSaved={(saved) => {
+            setProduct(saved);
+            setMode("");
+            onChanged();
+          }}
+        />
+      )}
+      {product && mode === "media" && (
+        <ProductMediaDialog
+          owner={adminRole === "owner"}
+          product={product}
+          onClose={() => setMode("")}
+          onChanged={onChanged}
+        />
+      )}
+    </>
+  );
 }

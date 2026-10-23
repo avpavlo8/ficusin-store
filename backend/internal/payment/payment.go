@@ -346,7 +346,7 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 	paid := payment.Paid && payment.Status == "succeeded"
 	// An amount that does not match what we asked for is never treated as
 	// payment for this order, whatever the provider says about it.
-	if paid && payment.Amount+0.01 < expected {
+	if paid && cents(payment.Amount) != cents(expected) {
 		service.logger.Error(
 			"payment amount below order total",
 			"payment_id", providerPaymentID, "paid", payment.Amount, "expected", expected,

@@ -43,7 +43,10 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
   const isRegistration = flow === "register";
   usePageTitle(isRegistration ? "Регистрация" : "Вход");
   const requestedReturn = new URLSearchParams(window.location.search).get("returnTo");
-  const returnTo = requestedReturn?.startsWith("/") && !requestedReturn.startsWith("//") ? requestedReturn : "/account";
+  const returnTo =
+    requestedReturn?.startsWith("/") && !requestedReturn.startsWith("//")
+      ? requestedReturn
+      : "/account";
   const switchQuery = returnTo === "/account" ? "" : `?returnTo=${encodeURIComponent(returnTo)}`;
   const [step, setStep] = useState<"form" | "waiting">("form");
   const [phone, setPhone] = useState("");
@@ -93,7 +96,10 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
           }),
         });
         if (cancelled) return;
-        if (response.status === 202) { setError(""); return; }
+        if (response.status === 202) {
+          setError("");
+          return;
+        }
         const data = (await response.json()) as { error?: string };
         if (cancelled) return;
         if (!response.ok) {
@@ -103,7 +109,10 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
         }
         if (!cancelled) completeLogin();
       } catch {
-        if (!cancelled) setError("Не удалось проверить звонок. Проверим ещё раз автоматически. Можно проверить введённый телефон через «Изменить данные».");
+        if (!cancelled)
+          setError(
+            "Не удалось проверить звонок. Проверим ещё раз автоматически. Можно проверить введённый телефон через «Изменить данные».",
+          );
       } finally {
         inFlight = false;
       }
@@ -178,7 +187,10 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
         consent: form.get("consent") === "on",
       };
       setRegistration(registrationDraft);
-      if (accountType === "wholesale" && (!registrationDraft.companyName || !registrationDraft.inn)) {
+      if (
+        accountType === "wholesale" &&
+        (!registrationDraft.companyName || !registrationDraft.inn)
+      ) {
         setError("Выберите организацию из справочника");
         return;
       }
@@ -187,192 +199,301 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
   }
 
   return (
-    <main className={`auth-page customer-auth customer-auth-centered ${isRegistration ? "customer-auth-register" : ""}`}>
+    <main
+      className={`auth-page customer-auth customer-auth-centered ${isRegistration ? "customer-auth-register" : ""}`}
+    >
       <StoreHeader />
       <div className="auth-centered-stage">
-      <section className={`auth-shell auth-shell-compact ${isRegistration ? "is-register" : "is-login"}`}>
-        <div className="auth-intro">
-          <div className="auth-intro-copy">
-          <h1>
-            {step === "waiting"
-              ? "Подтвердите номер звонком"
-              : isRegistration
-                ? "Регистрация"
-                : "Вход"}
-          </h1>
-          {(step === "waiting" || isRegistration) && <p>
-            {step === "waiting"
-              ? <>Позвоните с номера <span className="auth-confirm-phone">{formatRussianPhoneInput(phone)}</span> на <span className="auth-confirm-phone">{callPhonePretty}</span>. Звонок бесплатный — сервис автоматически его сбросит.</>
-              : "Заполните профиль один раз. При следующих заказах данные подставятся автоматически."}
-          </p>}</div>
-        </div>
+        <section
+          className={`auth-shell auth-shell-compact ${isRegistration ? "is-register" : "is-login"}`}
+        >
+          <div className="auth-intro">
+            <div className="auth-intro-copy">
+              <h1>
+                {step === "waiting"
+                  ? "Подтвердите номер звонком"
+                  : isRegistration
+                    ? "Регистрация"
+                    : "Вход"}
+              </h1>
+              {(step === "waiting" || isRegistration) && (
+                <p>
+                  {step === "waiting" ? (
+                    <>
+                      Позвоните с номера{" "}
+                      <span className="auth-confirm-phone">{formatRussianPhoneInput(phone)}</span>{" "}
+                      на <span className="auth-confirm-phone">{callPhonePretty}</span>. Звонок
+                      бесплатный — сервис автоматически его сбросит.
+                    </>
+                  ) : (
+                    "Заполните профиль один раз. При следующих заказах данные подставятся автоматически."
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
 
-        {step === "form" && (
-          <form className="auth-form" onSubmit={submit} onChange={event => {
-            if (!isRegistration) return;
-            const values = new FormData(event.currentTarget);
-            setRegistration(current => {
-              const next = { ...current, accountType, consent: values.get("consent") === "on" };
-              for (const key of ["fullName", "lastName", "patronymic", "email", "deliveryAddress"] as const) {
-                if (values.has(key)) next[key] = String(values.get(key) || "");
-              }
-              return next;
-            });
-          }}>
-            {isRegistration && (
-              <>
-                <div className="field-grid">
-                  <label>
-                    Фамилия
-                    <input defaultValue={registration.lastName} name="lastName" autoComplete="family-name" required maxLength={80} />
-                  </label>
-                  <label>
-                    Имя
-                    <input defaultValue={registration.fullName} name="fullName" autoComplete="given-name" required minLength={2} maxLength={80} />
-                  </label>
-                </div>
-                <label>
-                  Отчество
-                  <input defaultValue={registration.patronymic} name="patronymic" autoComplete="additional-name" maxLength={80} />
-                </label>
-              </>
-            )}
-            <label>
-              Телефон
-              <input
-                ref={phoneInputRef}
-                name="phone"
-                type="tel"
-                defaultValue={phone ? formatRussianPhoneInput(phone) : ""}
-                autoComplete="tel"
-                inputMode="tel"
-                required
-                maxLength={18}
-                placeholder="+7 900 000-00-00"
-                onInput={(event) => {
-                  event.currentTarget.setCustomValidity("");
-                  event.currentTarget.value = formatRussianPhoneInput(event.currentTarget.value);
-                }}
-              />
-            </label>
-            {isRegistration && (
-              <>
-                <label>
-                  Email
-                  <input defaultValue={registration.email} name="email" type="email" autoComplete="email" required maxLength={254} />
-                </label>
-                <label>
-                  Адрес доставки
-                  <input
-                    name="deliveryAddress"
-                    defaultValue={registration.deliveryAddress}
-                    autoComplete="street-address"
-                    placeholder="Город, улица, дом, квартира"
-                  />
-                </label>
-                <fieldset>
-                  <legend>Тип покупателя</legend>
-                  <div className="account-type-options">
-                    <label className={accountType === "retail" ? "selected" : ""}>
+          {step === "form" && (
+            <form
+              className="auth-form"
+              onSubmit={submit}
+              onChange={(event) => {
+                if (!isRegistration) return;
+                const values = new FormData(event.currentTarget);
+                setRegistration((current) => {
+                  const next = { ...current, accountType, consent: values.get("consent") === "on" };
+                  for (const key of [
+                    "fullName",
+                    "lastName",
+                    "patronymic",
+                    "email",
+                    "deliveryAddress",
+                  ] as const) {
+                    if (values.has(key)) next[key] = String(values.get(key) || "");
+                  }
+                  return next;
+                });
+              }}
+            >
+              {isRegistration && (
+                <>
+                  <div className="field-grid">
+                    <label>
+                      Фамилия
                       <input
-                        type="radio"
-                        name="accountType"
-                        checked={accountType === "retail"}
-                        onChange={() => setAccountType("retail")}
+                        defaultValue={registration.lastName}
+                        name="lastName"
+                        autoComplete="family-name"
+                        required
+                        maxLength={80}
                       />
-                      <span>
-                        <b>Розничный</b>
-                        <small>Заказ от 1 штуки и накопительная скидка</small>
-                      </span>
                     </label>
-                    <label className={accountType === "wholesale" ? "selected" : ""}>
+                    <label>
+                      Имя
                       <input
-                        type="radio"
-                        name="accountType"
-                        checked={accountType === "wholesale"}
-                        onChange={() => setAccountType("wholesale")}
+                        defaultValue={registration.fullName}
+                        name="fullName"
+                        autoComplete="given-name"
+                        required
+                        minLength={2}
+                        maxLength={80}
                       />
-                      <span>
-                        <b>Оптовый</b>
-                        <small>Заказ партиями и оплата по реквизитам</small>
-                      </span>
                     </label>
                   </div>
-                </fieldset>
-                {accountType === "wholesale" && (
-                  <div className="wholesale-fields">
-                    <OrganizationLookup initialName={registration.companyName}
-                      onClear={() => setRegistration(current => ({ ...current, companyName: "", inn: "", kpp: "", legalAddress: "" }))}
-                      onSelect={organization => setRegistration(current => ({ ...current, companyName: organization.name, inn: organization.inn, kpp: organization.kpp, legalAddress: organization.legalAddress }))} />
-                    {registration.companyName && <div className="organization-details">
-                    <input type="hidden" value={registration.companyName} name="companyName" />
-                    <div className="field-grid">
-                      <label>
-                        ИНН
-                        <input value={registration.inn} name="inn" readOnly />
+                  <label>
+                    Отчество
+                    <input
+                      defaultValue={registration.patronymic}
+                      name="patronymic"
+                      autoComplete="additional-name"
+                      maxLength={80}
+                    />
+                  </label>
+                </>
+              )}
+              <label>
+                Телефон
+                <input
+                  ref={phoneInputRef}
+                  name="phone"
+                  type="tel"
+                  defaultValue={phone ? formatRussianPhoneInput(phone) : ""}
+                  autoComplete="tel"
+                  inputMode="tel"
+                  required
+                  maxLength={18}
+                  placeholder="+7 900 000-00-00"
+                  onInput={(event) => {
+                    event.currentTarget.setCustomValidity("");
+                    event.currentTarget.value = formatRussianPhoneInput(event.currentTarget.value);
+                  }}
+                />
+              </label>
+              {isRegistration && (
+                <>
+                  <label>
+                    Email
+                    <input
+                      defaultValue={registration.email}
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      maxLength={254}
+                    />
+                  </label>
+                  <label>
+                    Адрес доставки
+                    <input
+                      name="deliveryAddress"
+                      defaultValue={registration.deliveryAddress}
+                      autoComplete="street-address"
+                      placeholder="Город, улица, дом, квартира"
+                    />
+                  </label>
+                  <fieldset>
+                    <legend>Тип покупателя</legend>
+                    <div className="account-type-options">
+                      <label className={accountType === "retail" ? "selected" : ""}>
+                        <input
+                          type="radio"
+                          name="accountType"
+                          checked={accountType === "retail"}
+                          onChange={() => setAccountType("retail")}
+                        />
+                        <span>
+                          <b>Розничный</b>
+                          <small>Заказ от 1 штуки и накопительная скидка</small>
+                        </span>
                       </label>
-                      <label>
-                        КПП
-                        <input value={registration.kpp} name="kpp" readOnly placeholder="Из справочника" />
+                      <label className={accountType === "wholesale" ? "selected" : ""}>
+                        <input
+                          type="radio"
+                          name="accountType"
+                          checked={accountType === "wholesale"}
+                          onChange={() => setAccountType("wholesale")}
+                        />
+                        <span>
+                          <b>Оптовый</b>
+                          <small>Заказ партиями и оплата по реквизитам</small>
+                        </span>
                       </label>
                     </div>
-                    <label>
-                      Юридический адрес
-                      <input value={registration.legalAddress} name="legalAddress" readOnly placeholder="Заполнится из справочника" />
-                    </label>
-                    </div>}
-                  </div>
-                )}
-                <label className="consent-check">
-                  <input type="checkbox" name="consent" required defaultChecked={registration.consent} />
-                  <span>
-                    Даю <a href="/personal-data-consent" target="_blank" rel="noreferrer">согласие</a> на обработку данных, включая сообщения, фотографии, видео и файлы в чате, по{" "}
-                    <a href="/privacy" target="_blank" rel="noreferrer">политике конфиденциальности</a>.
-                  </span>
-                </label>
-              </>
-            )}
-            {error && <p className="auth-error" role="alert">{error}</p>}
-            <button className="primary-button full" disabled={submitting}>
-              {submitting
-                ? "Запускаем подтверждение…"
-                : isRegistration
-                  ? "Зарегистрироваться"
-                  : "Войти"}
-            </button>
-            <p className="auth-switch">
-              {isRegistration ? (
-                <>Уже зарегистрированы? <a href={`/login${switchQuery}`}>Войти</a></>
-              ) : (
-                <>Нет аккаунта? <a href={`/register${switchQuery}`}>Зарегистрироваться</a></>
+                  </fieldset>
+                  {accountType === "wholesale" && (
+                    <div className="wholesale-fields">
+                      <OrganizationLookup
+                        initialName={registration.companyName}
+                        onClear={() =>
+                          setRegistration((current) => ({
+                            ...current,
+                            companyName: "",
+                            inn: "",
+                            kpp: "",
+                            legalAddress: "",
+                          }))
+                        }
+                        onSelect={(organization) =>
+                          setRegistration((current) => ({
+                            ...current,
+                            companyName: organization.name,
+                            inn: organization.inn,
+                            kpp: organization.kpp,
+                            legalAddress: organization.legalAddress,
+                          }))
+                        }
+                      />
+                      {registration.companyName && (
+                        <div className="organization-details">
+                          <input
+                            type="hidden"
+                            value={registration.companyName}
+                            name="companyName"
+                          />
+                          <div className="field-grid">
+                            <label>
+                              ИНН
+                              <input value={registration.inn} name="inn" readOnly />
+                            </label>
+                            <label>
+                              КПП
+                              <input
+                                value={registration.kpp}
+                                name="kpp"
+                                readOnly
+                                placeholder="Из справочника"
+                              />
+                            </label>
+                          </div>
+                          <label>
+                            Юридический адрес
+                            <input
+                              value={registration.legalAddress}
+                              name="legalAddress"
+                              readOnly
+                              placeholder="Заполнится из справочника"
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <label className="consent-check">
+                    <input
+                      type="checkbox"
+                      name="consent"
+                      required
+                      defaultChecked={registration.consent}
+                    />
+                    <span>
+                      Даю{" "}
+                      <a href="/personal-data-consent" target="_blank" rel="noreferrer">
+                        согласие
+                      </a>{" "}
+                      на обработку данных, включая сообщения, фотографии, видео и файлы в чате, по{" "}
+                      <a href="/privacy" target="_blank" rel="noreferrer">
+                        политике конфиденциальности
+                      </a>
+                      .
+                    </span>
+                  </label>
+                </>
               )}
-            </p>
-          </form>
-        )}
-
-        {step === "waiting" && (
-          <div className="auth-form">
-            <p className="auth-call-number" aria-live="polite">
-              <a href={`tel:${callPhonePretty.replace(/[^+0-9]/g, "")}`}>{callPhonePretty}</a>
-              <small>Ожидаем звонок и автоматически завершим {isRegistration ? "регистрацию" : "вход"}…</small>
-            </p>
-            {error && <p className="auth-error" role="alert">{error}</p>}
-            <p className="auth-switch">
-              <button
-                type="button"
-                className="text-link"
-                disabled={submitting}
-                onClick={() => {
-                  setStep("form");
-                  setError("");
-                }}
-              >
-                Изменить данные
+              {error && (
+                <p className="auth-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <button className="primary-button full" disabled={submitting}>
+                {submitting
+                  ? "Запускаем подтверждение…"
+                  : isRegistration
+                    ? "Зарегистрироваться"
+                    : "Войти"}
               </button>
-            </p>
-          </div>
-        )}
-      </section>
+              <p className="auth-switch">
+                {isRegistration ? (
+                  <>
+                    Уже зарегистрированы? <a href={`/login${switchQuery}`}>Войти</a>
+                  </>
+                ) : (
+                  <>
+                    Нет аккаунта? <a href={`/register${switchQuery}`}>Зарегистрироваться</a>
+                  </>
+                )}
+              </p>
+            </form>
+          )}
+
+          {step === "waiting" && (
+            <div className="auth-form">
+              <p className="auth-call-number" aria-live="polite">
+                <a href={`tel:${callPhonePretty.replace(/[^+0-9]/g, "")}`}>{callPhonePretty}</a>
+                <small>
+                  Ожидаем звонок и автоматически завершим {isRegistration ? "регистрацию" : "вход"}…
+                </small>
+              </p>
+              {error && (
+                <p className="auth-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <p className="auth-switch">
+                <button
+                  type="button"
+                  className="text-link"
+                  disabled={submitting}
+                  onClick={() => {
+                    setStep("form");
+                    setError("");
+                  }}
+                >
+                  Изменить данные
+                </button>
+              </p>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );

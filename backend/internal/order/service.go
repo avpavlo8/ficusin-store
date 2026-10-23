@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"log/slog"
 	"strings"
 
@@ -122,7 +123,7 @@ type purchasableItem struct {
 	HeightCM      *int
 	PotDiameterCM *int
 	Name          string
-	Price         float64
+	PriceMinor    int64
 	Quantity      int
 	Parcel        integration.Parcel
 	// Preorder means the shelf could not cover this line. The order still
@@ -209,8 +210,8 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 	quotedBox, quotedMeasured := shippingBox(items)
 
-	subtotal := 0.0
-	deliveryFee := 0.0
+	var subtotalMinor int64
+	var deliveryMinor int64
 	regularDelivery := input.Delivery == "pickup"
 	deliveryAddress := input.Customer.Address
 	var cityCode, tariffCode *int
@@ -249,7 +250,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 					break
 				}
 			}
-			deliveryFee = float64(quote.Price)
+			deliveryMinor = int64(quote.Price) * 100
 			tariffCode = &quote.TariffCode
 		}
 
@@ -303,12 +304,16 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if input.Delivery == "cdek" && (currentBox != quotedBox || currentMeasured != quotedMeasured) {
 		// Changed packing invalidates the quote, not the customer's order.
 		feePending = true
-		deliveryFee = 0
+		deliveryMinor = 0
 		tariffCode = nil
 	}
-	subtotal = 0
+	subtotalMinor = 0
 	for _, item := range items {
-		subtotal += item.Price * float64(item.Quantity)
+		lineMinor := item.PriceMinor * int64(item.Quantity)
+		if subtotalMinor > money.MaxMinor-lineMinor {
+			return Created{}, invalid("Сумма заказа слишком велика")
+		}
+		subtotalMinor += lineMinor
 	}
 
 	// Availability is a checkout snapshot only. No order reserves stock; availability
@@ -341,7 +346,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}
 	// The shop collects the delivery charge together with the plants. If the
 	// quote is pending, payment stays unavailable until a manager sets it.
-	total := subtotal + deliveryFee
+	subtotal, deliveryFee := money.Rubles(subtotalMinor), money.Rubles(deliveryMinor)
+	if deliveryMinor < 0 || subtotalMinor > money.MaxMinor-deliveryMinor {
+		return Created{}, invalid("Проверьте сумму доставки")
+	}
+	total := money.Rubles(subtotalMinor + deliveryMinor)
 	var customerID any
 	if input.CustomerID != nil {
 		customerID = *input.CustomerID
@@ -392,7 +401,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 				jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)),
 				$9, $10, $11, $12)
 		`, orderID, item.ProductID, item.VariantID, item.ID, item.Name, item.VariantLabel,
-			item.HeightCM, item.PotDiameterCM, item.Price, item.Quantity,
+			item.HeightCM, item.PotDiameterCM, money.Rubles(item.PriceMinor), item.Quantity,
 			boolToInt(item.Preorder), item.Reserved); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
@@ -526,7 +535,7 @@ func letterLines(items []purchasableItem) []mail.OrderLine {
 	lines := make([]mail.OrderLine, 0, len(items))
 	for _, item := range items {
 		lines = append(lines, mail.OrderLine{
-			Name: item.Name, Price: item.Price, Quantity: item.Quantity,
+			Name: item.Name, Price: money.Rubles(item.PriceMinor), Quantity: item.Quantity,
 		})
 	}
 	return lines
@@ -563,7 +572,10 @@ func loadCheckoutItems(ctx context.Context, reader checkoutItemReader, requested
 			return nil, fmt.Errorf("load order product: %w", err)
 		}
 		item.Quantity = max(1, min(20, requested.Quantity))
-		item.Price = float64(discountedMinor(priceMinor, discountBPS)) / 100
+		if priceMinor < 0 || priceMinor > money.MaxMinor/int64(item.Quantity) {
+			return nil, invalid("Проверьте цену товара")
+		}
+		item.PriceMinor = discountedMinor(priceMinor, discountBPS)
 		items = append(items, item)
 	}
 	if len(items) == 0 {

@@ -6,8 +6,17 @@ export function readFavorites(): Set<string> {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem("ficusin-favorites") || "[]");
     // Older clients stored numeric IDs; the catalogue exposes strings.
-    return new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === "string" || typeof id === "number").map(String).filter(Boolean) : []);
-  } catch { return new Set(); }
+    return new Set(
+      Array.isArray(stored)
+        ? stored
+            .filter((id) => typeof id === "string" || typeof id === "number")
+            .map(String)
+            .filter(Boolean)
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 export function useFavorites() {
@@ -21,11 +30,14 @@ export function useFavorites() {
       window.removeEventListener(FAVORITES_EVENT, sync);
     };
   }, []);
-  const setFavorites = useCallback((change: Set<string> | ((current: Set<string>) => Set<string>)) => {
-    const next = typeof change === "function" ? change(readFavorites()) : change;
-    localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
-    window.dispatchEvent(new Event(FAVORITES_EVENT));
-  }, []);
+  const setFavorites = useCallback(
+    (change: Set<string> | ((current: Set<string>) => Set<string>)) => {
+      const next = typeof change === "function" ? change(readFavorites()) : change;
+      localStorage.setItem("ficusin-favorites", JSON.stringify([...next]));
+      window.dispatchEvent(new Event(FAVORITES_EVENT));
+    },
+    [],
+  );
   return [favorites, setFavorites] as const;
 }
 
@@ -38,10 +50,17 @@ export function useAvailableFavoriteCount(favorites: Set<string>) {
     if (!hasFavorites) return;
     let active = true;
     sharedAPIJSON<{ products?: Array<{ id: string }> }>("/api/v1/catalog")
-      .then(data => { if (active && Array.isArray(data.products)) setAvailable(new Set(data.products.map(product => String(product.id)))); })
-      .catch(() => { /* A failed read is not evidence that saved products vanished. */ });
-    return () => { active = false; };
+      .then((data) => {
+        if (active && Array.isArray(data.products))
+          setAvailable(new Set(data.products.map((product) => String(product.id))));
+      })
+      .catch(() => {
+        /* A failed read is not evidence that saved products vanished. */
+      });
+    return () => {
+      active = false;
+    };
   }, [hasFavorites]);
   if (!hasFavorites) return 0;
-  return available ? [...favorites].filter(id => available.has(id)).length : undefined;
+  return available ? [...favorites].filter((id) => available.has(id)).length : undefined;
 }

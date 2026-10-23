@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -94,7 +94,8 @@ func (client *YooKassaClient) CreatePayment(
 	if !client.Configured() {
 		return Payment{}, errors.New("оплата не настроена: YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY")
 	}
-	if request.Amount <= 0 {
+	amountMinor, amountErr := money.Exact(request.Amount)
+	if amountErr != nil || amountMinor <= 0 {
 		return Payment{}, errors.New("сумма к оплате должна быть больше нуля")
 	}
 	body := map[string]any{
@@ -110,6 +111,17 @@ func (client *YooKassaClient) CreatePayment(
 		},
 	}
 	if client.sendReceipt {
+		var receiptMinor int64
+		for _, item := range request.Items {
+			price, err := money.Exact(item.Price)
+			if err != nil || price < 0 || item.Quantity <= 0 || price > money.MaxMinor/int64(item.Quantity) || receiptMinor > money.MaxMinor-price*int64(item.Quantity) {
+				return Payment{}, errors.New("некорректная сумма позиции чека")
+			}
+			receiptMinor += price * int64(item.Quantity)
+		}
+		if len(request.Items) == 0 || receiptMinor != amountMinor {
+			return Payment{}, errors.New("сумма чека не совпадает с платежом")
+		}
 		body["receipt"] = client.receipt(request)
 	}
 	if len(request.Metadata) > 0 {
@@ -126,7 +138,7 @@ func (client *YooKassaClient) CreatePayment(
 	); err != nil {
 		return Payment{}, err
 	}
-	return response.toPayment(), nil
+	return response.toPayment()
 }
 
 // FetchPayment asks YooKassa what really happened. Notifications arrive
@@ -144,7 +156,7 @@ func (client *YooKassaClient) FetchPayment(ctx context.Context, id string) (Paym
 	if err := client.send(ctx, http.MethodGet, "/payments/"+id, "", nil, &response); err != nil {
 		return Payment{}, err
 	}
-	return response.toPayment(), nil
+	return response.toPayment()
 }
 
 // CapturePayment confirms a customer's hold after the shop has checked the
@@ -262,30 +274,34 @@ type yooKassaPayment struct {
 	Description string            `json:"description"`
 	Metadata    map[string]string `json:"metadata"`
 	Amount      struct {
-		Value string `json:"value"`
+		Value    string `json:"value"`
+		Currency string `json:"currency"`
 	} `json:"amount"`
 	Confirmation struct {
 		ConfirmationURL string `json:"confirmation_url"`
 	} `json:"confirmation"`
 }
 
-func (payment yooKassaPayment) toPayment() Payment {
-	amount, _ := strconv.ParseFloat(payment.Amount.Value, 64)
+func (payment yooKassaPayment) toPayment() (Payment, error) {
+	amount, err := money.Parse(payment.Amount.Value)
+	if err != nil || amount <= 0 || payment.Amount.Currency != "RUB" {
+		return Payment{}, fmt.Errorf("%w: некорректная сумма платежа", ErrPaymentOutcomeUnknown)
+	}
 	return Payment{
 		ID:              payment.ID,
 		Status:          payment.Status,
 		Paid:            payment.Paid,
-		Amount:          amount,
+		Amount:          money.Rubles(amount),
 		ConfirmationURL: payment.Confirmation.ConfirmationURL,
 		Description:     payment.Description,
 		Metadata:        payment.Metadata,
-	}
+	}, nil
 }
 
 // rubles formats an amount the way YooKassa insists on seeing it: two
 // decimal places, a dot, no spaces.
 func rubles(amount float64) string {
-	return strconv.FormatFloat(amount, 'f', 2, 64)
+	return money.Format(money.Kopecks(amount))
 }
 
 // RefundRequest is persisted before the request leaves the shop.
@@ -304,14 +320,22 @@ type Refund struct {
 
 func (client *YooKassaClient) RefundUsesReceipt() bool { return client.sendReceipt }
 func (client *YooKassaClient) PrepareRefund(paymentID string, amount float64, key string, original PaymentRequest) (RefundRequest, error) {
+	amountMinor, err := money.Exact(amount)
+	if err != nil || amountMinor <= 0 {
+		return RefundRequest{}, errors.New("некорректная сумма возврата")
+	}
 	req := RefundRequest{PaymentID: paymentID, Amount: amount, IdempotenceKey: key}
 	if client.sendReceipt {
 		var total int64
 		for _, item := range original.Items {
-			total += int64(math.Round(item.Price*100)) * int64(item.Quantity)
+			price, err := money.Exact(item.Price)
+			if err != nil || price < 0 || item.Quantity <= 0 || price > money.MaxMinor/int64(item.Quantity) || total > money.MaxMinor-price*int64(item.Quantity) {
+				return req, errors.New("некорректные позиции исходного платежа")
+			}
+			total += price * int64(item.Quantity)
 		}
 		// A partial refund needs its real item composition, never a fabricated line.
-		if len(original.Items) == 0 || total != int64(math.Round(amount*100)) {
+		if len(original.Items) == 0 || total != amountMinor {
 			return req, errors.New("для частичного возврата нужен состав чека; выполните возврат через кассу с проверкой позиций")
 		}
 		req.Receipt = client.receipt(original)
@@ -319,7 +343,8 @@ func (client *YooKassaClient) PrepareRefund(paymentID string, amount float64, ke
 	return req, nil
 }
 func (client *YooKassaClient) CreateRefund(ctx context.Context, request RefundRequest) (Refund, error) {
-	if !client.Configured() || request.PaymentID == "" || request.Amount <= 0 || request.IdempotenceKey == "" {
+	amountMinor, err := money.Exact(request.Amount)
+	if !client.Configured() || request.PaymentID == "" || err != nil || amountMinor <= 0 || request.IdempotenceKey == "" {
 		return Refund{}, errors.New("некорректный запрос возврата")
 	}
 	body := map[string]any{"payment_id": request.PaymentID, "amount": map[string]string{"value": rubles(request.Amount), "currency": "RUB"}}
@@ -347,11 +372,11 @@ func (client *YooKassaClient) refundResponse(ctx context.Context, method, path, 
 	if err := client.send(ctx, method, path, key, body, &response); err != nil {
 		return Refund{}, err
 	}
-	amount, err := strconv.ParseFloat(response.Amount.Value, 64)
-	if err != nil || response.ID == "" || response.PaymentID == "" || response.Amount.Currency != "RUB" || (response.Status != "pending" && response.Status != "succeeded" && response.Status != "canceled") {
+	amount, err := money.Parse(response.Amount.Value)
+	if err != nil || amount <= 0 || response.ID == "" || response.PaymentID == "" || response.Amount.Currency != "RUB" || (response.Status != "pending" && response.Status != "succeeded" && response.Status != "canceled") {
 		return Refund{}, fmt.Errorf("%w: некорректный ответ возврата", ErrPaymentOutcomeUnknown)
 	}
-	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: amount}, nil
+	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: money.Rubles(amount)}, nil
 }
 
 // Kept for compatibility with callers outside the order workflow. Pending is

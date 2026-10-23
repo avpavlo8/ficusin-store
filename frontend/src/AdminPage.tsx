@@ -4,7 +4,9 @@ import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
 const ProcurementReadOnly = lazy(() => import("./ProcurementReadOnly"));
-const Procurement = lazy(() => import("./AdminProcurement").then(module => ({default:module.Procurement})));
+const Procurement = lazy(() =>
+  import("./AdminProcurement").then((module) => ({ default: module.Procurement })),
+);
 import { Dashboard } from "./AdminDashboard";
 import { WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
 import "./styles/admin-workspace.css";
@@ -12,37 +14,80 @@ import { Settings } from "./AdminSettings";
 import { api, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
 import { Analytics } from "./AdminAnalytics";
-const AdminMarketplaces = lazy(() => import("./AdminMarketplaces").then((module) => ({ default: module.AdminMarketplaces })));
+const AdminMarketplaces = lazy(() =>
+  import("./AdminMarketplaces").then((module) => ({ default: module.AdminMarketplaces })),
+);
 
-const AdminReturns = lazy(() => import("./AdminReturns").then((module) => ({ default: module.AdminReturns })));
-const AdminFinance = lazy(() => import("./AdminFinance").then((module) => ({ default: module.AdminFinance })));
-const AdminAvito = lazy(() => import("./AdminAvito").then((module) => ({ default: module.AdminAvito })));
+const AdminReturns = lazy(() =>
+  import("./AdminReturns").then((module) => ({ default: module.AdminReturns })),
+);
+const AdminFinance = lazy(() =>
+  import("./AdminFinance").then((module) => ({ default: module.AdminFinance })),
+);
+const AdminAvito = lazy(() =>
+  import("./AdminAvito").then((module) => ({ default: module.AdminAvito })),
+);
 const AdminChat = lazy(() => import("./AdminChat"));
-const Customers = lazy(() => import("./AdminSales").then((module) => ({ default: module.Customers })));
+const Customers = lazy(() =>
+  import("./AdminSales").then((module) => ({ default: module.Customers })),
+);
 const Orders = lazy(() => import("./AdminSales").then((module) => ({ default: module.Orders })));
 
 export default function AdminPage() {
   const [data, setData] = useState<AdminData | null>(null);
   const [section, setSection] = useState<Section>(currentAdminSection);
   const [error, setError] = useState("");
-  const beforeLeave = useRef<(()=>Promise<boolean>)|null>(null);
+  const beforeLeave = useRef<(() => Promise<boolean>) | null>(null);
   const currentUrl = useRef(window.location.pathname + window.location.search);
-  const registerBeforeLeave = useCallback((flush:()=>Promise<boolean>)=>{beforeLeave.current=flush;currentUrl.current=window.location.pathname+window.location.search;return()=>{if(beforeLeave.current===flush)beforeLeave.current=null;};},[]);
+  const registerBeforeLeave = useCallback((flush: () => Promise<boolean>) => {
+    beforeLeave.current = flush;
+    currentUrl.current = window.location.pathname + window.location.search;
+    return () => {
+      if (beforeLeave.current === flush) beforeLeave.current = null;
+    };
+  }, []);
   // Set when the operator arrives from a dashboard shortcut, so the target
   // section can open on the right row instead of a blank list.
-  const [focusOrder, setFocusOrder] = useState(() => {const id=new URLSearchParams(window.location.search).get("customerOrderId");return id && /^\d+$/.test(id) ? `id:${id}` : "";});
+  const [focusOrder, setFocusOrder] = useState(() => {
+    const id = new URLSearchParams(window.location.search).get("customerOrderId");
+    return id && /^\d+$/.test(id) ? `id:${id}` : "";
+  });
   const [wholesaleOnly, setWholesaleOnly] = useState(false);
 
   useEffect(() => {
     api<AdminData>("/api/v1/admin/dashboard")
       .then(setData)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Не удалось загрузить панель"));
+      .catch((caught) =>
+        setError(caught instanceof Error ? caught.message : "Не удалось загрузить панель"),
+      );
   }, []);
 
-  useEffect(() => { const read = async () => { const next=currentAdminSection(); if(next!==section && ["returns","products","collections","orders"].includes(section) && beforeLeave.current && !await beforeLeave.current()) {window.history.pushState(null,"",currentUrl.current);return;}currentUrl.current=window.location.pathname+window.location.search;setSection(next); }; window.addEventListener("popstate", read); return () => window.removeEventListener("popstate", read); }, [section]);
+  useEffect(() => {
+    const read = async () => {
+      const next = currentAdminSection();
+      if (
+        next !== section &&
+        ["returns", "products", "collections", "orders"].includes(section) &&
+        beforeLeave.current &&
+        !(await beforeLeave.current())
+      ) {
+        window.history.pushState(null, "", currentUrl.current);
+        return;
+      }
+      currentUrl.current = window.location.pathname + window.location.search;
+      setSection(next);
+    };
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, [section]);
 
   const go = async (next: Section, options?: { orderNumber?: string; wholesaleOnly?: boolean }) => {
-    if(["returns","products","collections","orders"].includes(section) && beforeLeave.current && !await beforeLeave.current()) return;
+    if (
+      ["returns", "products", "collections", "orders"].includes(section) &&
+      beforeLeave.current &&
+      !(await beforeLeave.current())
+    )
+      return;
     setFocusOrder(options?.orderNumber || "");
     setWholesaleOnly(Boolean(options?.wholesaleOnly));
     setError("");
@@ -54,38 +99,179 @@ export default function AdminPage() {
 
   const can = useCallback((permission: string) => !!data?.permissions.includes(permission), [data]);
 
-  if (!data) return <main className={`account-page admin-page ${section==="returns"?"returns-admin":""}`} onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
-    <a className="workspace-loading-brand" href="/" aria-label="Фикусин — в магазин"><BrandLogo decorative /></a>
-    <section className="account-shell"><div className="account-content"><WorkspaceState kind={error ? "error" : "loading"} title={error || "Загружаем панель…"} /></div></section>
-  </main>;
+  if (!data)
+    return (
+      <main
+        className={`account-page admin-page ${section === "returns" ? "returns-admin" : ""}`}
+        onFocusCapture={selectZeroNumberInput}
+        onClickCapture={selectZeroNumberInput}
+      >
+        <a className="workspace-loading-brand" href="/" aria-label="Фикусин — в магазин">
+          <BrandLogo decorative />
+        </a>
+        <section className="account-shell">
+          <div className="account-content">
+            <WorkspaceState
+              kind={error ? "error" : "loading"}
+              title={error || "Загружаем панель…"}
+            />
+          </div>
+        </section>
+      </main>
+    );
 
   const allowed = canOpenSection(data, section);
   return (
-    <main className={`account-page admin-page ${section==="returns"?"returns-admin":""}`} onFocusCapture={selectZeroNumberInput} onClickCapture={selectZeroNumberInput}>
+    <main
+      className={`account-page admin-page ${section === "returns" ? "returns-admin" : ""}`}
+      onFocusCapture={selectZeroNumberInput}
+      onClickCapture={selectZeroNumberInput}
+    >
       <section className="account-shell">
-        <WorkspaceSidebar compact={section==="returns"} data={data} section={section} onNavigate={go} />
+        <WorkspaceSidebar
+          compact={section === "returns"}
+          data={data}
+          section={section}
+          onNavigate={go}
+        />
         <div className="account-content">
           <WorkspaceToolbar data={data} section={section} onNavigate={go} />
           <div className="workspace-body" id="workspace-content" tabIndex={-1}>
-          {!allowed && <WorkspaceState kind="restricted" title="Доступ к разделу ограничен" detail="Этот раздел доступен владельцу." action={<button onClick={() => go("orders")}>К заказам</button>} />}
-          {allowed && <>
-          {["products", "categories", "collections"].includes(section) && <nav className="workspace-catalog-nav" aria-label="Каталог">{([{id:"products",label:"Товары"},{id:"categories",label:"Категории"},{id:"collections",label:"Подборки"}] as const).map(item => <a key={item.id} href={`/admin?section=${item.id}`} aria-current={section === item.id ? "page" : undefined} onClick={event => { event.preventDefault(); go(item.id); }}>{item.label}</a>)}</nav>}
-          {error && <div className="admin-message error" role="alert"><span><strong>Не удалось выполнить действие</strong><br />{error}</span><button aria-label="Закрыть сообщение об ошибке" onClick={() => setError("")}>×</button></div>}
-          {section === "returns" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем возвраты…" />}><AdminReturns canFinance={data.role==="owner"} can={can} onError={setError} registerBeforeLeave={registerBeforeLeave} /></Suspense>}
-          {section === "finance" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем финансы…" />}><AdminFinance onError={setError} /></Suspense>}
-          {section === "marketplaces" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем маркетплейсы…" />}><AdminMarketplaces onError={setError} /></Suspense>}
-          {section === "avito" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}><AdminAvito onError={setError} /></Suspense>}
-          {section === "chat" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем чат…" />}><AdminChat /></Suspense>}
-          {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
-          {section === "analytics" && <Analytics onError={setError} />}
-		  {section === "customers" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}><Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} /></Suspense>}
-		  {section === "orders" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}><Orders canRefund={can("payments.refund")} focusOrder={focusOrder} onError={setError} registerBeforeLeave={registerBeforeLeave} /></Suspense>}
-          {section === "procurement" && <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…"/>}>{can("procurement.edit") ? <Procurement onError={setError} canIntegrations={can("integrations.edit")} canDelete={can("catalog.delete")} /> : <ProcurementReadOnly onError={setError} />}</Suspense>}
-          {section === "products" && <Products can={can} onError={setError} registerBeforeLeave={registerBeforeLeave} />}
-          {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
-          {section === "collections" && <Collections owner={data.role === "owner"} onError={setError} registerBeforeLeave={registerBeforeLeave} />}
-          {section === "categories" && <Categories canEdit={can("products.edit")} owner={data.role === "owner"} onError={setError} />}
-          </>}
+            {!allowed && (
+              <WorkspaceState
+                kind="restricted"
+                title="Доступ к разделу ограничен"
+                detail="Этот раздел доступен владельцу."
+                action={<button onClick={() => go("orders")}>К заказам</button>}
+              />
+            )}
+            {allowed && (
+              <>
+                {["products", "categories", "collections"].includes(section) && (
+                  <nav className="workspace-catalog-nav" aria-label="Каталог">
+                    {(
+                      [
+                        { id: "products", label: "Товары" },
+                        { id: "categories", label: "Категории" },
+                        { id: "collections", label: "Подборки" },
+                      ] as const
+                    ).map((item) => (
+                      <a
+                        key={item.id}
+                        href={`/admin?section=${item.id}`}
+                        aria-current={section === item.id ? "page" : undefined}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          go(item.id);
+                        }}
+                      >
+                        {item.label}
+                      </a>
+                    ))}
+                  </nav>
+                )}
+                {error && (
+                  <div className="admin-message error" role="alert">
+                    <span>
+                      <strong>Не удалось выполнить действие</strong>
+                      <br />
+                      {error}
+                    </span>
+                    <button aria-label="Закрыть сообщение об ошибке" onClick={() => setError("")}>
+                      ×
+                    </button>
+                  </div>
+                )}
+                {section === "returns" && (
+                  <Suspense
+                    fallback={<WorkspaceState kind="loading" title="Загружаем возвраты…" />}
+                  >
+                    <AdminReturns
+                      canFinance={data.role === "owner"}
+                      can={can}
+                      onError={setError}
+                      registerBeforeLeave={registerBeforeLeave}
+                    />
+                  </Suspense>
+                )}
+                {section === "finance" && (
+                  <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем финансы…" />}>
+                    <AdminFinance onError={setError} />
+                  </Suspense>
+                )}
+                {section === "marketplaces" && (
+                  <Suspense
+                    fallback={<WorkspaceState kind="loading" title="Загружаем маркетплейсы…" />}
+                  >
+                    <AdminMarketplaces onError={setError} />
+                  </Suspense>
+                )}
+                {section === "avito" && (
+                  <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}>
+                    <AdminAvito onError={setError} />
+                  </Suspense>
+                )}
+                {section === "chat" && (
+                  <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем чат…" />}>
+                    <AdminChat />
+                  </Suspense>
+                )}
+                {section === "dashboard" && <Dashboard data={data} onNavigate={go} />}
+                {section === "analytics" && <Analytics onError={setError} />}
+                {section === "customers" && (
+                  <Suspense
+                    fallback={<WorkspaceState kind="loading" title="Загружаем клиентов…" />}
+                  >
+                    <Customers can={can} wholesaleOnly={wholesaleOnly} onError={setError} />
+                  </Suspense>
+                )}
+                {section === "orders" && (
+                  <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем заказы…" />}>
+                    <Orders
+                      canRefund={can("payments.refund")}
+                      focusOrder={focusOrder}
+                      onError={setError}
+                      registerBeforeLeave={registerBeforeLeave}
+                    />
+                  </Suspense>
+                )}
+                {section === "procurement" && (
+                  <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем закупки…" />}>
+                    {can("procurement.edit") ? (
+                      <Procurement
+                        onError={setError}
+                        canIntegrations={can("integrations.edit")}
+                        canDelete={can("catalog.delete")}
+                      />
+                    ) : (
+                      <ProcurementReadOnly onError={setError} />
+                    )}
+                  </Suspense>
+                )}
+                {section === "products" && (
+                  <Products
+                    can={can}
+                    onError={setError}
+                    registerBeforeLeave={registerBeforeLeave}
+                  />
+                )}
+                {section === "settings" && data.role === "owner" && <Settings onError={setError} />}
+                {section === "collections" && (
+                  <Collections
+                    owner={data.role === "owner"}
+                    onError={setError}
+                    registerBeforeLeave={registerBeforeLeave}
+                  />
+                )}
+                {section === "categories" && (
+                  <Categories
+                    canEdit={can("products.edit")}
+                    owner={data.role === "owner"}
+                    onError={setError}
+                  />
+                )}
+              </>
+            )}
           </div>
         </div>
       </section>

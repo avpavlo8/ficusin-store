@@ -1,12 +1,21 @@
 # API inventory and contract policy
 
 Owner: Storefront & Commerce
-Last reviewed: 2026-09-07
+Last reviewed: 2026-10-23
 
-`docs/openapi.yaml` is the typed contract for buyer-facing and highest-risk
-operations. It must never describe an endpoint that the router no longer
+`docs/openapi.yaml` covers all 241 registered HTTP operations, including optional
+chat and Avito integrations. Buyer-facing commerce, authentication, payments and
+refunds have detailed request/response contracts; some backoffice response payloads
+remain intentionally unspecified rather than being guessed. It must never describe an endpoint that the router no longer
 serves. New or changed request/response shapes must update OpenAPI and contract
 tests in the same pull request.
+
+`backend/cmd/api-contract` reads Go AST (without starting the application), expands
+loop registrations and fails on unresolved route expressions.
+`node scripts/check-openapi.mjs` validates OpenAPI 3.1, internal references,
+operation IDs, path parameters, explicit authentication and bidirectional route
+coverage, plus critical request fields. Run `npm ci` in `frontend` first; use Node
+24 and Go 1.26. CI runs the same offline check.
 
 The router remains the exhaustive source for route registration. Its current
 surface is grouped below so an endpoint cannot become ownerless merely because

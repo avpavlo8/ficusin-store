@@ -11,9 +11,9 @@ import (
 
 type catalogToolRepositoryStub struct {
 	*adminRepositoryStub
-	products []admin.Product
-	updates  []admin.ProductUpdate
-	media    []admin.ProductMedia
+	products   []admin.Product
+	updates    []admin.ProductUpdate
+	media      []admin.ProductMedia
 	categories []admin.Category
 }
 
@@ -25,7 +25,9 @@ func (stub *catalogToolRepositoryStub) ListProducts(context.Context) ([]admin.Pr
 	return stub.products, nil
 }
 
-func (stub *catalogToolRepositoryStub) ListCategories(context.Context) ([]admin.Category, error) { return stub.categories, nil }
+func (stub *catalogToolRepositoryStub) ListCategories(context.Context) ([]admin.Category, error) {
+	return stub.categories, nil
+}
 
 func (stub *catalogToolRepositoryStub) UpdateProduct(_ context.Context, _ admin.Actor, _ int64, update admin.ProductUpdate) (admin.Product, error) {
 	stub.updates = append(stub.updates, update)
@@ -118,11 +120,19 @@ func TestPlantToolsUseCategoryRootInsteadOfLegacySection(t *testing.T) {
 	leafID := int64(2)
 	repository.categories = []admin.Category{{ID: rootID, Slug: "plants"}, {ID: leafID, ParentID: &rootID, Slug: "ficus"}}
 	plant, err := adminProductIsPlant(context.Background(), repository, admin.Product{CategoryID: &leafID, CatalogSection: "pots"})
-	if err != nil { t.Fatal(err) }
-	if !plant { t.Fatal("plant category must win over stale catalog_section") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plant {
+		t.Fatal("plant category must win over stale catalog_section")
+	}
 	potID := int64(3)
 	repository.categories = append(repository.categories, admin.Category{ID: potID, Slug: "pots"})
 	plant, err = adminProductIsPlant(context.Background(), repository, admin.Product{CategoryID: &potID, CatalogSection: "plants"})
-	if err != nil { t.Fatal(err) }
-	if plant { t.Fatal("non-plant category must not receive plant AI") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plant {
+		t.Fatal("non-plant category must not receive plant AI")
+	}
 }

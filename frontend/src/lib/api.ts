@@ -1,5 +1,8 @@
 export class APIError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
     this.name = "APIError";
   }
@@ -12,7 +15,7 @@ export async function apiJSON<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let message = "Сервис временно недоступен";
     try {
-      const body = await response.json() as { error?: string };
+      const body = (await response.json()) as { error?: string };
       if (body.error) message = body.error;
     } catch {
       // A proxy can return HTML; never expose it to the customer.

@@ -8,24 +8,24 @@ import type { NomenclatureCandidate, SalesLinkResult, UnlinkedSale } from "./adm
 // Сайт и СБИС кладут в продажи сам код товара, разбирать там нечего.
 const linkableChannels = ["ozon", "wb", "saby"];
 
-const externalCodeHint = (channel: string) => channel === "wb"
-  ? "В Wildberries показываем артикул продавца. Числовой nmID хранится только как технический ключ API и не используется как название товара."
-  : channel === "ozon"
-	? "Внешний код Ozon — это offer_id карточки. Поиск также предлагает живые товары СБИС по похожим словам из названия."
-	: "Здесь показаны продажи СБИС, код которых не удалось связать с живой номенклатурой.";
+const externalCodeHint = (channel: string) =>
+  channel === "wb"
+    ? "В Wildberries показываем артикул продавца. Числовой nmID хранится только как технический ключ API и не используется как название товара."
+    : channel === "ozon"
+      ? "Внешний код Ozon — это offer_id карточки. Поиск также предлагает живые товары СБИС по похожим словам из названия."
+      : "Здесь показаны продажи СБИС, код которых не удалось связать с живой номенклатурой.";
 
 // saleTitle — чем подписан код в списке.
 //
 // У Ozon артикул продавца и есть внешний код, повторять его второй раз
 // незачем; у Wildberries это разные вещи, и артикул читается лучше nmID.
-const saleTitle = (item: UnlinkedSale) => [
-  item.article && item.article !== item.externalId ? item.article : "",
-  item.name,
-].filter(Boolean).join(" · ");
+const saleTitle = (item: UnlinkedSale) =>
+  [item.article && item.article !== item.externalId ? item.article : "", item.name]
+    .filter(Boolean)
+    .join(" · ");
 
-const visibleMarketplaceArticle = (item: UnlinkedSale) => item.channel === "wb"
-  ? (item.article || "Артикул WB не загружен")
-  : item.externalId;
+const visibleMarketplaceArticle = (item: UnlinkedSale) =>
+  item.channel === "wb" ? item.article || "Артикул WB не загружен" : item.externalId;
 
 export function ProcurementUnlinkedSales({ onError }: { onError: (value: string) => void }) {
   const [channel, setChannel] = useState("ozon");
@@ -33,21 +33,32 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState<UnlinkedSale | null>(null);
   const [notice, setNotice] = useState("");
-	const [showIgnored, setShowIgnored] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
   const load = useCallback(() => {
     setLoading(true);
-    return api<{ items: UnlinkedSale[] }>(`/api/v1/admin/procurement/sales/unlinked?channel=${channel}&ignored=${showIgnored ? 1 : 0}`)
+    return api<{ items: UnlinkedSale[] }>(
+      `/api/v1/admin/procurement/sales/unlinked?channel=${channel}&ignored=${showIgnored ? 1 : 0}`,
+    )
       .then((result) => setItems(result.items || []))
       .catch((error) => onError((error as Error).message))
       .finally(() => setLoading(false));
   }, [channel, onError, showIgnored]);
-	const ignore = async (item: UnlinkedSale, ignored: boolean) => {
-		try {
-			await api("/api/v1/admin/procurement/sales/ignore", { method: "PUT", body: JSON.stringify({ channel: item.channel, externalId: item.externalId, ignored }) });
-			setNotice(ignored ? `«${saleTitle(item) || item.externalId}» больше не учитывается в закупках.` : "Товар возвращён в список сопоставления.");
-			void load();
-		} catch (error) { onError((error as Error).message); }
-	};
+  const ignore = async (item: UnlinkedSale, ignored: boolean) => {
+    try {
+      await api("/api/v1/admin/procurement/sales/ignore", {
+        method: "PUT",
+        body: JSON.stringify({ channel: item.channel, externalId: item.externalId, ignored }),
+      });
+      setNotice(
+        ignored
+          ? `«${saleTitle(item) || item.externalId}» больше не учитывается в закупках.`
+          : "Товар возвращён в список сопоставления.",
+      );
+      void load();
+    } catch (error) {
+      onError((error as Error).message);
+    }
+  };
   // Линтер запрещает setState прямо в теле эффекта, а переключение канала и
   // без того не должно бить в сервер на каждый щелчок.
   useEffect(() => {
@@ -56,34 +67,119 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
   }, [load]);
   const linked = (result: SalesLinkResult) => {
     setLinking(null);
-    setNotice(`«${result.sabyName}» связан с кодом ${result.externalId}. В расчёт вернулось строк продаж: ${result.linkedRows} (${result.linkedUnits} шт.).${result.takenFrom ? ` Код снят с товара ${result.takenFrom}.` : ""} Осталось разобрать кодов: ${result.remaining}.`);
+    setNotice(
+      `«${result.sabyName}» связан с кодом ${result.externalId}. В расчёт вернулось строк продаж: ${result.linkedRows} (${result.linkedUnits} шт.).${result.takenFrom ? ` Код снят с товара ${result.takenFrom}.` : ""} Осталось разобрать кодов: ${result.remaining}.`,
+    );
     void load();
   };
-  return <section className="admin-block procurement-block">
-    <div className="admin-block-heading"><div><p className="eyebrow">Продажи без товара</p><h2>Ручное сопоставление</h2></div><span className="admin-pill">{items.length} кодов</span></div>
-    <p className="admin-hint procurement-note">Выберите товар для продаж, которые ещё не учитываются в закупках.</p>
-    <details className="procurement-explanation"><summary>Как выбрать товар</summary><p>{externalCodeHint(channel)} Проверьте размер растения перед сопоставлением.</p></details>
-    <div className="admin-toolbar">
-      {linkableChannels.map((item) => <button key={item} className={item === channel ? "admin-primary" : "secondary-button"} onClick={() => { setChannel(item); setNotice(""); }}>{salesChannelLabel(item)}</button>)}
-		<button className="secondary-button" onClick={() => setShowIgnored((value) => !value)}>{showIgnored ? "Скрыть пропущенные" : "Показать пропущенные"}</button>
-      {loading && <span>Загружаем…</span>}
-    </div>
-    {notice && <p className="integration-check-result success" role="status">{notice}</p>}
-    {items.length ? <div className="admin-table-wrap"><table className="admin-table procurement-unlinked-sales"><thead><tr>
-      <th>Карточка канала</th><th>Штук</th><th>Сумма</th><th>Дней</th><th>Последняя продажа</th><th></th>
-    </tr></thead><tbody>{items.map((item) => <tr key={item.externalId}>
-      <td><strong>{visibleMarketplaceArticle(item)}</strong><small>{item.name || "Название с площадки не загружено"}{item.channel === "wb" ? ` · технический nmID ${item.externalId}` : ""}</small></td>
-      <td>{item.units}</td>
-      <td>{money.format(item.grossRub)}</td>
-      <td>{item.days}</td>
-      <td>{item.lastSale ? new Date(`${item.lastSale}T00:00:00`).toLocaleDateString("ru-RU") : "—"}</td>
-		<td><div className="table-actions">{!item.ignored && <button className="table-action" onClick={() => setLinking(item)}>Сопоставить</button>}<button className="table-action" onClick={() => void ignore(item, !item.ignored)}>{item.ignored ? "Учитывать" : "Не учитывать"}</button></div></td>
-    </tr>)}</tbody></table></div> : <div className="procurement-zero">
-      <strong>{loading ? "Загружаем…" : "Разбирать нечего"}</strong>
-      <span>Все продажи этого канала связаны с номенклатурой и участвуют в расчёте закупки.</span>
-    </div>}
-    {linking && <SalesLinkDialog sale={linking} onClose={() => setLinking(null)} onLinked={linked} onError={onError} />}
-  </section>;
+  return (
+    <section className="admin-block procurement-block">
+      <div className="admin-block-heading">
+        <div>
+          <p className="eyebrow">Продажи без товара</p>
+          <h2>Ручное сопоставление</h2>
+        </div>
+        <span className="admin-pill">{items.length} кодов</span>
+      </div>
+      <p className="admin-hint procurement-note">
+        Выберите товар для продаж, которые ещё не учитываются в закупках.
+      </p>
+      <details className="procurement-explanation">
+        <summary>Как выбрать товар</summary>
+        <p>{externalCodeHint(channel)} Проверьте размер растения перед сопоставлением.</p>
+      </details>
+      <div className="admin-toolbar">
+        {linkableChannels.map((item) => (
+          <button
+            key={item}
+            className={item === channel ? "admin-primary" : "secondary-button"}
+            onClick={() => {
+              setChannel(item);
+              setNotice("");
+            }}
+          >
+            {salesChannelLabel(item)}
+          </button>
+        ))}
+        <button className="secondary-button" onClick={() => setShowIgnored((value) => !value)}>
+          {showIgnored ? "Скрыть пропущенные" : "Показать пропущенные"}
+        </button>
+        {loading && <span>Загружаем…</span>}
+      </div>
+      {notice && (
+        <p className="integration-check-result success" role="status">
+          {notice}
+        </p>
+      )}
+      {items.length ? (
+        <div className="admin-table-wrap">
+          <table className="admin-table procurement-unlinked-sales">
+            <thead>
+              <tr>
+                <th>Карточка канала</th>
+                <th>Штук</th>
+                <th>Сумма</th>
+                <th>Дней</th>
+                <th>Последняя продажа</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.externalId}>
+                  <td>
+                    <strong>{visibleMarketplaceArticle(item)}</strong>
+                    <small>
+                      {item.name || "Название с площадки не загружено"}
+                      {item.channel === "wb" ? ` · технический nmID ${item.externalId}` : ""}
+                    </small>
+                  </td>
+                  <td>{item.units}</td>
+                  <td>{money.format(item.grossRub)}</td>
+                  <td>{item.days}</td>
+                  <td>
+                    {item.lastSale
+                      ? new Date(`${item.lastSale}T00:00:00`).toLocaleDateString("ru-RU")
+                      : "—"}
+                  </td>
+                  <td>
+                    <div className="table-actions">
+                      {!item.ignored && (
+                        <button className="table-action" onClick={() => setLinking(item)}>
+                          Сопоставить
+                        </button>
+                      )}
+                      <button
+                        className="table-action"
+                        onClick={() => void ignore(item, !item.ignored)}
+                      >
+                        {item.ignored ? "Учитывать" : "Не учитывать"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="procurement-zero">
+          <strong>{loading ? "Загружаем…" : "Разбирать нечего"}</strong>
+          <span>
+            Все продажи этого канала связаны с номенклатурой и участвуют в расчёте закупки.
+          </span>
+        </div>
+      )}
+      {linking && (
+        <SalesLinkDialog
+          sale={linking}
+          onClose={() => setLinking(null)}
+          onLinked={linked}
+          onError={onError}
+        />
+      )}
+    </section>
+  );
 }
 
 // candidateKeys — чем одна позиция справочника отличается от соседней.
@@ -101,8 +197,16 @@ const candidateKeys = (item: NomenclatureCandidate) => {
   return parts.join(" · ");
 };
 
-export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
-  sale: UnlinkedSale; onClose: () => void; onLinked: (result: SalesLinkResult) => void; onError: (value: string) => void;
+export function SalesLinkDialog({
+  sale,
+  onClose,
+  onLinked,
+  onError,
+}: {
+  sale: UnlinkedSale;
+  onClose: () => void;
+  onLinked: (result: SalesLinkResult) => void;
+  onError: (value: string) => void;
 }) {
   // Поиск начинается с того, что известно о карточке: у Ozon внешний код и
   // есть название растения, у Wildberries читается только подпись.
@@ -110,20 +214,28 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
   const [candidates, setCandidates] = useState<NomenclatureCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
-  const close = () => { if (!saving) onClose(); };
+  const close = () => {
+    if (!saving) onClose();
+  };
   const dialogRef = useProcurementDialog(close);
   const { error, errorRef, notify } = useProcurementError(onError);
   useEffect(() => {
-    if (query.trim().length < 2) { setCandidates([]); return; }
+    if (query.trim().length < 2) {
+      setCandidates([]);
+      return;
+    }
     const timer = window.setTimeout(() => {
       setSearching(true);
-      api<{ items: NomenclatureCandidate[] }>(`/api/v1/admin/procurement/sales/nomenclature?q=${encodeURIComponent(query.trim())}`)
+      api<{ items: NomenclatureCandidate[] }>(
+        `/api/v1/admin/procurement/sales/nomenclature?q=${encodeURIComponent(query.trim())}`,
+      )
         .then((result) => {
           // Одну и ту же запись поиск иногда отдаёт дважды. Выбирать между
           // такими строками нечего — за ними один saby_id, — а React ещё и
           // ругается на повторяющийся ключ.
           const unique = new Map<string, NomenclatureCandidate>();
-          for (const item of result.items || []) if (!unique.has(String(item.variantId))) unique.set(String(item.variantId), item);
+          for (const item of result.items || [])
+            if (!unique.has(String(item.variantId))) unique.set(String(item.variantId), item);
           setCandidates([...unique.values()]);
         })
         .catch(() => setCandidates([]))
@@ -136,25 +248,105 @@ export function SalesLinkDialog({ sale, onClose, onLinked, onError }: {
     try {
       const result = await api<{ link: SalesLinkResult }>("/api/v1/admin/procurement/sales/link", {
         method: "POST",
-        body: JSON.stringify({ channel: sale.channel, externalId: sale.externalId, variantId: candidate.variantId }),
+        body: JSON.stringify({
+          channel: sale.channel,
+          externalId: sale.externalId,
+          variantId: candidate.variantId,
+        }),
       });
       onLinked(result.link);
-    } catch (error) { notify((error as Error).message); }
-    finally { setSaving(false); }
+    } catch (error) {
+      notify((error as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
   // Вёрстка кандидатов взята у диалога сопоставления инвойса: своя таблица
   // не помещалась в ширину окна и обрезала кнопку выбора.
-  return <><button tabIndex={-1} className="admin-dialog-backdrop" aria-label="Закрыть" disabled={saving} onClick={close} />
-    <div ref={dialogRef} className="admin-dialog procurement-match-dialog" role="dialog" aria-modal="true" aria-labelledby="sales-link-title">
-      <header><div><p className="eyebrow">{salesChannelLabel(sale.channel)} · {sale.units} шт.</p><h2 id="sales-link-title">Сопоставить продажи</h2></div><button onClick={close} disabled={saving} aria-label="Закрыть">×</button></header>
-      {error && <div ref={errorRef} tabIndex={-1} className="procurement-dialog-error" role="alert">{error}</div>}
-      <div className="procurement-match-source"><strong>{visibleMarketplaceArticle(sale)}</strong><span>{sale.name}</span></div>
-      <p className="admin-hint procurement-note">Связь сохранится для следующих продаж этого артикула.</p>
-      <label className="procurement-match-search">Поиск по единому справочнику товаров<input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Название или код X…" /></label>
-      <div className="procurement-candidates">{searching ? <div className="procurement-zero"><span>Ищем в справочнике…</span></div> : candidates.length ? candidates.map((item) => <article key={item.variantId}>
-        <div><strong>{item.name}</strong><span>{candidateKeys(item)}</span><small>Остаток: {item.balance} · {money.format(item.price)}</small></div>
-        <button disabled={saving} onClick={() => void link(item)}>Связать</button>
-      </article>) : <div className="procurement-zero"><strong>Кандидаты не найдены</strong><span>Попробуйте часть названия без размера — код маркетплейса не обязан совпадать с написанием в СБИС.</span></div>}</div>
-      <div className="dialog-actions procurement-match-actions"><button onClick={close} disabled={saving}>Отмена</button></div>
-    </div></>;
+  return (
+    <>
+      <button
+        tabIndex={-1}
+        className="admin-dialog-backdrop"
+        aria-label="Закрыть"
+        disabled={saving}
+        onClick={close}
+      />
+      <div
+        ref={dialogRef}
+        className="admin-dialog procurement-match-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sales-link-title"
+      >
+        <header>
+          <div>
+            <p className="eyebrow">
+              {salesChannelLabel(sale.channel)} · {sale.units} шт.
+            </p>
+            <h2 id="sales-link-title">Сопоставить продажи</h2>
+          </div>
+          <button onClick={close} disabled={saving} aria-label="Закрыть">
+            ×
+          </button>
+        </header>
+        {error && (
+          <div ref={errorRef} tabIndex={-1} className="procurement-dialog-error" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="procurement-match-source">
+          <strong>{visibleMarketplaceArticle(sale)}</strong>
+          <span>{sale.name}</span>
+        </div>
+        <p className="admin-hint procurement-note">
+          Связь сохранится для следующих продаж этого артикула.
+        </p>
+        <label className="procurement-match-search">
+          Поиск по единому справочнику товаров
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            autoFocus
+            placeholder="Название или код X…"
+          />
+        </label>
+        <div className="procurement-candidates">
+          {searching ? (
+            <div className="procurement-zero">
+              <span>Ищем в справочнике…</span>
+            </div>
+          ) : candidates.length ? (
+            candidates.map((item) => (
+              <article key={item.variantId}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>{candidateKeys(item)}</span>
+                  <small>
+                    Остаток: {item.balance} · {money.format(item.price)}
+                  </small>
+                </div>
+                <button disabled={saving} onClick={() => void link(item)}>
+                  Связать
+                </button>
+              </article>
+            ))
+          ) : (
+            <div className="procurement-zero">
+              <strong>Кандидаты не найдены</strong>
+              <span>
+                Попробуйте часть названия без размера — код маркетплейса не обязан совпадать с
+                написанием в СБИС.
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="dialog-actions procurement-match-actions">
+          <button onClick={close} disabled={saving}>
+            Отмена
+          </button>
+        </div>
+      </div>
+    </>
+  );
 }

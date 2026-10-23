@@ -64,7 +64,7 @@ func (client *SabyClient) FetchSales(ctx context.Context, from, to time.Time) ([
 	previousPage := ""
 	for page := 0; page < 1000; page++ {
 		query := url.Values{
-			"pointId":     {strconv.FormatInt(client.pointID, 10)},
+			"pointId":      {strconv.FormatInt(client.pointID, 10)},
 			"fromDateTime": {from.Format("2006-01-02") + " 00:00:00"},
 			"toDateTime":   {to.Format("2006-01-02") + " 23:59:59"},
 			"page":         {strconv.Itoa(page)},

@@ -5,7 +5,16 @@ import { sharedAPIJSON } from "./lib/api";
 
 export type SearchProduct = Searchable & { image?: string; price?: number };
 
-export function CatalogSearch({ value, onChange, onSearch, inlineResults = false, className = "header-search", placeholder = "Поиск по каталогу", autoFocus = false, selection }: {
+export function CatalogSearch({
+  value,
+  onChange,
+  onSearch,
+  inlineResults = false,
+  className = "header-search",
+  placeholder = "Поиск по каталогу",
+  autoFocus = false,
+  selection,
+}: {
   value?: string;
   onChange?: (value: string) => void;
   onSearch?: (value: string) => void;
@@ -15,7 +24,11 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
   placeholder?: string;
   autoFocus?: boolean;
   /** Admin selection uses the complete variant catalogue, including unsold plants. */
-  selection?: { products: SearchProduct[]; onSelect: (product: SearchProduct) => void; label: string };
+  selection?: {
+    products: SearchProduct[];
+    onSelect: (product: SearchProduct) => void;
+    label: string;
+  };
 }) {
   const [ownValue, setOwnValue] = useState("");
   const [products, setProducts] = useState<SearchProduct[]>([]);
@@ -45,31 +58,41 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
 
   const matches = useMemo(() => {
     if (!selection) return suggestions(products, query).slice(0, 6);
-    const terms = query.toLocaleLowerCase("ru").replace(/ё/g, "е").trim().split(/\s+/).filter(Boolean);
-    return selection.products.filter(item => {
+    const terms = query
+      .toLocaleLowerCase("ru")
+      .replace(/ё/g, "е")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    return selection.products.filter((item) => {
       const text = `${item.name} ${item.latin}`.toLocaleLowerCase("ru").replace(/ё/g, "е");
-      return terms.every(term => text.includes(term));
+      return terms.every((term) => text.includes(term));
     });
   }, [products, query, selection]);
   const resultCount = useMemo(() => searchProducts(products, query).length, [products, query]);
   const optionCount = matches.length + (!selection && query.trim() ? 1 : 0);
-  const setQuery = (next: string) => onChange ? onChange(next) : setOwnValue(next);
+  const setQuery = (next: string) => (onChange ? onChange(next) : setOwnValue(next));
   const allResults = () => {
     const trimmed = query.trim();
     if (!trimmed && !onSearch) return;
     setOpen(false);
     root.current?.querySelector("input")?.blur();
     if (onSearch) onSearch(trimmed);
-    else if (inlineResults) { setOpen(false); document.getElementById("catalog")?.scrollIntoView(); }
-    else window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
+    else if (inlineResults) {
+      setOpen(false);
+      document.getElementById("catalog")?.scrollIntoView();
+    } else window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
   };
   const choose = (index: number) => {
     if (selection) {
       if (matches[index]) selection.onSelect(matches[index]);
-      setOpen(false); activeRef.current = -1; setActive(-1);
+      setOpen(false);
+      activeRef.current = -1;
+      setActive(-1);
       return;
     }
-    if (index < matches.length) window.location.assign(`/product/${encodeURIComponent(matches[index].id)}`);
+    if (index < matches.length)
+      window.location.assign(`/product/${encodeURIComponent(matches[index].id)}`);
     else allResults();
   };
   useEffect(() => {
@@ -83,55 +106,137 @@ export function CatalogSearch({ value, onChange, onSearch, inlineResults = false
   }, [loaded]);
   const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault(); setOpen(true);
+      event.preventDefault();
+      setOpen(true);
       if (!optionCount) return;
       const current = activeRef.current;
-      const next = event.key === "ArrowDown" ? (current + 1) % optionCount : (current <= 0 ? optionCount - 1 : current - 1);
+      const next =
+        event.key === "ArrowDown"
+          ? (current + 1) % optionCount
+          : current <= 0
+            ? optionCount - 1
+            : current - 1;
       activeRef.current = next;
       setActive(next);
     } else if (event.key === "Enter" && selection) {
-      event.preventDefault(); if (open) choose(activeRef.current >= 0 ? activeRef.current : 0);
+      event.preventDefault();
+      if (open) choose(activeRef.current >= 0 ? activeRef.current : 0);
     } else if (event.key === "Enter" && open && activeRef.current >= 0) {
       event.preventDefault();
       if (!loaded && !selection) pendingEnter.current = true;
       else choose(activeRef.current);
-    } else if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); activeRef.current = -1; setActive(-1); }
+    } else if (event.key === "Escape" && open) {
+      event.stopPropagation();
+      setOpen(false);
+      activeRef.current = -1;
+      setActive(-1);
+    }
   };
 
   useEffect(() => {
-    if (open && active >= 0) document.getElementById(`${listID}-${active}`)?.scrollIntoView({block:"nearest"});
-  }, [active,open,listID]);
+    if (open && active >= 0)
+      document.getElementById(`${listID}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active, open, listID]);
 
   const Field = selection ? "div" : "form";
 
-  return <div className={`${className} catalog-search`} ref={root}>
-    <Field onSubmit={(event: FormEvent) => {
-      event.preventDefault();
-      // Mobile Safari may submit the form without delivering the preceding
-      // Enter keydown. Preserve the highlighted keyboard option in that path.
-      if (!loaded) {
-        pendingEnter.current = true;
-      } else if (activeRef.current >= 0) {
-        choose(activeRef.current);
-      } else allResults();
-    }}>
-      {!selection && <span aria-hidden="true">⌕</span>}
-      <input aria-label={selection?.label || placeholder} autoFocus={autoFocus} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); activeRef.current = -1; setActive(-1); }}
-        onFocus={() => setOpen(true)} onKeyDown={keyDown} placeholder={placeholder} autoComplete="off"
-        role="combobox" aria-expanded={open && Boolean(selection || query.trim())} aria-controls={listID}
-        aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined} />
-      {query && <button type="button" className="catalog-search-clear" onClick={() => { setQuery(""); setOpen(false); activeRef.current = -1; setActive(-1); pendingEnter.current = false; if (!selection) onSearch?.(""); }} aria-label="Очистить поиск">×</button>}
-    </Field>
-    {open && (selection || query.trim()) && <div className="catalog-search-options" id={listID} role="listbox" aria-label={selection ? "Каталог растений" : undefined}>
-      {matches.map((item, index) => <button id={`${listID}-${index}`} role="option" aria-selected={active === index}
-        className={active === index ? "active" : ""} key={item.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(index)}>
-        <ProductImage src={item.image} alt="" /><span><b>{item.name}</b><small>{item.latin}{selection && item.price != null && ` · ${item.price.toLocaleString("ru-RU")} ₽`}</small></span>
-      </button>)}
-      {selection && !matches.length && <p className="catalog-search-empty">Совпадений нет. Попробуйте часть названия.</p>}
-      {!selection && <button id={`${listID}-${matches.length}`} role="option" aria-selected={active === matches.length}
-        className={`catalog-search-all ${active === matches.length ? "active" : ""}`} type="button" onClick={allResults}>
-        Все результаты <span>{resultCount}</span>
-      </button>}
-    </div>}
-  </div>;
+  return (
+    <div className={`${className} catalog-search`} ref={root}>
+      <Field
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          // Mobile Safari may submit the form without delivering the preceding
+          // Enter keydown. Preserve the highlighted keyboard option in that path.
+          if (!loaded) {
+            pendingEnter.current = true;
+          } else if (activeRef.current >= 0) {
+            choose(activeRef.current);
+          } else allResults();
+        }}
+      >
+        {!selection && <span aria-hidden="true">⌕</span>}
+        <input
+          aria-label={selection?.label || placeholder}
+          autoFocus={autoFocus}
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+            activeRef.current = -1;
+            setActive(-1);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={keyDown}
+          placeholder={placeholder}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={open && Boolean(selection || query.trim())}
+          aria-controls={listID}
+          aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined}
+        />
+        {query && (
+          <button
+            type="button"
+            className="catalog-search-clear"
+            onClick={() => {
+              setQuery("");
+              setOpen(false);
+              activeRef.current = -1;
+              setActive(-1);
+              pendingEnter.current = false;
+              if (!selection) onSearch?.("");
+            }}
+            aria-label="Очистить поиск"
+          >
+            ×
+          </button>
+        )}
+      </Field>
+      {open && (selection || query.trim()) && (
+        <div
+          className="catalog-search-options"
+          id={listID}
+          role="listbox"
+          aria-label={selection ? "Каталог растений" : undefined}
+        >
+          {matches.map((item, index) => (
+            <button
+              id={`${listID}-${index}`}
+              role="option"
+              aria-selected={active === index}
+              className={active === index ? "active" : ""}
+              key={item.id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choose(index)}
+            >
+              <ProductImage src={item.image} alt="" />
+              <span>
+                <b>{item.name}</b>
+                <small>
+                  {item.latin}
+                  {selection && item.price != null && ` · ${item.price.toLocaleString("ru-RU")} ₽`}
+                </small>
+              </span>
+            </button>
+          ))}
+          {selection && !matches.length && (
+            <p className="catalog-search-empty">Совпадений нет. Попробуйте часть названия.</p>
+          )}
+          {!selection && (
+            <button
+              id={`${listID}-${matches.length}`}
+              role="option"
+              aria-selected={active === matches.length}
+              className={`catalog-search-all ${active === matches.length ? "active" : ""}`}
+              type="button"
+              onClick={allResults}
+            >
+              Все результаты <span>{resultCount}</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

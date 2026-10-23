@@ -38,8 +38,8 @@
   padding: 22px;
   border: 1px solid #ddcfbd;
   border-radius: 18px;
-  background: rgba(255, 253, 248, .96);
-  box-shadow: 0 8px 24px rgba(70, 52, 34, .04);
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: 0 8px 24px rgba(70, 52, 34, 0.04);
 }
 .admin-page .admin-order-editor .admin-block-heading {
   margin-bottom: 16px;
@@ -138,7 +138,7 @@
   font-weight: 700;
 }
 .admin-page .admin-order-add-line .admin-action:disabled {
-  opacity: .45;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -192,7 +192,7 @@
   background: #294326;
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 8px 18px rgba(41, 67, 38, .14);
+  box-shadow: 0 8px 18px rgba(41, 67, 38, 0.14);
 }
 
 /* Payment is a distinct financial card. */

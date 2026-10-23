@@ -41,7 +41,7 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 	items := normalizeItems([]CatalogItem{{
 		ID: "42", NomNumber: "X1150532", ExternalID: "card-external",
 		HierarchicalID: "17460b69-327e-4ec4-aabb-f064710a135a",
-		Article: "ART-1", Barcode: "4600000000001",
+		Article:        "ART-1", Barcode: "4600000000001",
 		Name: "Аглаонема", Cost: 1490.0, Balance: 3.0,
 		SectionPath: []string{" Каталог ", "Комнатные растения", "комнатные РАСТЕНИЯ", ""}, ParentFolderID: "folder-plants",
 	}})
@@ -142,16 +142,22 @@ func TestValidateCatalogHealthAcceptsCompleteSnapshot(t *testing.T) {
 }
 
 func TestNormalizeCharacteristicsUsesConservativeAllowlist(t *testing.T) {
-	got:=normalizeCharacteristics([]any{
-		map[string]any{"name":"Высота","value":"42"},
-		map[string]any{"name":"Освещение","value":"diffused"},
-		map[string]any{"name":"Пароль от склада","value":"secret"},
+	got := normalizeCharacteristics([]any{
+		map[string]any{"name": "Высота", "value": "42"},
+		map[string]any{"name": "Освещение", "value": "diffused"},
+		map[string]any{"name": "Пароль от склада", "value": "secret"},
 	})
-	if got["height_cm"] != float64(42) || got["light_level"] != "diffused" { t.Fatalf("характеристики не сопоставлены: %#v",got) }
-	if _,ok:=got["парольотсклада"];ok{t.Fatal("неизвестная характеристика попала в модель товара")}
+	if got["height_cm"] != float64(42) || got["light_level"] != "diffused" {
+		t.Fatalf("характеристики не сопоставлены: %#v", got)
+	}
+	if _, ok := got["парольотсклада"]; ok {
+		t.Fatal("неизвестная характеристика попала в модель товара")
+	}
 }
 
 func TestNormalizeCharacteristicsIgnoresEmptySupplierValues(t *testing.T) {
-	got:=normalizeCharacteristics(map[string]any{"height_cm":"", "watering":nil})
-	if len(got)!=0{t.Fatalf("пустые значения нельзя импортировать: %#v",got)}
+	got := normalizeCharacteristics(map[string]any{"height_cm": "", "watering": nil})
+	if len(got) != 0 {
+		t.Fatalf("пустые значения нельзя импортировать: %#v", got)
+	}
 }

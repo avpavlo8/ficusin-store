@@ -10,13 +10,13 @@ import (
 // кириллица переводится в латиницу, а не выбрасывается.
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
-		"Фикус Бенджамина":      "fikus-bendzhamina",
-		"Аглаонема D12 в асс.":  "aglaonema-d12-v-ass",
-		"  Щучий хвост  ":       "schuchiy-hvost",
-		"Ficus Elastica":        "ficus-elastica",
-		"Кашпо 15 см — белое":   "kashpo-15-sm-beloe",
-		"???":                   "",
-		"Ель":                   "el",
+		"Фикус Бенджамина":     "fikus-bendzhamina",
+		"Аглаонема D12 в асс.": "aglaonema-d12-v-ass",
+		"  Щучий хвост  ":      "schuchiy-hvost",
+		"Ficus Elastica":       "ficus-elastica",
+		"Кашпо 15 см — белое":  "kashpo-15-sm-beloe",
+		"???":                  "",
+		"Ель":                  "el",
 	}
 	for name, want := range cases {
 		if got := slugify(name); got != want {
@@ -49,7 +49,9 @@ func TestNormalizeCodesEmpty(t *testing.T) {
 func TestCategoryAttributeContractKeepsStableValueAndRussianLabel(t *testing.T) {
 	attribute := CategoryAttribute{Code: "light_level", DataType: "enum", Options: []string{"diffused"}, OptionLabels: map[string]string{"diffused": "Рассеянный свет"}}
 	raw, err := json.Marshal(attribute)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	encoded := string(raw)
 	if !strings.Contains(encoded, `"options":["diffused"]`) || !strings.Contains(encoded, `"optionLabels":{"diffused":"Рассеянный свет"}`) {
 		t.Fatalf("attribute contract lost value or label: %s", encoded)

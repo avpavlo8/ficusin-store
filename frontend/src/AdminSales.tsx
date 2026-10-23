@@ -3,86 +3,381 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, PageHeading, api, money, roleLabel, roles, statusLabels } from "./adminShared";
 import type { Customer, Order, Role } from "./adminTypes";
 
-export function Customers({ can, wholesaleOnly, onError }: { can: (permission: string) => boolean; wholesaleOnly?: boolean; onError: (value: string) => void }) {
+export function Customers({
+  can,
+  wholesaleOnly,
+  onError,
+}: {
+  can: (permission: string) => boolean;
+  wholesaleOnly?: boolean;
+  onError: (value: string) => void;
+}) {
   const [items, setItems] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(Boolean(wholesaleOnly));
   const [editing, setEditing] = useState<Customer | null>(null);
-	const [total, setTotal] = useState(0);
-	const [hasMore, setHasMore] = useState(false);
-	const requestVersion = useRef(0);
-	const loadCustomers = async (offset = 0, append = false) => {
-		const version = ++requestVersion.current;
-		const params = new URLSearchParams({ limit: "100", offset: String(offset) });
-		if (query.trim()) params.set("q", query.trim());
-		if (pendingOnly) params.set("pendingWholesale", "1");
-		const data = await api<{ customers: Customer[]; total: number; hasMore: boolean }>(`/api/v1/admin/customers?${params}`);
-		if (version !== requestVersion.current) return;
-		setItems((current) => append ? [...current, ...data.customers] : data.customers);
-		setTotal(data.total);
-		setHasMore(data.hasMore);
-	};
-	useEffect(() => {
-		setLoading(true); setLoadError("");
-		const timer = window.setTimeout(() => {
-			loadCustomers().catch((error) => { setLoadError(error.message); onError(error.message); }).finally(() => setLoading(false));
-		}, 250);
-		return () => window.clearTimeout(timer);
-	// loadCustomers intentionally follows the current search controls.
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [onError, query, pendingOnly]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const requestVersion = useRef(0);
+  const loadCustomers = async (offset = 0, append = false) => {
+    const version = ++requestVersion.current;
+    const params = new URLSearchParams({ limit: "100", offset: String(offset) });
+    if (query.trim()) params.set("q", query.trim());
+    if (pendingOnly) params.set("pendingWholesale", "1");
+    const data = await api<{ customers: Customer[]; total: number; hasMore: boolean }>(
+      `/api/v1/admin/customers?${params}`,
+    );
+    if (version !== requestVersion.current) return;
+    setItems((current) => (append ? [...current, ...data.customers] : data.customers));
+    setTotal(data.total);
+    setHasMore(data.hasMore);
+  };
+  useEffect(() => {
+    setLoading(true);
+    setLoadError("");
+    const timer = window.setTimeout(() => {
+      loadCustomers()
+        .catch((error) => {
+          setLoadError(error.message);
+          onError(error.message);
+        })
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => window.clearTimeout(timer);
+    // loadCustomers intentionally follows the current search controls.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onError, query, pendingOnly]);
   const openCard = (customer: Customer) => setEditing(customer);
-  return <>
-    <PageHeading eyebrow="CRM" title="Клиенты" text="Профили, покупки, адреса, скидки и доступ сотрудников" />
-    <div className="admin-toolbar">
-      <input aria-label="Поиск клиентов" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по имени, телефону или email" />
-      <label className="admin-checkbox"><input type="checkbox" checked={pendingOnly} onChange={(event) => setPendingOnly(event.target.checked)} />Только оптовые заявки</label>
-	  <span>{total} клиентов</span>
-    </div>
-	{loading ? <WorkspaceState kind="loading" title="Загружаем клиентов…" /> : loadError ? <WorkspaceState kind="error" title={loadError} /> : !items.length ? <WorkspaceState kind="empty" title={query || pendingOnly ? "Клиенты не найдены" : "Клиентов пока нет"} /> : <><WorkspaceTable label="Клиенты"><thead><tr><th>Клиент</th><th>Контакты и адрес</th><th>Покупки</th><th>Тип</th><th>Доступ</th><th /></tr></thead><tbody>
-	  {items.map((customer) => <tr
-        key={customer.id}
-        className={`${!customer.active ? "muted" : ""} clickable`}
-        onClick={() => openCard(customer)}
-      >
-        <td><strong>{[customer.lastName, customer.fullName, customer.patronymic].filter(Boolean).join(" ")}</strong><small>с {new Date(customer.createdAt).toLocaleDateString("ru-RU")}</small></td>
-        <td><a href={`tel:${customer.phone}`} onClick={(event) => event.stopPropagation()}>{customer.phone}</a><small>{customer.email || "Email не указан"}</small><small>{customer.deliveryAddress || "Адрес не указан"}</small></td>
-        <td><strong>{money.format(customer.lifetimeSpend)}</strong><small>{customer.ordersCount} заказов · скидка {customer.retailDiscountBps / 100}%</small></td>
-        <td><span className="admin-pill">{customer.accountType === "wholesale" ? "Опт" : "Розница"}</span><small>{customer.wholesaleStatus}</small></td>
-        <td><strong>{roleLabel(customer.adminRole)}</strong><small>{customer.active ? "Активен" : "Заблокирован"}</small></td>
-        <td><button className="admin-action" onClick={() => setEditing(customer)}>{can("customers.edit") ? "Изменить" : "Открыть"}</button></td>
-	  </tr>)}</tbody></WorkspaceTable>{hasMore && <button type="button" className="admin-action" onClick={() => void loadCustomers(items.length, true).catch((error) => onError(error.message))}>Показать ещё</button>}</>}
-    {editing && <CustomerDialog readOnly={!can("customers.edit")} customer={editing} owner={can("roles.edit")} onClose={() => setEditing(null)} onSaved={(customer) => { setItems((current) => current.map((item) => item.id === customer.id ? customer : item)); setEditing(null); }} onError={onError} />}
-  </>;
+  return (
+    <>
+      <PageHeading
+        eyebrow="CRM"
+        title="Клиенты"
+        text="Профили, покупки, адреса, скидки и доступ сотрудников"
+      />
+      <div className="admin-toolbar">
+        <input
+          aria-label="Поиск клиентов"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск по имени, телефону или email"
+        />
+        <label className="admin-checkbox">
+          <input
+            type="checkbox"
+            checked={pendingOnly}
+            onChange={(event) => setPendingOnly(event.target.checked)}
+          />
+          Только оптовые заявки
+        </label>
+        <span>{total} клиентов</span>
+      </div>
+      {loading ? (
+        <WorkspaceState kind="loading" title="Загружаем клиентов…" />
+      ) : loadError ? (
+        <WorkspaceState kind="error" title={loadError} />
+      ) : !items.length ? (
+        <WorkspaceState
+          kind="empty"
+          title={query || pendingOnly ? "Клиенты не найдены" : "Клиентов пока нет"}
+        />
+      ) : (
+        <>
+          <WorkspaceTable label="Клиенты">
+            <thead>
+              <tr>
+                <th>Клиент</th>
+                <th>Контакты и адрес</th>
+                <th>Покупки</th>
+                <th>Тип</th>
+                <th>Доступ</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((customer) => (
+                <tr
+                  key={customer.id}
+                  className={`${!customer.active ? "muted" : ""} clickable`}
+                  onClick={() => openCard(customer)}
+                >
+                  <td>
+                    <strong>
+                      {[customer.lastName, customer.fullName, customer.patronymic]
+                        .filter(Boolean)
+                        .join(" ")}
+                    </strong>
+                    <small>с {new Date(customer.createdAt).toLocaleDateString("ru-RU")}</small>
+                  </td>
+                  <td>
+                    <a href={`tel:${customer.phone}`} onClick={(event) => event.stopPropagation()}>
+                      {customer.phone}
+                    </a>
+                    <small>{customer.email || "Email не указан"}</small>
+                    <small>{customer.deliveryAddress || "Адрес не указан"}</small>
+                  </td>
+                  <td>
+                    <strong>{money.format(customer.lifetimeSpend)}</strong>
+                    <small>
+                      {customer.ordersCount} заказов · скидка {customer.retailDiscountBps / 100}%
+                    </small>
+                  </td>
+                  <td>
+                    <span className="admin-pill">
+                      {customer.accountType === "wholesale" ? "Опт" : "Розница"}
+                    </span>
+                    <small>{customer.wholesaleStatus}</small>
+                  </td>
+                  <td>
+                    <strong>{roleLabel(customer.adminRole)}</strong>
+                    <small>{customer.active ? "Активен" : "Заблокирован"}</small>
+                  </td>
+                  <td>
+                    <button className="admin-action" onClick={() => setEditing(customer)}>
+                      {can("customers.edit") ? "Изменить" : "Открыть"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </WorkspaceTable>
+          {hasMore && (
+            <button
+              type="button"
+              className="admin-action"
+              onClick={() =>
+                void loadCustomers(items.length, true).catch((error) => onError(error.message))
+              }
+            >
+              Показать ещё
+            </button>
+          )}
+        </>
+      )}
+      {editing && (
+        <CustomerDialog
+          readOnly={!can("customers.edit")}
+          customer={editing}
+          owner={can("roles.edit")}
+          onClose={() => setEditing(null)}
+          onSaved={(customer) => {
+            setItems((current) =>
+              current.map((item) => (item.id === customer.id ? customer : item)),
+            );
+            setEditing(null);
+          }}
+          onError={onError}
+        />
+      )}
+    </>
+  );
 }
 
-export function CustomerDialog({ readOnly = false, customer, owner, onClose, onSaved, onError }: { readOnly?: boolean; customer: Customer; owner: boolean; onClose: () => void; onSaved: (value: Customer) => void; onError: (value: string) => void }) {
+export function CustomerDialog({
+  readOnly = false,
+  customer,
+  owner,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  readOnly?: boolean;
+  customer: Customer;
+  owner: boolean;
+  onClose: () => void;
+  onSaved: (value: Customer) => void;
+  onError: (value: string) => void;
+}) {
   const [form, setForm] = useState(customer);
   const [orders, setOrders] = useState<Order[]>([]);
-  useEffect(() => { api<{ orders: Order[] }>("/api/v1/admin/orders").then((data) => setOrders(data.orders.filter((order) => order.customerId === customer.id))).catch((error) => onError(error.message)); }, [customer.id, onError]);
+  useEffect(() => {
+    api<{ orders: Order[] }>("/api/v1/admin/orders")
+      .then((data) => setOrders(data.orders.filter((order) => order.customerId === customer.id)))
+      .catch((error) => onError(error.message));
+  }, [customer.id, onError]);
   const save = async () => {
     if (readOnly) return;
     try {
-      const body: Record<string, unknown> = { fullName: form.fullName, lastName: form.lastName, patronymic: form.patronymic, email: form.email, deliveryAddress: form.deliveryAddress, accountType: form.accountType, wholesaleStatus: form.wholesaleStatus };
-      if (owner) Object.assign(body, { retailDiscountBps: form.retailDiscountBps, active: form.active, adminRole: form.adminRole });
-      const result = await api<{ customer: Customer }>(`/api/v1/admin/customers/${customer.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const body: Record<string, unknown> = {
+        fullName: form.fullName,
+        lastName: form.lastName,
+        patronymic: form.patronymic,
+        email: form.email,
+        deliveryAddress: form.deliveryAddress,
+        accountType: form.accountType,
+        wholesaleStatus: form.wholesaleStatus,
+      };
+      if (owner)
+        Object.assign(body, {
+          retailDiscountBps: form.retailDiscountBps,
+          active: form.active,
+          adminRole: form.adminRole,
+        });
+      const result = await api<{ customer: Customer }>(`/api/v1/admin/customers/${customer.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
       onSaved(result.customer);
-    } catch (error) { onError((error as Error).message); }
+    } catch (error) {
+      onError((error as Error).message);
+    }
   };
-  return <Dialog title="Карточка клиента" onClose={onClose}>{readOnly && <WorkspaceState kind="restricted" title="Только просмотр" detail="Изменение данных, скидки и роли доступно владельцу." />}<p>Клиент с {new Date(customer.createdAt).toLocaleDateString("ru-RU")} · {customer.phone || "Телефон не указан"}</p><WorkspaceForm readOnly={readOnly}>
-    <label>Имя<input value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} /></label>
-    <label>Фамилия<input value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} /></label>
-    <label>Отчество<input value={form.patronymic} onChange={(event) => setForm({ ...form, patronymic: event.target.value })} /></label>
-    <label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-    <label className="wide">Адрес<input value={form.deliveryAddress} onChange={(event) => setForm({ ...form, deliveryAddress: event.target.value })} /></label>
-    <label>Тип<select value={form.accountType} onChange={(event) => setForm({ ...form, accountType: event.target.value })}><option value="retail">Розница</option><option value="wholesale">Опт</option></select></label>
-    <label>Статус опта<select value={form.wholesaleStatus} onChange={(event) => setForm({ ...form, wholesaleStatus: event.target.value })}><option value="not_requested">Не запрашивал</option><option value="pending">На проверке</option><option value="approved">Одобрен</option><option value="rejected">Отклонён</option></select></label>
-    {owner ? <><label>Скидка, %<input type="number" min="0" max="100" step="0.01" value={form.retailDiscountBps / 100} onChange={(event) => setForm({ ...form, retailDiscountBps: Math.round(Number(event.target.value) * 100) })} /></label>
-    {form.adminRole === "owner" ? <label>Роль в панели управления<input value="Владелец — назначен через секрет" disabled /></label> : <label>Роль в панели управления<select value={form.adminRole} onChange={(event) => setForm({ ...form, adminRole: event.target.value as Role })}>{roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></label>}
-    <label className="admin-checkbox"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />Аккаунт активен</label></> : <p className="admin-hint">Роль: {roleLabel(form.adminRole)} · скидка {form.retailDiscountBps / 100}% · {form.active ? "аккаунт активен" : "аккаунт заблокирован"}. Эти поля меняет владелец.</p>}
-  </WorkspaceForm><WorkspaceTasks title="Заказы клиента"><section className="customer-orders">{orders.length === 0 ? <p>Заказов пока нет.</p> : orders.map((order) => <article key={order.id}><div><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleDateString("ru-RU")}</small></div><span>{money.format(order.total)}</span><b>{statusLabels[order.status] || order.status}</b></article>)}</section></WorkspaceTasks><div className="dialog-actions"><button onClick={onClose}>{readOnly ? "Закрыть" : "Отмена"}</button>{!readOnly && <button className="primary" onClick={save}>Сохранить</button>}</div></Dialog>;
+  return (
+    <Dialog title="Карточка клиента" onClose={onClose}>
+      {readOnly && (
+        <WorkspaceState
+          kind="restricted"
+          title="Только просмотр"
+          detail="Изменение данных, скидки и роли доступно владельцу."
+        />
+      )}
+      <p>
+        Клиент с {new Date(customer.createdAt).toLocaleDateString("ru-RU")} ·{" "}
+        {customer.phone || "Телефон не указан"}
+      </p>
+      <WorkspaceForm readOnly={readOnly}>
+        <label>
+          Имя
+          <input
+            value={form.fullName}
+            onChange={(event) => setForm({ ...form, fullName: event.target.value })}
+          />
+        </label>
+        <label>
+          Фамилия
+          <input
+            value={form.lastName}
+            onChange={(event) => setForm({ ...form, lastName: event.target.value })}
+          />
+        </label>
+        <label>
+          Отчество
+          <input
+            value={form.patronymic}
+            onChange={(event) => setForm({ ...form, patronymic: event.target.value })}
+          />
+        </label>
+        <label>
+          Email
+          <input
+            type="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+          />
+        </label>
+        <label className="wide">
+          Адрес
+          <input
+            value={form.deliveryAddress}
+            onChange={(event) => setForm({ ...form, deliveryAddress: event.target.value })}
+          />
+        </label>
+        <label>
+          Тип
+          <select
+            value={form.accountType}
+            onChange={(event) => setForm({ ...form, accountType: event.target.value })}
+          >
+            <option value="retail">Розница</option>
+            <option value="wholesale">Опт</option>
+          </select>
+        </label>
+        <label>
+          Статус опта
+          <select
+            value={form.wholesaleStatus}
+            onChange={(event) => setForm({ ...form, wholesaleStatus: event.target.value })}
+          >
+            <option value="not_requested">Не запрашивал</option>
+            <option value="pending">На проверке</option>
+            <option value="approved">Одобрен</option>
+            <option value="rejected">Отклонён</option>
+          </select>
+        </label>
+        {owner ? (
+          <>
+            <label>
+              Скидка, %
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={form.retailDiscountBps / 100}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    retailDiscountBps: Math.round(Number(event.target.value) * 100),
+                  })
+                }
+              />
+            </label>
+            {form.adminRole === "owner" ? (
+              <label>
+                Роль в панели управления
+                <input value="Владелец — назначен через секрет" disabled />
+              </label>
+            ) : (
+              <label>
+                Роль в панели управления
+                <select
+                  value={form.adminRole}
+                  onChange={(event) => setForm({ ...form, adminRole: event.target.value as Role })}
+                >
+                  {roles.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="admin-checkbox">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(event) => setForm({ ...form, active: event.target.checked })}
+              />
+              Аккаунт активен
+            </label>
+          </>
+        ) : (
+          <p className="admin-hint">
+            Роль: {roleLabel(form.adminRole)} · скидка {form.retailDiscountBps / 100}% ·{" "}
+            {form.active ? "аккаунт активен" : "аккаунт заблокирован"}. Эти поля меняет владелец.
+          </p>
+        )}
+      </WorkspaceForm>
+      <WorkspaceTasks title="Заказы клиента">
+        <section className="customer-orders">
+          {orders.length === 0 ? (
+            <p>Заказов пока нет.</p>
+          ) : (
+            orders.map((order) => (
+              <article key={order.id}>
+                <div>
+                  <strong>{order.orderNumber}</strong>
+                  <small>{new Date(order.createdAt).toLocaleDateString("ru-RU")}</small>
+                </div>
+                <span>{money.format(order.total)}</span>
+                <b>{statusLabels[order.status] || order.status}</b>
+              </article>
+            ))
+          )}
+        </section>
+      </WorkspaceTasks>
+      <div className="dialog-actions">
+        <button onClick={onClose}>{readOnly ? "Закрыть" : "Отмена"}</button>
+        {!readOnly && (
+          <button className="primary" onClick={save}>
+            Сохранить
+          </button>
+        )}
+      </div>
+    </Dialog>
+  );
 }
 
 export { Orders } from "./AdminOrders";

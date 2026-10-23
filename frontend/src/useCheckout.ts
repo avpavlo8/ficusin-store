@@ -1,3 +1,4 @@
+import { sumMoney, addMoney } from "./lib/money";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
@@ -41,12 +42,21 @@ type UseCheckoutArgs = {
   initialOpen?: boolean;
 };
 
-export function useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps, initialOpen = false }: UseCheckoutArgs) {
+export function useCheckout({
+  cartLines,
+  cartCount,
+  setCart,
+  setNotice,
+  discountBps,
+  initialOpen = false,
+}: UseCheckoutArgs) {
   const [checkoutOpen, setCheckoutOpen] = useState(initialOpen);
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
-  const [orderConfirmationReason, setOrderConfirmationReason] = useState<"preorder" | "delivery" | "manager" | null>(null);
+  const [orderConfirmationReason, setOrderConfirmationReason] = useState<
+    "preorder" | "delivery" | "manager" | null
+  >(null);
   const orderConfirmationPending = orderConfirmationReason !== null;
   const [cdekCityQuery, setCdekCityQuery] = useState("");
   const [cdekCities, setCdekCities] = useState<CdekCity[]>([]);
@@ -58,7 +68,10 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
   const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
   const [cdekTariffCode, setCdekTariffCode] = useState(0);
   const [cdekRepack, setCdekRepack] = useState(false);
-  const [paymentOptions, setPaymentOptions] = useState<{ delivery: string; methods: PaymentMethod[] }>({ delivery: "", methods: [] });
+  const [paymentOptions, setPaymentOptions] = useState<{
+    delivery: string;
+    methods: PaymentMethod[];
+  }>({ delivery: "", methods: [] });
   const paymentMethods = paymentOptions.delivery === delivery ? paymentOptions.methods : [];
   const [paymentMethod, setPaymentMethod] = useState("online");
   const [cdekLoading, setCdekLoading] = useState(false);
@@ -101,7 +114,6 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       .catch(() => setCdekAvailable(false));
   }, []);
 
-
   useEffect(() => {
     if (
       delivery !== "cdek" ||
@@ -140,10 +152,17 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     () => baseDeliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable),
     [cdekAvailable],
   );
-  const originalSubtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const subtotal = cartLines.reduce((sum, item) => sum + discountedPrice(item.price, discountBps) * item.quantity, 0);
-  const discountAmount = Math.round((originalSubtotal - subtotal) * 100) / 100;
-  const hasPreorder = cartLines.some((item) => item.stock !== undefined && item.stock < item.quantity);
+  const originalSubtotal = sumMoney(cartLines);
+  const subtotal = sumMoney(
+    cartLines.map((item) => ({
+      price: discountedPrice(item.price, discountBps),
+      quantity: item.quantity,
+    })),
+  );
+  const discountAmount = addMoney(originalSubtotal, -subtotal);
+  const hasPreorder = cartLines.some(
+    (item) => item.stock !== undefined && item.stock < item.quantity,
+  );
   const availableDelivery = deliveryOptions;
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
   const cdekQuote =
@@ -165,7 +184,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       : cdekOffices
   ).slice(0, 12);
   const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
-  const total = subtotal + deliveryFee;
+  const total = addMoney(subtotal, deliveryFee);
 
   async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);
@@ -190,7 +209,10 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
           }),
         }),
       ]);
-      const officesData = (await officesResponse.json()) as { offices?: CdekOffice[]; error?: string };
+      const officesData = (await officesResponse.json()) as {
+        offices?: CdekOffice[];
+        error?: string;
+      };
       const quoteData = (await quoteResponse.json()) as { quotes?: CdekQuote[]; error?: string };
       if (!officesResponse.ok) {
         throw new Error(officesData.error || "Не удалось загрузить пункты выдачи");
@@ -252,38 +274,84 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
       offerAccepted: form.get("offerAccepted") === "on",
-	  paymentMethod: hasPreorder && delivery !== "pickup" ? "" : paymentMethods.some((option) => option.id === paymentMethod) ? paymentMethod : "",
-	  attribution: getOrderAttribution(),
+      paymentMethod:
+        hasPreorder && delivery !== "pickup"
+          ? ""
+          : paymentMethods.some((option) => option.id === paymentMethod)
+            ? paymentMethod
+            : "",
+      attribution: getOrderAttribution(),
     };
 
-    const needsManagerConfirmation = cartLines.some((item) => item.available === false || (item.stock !== undefined && item.stock < item.quantity));
+    const needsManagerConfirmation = cartLines.some(
+      (item) =>
+        item.available === false || (item.stock !== undefined && item.stock < item.quantity),
+    );
     try {
       const response = await fetch("/api/v1/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await response.json()) as { orderNumber?: string; guestPaymentToken?: string; paymentStatus?: string; hasPreorder?: boolean; error?: string };
+      const data = (await response.json()) as {
+        orderNumber?: string;
+        guestPaymentToken?: string;
+        paymentStatus?: string;
+        hasPreorder?: boolean;
+        error?: string;
+      };
       if (!response.ok || !data.orderNumber) {
         throw new Error(data.error || "Не удалось оформить заказ");
       }
-	  track("add_shipping_info", { value: subtotal, quantity: cartCount, properties: { delivery } });
-	  if (!hasPreorder) track("add_payment_info", { value: subtotal, quantity: cartCount, properties: { paymentMethod } });
-      setOrderConfirmationReason(needsManagerConfirmation || data.hasPreorder === true ? "preorder" : deliveryFeePending ? "delivery" : data.paymentStatus === "manager_confirmation" ? "manager" : null);
+      track("add_shipping_info", {
+        value: subtotal,
+        quantity: cartCount,
+        properties: { delivery },
+      });
+      if (!hasPreorder)
+        track("add_payment_info", {
+          value: subtotal,
+          quantity: cartCount,
+          properties: { paymentMethod },
+        });
+      setOrderConfirmationReason(
+        needsManagerConfirmation || data.hasPreorder === true
+          ? "preorder"
+          : deliveryFeePending
+            ? "delivery"
+            : data.paymentStatus === "manager_confirmation"
+              ? "manager"
+              : null,
+      );
       setOrderNumber(data.orderNumber);
       setCart({});
       window.scrollTo({ top: 0, behavior: "auto" });
-      if (!hasPreorder && paymentMethod === "online" && data.paymentStatus === "pending" && !data.hasPreorder && !deliveryFeePending) {
+      if (
+        !hasPreorder &&
+        paymentMethod === "online" &&
+        data.paymentStatus === "pending" &&
+        !data.hasPreorder &&
+        !deliveryFeePending
+      ) {
         try {
-          const payment = await fetch(`/api/v1/payments/orders/${encodeURIComponent(data.orderNumber)}`, {
-            method: "POST",
-            headers: data.guestPaymentToken ? { "X-Order-Payment-Token": data.guestPaymentToken } : {},
-            credentials: "same-origin",
-          });
+          const payment = await fetch(
+            `/api/v1/payments/orders/${encodeURIComponent(data.orderNumber)}`,
+            {
+              method: "POST",
+              headers: data.guestPaymentToken
+                ? { "X-Order-Payment-Token": data.guestPaymentToken }
+                : {},
+              credentials: "same-origin",
+            },
+          );
           const result = (await payment.json()) as { confirmationUrl?: string; error?: string };
           if (!payment.ok) throw new Error(result.error || "Не удалось начать оплату");
           if (result.confirmationUrl) {
-			track("payment_redirect", { value: subtotal, quantity: cartCount, properties: { orderNumber: data.orderNumber } });
+            track("payment_redirect", {
+              value: subtotal,
+              quantity: cartCount,
+              properties: { orderNumber: data.orderNumber },
+            });
             window.location.assign(result.confirmationUrl);
             return;
           }
@@ -292,7 +360,15 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
         }
       }
     } catch (error) {
-	  track("checkout_error", { value: total, quantity: cartCount, properties: { message: error instanceof Error ? error.message.slice(0, 200) : "unknown", delivery, paymentMethod } });
+      track("checkout_error", {
+        value: total,
+        quantity: cartCount,
+        properties: {
+          message: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+          delivery,
+          paymentMethod,
+        },
+      });
       setNotice(error instanceof Error ? error.message : "Не удалось оформить заказ");
     } finally {
       setSubmitting(false);

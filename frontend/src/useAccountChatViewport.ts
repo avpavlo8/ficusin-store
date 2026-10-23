@@ -13,8 +13,18 @@ export function useAccountChatViewport() {
       if (!media.matches) return;
       const body = document.body;
       const position = { x: scrollX, y: scrollY };
-      const saved = { position: body.style.position, top: body.style.top, left: body.style.left, width: body.style.width };
-      Object.assign(body.style, { position: "fixed", top: `${-position.y}px`, left: `${-position.x}px`, width: "100%" });
+      const saved = {
+        position: body.style.position,
+        top: body.style.top,
+        left: body.style.left,
+        width: body.style.width,
+      };
+      Object.assign(body.style, {
+        position: "fixed",
+        top: `${-position.y}px`,
+        left: `${-position.x}px`,
+        width: "100%",
+      });
       body.classList.add("account-chat-mobile");
       const update = () => {
         const viewport = window.visualViewport;
@@ -35,8 +45,12 @@ export function useAccountChatViewport() {
         unlock = () => {};
       };
     };
-    mode(); media.addEventListener("change", mode);
-    return () => { media.removeEventListener("change", mode); unlock(); };
+    mode();
+    media.addEventListener("change", mode);
+    return () => {
+      media.removeEventListener("change", mode);
+      unlock();
+    };
   }, []);
   return view;
 }

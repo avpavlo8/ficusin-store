@@ -37,7 +37,7 @@ class CatalogPIMContractTest(unittest.TestCase):
     def test_external_ids_are_not_catalogue_identity(self):
         pim = text("backend/internal/admin/catalog_pim.go")
         migration = text("timeweb/migrations/055_catalog_spu_sku_attributes.sql")
-        self.assertIn('provider=="ficusin"', pim)
+        self.assertRegex(pim, r'provider\s*==\s*"ficusin"')
         self.assertIn("DELETE FROM product_external_ids WHERE provider = 'ficusin'", migration)
 
     def test_customer_and_technical_attributes_are_separated(self):
@@ -110,7 +110,7 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("/api/v1/admin/collection-definitions/preview", ui)
         self.assertIn("draft.rules", ui)
         self.assertIn("Товар должен соответствовать всем условиям", ui)
-        self.assertIn("Предпросмотр ничего не сохраняет", ui)
+        self.assertRegex(ui, r"Предпросмотр\s+ничего не сохраняет")
 
     def test_sku_media_has_repository_routes_and_admin_ui(self):
         repository = text("backend/internal/admin/variant_media.go")

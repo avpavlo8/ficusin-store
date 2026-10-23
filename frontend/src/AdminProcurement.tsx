@@ -1,53 +1,185 @@
 import { useProcurementParam, useProcurementRoute } from "./useProcurementRoute";
 import { procurementOrderHref, quantityLabel } from "./procurementUX";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { ProcurementMatchDialog, ProcurementOrderDetailDialog, ProcurementOrderDialog, ProcurementPlanDialog, ProcurementRequestDialog, ProcurementUploadDialog, SupplierDialog } from "./AdminProcurementDialogs";
-import { ProcurementSettingsPanel, availabilityLabel, integrationChannelLabel, recommendationEmptyText, recommendationEmptyTitle, recommendationStatusLabel, salesChannelLabel, salesSyncLabel, setExclusion, updateAvailability, updateRequestStatus } from "./AdminProcurementPanels";
-import { ProcurementCostCalculator, type ProcurementCalculatorDraft } from "./ProcurementCostCalculator";
+import {
+  ProcurementMatchDialog,
+  ProcurementOrderDetailDialog,
+  ProcurementOrderDialog,
+  ProcurementPlanDialog,
+  ProcurementRequestDialog,
+  ProcurementUploadDialog,
+  SupplierDialog,
+} from "./AdminProcurementDialogs";
+import {
+  ProcurementSettingsPanel,
+  availabilityLabel,
+  integrationChannelLabel,
+  recommendationEmptyText,
+  recommendationEmptyTitle,
+  recommendationStatusLabel,
+  salesChannelLabel,
+  salesSyncLabel,
+  setExclusion,
+  updateAvailability,
+  updateRequestStatus,
+} from "./AdminProcurementPanels";
+import {
+  ProcurementCostCalculator,
+  type ProcurementCalculatorDraft,
+} from "./ProcurementCostCalculator";
 import { PageHeading, api } from "./adminShared";
-import type { IntegrationHealth, ProcurementAlias, ProcurementAvailability, ProcurementData, ProcurementOrder, ProcurementOrderDetail, RecommendationStatus, ProcurementRequest } from "./adminTypes";
+import type {
+  IntegrationHealth,
+  ProcurementAlias,
+  ProcurementAvailability,
+  ProcurementData,
+  ProcurementOrder,
+  ProcurementOrderDetail,
+  RecommendationStatus,
+  ProcurementRequest,
+} from "./adminTypes";
 import "./styles/admin-procurement-plan.css";
 import "./styles/admin-procurement-redesign.css";
 import "./styles/admin-procurement-review.css";
 import "./styles/admin-procurement-workspace.css";
 
-const ProcurementProducts = lazy(() => import("./AdminProcurementProducts").then((module) => ({ default: module.ProcurementProducts })));
-const ProcurementUnlinkedSales = lazy(() => import("./AdminProcurementSales").then(module => ({ default: module.ProcurementUnlinkedSales })));
+const ProcurementProducts = lazy(() =>
+  import("./AdminProcurementProducts").then((module) => ({ default: module.ProcurementProducts })),
+);
+const ProcurementUnlinkedSales = lazy(() =>
+  import("./AdminProcurementSales").then((module) => ({
+    default: module.ProcurementUnlinkedSales,
+  })),
+);
 
-export function normalizeProcurementOrderDetail(item: ProcurementOrderDetail): ProcurementOrderDetail {
+export function normalizeProcurementOrderDetail(
+  item: ProcurementOrderDetail,
+): ProcurementOrderDetail {
   return {
     ...item,
     validation: { ...item.validation, blockers: item.validation.blockers ?? [] },
-    lines: (item.lines ?? []).map((line) => ({ ...line, supplierCategory: line.supplierCategory || "", invoiceRawName: line.invoiceRawName || "", invoiceSupplierArticle: line.invoiceSupplierArticle || "", reconciliationStatus: line.reconciliationStatus || (line.invoicedQuantity == null ? "planned" : "matched"), invoiceExcluded: line.invoiceExcluded || false, invoiceExclusionReason: line.invoiceExclusionReason || "" })),
+    lines: (item.lines ?? []).map((line) => ({
+      ...line,
+      supplierCategory: line.supplierCategory || "",
+      invoiceRawName: line.invoiceRawName || "",
+      invoiceSupplierArticle: line.invoiceSupplierArticle || "",
+      reconciliationStatus:
+        line.reconciliationStatus || (line.invoicedQuantity == null ? "planned" : "matched"),
+      invoiceExcluded: line.invoiceExcluded || false,
+      invoiceExclusionReason: line.invoiceExclusionReason || "",
+    })),
     batches: (item.batches ?? []).map((batch) => ({ ...batch, items: batch.items ?? [] })),
   };
 }
 
 export const procurementStatusLabels: Record<string, string> = {
-  draft: "Черновик", ordered: "Заказано", invoice_received: "Инвойс получен",
-  review: "Требует проверки", ready_to_receive: "Готово к поступлению",
-  received: "Завершено", cancelled: "Отменено",
+  draft: "Черновик",
+  ordered: "Заказано",
+  invoice_received: "Инвойс получен",
+  review: "Требует проверки",
+  ready_to_receive: "Готово к поступлению",
+  received: "Завершено",
+  cancelled: "Отменено",
 };
 
 export const procurementSourceLabels: Record<string, string> = {
-  manual: "Ручная закупка", recommendation: "По рекомендации",
-  invoice: "Инвойс", payment_invoice: "Счёт на оплату",
+  manual: "Ручная закупка",
+  recommendation: "По рекомендации",
+  invoice: "Инвойс",
+  payment_invoice: "Счёт на оплату",
 };
 
 export const procurementParserLabels: Record<string, string> = {
-  holland_packing_list: "Голландский инвойс", domestic_payment_invoice: "Российский счёт", unknown: "Не определён",
+  holland_packing_list: "Голландский инвойс",
+  domestic_payment_invoice: "Российский счёт",
+  unknown: "Не определён",
 };
 
-function AvailabilityRow({item,reload,onError}:{item:ProcurementAvailability;reload:()=>Promise<unknown>;onError:(value:string)=>void}) {
-  const [reason,setReason]=useState(item.reason||""); const [comment,setComment]=useState(item.comment||"");
-  const [checkAfter,setCheckAfter]=useState(item.checkAfter||"");
-  const save=(status:string)=>updateAvailability(item.supplierId,item.sabyId,status,reload,onError,{reason,comment,checkAfter:status==="available"?"":checkAfter});
-  return <tr><td><strong>{item.name||item.sabyId}</strong><small>{item.supplierArticle||"Артикул не заполнен"}</small></td><td>{item.supplierName}</td><td>{item.balance}</td><td>{item.unavailableSince?new Date(`${item.unavailableSince}T00:00:00`).toLocaleDateString("ru-RU"):item.lastSeenAt?new Date(item.lastSeenAt).toLocaleDateString("ru-RU"):"—"}</td><td>{availabilityLabel(item.availabilityStatus)}<small>{item.lastActionAt?`Последнее действие ${new Date(item.lastActionAt).toLocaleString("ru-RU")}`:"Действий ещё нет"}</small></td><td><div className="procurement-availability-editor"><input aria-label={`Причина ${item.name}`} value={reason} onChange={(event)=>setReason(event.target.value)} placeholder="Причина"/><textarea aria-label={`Комментарий ${item.name}`} value={comment} onChange={(event)=>setComment(event.target.value)} placeholder="Комментарий поставщика"/><label>Следующая проверка<input type="date" value={checkAfter} onChange={(event)=>setCheckAfter(event.target.value)}/></label><div className="procurement-inline-actions"><button onClick={()=>void save("available")}>Появился — вернуть</button><button onClick={()=>void save("temporarily_unavailable")}>Всё ещё нет</button><button onClick={()=>void save("discontinued")}>Снят с продажи</button></div></div></td></tr>;
+function AvailabilityRow({
+  item,
+  reload,
+  onError,
+}: {
+  item: ProcurementAvailability;
+  reload: () => Promise<unknown>;
+  onError: (value: string) => void;
+}) {
+  const [reason, setReason] = useState(item.reason || "");
+  const [comment, setComment] = useState(item.comment || "");
+  const [checkAfter, setCheckAfter] = useState(item.checkAfter || "");
+  const save = (status: string) =>
+    updateAvailability(item.supplierId, item.sabyId, status, reload, onError, {
+      reason,
+      comment,
+      checkAfter: status === "available" ? "" : checkAfter,
+    });
+  return (
+    <tr>
+      <td>
+        <strong>{item.name || item.sabyId}</strong>
+        <small>{item.supplierArticle || "Артикул не заполнен"}</small>
+      </td>
+      <td>{item.supplierName}</td>
+      <td>{item.balance}</td>
+      <td>
+        {item.unavailableSince
+          ? new Date(`${item.unavailableSince}T00:00:00`).toLocaleDateString("ru-RU")
+          : item.lastSeenAt
+            ? new Date(item.lastSeenAt).toLocaleDateString("ru-RU")
+            : "—"}
+      </td>
+      <td>
+        {availabilityLabel(item.availabilityStatus)}
+        <small>
+          {item.lastActionAt
+            ? `Последнее действие ${new Date(item.lastActionAt).toLocaleString("ru-RU")}`
+            : "Действий ещё нет"}
+        </small>
+      </td>
+      <td>
+        <div className="procurement-availability-editor">
+          <input
+            aria-label={`Причина ${item.name}`}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Причина"
+          />
+          <textarea
+            aria-label={`Комментарий ${item.name}`}
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            placeholder="Комментарий поставщика"
+          />
+          <label>
+            Следующая проверка
+            <input
+              type="date"
+              value={checkAfter}
+              onChange={(event) => setCheckAfter(event.target.value)}
+            />
+          </label>
+          <div className="procurement-inline-actions">
+            <button onClick={() => void save("available")}>Появился — вернуть</button>
+            <button onClick={() => void save("temporarily_unavailable")}>Всё ещё нет</button>
+            <button onClick={() => void save("discontinued")}>Снят с продажи</button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 type PlanDraftSummary = { id: number; title: string; updatedAt: string; createdAt: string };
 
-export function Procurement({ onError, canIntegrations, canDelete }: { onError: (value: string) => void; canIntegrations: boolean; canDelete: boolean }) {
+export function Procurement({
+  onError,
+  canIntegrations,
+  canDelete,
+}: {
+  onError: (value: string) => void;
+  canIntegrations: boolean;
+  canDelete: boolean;
+}) {
   const [data, setData] = useState<ProcurementData | null>(null);
   const { view, setView, selectedOrder, setSelectedOrder } = useProcurementRoute();
   const [recommendationView, setRecommendationView] = useState<RecommendationStatus>("recommended");
@@ -57,10 +189,14 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
   const [savingRecommendationSupplier, setSavingRecommendationSupplier] = useState("");
   const [availabilityDueOnly, setAvailabilityDueOnly] = useState(true);
   const [checkingIntegration, setCheckingIntegration] = useState<string>("");
-  const [integrationNotice, setIntegrationNotice] = useState<{ channel: string; ok: boolean; text: string } | null>(null);
+  const [integrationNotice, setIntegrationNotice] = useState<{
+    channel: string;
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const [syncingCatalog, setSyncingCatalog] = useState("");
   const [supplierDialog, setSupplierDialog] = useState(false);
-  const [reviewExpanded,setReviewExpanded]=useState(false);
+  const [reviewExpanded, setReviewExpanded] = useState(false);
   const [orderDialog, setOrderDialog] = useState(false);
   const [uploadDialog, setUploadDialog] = useState(false);
   const [requestDialog, setRequestDialog] = useState(false);
@@ -68,32 +204,62 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
   const [drafts, setDrafts] = useState<PlanDraftSummary[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [matchDialog, setMatchDialog] = useState<ProcurementAlias | null>(null);
-  const [orderFilter, setOrderFilter] = useProcurementParam("status","active");
-  const [orderQuery, setOrderQuery] = useProcurementParam("q","");
+  const [orderFilter, setOrderFilter] = useProcurementParam("status", "active");
+  const [orderQuery, setOrderQuery] = useProcurementParam("q", "");
   const [orderWindow, setOrderWindow] = useState({ scope: "", count: 5 });
-  const [recommendationQuery, setRecommendationQuery] = useProcurementParam("recommendedQuery","");
-  const [recommendationSort, setRecommendationSort] = useProcurementParam("recommendedSort","quantity");
-  const [requestFilter, setRequestFilter] = useProcurementParam("requests","active");
+  const [recommendationQuery, setRecommendationQuery] = useProcurementParam("recommendedQuery", "");
+  const [recommendationSort, setRecommendationSort] = useProcurementParam(
+    "recommendedSort",
+    "quantity",
+  );
+  const [requestFilter, setRequestFilter] = useProcurementParam("requests", "active");
   const [editingRequest, setEditingRequest] = useState<ProcurementRequest | undefined>();
-  const [calculatorDraft,setCalculatorDraft]=useState<ProcurementCalculatorDraft | null>(null);
-  const [calculatorRequest, setCalculatorRequest] = useState<{name: string; notes: string} | null>(null);
-  const load = useCallback(() => api<ProcurementData>("/api/v1/admin/procurement")
-    .then(setData).catch((error) => onError((error as Error).message)), [onError]);
-  useEffect(() => { void load(); }, [load]);
-  const refreshPlanDrafts = useCallback(() => api<{ drafts: PlanDraftSummary[] }>("/api/v1/admin/procurement/plan-drafts")
-    .then((result) => setDrafts(result.drafts || [])).catch((error) => onError(`Не удалось загрузить черновики: ${(error as Error).message}`)), [onError]);
-  useEffect(() => { void refreshPlanDrafts(); }, [refreshPlanDrafts]);
-  const openNewPlan = () => { setEditingDraftId(null); setPlanDialog(true); };
+  const [calculatorDraft, setCalculatorDraft] = useState<ProcurementCalculatorDraft | null>(null);
+  const [calculatorRequest, setCalculatorRequest] = useState<{
+    name: string;
+    notes: string;
+  } | null>(null);
+  const load = useCallback(
+    () =>
+      api<ProcurementData>("/api/v1/admin/procurement")
+        .then(setData)
+        .catch((error) => onError((error as Error).message)),
+    [onError],
+  );
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const refreshPlanDrafts = useCallback(
+    () =>
+      api<{ drafts: PlanDraftSummary[] }>("/api/v1/admin/procurement/plan-drafts")
+        .then((result) => setDrafts(result.drafts || []))
+        .catch((error) => onError(`Не удалось загрузить черновики: ${(error as Error).message}`)),
+    [onError],
+  );
+  useEffect(() => {
+    void refreshPlanDrafts();
+  }, [refreshPlanDrafts]);
+  const openNewPlan = () => {
+    setEditingDraftId(null);
+    setPlanDialog(true);
+  };
   const deleteDraft = async (draft: PlanDraftSummary) => {
     if (!window.confirm(`Удалить черновик «${draft.title}» для всей команды?`)) return;
-    try { await api(`/api/v1/admin/procurement/plan-drafts/${draft.id}`, { method: "DELETE" }); await refreshPlanDrafts(); }
-    catch (error) { onError(`Не удалось удалить черновик: ${(error as Error).message}`); }
+    try {
+      await api(`/api/v1/admin/procurement/plan-drafts/${draft.id}`, { method: "DELETE" });
+      await refreshPlanDrafts();
+    } catch (error) {
+      onError(`Не удалось удалить черновик: ${(error as Error).message}`);
+    }
   };
   const assignRecommendationSupplier = async (sabyId: string, supplierId: number) => {
     if (supplierId <= 0) return;
     setSavingRecommendationSupplier(sabyId);
     try {
-      await api("/api/v1/admin/procurement/recommendations/supplier", { method: "PUT", body: JSON.stringify({ sabyId, supplierId }) });
+      await api("/api/v1/admin/procurement/recommendations/supplier", {
+        method: "PUT",
+        body: JSON.stringify({ sabyId, supplierId }),
+      });
       setSelectedRecommendations([]);
       await load();
     } catch (error) {
@@ -104,9 +270,29 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
   };
   const syncCatalog = async (channel: string) => {
     setSyncingCatalog(channel);
-    setIntegrationNotice({ channel, ok: true, text: channel === "saby" ? "Запрашиваем СБИС…" : `Запрашиваем обновление ${integrationChannelLabel(channel)}…` });
+    setIntegrationNotice({
+      channel,
+      ok: true,
+      text:
+        channel === "saby"
+          ? "Запрашиваем СБИС…"
+          : `Запрашиваем обновление ${integrationChannelLabel(channel)}…`,
+    });
     try {
-      const result = await api<{ link: { fetched: number; linked: number; unmatched: number; channelKeys: number; catalogKeys: number; channelSamples: string[]; catalogSamples: string[]; queued?: boolean; queueStatus?: string; nextAttemptAt?: string } }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
+      const result = await api<{
+        link: {
+          fetched: number;
+          linked: number;
+          unmatched: number;
+          channelKeys: number;
+          catalogKeys: number;
+          channelSamples: string[];
+          catalogSamples: string[];
+          queued?: boolean;
+          queueStatus?: string;
+          nextAttemptAt?: string;
+        };
+      }>(`/api/v1/admin/procurement/integrations/${channel}/catalog`, { method: "POST" });
       const link = result.link;
       if (link.queued && channel === "saby") {
         setIntegrationNotice({ channel, ok: true, text: "СБИС: запрос принят…" });
@@ -116,42 +302,71 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
           await new Promise((resolve) => window.setTimeout(resolve, 2000));
           const snapshot = await api<ProcurementData>("/api/v1/admin/procurement");
           setData(snapshot);
-          const state = snapshot.integrationSync.find((item) => item.channel === "saby" && item.resource === "catalog");
+          const state = snapshot.integrationSync.find(
+            (item) => item.channel === "saby" && item.resource === "catalog",
+          );
           if (!state) continue;
           if (!targetGeneration) targetGeneration = state.requestedGeneration;
           if (state.status === "error") {
-            setIntegrationNotice({ channel, ok: false, text: `СБИС: обновление не выполнено${state.lastError ? ` — ${state.lastError}` : "."}` });
+            setIntegrationNotice({
+              channel,
+              ok: false,
+              text: `СБИС: обновление не выполнено${state.lastError ? ` — ${state.lastError}` : "."}`,
+            });
             return;
           }
-          if (state.completedGeneration >= targetGeneration && state.status !== "running" && state.status !== "queued") {
-            setIntegrationNotice({ channel, ok: true, text: `СБИС обновлён: ${state.rowsSynced} позиций.` });
+          if (
+            state.completedGeneration >= targetGeneration &&
+            state.status !== "running" &&
+            state.status !== "queued"
+          ) {
+            setIntegrationNotice({
+              channel,
+              ok: true,
+              text: `СБИС обновлён: ${state.rowsSynced} позиций.`,
+            });
             return;
           }
           setIntegrationNotice({
             channel,
             ok: true,
-            text: state.status === "running"
-              ? "СБИС: загрузка…"
-              : "СБИС: в очереди…",
+            text: state.status === "running" ? "СБИС: загрузка…" : "СБИС: в очереди…",
           });
         }
-        setIntegrationNotice({ channel, ok: false, text: "СБИС: синхронизация дольше 2 минут. Статус — в «Интеграциях»." });
+        setIntegrationNotice({
+          channel,
+          ok: false,
+          text: "СБИС: синхронизация дольше 2 минут. Статус — в «Интеграциях».",
+        });
         return;
       }
       if (link.queued) {
-        setIntegrationNotice({ channel, ok: true, text: `Текущее зеркало сопоставлено; обновление ${integrationChannelLabel(channel)} добавлено в общую очередь.` });
+        setIntegrationNotice({
+          channel,
+          ok: true,
+          text: `Текущее зеркало сопоставлено; обновление ${integrationChannelLabel(channel)} добавлено в общую очередь.`,
+        });
         await load();
         return;
       }
       if (channel === "saby") {
-        setIntegrationNotice({ channel, ok: true, text: `Справочник СБИС обновлён: ${link.fetched} позиций. Новые карточки уже доступны для сопоставления.` });
+        setIntegrationNotice({
+          channel,
+          ok: true,
+          text: `Справочник СБИС обновлён: ${link.fetched} позиций. Новые карточки уже доступны для сопоставления.`,
+        });
         await load();
         return;
       }
-      const detail = link.linked === 0 && link.fetched > 0
-        ? ` Сравнивали ${link.channelKeys} ключей канала с ${link.catalogKeys} ключами СБИС. У канала: ${(link.channelSamples || []).join(", ") || "нет"}. В СБИС: ${(link.catalogSamples || []).join(", ") || "нет"}.`
-        : "";
-      setIntegrationNotice({ channel, ok: link.linked > 0, text: `Прочитано карточек: ${link.fetched}, связано: ${link.linked}, без совпадения: ${link.unmatched}.${detail}` });
+      const detail =
+        link.linked === 0 && link.fetched > 0
+          ? ` Сравнивали ${link.channelKeys} ключей канала с ${link.catalogKeys} ключами СБИС. У канала: ${(link.channelSamples || []).join(", ") || "нет"}. В СБИС: ${(link.catalogSamples || []).join(", ") || "нет"}.`
+          : "";
+      setIntegrationNotice({
+        channel,
+        ok: link.linked > 0,
+        text: `Прочитано карточек: ${link.fetched}, связано: ${link.linked}, без совпадения: ${link.unmatched}.${detail}`,
+      });
       await load();
     } catch (error) {
       setIntegrationNotice({ channel, ok: false, text: (error as Error).message });
@@ -163,15 +378,26 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
     setCheckingIntegration(channel);
     setIntegrationNotice(null);
     try {
-      const result = await api<{ integration: IntegrationHealth }>(`/api/v1/admin/procurement/integrations/${channel}/check`, { method: "POST" });
-      setData((current) => current ? {
-        ...current,
-        integrationHealth: current.integrationHealth.map((item) => item.channel === channel ? result.integration : item),
-      } : current);
+      const result = await api<{ integration: IntegrationHealth }>(
+        `/api/v1/admin/procurement/integrations/${channel}/check`,
+        { method: "POST" },
+      );
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              integrationHealth: current.integrationHealth.map((item) =>
+                item.channel === channel ? result.integration : item,
+              ),
+            }
+          : current,
+      );
       setIntegrationNotice({
         channel,
         ok: !result.integration.lastError,
-        text: result.integration.lastError || `${integrationChannelLabel(channel)}: подключение работает`,
+        text:
+          result.integration.lastError ||
+          `${integrationChannelLabel(channel)}: подключение работает`,
       });
     } catch (error) {
       const message = (error as Error).message;
@@ -182,150 +408,1356 @@ export function Procurement({ onError, canIntegrations, canDelete }: { onError: 
     }
   };
 
-  if (!data) return <><PageHeading eyebrow="Снабжение" title="Закупки" text="Загружаем данные закупок…" /></>;
-  const activeSuppliers = data.suppliers.filter(item => item.active !== false);
-  const recommendationItems = data.recommendations.filter((item) => item.status === recommendationView
-    && (recommendationSupplierFilter === 0 || (recommendationSupplierFilter === -1 ? item.supplierId === 0 : item.supplierId === recommendationSupplierFilter))
-    && (recommendationMinQty === 0 || item.suggestedQty > recommendationMinQty)
-    && `${item.name} ${item.supplierArticle}`.toLocaleLowerCase("ru").includes(recommendationQuery.toLocaleLowerCase("ru")))
-    .sort((a,b) => recommendationSort === "name" ? a.name.localeCompare(b.name,"ru") : b.suggestedQty-a.suggestedQty);
-  const actionableRecommendations = data.recommendations.filter((item) => item.status === "recommended");
-  const selectedRecommendationItems = actionableRecommendations.filter((item) => selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`));
+  if (!data)
+    return (
+      <>
+        <PageHeading eyebrow="Снабжение" title="Закупки" text="Загружаем данные закупок…" />
+      </>
+    );
+  const activeSuppliers = data.suppliers.filter((item) => item.active !== false);
+  const recommendationItems = data.recommendations
+    .filter(
+      (item) =>
+        item.status === recommendationView &&
+        (recommendationSupplierFilter === 0 ||
+          (recommendationSupplierFilter === -1
+            ? item.supplierId === 0
+            : item.supplierId === recommendationSupplierFilter)) &&
+        (recommendationMinQty === 0 || item.suggestedQty > recommendationMinQty) &&
+        `${item.name} ${item.supplierArticle}`
+          .toLocaleLowerCase("ru")
+          .includes(recommendationQuery.toLocaleLowerCase("ru")),
+    )
+    .sort((a, b) =>
+      recommendationSort === "name"
+        ? a.name.localeCompare(b.name, "ru")
+        : b.suggestedQty - a.suggestedQty,
+    );
+  const actionableRecommendations = data.recommendations.filter(
+    (item) => item.status === "recommended",
+  );
+  const selectedRecommendationItems = actionableRecommendations.filter((item) =>
+    selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
+  );
   const selectedSupplierId = selectedRecommendationItems[0]?.supplierId;
-  const selectableVisibleRecommendations = recommendationItems.filter((item) => item.status === "recommended" && item.supplierId === recommendationSupplierFilter && item.supplierId > 0);
-  const allVisibleSelected = selectableVisibleRecommendations.length > 0 && selectableVisibleRecommendations.every((item) => selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`));
+  const selectableVisibleRecommendations = recommendationItems.filter(
+    (item) =>
+      item.status === "recommended" &&
+      item.supplierId === recommendationSupplierFilter &&
+      item.supplierId > 0,
+  );
+  const allVisibleSelected =
+    selectableVisibleRecommendations.length > 0 &&
+    selectableVisibleRecommendations.every((item) =>
+      selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
+    );
   const toggleVisibleRecommendations = () => {
-    const keys = selectableVisibleRecommendations.map((item) => `${item.supplierId}:${item.sabyId}`);
-    setSelectedRecommendations((current) => allVisibleSelected ? current.filter((key) => !keys.includes(key)) : [...new Set([...current, ...keys])]);
+    const keys = selectableVisibleRecommendations.map(
+      (item) => `${item.supplierId}:${item.sabyId}`,
+    );
+    setSelectedRecommendations((current) =>
+      allVisibleSelected
+        ? current.filter((key) => !keys.includes(key))
+        : [...new Set([...current, ...keys])],
+    );
   };
-  const visibleOrders = data.orders.filter(item => (orderFilter === "all" || (orderFilter === "active" ? !["received","cancelled"].includes(item.status) : item.status === orderFilter)) && (item.title + " " + item.orderNumber + " " + item.supplierName + " " + item.documentNumber).toLocaleLowerCase("ru").includes(orderQuery.toLocaleLowerCase("ru")));
+  const visibleOrders = data.orders.filter(
+    (item) =>
+      (orderFilter === "all" ||
+        (orderFilter === "active"
+          ? !["received", "cancelled"].includes(item.status)
+          : item.status === orderFilter)) &&
+      (item.title + " " + item.orderNumber + " " + item.supplierName + " " + item.documentNumber)
+        .toLocaleLowerCase("ru")
+        .includes(orderQuery.toLocaleLowerCase("ru")),
+  );
   const orderScope = JSON.stringify([orderFilter, orderQuery]);
   const orderLimit = orderWindow.scope === orderScope ? orderWindow.count : 5;
   const pagedOrders = visibleOrders.slice(0, orderLimit);
-  const visibleRequests = data.requests.filter(item => requestFilter === "all" || (requestFilter === "active" ? ["open","included"].includes(item.status) : ["fulfilled","cancelled"].includes(item.status)));
+  const visibleRequests = data.requests.filter(
+    (item) =>
+      requestFilter === "all" ||
+      (requestFilter === "active"
+        ? ["open", "included"].includes(item.status)
+        : ["fulfilled", "cancelled"].includes(item.status)),
+  );
   const availabilityItems = data.availability.filter((item) => !availabilityDueOnly || item.due);
-  const formatTotal = (item: ProcurementOrder) => new Intl.NumberFormat("ru-RU", {
-    style: "currency", currency: item.currency, maximumFractionDigits: 2,
-  }).format(item.total);
-  const formatMoney = (value: number, currency: string) => currency ? new Intl.NumberFormat("ru-RU", {
-    style: "currency", currency, maximumFractionDigits: 2,
-  }).format(value) : "—";
-  const renderTab = (target: typeof view, label: string, count = 0) => <button className={view === target ? "active" : ""} onClick={() => setView(target)}>{label}{count > 0 && <span>{count}</span>}</button>;
-  if (planDialog) return <ProcurementPlanDialog key={editingDraftId ?? "new"} draftId={editingDraftId} suppliers={activeSuppliers} recommendations={actionableRecommendations} initialRecommendations={editingDraftId ? [] : selectedRecommendationItems} settings={data.settings} onClose={() => { setPlanDialog(false); void refreshPlanDrafts(); }} onSaved={(id) => { setPlanDialog(false); setView("orders"); setSelectedOrder(id); void load(); void refreshPlanDrafts(); }} onError={onError} />;
-  return <>
-    <div className="procurement-page-heading"><PageHeading eyebrow="Снабжение" title="Закупки" text="" /><div className="procurement-inline-actions"><button className="admin-primary" onClick={openNewPlan} disabled={activeSuppliers.length === 0}>Собрать заказ</button><button className="secondary-button" disabled={activeSuppliers.length === 0} onClick={() => setUploadDialog(true)}>Загрузить инвойс</button><button className="secondary-button" onClick={() => setSupplierDialog(true)}>Поставщики</button><button className="secondary-button" disabled={activeSuppliers.length === 0} onClick={() => setOrderDialog(true)}>Создать без плана</button></div></div>
-    {data.summary.unresolvedAliases > 0 && <div className="procurement-summary-links"><button onClick={()=>{setView("orders");setReviewExpanded(true);window.requestAnimationFrame(()=>document.getElementById("procurement-review")?.scrollIntoView({block:"start"}));}}>Выбрать товары СБИС <strong>{data.summary.unresolvedAliases}</strong></button></div>}
-    {integrationNotice?.channel === "saby" && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
-
-    <div className="procurement-workspace"><nav className="procurement-tabs" aria-label="Разделы закупок">
-      {renderTab("orders", "Закупки")}
-      {renderTab("drafts", "Планы ", drafts.length)}
-      {renderTab("calculator", "Калькулятор")}
-      {renderTab("recommendations", "Что заказать")}
-      {renderTab("products", "Товары")}
-      {renderTab("unlinkedSales", "Продажи без товара")}
-      {renderTab("requests", "Под заказ ", data.summary.openRequests)}
-      {renderTab("availability", "Проверить наличие ", data.summary.availabilityChecks)}
-      {canIntegrations && renderTab("integrations", "Интеграции")}
-      {canIntegrations && renderTab("settings", "Формула цены")}
-    </nav><div className="procurement-content">
-
-    <div hidden={view !== "calculator"}><ProcurementCostCalculator initialDraft={calculatorDraft} onDraftChange={setCalculatorDraft} settings={data.settings} onRequest={(name,notes) => setCalculatorRequest({name,notes})} /></div>
-    {view === "drafts" && <section className="admin-block procurement-block"><div className="admin-block-heading"><div><h2>Планы закупок</h2></div><button className="admin-primary" onClick={openNewPlan}>Новый план</button></div>{drafts.length ? <div className="procurement-draft-list">{drafts.map((draft) => <article key={draft.id}><div><strong>{draft.title}</strong><small>Изменён {new Date(draft.updatedAt).toLocaleString("ru-RU")}</small></div><div><button onClick={() => { setEditingDraftId(draft.id); setPlanDialog(true); }}>Продолжить</button><button className="danger" onClick={() => void deleteDraft(draft)}>Удалить</button></div></article>)}</div> : <div className="procurement-zero"><strong>Планов пока нет</strong><span>Начните закупку — изменения сохранятся автоматически и будут доступны команде.</span></div>}</section>}
-    {view === "orders" && <><section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><h2>Заказы поставщикам</h2></div></div><div className="procurement-filter-bar"><input aria-label="Поиск закупки" value={orderQuery} onChange={event => setOrderQuery(event.target.value)} placeholder="Название, номер, поставщик"/><select aria-label="Статус закупки" value={orderFilter} onChange={event => setOrderFilter(event.target.value)}><option value="active">В работе</option><option value="received">Завершённые</option><option value="cancelled">Отменённые</option><option value="all">Все закупки</option></select><span>Закупок: {visibleOrders.length}</span></div>
-      {visibleOrders.length ? <div className="admin-table-wrap"><table className="admin-table procurement-orders"><thead><tr>
-        <th>Закупка</th><th>Поставщик</th><th>Источник</th><th>Статус</th><th>Состав</th><th>Сумма</th><th>Проверка</th>
-      </tr></thead><tbody>{pagedOrders.map((item) => <tr key={item.id}>
-        <td><a className="procurement-order-link" href={procurementOrderHref(item.id)} onClick={event => { if (!event.metaKey && !event.ctrlKey) { event.preventDefault(); setSelectedOrder(item.id); } }}>{item.title || item.orderNumber || `Закупка №${item.id}`}</a><small>{item.title ? item.orderNumber || `№${item.id}` : ""}</small><small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small></td>
-        <td><strong>{item.supplierName}</strong><small>{item.currency}</small></td>
-        <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
-        <td><span className={`admin-pill procurement-${item.status}`}>{procurementStatusLabels[item.status] || item.status}</span></td>
-        <td>{item.units} шт.<small>{quantityLabel(item.lines)}</small></td><td>{formatTotal(item)}{item.pendingReview ? <small>Сумма принятого состава; есть несверенные строки</small> : null}</td>
-        <td>{item.failedActions ? <span className="procurement-warning">Ошибка отправки · {item.failedActions}<small>Откройте закупку и проверьте журнал</small></span> : item.pendingReview ? <span className="procurement-warning">Сверить · {item.pendingReview}</span> : item.unmatched ? <span className="procurement-warning">Нет связи с СБИС: {item.unmatched}<small>Выберите карточки товаров в закупке</small></span> : <span>{item.status === "received" ? "Закрыта" : item.status === "cancelled" ? "Отменена" : "—"}</span>}</td>
-      </tr>)}</tbody></table></div> : <div className="orders-empty procurement-empty"><span>⌁</span><h3>Закупки не найдены</h3><p>Измените фильтр или создайте новый заказ.</p></div>}
-      {visibleOrders.length > pagedOrders.length && <div className="dialog-actions"><span>Показано {pagedOrders.length} из {visibleOrders.length}</span><button onClick={() => setOrderWindow({ scope: orderScope, count: orderLimit + 5 })}>Показать ещё закупки</button></div>}
-    </section>
-
-    {data.review.length>0 && <details className="procurement-section-details procurement-review-details" id="procurement-review" open={reviewExpanded} onToggle={event=>setReviewExpanded(event.currentTarget.open)}><summary>Связи с товарами СБИС <span>{data.review.length}</span></summary><section className="admin-block procurement-block">
-      {data.review.length ? <div className="admin-table-wrap"><table className="admin-table procurement-review"><thead><tr>
-        <th>Поставщик</th><th>Название в документе</th><th>Размер</th><th>Предложенный товар</th><th></th>
-      </tr></thead><tbody>{data.review.map((item) => <tr key={item.id}>
-        <td>{item.supplierName}</td><td><strong>{item.rawName}</strong>{item.supplierArticle && <small>Артикул: {item.supplierArticle}</small>}</td>
-        <td>{[item.potDiameterCm && `D${item.potDiameterCm}`, item.heightCm && `${item.heightCm} см`].filter(Boolean).join(" · ") || "—"}</td>
-        <td>{item.suggestedSabyName || "—"}</td>
-        <td><button className="table-action" onClick={() => setMatchDialog(item)}>Выбрать товар СБИС</button></td>
-      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Нет позиций для сопоставления</strong></div>}
-    </section></details>}
-
-    <details className="procurement-section-details"><summary>Инвойсы и счета <span>{data.documents.length}</span></summary><section className="admin-block procurement-block">
-      {data.documents.length ? <div className="admin-table-wrap"><table className="admin-table procurement-documents"><thead><tr>
-        <th>Документ</th><th>Поставщик</th><th>Формат</th><th>Строк / шт.</th><th>Растения</th><th>Упаковка</th><th>Проверка</th>
-      </tr></thead><tbody>{data.documents.map((item) => <tr key={item.id}>
-        <td><a href={`/api/v1/admin/procurement/documents/${item.id}/source.pdf`} target="_blank" rel="noreferrer">{item.documentNumber || item.fileName} ↗ PDF</a>{item.orderId > 0 && <a href={procurementOrderHref(item.orderId)} onClick={event => {event.preventDefault();setSelectedOrder(item.orderId);}}>Открыть закупку №{item.orderId}</a>}<small>{item.documentDate ? new Date(item.documentDate).toLocaleDateString("ru-RU") : item.fileName}</small><small>Версия {item.revisionNo || 1}{item.superseded ? " · заменена" : " · действующая"}</small></td>
-        <td>{item.supplierName}</td><td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
-        <td>{item.lines} / {item.units}</td><td>{formatMoney(item.productSubtotal, item.currency)}</td><td>{formatMoney(item.packageTotal, item.currency)}</td>
-        <td>{item.arithmeticStatus === "ok" ? <span className="procurement-ok">Суммы сходятся</span> : <span className="procurement-warning">Проверить суммы</span>}<small>{item.parseStatus === "review" ? "Есть несопоставленные строки" : "Разобрано"}</small></td>
-      </tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Документов пока нет</strong><span>Загрузите PDF поставщика — строки и телеги будут разобраны автоматически.</span></div>}
-    </section></details></>}
-
-    {view === "recommendations" && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Остаток СБИС + продажи всех каналов</p><h2>Рекомендации к закупке</h2></div><button aria-label="Сформировать заказ" className="admin-primary" disabled={!selectedRecommendationItems.length || !data.suppliers.length} onClick={openNewPlan}>Сформировать заказ · {selectedRecommendationItems.length}</button></div>
-      <details className="procurement-explanation"><summary>Как рассчитана потребность</summary><p className="admin-hint procurement-note">Продажи и заявки сопоставляются с карточками СБИС в разделах «Цветы» и «Цветы маркетплейс», включая товары без карточки на сайте. К закупке = подтверждённые продажи минус возвраты за {data.settings.recommendationDays} дней, пересчитанные на запас {data.settings.targetCoverDays} дней, + нераспределённые заявки клиентов и магазина − текущий остаток СБИС − товар в пути. Продажа сайта, уже связанная с заявкой клиента, повторно не считается. Карточки без спроса остаются во вкладке «Товары».</p></details>
-      {(data.salesSync || []).some(item=>item.lastError || item.rowsUnlinked>0) && <p className="procurement-warning">Есть проблемы с данными продаж. Откройте «Актуальность продаж по каналам» перед формированием заказа.</p>}<details className="procurement-explanation"><summary>Актуальность продаж по каналам</summary><div className="sales-sync-grid">{(data.salesSync || []).map((sync) => <article className={`sales-sync-${sync.status}`} key={sync.channel}><div><strong>{salesChannelLabel(sync.channel)}</strong><span>{salesSyncLabel(sync.status)}</span></div><small>{sync.lastSuccessAt ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}` : "Ещё не загружалось"}</small><small>{sync.latestSale ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}` : "Продаж за период нет"} · загружено {sync.rowsSynced} · без товара {sync.rowsUnlinked}</small>{sync.rowsUnlinked > 0 && <em>{sync.rowsUnlinked} товарных кодов продаж не сопоставлены и не участвуют в расчёте — разберите их на вкладке «Продажи без товара»</em>}{sync.lastError && <em>{sync.lastError}</em>}</article>)}</div>
-      </details><div className="procurement-recommendation-tabs">
-        {(["recommended", "already_ordered", "check_availability", "supplier_unavailable", "excluded"] as const).map((status) => <button className={recommendationView === status ? "active" : ""} key={status} onClick={() => { setRecommendationView(status); setSelectedRecommendations([]); }}>{recommendationStatusLabel(status)} <span>{data.recommendations.filter((item) => item.status === status).length}</span></button>)}
+  const formatTotal = (item: ProcurementOrder) =>
+    new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: item.currency,
+      maximumFractionDigits: 2,
+    }).format(item.total);
+  const formatMoney = (value: number, currency: string) =>
+    currency
+      ? new Intl.NumberFormat("ru-RU", {
+          style: "currency",
+          currency,
+          maximumFractionDigits: 2,
+        }).format(value)
+      : "—";
+  const renderTab = (target: typeof view, label: string, count = 0) => (
+    <button className={view === target ? "active" : ""} onClick={() => setView(target)}>
+      {label}
+      {count > 0 && <span>{count}</span>}
+    </button>
+  );
+  if (planDialog)
+    return (
+      <ProcurementPlanDialog
+        key={editingDraftId ?? "new"}
+        draftId={editingDraftId}
+        suppliers={activeSuppliers}
+        recommendations={actionableRecommendations}
+        initialRecommendations={editingDraftId ? [] : selectedRecommendationItems}
+        settings={data.settings}
+        onClose={() => {
+          setPlanDialog(false);
+          void refreshPlanDrafts();
+        }}
+        onSaved={(id) => {
+          setPlanDialog(false);
+          setView("orders");
+          setSelectedOrder(id);
+          void load();
+          void refreshPlanDrafts();
+        }}
+        onError={onError}
+      />
+    );
+  return (
+    <>
+      <div className="procurement-page-heading">
+        <PageHeading eyebrow="Снабжение" title="Закупки" text="" />
+        <div className="procurement-inline-actions">
+          <button
+            className="admin-primary"
+            onClick={openNewPlan}
+            disabled={activeSuppliers.length === 0}
+          >
+            Собрать заказ
+          </button>
+          <button
+            className="secondary-button"
+            disabled={activeSuppliers.length === 0}
+            onClick={() => setUploadDialog(true)}
+          >
+            Загрузить инвойс
+          </button>
+          <button className="secondary-button" onClick={() => setSupplierDialog(true)}>
+            Поставщики
+          </button>
+          <button
+            className="secondary-button"
+            disabled={activeSuppliers.length === 0}
+            onClick={() => setOrderDialog(true)}
+          >
+            Создать без плана
+          </button>
+        </div>
       </div>
-      <div className="procurement-recommendation-filters">
-        <label>Поставщик<select aria-label="Фильтр по поставщику" value={recommendationSupplierFilter} onChange={(event) => { setRecommendationSupplierFilter(Number(event.target.value)); setSelectedRecommendations([]); }}><option value={0}>Все поставщики</option><option value={-1}>Без поставщика</option>{data.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
-        <label>Рекомендовано<select aria-label="Фильтр по количеству" value={recommendationMinQty} onChange={(event) => { setRecommendationMinQty(Number(event.target.value)); setSelectedRecommendations([]); }}><option value={0}>Любое количество</option><option value={10}>Больше 10 шт.</option><option value={20}>Больше 20 шт.</option></select></label>
-        <label>Поиск<input value={recommendationQuery} onChange={event => setRecommendationQuery(event.target.value)} placeholder="Название или артикул"/></label><label>Порядок<select value={recommendationSort} onChange={event => setRecommendationSort(event.target.value)}><option value="quantity">Сначала большее количество</option><option value="name">По названию</option></select></label><span>{quantityLabel(recommendationItems.length)} · выбрано {selectedRecommendationItems.reduce((sum,item)=>sum+item.suggestedQty,0)} шт.</span>
-        {recommendationView === "recommended" && <button type="button" onClick={toggleVisibleRecommendations} disabled={recommendationSupplierFilter <= 0 || !selectableVisibleRecommendations.length}>{allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}</button>}
+      {data.summary.unresolvedAliases > 0 && (
+        <div className="procurement-summary-links">
+          <button
+            onClick={() => {
+              setView("orders");
+              setReviewExpanded(true);
+              window.requestAnimationFrame(() =>
+                document.getElementById("procurement-review")?.scrollIntoView({ block: "start" }),
+              );
+            }}
+          >
+            Выбрать товары СБИС <strong>{data.summary.unresolvedAliases}</strong>
+          </button>
+        </div>
+      )}
+      {integrationNotice?.channel === "saby" && (
+        <p
+          className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`}
+          role="status"
+        >
+          {integrationNotice.text}
+        </p>
+      )}
+
+      <div className="procurement-workspace">
+        <nav className="procurement-tabs" aria-label="Разделы закупок">
+          {renderTab("orders", "Закупки")}
+          {renderTab("drafts", "Планы ", drafts.length)}
+          {renderTab("calculator", "Калькулятор")}
+          {renderTab("recommendations", "Что заказать")}
+          {renderTab("products", "Товары")}
+          {renderTab("unlinkedSales", "Продажи без товара")}
+          {renderTab("requests", "Под заказ ", data.summary.openRequests)}
+          {renderTab("availability", "Проверить наличие ", data.summary.availabilityChecks)}
+          {canIntegrations && renderTab("integrations", "Интеграции")}
+          {canIntegrations && renderTab("settings", "Формула цены")}
+        </nav>
+        <div className="procurement-content">
+          <div hidden={view !== "calculator"}>
+            <ProcurementCostCalculator
+              initialDraft={calculatorDraft}
+              onDraftChange={setCalculatorDraft}
+              settings={data.settings}
+              onRequest={(name, notes) => setCalculatorRequest({ name, notes })}
+            />
+          </div>
+          {view === "drafts" && (
+            <section className="admin-block procurement-block">
+              <div className="admin-block-heading">
+                <div>
+                  <h2>Планы закупок</h2>
+                </div>
+                <button className="admin-primary" onClick={openNewPlan}>
+                  Новый план
+                </button>
+              </div>
+              {drafts.length ? (
+                <div className="procurement-draft-list">
+                  {drafts.map((draft) => (
+                    <article key={draft.id}>
+                      <div>
+                        <strong>{draft.title}</strong>
+                        <small>Изменён {new Date(draft.updatedAt).toLocaleString("ru-RU")}</small>
+                      </div>
+                      <div>
+                        <button
+                          onClick={() => {
+                            setEditingDraftId(draft.id);
+                            setPlanDialog(true);
+                          }}
+                        >
+                          Продолжить
+                        </button>
+                        <button className="danger" onClick={() => void deleteDraft(draft)}>
+                          Удалить
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="procurement-zero">
+                  <strong>Планов пока нет</strong>
+                  <span>
+                    Начните закупку — изменения сохранятся автоматически и будут доступны команде.
+                  </span>
+                </div>
+              )}
+            </section>
+          )}
+          {view === "orders" && (
+            <>
+              <section className="admin-block procurement-block">
+                <div className="admin-block-heading">
+                  <div>
+                    <h2>Заказы поставщикам</h2>
+                  </div>
+                </div>
+                <div className="procurement-filter-bar">
+                  <input
+                    aria-label="Поиск закупки"
+                    value={orderQuery}
+                    onChange={(event) => setOrderQuery(event.target.value)}
+                    placeholder="Название, номер, поставщик"
+                  />
+                  <select
+                    aria-label="Статус закупки"
+                    value={orderFilter}
+                    onChange={(event) => setOrderFilter(event.target.value)}
+                  >
+                    <option value="active">В работе</option>
+                    <option value="received">Завершённые</option>
+                    <option value="cancelled">Отменённые</option>
+                    <option value="all">Все закупки</option>
+                  </select>
+                  <span>Закупок: {visibleOrders.length}</span>
+                </div>
+                {visibleOrders.length ? (
+                  <div className="admin-table-wrap">
+                    <table className="admin-table procurement-orders">
+                      <thead>
+                        <tr>
+                          <th>Закупка</th>
+                          <th>Поставщик</th>
+                          <th>Источник</th>
+                          <th>Статус</th>
+                          <th>Состав</th>
+                          <th>Сумма</th>
+                          <th>Проверка</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedOrders.map((item) => (
+                          <tr key={item.id}>
+                            <td>
+                              <a
+                                className="procurement-order-link"
+                                href={procurementOrderHref(item.id)}
+                                onClick={(event) => {
+                                  if (!event.metaKey && !event.ctrlKey) {
+                                    event.preventDefault();
+                                    setSelectedOrder(item.id);
+                                  }
+                                }}
+                              >
+                                {item.title || item.orderNumber || `Закупка №${item.id}`}
+                              </a>
+                              <small>{item.title ? item.orderNumber || `№${item.id}` : ""}</small>
+                              <small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small>
+                            </td>
+                            <td>
+                              <strong>{item.supplierName}</strong>
+                              <small>{item.currency}</small>
+                            </td>
+                            <td>{procurementSourceLabels[item.sourceKind] || item.sourceKind}</td>
+                            <td>
+                              <span className={`admin-pill procurement-${item.status}`}>
+                                {procurementStatusLabels[item.status] || item.status}
+                              </span>
+                            </td>
+                            <td>
+                              {item.units} шт.<small>{quantityLabel(item.lines)}</small>
+                            </td>
+                            <td>
+                              {formatTotal(item)}
+                              {item.pendingReview ? (
+                                <small>Сумма принятого состава; есть несверенные строки</small>
+                              ) : null}
+                            </td>
+                            <td>
+                              {item.failedActions ? (
+                                <span className="procurement-warning">
+                                  Ошибка отправки · {item.failedActions}
+                                  <small>Откройте закупку и проверьте журнал</small>
+                                </span>
+                              ) : item.pendingReview ? (
+                                <span className="procurement-warning">
+                                  Сверить · {item.pendingReview}
+                                </span>
+                              ) : item.unmatched ? (
+                                <span className="procurement-warning">
+                                  Нет связи с СБИС: {item.unmatched}
+                                  <small>Выберите карточки товаров в закупке</small>
+                                </span>
+                              ) : (
+                                <span>
+                                  {item.status === "received"
+                                    ? "Закрыта"
+                                    : item.status === "cancelled"
+                                      ? "Отменена"
+                                      : "—"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="orders-empty procurement-empty">
+                    <span>⌁</span>
+                    <h3>Закупки не найдены</h3>
+                    <p>Измените фильтр или создайте новый заказ.</p>
+                  </div>
+                )}
+                {visibleOrders.length > pagedOrders.length && (
+                  <div className="dialog-actions">
+                    <span>
+                      Показано {pagedOrders.length} из {visibleOrders.length}
+                    </span>
+                    <button
+                      onClick={() => setOrderWindow({ scope: orderScope, count: orderLimit + 5 })}
+                    >
+                      Показать ещё закупки
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {data.review.length > 0 && (
+                <details
+                  className="procurement-section-details procurement-review-details"
+                  id="procurement-review"
+                  open={reviewExpanded}
+                  onToggle={(event) => setReviewExpanded(event.currentTarget.open)}
+                >
+                  <summary>
+                    Связи с товарами СБИС <span>{data.review.length}</span>
+                  </summary>
+                  <section className="admin-block procurement-block">
+                    {data.review.length ? (
+                      <div className="admin-table-wrap">
+                        <table className="admin-table procurement-review">
+                          <thead>
+                            <tr>
+                              <th>Поставщик</th>
+                              <th>Название в документе</th>
+                              <th>Размер</th>
+                              <th>Предложенный товар</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.review.map((item) => (
+                              <tr key={item.id}>
+                                <td>{item.supplierName}</td>
+                                <td>
+                                  <strong>{item.rawName}</strong>
+                                  {item.supplierArticle && (
+                                    <small>Артикул: {item.supplierArticle}</small>
+                                  )}
+                                </td>
+                                <td>
+                                  {[
+                                    item.potDiameterCm && `D${item.potDiameterCm}`,
+                                    item.heightCm && `${item.heightCm} см`,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ") || "—"}
+                                </td>
+                                <td>{item.suggestedSabyName || "—"}</td>
+                                <td>
+                                  <button
+                                    className="table-action"
+                                    onClick={() => setMatchDialog(item)}
+                                  >
+                                    Выбрать товар СБИС
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="procurement-zero">
+                        <strong>Нет позиций для сопоставления</strong>
+                      </div>
+                    )}
+                  </section>
+                </details>
+              )}
+
+              <details className="procurement-section-details">
+                <summary>
+                  Инвойсы и счета <span>{data.documents.length}</span>
+                </summary>
+                <section className="admin-block procurement-block">
+                  {data.documents.length ? (
+                    <div className="admin-table-wrap">
+                      <table className="admin-table procurement-documents">
+                        <thead>
+                          <tr>
+                            <th>Документ</th>
+                            <th>Поставщик</th>
+                            <th>Формат</th>
+                            <th>Строк / шт.</th>
+                            <th>Растения</th>
+                            <th>Упаковка</th>
+                            <th>Проверка</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.documents.map((item) => (
+                            <tr key={item.id}>
+                              <td>
+                                <a
+                                  href={`/api/v1/admin/procurement/documents/${item.id}/source.pdf`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {item.documentNumber || item.fileName} ↗ PDF
+                                </a>
+                                {item.orderId > 0 && (
+                                  <a
+                                    href={procurementOrderHref(item.orderId)}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      setSelectedOrder(item.orderId);
+                                    }}
+                                  >
+                                    Открыть закупку №{item.orderId}
+                                  </a>
+                                )}
+                                <small>
+                                  {item.documentDate
+                                    ? new Date(item.documentDate).toLocaleDateString("ru-RU")
+                                    : item.fileName}
+                                </small>
+                                <small>
+                                  Версия {item.revisionNo || 1}
+                                  {item.superseded ? " · заменена" : " · действующая"}
+                                </small>
+                              </td>
+                              <td>{item.supplierName}</td>
+                              <td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
+                              <td>
+                                {item.lines} / {item.units}
+                              </td>
+                              <td>{formatMoney(item.productSubtotal, item.currency)}</td>
+                              <td>{formatMoney(item.packageTotal, item.currency)}</td>
+                              <td>
+                                {item.arithmeticStatus === "ok" ? (
+                                  <span className="procurement-ok">Суммы сходятся</span>
+                                ) : (
+                                  <span className="procurement-warning">Проверить суммы</span>
+                                )}
+                                <small>
+                                  {item.parseStatus === "review"
+                                    ? "Есть несопоставленные строки"
+                                    : "Разобрано"}
+                                </small>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="procurement-zero">
+                      <strong>Документов пока нет</strong>
+                      <span>
+                        Загрузите PDF поставщика — строки и телеги будут разобраны автоматически.
+                      </span>
+                    </div>
+                  )}
+                </section>
+              </details>
+            </>
+          )}
+
+          {view === "recommendations" && (
+            <section className="admin-block procurement-block">
+              <div className="admin-block-heading">
+                <div>
+                  <p className="eyebrow">Остаток СБИС + продажи всех каналов</p>
+                  <h2>Рекомендации к закупке</h2>
+                </div>
+                <button
+                  aria-label="Сформировать заказ"
+                  className="admin-primary"
+                  disabled={!selectedRecommendationItems.length || !data.suppliers.length}
+                  onClick={openNewPlan}
+                >
+                  Сформировать заказ · {selectedRecommendationItems.length}
+                </button>
+              </div>
+              <details className="procurement-explanation">
+                <summary>Как рассчитана потребность</summary>
+                <p className="admin-hint procurement-note">
+                  Продажи и заявки сопоставляются с карточками СБИС в разделах «Цветы» и «Цветы
+                  маркетплейс», включая товары без карточки на сайте. К закупке = подтверждённые
+                  продажи минус возвраты за {data.settings.recommendationDays} дней, пересчитанные
+                  на запас {data.settings.targetCoverDays} дней, + нераспределённые заявки клиентов
+                  и магазина − текущий остаток СБИС − товар в пути. Продажа сайта, уже связанная с
+                  заявкой клиента, повторно не считается. Карточки без спроса остаются во вкладке
+                  «Товары».
+                </p>
+              </details>
+              {(data.salesSync || []).some((item) => item.lastError || item.rowsUnlinked > 0) && (
+                <p className="procurement-warning">
+                  Есть проблемы с данными продаж. Откройте «Актуальность продаж по каналам» перед
+                  формированием заказа.
+                </p>
+              )}
+              <details className="procurement-explanation">
+                <summary>Актуальность продаж по каналам</summary>
+                <div className="sales-sync-grid">
+                  {(data.salesSync || []).map((sync) => (
+                    <article className={`sales-sync-${sync.status}`} key={sync.channel}>
+                      <div>
+                        <strong>{salesChannelLabel(sync.channel)}</strong>
+                        <span>{salesSyncLabel(sync.status)}</span>
+                      </div>
+                      <small>
+                        {sync.lastSuccessAt
+                          ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}`
+                          : "Ещё не загружалось"}
+                      </small>
+                      <small>
+                        {sync.latestSale
+                          ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}`
+                          : "Продаж за период нет"}{" "}
+                        · загружено {sync.rowsSynced} · без товара {sync.rowsUnlinked}
+                      </small>
+                      {sync.rowsUnlinked > 0 && (
+                        <em>
+                          {sync.rowsUnlinked} товарных кодов продаж не сопоставлены и не участвуют в
+                          расчёте — разберите их на вкладке «Продажи без товара»
+                        </em>
+                      )}
+                      {sync.lastError && <em>{sync.lastError}</em>}
+                    </article>
+                  ))}
+                </div>
+              </details>
+              <div className="procurement-recommendation-tabs">
+                {(
+                  [
+                    "recommended",
+                    "already_ordered",
+                    "check_availability",
+                    "supplier_unavailable",
+                    "excluded",
+                  ] as const
+                ).map((status) => (
+                  <button
+                    className={recommendationView === status ? "active" : ""}
+                    key={status}
+                    onClick={() => {
+                      setRecommendationView(status);
+                      setSelectedRecommendations([]);
+                    }}
+                  >
+                    {recommendationStatusLabel(status)}{" "}
+                    <span>
+                      {data.recommendations.filter((item) => item.status === status).length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="procurement-recommendation-filters">
+                <label>
+                  Поставщик
+                  <select
+                    aria-label="Фильтр по поставщику"
+                    value={recommendationSupplierFilter}
+                    onChange={(event) => {
+                      setRecommendationSupplierFilter(Number(event.target.value));
+                      setSelectedRecommendations([]);
+                    }}
+                  >
+                    <option value={0}>Все поставщики</option>
+                    <option value={-1}>Без поставщика</option>
+                    {data.suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Рекомендовано
+                  <select
+                    aria-label="Фильтр по количеству"
+                    value={recommendationMinQty}
+                    onChange={(event) => {
+                      setRecommendationMinQty(Number(event.target.value));
+                      setSelectedRecommendations([]);
+                    }}
+                  >
+                    <option value={0}>Любое количество</option>
+                    <option value={10}>Больше 10 шт.</option>
+                    <option value={20}>Больше 20 шт.</option>
+                  </select>
+                </label>
+                <label>
+                  Поиск
+                  <input
+                    value={recommendationQuery}
+                    onChange={(event) => setRecommendationQuery(event.target.value)}
+                    placeholder="Название или артикул"
+                  />
+                </label>
+                <label>
+                  Порядок
+                  <select
+                    value={recommendationSort}
+                    onChange={(event) => setRecommendationSort(event.target.value)}
+                  >
+                    <option value="quantity">Сначала большее количество</option>
+                    <option value="name">По названию</option>
+                  </select>
+                </label>
+                <span>
+                  {quantityLabel(recommendationItems.length)} · выбрано{" "}
+                  {selectedRecommendationItems.reduce((sum, item) => sum + item.suggestedQty, 0)}{" "}
+                  шт.
+                </span>
+                {recommendationView === "recommended" && (
+                  <button
+                    type="button"
+                    onClick={toggleVisibleRecommendations}
+                    disabled={
+                      recommendationSupplierFilter <= 0 || !selectableVisibleRecommendations.length
+                    }
+                  >
+                    {allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}
+                  </button>
+                )}
+              </div>
+              {recommendationView === "recommended" && recommendationSupplierFilter <= 0 && (
+                <p className="admin-hint procurement-note">
+                  Для массового выбора сначала укажите одного поставщика. У товара без поставщика
+                  его можно назначить прямо в строке.
+                </p>
+              )}
+              {recommendationItems.length ? (
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Выбрать</th>
+                        <th>Товар</th>
+                        <th>Поставщик / артикул</th>
+                        <th>Остаток / в пути</th>
+                        <th>Продажи</th>
+                        <th>Хватит на</th>
+                        <th>Запросы</th>
+                        <th>Заказать</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recommendationItems.map((item) => {
+                        const key = `${item.supplierId}:${item.sabyId}`;
+                        const selectable = item.status === "recommended" && item.supplierId > 0;
+                        return (
+                          <tr key={key}>
+                            <td>
+                              {selectable && (
+                                <input
+                                  aria-label={`Выбрать ${item.name}`}
+                                  type="checkbox"
+                                  checked={selectedRecommendations.includes(key)}
+                                  disabled={
+                                    selectedSupplierId != null &&
+                                    selectedSupplierId !== item.supplierId
+                                  }
+                                  onChange={(event) =>
+                                    setSelectedRecommendations((current) =>
+                                      event.target.checked
+                                        ? [...current, key]
+                                        : current.filter((value) => value !== key),
+                                    )
+                                  }
+                                />
+                              )}
+                            </td>
+                            <td>
+                              <strong>{item.name}</strong>
+                              <small>{item.reason}</small>
+                              {item.lastSaleAt && (
+                                <small>
+                                  Последняя продажа:{" "}
+                                  {new Date(item.lastSaleAt).toLocaleDateString("ru-RU")}
+                                </small>
+                              )}
+                              {item.lastOrderedAt && (
+                                <small>
+                                  Последняя закупка:{" "}
+                                  {new Date(item.lastOrderedAt).toLocaleDateString("ru-RU")}
+                                </small>
+                              )}
+                            </td>
+                            <td>
+                              <select
+                                aria-label={`Поставщик для ${item.name}`}
+                                value={item.supplierId}
+                                disabled={savingRecommendationSupplier === item.sabyId}
+                                onChange={(event) =>
+                                  void assignRecommendationSupplier(
+                                    item.sabyId,
+                                    Number(event.target.value),
+                                  )
+                                }
+                              >
+                                <option value={0}>Поставщик не назначен</option>
+                                {data.suppliers.map((supplier) => (
+                                  <option key={supplier.id} value={supplier.id}>
+                                    {supplier.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <small>
+                                {savingRecommendationSupplier === item.sabyId
+                                  ? "Сохраняем…"
+                                  : item.supplierId
+                                    ? item.supplierArticle || "Артикул не заполнен"
+                                    : "Выберите поставщика"}
+                              </small>
+                            </td>
+                            <td>
+                              <strong>
+                                {item.balanceKnown === false ? "Неизвестен" : item.balance} /{" "}
+                                {item.incoming}
+                              </strong>
+                              <small>
+                                {item.balanceAsOf
+                                  ? `СБИС: ${new Date(item.balanceAsOf).toLocaleString("ru-RU")}`
+                                  : "Дата остатка неизвестна"}
+                              </small>
+                            </td>
+                            <td>
+                              <strong>{item.totalSales}</strong>
+                              <small>
+                                всего {item.grossSales ?? item.totalSales} − возвраты{" "}
+                                {item.returns ?? 0}
+                              </small>
+                              <small>
+                                магазин {item.sabySales} · сайт {item.siteSales} · WB {item.wbSales}{" "}
+                                · Ozon {item.ozonSales}
+                              </small>
+                            </td>
+                            <td>
+                              {item.daysOfCover == null
+                                ? "Нет продаж"
+                                : `${Math.round(item.daysOfCover)} дн.`}
+                            </td>
+                            <td>
+                              {item.openRequests}
+                              <small>
+                                {item.customerRequests ? `клиенту ${item.customerRequests}` : ""}
+                                {item.staffRequests
+                                  ? `${item.customerRequests ? " · " : ""}магазину ${item.staffRequests}`
+                                  : ""}
+                              </small>
+                            </td>
+                            <td>
+                              <strong>
+                                {item.quantityKnown === false
+                                  ? "Задать вручную"
+                                  : `${item.suggestedQty} шт.`}
+                              </strong>
+                              <small>
+                                {item.roundingExplanation ||
+                                  (item.demandQty == null
+                                    ? `Минимум ${item.minimumOrderQty}, кратно ${item.orderMultiple}`
+                                    : `Потребность ${item.demandQty} − остаток ${item.balance} − в пути ${item.incoming}`)}
+                              </small>
+                            </td>
+                            <td>
+                              <div className="procurement-inline-actions">
+                                {item.supplierId > 0 &&
+                                  item.status !== "check_availability" &&
+                                  item.status !== "excluded" && (
+                                    <button
+                                      onClick={() =>
+                                        void updateAvailability(
+                                          item.supplierId,
+                                          item.sabyId,
+                                          "check",
+                                          load,
+                                          onError,
+                                        )
+                                      }
+                                    >
+                                      Проверить наличие
+                                    </button>
+                                  )}
+                                {item.supplierId > 0 &&
+                                  item.status !== "supplier_unavailable" &&
+                                  item.status !== "excluded" && (
+                                    <button
+                                      onClick={() =>
+                                        void updateAvailability(
+                                          item.supplierId,
+                                          item.sabyId,
+                                          "temporarily_unavailable",
+                                          load,
+                                          onError,
+                                        )
+                                      }
+                                    >
+                                      Нет у поставщика
+                                    </button>
+                                  )}
+                                {item.status === "excluded" ? (
+                                  <button
+                                    onClick={() =>
+                                      void setExclusion(item.sabyId, false, "", load, onError)
+                                    }
+                                  >
+                                    Вернуть в закупку
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() =>
+                                      void setExclusion(item.sabyId, true, "", load, onError)
+                                    }
+                                  >
+                                    Не закупать
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="procurement-zero">
+                  <strong>{recommendationEmptyTitle(recommendationView)}</strong>
+                  <span>{recommendationEmptyText(recommendationView)}</span>
+                </div>
+              )}
+            </section>
+          )}
+
+          {view === "products" && (
+            <Suspense
+              fallback={
+                <section className="admin-block procurement-block">
+                  <p className="admin-hint">Загружаем каталог Saby…</p>
+                </section>
+              }
+            >
+              <ProcurementProducts
+                suppliers={activeSuppliers}
+                onError={onError}
+                onSaved={() => void load()}
+              />
+            </Suspense>
+          )}
+
+          {view === "unlinkedSales" && (
+            <Suspense fallback={<p className="admin-hint">Загружаем продажи…</p>}>
+              <ProcurementUnlinkedSales onError={onError} />
+            </Suspense>
+          )}
+
+          {view === "requests" && (
+            <section className="admin-block procurement-block">
+              <div className="admin-block-heading">
+                <div>
+                  <p className="eyebrow">Приоритет закупки</p>
+                  <h2>Под заказ и идеи магазина</h2>
+                </div>
+                <button className="admin-primary" onClick={() => setRequestDialog(true)}>
+                  Добавить
+                </button>
+              </div>
+              <div className="procurement-filter-bar">
+                <select
+                  aria-label="Показать запросы"
+                  value={requestFilter}
+                  onChange={(event) => setRequestFilter(event.target.value)}
+                >
+                  <option value="active">Открытые и в закупке</option>
+                  <option value="archive">История</option>
+                  <option value="all">Все запросы</option>
+                </select>
+                <span>Запросов: {visibleRequests.length}</span>
+              </div>
+              {visibleRequests.length ? (
+                <div className="admin-table-wrap">
+                  <table className="admin-table procurement-requests">
+                    <thead>
+                      <tr>
+                        <th>Тип</th>
+                        <th>Товар</th>
+                        <th>Количество</th>
+                        <th>Статус</th>
+                        <th>Комментарий</th>
+                        <th>Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleRequests.map((item) => (
+                        <tr key={item.id}>
+                          <td>
+                            {item.kind === "customer_order" ? (
+                              <span className="procurement-warning">Клиенту</span>
+                            ) : (
+                              "Рекомендация"
+                            )}
+                            <small>
+                              {item.customerName ||
+                                (item.kind === "customer_order"
+                                  ? "Клиентский запрос"
+                                  : "Запрос магазина")}
+                            </small>
+                            {item.customerOrderId && (
+                              <a
+                                href={`/admin?section=orders&customerOrderId=${item.customerOrderId}`}
+                              >
+                                Заказ CRM №{item.customerOrderId} ↗
+                              </a>
+                            )}
+                          </td>
+                          <td>
+                            <strong>{item.requestedName}</strong>
+                            <small>{item.sabyId || "Не связан со СБИС"}</small>
+                          </td>
+                          <td>
+                            <strong>{item.quantity}</strong>
+                            <small>
+                              распределено {item.allocatedQuantity} · осталось{" "}
+                              {item.remainingQuantity}
+                            </small>
+                          </td>
+                          <td>
+                            {{
+                              included: "В закупке",
+                              open: "Открыт",
+                              fulfilled: "Выполнен",
+                              cancelled: "Отменён",
+                            }[item.status] || item.status}
+                            <small>
+                              {item.allocations
+                                ?.map(
+                                  (allocation) =>
+                                    `${allocation.orderNumber || `№${allocation.procurementOrderId}`}: ${allocation.quantity} шт.`,
+                                )
+                                .join(" · ")}
+                            </small>
+                          </td>
+                          <td>
+                            {item.notes || "—"}
+                            <small>
+                              {item.dueDate
+                                ? `Нужно к ${new Date(`${item.dueDate}T00:00:00`).toLocaleDateString("ru-RU")}`
+                                : "Срок не указан"}
+                            </small>
+                            <small>{item.assignee || "Ответственный не назначен"}</small>
+                            <small>Создан {new Date(item.createdAt).toLocaleString("ru-RU")}</small>
+                            {Boolean(item.history?.length) && (
+                              <details>
+                                <summary>История запроса</summary>
+                                {item.history?.map((event, index) => (
+                                  <p key={index}>
+                                    {new Date(event.at).toLocaleString("ru-RU")} ·{" "}
+                                    {(
+                                      {
+                                        open: "Открыт",
+                                        included: "В закупке",
+                                        fulfilled: "Выполнен",
+                                        cancelled: "Отменён",
+                                      } as Record<string, string>
+                                    )[event.status] || event.status}{" "}
+                                    · {event.quantity} шт.
+                                    <small>
+                                      {event.name} {event.notes}
+                                    </small>
+                                    <small>
+                                      {event.dueDate
+                                        ? `Срок: ${new Date(`${event.dueDate}T00:00:00`).toLocaleDateString("ru-RU")}`
+                                        : "Без срока"}{" "}
+                                      · {event.assignee || "Ответственный не назначен"}
+                                    </small>
+                                  </p>
+                                ))}
+                              </details>
+                            )}
+                          </td>
+                          <td>
+                            <div className="procurement-inline-actions">
+                              {["open", "included"].includes(item.status) ? (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setEditingRequest(item);
+                                      setRequestDialog(true);
+                                    }}
+                                  >
+                                    Изменить
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      void updateRequestStatus(item, "fulfilled", load, onError)
+                                    }
+                                  >
+                                    Выполнен
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      void updateRequestStatus(item, "cancelled", load, onError)
+                                    }
+                                  >
+                                    Отменить
+                                  </button>
+                                </>
+                              ) : item.status === "cancelled" ? (
+                                <button
+                                  onClick={() =>
+                                    void updateRequestStatus(item, "open", load, onError)
+                                  }
+                                >
+                                  Вернуть в работу
+                                </button>
+                              ) : (
+                                <span>Выполнено</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="procurement-zero">
+                  <strong>Запросов нет</strong>
+                  <span>Добавьте клиентский заказ или рекомендацию сотрудника.</span>
+                </div>
+              )}
+            </section>
+          )}
+
+          {view === "availability" && (
+            <section className="admin-block procurement-block">
+              <div className="admin-block-heading">
+                <div>
+                  <p className="eyebrow">Наличие у поставщика</p>
+                  <h2>Проверить наличие</h2>
+                </div>
+                <div className="procurement-inline-actions">
+                  <button
+                    className={availabilityDueOnly ? "active" : ""}
+                    onClick={() => setAvailabilityDueOnly(true)}
+                  >
+                    Пора проверить · {data.availability.filter((item) => item.due).length}
+                  </button>
+                  <button
+                    className={!availabilityDueOnly ? "active" : ""}
+                    onClick={() => setAvailabilityDueOnly(false)}
+                  >
+                    Все · {data.availability.length}
+                  </button>
+                </div>
+              </div>
+              <p className="admin-hint procurement-note">
+                Статус хранится на паре товар + поставщик, поэтому пометить можно любое растение из
+                справочника, а не только встреченное в разобранном инвойсе.
+              </p>
+              {availabilityItems.length ? (
+                <div className="admin-table-wrap">
+                  <table className="admin-table procurement-availability">
+                    <thead>
+                      <tr>
+                        <th>Товар</th>
+                        <th>Поставщик</th>
+                        <th>Остаток</th>
+                        <th>С какого дня</th>
+                        <th>Статус</th>
+                        <th>Проверка вручную</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {availabilityItems.map((item) => (
+                        <AvailabilityRow
+                          key={`${item.supplierId}-${item.sabyId}`}
+                          item={item}
+                          reload={load}
+                          onError={onError}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="procurement-zero">
+                  <strong>На сегодня проверок нет</strong>
+                  <span>
+                    {data.availability.length
+                      ? "Будущие проверки доступны во вкладке «Все»."
+                      : "Отмечайте товары для проверки в рекомендациях или справочнике."}
+                  </span>
+                </div>
+              )}
+            </section>
+          )}
+
+          {view === "integrations" && canIntegrations && (
+            <section className="admin-block procurement-block">
+              <div className="admin-block-heading">
+                <div>
+                  <p className="eyebrow">Безопасная диагностика</p>
+                  <h2>Подключения API</h2>
+                </div>
+              </div>
+
+              <div className="integration-health-grid">
+                {(data.integrationHealth || []).map((item) => (
+                  <article className={item.lastError ? "attention" : ""} key={item.channel}>
+                    <div>
+                      <strong>{integrationChannelLabel(item.channel)}</strong>
+                      <span>
+                        {!item.configured
+                          ? "Переменные не найдены"
+                          : item.lastError
+                            ? "Ошибка подключения"
+                            : item.lastSuccessAt
+                              ? "Настроено · проверялось"
+                              : "Не проверялось"}
+                      </span>
+                    </div>
+                    <small>
+                      {item.lastSuccessAt
+                        ? `Успешная проверка подключения: ${new Date(item.lastSuccessAt).toLocaleString("ru-RU")}`
+                        : "Успешных проверок ещё нет"}
+                    </small>
+                    <small>
+                      Продажи:{" "}
+                      {data.salesSync?.find((sync) => sync.channel === item.channel)?.lastSuccessAt
+                        ? new Date(
+                            data.salesSync.find(
+                              (sync) => sync.channel === item.channel,
+                            )!.lastSuccessAt!,
+                          ).toLocaleString("ru-RU")
+                        : "Успешная загрузка не зафиксирована"}
+                    </small>
+                    {item.lastError && <em>{item.lastError}</em>}
+                    {integrationNotice?.channel === item.channel && (
+                      <p
+                        className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`}
+                        role="status"
+                      >
+                        {integrationNotice.text}
+                      </p>
+                    )}
+                    <button
+                      className="secondary-button"
+                      disabled={checkingIntegration !== ""}
+                      onClick={() => void checkIntegration(item.channel)}
+                    >
+                      {checkingIntegration === item.channel
+                        ? "Проверяем…"
+                        : item.channel === "wb"
+                          ? "Проверить зеркало"
+                          : "Проверить подключение"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={syncingCatalog !== "" || !item.configured}
+                      onClick={() => void syncCatalog(item.channel)}
+                    >
+                      {syncingCatalog === item.channel
+                        ? "Сопоставляем…"
+                        : item.channel === "saby"
+                          ? "Обновить справочник"
+                          : item.channel === "wb"
+                            ? "Сопоставить из зеркала"
+                            : "Подтянуть артикулы"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+
+              <details className="procurement-explanation">
+                <summary>Как работают подключения</summary>
+                <p className="admin-hint procurement-note">
+                  Проверка только читает одну служебную запись. Цены, остатки, заказы и документы не
+                  изменяются.
+                </p>
+                <p className="admin-hint procurement-note">
+                  Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному
+                  совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение
+                  по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Что не
+                  совпало, разбирается руками на вкладке «Продажи без товара».
+                </p>
+                <p className="admin-hint procurement-note">
+                  Wildberries раз в час фоново сохраняет карточки, артикулы, цены и продажи в
+                  локальное зеркало. Разделы сайта и кнопка сопоставления читают только базу и не
+                  создают дополнительных запросов к WB. Токену нужны категории «Цены и скидки»,
+                  «Статистика» и «Контент».
+                </p>
+                <p className="admin-hint procurement-note">
+                  СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления
+                  ставит один приоритетный проход в общую очередь; состояние и следующий запуск
+                  видны в разделе «Маркетплейсы».
+                </p>
+              </details>
+            </section>
+          )}
+
+          {view === "settings" && canIntegrations && (
+            <ProcurementSettingsPanel
+              key={data.settings.version}
+              settings={data.settings}
+              onSaved={() => void load()}
+              onError={onError}
+            />
+          )}
+        </div>
       </div>
-      {recommendationView === "recommended" && recommendationSupplierFilter <= 0 && <p className="admin-hint procurement-note">Для массового выбора сначала укажите одного поставщика. У товара без поставщика его можно назначить прямо в строке.</p>}
-      {recommendationItems.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Выбрать</th><th>Товар</th><th>Поставщик / артикул</th><th>Остаток / в пути</th><th>Продажи</th><th>Хватит на</th><th>Запросы</th><th>Заказать</th><th></th></tr></thead><tbody>{recommendationItems.map((item) => { const key=`${item.supplierId}:${item.sabyId}`; const selectable=item.status === "recommended" && item.supplierId > 0; return <tr key={key}><td>{selectable && <input aria-label={`Выбрать ${item.name}`} type="checkbox" checked={selectedRecommendations.includes(key)} disabled={selectedSupplierId != null && selectedSupplierId !== item.supplierId} onChange={(event) => setSelectedRecommendations((current) => event.target.checked ? [...current,key] : current.filter((value) => value !== key))} />}</td><td><strong>{item.name}</strong><small>{item.reason}</small>{item.lastSaleAt && <small>Последняя продажа: {new Date(item.lastSaleAt).toLocaleDateString("ru-RU")}</small>}{item.lastOrderedAt && <small>Последняя закупка: {new Date(item.lastOrderedAt).toLocaleDateString("ru-RU")}</small>}</td><td><select aria-label={`Поставщик для ${item.name}`} value={item.supplierId} disabled={savingRecommendationSupplier === item.sabyId} onChange={(event) => void assignRecommendationSupplier(item.sabyId, Number(event.target.value))}><option value={0}>Поставщик не назначен</option>{data.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select><small>{savingRecommendationSupplier === item.sabyId ? "Сохраняем…" : item.supplierId ? item.supplierArticle || "Артикул не заполнен" : "Выберите поставщика"}</small></td><td><strong>{item.balanceKnown === false ? "Неизвестен" : item.balance} / {item.incoming}</strong><small>{item.balanceAsOf ? `СБИС: ${new Date(item.balanceAsOf).toLocaleString("ru-RU")}` : "Дата остатка неизвестна"}</small></td><td><strong>{item.totalSales}</strong><small>всего {item.grossSales ?? item.totalSales} − возвраты {item.returns ?? 0}</small><small>магазин {item.sabySales} · сайт {item.siteSales} · WB {item.wbSales} · Ozon {item.ozonSales}</small></td><td>{item.daysOfCover == null ? "Нет продаж" : `${Math.round(item.daysOfCover)} дн.`}</td><td>{item.openRequests}<small>{item.customerRequests ? `клиенту ${item.customerRequests}` : ""}{item.staffRequests ? `${item.customerRequests ? " · " : ""}магазину ${item.staffRequests}` : ""}</small></td><td><strong>{item.quantityKnown === false ? "Задать вручную" : `${item.suggestedQty} шт.`}</strong><small>{item.roundingExplanation || (item.demandQty == null ? `Минимум ${item.minimumOrderQty}, кратно ${item.orderMultiple}` : `Потребность ${item.demandQty} − остаток ${item.balance} − в пути ${item.incoming}`)}</small></td><td><div className="procurement-inline-actions">{item.supplierId > 0 && item.status !== "check_availability" && item.status !== "excluded" && <button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "check", load, onError)}>Проверить наличие</button>}{item.supplierId > 0 && item.status !== "supplier_unavailable" && item.status !== "excluded" && <button onClick={() => void updateAvailability(item.supplierId, item.sabyId, "temporarily_unavailable", load, onError)}>Нет у поставщика</button>}{item.status === "excluded" ? <button onClick={() => void setExclusion(item.sabyId, false, "", load, onError)}>Вернуть в закупку</button> : <button onClick={() => void setExclusion(item.sabyId, true, "", load, onError)}>Не закупать</button>}</div></td></tr>})}</tbody></table></div> : <div className="procurement-zero"><strong>{recommendationEmptyTitle(recommendationView)}</strong><span>{recommendationEmptyText(recommendationView)}</span></div>}
-    </section>}
-
-    {view === "products" && <Suspense fallback={<section className="admin-block procurement-block"><p className="admin-hint">Загружаем каталог Saby…</p></section>}><ProcurementProducts suppliers={activeSuppliers} onError={onError} onSaved={() => void load()} /></Suspense>}
-
-    {view === "unlinkedSales" && <Suspense fallback={<p className="admin-hint">Загружаем продажи…</p>}><ProcurementUnlinkedSales onError={onError} /></Suspense>}
-
-    {view === "requests" && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Приоритет закупки</p><h2>Под заказ и идеи магазина</h2></div><button className="admin-primary" onClick={() => setRequestDialog(true)}>Добавить</button></div>
-      <div className="procurement-filter-bar"><select aria-label="Показать запросы" value={requestFilter} onChange={event=>setRequestFilter(event.target.value)}><option value="active">Открытые и в закупке</option><option value="archive">История</option><option value="all">Все запросы</option></select><span>Запросов: {visibleRequests.length}</span></div>
-      {visibleRequests.length ? <div className="admin-table-wrap"><table className="admin-table procurement-requests"><thead><tr><th>Тип</th><th>Товар</th><th>Количество</th><th>Статус</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{visibleRequests.map((item) => <tr key={item.id}><td>{item.kind === "customer_order" ? <span className="procurement-warning">Клиенту</span> : "Рекомендация"}<small>{item.customerName || (item.kind === "customer_order" ? "Клиентский запрос" : "Запрос магазина")}</small>{item.customerOrderId && <a href={`/admin?section=orders&customerOrderId=${item.customerOrderId}`}>Заказ CRM №{item.customerOrderId} ↗</a>}</td><td><strong>{item.requestedName}</strong><small>{item.sabyId || "Не связан со СБИС"}</small></td><td><strong>{item.quantity}</strong><small>распределено {item.allocatedQuantity} · осталось {item.remainingQuantity}</small></td><td>{{included:"В закупке",open:"Открыт",fulfilled:"Выполнен",cancelled:"Отменён"}[item.status] || item.status}<small>{item.allocations?.map((allocation) => `${allocation.orderNumber || `№${allocation.procurementOrderId}`}: ${allocation.quantity} шт.`).join(" · ")}</small></td><td>{item.notes || "—"}<small>{item.dueDate ? `Нужно к ${new Date(`${item.dueDate}T00:00:00`).toLocaleDateString("ru-RU")}` : "Срок не указан"}</small><small>{item.assignee || "Ответственный не назначен"}</small><small>Создан {new Date(item.createdAt).toLocaleString("ru-RU")}</small>{Boolean(item.history?.length) && <details><summary>История запроса</summary>{item.history?.map((event,index)=><p key={index}>{new Date(event.at).toLocaleString("ru-RU")} · {({open:"Открыт",included:"В закупке",fulfilled:"Выполнен",cancelled:"Отменён"} as Record<string,string>)[event.status] || event.status} · {event.quantity} шт.<small>{event.name} {event.notes}</small><small>{event.dueDate ? `Срок: ${new Date(`${event.dueDate}T00:00:00`).toLocaleDateString("ru-RU")}` : "Без срока"} · {event.assignee || "Ответственный не назначен"}</small></p>)}</details>}</td><td><div className="procurement-inline-actions">{["open","included"].includes(item.status) ? <><button onClick={() => {setEditingRequest(item);setRequestDialog(true);}}>Изменить</button><button onClick={() => void updateRequestStatus(item, "fulfilled", load, onError)}>Выполнен</button><button onClick={() => void updateRequestStatus(item, "cancelled", load, onError)}>Отменить</button></> : item.status === "cancelled" ? <button onClick={() => void updateRequestStatus(item, "open", load, onError)}>Вернуть в работу</button> : <span>Выполнено</span>}</div></td></tr>)}</tbody></table></div> : <div className="procurement-zero"><strong>Запросов нет</strong><span>Добавьте клиентский заказ или рекомендацию сотрудника.</span></div>}
-    </section>}
-
-    {view === "availability" && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Наличие у поставщика</p><h2>Проверить наличие</h2></div><div className="procurement-inline-actions"><button className={availabilityDueOnly ? "active" : ""} onClick={() => setAvailabilityDueOnly(true)}>Пора проверить · {data.availability.filter(item=>item.due).length}</button><button className={!availabilityDueOnly ? "active" : ""} onClick={() => setAvailabilityDueOnly(false)}>Все · {data.availability.length}</button></div></div>
-      <p className="admin-hint procurement-note">Статус хранится на паре товар + поставщик, поэтому пометить можно любое растение из справочника, а не только встреченное в разобранном инвойсе.</p>
-      {availabilityItems.length ? <div className="admin-table-wrap"><table className="admin-table procurement-availability"><thead><tr><th>Товар</th><th>Поставщик</th><th>Остаток</th><th>С какого дня</th><th>Статус</th><th>Проверка вручную</th></tr></thead><tbody>{availabilityItems.map((item) => <AvailabilityRow key={`${item.supplierId}-${item.sabyId}`} item={item} reload={load} onError={onError}/>)}</tbody></table></div> : <div className="procurement-zero"><strong>На сегодня проверок нет</strong><span>{data.availability.length ? "Будущие проверки доступны во вкладке «Все»." : "Отмечайте товары для проверки в рекомендациях или справочнике."}</span></div>}
-    </section>}
-
-    {view === "integrations" && canIntegrations && <section className="admin-block procurement-block">
-      <div className="admin-block-heading"><div><p className="eyebrow">Безопасная диагностика</p><h2>Подключения API</h2></div></div>
-
-      <div className="integration-health-grid">{(data.integrationHealth || []).map((item) => <article className={item.lastError ? "attention" : ""} key={item.channel}>
-        <div><strong>{integrationChannelLabel(item.channel)}</strong><span>{!item.configured ? "Переменные не найдены" : item.lastError ? "Ошибка подключения" : item.lastSuccessAt ? "Настроено · проверялось" : "Не проверялось"}</span></div>
-        <small>{item.lastSuccessAt ? `Успешная проверка подключения: ${new Date(item.lastSuccessAt).toLocaleString("ru-RU")}` : "Успешных проверок ещё нет"}</small>
-        <small>Продажи: {data.salesSync?.find(sync=>sync.channel===item.channel)?.lastSuccessAt ? new Date(data.salesSync.find(sync=>sync.channel===item.channel)!.lastSuccessAt!).toLocaleString("ru-RU") : "Успешная загрузка не зафиксирована"}</small>{item.lastError && <em>{item.lastError}</em>}
-        {integrationNotice?.channel === item.channel && <p className={`integration-check-result ${integrationNotice.ok ? "success" : "error"}`} role="status">{integrationNotice.text}</p>}
-		<button className="secondary-button" disabled={checkingIntegration !== ""} onClick={() => void checkIntegration(item.channel)}>{checkingIntegration === item.channel ? "Проверяем…" : item.channel === "wb" ? "Проверить зеркало" : "Проверить подключение"}</button>
-		<button className="secondary-button" disabled={syncingCatalog !== "" || !item.configured} onClick={() => void syncCatalog(item.channel)}>{syncingCatalog === item.channel ? "Сопоставляем…" : item.channel === "saby" ? "Обновить справочник" : item.channel === "wb" ? "Сопоставить из зеркала" : "Подтянуть артикулы"}</button>
-      </article>)}</div>
-
-
-
-    <details className="procurement-explanation"><summary>Как работают подключения</summary><p className="admin-hint procurement-note">Проверка только читает одну служебную запись. Цены, остатки, заказы и документы не изменяются.</p><p className="admin-hint procurement-note">Подтягивание связывает карточки маркетплейса с номенклатурой СБИС по точному совпадению кода, артикула или штрихкода и заполняет только пустые поля. Совпадение по названию не используется: «Фикус 12» и «Фикус 14» — разные растения. Что не совпало, разбирается руками на вкладке «Продажи без товара».</p><p className="admin-hint procurement-note">Wildberries раз в час фоново сохраняет карточки, артикулы, цены и продажи в локальное зеркало. Разделы сайта и кнопка сопоставления читают только базу и не создают дополнительных запросов к WB. Токену нужны категории «Цены и скидки», «Статистика» и «Контент».</p><p className="admin-hint procurement-note">СБИС здесь проверяет авторизацию, точку 278 и прайс-лист 6. Кнопка обновления ставит один приоритетный проход в общую очередь; состояние и следующий запуск видны в разделе «Маркетплейсы».</p></details></section>}
-
-    {view === "settings" && canIntegrations && <ProcurementSettingsPanel key={data.settings.version} settings={data.settings} onSaved={() => void load()} onError={onError} />}
-    </div></div>
-    {supplierDialog && <SupplierDialog suppliers={data.suppliers} canDelete={canDelete} onClose={() => setSupplierDialog(false)} onSaved={() => void load()} onError={onError} />}
-    {orderDialog && <ProcurementOrderDialog suppliers={activeSuppliers} onClose={() => setOrderDialog(false)} onSaved={() => { setOrderDialog(false); void load(); }} onError={onError} />}
-    {uploadDialog && <ProcurementUploadDialog suppliers={activeSuppliers} orders={data.orders} onClose={() => setUploadDialog(false)} onSaved={() => { setUploadDialog(false); void load(); }} onError={onError} />}
-    {requestDialog && <ProcurementRequestDialog request={editingRequest} onClose={() => {setRequestDialog(false);setEditingRequest(undefined);}} onSaved={() => { setRequestDialog(false);setEditingRequest(undefined); void load(); }} onError={onError} />}
-    {calculatorRequest && <ProcurementRequestDialog initialName={calculatorRequest.name} initialNotes={calculatorRequest.notes} onClose={() => setCalculatorRequest(null)} onSaved={() => {setCalculatorRequest(null);setView("requests");void load();}} onError={onError}/> }
-    {matchDialog && <ProcurementMatchDialog alias={matchDialog} onClose={() => setMatchDialog(null)} onSaved={() => { setMatchDialog(null); void load(); }} onError={onError} />}
-    {selectedOrder && <ProcurementOrderDetailDialog settings={data.settings} orderId={selectedOrder} canDelete={canDelete} onClose={() => setSelectedOrder(null)} onSaved={() => { void load(); }} onError={onError} />}
-  </>;
+      {supplierDialog && (
+        <SupplierDialog
+          suppliers={data.suppliers}
+          canDelete={canDelete}
+          onClose={() => setSupplierDialog(false)}
+          onSaved={() => void load()}
+          onError={onError}
+        />
+      )}
+      {orderDialog && (
+        <ProcurementOrderDialog
+          suppliers={activeSuppliers}
+          onClose={() => setOrderDialog(false)}
+          onSaved={() => {
+            setOrderDialog(false);
+            void load();
+          }}
+          onError={onError}
+        />
+      )}
+      {uploadDialog && (
+        <ProcurementUploadDialog
+          suppliers={activeSuppliers}
+          orders={data.orders}
+          onClose={() => setUploadDialog(false)}
+          onSaved={() => {
+            setUploadDialog(false);
+            void load();
+          }}
+          onError={onError}
+        />
+      )}
+      {requestDialog && (
+        <ProcurementRequestDialog
+          request={editingRequest}
+          onClose={() => {
+            setRequestDialog(false);
+            setEditingRequest(undefined);
+          }}
+          onSaved={() => {
+            setRequestDialog(false);
+            setEditingRequest(undefined);
+            void load();
+          }}
+          onError={onError}
+        />
+      )}
+      {calculatorRequest && (
+        <ProcurementRequestDialog
+          initialName={calculatorRequest.name}
+          initialNotes={calculatorRequest.notes}
+          onClose={() => setCalculatorRequest(null)}
+          onSaved={() => {
+            setCalculatorRequest(null);
+            setView("requests");
+            void load();
+          }}
+          onError={onError}
+        />
+      )}
+      {matchDialog && (
+        <ProcurementMatchDialog
+          alias={matchDialog}
+          onClose={() => setMatchDialog(null)}
+          onSaved={() => {
+            setMatchDialog(null);
+            void load();
+          }}
+          onError={onError}
+        />
+      )}
+      {selectedOrder && (
+        <ProcurementOrderDetailDialog
+          settings={data.settings}
+          orderId={selectedOrder}
+          canDelete={canDelete}
+          onClose={() => setSelectedOrder(null)}
+          onSaved={() => {
+            void load();
+          }}
+          onError={onError}
+        />
+      )}
+    </>
+  );
 }
