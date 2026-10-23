@@ -98,3 +98,40 @@ func (handlers adminHandlers) finalizeOrderPacking(response http.ResponseWriter,
 	}
 	writeJSON(response, http.StatusAccepted, map[string]any{"packing": state, "order": order})
 }
+
+func (handlers adminHandlers) reopenOrderPacking(response http.ResponseWriter, request *http.Request) {
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	repository, ok := handlers.repository.(interface {
+		RequestOrderPackingReopen(context.Context, admin.Actor, int64, int) (admin.OrderPackingState, error)
+		OrderForPacking(context.Context, int64) (admin.Order, error)
+	})
+	if !ok {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Возврат на редактирование недоступен"})
+		return
+	}
+	var input struct {
+		Revision int `json:"revision"`
+	}
+	if decodeJSON(request, &input) != nil || input.Revision <= 0 {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Обновите карточку заказа"})
+		return
+	}
+	state, err := repository.RequestOrderPackingReopen(request.Context(), actor, id, input.Revision)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	order, err := repository.OrderForPacking(request.Context(), id)
+	if err != nil {
+		handlers.failed(response, "load reopening order", err)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, map[string]any{"packing": state, "order": order})
+}

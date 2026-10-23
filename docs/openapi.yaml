@@ -2139,6 +2139,40 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.OrderPackingInput"
+  /admin/orders/{id}/packing/reopen:
+    post:
+      operationId: post_admin_orders_id_packing_reopen
+      responses:
+        2XX:
+          description: Successful response. Payload and business rules are implemented by the source handler.
+        default:
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_packing.go#reopenOrderPacking
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.edit
+      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+        the operation: orders.edit."
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision:
+                  type: integer
+                  minimum: 1
   /admin/orders/{id}/payment-link:
     post:
       operationId: post_admin_orders_id_payment_link

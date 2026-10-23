@@ -76,7 +76,7 @@ func (w *PackingPushWorker) deliver(ctx context.Context) (bool, error) {
 	}
 	// Serialize cancellation/revision changes with the last eligibility check.
 	// The lock is held only for this bounded push-provider request (15 seconds).
-	if err = tx.QueryRow(ctx, `SELECT o.status,COALESCE(w.order_revision=o.shipment_revision AND s.customer_id=o.customer_id AND s.expired_at IS NULL,false) FROM orders o JOIN order_packing_workflows w ON w.id=$2 LEFT JOIN push_subscriptions s ON s.id=$3 WHERE o.id=$1 FOR UPDATE OF o`, orderID, workflow, subscription).Scan(&status, &eligible); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT o.status,COALESCE(w.state IN ('notification_queued','notified') AND w.order_revision=o.shipment_revision AND s.customer_id=o.customer_id AND s.expired_at IS NULL,false) FROM orders o JOIN order_packing_workflows w ON w.id=$2 LEFT JOIN push_subscriptions s ON s.id=$3 WHERE o.id=$1 FOR UPDATE OF o`, orderID, workflow, subscription).Scan(&status, &eligible); err != nil {
 		return false, err
 	}
 	if !eligible || status == "cancelled" || state == "cancelled" || state == "stale" {

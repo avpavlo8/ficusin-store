@@ -39,23 +39,25 @@ type PackingNotification struct {
 	Error    string     `json:"error"`
 }
 type OrderPackingState struct {
-	Revision      int                 `json:"revision"`
-	Boxes         []ShipmentBoxInput  `json:"boxes"`
-	TariffCode    int                 `json:"tariffCode"`
-	TariffName    string              `json:"tariffName"`
-	DeliveryFee   float64             `json:"deliveryFee"`
-	DeliveryPayee string              `json:"deliveryPayee"`
-	OfficeCode    string              `json:"officeCode"`
-	CityCode      int                 `json:"cityCode"`
-	State         string              `json:"state"`
-	CDEKState     string              `json:"cdekState"`
-	TrackNumber   string              `json:"trackNumber"`
-	PaymentURL    string              `json:"paymentUrl"`
-	Error         string              `json:"error"`
-	Notification  PackingNotification `json:"notification"`
-	Blockers      []string            `json:"blockers"`
-	QuoteBlockers []string            `json:"quoteBlockers"`
-	Push          PackingNotification `json:"push"`
+	Revision           int                 `json:"revision"`
+	CanReopen          bool                `json:"canReopen"`
+	DeliveryFeePending bool                `json:"deliveryFeePending"`
+	Boxes              []ShipmentBoxInput  `json:"boxes"`
+	TariffCode         int                 `json:"tariffCode"`
+	TariffName         string              `json:"tariffName"`
+	DeliveryFee        float64             `json:"deliveryFee"`
+	DeliveryPayee      string              `json:"deliveryPayee"`
+	OfficeCode         string              `json:"officeCode"`
+	CityCode           int                 `json:"cityCode"`
+	State              string              `json:"state"`
+	CDEKState          string              `json:"cdekState"`
+	TrackNumber        string              `json:"trackNumber"`
+	PaymentURL         string              `json:"paymentUrl"`
+	Error              string              `json:"error"`
+	Notification       PackingNotification `json:"notification"`
+	Blockers           []string            `json:"blockers"`
+	QuoteBlockers      []string            `json:"quoteBlockers"`
+	Push               PackingNotification `json:"push"`
 }
 
 func (repository *PostgresRepository) WithOrderPacking(shop packingSettings, mailConfigured, paymentConfigured bool, wake func()) *PostgresRepository {
@@ -70,8 +72,8 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 	state := OrderPackingState{Boxes: []ShipmentBoxInput{}, State: "draft", Notification: PackingNotification{State: "not_queued"}, Blockers: []string{}, QuoteBlockers: []string{}, Push: PackingNotification{State: "unavailable", Error: "Покупатель не включил push-уведомления"}}
 	var delivery, status, method, email, uuid, lastError string
 	var preorder, activeOffers bool
-	err := repository.pool.QueryRow(ctx, `SELECT shipment_revision,COALESCE(cdek_tariff_code,0),delivery_fee::double precision,delivery_payee,COALESCE(cdek_office_code,''),COALESCE(cdek_city_code,0),cdek_create_state,COALESCE(cdek_track_number,''),delivery_method,status,payment_method,COALESCE(email,''),cdek_uuid,cdek_last_error,has_preorder=1,
- EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=orders.id AND status NOT IN ('draft','packaging_required','cancelled','expired','stale')) FROM orders WHERE id=$1`, id).Scan(&state.Revision, &state.TariffCode, &state.DeliveryFee, &state.DeliveryPayee, &state.OfficeCode, &state.CityCode, &state.CDEKState, &state.TrackNumber, &delivery, &status, &method, &email, &uuid, &lastError, &preorder, &activeOffers)
+	err := repository.pool.QueryRow(ctx, `SELECT shipment_revision,delivery_fee_pending=1,COALESCE(cdek_tariff_code,0),delivery_fee::double precision,delivery_payee,COALESCE(cdek_office_code,''),COALESCE(cdek_city_code,0),cdek_create_state,COALESCE(cdek_track_number,''),delivery_method,status,payment_method,COALESCE(email,''),cdek_uuid,cdek_last_error,has_preorder=1,
+ EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=orders.id AND status NOT IN ('draft','packaging_required','cancelled','expired','stale')) FROM orders WHERE id=$1`, id).Scan(&state.Revision, &state.DeliveryFeePending, &state.TariffCode, &state.DeliveryFee, &state.DeliveryPayee, &state.OfficeCode, &state.CityCode, &state.CDEKState, &state.TrackNumber, &delivery, &status, &method, &email, &uuid, &lastError, &preorder, &activeOffers)
 	if err != nil {
 		return state, err
 	}
@@ -187,6 +189,7 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		}
 	}
 
+	state.CanReopen = state.State != "draft" && state.State != "reopening" && status != "cancelled" && status != "shipped" && status != "completed" && state.CDEKState != "creating" && state.CDEKState != "unknown"
 	return state, nil
 }
 

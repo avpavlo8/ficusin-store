@@ -214,7 +214,7 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 	if err = tx.QueryRow(ctx, `SELECT state FROM order_packing_workflows WHERE id=$1 FOR UPDATE`, id).Scan(&workflowState); err != nil {
 		return err
 	}
-	if workflowState == "cancelled" || workflowState == "stale" || workflowState == "notification_queued" || workflowState == "notified" {
+	if workflowState != "queued" && workflowState != "waiting_cdek" && workflowState != "preparing_payment" {
 		return tx.Commit(ctx)
 	}
 	body := fmt.Sprintf("Упаковка заказа %s подтверждена.\n\nТрек-номер СДЭК: %s\nОтследить: https://www.cdek.ru/ru/tracking?order_id=%s\nРегистрация заявки ещё не означает передачу посылки перевозчику.\n", number, track, url.QueryEscape(track))

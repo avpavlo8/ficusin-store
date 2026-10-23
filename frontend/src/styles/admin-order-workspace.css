@@ -712,6 +712,18 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.order-packing-total dd small {
+  display: block;
+  max-width: 220px;
+  margin-top: 4px;
+  white-space: normal;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.order-packing-total dd {
+  max-width: 60%;
+  min-width: 0;
+}
 .order-packing-progress {
   color: #2c4d31;
 }
