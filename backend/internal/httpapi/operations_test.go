@@ -40,7 +40,7 @@ func TestPublicOperationsHealthHidesBusinessCounts(t *testing.T) {
 	if body["status"] != "degraded" {
 		t.Fatalf("unexpected body: %#v", body)
 	}
-	if _, exposed := body["checks"]; exposed {
+	if len(body) != 2 || body["version"] == nil {
 		t.Fatalf("public response exposed operational details: %#v", body)
 	}
 }

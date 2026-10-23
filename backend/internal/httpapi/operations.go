@@ -18,7 +18,7 @@ func operationsHealthHandler(logger *slog.Logger, reader operationsReader) http.
 	return func(response http.ResponseWriter, request *http.Request) {
 		if reader == nil {
 			writeJSON(response, http.StatusOK, map[string]any{
-				"status": "ok", "version": BuildVersion, "criticalChecks": []string{}, "warningChecks": []string{},
+				"status": "ok", "version": BuildVersion,
 			})
 			return
 		}
@@ -28,28 +28,18 @@ func operationsHealthHandler(logger *slog.Logger, reader operationsReader) http.
 		if err != nil {
 			logger.Error("public commerce operations check failed", "error", err)
 			writeJSON(response, http.StatusServiceUnavailable, map[string]any{
-				"status": "unavailable", "version": BuildVersion, "criticalChecks": []string{"probe_failed"}, "warningChecks": []string{},
+				"status": "unavailable", "version": BuildVersion,
 			})
 			return
-		}
-		critical := make([]string, 0)
-		warnings := make([]string, 0)
-		for _, check := range snapshot.Checks {
-			if check.Severity == "critical" {
-				critical = append(critical, check.Code)
-			} else {
-				warnings = append(warnings, check.Code)
-			}
 		}
 		status := http.StatusOK
 		if snapshot.Status == "unavailable" {
 			status = http.StatusServiceUnavailable
 		}
-		// Counts and ages are deliberately absent: this endpoint is public and
-		// used by the external monitor. Operators get details below.
+		// Public monitors receive status only; internal check codes, counts and
+		// ages remain behind the authenticated admin endpoint.
 		writeJSON(response, status, map[string]any{
 			"status": snapshot.Status, "version": BuildVersion,
-			"criticalChecks": critical, "warningChecks": warnings,
 		})
 	}
 }

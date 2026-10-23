@@ -16,7 +16,7 @@ type adminAuthStub struct {
 	user *auth.User
 }
 
-func (stub adminAuthStub) RequestCall(context.Context, string) (string, string, string, error) {
+func (stub adminAuthStub) RequestCall(context.Context, string, string) (string, string, string, error) {
 	return "", "", "", nil
 }
 

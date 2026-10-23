@@ -344,7 +344,7 @@ paths:
                 flow: {type: string, enum: [login, register]}
       responses:
         "200":
-          description: Phone number to call and opaque verification ID
+          description: Phone number to call and opaque verification ID. Sets a five-minute HttpOnly browser challenge cookie; retain it for verification.
         "400":
           $ref: "#/components/responses/ValidationError"
         "429":
@@ -352,6 +352,7 @@ paths:
   /auth/verify-code:
     post:
       operationId: verifyCall
+      description: Requires the ficusin_call_challenge cookie issued to the same browser by request-code. Pending polling retains it; successful verification consumes the check and clears the cookie.
       requestBody:
         required: true
         content:

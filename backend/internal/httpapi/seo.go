@@ -250,8 +250,8 @@ func withRouteMeta(base, path string, shell []byte) []byte {
 }
 
 func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any, image string) []byte {
-	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
-	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`">`))
+	page := titlePattern.ReplaceAllLiteral(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
+	page = descriptionPattern.ReplaceAllLiteral(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`">`))
 	head := strings.Builder{}
 	if meta.Index {
 		head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+path) + `">` + "\n")
@@ -546,8 +546,8 @@ func withProductMeta(
 		head.WriteString(`<script type="application/ld+json">` + string(encoded) + "</script>\n")
 	}
 
-	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
-	page = descriptionPattern.ReplaceAll(
+	page := titlePattern.ReplaceAllLiteral(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
+	page = descriptionPattern.ReplaceAllLiteral(
 		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+`">`),
 	)
 	page = bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)

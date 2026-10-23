@@ -20,8 +20,9 @@ var (
 // the consent record so an agreement can be tied to a moment and a device
 // later on.
 type ClientMeta struct {
-	UserAgent string
-	IPAddress string
+	UserAgent     string
+	IPAddress     string
+	CallProofHash string
 }
 
 // Profile carries the fields a signed-in customer may edit from their

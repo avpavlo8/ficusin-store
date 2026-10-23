@@ -18,12 +18,14 @@ import (
 )
 
 const (
-	expectedAudience   = "ficusin-store-saby-sync"
-	expectedIssuer     = "https://token.actions.githubusercontent.com"
-	expectedRepository = "avpavlo8/ficusin-store"
-	expectedRef        = "refs/heads/main"
-	expectedWorkflow   = "avpavlo8/ficusin-store/.github/workflows/saby-catalog-sync.yml@refs/heads/main"
-	defaultJWKSURL     = "https://token.actions.githubusercontent.com/.well-known/jwks"
+	expectedAudience     = "ficusin-store-saby-sync"
+	expectedIssuer       = "https://token.actions.githubusercontent.com"
+	expectedRepositoryID = "1020342749"
+	expectedOwnerID      = "77918099"
+	expectedRepository   = "avpavlo8/ficusin-store"
+	expectedRef          = "refs/heads/main"
+	expectedWorkflow     = "avpavlo8/ficusin-store/.github/workflows/saby-catalog-sync.yml@refs/heads/main"
+	defaultJWKSURL       = "https://token.actions.githubusercontent.com/.well-known/jwks"
 )
 
 type jwtHeader struct {
@@ -32,13 +34,15 @@ type jwtHeader struct {
 }
 
 type jwtClaims struct {
-	Issuer     string          `json:"iss"`
-	Audience   json.RawMessage `json:"aud"`
-	ExpiresAt  int64           `json:"exp"`
-	NotBefore  int64           `json:"nbf"`
-	Repository string          `json:"repository"`
-	Ref        string          `json:"ref"`
-	Workflow   string          `json:"workflow_ref"`
+	Issuer       string          `json:"iss"`
+	Audience     json.RawMessage `json:"aud"`
+	ExpiresAt    int64           `json:"exp"`
+	NotBefore    int64           `json:"nbf"`
+	RepositoryID string          `json:"repository_id"`
+	OwnerID      string          `json:"repository_owner_id"`
+	Repository   string          `json:"repository"`
+	Ref          string          `json:"ref"`
+	Workflow     string          `json:"workflow_ref"`
 }
 
 type jsonWebKeySet struct {
@@ -125,6 +129,8 @@ func (verifier *OIDCVerifier) Verify(ctx context.Context, token string) error {
 		claims.ExpiresAt <= now ||
 		claims.NotBefore > now ||
 		claims.Repository != expectedRepository ||
+		claims.RepositoryID != expectedRepositoryID ||
+		claims.OwnerID != expectedOwnerID ||
 		claims.Ref != expectedRef ||
 		claims.Workflow != expectedWorkflow {
 		return authError("jwt-claims", errors.New("GitHub Actions cannot run this synchronization"))

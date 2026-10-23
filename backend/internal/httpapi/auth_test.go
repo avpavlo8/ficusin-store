@@ -13,15 +13,17 @@ import (
 )
 
 type recordingAuthService struct {
-	phone        string
-	checkID      string
-	registration auth.Registration
-	profile      auth.Profile
-	requestErr   error
-	confirmErr   error
-	profileErr   error
-	pending      bool
-	user         *auth.User
+	phone            string
+	checkID          string
+	registration     auth.Registration
+	profile          auth.Profile
+	proofHash        string
+	confirmProofHash string
+	requestErr       error
+	confirmErr       error
+	profileErr       error
+	pending          bool
+	user             *auth.User
 }
 
 func (service *recordingAuthService) UpdateProfile(
@@ -45,8 +47,9 @@ func (service *recordingAuthService) Avatar(context.Context, int64) ([]byte, str
 	return nil, "", nil
 }
 
-func (service *recordingAuthService) RequestCall(_ context.Context, phone string) (string, string, string, error) {
+func (service *recordingAuthService) RequestCall(_ context.Context, phone, proofHash string) (string, string, string, error) {
 	service.phone = phone
+	service.proofHash = proofHash
 	return "check-id", "78000000000", "+7 (800) 000-00-00", service.requestErr
 }
 
@@ -54,10 +57,11 @@ func (service *recordingAuthService) ConfirmCall(
 	_ context.Context,
 	phone, checkID string,
 	registration auth.Registration,
-	_ auth.ClientMeta,
+	meta auth.ClientMeta,
 ) (string, time.Time, bool, error) {
 	service.phone = phone
 	service.checkID = checkID
+	service.confirmProofHash = meta.CallProofHash
 	service.registration = registration
 	if service.confirmErr != nil || service.pending {
 		return "", time.Time{}, service.pending, service.confirmErr
@@ -89,6 +93,7 @@ func TestVerifyCallNormalizesInputAndSetsCookie(t *testing.T) {
 		"consent": true
 	}`))
 	request.Header.Set("Content-Type", "application/json")
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	dependencies := testDependencies(catalogStub{}, service)
@@ -105,10 +110,10 @@ func TestVerifyCallNormalizesInputAndSetsCookie(t *testing.T) {
 		t.Fatalf("email = %q", service.registration.Email)
 	}
 	cookies := response.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != auth.CookieName {
+	if len(cookies) != 2 || cookies[1].Name != auth.CookieName {
 		t.Fatalf("unexpected cookies: %#v", cookies)
 	}
-	if !cookies[0].HttpOnly || !cookies[0].Secure {
+	if !cookies[1].HttpOnly || !cookies[1].Secure {
 		t.Fatalf("session cookie is not secure: %#v", cookies[0])
 	}
 }
@@ -125,6 +130,7 @@ func TestVerifyCallRejectsInvalidWholesaleDetails(t *testing.T) {
 		"inn": "123",
 		"consent": true
 	}`))
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(
@@ -146,6 +152,7 @@ func TestVerifyCallReturnsAcceptedWhilePending(t *testing.T) {
 		"/api/v1/auth/verify-code",
 		strings.NewReader(`{"phone":"9156151100","checkId":"check-id"}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -165,6 +172,7 @@ func TestVerifyCallReturnsUnauthorizedForInvalidCheck(t *testing.T) {
 		"/api/v1/auth/verify-code",
 		strings.NewReader(`{"phone":"9156151100","checkId":"stale-check"}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -184,6 +192,7 @@ func TestVerifyCallReturnsUnprocessableEntityWhenDetailsMissing(t *testing.T) {
 		"/api/v1/auth/verify-code",
 		strings.NewReader(`{"phone":"9156151100","checkId":"check-id"}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -255,6 +264,7 @@ func TestVerifyCallFailureDoesNotLeakInternalError(t *testing.T) {
 		"/api/v1/auth/verify-code",
 		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","fullName":"Александр","accountType":"retail","consent":true}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
 		ServeHTTP(response, request)
@@ -276,6 +286,7 @@ func TestVerifyCallKeepsLoginSeparateFromRegistration(t *testing.T) {
 		"/api/v1/auth/verify-code",
 		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","flow":"login"}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -298,6 +309,7 @@ func TestVerifyCallReturnsNotFoundForUnknownLogin(t *testing.T) {
 		"/api/v1/auth/verify-code",
 		strings.NewReader(`{"phone":"9156151100","checkId":"check-id","flow":"login"}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -324,6 +336,7 @@ func TestVerifyCallReturnsConflictForDuplicateRegistration(t *testing.T) {
 			"consent":true
 		}`),
 	)
+	request.AddCookie(&http.Cookie{Name: callProofCookieName, Value: strings.Repeat("ab", 32)})
 	response := httptest.NewRecorder()
 
 	NewRouter(discardLogger(), testDependencies(catalogStub{}, service)).
@@ -444,5 +457,59 @@ func TestUpdateProfileReportsDuplicateEmail(t *testing.T) {
 
 	if response.Code != http.StatusConflict {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body)
+	}
+}
+
+func TestCallProofCookieLifecycle(t *testing.T) {
+	service := &recordingAuthService{pending: true}
+	router := NewRouter(discardLogger(), testDependencies(catalogStub{}, service))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/request-code", strings.NewReader(`{"phone":"9156151100","flow":"login"}`))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("request: %d %s", response.Code, response.Body)
+	}
+	cookies := response.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookies: %#v", cookies)
+	}
+	proof := cookies[0]
+	if proof.Name != callProofCookieName || !proof.HttpOnly || proof.SameSite != http.SameSiteStrictMode || proof.Path != "/api/v1/auth" || proof.MaxAge != 300 {
+		t.Fatalf("proof cookie: %#v", proof)
+	}
+	if callProofHash(proof.Value) == "" || service.proofHash != callProofHash(proof.Value) || strings.Contains(response.Body.String(), proof.Value) {
+		t.Fatal("proof missing, unhashed or exposed in JSON")
+	}
+	verify := func(cookie *http.Cookie) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/verify-code", strings.NewReader(`{"phone":"9156151100","checkId":"check-id","flow":"login"}`))
+		if cookie != nil {
+			r.AddCookie(cookie)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	for _, cookie := range []*http.Cookie{nil, {Name: callProofCookieName, Value: "invalid"}} {
+		if got := verify(cookie); got.Code != http.StatusUnauthorized {
+			t.Fatalf("missing/malformed proof: %d", got.Code)
+		}
+	}
+	pending := verify(proof)
+	if pending.Code != http.StatusAccepted || len(pending.Result().Cookies()) != 0 || service.confirmProofHash != service.proofHash {
+		t.Fatalf("pending lost proof: %d %#v", pending.Code, pending.Result().Cookies())
+	}
+	service.pending = false
+	success := verify(proof)
+	if success.Code != http.StatusOK {
+		t.Fatalf("verified: %d %s", success.Code, success.Body)
+	}
+	cleared := false
+	for _, cookie := range success.Result().Cookies() {
+		if cookie.Name == callProofCookieName && cookie.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatal("proof cookie not cleared after success")
 	}
 }

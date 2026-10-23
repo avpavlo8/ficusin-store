@@ -5,18 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type guestOrderCallChecker struct{ confirmed bool }
+type guestOrderCallChecker struct {
+	confirmed bool
+	calls     int
+}
 
 func (checker *guestOrderCallChecker) RequestCallCheck(context.Context, string) (string, string, string, error) {
 	return "", "", "", nil
 }
 func (checker *guestOrderCallChecker) CallCheckStatus(context.Context, string) (bool, bool, error) {
+	checker.calls++
 	return checker.confirmed, false, nil
 }
 
@@ -68,13 +73,22 @@ func TestVerifiedGuestOrdersOnLiveDatabase(t *testing.T) {
 			guestID := seedOrder("matching-phone", phone, nil)
 			emailOnlyID := seedOrder("email-only", otherPhone, nil)
 			ownedID := seedOrder("already-owned", phone, otherID)
-			if _, err := pool.Exec(ctx, `INSERT INTO call_checks(phone,check_id,call_phone,call_phone_pretty,expires_at) VALUES($1,$2,'+79990000000','test',CURRENT_TIMESTAMP+INTERVAL '5 minutes')`, phone, checkID); err != nil {
+			if _, err := pool.Exec(ctx, `INSERT INTO call_checks(phone,check_id,call_phone,call_phone_pretty,expires_at,browser_proof_hash) VALUES($1,$2,'+79990000000','test',CURRENT_TIMESTAMP+INTERVAL '5 minutes',$3)`, phone, checkID, strings.Repeat("a", 64)); err != nil {
 				t.Fatal(err)
 			}
 			checker := &guestOrderCallChecker{}
 			service := NewService(pool, 1, checker)
 			registration := Registration{Flow: flow, FullName: "CI guest orders", Email: email, AccountType: "retail", Consent: true}
-			if token, _, pending, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{}); err != nil || !pending || token != "" {
+			for _, proof := range []string{"", strings.Repeat("b", 64)} {
+				if token, _, _, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{CallProofHash: proof}); !errors.Is(err, ErrInvalidCode) || token != "" {
+					t.Fatalf("foreign browser accepted: %q %v", token, err)
+				}
+			}
+			if checker.calls != 0 {
+				t.Fatal("foreign browser reached SMS provider")
+			}
+
+			if token, _, pending, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{CallProofHash: strings.Repeat("a", 64)}); err != nil || !pending || token != "" {
 				t.Fatalf("unverified sign in: %q, %v, %v", token, pending, err)
 			}
 			var unlinked bool
@@ -82,7 +96,7 @@ func TestVerifiedGuestOrdersOnLiveDatabase(t *testing.T) {
 				t.Fatalf("unverified guest linked: %v, %v", unlinked, err)
 			}
 			checker.confirmed = true
-			token, _, pending, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{UserAgent: "local-guest-check"})
+			token, _, pending, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{UserAgent: "local-guest-check", CallProofHash: strings.Repeat("a", 64)})
 			if err != nil || pending || token == "" {
 				t.Fatalf("verified sign in: %v, %v", pending, err)
 			}
@@ -103,7 +117,7 @@ func TestVerifiedGuestOrdersOnLiveDatabase(t *testing.T) {
 			if err := pool.QueryRow(ctx, `SELECT customer_id IS NULL FROM orders WHERE id=$1`, emailOnlyID).Scan(&unlinked); err != nil || !unlinked {
 				t.Fatalf("email granted access: %v, %v", unlinked, err)
 			}
-			if _, _, _, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{}); !errors.Is(err, ErrInvalidCode) {
+			if _, _, _, err := service.ConfirmCall(ctx, phone, checkID, registration, ClientMeta{CallProofHash: strings.Repeat("a", 64)}); !errors.Is(err, ErrInvalidCode) {
 				t.Fatalf("verification reused: %v", err)
 			}
 		})

@@ -29,7 +29,7 @@ type authStub struct {
 	err  error
 }
 
-func (authStub) RequestCall(context.Context, string) (string, string, string, error) {
+func (authStub) RequestCall(context.Context, string, string) (string, string, string, error) {
 	return "check-id", "78000000000", "+7 (800) 000-00-00", nil
 }
 
@@ -88,7 +88,9 @@ func testDependencies(catalog catalogRepository, authentication authService) Dep
 func (stub catalogStub) ListAvailable(context.Context) ([]catalog.Product, error) {
 	return stub.products, stub.err
 }
-func (stub catalogStub) ListCategories(context.Context) ([]catalog.Category,error){ return []catalog.Category{},stub.err }
+func (stub catalogStub) ListCategories(context.Context) ([]catalog.Category, error) {
+	return []catalog.Category{}, stub.err
+}
 
 func (stub catalogStub) DetailBySlug(context.Context, string) (catalog.ProductDetail, error) {
 	return stub.detail, stub.detailErr

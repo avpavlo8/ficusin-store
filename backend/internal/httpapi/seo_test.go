@@ -430,3 +430,14 @@ func TestCareArticlesDirectRoutesMetadataAndSitemap(t *testing.T) {
 		t.Errorf("unknown article returned %d", response.Code)
 	}
 }
+
+func TestProductMetaPreservesLiteralDollarAndEscapesHTML(t *testing.T) {
+	shell := []byte(`<html><head><title>shop</title><meta name="description" content="shop"></head></html>`)
+	page, _, err := withProductMeta(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), productMetaStub{detail: catalog.ProductDetail{Name: `Фикус $1 ${name} & <редкий>`, Variants: []catalog.Variant{{Price: 123, Stock: 1}}}}, "https://ficusin.ru", "ficus", shell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), `<title>Фикус $1 ${name} &amp; &lt;редкий&gt;`) {
+		t.Fatalf("corrupted title: %s", page)
+	}
+}

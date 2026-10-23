@@ -45,17 +45,9 @@ jobs:
           operations = json.loads((root / "operations.json").read_text())
           catalog = json.loads((root / "catalog.json").read_text())
           cart = json.loads((root / "cart.json").read_text())
-          critical = sorted(str(value) for value in operations.get("criticalChecks", []))
-          warnings = sorted(str(value) for value in operations.get("warningChecks", []))
-          print(
-              f"operations_http={operations_http} status={operations.get('status')} "
-              f"critical_checks={','.join(critical) or 'none'} "
-              f"warning_checks={','.join(warnings) or 'none'}"
-          )
+          print(f"operations_http={operations_http} status={operations.get('status')}")
           assert health.get("status") == "ok" and health.get("version"), health
           assert ready.get("status") == "ok", ready
-          assert isinstance(operations.get("criticalChecks"), list), operations
-          assert isinstance(operations.get("warningChecks"), list), operations
           assert operations.get("status") in {"ok", "degraded"}, operations
           assert isinstance(catalog.get("products"), list) and catalog["products"], "catalog is empty"
           assert isinstance(cart.get("items"), dict), cart
