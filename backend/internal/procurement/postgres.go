@@ -837,6 +837,21 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		return store.OrderDetail(ctx, orderID)
 	}
 
+	// A Saby card may have been selected before its site SKU was imported.
+	// Resolve only a single active SKU; never replace an explicit variant choice.
+	if _, err := tx.Exec(ctx, `
+		UPDATE procurement_supplier_aliases alias SET canonical_variant_id=resolved.variant_id,
+			updated_at=CURRENT_TIMESTAMP
+		FROM (SELECT saby_id,MIN(variant_id) AS variant_id FROM canonical_product_directory
+			WHERE active AND saby_id<>'' GROUP BY saby_id HAVING COUNT(*)=1) resolved
+		WHERE alias.match_status='confirmed' AND alias.canonical_variant_id IS NULL
+			AND alias.matched_saby_id=resolved.saby_id AND EXISTS (
+				SELECT 1 FROM procurement_order_lines line WHERE line.procurement_order_id=$1
+				AND line.supplier_alias_id=alias.id AND line.receiving_mode='catalog'
+				AND NOT line.invoice_excluded AND line.reconciliation_status<>'superseded')
+	`, orderID); err != nil {
+		return OrderDetail{}, fmt.Errorf("resolve newly imported procurement variants: %w", err)
+	}
 	// The confirmed supplier alias is the operator's explicit identity decision.
 	// Older imports can still carry the pre-match Saby id on the order line
 	// (notably when a Saby-only product was created after the invoice arrived).
@@ -1157,6 +1172,13 @@ func (store *PostgresStore) ImportDocument(
 			return ImportResult{}, fmt.Errorf("check procurement document conflict: %w", err)
 		}
 	}
+	// An invoice is the composition when there is no pre-existing plan to compare.
+	// Keep ordered quantities empty: accepting a document must not invent a plan.
+	var hasPlan bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_order_lines
+		WHERE procurement_order_id=$1 AND ordered_qty>0 AND reconciliation_status<>'superseded')`, orderID).Scan(&hasPlan); err != nil {
+		return ImportResult{}, fmt.Errorf("check procurement plan before invoice: %w", err)
+	}
 	var receivingStarted bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_order_lines WHERE procurement_order_id=$1 AND receiving_mode<>'catalog' AND reconciliation_status<>'superseded')`, orderID).Scan(&receivingStarted); err != nil {
 		return ImportResult{}, err
@@ -1289,10 +1311,10 @@ func (store *PostgresStore) ImportDocument(
 					raw_name, supplier_article, invoice_raw_name, invoice_supplier_article,
 					invoiced_qty, unit_price, line_total,load_unit, match_status, source_page, source_line,
 					pot_diameter_cm, height_cm,reconciliation_status
-				) VALUES ($1, $2, $3, NULLIF($4, ''),(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3), $5, $6, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,'added')
+				) VALUES ($1, $2, $3, NULLIF($4, ''),(SELECT canonical_variant_id FROM procurement_supplier_aliases WHERE id=$3), $5, $6, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,CASE WHEN $16 THEN 'added' ELSE 'matched' END)
 			`, orderID, document.ID, aliasID, sabyID, line.RawName, line.SupplierArticle,
 				line.Quantity, line.UnitPrice, line.LineTotal, line.LoadUnit, matchStatus,
-				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM,
+				line.SourcePage, line.SourceLine, line.PotDiameterCM, line.HeightCM, hasPlan,
 			)
 		}
 		if err != nil {

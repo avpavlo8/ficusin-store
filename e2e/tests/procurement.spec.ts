@@ -115,7 +115,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -227,8 +227,20 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     orderDetail.validation.unmatched=0;orderDetail.validation.blockers=[];
     return orderDetail;
   });
+  if (options.firstSabyPrices) {
+    orderDetail.order.status = "received";
+    orderDetail.lines = Array.from({length: 8}, (_,index) => ({id:index+1,
+      sabyId:`NEW-${index+1}`,sabyCode:`X${index+1}`,sabyName:`Новый товар ${index+1}`,
+      rawName:`Новый товар ${index+1}`,quantity:2,orderedQuantity:0,invoicedQuantity:2,
+      reconciliationStatus:"matched",matchStatus:"confirmed",receivingMode:"catalog",
+      unitPrice:350,unitCostRub:350,currentRetailRub:0,proposedRetailRub:636+index}));
+    orderDetail.lines.push({...orderDetail.lines[0],id:9,sabyId:"EXISTING",canonicalVariantId:99});
+  }
   await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch, dimensionReview }) => {
     const originalFetch = window.fetch.bind(window);
+    const sabyExports: unknown[] = [];
+    Object.assign(window, { sabyExports });
+
     const drafts: Array<{ id: number; title: string; payload: unknown; createdAt: string; updatedAt: string }> = [];
     const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), {
       status: 200, headers: { "Content-Type": "application/json" },
@@ -301,6 +313,10 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         if(body.kind!=="prices"||body.channels?.length!==1||body.channels[0]!=="ozon")return Promise.resolve(new Response(JSON.stringify({error:"Wrong channel"}),{status:400}));
         const batch={id:99,kind:"prices",unified:true,status:"draft",createdAt:"2026-10-19T18:00:00Z",items:[{id:991,lineId:1,productName:"Unified plant D12",productCode:"X1",channel:"ozon",externalArticle:"plant-d12",oldValue:3000,newValue:2191,status:"draft",errorMessage:""}]};
         Object.assign(orderDetail,{batches:[batch]});return json({batch});
+      }
+      if (path === "/api/v1/admin/procurement/orders/4/saby-prices.xlsx") {
+        sabyExports.push({method:init?.method || "GET",body:JSON.parse(String(init?.body || "{}"))});
+        return Promise.resolve(new Response("mock-xlsx", {headers:{"Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","Content-Disposition":'attachment; filename="first-prices.xlsx"'}}));
       }
       if (path === "/api/v1/admin/procurement/orders/4") return json(orderDetail);
       if (path === "/api/v1/admin/procurement/order-lines/1001" && init?.method === "PATCH") {
@@ -1081,3 +1097,24 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
  await expect(dialog.getByText('Завершено',{exact:true})).toBeVisible();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  });
+
+
+test("@desktop @phone first Saby file prices include hidden new rows after explicit review",async({page},testInfo)=>{
+ await mockProcurement(page,{firstSabyPrices:true});
+ await page.goto('/admin?section=procurement&order=4');
+ const button=page.getByRole('button',{name:'Скачать цены для СБИС',exact:true});
+ await expect(button).toBeVisible();
+ const rejected=page.waitForEvent('dialog');
+ const click=button.click();
+ const review=await rejected;
+ expect(review.message()).toContain('Новый товар 8: 643');
+ await review.dismiss();await click;
+ expect(await page.evaluate(()=>Reflect.get(window,'sabyExports'))).toEqual([]);
+ const accepted=page.waitForEvent('dialog');
+ const download=page.waitForEvent('download');
+ const exportClick=button.click();
+ await (await accepted).accept();await exportClick;
+ expect((await download).suggestedFilename()).toBe('first-prices.xlsx');
+ expect(await page.evaluate(()=>Reflect.get(window,'sabyExports'))).toEqual([{method:'POST',body:{firstPrices:Array.from({length:8},(_,index)=>({sabyId:`NEW-${index+1}`,priceRub:636+index}))}}]);
+ await page.screenshot({path:testInfo.outputPath('first-saby-prices.png'),fullPage:true});
+});

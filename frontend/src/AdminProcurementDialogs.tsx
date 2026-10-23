@@ -1218,9 +1218,49 @@ export function ProcurementOrderDetailDialog({
     }
   };
   const downloadSabyPrices = async () => {
+    if (!detail) return;
+    const bySaby = new Map<string, { sabyId: string; priceRub: number; name: string }>();
+    for (const line of detail.lines) {
+      if (
+        line.canonicalVariantId ||
+        line.matchStatus !== "confirmed" ||
+        line.invoiceExcluded ||
+        !line.sabyId ||
+        !line.proposedRetailRub ||
+        line.receivingMode !== "catalog"
+      )
+        continue;
+      const previous = bySaby.get(line.sabyId);
+      if (!previous || previous.priceRub < line.proposedRetailRub) {
+        bySaby.set(line.sabyId, {
+          sabyId: line.sabyId,
+          priceRub: line.proposedRetailRub,
+          name: line.sabyName || line.rawName,
+        });
+      }
+    }
+    const firstPrices = [...bySaby.values()];
+    if (
+      firstPrices.length &&
+      !window.confirm(
+        "Подтвердить первые цены новых товаров для файла СБИС?\n\n" +
+          firstPrices.map((price) => `${price.name}: ${money.format(price.priceRub)}`).join("\n") +
+          "\n\nБудет скачан файл. Импорт в СБИС выполняется отдельно.",
+      )
+    )
+      return;
     const response = await fetch(`/api/v1/admin/procurement/orders/${orderId}/saby-prices.xlsx`, {
       credentials: "same-origin",
       cache: "no-store",
+      ...(firstPrices.length
+        ? {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              firstPrices: firstPrices.map(({ sabyId, priceRub }) => ({ sabyId, priceRub })),
+            }),
+          }
+        : {}),
     });
     if (!response.ok) {
       const result = (await response.json().catch(() => ({}))) as { error?: string };
@@ -2561,6 +2601,11 @@ export function ProcurementOrderDetailDialog({
                   </fieldset>
                 </details>
               </>
+            )}
+            {detail.order.status === "received" && (
+              <button disabled={saving} onClick={() => void prepare("prices", "saby_price")}>
+                Скачать цены для СБИС
+              </button>
             )}
             {detail.batches
               .filter((batch) => !["completed", "cancelled"].includes(batch.status))

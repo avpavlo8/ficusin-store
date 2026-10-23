@@ -15,6 +15,9 @@ import (
 )
 
 type procurementStub struct {
+	firstPrices        []procurement.SabyFirstPrice
+	firstPriceActor    procurement.Actor
+	firstPriceOrderID  int64
 	dashboard          procurement.Dashboard
 	supplierInputs     []procurement.SupplierCreate
 	orderInputs        []procurement.OrderCreate
@@ -53,6 +56,12 @@ func (stub *procurementStub) OrderDetail(context.Context, int64) (procurement.Or
 }
 func (stub *procurementStub) SabyPriceXLSX(context.Context, int64) ([]byte, string, error) {
 	return []byte("xlsx"), "saby-prices.xlsx", nil
+}
+func (stub *procurementStub) FirstSabyPriceXLSX(_ context.Context, actor procurement.Actor, orderID int64, prices []procurement.SabyFirstPrice) ([]byte, string, error) {
+	stub.firstPrices = prices
+	stub.firstPriceActor = actor
+	stub.firstPriceOrderID = orderID
+	return []byte("xlsx-first"), "saby-first.xlsx", nil
 }
 func (stub *procurementStub) ReceivingPDF(context.Context, int64) ([]byte, string, error) {
 	return []byte("%PDF-test"), "receiving.pdf", nil
@@ -229,5 +238,18 @@ func TestProcurementNomenclatureSearchAndAliasResolution(t *testing.T) {
 	router.ServeHTTP(resolveResponse, resolve)
 	if resolveResponse.Code != http.StatusOK || len(service.aliasInputs) != 1 || service.aliasInputs[0].SabyID != "X1" {
 		t.Fatalf("unexpected resolution response: status=%d calls=%+v body=%s", resolveResponse.Code, service.aliasInputs, resolveResponse.Body.String())
+	}
+}
+
+func TestProcurementFirstSabyFileRequiresEditAndPassesExactPrices(t *testing.T) {
+	service := &procurementStub{}
+	request := adminRequest(http.MethodPost, "/api/v1/admin/procurement/orders/22/saby-prices.xlsx", `{"firstPrices":[{"sabyId":"3892","priceRub":636}]}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.String() != "xlsx-first" || service.firstPriceOrderID != 22 || len(service.firstPrices) != 1 || service.firstPrices[0].SabyID != "3892" || service.firstPrices[0].PriceRUB != 636 || service.firstPriceActor.Role != "owner" {
+		t.Fatalf("status=%d body=%s prices=%+v actor=%+v", response.Code, response.Body.String(), service.firstPrices, service.firstPriceActor)
+	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("first price workbook is cacheable")
 	}
 }

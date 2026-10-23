@@ -230,14 +230,36 @@ func (handlers procurementHandlers) orderDetail(response http.ResponseWriter, re
 }
 
 func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit); !ok {
+	_, actor, authorized := handlers.admin.authorize(response, request, admin.PermissionProcurementEdit)
+	if !authorized {
 		return
 	}
 	orderID, ok := pathID(response, request)
 	if !ok {
 		return
 	}
-	content, name, err := handlers.service.SabyPriceXLSX(request.Context(), orderID)
+	var content []byte
+	var name string
+	var err error
+	if request.Method == http.MethodPost {
+		var input struct {
+			FirstPrices []procurement.SabyFirstPrice `json:"firstPrices"`
+		}
+		if decodeJSON(request, &input) != nil {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные цены для файла СБИС"})
+			return
+		}
+		service, ok := handlers.service.(interface {
+			FirstSabyPriceXLSX(context.Context, procurement.Actor, int64, []procurement.SabyFirstPrice) ([]byte, string, error)
+		})
+		if !ok {
+			handlers.failed(response, "approve first Saby prices", procurement.ErrInvalidInput)
+			return
+		}
+		content, name, err = service.FirstSabyPriceXLSX(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, orderID, input.FirstPrices)
+	} else {
+		content, name, err = handlers.service.SabyPriceXLSX(request.Context(), orderID)
+	}
 	if err != nil {
 		var userError *procurement.UserFacingError
 		if errors.As(err, &userError) {
