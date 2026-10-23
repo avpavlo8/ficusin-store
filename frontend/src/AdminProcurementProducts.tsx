@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useProcurementDialog, useProcurementError } from "./procurementUX";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, money } from "./adminShared";
@@ -513,8 +514,7 @@ export function ProcurementProductDialog({
           <h3 className="wide">Количество и наличие</h3>
           <label>
             Минимум для заказа
-            <input
-              type="number"
+            <NumericInput
               min="1"
               value={draft.minimumOrderQty}
               onChange={(event) =>
@@ -524,8 +524,7 @@ export function ProcurementProductDialog({
           </label>
           <label>
             Заказывать кратно
-            <input
-              type="number"
+            <NumericInput
               min="1"
               value={draft.orderMultiple}
               onChange={(event) =>

@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { WorkspaceState, WorkspaceTable, WorkspaceTasks, WorkspaceForm } from "./WorkspaceUI";
 import { useEffect, useRef, useState } from "react";
 import { Dialog, PageHeading, api, money, roleLabel, roles, statusLabels } from "./adminShared";
@@ -300,8 +301,7 @@ export function CustomerDialog({
           <>
             <label>
               Скидка, %
-              <input
-                type="number"
+              <NumericInput
                 min="0"
                 max="100"
                 step="0.01"

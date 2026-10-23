@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useMemo, useState } from "react";
 import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
@@ -1269,10 +1270,9 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
               <fieldset className="catalog-budget">
                 <legend>Цена, ₽</legend>
                 <div className="catalog-budget-controls">
-                  <input
+                  <NumericInput
                     aria-label="Цена: от"
                     placeholder="От"
-                    type="number"
                     min="0"
                     inputMode="decimal"
                     value={priceRange.min}
@@ -1281,10 +1281,9 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
                     }
                   />
                   <span aria-hidden="true">—</span>
-                  <input
+                  <NumericInput
                     aria-label="Цена: до"
                     placeholder="До"
-                    type="number"
                     min="0"
                     inputMode="decimal"
                     value={priceRange.max}

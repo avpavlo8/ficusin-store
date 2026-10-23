@@ -754,12 +754,12 @@
   resize: vertical;
   line-height: 1.5;
 }
-.admin-form-grid input[type="number"]::-webkit-inner-spin-button,
-.admin-form-grid input[type="number"]::-webkit-outer-spin-button {
+.admin-form-grid input.numeric-input::-webkit-inner-spin-button,
+.admin-form-grid input.numeric-input::-webkit-outer-spin-button {
   margin: 0;
   appearance: none;
 }
-.admin-form-grid input[type="number"] {
+.admin-form-grid input.numeric-input {
   appearance: textfield;
 }
 .external-mapping-row {

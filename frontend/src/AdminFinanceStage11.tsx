@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useState } from "react";
 import { api, money } from "./adminShared";
 import type { PnLReport, SupplierAccountOverview } from "./adminTypes";
@@ -178,8 +179,7 @@ export function FinancePnL({ onError }: { onError: (message: string) => void }) 
             </label>
             <label>
               Сумма
-              <input
-                type="number"
+              <NumericInput
                 min="0.01"
                 step="0.01"
                 value={reportAmount}
@@ -192,8 +192,7 @@ export function FinancePnL({ onError }: { onError: (message: string) => void }) 
         <form onSubmit={saveTax}>
           <label>
             Фактический налог за период
-            <input
-              type="number"
+            <NumericInput
               min="0"
               step="0.01"
               value={tax}
@@ -406,8 +405,7 @@ export function SupplierAccount({ onError }: { onError: (message: string) => voi
         </label>
         <label>
           Сумма как в кабинете, €
-          <input
-            type="number"
+          <NumericInput
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value))}
@@ -458,8 +456,7 @@ export function SupplierAccount({ onError }: { onError: (message: string) => voi
           <h3>Сверка с кабинетом</h3>
           <label>
             Баланс как у поставщика, €
-            <input
-              type="number"
+            <NumericInput
               step="0.01"
               value={originalBalance}
               onChange={(e) => setOriginalBalance(Number(e.target.value))}
@@ -467,8 +464,7 @@ export function SupplierAccount({ onError }: { onError: (message: string) => voi
           </label>
           <label>
             Резерв, €
-            <input
-              type="number"
+            <NumericInput
               min="0"
               step="0.01"
               value={reserve}

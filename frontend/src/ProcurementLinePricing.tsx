@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useState } from "react";
 import type { ProcurementOrderLine, ProcurementSettings } from "./adminTypes";
 import { api } from "./adminShared";
@@ -122,8 +123,7 @@ export function ProcurementLinePricing({
             </p>
             <label>
               Розничная цена после проверки рынка, ₽
-              <input
-                type="number"
+              <NumericInput
                 min="1"
                 step="1"
                 placeholder="По стартовой наценке"
@@ -144,8 +144,7 @@ export function ProcurementLinePricing({
                 {channel !== "site" && (
                   <label>
                     Цена {channel === "wb" ? "WB" : "Ozon"} после проверки рынка, ₽
-                    <input
-                      type="number"
+                    <NumericInput
                       min="1"
                       step="1"
                       disabled={saving}

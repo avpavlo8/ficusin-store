@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useState } from "react";
 import { PageHeading, api } from "./adminShared";
 import type { Order, SettingDefinition } from "./adminTypes";
@@ -62,7 +63,7 @@ export function Settings({ onError }: { onError: (value: string) => void }) {
               <small>{definition.note}</small>
             </span>
             {definition.kind !== "switch" ? (
-              <input
+              <NumericInput
                 type={definition.kind === "number" ? "number" : "text"}
                 min="0"
                 value={values[definition.key] ?? ""}
@@ -110,8 +111,7 @@ export function DeliveryFeeForm({
       <p>Укажите стоимость доставки — покупатель получит уведомление и сможет оплатить заказ.</p>
       <label>
         Доставка, ₽
-        <input
-          type="number"
+        <NumericInput
           min="0"
           step="1"
           value={value}

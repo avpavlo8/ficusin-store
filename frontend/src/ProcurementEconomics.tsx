@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import type {
   ProcurementChannelCosts,
   ProcurementChannelQuote,
@@ -24,8 +25,7 @@ export function ChannelCostsFields({
     <label key={key}>
       {label}
       {percent ? ", %" : ", ₽"}
-      <input
-        type="number"
+      <NumericInput
         min="0"
         step={percent ? "0.01" : "0.01"}
         placeholder="Нет данных"
@@ -136,8 +136,7 @@ export function ProcurementEconomicsFields({
           <div className="procurement-settings-grid">
             <label>
               Заработок от себестоимости, %
-              <input
-                type="number"
+              <NumericInput
                 min="0.1"
                 max="1000"
                 step="0.1"
@@ -163,8 +162,7 @@ export function ProcurementEconomicsFields({
             ).map(([key, label]) => (
               <label key={key}>
                 {label}
-                <input
-                  type="number"
+                <NumericInput
                   min="0"
                   step="0.01"
                   value={unified[key]}
@@ -194,8 +192,7 @@ export function ProcurementEconomicsFields({
                     <tr key={norm.maxLiters}>
                       <td>{norm.maxLiters}</td>
                       <td>
-                        <input
-                          type="number"
+                        <NumericInput
                           min="0"
                           step="0.01"
                           aria-label={`Логистика Ozon до ${norm.maxLiters} л`}
@@ -230,8 +227,7 @@ export function ProcurementEconomicsFields({
       </p>
       <label>
         Расходы в месяц, ₽
-        <input
-          type="number"
+        <NumericInput
           min="0"
           value={value.monthlyFixedCostsRub}
           onChange={(event) =>

@@ -211,15 +211,16 @@ test("@desktop скидка в рублях и процентах сохраня
  await expect(editor.getByText("Стоимость доставки вручную",{exact:true})).toHaveCount(0);
  await expect(editor.getByText("Частичные отправки",{exact:true})).toHaveCount(0);
  await expect(editor.getByText("Оплата и возвраты",{exact:true})).toHaveCount(0);
- await editor.getByRole("combobox",{name:"Добавить товар в заказ"}).selectOption("1003");
+ await editor.getByRole("combobox",{name:"Добавить товар в заказ"}).fill("1003");
+ await editor.getByRole("option",{name:/Аглаонема/}).click();
  await editor.getByRole("button",{name:"Добавить",exact:true}).click();
- await editor.getByRole("spinbutton",{name:"Скидка на заказ"}).fill("100");
+ await editor.getByRole("textbox",{name:"Скидка на заказ"}).fill("100");
  await expect(editor.locator(".admin-order-draft-total")).toContainText(/2.?870/);
  await editor.getByRole("combobox",{name:"Единица скидки"}).selectOption("percent");
- await editor.getByRole("spinbutton",{name:"Скидка на заказ"}).fill("10");
+ await editor.getByRole("textbox",{name:"Скидка на заказ"}).fill("10");
  await expect(editor.locator(".admin-order-draft-total")).toContainText(/2.?673/);
  await editor.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
- await expect(editor.getByRole("spinbutton",{name:"Скидка на заказ"})).toHaveValue("10");
+ await expect(editor.getByRole("textbox",{name:"Скидка на заказ"})).toHaveValue("10");
  await expect(editor.locator(".admin-order-draft-total")).toContainText(/2.?673/);
  expect(await state.savedEdit()).toMatchObject({discount:{type:"percent",value:10}});
  expect(await state.savedEdit()).not.toHaveProperty("deliveryFee");
@@ -252,7 +253,7 @@ test("@desktop известные размеры не подменяют неи�
 test("@desktop несохранённый состав защищён при возврате к списку заказов", async ({ page }) => {
   const state = await mockOrderEditor(page);
   await page.goto("/admin?section=orders&order=30");
-  const quantity = page.getByRole("spinbutton", { name: "Количество Азалия D9", exact: true });
+  const quantity = page.getByRole("textbox", { name: "Количество Азалия D9", exact: true });
   await quantity.fill("2");
   await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toBeDisabled();
 
@@ -460,9 +461,9 @@ test("@desktop @phone распределение на две коробки ис
   await page.goto("/admin?section=orders&order=30");
   const packing = await fillPackingBox(page);
   await packing.getByRole("button", { name: "Добавить коробку", exact: true }).click();
-  await packing.getByRole("spinbutton", { name: "Алоказия D6 в коробке 1", exact: true }).fill("0");
-  await packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 2", exact: true }).fill("0");
-  await packing.getByRole("spinbutton", { name: "Алоказия D6 в коробке 2", exact: true }).fill("1");
+  await packing.getByRole("textbox", { name: "Алоказия D6 в коробке 1", exact: true }).fill("0");
+  await packing.getByRole("textbox", { name: "Азалия D9 в коробке 2", exact: true }).fill("0");
+  await packing.getByRole("textbox", { name: "Алоказия D6 в коробке 2", exact: true }).fill("1");
   for (const [name, value] of [["Длина коробки 2, см", "40"], ["Ширина коробки 2, см", "15"], ["Высота коробки 2, см", "15"], ["Вес с упаковкой коробки 2, кг", "1"]]) {
     await packing.getByRole("textbox", { name, exact: true }).fill(value);
   }
@@ -488,7 +489,7 @@ test("@desktop @phone атрибуты заполняют отдельные к�
   await expect(packing.getByRole("textbox", { name: "Длина коробки 1, см", exact: true })).toHaveValue("20");
   await expect(packing.getByRole("textbox", { name: "Высота коробки 2, см", exact: true })).toHaveValue("40");
   await expect(packing.getByRole("textbox", { name: "Вес с упаковкой коробки 2, кг", exact: true })).toHaveValue("0.7");
-  await expect(packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 2", exact: true })).toHaveValue("0");
+  await expect(packing.getByRole("textbox", { name: "Азалия D9 в коробке 2", exact: true })).toHaveValue("0");
   await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
   await expect(packing.getByRole("radio")).toBeChecked();
   await packing.screenshot({ path: testInfo.outputPath("packing-attributes.png") });
@@ -501,7 +502,7 @@ test("@desktop без атрибутов коробки распределены
   await packing.getByRole("button", { name: "Заполнить из атрибутов растений", exact: true }).click();
   await expect(packing.locator(".order-packing-box")).toHaveCount(2);
   await expect(packing.getByRole("button", { name: "Рассчитать доставку", exact: true })).toBeDisabled();
-  await expect(packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 1", exact: true })).toHaveValue("1");
+  await expect(packing.getByRole("textbox", { name: "Азалия D9 в коробке 1", exact: true })).toHaveValue("1");
 });
 
 test('@desktop @phone частичный возврат передаёт выбранные позиции и точную сумму',async({page})=>{
@@ -602,4 +603,55 @@ test("@desktop @phone подготовленный заказ возвращае
   await page.evaluate(() => { (window as typeof window & { __packingPhase?: number }).__packingPhase = 3; });
   await expect(packing.getByRole("link", { name: "Ссылка на оплату готова" })).toHaveAttribute("href", "https://pay.example.test/new", { timeout: 12000 });
   await expect(packing.getByRole("definition").filter({ hasText: "590" }).first()).toBeVisible();
+});
+
+test("@desktop @phone поиск товара по названию и артикулу работает с клавиатуры", async ({ page }, testInfo) => {
+  await mockOrderEditor(page);
+  await page.goto("/admin?section=orders&order=30");
+  const search = page.getByRole("combobox", { name: "Добавить товар в заказ", exact: true });
+  await search.fill("мАРИЯ");
+  const option = page.getByRole("option", { name: /Аглаонема Мария Кристина D12/ });
+  await expect(option).toContainText(/1.?490/);
+  await expect(option).toContainText("остаток 2");
+  await search.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("order-product-search.png"), fullPage: true });
+  await search.press("Escape");
+  await expect(page.getByRole("listbox", { name: "Найденные товары" })).toHaveCount(0);
+  await search.fill("нет такого товара");
+  await expect(page.getByText("Товар не найден. Попробуйте другое название или артикул.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Добавить", exact: true })).toBeDisabled();
+  await search.fill("1003");
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(search).toHaveValue(/Аглаонема.*1003/);
+  await page.getByRole("button", { name: "Добавить", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Количество Аглаонема Мария Кристина D12", exact: true })).toHaveValue("1");
+  await expect(search).toHaveValue("");
+  await search.fill("1003");
+  await expect(page.getByRole("option", { name: /Аглаонема/ })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+});
+
+test("@desktop @phone числовые поля без стрелок сохраняют дроби, запятую и проверки", async ({ page }) => {
+  const state = await mockOrderEditor(page);
+  await page.goto("/admin?section=orders&order=30");
+  await expect(page.locator('input[type="number"]')).toHaveCount(0);
+  const quantity = page.getByRole("textbox", { name: "Количество Азалия D9", exact: true });
+  await expect(quantity).toHaveAttribute("type", "text");
+  await expect(quantity).toHaveAttribute("inputmode", "numeric");
+  await quantity.fill(""); await quantity.pressSequentially("02");
+  await expect(quantity).toHaveValue("02");
+  await quantity.press("ArrowUp"); await quantity.press("ArrowDown");
+  await expect(quantity).toHaveValue("02");
+  const discount = page.getByRole("textbox", { name: "Скидка на заказ", exact: true });
+  await expect(discount).toHaveAttribute("inputmode", "decimal");
+  await discount.fill(""); await discount.pressSequentially("12,50");
+  await expect(discount).toHaveValue("12.50");
+  await expect(quantity).toHaveValue("2");
+  await expect.poll(() => discount.evaluate((field: HTMLInputElement) => field.checkValidity())).toBe(true);
+  await discount.fill("0.001");
+  await expect.poll(() => discount.evaluate((field: HTMLInputElement) => field.checkValidity())).toBe(false);
+  await discount.fill("12,5");
+  await page.getByRole("button", { name: "Сохранить изменения", exact: true }).click();
+  expect(await state.savedEdit()).toMatchObject({ items: [{ sku: "1001", quantity: 2 }, { sku: "1002", quantity: 1 }], discount: { type: "fixed", value: 12.5 } });
 });

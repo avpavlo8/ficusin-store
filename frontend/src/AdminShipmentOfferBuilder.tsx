@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 
@@ -264,9 +265,8 @@ export function AdminShipmentOffers({
                   {money.format(item.unitPrice)} · в заказе {item.quantity} шт.
                 </small>
               </span>
-              <input
+              <NumericInput
                 aria-label={`В отправку ${item.productName}`}
-                type="number"
                 min="0"
                 max={item.quantity}
                 value={quantities[item.id] ?? 0}
@@ -333,8 +333,7 @@ export function AdminShipmentOffers({
                 ).map(([field, label]) => (
                   <label key={field}>
                     {label}
-                    <input
-                      type="number"
+                    <NumericInput
                       min="0"
                       value={box[field]}
                       onChange={(event) =>
@@ -352,9 +351,8 @@ export function AdminShipmentOffers({
                   return (
                     <label key={item.id}>
                       {item.productName}
-                      <input
+                      <NumericInput
                         aria-label={`${item.productName} в коробке ${index + 1}`}
-                        type="number"
                         min="0"
                         max={line.quantity}
                         value={box.contents[item.id] || 0}
@@ -409,9 +407,8 @@ export function AdminShipmentOffers({
           ) : (
             <label>
               <span>Доставка этой отправки</span>
-              <input
+              <NumericInput
                 aria-label="Доставка частичной отправки"
-                type="number"
                 min="0"
                 step="1"
                 value={fee}

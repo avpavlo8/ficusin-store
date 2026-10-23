@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, money } from "./adminShared";
 import type { Order } from "./adminTypes";
@@ -725,9 +726,8 @@ export function AdminOrderPacking({
                             {item.productName}
                             <small>Всего в заказе: {item.quantity} шт.</small>
                           </span>
-                          <input
+                          <NumericInput
                             aria-label={`${item.productName} в коробке ${index + 1}`}
-                            type="number"
                             min="0"
                             max={item.quantity}
                             value={

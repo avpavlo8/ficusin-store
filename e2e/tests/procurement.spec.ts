@@ -7,13 +7,13 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
- await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
+ await order.getByRole('textbox',{name:'Курс оплаты',exact:true}).fill('123');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
  await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('assortment');
  await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
  await expect(dialog).toBeHidden();
- await expect(order.getByRole('spinbutton',{name:'Курс оплаты',exact:true})).toHaveValue('123');
+ await expect(order.getByRole('textbox',{name:'Курс оплаты',exact:true})).toHaveValue('123');
  await expect(row).toContainText('Разобрать после приезда');
  await expect(row).toContainText('Распределено 0 / 60 шт.');
  await order.getByRole('tab',{name:'Разобрать миксы 1',exact:true}).click();
@@ -21,7 +21,7 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await row.getByRole('button',{name:'Разобрать микс',exact:true}).click();
  await dialog.getByRole('textbox',{name:'Поиск карточки для разбора'}).fill('Bonsai');
  await dialog.getByRole('button',{name:'Добавить',exact:true}).click();
- const qty=dialog.getByRole('spinbutton',{name:'Количество: Bonsai Zantaxilum D15',exact:true});
+ const qty=dialog.getByRole('textbox',{name:'Количество: Bonsai Zantaxilum D15',exact:true});
  await qty.fill('61');
  await expect(dialog.getByRole('button',{name:'Сохранить распределение',exact:true})).toBeDisabled();
  await qty.fill('59');
@@ -558,7 +558,7 @@ test("@desktop procurement opens an order with no validation blockers", async ({
   await expect(page.getByText("Проверки пройдены")).toHaveCount(0);
 
   const delivery = page.getByLabel("Москва → Рязань, ₽");
-  await delivery.click();
+  await delivery.fill("");
   await delivery.pressSequentially("14000");
   await expect(delivery).toHaveValue("14000");
 });
@@ -994,7 +994,7 @@ test("@desktop @phone dimension blockers lead to explicit review and unblock cal
  await expect(calculate).toBeDisabled();
  await expect(calculate).toHaveAccessibleDescription(/Размеры в 2 поз/);
  await expect(order.locator('.procurement-checklist li')).toHaveCount(0);
- await order.getByRole('spinbutton',{name:'Курс оплаты',exact:true}).fill('123');
+ await order.getByRole('textbox',{name:'Курс оплаты',exact:true}).fill('123');
  await order.getByRole('button',{name:'Проверить размеры (2)',exact:true}).click();
  await expect(order.getByRole('tab',{name:'Проверить размеры 2',exact:true})).toBeFocused();
  await expect(order.locator('.procurement-order-lines > tbody > tr')).toHaveCount(2);
@@ -1011,7 +1011,7 @@ test("@desktop @phone dimension blockers lead to explicit review and unblock cal
  await editor.getByRole('button',{name:'Подтвердить размеры',exact:true}).click();
  await expect(editor).toBeHidden();
  await expect(order.getByRole('tab',{name:'Проверить размеры 1',exact:true})).toBeVisible();
- await expect(order.getByRole('spinbutton',{name:'Курс оплаты',exact:true})).toHaveValue('123');
+ await expect(order.getByRole('textbox',{name:'Курс оплаты',exact:true})).toHaveValue('123');
  const second=order.getByRole('row').filter({hasText:'Непентес микс'});
  await expect(second.getByRole('button',{name:'Выбрать товар СБИС',exact:true})).toHaveCount(0);
  await second.getByRole('button',{name:'Проверить размеры',exact:true}).click();

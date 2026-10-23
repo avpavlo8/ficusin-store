@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./adminShared";
 import type { NomenclatureCandidate, ProcurementRequest } from "./adminTypes";
@@ -197,11 +198,10 @@ export function ProcurementRequestForm({
             {kind === "customer_order" && (
               <label>
                 Номер заказа в CRM
-                <input
+                <NumericInput
                   ref={customerOrderRef}
                   aria-label="Номер заказа в CRM"
                   aria-invalid={customerOrderError}
-                  type="number"
                   min="1"
                   step="1"
                   disabled={Boolean(request)}

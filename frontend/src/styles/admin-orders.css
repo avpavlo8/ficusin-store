@@ -157,7 +157,7 @@
   font-size: 12px;
   font-weight: 700;
 }
-.admin-page .admin-order-editor .admin-form-grid input[type="number"] {
+.admin-page .admin-order-editor .admin-form-grid input.numeric-input {
   width: 100%;
   padding: 11px 12px;
   border-radius: 11px;

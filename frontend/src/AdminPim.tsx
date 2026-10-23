@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useState } from "react";
 import { api, money } from "./adminShared";
 import { VariantMediaManager } from "./VariantMediaManager";
@@ -626,9 +627,8 @@ function AttributeAssignmentRow({
           />
           Не использовать
         </label>
-        <input
+        <NumericInput
           className="tiny-number"
-          type="number"
           value={draft.sortOrder}
           onChange={(event) => setDraft({ ...draft, sortOrder: Number(event.target.value) })}
           aria-label="Порядок"
@@ -1000,8 +1000,7 @@ function DynamicValue({
     return (
       <label>
         Вес упаковки, кг{attribute.required ? " *" : ""}
-        <input
-          type="number"
+        <NumericInput
           min="0.01"
           step="0.01"
           inputMode="decimal"
@@ -1090,7 +1089,7 @@ function DynamicValue({
   return (
     <label>
       {title}
-      <input
+      <NumericInput
         type={attribute.dataType === "number" ? "number" : "text"}
         min={attribute.dataType === "number" ? (isPackageSize ? "0.1" : "0") : undefined}
         step={attribute.dataType === "number" ? "0.1" : undefined}
@@ -1314,9 +1313,8 @@ export function VariantsEditor({
               </label>
               <label>
                 Цена на сайте, ₽
-                <input
+                <NumericInput
                   aria-label="Цена на сайте, ₽"
-                  type="number"
                   min="0"
                   step="0.01"
                   disabled={!owner}
@@ -1331,8 +1329,7 @@ export function VariantsEditor({
               </label>
               <label>
                 Оптовый минимум, шт.
-                <input
-                  type="number"
+                <NumericInput
                   min="1"
                   step="1"
                   disabled={!owner}
