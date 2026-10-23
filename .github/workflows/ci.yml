@@ -83,7 +83,7 @@ jobs:
           -w /work/e2e
           mcr.microsoft.com/playwright:v1.63.0-noble
           npm test -- --shard=${{ matrix.shard }}/2
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-${{ matrix.shard }}

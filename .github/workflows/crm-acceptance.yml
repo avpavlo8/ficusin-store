@@ -144,7 +144,7 @@ jobs:
           -e GITHUB_SHA -e CRM_ARTIFACT_DIR=/work/crm-artifacts
           mcr.microsoft.com/playwright:v1.63.0-noble
           bash -c 'npm ci && node verify-crm-acceptance.mjs && node verify-return-recovery.mjs && node verify-return-edits.mjs && CHAT_ARTIFACT_DIR=/work/crm-artifacts/chat node verify-chat-acceptance.mjs'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: crm-stage-13-acceptance
