@@ -2,7 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, money } from "./adminShared";
 import type { Order } from "./adminTypes";
 
-type Item = { id: number; sku?: string; productName: string; quantity: number };
+type Item = {
+  id: number;
+  sku?: string;
+  productName: string;
+  quantity: number;
+  packageLengthCm?: number;
+  packageWidthCm?: number;
+  packageHeightCm?: number;
+  packageWeightGrams?: number;
+};
 type Box = {
   lengthCm: number;
   widthCm: number;
@@ -100,6 +109,7 @@ export function AdminOrderPacking({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<"" | "quote" | "finalize">("");
   const [dirty, setDirty] = useState(false);
+  const [attributePrefill, setAttributePrefill] = useState(false);
   const [editingDestination, setEditingDestination] = useState(false);
   const [cityQuery, setCityQuery] = useState("");
   const [city, setCity] = useState<City | null>(null);
@@ -315,7 +325,8 @@ export function AdminOrderPacking({
       widthCm: box.widthCm,
       heightCm: box.heightCm,
       weightGrams: box.weightGrams,
-      contents: box.contents,
+      // Zero means this plant is in another box, not a shipment line.
+      contents: box.contents.filter((line) => line.quantity > 0),
     })),
     ...(destinationOverride ? { cityCode: city!.code, officeCode } : {}),
   });
@@ -532,6 +543,34 @@ export function AdminOrderPacking({
                 </fieldset>
               )}
               <p className="order-packing-instruction">Размеры и вес — с упаковкой.</p>
+              <div className="order-packing-tools">
+                <button
+                  type="button"
+                  className="admin-action"
+                  disabled={formDisabled || compositionDirty || !items.length || items.length > 20}
+                  onClick={() => {
+                    setBoxes(
+                      items.map((item) => ({
+                        lengthCm: item.quantity === 1 ? (item.packageLengthCm ?? 0) : 0,
+                        widthCm: item.quantity === 1 ? (item.packageWidthCm ?? 0) : 0,
+                        heightCm: item.quantity === 1 ? (item.packageHeightCm ?? 0) : 0,
+                        weightGrams: item.quantity === 1 ? (item.packageWeightGrams ?? 0) : 0,
+                        contents: [{ orderItemId: item.id, quantity: item.quantity }],
+                      })),
+                    );
+                    setAttributePrefill(true);
+                    changed();
+                  }}
+                >
+                  Заполнить из атрибутов растений
+                </button>
+              </div>
+              {attributePrefill && (
+                <p className="order-packing-instruction" role="status">
+                  Каждая позиция — в отдельной коробке. Проверьте размеры и вес с упаковкой.
+                  Недостающие данные и размеры для нескольких одинаковых растений заполните вручную.
+                </p>
+              )}
               {boxes.map((box, index) => (
                 <fieldset className="order-packing-box" disabled={formDisabled} key={index}>
                   <legend>Коробка {index + 1}</legend>
