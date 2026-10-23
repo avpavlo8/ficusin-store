@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination", dimensionsKnown = false, refundRole?: "owner" | "manager") {
+async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared", dimensionsKnown = false, refundRole?: "owner" | "manager") {
   const dimensions = dimensionsKnown ? { packageLengthCm: 20, packageWidthCm: 20, packageHeightCm: 40, packageWeightGrams: 700 } : {};
   const order = {
     id: 30,
@@ -62,6 +62,12 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       blockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : packingMode ? [] : ["В этом заказе доставка оплачивается перевозчику"],
     };
     const refunds = refundRole ? [{ id: 1, amount: 100, status: "succeeded", providerId: "refund-1", actorId: 1, needsReview: false, receiptStatus: "pending", lastError: "" }, { id: 2, amount: 40, status: "pending", providerId: "refund-2", actorId: 1, needsReview: false, receiptStatus: "pending", lastError: "" }] : [];
+    if (packingMode === "prepared") {
+      Object.assign(packing, { state: "notification_queued", canReopen: true, deliveryFeePending: false, deliveryFee: 680, cdekState: "registered", trackNumber: "OLD-TRACK", paymentUrl: "https://pay.example.test/old", boxes: [{ lengthCm: 40, widthCm: 20, heightCm: 20, weightGrams: 1000, contents: [{ orderItemId: 11, quantity: 1 }, { orderItemId: 12, quantity: 1 }] }] });
+      order.total = 2160; order.deliveryFeePending = false;
+      adjustment.deliveryFee = 680; adjustment.deliveryFeePending = false;
+    }
+    let reopening = false;
     let finalized = false;
     let polls = 0;
     let finalizationAttempts = 0;
@@ -79,7 +85,12 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       if (path === "/api/v1/delivery/cdek" && url.searchParams.get("action") === "cities") return json({ cities: [{ code: 44, city: "Москва", region: "Москва" }] });
       if (path === "/api/v1/delivery/cdek" && url.searchParams.get("action") === "offices") return json({ offices: [{ code: "MSK1", name: "Пункт Ленина", location: { address: "Москва, ул. Ленина, 3" } }] });
       if (path === "/api/v1/admin/orders/30/packing") {
-        if (finalized) {
+        if (reopening && (window as typeof window & { __reopenReady?: boolean }).__reopenReady) {
+          reopening = false; finalized = false; packing.revision += 1;
+          Object.assign(packing, { state: "draft", canReopen: false, cdekState: "new", trackNumber: "", boxes: [] });
+          order.status = "new"; adjustment.status = "new";
+        }
+        if (finalized && !reopening) {
           polls += 1;
           (window as typeof window & { __packingPolls?: number }).__packingPolls = polls;
           const phase = (window as typeof window & { __packingPhase?: number }).__packingPhase || 0;
@@ -91,18 +102,24 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
           }
           if (phase >= 3) {
             packing.state = "notification_queued";
-            packing.paymentUrl = "https://pay.example.test/order-30-packed";
+            packing.paymentUrl = packing.revision > 1 ? "https://pay.example.test/new" : "https://pay.example.test/order-30-packed";
             packing.notification.state = "queued";
           }
           if (phase >= 4) { packing.state = "notification_queued"; packing.notification.state = "failed"; packing.notification.error = "SMTP temporary failure"; packing.push.state = "sent"; }
         }
         return json({ packing, order });
       }
+      if (path === "/api/v1/admin/orders/30/packing/reopen" && init?.method === "POST") {
+        reopening = true;
+        Object.assign(packing, { state: "reopening", canReopen: false, paymentUrl: "", deliveryFeePending: true });
+        order.deliveryFeePending = true; adjustment.deliveryFeePending = true;
+        return json({ packing, order }, 202);
+      }
       if (path === "/api/v1/admin/orders/30/packing/quote" && init?.method === "POST") {
         const body = JSON.parse(String(init.body || "{}"));
         (window as typeof window & { __packingQuote?: unknown }).__packingQuote = body;
         if (body.boxes.some((box: { contents: Array<{ quantity: number }> }) => box.contents.some((line) => line.quantity <= 0))) return json({ error: "некорректный состав коробки 1" }, 400);
-        return json({ revision: 1, quotes: [{ tariffCode: 136, tariffName: "Посылка склад-склад", price: 590, daysMin: 2, daysMax: 4 }] });
+        return json({ revision: packing.revision, quotes: [{ tariffCode: 136, tariffName: "Посылка склад-склад", price: 590, daysMin: 2, daysMax: 4 }] });
       }
       if (path === "/api/v1/admin/orders/30/packing/finalize" && init?.method === "POST") {
         const body = JSON.parse(String(init.body || "{}"));
@@ -551,4 +568,38 @@ test('@desktop @phone чек зачёта ЮKassa создаётся тольк�
  await expect(section.getByText('Ожидает регистрации ЮKassa',{exact:true})).toBeVisible();
  await expect(section.getByRole('button',{name:'Чек уже сформирован'})).toHaveCount(0);
  await section.screenshot({path:info.outputPath('yookassa-only-fiscal-state.png')});
+});
+
+
+test("@desktop @phone подготовленный заказ возвращается на редактирование и получает новую оплату", async ({ page }, testInfo) => {
+  const state = await mockOrderEditor(page, false, "prepared");
+  await page.goto("/admin?section=orders&order=30");
+  const packing = page.getByRole("region", { name: "Подготовить заказ к отправке" });
+  const totals = packing.getByRole("definition").filter({ hasText: "680" });
+  await expect(totals).toBeVisible();
+  await expect(packing.getByRole("link", { name: "Ссылка на оплату готова" })).toHaveAttribute("href", "https://pay.example.test/old");
+  // The existing contents controls remain locked until the carrier confirms deletion.
+  await packing.screenshot({ path: testInfo.outputPath("prepared-totals.png") });
+  page.once("dialog", dialog => dialog.dismiss());
+  await packing.getByRole("button", { name: "Вернуть на редактирование", exact: true }).click();
+  await expect(packing.getByRole("link", { name: "Ссылка на оплату готова" })).toBeVisible();
+  page.once("dialog", dialog => dialog.accept());
+  await packing.getByRole("button", { name: "Вернуть на редактирование", exact: true }).click();
+  await expect(packing.getByText("Возвращаем заказ на редактирование", { exact: true })).toBeVisible();
+  await expect(packing.getByRole("link", { name: "Ссылка на оплату готова" })).toHaveCount(0);
+  await expect(page.getByText("Упаковка подтверждена", { exact: true })).toBeVisible();
+  await expect(packing.getByRole("definition").filter({ hasText: "Предыдущий расчёт" })).toBeVisible();
+  await page.evaluate(() => { (window as typeof window & { __reopenReady?: boolean }).__reopenReady = true; });
+  await expect(packing.getByRole("button", { name: "Рассчитать доставку", exact: true })).toBeVisible({ timeout: 12000 });
+  await expect(page.getByText("Упаковка подтверждена", { exact: true })).toHaveCount(0);
+  await packing.getByRole("textbox", { name: "Длина коробки, см", exact: true }).fill("50");
+  await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
+  await expect(packing.getByRole("radio")).toBeChecked();
+  await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
+  await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
+  const requests = await state.packingFinalizations();
+  expect(requests).toHaveLength(1); expect(requests[0].revision).toBe(2);
+  await page.evaluate(() => { (window as typeof window & { __packingPhase?: number }).__packingPhase = 3; });
+  await expect(packing.getByRole("link", { name: "Ссылка на оплату готова" })).toHaveAttribute("href", "https://pay.example.test/new", { timeout: 12000 });
+  await expect(packing.getByRole("definition").filter({ hasText: "590" }).first()).toBeVisible();
 });

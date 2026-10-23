@@ -162,9 +162,13 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 	var number, email, status, cdekState, track, cdekError, payee string
 	var fee float64
 	var revision, savedRevision int
-	err := worker.pool.QueryRow(ctx, `SELECT o.id,o.order_number,COALESCE(o.email,''),o.status,o.cdek_create_state,COALESCE(o.cdek_track_number,''),o.cdek_last_error,o.shipment_revision,w.order_revision,o.delivery_payee,o.delivery_fee::double precision FROM order_packing_workflows w JOIN orders o ON o.id=w.order_id WHERE w.id=$1`, id).Scan(&orderID, &number, &email, &status, &cdekState, &track, &cdekError, &revision, &savedRevision, &payee, &fee)
+	var workflowState string
+	err := worker.pool.QueryRow(ctx, `SELECT o.id,o.order_number,COALESCE(o.email,''),o.status,o.cdek_create_state,COALESCE(o.cdek_track_number,''),o.cdek_last_error,o.shipment_revision,w.order_revision,o.delivery_payee,o.delivery_fee::double precision,w.state FROM order_packing_workflows w JOIN orders o ON o.id=w.order_id WHERE w.id=$1`, id).Scan(&orderID, &number, &email, &status, &cdekState, &track, &cdekError, &revision, &savedRevision, &payee, &fee, &workflowState)
 	if err != nil {
 		return err
+	}
+	if workflowState != "queued" && workflowState != "waiting_cdek" && workflowState != "preparing_payment" {
+		return nil
 	}
 	if status == "cancelled" || revision != savedRevision {
 		_, err = worker.pool.Exec(ctx, `UPDATE order_packing_workflows SET state='stale',locked_until=NULL WHERE id=$1`, id)
@@ -210,11 +214,10 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 	if status == "cancelled" || revision != savedRevision {
 		return errors.New("заказ изменился; уведомление не отправлено")
 	}
-	var workflowState string
 	if err = tx.QueryRow(ctx, `SELECT state FROM order_packing_workflows WHERE id=$1 FOR UPDATE`, id).Scan(&workflowState); err != nil {
 		return err
 	}
-	if workflowState == "cancelled" || workflowState == "stale" || workflowState == "notification_queued" || workflowState == "notified" {
+	if workflowState != "queued" && workflowState != "waiting_cdek" && workflowState != "preparing_payment" {
 		return tx.Commit(ctx)
 	}
 	body := fmt.Sprintf("Упаковка заказа %s подтверждена.\n\nТрек-номер СДЭК: %s\nОтследить: https://www.cdek.ru/ru/tracking?order_id=%s\nРегистрация заявки ещё не означает передачу посылки перевозчику.\n", number, track, url.QueryEscape(track))

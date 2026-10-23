@@ -126,6 +126,7 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 		worker.createOfferShipments(ctx)
 		worker.createShipments(ctx)
 	}
+	worker.reopenPackings(ctx)
 	worker.cancelShipments(ctx)
 	worker.refreshStatuses(ctx)
 	worker.refreshOfferStatuses(ctx)
@@ -415,7 +416,7 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 				AND COALESCE(cdek_next_attempt_at,CURRENT_TIMESTAMP)<=CURRENT_TIMESTAMP
 			ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 20
 		)
-		RETURNING id,order_number,status,cdek_attempts`)
+		RETURNING id,COALESCE(NULLIF(cdek_order_number,''),order_number),status,cdek_attempts`)
 	if err != nil {
 		worker.logger.Error("claim unknown cdek orders failed", "error", err)
 		return
@@ -671,7 +672,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			WHERE o.id = c.id
 			RETURNING o.*
 		)
-		SELECT o.id, o.order_number, o.customer_name, o.phone,
+		SELECT o.id, COALESCE(NULLIF(o.cdek_order_number,''),o.order_number), o.customer_name, o.phone,
 			COALESCE(o.cdek_office_code, ''), COALESCE(o.cdek_tariff_code, 0),
 			COALESCE(o.cdek_city_code, 0), o.payment_status,
 			o.total::DOUBLE PRECISION, o.delivery_fee::DOUBLE PRECISION,
@@ -843,8 +844,8 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		}
 		if mapped := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; shipment.TrackNumber == item.track && shipment.Status == item.cdekStatus && (mapped == "" || mapped == item.status) {
 			if _, err := worker.pool.Exec(ctx, `
-				UPDATE orders SET cdek_synced_at = CURRENT_TIMESTAMP WHERE id = $1
-			`, item.id); err != nil {
+				UPDATE orders SET cdek_synced_at = CURRENT_TIMESTAMP WHERE id = $1 AND cdek_uuid=$2
+			`, item.id, item.uuid); err != nil {
 				worker.logger.Error("store cdek sync time failed", "error", err, "order", item.number)
 			}
 			continue
@@ -853,13 +854,17 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		if mapped, known := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; known {
 			nextStatus = mapped
 		}
-		if _, err := worker.pool.Exec(ctx, `
+		command, err := worker.pool.Exec(ctx, `
 			UPDATE orders
 			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') OR $5='' THEN status ELSE $5 END,
 				cdek_synced_at = CURRENT_TIMESTAMP
-			WHERE id = $1
-		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus); err != nil {
+			WHERE id = $1 AND cdek_uuid=$6
+		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, item.uuid)
+		if err != nil {
 			worker.logger.Error("store shipment status failed", "error", err, "order", item.number)
+			continue
+		}
+		if command.RowsAffected() == 0 {
 			continue
 		}
 		// The customer hears about the milestone, not about every scan at

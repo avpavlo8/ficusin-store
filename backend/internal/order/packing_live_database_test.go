@@ -119,6 +119,11 @@ func TestOrderPackingLifecycleOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
 		_, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, "packing-worker-"+unique)
 	}()
+	// Replacement applications use a distinct provider number. Ambiguous
+	// creation must reconcile this revision, never the previously removed one.
+	if _, err = pool.Exec(ctx, `UPDATE orders SET cdek_order_number=order_number||'-r2' WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 	carrier := &packingCarrierStub{stage13CDEK: &stage13CDEK{ambiguous: true, byNumber: map[string]integration.Shipment{}, byUUID: map[string]integration.Shipment{}}}
 	shipping := NewShippingWorker(pool, carrier, stage13ShippingSettings{}, nil, quietLogger())
 	payments := &packingPaymentStub{fail: true}
@@ -162,7 +167,7 @@ func TestOrderPackingLifecycleOnLiveDatabase(t *testing.T) {
 		t.Fatal("payment or notification started before courier registration")
 	}
 	shipping.sync(ctx)
-	if carrier.creates != 1 || len(carrier.requests[0].Packages) != 1 || carrier.requests[0].Packages[0].Box.LengthCM != 42 || carrier.requests[0].Packages[0].Items[0].Price != 690 {
+	if carrier.creates != 1 || carrier.requests[0].OrderNumber != number+"-r2" || len(carrier.requests[0].Packages) != 1 || carrier.requests[0].Packages[0].Box.LengthCM != 42 || carrier.requests[0].Packages[0].Items[0].Price != 690 {
 		t.Fatalf("wrong carrier request: %+v", carrier.requests)
 	}
 	runPreparation()

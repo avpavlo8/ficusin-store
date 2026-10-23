@@ -36,6 +36,8 @@ type Office = {
 };
 export type OrderPackingState = {
   revision: number;
+  canReopen?: boolean;
+  deliveryFeePending?: boolean;
   boxes: Box[];
   tariffCode: number;
   tariffName: string;
@@ -54,8 +56,9 @@ export type OrderPackingState = {
   push?: { state: string; error?: string };
 };
 
-const activeStates = new Set(["queued", "waiting_cdek", "preparing_payment"]);
+const activeStates = new Set(["queued", "waiting_cdek", "preparing_payment", "reopening"]);
 const stateLabels: Record<string, string> = {
+  reopening: "Возвращаем заказ на редактирование",
   draft: "Подготовка отправления",
   queued: "Заказ принят в обработку",
   waiting_cdek: "Регистрируем отправление в СДЭК",
@@ -107,7 +110,7 @@ export function AdminOrderPacking({
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [tariffCode, setTariffCode] = useState(0);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"" | "quote" | "finalize">("");
+  const [busy, setBusy] = useState<"" | "quote" | "finalize" | "reopen">("");
   const [dirty, setDirty] = useState(false);
   const [attributePrefill, setAttributePrefill] = useState(false);
   const [editingDestination, setEditingDestination] = useState(false);
@@ -356,6 +359,42 @@ export function AdminOrderPacking({
     }
   };
 
+  const reopen = async () => {
+    if (!packing?.canReopen || busy || disabled) return;
+    if (
+      !window.confirm(
+        "Вернуть заказ на редактирование? Прежняя заявка СДЭК будет отменена, старая ссылка на оплату перестанет приниматься. После изменений заново рассчитайте доставку и подтвердите заказ.",
+      )
+    )
+      return;
+    setBusy("reopen");
+    onBusyChange(true);
+    setError("");
+    try {
+      const result = await api<{ packing: OrderPackingState; order: Order }>(
+        `/api/v1/admin/orders/${orderId}/packing/reopen`,
+        { method: "POST", body: JSON.stringify({ revision: packing.revision }) },
+      );
+      setPacking(result.packing);
+      setQuotes([]);
+      setTariffCode(0);
+      setDirty(false);
+      attempt.current = null;
+      stateChange.current?.(result.packing);
+      orderUpdated.current(result.order);
+    } catch (reason) {
+      setError((reason as Error).message);
+      try {
+        await load(false);
+      } catch {
+        /* Keep the retry visible. */
+      }
+    } finally {
+      setBusy("");
+      onBusyChange(false);
+    }
+  };
+
   const finalize = async () => {
     if (!canQuote || blockers.length || !selectedQuote) return;
     const body = { ...payload(), tariffCode, quotedDeliveryFee: selectedQuote.price };
@@ -430,6 +469,58 @@ export function AdminOrderPacking({
               </ul>
             </div>
           )}
+          <dl className="order-packing-total" aria-label="Стоимость заказа и доставки">
+            <div>
+              <dt>Товары</dt>
+              <dd>{money.format(subtotal)}</dd>
+            </div>
+            <div>
+              <dt>
+                Доставка{packing.deliveryPayee === "carrier" ? " · перевозчику отдельно" : ""}
+              </dt>
+              <dd>
+                {money.format(selectedQuote?.price ?? packing.deliveryFee)}
+                {packing.deliveryFeePending && !selectedQuote && (
+                  <small>
+                    {packing.deliveryFee > 0
+                      ? "Предыдущий расчёт · требуется пересчитать"
+                      : "Требуется расчёт доставки"}
+                  </small>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>
+                Итого{packing.deliveryPayee === "carrier" ? "" : " с доставкой"}
+                {packing.deliveryFeePending && !selectedQuote ? " предварительно" : ""}
+              </dt>
+              <dd>
+                {money.format(
+                  subtotal +
+                    (packing.deliveryPayee === "carrier"
+                      ? 0
+                      : (selectedQuote?.price ?? packing.deliveryFee)),
+                )}
+              </dd>
+            </div>
+            {netPaid > 0 && (
+              <div>
+                <dt>К доплате с учётом полученной оплаты</dt>
+                <dd>
+                  {money.format(
+                    Math.max(
+                      0,
+                      subtotal +
+                        (packing.deliveryPayee === "carrier"
+                          ? 0
+                          : (selectedQuote?.price ?? packing.deliveryFee)) -
+                        netPaid,
+                    ),
+                  )}
+                </dd>
+              </div>
+            )}
+          </dl>
           {editable && (
             <>
               <div className="order-packing-destination">
@@ -744,28 +835,6 @@ export function AdminOrderPacking({
               )}
               {selectedQuote && (
                 <div className="order-packing-submit">
-                  <dl className="order-packing-total">
-                    <div>
-                      <dt>Растения</dt>
-                      <dd>{money.format(subtotal)}</dd>
-                    </div>
-                    <div>
-                      <dt>Доставка</dt>
-                      <dd>{money.format(selectedQuote.price)}</dd>
-                    </div>
-                    <div>
-                      <dt>Итого с доставкой</dt>
-                      <dd>{money.format(subtotal + selectedQuote.price)}</dd>
-                    </div>
-                    {netPaid > 0 && (
-                      <div>
-                        <dt>К доплате с учётом полученной оплаты</dt>
-                        <dd>
-                          {money.format(Math.max(0, subtotal + selectedQuote.price - netPaid))}
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
                   <p>Покупателю отправим push и письмо, если эти каналы доступны.</p>
                   <button
                     type="button"
@@ -782,6 +851,24 @@ export function AdminOrderPacking({
           {packing.state !== "draft" && (
             <div className="order-packing-progress" aria-live="polite">
               <strong>{stateLabels[packing.state] || "Проверяем состояние обработки"}</strong>
+              {packing.canReopen && (
+                <button
+                  type="button"
+                  className="admin-action"
+                  disabled={disabled || !!busy}
+                  onClick={() => void reopen()}
+                >
+                  {busy === "reopen" ? "Возвращаем…" : "Вернуть на редактирование"}
+                </button>
+              )}
+              {packing.state === "reopening" && (
+                <p role="status">
+                  Ожидаем подтверждения отмены прежней заявки СДЭК. Старая ссылка на оплату больше
+                  не принимается. После отмены состав и упаковка станут доступны; затем пересчитайте
+                  доставку и подтвердите заказ заново.
+                </p>
+              )}
+
               <dl>
                 <div>
                   <dt>Упаковка</dt>

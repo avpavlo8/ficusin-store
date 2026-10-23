@@ -691,6 +691,31 @@ export function AdminOrderEditor({
           )}
         </section>
       )}
+      {order.deliveryMethod === "cdek" && readOnly && (
+        <section className="admin-block" aria-label="Стоимость заказа и доставки">
+          <dl className="order-packing-total">
+            <div>
+              <dt>Товары</dt>
+              <dd>{money.format(adjustment.subtotal)}</dd>
+            </div>
+            <div>
+              <dt>
+                Доставка{adjustment.deliveryPayee === "carrier" ? " · перевозчику отдельно" : ""}
+              </dt>
+              <dd>{money.format(adjustment.deliveryFee)}</dd>
+            </div>
+            <div>
+              <dt>Итого{adjustment.deliveryPayee === "carrier" ? "" : " с доставкой"}</dt>
+              <dd>
+                {money.format(
+                  adjustment.subtotal +
+                    (adjustment.deliveryPayee === "carrier" ? 0 : adjustment.deliveryFee),
+                )}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      )}
       {order.deliveryMethod === "cdek" && !readOnly && (
         <AdminOrderPacking
           orderId={order.id}
