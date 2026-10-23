@@ -83,10 +83,7 @@ type Photos struct {
 type Payments struct {
 	ShopID    string
 	SecretKey string
-	// SendReceipt is on only when YooKassa prints the fiscal receipt.
-	// A shop that punches receipts through its own till leaves this off,
-	// otherwise one sale produces two receipts.
-	SendReceipt bool
+
 	// TaxSystem and VATCode are the codes from 54-ФЗ. They matter only
 	// when we are the ones sending the receipt.
 	TaxSystem int
@@ -184,11 +181,10 @@ func Load() (Config, error) {
 			FromName: defaultString(os.Getenv("MAIL_FROM_NAME"), "Фикусин"),
 		},
 		Payments: Payments{
-			ShopID:      strings.TrimSpace(os.Getenv("YOOKASSA_SHOP_ID")),
-			SecretKey:   strings.TrimSpace(os.Getenv("YOOKASSA_SECRET_KEY")),
-			SendReceipt: strings.TrimSpace(os.Getenv("YOOKASSA_SEND_RECEIPT")) == "1",
-			TaxSystem:   intFromEnv("YOOKASSA_TAX_SYSTEM", 0),
-			VATCode:     intFromEnv("YOOKASSA_VAT_CODE", 1),
+			ShopID:    strings.TrimSpace(os.Getenv("YOOKASSA_SHOP_ID")),
+			SecretKey: strings.TrimSpace(os.Getenv("YOOKASSA_SECRET_KEY")),
+			TaxSystem: intFromEnv("YOOKASSA_TAX_SYSTEM", 0),
+			VATCode:   intFromEnv("YOOKASSA_VAT_CODE", 1),
 		},
 		Photos: Photos{
 			Endpoint:  defaultString(os.Getenv("S3_ENDPOINT"), "https://s3.twcstorage.ru"),

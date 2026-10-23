@@ -260,7 +260,7 @@ func (service *Service) startLocked(ctx context.Context, orderNumber string) (st
 			return "", err
 		}
 		if deliveryFee > 0 {
-			items = append(items, integration.PaymentItem{Name: "Доставка", Price: deliveryFee, Quantity: 1})
+			items = append(items, integration.PaymentItem{Name: "Доставка", Subject: "service", Price: deliveryFee, Quantity: 1})
 		}
 	}
 	key, err = idempotenceKey()

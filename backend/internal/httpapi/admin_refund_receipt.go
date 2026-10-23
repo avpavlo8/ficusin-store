@@ -7,41 +7,6 @@ import (
 	"strconv"
 )
 
-func (handlers adminHandlers) confirmRefundReceipt(w http.ResponseWriter, r *http.Request) {
-	_, actor, ok := handlers.authorize(w, r, admin.PermissionPaymentsRefund)
-	if !ok {
-		return
-	}
-	orderID, ok := pathID(w, r)
-	if !ok {
-		return
-	}
-	refundID, err := strconv.ParseInt(r.PathValue("refundID"), 10, 64)
-	if err != nil || refundID <= 0 {
-		writeJSON(w, 400, errorResponse{Error: "Некорректный возврат"})
-		return
-	}
-	var body struct {
-		Confirmed bool `json:"confirmed"`
-	}
-	if decodeJSON(r, &body) != nil || !body.Confirmed {
-		writeJSON(w, 400, errorResponse{Error: "Подтвердите, что чек возврата уже сформирован на кассе"})
-		return
-	}
-	service, ok := handlers.payments.(interface {
-		ConfirmRefundReceipt(context.Context, int64, int64, int64) error
-	})
-	if !ok {
-		writeJSON(w, 503, errorResponse{Error: "Проверка чеков недоступна"})
-		return
-	}
-	if err := service.ConfirmRefundReceipt(r.Context(), orderID, refundID, actor.CustomerID); err != nil {
-		writeJSON(w, 409, errorResponse{Error: err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]bool{"ok": true})
-}
-
 func (handlers adminHandlers) resolveRefund(w http.ResponseWriter, r *http.Request) {
 	_, actor, ok := handlers.authorize(w, r, admin.PermissionPaymentsRefund)
 	if !ok {
@@ -71,6 +36,41 @@ func (handlers adminHandlers) resolveRefund(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := service.ResolveRefund(r.Context(), orderID, refundID, body.ProviderID, actor.CustomerID); err != nil {
+		writeJSON(w, 409, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (handlers adminHandlers) settlePaymentReceipt(w http.ResponseWriter, r *http.Request) {
+	_, actor, ok := handlers.authorize(w, r, admin.PermissionPaymentsRefund)
+	if !ok {
+		return
+	}
+	orderID, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("paymentID"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, 400, errorResponse{Error: "Некорректный платёж"})
+		return
+	}
+	var body struct {
+		Confirmed bool `json:"confirmed"`
+	}
+	if decodeJSON(r, &body) != nil || !body.Confirmed {
+		writeJSON(w, 400, errorResponse{Error: "Подтвердите выдачу товара и формирование чека зачёта в ЮKassa"})
+		return
+	}
+	service, ok := handlers.payments.(interface {
+		SettlePaymentReceipt(context.Context, int64, int64, int64) error
+	})
+	if !ok {
+		writeJSON(w, 503, errorResponse{Error: "Формирование чека недоступно"})
+		return
+	}
+	if err = service.SettlePaymentReceipt(r.Context(), orderID, id, actor.CustomerID); err != nil {
 		writeJSON(w, 409, errorResponse{Error: err.Error()})
 		return
 	}

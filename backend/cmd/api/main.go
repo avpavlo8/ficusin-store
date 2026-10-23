@@ -176,7 +176,6 @@ func main() {
 		integration.NewYooKassaClient(
 			cfg.Payments.ShopID,
 			cfg.Payments.SecretKey,
-			cfg.Payments.SendReceipt,
 			cfg.Payments.TaxSystem,
 			cfg.Payments.VATCode,
 		),
@@ -201,7 +200,7 @@ func main() {
 	analyticsStore := commerceanalytics.NewStore(pool)
 	metrikaWorker := analyticsStore.WithMetrika(cfg.MetrikaMPToken, cfg.SiteURL, func() string { return shopSettings.All()[settings.MetrikaID] })
 	go metrikaWorker.Run(ctx, logger)
-	operationsProbe := operations.NewProbe(pool)
+	operationsProbe := operations.NewProbe(pool).WithAlerts(telegramClient)
 	go avitoService.Run(ctx)
 	chatStore := chat.NewStore(pool)
 	if pushService != nil {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRefundPreservesPendingAndExactReceipt(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", true, 0, 1)
+	client := NewYooKassaClient("shop", "secret", 0, 1)
 	original := PaymentRequest{Email: "test@example.invalid", Items: []PaymentItem{{Name: "Растение", Price: 100, Quantity: 1}}}
 	req, err := client.PrepareRefund("pay-1", 100, "refund-key", original)
 	if err != nil {
@@ -32,10 +32,11 @@ func TestRefundPreservesPendingAndExactReceipt(t *testing.T) {
 		t.Fatal("partial refund invented a fiscal composition")
 	}
 }
-func TestOwnTillRefundDoesNotSendSecondReceipt(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", false, 0, 1)
-	req, err := client.PrepareRefund("pay-1", 50, "key", PaymentRequest{})
-	if err != nil || req.Receipt != nil {
-		t.Fatalf("%+v %v", req, err)
+func TestFullRefundUsesProviderReceiptWithoutSecondComposition(t *testing.T) {
+	client := NewYooKassaClient("fixture", "fixture", 0, 1)
+	original := client.SnapshotReceipt(PaymentRequest{Amount: 100, Email: "fixture@example.invalid", Items: []PaymentItem{{Name: "Растение", Price: 100, Quantity: 1}}})
+	req, err := client.PrepareRefund("pay-fixture", 100, "refund-fixture", original)
+	if err != nil || req.Receipt != nil || !req.ReceiptByProvider {
+		t.Fatalf("full fiscal refund: %+v %v", req, err)
 	}
 }

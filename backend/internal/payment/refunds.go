@@ -14,6 +14,11 @@ import (
 
 type refundActorKey struct{}
 type refundRequestKey struct{}
+type refundSelectionsKey struct{}
+
+func WithRefundSelections(ctx context.Context, items []RefundSelection) context.Context {
+	return context.WithValue(ctx, refundSelectionsKey{}, items)
+}
 
 func WithRefundRequest(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, refundRequestKey{}, id)
@@ -30,18 +35,20 @@ type refundProvider interface {
 }
 
 type RefundIssue struct {
-	ID              int64   `json:"id"`
-	Amount          float64 `json:"amount"`
-	Status          string  `json:"status"`
-	ProviderID      string  `json:"providerId"`
-	ActorID         *int64  `json:"actorId,omitempty"`
-	NeedsReview     bool    `json:"needsReview"`
-	ReceiptRequired bool    `json:"receiptRequired"`
-	LastError       string  `json:"lastError"`
+	ID          int64   `json:"id"`
+	Amount      float64 `json:"amount"`
+	Status      string  `json:"status"`
+	ProviderID  string  `json:"providerId"`
+	ActorID     *int64  `json:"actorId,omitempty"`
+	NeedsReview bool    `json:"needsReview"`
+
+	LastError        string `json:"lastError"`
+	ReceiptStatus    string `json:"receiptStatus"`
+	ReceiptReference string `json:"receiptReference"`
 }
 
 func (service *Service) refundIssues(ctx context.Context, orderID int64) ([]RefundIssue, error) {
-	rows, err := service.pool.Query(ctx, `SELECT id,amount::double precision,status,provider_refund_id,actor_id,needs_review,receipt_required,last_error FROM payment_refunds WHERE order_id=$1 ORDER BY id DESC`, orderID)
+	rows, err := service.pool.Query(ctx, `SELECT id,amount::double precision,status,provider_refund_id,actor_id,needs_review,last_error,receipt_status FROM payment_refunds WHERE order_id=$1 ORDER BY id DESC`, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +56,7 @@ func (service *Service) refundIssues(ctx context.Context, orderID int64) ([]Refu
 	result := []RefundIssue{}
 	for rows.Next() {
 		var item RefundIssue
-		if err := rows.Scan(&item.ID, &item.Amount, &item.Status, &item.ProviderID, &item.ActorID, &item.NeedsReview, &item.ReceiptRequired, &item.LastError); err != nil {
+		if err := rows.Scan(&item.ID, &item.Amount, &item.Status, &item.ProviderID, &item.ActorID, &item.NeedsReview, &item.LastError, &item.ReceiptStatus); err != nil {
 			return nil, err
 		}
 		result = append(result, item)
@@ -72,16 +79,26 @@ func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount 
 		return Balance{}, err
 	}
 	defer func() { _ = guard.Rollback(ctx) }()
+	selections, _ := ctx.Value(refundSelectionsKey{}).([]RefundSelection)
+	signature, err := selectionSignature(selections)
+	if err != nil {
+		return Balance{}, err
+	}
 	requestID, _ := ctx.Value(refundRequestKey{}).(string)
 	if requestID != "" {
 		var count int
-		var total float64
-		var savedReason string
-		if err := service.pool.QueryRow(ctx, `SELECT COUNT(*),COALESCE(SUM(amount),0)::double precision,COALESCE(MIN(reason),'') FROM payment_refunds WHERE order_id=$1 AND request_id=$2`, orderID, requestID).Scan(&count, &total, &savedReason); err != nil {
+		var total int64
+		var savedReason, savedSignature string
+		if err := service.pool.QueryRow(ctx, `SELECT COUNT(*),ROUND(COALESCE(SUM(amount),0)*100)::bigint,COALESCE(MIN(reason),''),COALESCE(MIN(selections::text),'[]') FROM payment_refunds WHERE order_id=$1 AND request_id=$2`, orderID, requestID).Scan(&count, &total, &savedReason, &savedSignature); err != nil {
 			return Balance{}, err
 		}
 		if count > 0 {
-			if cents(total) != cents(amount) || savedReason != strings.TrimSpace(reason) {
+			var saved []RefundSelection
+			if json.Unmarshal([]byte(savedSignature), &saved) != nil {
+				return Balance{}, errors.New("повреждён состав возврата")
+			}
+			canonicalSaved, _ := selectionSignature(saved)
+			if total != requested || savedReason != strings.TrimSpace(reason) || canonicalSaved != signature {
 				return Balance{}, errors.New("ключ возврата уже использован с другой суммой или причиной")
 			}
 			if _, err := service.resumePendingRefunds(ctx, orderID); err != nil {
@@ -119,12 +136,26 @@ func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount 
 		raw       []byte
 	}
 	plans := []planned{}
+	selected, err := service.selectedRefunds(ctx, orderID, selections, requested)
+	if err != nil {
+		return balance, err
+	}
 	remaining := requested
 	for _, p := range payments {
 		if remaining <= 0 {
 			break
 		}
 		part := min(remaining, p.available)
+		if len(selections) > 0 {
+			chosen, exists := selected[p.id]
+			if !exists {
+				continue
+			}
+			part = chosen.amount
+			if part > p.available {
+				return balance, errors.New("сумма позиций превышает остаток платежа")
+			}
+		}
 		key, err := idempotenceKey()
 		if err != nil {
 			return balance, err
@@ -139,6 +170,22 @@ func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount 
 				return balance, err
 			}
 		}
+		if len(selections) > 0 {
+			original.Items = selected[p.id].items
+		}
+		var settlement string
+		if err = service.pool.QueryRow(ctx, `SELECT COALESCE((SELECT status FROM payment_settlement_receipts WHERE payment_id=$1),'')`, p.id).Scan(&settlement); err != nil {
+			return balance, err
+		}
+		if settlement == "pending" || settlement == "manual_review" {
+			return balance, errors.New("сначала сверьте результат чека зачёта в ЮKassa; возврат не отправлен")
+		}
+		if settlement == "succeeded" {
+			for i := range original.Items {
+				original.Items[i].Mode = "full_payment"
+			}
+		}
+
 		req, err := provider.PrepareRefund(p.providerID, rublesFromCents(part), key, original)
 		if err != nil {
 			return balance, err
@@ -163,7 +210,7 @@ func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount 
 		actor = id
 	}
 	for _, p := range plans {
-		if _, err = tx.Exec(ctx, `INSERT INTO payment_refunds(order_id,payment_id,idempotence_key,amount,reason,status,actor_id,request_payload,request_id) VALUES($1,$2,$3,$4,$5,'pending',$6,$7::jsonb,$8)`, orderID, p.paymentID, p.request.IdempotenceKey, p.request.Amount, strings.TrimSpace(reason), actor, p.raw, requestID); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO payment_refunds(order_id,payment_id,idempotence_key,amount,reason,status,actor_id,request_payload,request_id,selections) VALUES($1,$2,$3,$4,$5,'pending',$6,$7::jsonb,$8,$9::jsonb)`, orderID, p.paymentID, p.request.IdempotenceKey, p.request.Amount, strings.TrimSpace(reason), actor, p.raw, requestID, signature); err != nil {
 			return balance, err
 		}
 	}
@@ -214,11 +261,11 @@ func (service *Service) syncRefund(ctx context.Context, id int64) error {
 		return errors.New("провайдер не поддерживает сверку возвратов")
 	}
 	var raw []byte
-	var providerID, paymentID, key string
+	var providerID, paymentID, key, currentStatus string
 	var amount float64
 	var created time.Time
 	var review bool
-	err := service.pool.QueryRow(ctx, `SELECT r.request_payload,r.provider_refund_id,p.provider_payment_id,r.idempotence_key,r.amount::double precision,r.created_at,r.needs_review FROM payment_refunds r JOIN payments p ON p.id=r.payment_id WHERE r.id=$1 AND r.status='pending'`, id).Scan(&raw, &providerID, &paymentID, &key, &amount, &created, &review)
+	err := service.pool.QueryRow(ctx, `SELECT r.request_payload,r.provider_refund_id,p.provider_payment_id,r.idempotence_key,r.amount::double precision,r.created_at,r.needs_review,r.status FROM payment_refunds r JOIN payments p ON p.id=r.payment_id WHERE r.id=$1 AND (r.status='pending' OR (r.status='succeeded' AND r.provider_refund_id<>'' AND r.receipt_status IN ('','pending','unknown','canceled','legacy_unverified')))`, id).Scan(&raw, &providerID, &paymentID, &key, &amount, &created, &review, &currentStatus)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -248,7 +295,7 @@ func (service *Service) syncRefund(ctx context.Context, id int64) error {
 	if err != nil {
 		// Only an ambiguous POST can be retried with the same key. A known ID is
 		// always fetched, even after 24 hours. GET failures never cancel a refund.
-		status := "pending"
+		status := currentStatus
 		if providerID == "" && !errors.Is(err, integration.ErrPaymentOutcomeUnknown) {
 			status = "failed"
 		}
@@ -258,7 +305,7 @@ func (service *Service) syncRefund(ctx context.Context, id int64) error {
 		}
 		return err
 	}
-	if result.ID == "" || (providerID != "" && result.ID != providerID) || result.PaymentID != paymentID || cents(result.Amount) != cents(amount) || (result.Status != "pending" && result.Status != "succeeded" && result.Status != "canceled") {
+	if (currentStatus == "succeeded" && result.Status != "succeeded") || result.ID == "" || (providerID != "" && result.ID != providerID) || result.PaymentID != paymentID || cents(result.Amount) != cents(amount) || (result.Status != "pending" && result.Status != "succeeded" && result.Status != "canceled") {
 		_, err = service.pool.Exec(ctx, `UPDATE payment_refunds SET needs_review=true,last_error='Ответ ЮKassa не соответствует возврату; нужна ручная сверка',updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id)
 		return err
 	}
@@ -268,12 +315,12 @@ func (service *Service) syncRefund(ctx context.Context, id int64) error {
 			return err
 		}
 	}
-	_, err = service.pool.Exec(ctx, `UPDATE payment_refunds SET provider_refund_id=$2,status=$3,receipt_required=($3='succeeded' AND $4),last_error='',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='pending'`, id, result.ID, result.Status, req.Receipt == nil)
+	_, err = service.pool.Exec(ctx, `UPDATE payment_refunds SET provider_refund_id=$2,status=$3,receipt_status=$4,receipt_checked_at=CURRENT_TIMESTAMP,last_error='',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('pending','succeeded')`, id, result.ID, result.Status, refundReceiptStatus(req, result))
 	return err
 }
 
 func (service *Service) reconcileRefunds(ctx context.Context) error {
-	rows, err := service.pool.Query(ctx, `SELECT DISTINCT order_id FROM payment_refunds WHERE status='pending' AND NOT needs_review ORDER BY order_id LIMIT 50`)
+	rows, err := service.pool.Query(ctx, `SELECT DISTINCT order_id FROM payment_refunds WHERE (status='pending' AND NOT needs_review) OR (status='succeeded' AND provider_refund_id<>'' AND receipt_status IN ('','pending','unknown','canceled','legacy_unverified') AND (receipt_checked_at IS NULL OR receipt_checked_at<CURRENT_TIMESTAMP-INTERVAL '5 minutes')) ORDER BY order_id LIMIT 50`)
 	if err != nil {
 		return err
 	}
@@ -296,21 +343,13 @@ func (service *Service) reconcileRefunds(ctx context.Context) error {
 			return err
 		}
 		_, err = service.resumePendingRefunds(ctx, id)
+		if err == nil {
+			err = service.syncRefundReceipts(ctx, id)
+		}
 		_ = guard.Rollback(ctx)
 		if err != nil {
 			service.logger.Error("reconcile refund failed", "order_id", id, "error", err)
 		}
-	}
-	return nil
-}
-
-func (service *Service) ConfirmRefundReceipt(ctx context.Context, orderID, refundID, actorID int64) error {
-	tag, err := service.pool.Exec(ctx, `UPDATE payment_refunds SET receipt_required=false,updated_at=CURRENT_TIMESTAMP,receipt_confirmed_by=$3 WHERE id=$1 AND order_id=$2 AND status='succeeded' AND receipt_required`, refundID, orderID, actorID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() != 1 {
-		return errors.New("чек возврата не ожидается")
 	}
 	return nil
 }
@@ -333,7 +372,7 @@ func (service *Service) ResolveRefund(ctx context.Context, orderID, refundID int
 	defer func() { _ = guard.Rollback(ctx) }()
 	var paymentID, existing string
 	var amount float64
-	err = service.pool.QueryRow(ctx, `SELECT p.provider_payment_id,r.provider_refund_id,r.amount::double precision FROM payment_refunds r JOIN payments p ON p.id=r.payment_id WHERE r.id=$1 AND r.order_id=$2 AND r.status='pending'`, refundID, orderID).Scan(&paymentID, &existing, &amount)
+	err = service.pool.QueryRow(ctx, `SELECT p.provider_payment_id,r.provider_refund_id,r.amount::double precision FROM payment_refunds r JOIN payments p ON p.id=r.payment_id WHERE r.id=$1 AND r.order_id=$2 AND r.status IN ('pending','succeeded')`, refundID, orderID).Scan(&paymentID, &existing, &amount)
 	if err != nil {
 		return err
 	}
@@ -347,7 +386,7 @@ func (service *Service) ResolveRefund(ctx context.Context, orderID, refundID int
 	if result.ID != providerID || result.PaymentID != paymentID || cents(result.Amount) != cents(amount) || (result.Status != "pending" && result.Status != "succeeded" && result.Status != "canceled") {
 		return errors.New("возврат ЮKassa не соответствует платежу или сумме заказа")
 	}
-	_, err = service.pool.Exec(ctx, `UPDATE payment_refunds SET provider_refund_id=$3,needs_review=false,resolved_by=$4,last_error='',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND order_id=$2 AND status='pending'`, refundID, orderID, providerID, actorID)
+	_, err = service.pool.Exec(ctx, `UPDATE payment_refunds SET provider_refund_id=$3,needs_review=false,resolved_by=$4,last_error='',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND order_id=$2 AND status IN ('pending','succeeded')`, refundID, orderID, providerID, actorID)
 	if err != nil {
 		return err
 	}

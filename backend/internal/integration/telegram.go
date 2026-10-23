@@ -179,3 +179,12 @@ func truncateRunes(value string, limit int) string {
 	}
 	return string(runes[:limit])
 }
+
+// SendOperations reports only controlled operational status, never customer data.
+func (client *TelegramClient) SendOperations(ctx context.Context, message string) error {
+	body, err := json.Marshal(map[string]any{"chat_id": client.chatID, "text": message, "disable_web_page_preview": true})
+	if err != nil {
+		return err
+	}
+	return client.post(ctx, body)
+}

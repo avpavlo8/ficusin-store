@@ -28,25 +28,38 @@ type YooKassaClient struct {
 	shopID     string
 	secretKey  string
 	httpClient *http.Client
-	// sendReceipt is on when YooKassa is the one printing the fiscal
-	// receipt. If the shop punches receipts through its own till, sending
-	// the composition here would produce a second receipt for one sale.
-	sendReceipt bool
-	taxSystem   int
-	vatCode     int
+	taxSystem  int
+	vatCode    int
 }
 
-func NewYooKassaClient(shopID, secretKey string, sendReceipt bool, taxSystem, vatCode int) *YooKassaClient {
+func NewYooKassaClient(shopID, secretKey string, taxSystem, vatCode int) *YooKassaClient {
 	return &YooKassaClient{
-		shopID:      strings.TrimSpace(shopID),
-		secretKey:   strings.TrimSpace(secretKey),
-		httpClient:  &http.Client{Timeout: 20 * time.Second},
-		sendReceipt: sendReceipt,
-		taxSystem:   taxSystem,
-		vatCode:     max(1, vatCode),
+		shopID:     strings.TrimSpace(shopID),
+		secretKey:  strings.TrimSpace(secretKey),
+		httpClient: &http.Client{Timeout: 20 * time.Second},
+		taxSystem:  taxSystem,
+		vatCode:    max(1, vatCode),
 	}
 }
 
+// SnapshotReceipt freezes fiscal settings with the durable payment request.
+func (client *YooKassaClient) SnapshotReceipt(request PaymentRequest) PaymentRequest {
+	enabled, tax := true, client.taxSystem
+	request.ReceiptEnabled = &enabled
+	request.ReceiptTaxSystem = &tax
+	for i := range request.Items {
+		if request.Items[i].VATCode == 0 {
+			request.Items[i].VATCode = client.vatCode
+		}
+		if request.Items[i].Subject == "" {
+			request.Items[i].Subject = "commodity"
+		}
+		if request.Items[i].Mode == "" {
+			request.Items[i].Mode = "full_prepayment"
+		}
+	}
+	return request
+}
 func (client *YooKassaClient) Configured() bool {
 	return client != nil && client.shopID != "" && client.secretKey != ""
 }
@@ -56,6 +69,9 @@ type PaymentItem struct {
 	Name     string
 	Price    float64
 	Quantity int
+	VATCode  int    `json:",omitempty"`
+	Subject  string `json:",omitempty"`
+	Mode     string `json:",omitempty"`
 }
 
 type PaymentRequest struct {
@@ -66,16 +82,19 @@ type PaymentRequest struct {
 	Description    string
 	ReturnURL      string
 	// Email and Phone go on the receipt only. They never leave for anywhere
-	// else, and nothing is sent at all when the shop prints its own.
-	Email string
-	Phone string
-	Items []PaymentItem
+	// else. Online payments always use YooKassa fiscal receipts.
+	Email            string
+	Phone            string
+	Items            []PaymentItem
+	ReceiptEnabled   *bool `json:",omitempty"`
+	ReceiptTaxSystem *int  `json:",omitempty"`
 	// Metadata ties an otherwise ambiguous provider object back to the exact
 	// durable attempt in our database. It contains no customer data.
 	Metadata map[string]string
 }
 
 type Payment struct {
+	ReceiptStatus   string
 	ID              string
 	Status          string
 	Paid            bool
@@ -98,6 +117,9 @@ func (client *YooKassaClient) CreatePayment(
 	if amountErr != nil || amountMinor <= 0 {
 		return Payment{}, errors.New("сумма к оплате должна быть больше нуля")
 	}
+	if strings.TrimSpace(request.Email) == "" {
+		return Payment{}, errors.New("укажите email для чека ЮKassa")
+	}
 	body := map[string]any{
 		"amount": map[string]string{
 			"value":    rubles(request.Amount),
@@ -110,7 +132,7 @@ func (client *YooKassaClient) CreatePayment(
 			"return_url": request.ReturnURL,
 		},
 	}
-	if client.sendReceipt {
+	{
 		var receiptMinor int64
 		for _, item := range request.Items {
 			price, err := money.Exact(item.Price)
@@ -190,6 +212,18 @@ func (client *YooKassaClient) CapturePayment(ctx context.Context, paymentID, ide
 func (client *YooKassaClient) receipt(request PaymentRequest) map[string]any {
 	items := make([]map[string]any, 0, len(request.Items))
 	for _, item := range request.Items {
+		vat := item.VATCode
+		if vat == 0 {
+			vat = client.vatCode
+		}
+		subject := item.Subject
+		if subject == "" {
+			subject = "commodity"
+		}
+		mode := item.Mode
+		if mode == "" {
+			mode = "full_prepayment"
+		}
 		items = append(items, map[string]any{
 			"description": truncateRunes(item.Name, 128),
 			"quantity":    strconv.Itoa(max(1, item.Quantity)),
@@ -197,9 +231,7 @@ func (client *YooKassaClient) receipt(request PaymentRequest) map[string]any {
 				"value":    rubles(item.Price),
 				"currency": "RUB",
 			},
-			"vat_code":        client.vatCode,
-			"payment_mode":    "full_prepayment",
-			"payment_subject": "commodity",
+			"vat_code": vat, "payment_mode": mode, "payment_subject": subject,
 		})
 	}
 	customer := map[string]string{}
@@ -210,8 +242,12 @@ func (client *YooKassaClient) receipt(request PaymentRequest) map[string]any {
 		customer["phone"] = request.Phone
 	}
 	receipt := map[string]any{"customer": customer, "items": items}
-	if client.taxSystem > 0 {
-		receipt["tax_system_code"] = client.taxSystem
+	tax := client.taxSystem
+	if request.ReceiptTaxSystem != nil {
+		tax = *request.ReceiptTaxSystem
+	}
+	if tax > 0 {
+		receipt["tax_system_code"] = tax
 	}
 	return receipt
 }
@@ -268,12 +304,13 @@ func (client *YooKassaClient) send(
 }
 
 type yooKassaPayment struct {
-	ID          string            `json:"id"`
-	Status      string            `json:"status"`
-	Paid        bool              `json:"paid"`
-	Description string            `json:"description"`
-	Metadata    map[string]string `json:"metadata"`
-	Amount      struct {
+	ReceiptStatus string            `json:"receipt_registration"`
+	ID            string            `json:"id"`
+	Status        string            `json:"status"`
+	Paid          bool              `json:"paid"`
+	Description   string            `json:"description"`
+	Metadata      map[string]string `json:"metadata"`
+	Amount        struct {
 		Value    string `json:"value"`
 		Currency string `json:"currency"`
 	} `json:"amount"`
@@ -288,6 +325,7 @@ func (payment yooKassaPayment) toPayment() (Payment, error) {
 		return Payment{}, fmt.Errorf("%w: некорректная сумма платежа", ErrPaymentOutcomeUnknown)
 	}
 	return Payment{
+		ReceiptStatus:   payment.ReceiptStatus,
 		ID:              payment.ID,
 		Status:          payment.Status,
 		Paid:            payment.Paid,
@@ -306,26 +344,28 @@ func rubles(amount float64) string {
 
 // RefundRequest is persisted before the request leaves the shop.
 type RefundRequest struct {
-	PaymentID      string
-	Amount         float64
-	IdempotenceKey string
-	Receipt        map[string]any `json:",omitempty"`
+	PaymentID         string
+	Amount            float64
+	IdempotenceKey    string
+	Receipt           map[string]any `json:",omitempty"`
+	ReceiptByProvider bool           `json:",omitempty"`
 }
 type Refund struct {
-	ID        string  `json:"id"`
-	Status    string  `json:"status"`
-	PaymentID string  `json:"payment_id"`
-	Amount    float64 `json:"-"`
+	ID            string  `json:"id"`
+	Status        string  `json:"status"`
+	PaymentID     string  `json:"payment_id"`
+	Amount        float64 `json:"-"`
+	ReceiptStatus string  `json:"receipt_registration"`
 }
 
-func (client *YooKassaClient) RefundUsesReceipt() bool { return client.sendReceipt }
+func (client *YooKassaClient) RefundUsesReceipt() bool { return true }
 func (client *YooKassaClient) PrepareRefund(paymentID string, amount float64, key string, original PaymentRequest) (RefundRequest, error) {
 	amountMinor, err := money.Exact(amount)
 	if err != nil || amountMinor <= 0 {
 		return RefundRequest{}, errors.New("некорректная сумма возврата")
 	}
 	req := RefundRequest{PaymentID: paymentID, Amount: amount, IdempotenceKey: key}
-	if client.sendReceipt {
+	{
 		var total int64
 		for _, item := range original.Items {
 			price, err := money.Exact(item.Price)
@@ -336,9 +376,17 @@ func (client *YooKassaClient) PrepareRefund(paymentID string, amount float64, ke
 		}
 		// A partial refund needs its real item composition, never a fabricated line.
 		if len(original.Items) == 0 || total != amountMinor {
-			return req, errors.New("для частичного возврата нужен состав чека; выполните возврат через кассу с проверкой позиций")
+			return req, errors.New("выберите точные позиции и количество из исходного платежа для чека возврата ЮKassa")
 		}
-		req.Receipt = client.receipt(original)
+		req.ReceiptByProvider = true
+		originalMinor, _ := money.Exact(original.Amount)
+		// Full payment refunds reuse the original registered receipt at YooKassa.
+		if originalMinor != amountMinor {
+			if strings.TrimSpace(original.Email) == "" {
+				return req, errors.New("для чека возврата нужен email из исходного платежа")
+			}
+			req.Receipt = client.receipt(original)
+		}
 	}
 	return req, nil
 }
@@ -361,10 +409,11 @@ func (client *YooKassaClient) FetchRefund(ctx context.Context, id string) (Refun
 }
 func (client *YooKassaClient) refundResponse(ctx context.Context, method, path, key string, body any) (Refund, error) {
 	var response struct {
-		ID        string `json:"id"`
-		Status    string `json:"status"`
-		PaymentID string `json:"payment_id"`
-		Amount    struct {
+		ID            string `json:"id"`
+		Status        string `json:"status"`
+		ReceiptStatus string `json:"receipt_registration"`
+		PaymentID     string `json:"payment_id"`
+		Amount        struct {
 			Value    string `json:"value"`
 			Currency string `json:"currency"`
 		} `json:"amount"`
@@ -376,7 +425,7 @@ func (client *YooKassaClient) refundResponse(ctx context.Context, method, path, 
 	if err != nil || amount <= 0 || response.ID == "" || response.PaymentID == "" || response.Amount.Currency != "RUB" || (response.Status != "pending" && response.Status != "succeeded" && response.Status != "canceled") {
 		return Refund{}, fmt.Errorf("%w: некорректный ответ возврата", ErrPaymentOutcomeUnknown)
 	}
-	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: money.Rubles(amount)}, nil
+	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: money.Rubles(amount), ReceiptStatus: response.ReceiptStatus}, nil
 }
 
 // Kept for compatibility with callers outside the order workflow. Pending is

@@ -142,6 +142,30 @@ FROM (
     )
   GROUP BY 1
   UNION ALL
+  SELECT 'payment_receipt_required', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(p.created_at)))::bigint
+  FROM payments p
+  WHERE p.status='paid' AND p.provider_payment_id<>''
+    AND p.created_at<CURRENT_TIMESTAMP-INTERVAL '15 minutes'
+    AND (p.receipt_status IN ('canceled','unknown') OR (p.receipt_status IN ('','pending') AND p.created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
+  UNION ALL
+  SELECT 'payment_settlement_receipt_required', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(p.created_at)))::bigint
+  FROM payments p JOIN orders o ON o.id=p.order_id
+  LEFT JOIN shipment_offers so ON so.id=p.shipment_offer_id
+  LEFT JOIN payment_settlement_receipts sr ON sr.payment_id=p.id
+  WHERE p.status='paid' AND p.provider_payment_id<>'' AND COALESCE(so.status,o.status)='completed'
+    AND (sr.payment_id IS NULL OR sr.status IN ('failed','manual_review','canceled') OR (sr.status='pending' AND sr.created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
+    AND p.amount>COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.payment_id=p.id AND r.status='succeeded'),0)
+  UNION ALL
+  SELECT 'refund_manual_review', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
+  FROM payment_refunds WHERE needs_review OR (status='pending' AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes')
+  UNION ALL
+  SELECT 'refund_receipt_required', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
+  FROM payment_refunds WHERE status='succeeded' AND (receipt_status IN ('canceled','unknown','legacy_unverified') OR (receipt_status='pending' AND created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
+  UNION ALL
   SELECT 'expired_procurement_lock', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(locked_until)))::bigint
   FROM procurement_action_items
@@ -164,10 +188,13 @@ type Snapshot struct {
 }
 
 type Probe struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	alerts AlertSender
 }
 
 func NewProbe(pool *pgxpool.Pool) *Probe { return &Probe{pool: pool} }
+
+func (probe *Probe) WithAlerts(sender AlertSender) *Probe { probe.alerts = sender; return probe }
 
 func (probe *Probe) Snapshot(ctx context.Context) (Snapshot, error) {
 	rows, err := probe.pool.Query(ctx, snapshotSQL)
@@ -209,6 +236,11 @@ func (probe *Probe) Run(ctx context.Context, logger *slog.Logger) {
 	defer ticker.Stop()
 	for {
 		probe.log(ctx, logger)
+		alertCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		if err := probe.AlertDelivery(alertCtx, probe.alerts); err != nil {
+			logger.Error("operations alert delivery failed", "error", err)
+		}
+		cancel()
 		select {
 		case <-ctx.Done():
 			return

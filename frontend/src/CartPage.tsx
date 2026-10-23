@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { useSharedCart } from "./lib/cart";
+import { sharedAPIJSON } from "./lib/api";
 import { orderStorefrontCategories } from "./lib/category-order";
 import "./styles/cart.css";
 import "./styles/order-lamp.css";
@@ -13,8 +14,7 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
   >([]);
   const [cart, setCart, cartMeta] = useSharedCart();
   useEffect(() => {
-    fetch("/api/v1/categories")
-      .then((response) => response.json())
+    sharedAPIJSON<{ categories?: typeof categories }>("/api/v1/categories")
       .then((body: { categories?: typeof categories }) => setCategories(body.categories || []))
       .catch(() => setCategories([]));
   }, []);

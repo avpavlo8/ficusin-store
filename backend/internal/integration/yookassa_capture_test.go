@@ -20,7 +20,7 @@ func yooKassaTestResponse(body string) *http.Response {
 }
 
 func TestYooKassaCreatePaymentUsesTwoStages(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", false, 0, 1)
+	client := NewYooKassaClient("shop", "secret", 0, 1)
 	client.httpClient.Transport = yooKassaRoundTrip(func(request *http.Request) (*http.Response, error) {
 		if request.Method != http.MethodPost || request.URL.Path != "/v3/payments" {
 			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
@@ -34,14 +34,14 @@ func TestYooKassaCreatePaymentUsesTwoStages(t *testing.T) {
 		}
 		return yooKassaTestResponse(`{"id":"pay-1","status":"pending","paid":false,"amount":{"value":"1000.00","currency":"RUB"},"confirmation":{"confirmation_url":"https://example.test/pay"}}`), nil
 	})
-	payment, err := client.CreatePayment(context.Background(), PaymentRequest{IdempotenceKey: "attempt-1", Amount: 1000, ReturnURL: "https://example.test/return"})
+	payment, err := client.CreatePayment(context.Background(), PaymentRequest{IdempotenceKey: "attempt-1", Amount: 1000, Email: "fixture@example.invalid", Items: []PaymentItem{{Name: "Растение", Price: 1000, Quantity: 1}}, ReturnURL: "https://example.test/return"})
 	if err != nil || payment.ID != "pay-1" || payment.Status != "pending" {
 		t.Fatalf("payment = %+v, err = %v", payment, err)
 	}
 }
 
 func TestYooKassaCaptureAndFetchWaitingForCapture(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", false, 0, 1)
+	client := NewYooKassaClient("shop", "secret", 0, 1)
 	client.httpClient.Transport = yooKassaRoundTrip(func(request *http.Request) (*http.Response, error) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/v3/payments/pay-1":
@@ -70,7 +70,7 @@ func TestYooKassaCaptureAndFetchWaitingForCapture(t *testing.T) {
 }
 
 func TestYooKassaCaptureNeedsStableIdempotenceKey(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", false, 0, 1)
+	client := NewYooKassaClient("shop", "secret", 0, 1)
 	if err := client.CapturePayment(context.Background(), "pay-1", ""); err == nil {
 		t.Fatal("capture without idempotence key must fail")
 	}

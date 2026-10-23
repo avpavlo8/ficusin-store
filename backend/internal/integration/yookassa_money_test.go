@@ -9,7 +9,7 @@ import (
 )
 
 func TestPaymentRejectsInvalidMoneyBeforePOST(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", false, 0, 1)
+	client := NewYooKassaClient("shop", "secret", 0, 1)
 	client.httpClient.Transport = yooKassaRoundTrip(func(*http.Request) (*http.Response, error) {
 		t.Fatal("invalid money reached provider")
 		return nil, nil
@@ -34,8 +34,8 @@ func TestPaymentRejectsInvalidProviderMoney(t *testing.T) {
 	}
 }
 func TestRefundOneKopeckPayloadAndReceipt(t *testing.T) {
-	client := NewYooKassaClient("shop", "secret", true, 0, 1)
-	request, err := client.PrepareRefund("pay", 0.29, "key", PaymentRequest{Items: []PaymentItem{{Name: "Plant", Price: 0.29, Quantity: 1}}})
+	client := NewYooKassaClient("shop", "secret", 0, 1)
+	request, err := client.PrepareRefund("pay", 0.29, "key", PaymentRequest{Email: "fixture@example.invalid", Items: []PaymentItem{{Name: "Plant", Price: 0.29, Quantity: 1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
