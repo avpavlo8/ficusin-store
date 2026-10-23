@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -46,9 +47,9 @@ func NewService(pool *pgxpool.Pool, sessionDays int, callChecker CallChecker) *S
 // RequestCall asks SMS.ru for a phone number the given (already
 // normalized) phone number should call to log in or register, and
 // remembers the resulting check so ConfirmCall can later verify it.
-func (service *Service) RequestCall(ctx context.Context, phone string) (checkID, callPhone, callPhonePretty string, err error) {
-	if phone == "" {
-		return "", "", "", errors.New("phone is required")
+func (service *Service) RequestCall(ctx context.Context, phone, proofHash string) (checkID, callPhone, callPhonePretty string, err error) {
+	if phone == "" || len(proofHash) != 64 {
+		return "", "", "", errors.New("phone and browser proof are required")
 	}
 
 	var lastRequestedAt time.Time
@@ -71,9 +72,9 @@ func (service *Service) RequestCall(ctx context.Context, phone string) (checkID,
 	}
 
 	if _, err := service.pool.Exec(ctx, `
-		INSERT INTO call_checks (phone, check_id, call_phone, call_phone_pretty, expires_at)
-			VALUES ($1, $2, $3, $4, $5)
-	`, phone, checkID, callPhone, callPhonePretty, time.Now().Add(service.checkTTL)); err != nil {
+		INSERT INTO call_checks (phone, check_id, call_phone, call_phone_pretty, expires_at, browser_proof_hash)
+			VALUES ($1, $2, $3, $4, $5, $6)
+	`, phone, checkID, callPhone, callPhonePretty, time.Now().Add(service.checkTTL), proofHash); err != nil {
 		return "", "", "", fmt.Errorf("store call check: %w", err)
 	}
 
@@ -91,23 +92,23 @@ func (service *Service) ConfirmCall(
 	registration Registration,
 	meta ClientMeta,
 ) (token string, expiresAt time.Time, pending bool, err error) {
-	var storedCheckID string
+	var storedCheckID, storedProofHash string
 	var consumedAt *time.Time
 	var checkExpiresAt time.Time
 	err = service.pool.QueryRow(ctx, `
-		SELECT check_id, consumed_at, expires_at
+		SELECT check_id, consumed_at, expires_at, COALESCE(browser_proof_hash,'')
 			FROM call_checks
 				WHERE phone = $1
 					ORDER BY created_at DESC
 						LIMIT 1
-	`, phone).Scan(&storedCheckID, &consumedAt, &checkExpiresAt)
+	`, phone).Scan(&storedCheckID, &consumedAt, &checkExpiresAt, &storedProofHash)
 	if isNoRows(err) {
 		return "", time.Time{}, false, ErrInvalidCode
 	}
 	if err != nil {
 		return "", time.Time{}, false, fmt.Errorf("load call check: %w", err)
 	}
-	if storedCheckID != checkID || consumedAt != nil || time.Now().After(checkExpiresAt) {
+	if len(storedProofHash) != 64 || subtle.ConstantTimeCompare([]byte(storedProofHash), []byte(meta.CallProofHash)) != 1 || storedCheckID != checkID || consumedAt != nil || time.Now().After(checkExpiresAt) {
 		return "", time.Time{}, false, ErrInvalidCode
 	}
 

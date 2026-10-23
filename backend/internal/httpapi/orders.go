@@ -39,7 +39,8 @@ type createOrderBody struct {
 	// Consent mirrors the checkbox under the checkout form. The browser
 	// marks it required, but the server has to see it too — that flag is
 	// the only thing we can later show as evidence of the agreement.
-	Consent bool `json:"consent"`
+	Consent       bool `json:"consent"`
+	OfferAccepted bool `json:"offerAccepted"`
 	// PaymentMethod is the option the customer picked. The server decides
 	// whether they were entitled to it.
 	PaymentMethod string                        `json:"paymentMethod"`
@@ -93,6 +94,9 @@ func createOrderHandler(
 		}
 
 		switch {
+		case !body.OfferAccepted:
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Примите условия оферты"})
+			return
 		case !body.Consent:
 			writeJSON(response, http.StatusBadRequest, errorResponse{
 				Error: "Подтвердите согласие на обработку персональных данных",
@@ -140,7 +144,8 @@ func createOrderHandler(
 			// whether card payment exists at all.
 			WholesaleApproved:  wholesaleApproved,
 			OnlinePaymentReady: available(payments),
-			Consent:            true,
+			Consent:            body.Consent,
+			OfferAccepted:      body.OfferAccepted,
 			ClientIP:           clientIP(request),
 			UserAgent:          request.UserAgent(),
 		})

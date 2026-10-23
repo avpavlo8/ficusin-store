@@ -30,14 +30,18 @@ func (*checkoutShippingSettings) Value(string) string { return "Checkout sender"
 type checkoutCDEK struct {
 	requestMu sync.Mutex
 	*stage13CDEK
-	requests  []integration.ShipmentRequest
-	cancelled []string
+	requests    []integration.ShipmentRequest
+	cancelled   []string
+	beforeQuote func(context.Context)
 }
 
 func (c *checkoutCDEK) GetOffices(context.Context, int) ([]integration.CDEKOffice, error) {
 	return []integration.CDEKOffice{{Code: "CHECKOUT-PVZ", Location: integration.CDEKLocation{City: "Москва", Address: "Test PVZ"}}}, nil
 }
-func (c *checkoutCDEK) CalculatePVZ(context.Context, int, integration.Parcel) ([]integration.CDEKQuote, error) {
+func (c *checkoutCDEK) CalculatePVZ(ctx context.Context, _ int, _ integration.Parcel) ([]integration.CDEKQuote, error) {
+	if c.beforeQuote != nil {
+		c.beforeQuote(ctx)
+	}
 	return []integration.CDEKQuote{{TariffCode: 136, Price: 450}}, nil
 }
 func (c *checkoutCDEK) CreateOrder(ctx context.Context, r integration.ShipmentRequest) (integration.Shipment, error) {
@@ -59,7 +63,12 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +113,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	service := NewService(pool, client, liveOrderNotifier{}, shop, quietLogger()).WithShipmentWake(func() { wakes++; worker.Wake() })
 	makeOrder := func(repack bool) int64 {
 		t.Helper()
-		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, ClientIP: "127.0.0.1"})
+		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, OfferAccepted: true, ClientIP: "127.0.0.1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,6 +130,37 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		}
 		return id
 	}
+	// With one connection, even a SELECT during the carrier callback would
+	// time out if checkout still owned a transaction. Also change the package
+	// and price while quoting to exercise the second database read.
+	client.beforeQuote = func(ctx context.Context) {
+		checkCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		if _, err := pool.Exec(checkCtx, `UPDATE product_variants SET base_price_minor=159000 WHERE id=$1`, variantID); err != nil {
+			t.Fatalf("carrier call holds database connection: %v", err)
+		}
+		if _, err := pool.Exec(checkCtx, `UPDATE variant_attribute_values SET value='50'::jsonb WHERE variant_id=$1 AND attribute_id=(SELECT id FROM attribute_definitions WHERE code='package_length_cm')`, variantID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	changedID := makeOrder(false)
+	var changedPending int
+	var changedFee, changedSubtotal float64
+	if err := pool.QueryRow(ctx, `SELECT delivery_fee_pending,delivery_fee,subtotal FROM orders WHERE id=$1`, changedID).Scan(&changedPending, &changedFee, &changedSubtotal); err != nil {
+		t.Fatal(err)
+	}
+	if changedPending != 1 || changedFee != 0 || changedSubtotal != 1590 {
+		t.Fatalf("stale delivery quote or price: pending=%d fee=%v subtotal=%v", changedPending, changedFee, changedSubtotal)
+	}
+	client.beforeQuote = nil
+	if _, err := pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=149000 WHERE id=$1`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE variant_attribute_values SET value='40'::jsonb WHERE variant_id=$1 AND attribute_id=(SELECT id FROM attribute_definitions WHERE code='package_length_cm')`, variantID); err != nil {
+		t.Fatal(err)
+	}
+	wakes = 0
+
 	orderID := makeOrder(false)
 	if wakes != 1 {
 		t.Fatalf("checkout did not wake worker after commit: %d", wakes)

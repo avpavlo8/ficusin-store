@@ -103,6 +103,7 @@ test("@desktop стоимость СДЭК входит в сумму онлай
   await expect(summary).toContainText(/Доставка\s*590/);
   await expect(summary).toContainText(/Итого\s*2.?080/);
   await expect(submit).toBeDisabled();
+  await page.locator('input[name="offerAccepted"]').check();
   await page.locator('input[name="consent"]').check();
   await expect(submit).toBeEnabled();
   await page.getByLabel("Email для чека").fill("invalid-email");
@@ -132,6 +133,7 @@ test("@desktop растение под заказ оформляется без 
   await page.locator('input[name="delivery"][value="pickup"]').check();
   await expect(page.locator(".checkout-order-summary")).toContainText("Сейчас платить не нужно");
   await expect(page.getByText("Способ оплаты заказа")).toHaveCount(0);
+  await page.locator('.checkout-submit-section input[name="offerAccepted"]').check();
   await page.locator('.checkout-submit-section input[name="consent"]').check();
   await page.getByRole("button", { name: "Отправить заказ" }).click();
   await expect(page.getByText("Заказ отправлен менеджеру")).toBeVisible();
@@ -162,6 +164,7 @@ test("@desktop самовывоз сохраняет оплату наличны
   await page.locator('input[name="delivery"][value="pickup"]').check();
   await page.locator('input[name="paymentMethod"][value="on_delivery"]').check();
   await expect(page.getByText("Растения и доставка оплачиваются на сайте.", { exact: false })).toHaveCount(0);
+  await page.locator('input[name="offerAccepted"]').check();
   await page.locator('input[name="consent"]').check();
   await page.getByRole("button", { name: "Отправить заказ" }).click();
   await expect(page.getByText("Заказ отправлен менеджеру")).toBeVisible();
@@ -186,9 +189,33 @@ test("@desktop @phone гостевая оплата передаёт отдел�
  await page.getByLabel("Email для чека",{exact:true}).fill("guest@example.invalid");
  await page.locator('input[name="delivery"][value="pickup"]').check();
  await page.locator('input[name="paymentMethod"][value="online"]').check();
+ await page.locator('input[name="offerAccepted"]').check();
  await page.locator('input[name="consent"]').check();
  await page.locator('.checkout-navigation button.primary-button').click();
  await expect.poll(()=>suppliedToken).toBe(token);
  const stored=await page.evaluate(()=>JSON.stringify({...localStorage}));
  expect(stored).not.toContain(token);
+});
+
+test("@desktop @phone оферта и согласие подтверждаются независимо", async ({page},testInfo)=>{
+ await mockApi(page);
+ await setStoredCounts(page,[],{"1":1});
+ await page.goto("/checkout");
+ const offer=page.locator('input[name="offerAccepted"]');
+ const consent=page.locator('input[name="consent"]');
+ await expect(offer).not.toBeChecked();
+ await expect(consent).not.toBeChecked();
+ await consent.check();
+ await expect(offer).not.toBeChecked();
+ await offer.check();
+ await consent.uncheck();
+ await expect(offer).toBeChecked();
+ await expect(consent).not.toBeChecked();
+ await expect(page.locator('.checkout-submit-section a[href="/personal-data-consent"]')).toBeVisible();
+ await page.locator('.checkout-submit-section').scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath("separate-consents.png")});
+ await page.goto("/personal-data-consent");
+ await expect(page.getByRole("heading",{level:1,name:"Согласие на обработку персональных данных"})).toBeVisible();
+ await expect(page.getByText("Это согласие не является согласием на рекламную рассылку.",{exact:false})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

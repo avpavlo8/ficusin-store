@@ -55,7 +55,7 @@ func TestCreateOrderUsesAuthenticatedProfileDefaults(t *testing.T) {
 			"customer":{"name":"","phone":"","email":"","address":"","comment":""},
 			"delivery":"courier",
 			"items":[{"id":"ficus","quantity":1}],
-			"consent":true
+			"consent":true,"offerAccepted":true
 		}`),
 	)
 	request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "session-token"})
@@ -111,5 +111,19 @@ func TestCreateOrderRequiresConsent(t *testing.T) {
 	}
 	if creator.input.Delivery != "" {
 		t.Fatal("the order must not reach the service without consent")
+	}
+}
+
+func TestCreateOrderRequiresEachIndependentConfirmation(t *testing.T) {
+	for _, flags := range []string{`"consent":true`, `"offerAccepted":true`, `"consent":true,"offerAccepted":false`} {
+		creator := &recordingOrderCreator{}
+		deps := testDependencies(catalogStub{}, authStub{})
+		deps.OrderCreator = creator
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/orders", strings.NewReader(`{"customer":{"name":"Александр","phone":"9156151100","email":"a@example.invalid"},"delivery":"pickup","items":[{"id":"ficus","quantity":1}],`+flags+`}`))
+		w := httptest.NewRecorder()
+		NewRouter(discardLogger(), deps).ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest || creator.input.Delivery != "" {
+			t.Fatalf("combined or missing confirmation accepted: %s => %d", flags, w.Code)
+		}
 	}
 }

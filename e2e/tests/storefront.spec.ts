@@ -384,6 +384,14 @@ test("@desktop оформление отправляет заказ с норм�
   await checkout.getByLabel("Телефон").fill("9151234567");
   await checkout.getByLabel("Email для чека").fill("buyer@example.com");
   await checkout.locator('input[name="delivery"][value="pickup"]').check();
+  await expect(checkout.locator('input[name="offerAccepted"]')).not.toBeChecked();
+  await expect(checkout.locator('input[name="consent"]')).not.toBeChecked();
+  await checkout.locator('input[name="consent"]').check();
+  await expect(checkout.locator('input[name="offerAccepted"]')).not.toBeChecked();
+  await expect(checkout.getByRole("button", { name: /Оформить заказ/ })).toBeDisabled();
+  expect(order).toBeUndefined();
+  await expect(checkout.getByText("Примите условия оферты", { exact: true }).first()).toBeVisible();
+  await checkout.locator('input[name="offerAccepted"]').check();
   await checkout.locator('input[name="consent"]').check();
   await checkout.getByRole("button", { name: /Оформить заказ/ }).click();
 
@@ -394,6 +402,7 @@ test("@desktop оформление отправляет заказ с норм�
     delivery: "pickup",
     items: [{ id: "1", quantity: 1 }],
     consent: true,
+    offerAccepted: true,
   });
 });
 

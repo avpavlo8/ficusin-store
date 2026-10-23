@@ -3,6 +3,8 @@ package avito
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -309,7 +311,8 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	if err := s.pool.QueryRow(ctx, `SELECT publication_enabled,feed_token FROM avito_integration_state WHERE id=1`).Scan(&enabled, &expected); err != nil {
 		return err
 	}
-	if !enabled || token != expected {
+	providedHash, expectedHash := sha256.Sum256([]byte(token)), sha256.Sum256([]byte(expected))
+	if !enabled || subtle.ConstantTimeCompare(providedHash[:], expectedHash[:]) != 1 {
 		return pgx.ErrNoRows
 	}
 	// Read remote archives before producing an autoload response so a manual

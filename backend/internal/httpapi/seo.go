@@ -22,30 +22,31 @@ import (
 // настоящий: раньше любой набор букв возвращал «200 ОК», и поисковики
 // заводили в индекс пустые страницы, которых у магазина нет.
 var appRoutes = map[string]bool{
-	"/discounts":            true,
-	"/care":                 true,
-	"/care/mealybug":        true,
-	"/care/spider-mite":     true,
-	"/care/yellow-leaves":   true,
-	"/care/root-problems":   true,
-	"/":                     true,
-	"/login":                true,
-	"/register":             true,
-	"/account":              true,
-	"/account/profile":      true,
-	"/account/favorites":    true,
-	"/account/reviews":      true,
-	"/account/chat":         true,
-	"/admin":                true,
-	"/cart":                 true,
-	"/checkout":             true,
-	"/favorites":            true,
-	"/offer":                true,
-	"/privacy":              true,
-	"/requisites":           true,
-	"/delivery-and-returns": true,
-	"/contacts":             true,
-	"/chat":                 true,
+	"/discounts":             true,
+	"/care":                  true,
+	"/care/mealybug":         true,
+	"/care/spider-mite":      true,
+	"/care/yellow-leaves":    true,
+	"/care/root-problems":    true,
+	"/":                      true,
+	"/login":                 true,
+	"/register":              true,
+	"/account":               true,
+	"/account/profile":       true,
+	"/account/favorites":     true,
+	"/account/reviews":       true,
+	"/account/chat":          true,
+	"/admin":                 true,
+	"/cart":                  true,
+	"/checkout":              true,
+	"/favorites":             true,
+	"/offer":                 true,
+	"/privacy":               true,
+	"/personal-data-consent": true,
+	"/requisites":            true,
+	"/delivery-and-returns":  true,
+	"/contacts":              true,
+	"/chat":                  true,
 }
 
 func knownAppRoute(path string) bool {
@@ -100,7 +101,7 @@ func sitemapHandler(logger *slog.Logger, repository sitemapCatalog, collections 
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		base := canonicalBase(configuredBase)
 		set := sitemapSet{Xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9"}
-		for _, path := range []string{"/", "/delivery-and-returns", "/contacts", "/offer", "/privacy", "/requisites", "/care", "/care/mealybug", "/care/spider-mite", "/care/yellow-leaves", "/care/root-problems"} {
+		for _, path := range []string{"/", "/delivery-and-returns", "/contacts", "/offer", "/privacy", "/personal-data-consent", "/requisites", "/care", "/care/mealybug", "/care/spider-mite", "/care/yellow-leaves", "/care/root-problems"} {
 			set.URLs = append(set.URLs, sitemapURL{
 				Location: base + path, Changefreq: "weekly", Priority: "0.8",
 			})
@@ -213,19 +214,20 @@ const (
 )
 
 var publicRouteMeta = map[string]routeMeta{
-	"/discounts":            {"Растения со скидкой — Фикусин", "Растения, вернувшиеся после доставки и проходящие восстановление. Индивидуальная скидка с учётом состояния каждого экземпляра. Посмотрите растение в магазине в Рязани.", true},
-	"/care":                 {"Помощь комнатным растениям — Фикусин", "Понятные инструкции: мучнистый червец, паутинный клещ, жёлтые листья и проблемы с корнями. Как распознать причину и помочь растению.", true},
-	"/care/mealybug":        {"Мучнистый червец на комнатных растениях: что делать — Фикусин", "Как распознать мучнистого червеца, удалить видимых вредителей, выбрать обработку и проверить результат.", true},
-	"/care/spider-mite":     {"Паутинный клещ на комнатных растениях: что делать — Фикусин", "Первые признаки паутинного клеща, проверка листьев, план обработки и наблюдение после неё.", true},
-	"/care/yellow-leaves":   {"Почему желтеют листья комнатных растений — Фикусин", "Как проверить полив, свет и вредителей, найти причину пожелтения листьев и выбрать подходящее действие.", true},
-	"/care/root-problems":   {"Проблемы с корнями: перелив, пересушка и гниль — Фикусин", "Как отличить пересушку от переувлажнения, проверить корни и понять, когда нужна пересадка.", true},
-	"/":                     {"Фикусин — комнатные растения в Рязани с доставкой по России", "Комнатные растения, кашпо и всё для ухода. Магазин «Фикусин» в Рязани, доставка по России и самовывоз на Новосёлов, 40А.", true},
-	"/delivery-and-returns": {"Доставка и оплата комнатных растений — Фикусин", "Самовывоз в Рязани и доставка растений СДЭК по России. Условия оплаты, упаковки и получения заказа.", true},
-	"/chat":                 {"Чат с Фикусином", "Помощь сотрудника магазина с растениями и заказами.", false},
-	"/contacts":             {"Контакты магазина растений Фикусин в Рязани", "Магазин комнатных растений «Фикусин»: Рязань, улица Новосёлов, 40А. Телефон, Telegram и часы работы.", true},
-	"/requisites":           {"Реквизиты магазина Фикусин", "Реквизиты интернет-магазина комнатных растений «Фикусин».", true},
-	"/offer":                {"Публичная оферта — Фикусин", "Условия продажи товаров интернет-магазином «Фикусин».", true},
-	"/privacy":              {"Политика конфиденциальности — Фикусин", "Политика обработки и защиты персональных данных интернет-магазина «Фикусин».", true},
+	"/personal-data-consent": {"Согласие на обработку персональных данных — Фикусин", "Отдельное согласие пользователя на обработку данных магазина Фикусин.", true},
+	"/discounts":             {"Растения со скидкой — Фикусин", "Растения, вернувшиеся после доставки и проходящие восстановление. Индивидуальная скидка с учётом состояния каждого экземпляра. Посмотрите растение в магазине в Рязани.", true},
+	"/care":                  {"Помощь комнатным растениям — Фикусин", "Понятные инструкции: мучнистый червец, паутинный клещ, жёлтые листья и проблемы с корнями. Как распознать причину и помочь растению.", true},
+	"/care/mealybug":         {"Мучнистый червец на комнатных растениях: что делать — Фикусин", "Как распознать мучнистого червеца, удалить видимых вредителей, выбрать обработку и проверить результат.", true},
+	"/care/spider-mite":      {"Паутинный клещ на комнатных растениях: что делать — Фикусин", "Первые признаки паутинного клеща, проверка листьев, план обработки и наблюдение после неё.", true},
+	"/care/yellow-leaves":    {"Почему желтеют листья комнатных растений — Фикусин", "Как проверить полив, свет и вредителей, найти причину пожелтения листьев и выбрать подходящее действие.", true},
+	"/care/root-problems":    {"Проблемы с корнями: перелив, пересушка и гниль — Фикусин", "Как отличить пересушку от переувлажнения, проверить корни и понять, когда нужна пересадка.", true},
+	"/":                      {"Фикусин — комнатные растения в Рязани с доставкой по России", "Комнатные растения, кашпо и всё для ухода. Магазин «Фикусин» в Рязани, доставка по России и самовывоз на Новосёлов, 40А.", true},
+	"/delivery-and-returns":  {"Доставка и оплата комнатных растений — Фикусин", "Самовывоз в Рязани и доставка растений СДЭК по России. Условия оплаты, упаковки и получения заказа.", true},
+	"/chat":                  {"Чат с Фикусином", "Помощь сотрудника магазина с растениями и заказами.", false},
+	"/contacts":              {"Контакты магазина растений Фикусин в Рязани", "Магазин комнатных растений «Фикусин»: Рязань, улица Новосёлов, 40А. Телефон, Telegram и часы работы.", true},
+	"/requisites":            {"Реквизиты магазина Фикусин", "Реквизиты интернет-магазина комнатных растений «Фикусин».", true},
+	"/offer":                 {"Публичная оферта — Фикусин", "Условия продажи товаров интернет-магазином «Фикусин».", true},
+	"/privacy":               {"Политика конфиденциальности — Фикусин", "Политика обработки и защиты персональных данных интернет-магазина «Фикусин».", true},
 }
 
 func withRouteMeta(base, path string, shell []byte) []byte {
@@ -250,8 +252,8 @@ func withRouteMeta(base, path string, shell []byte) []byte {
 }
 
 func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured any, image string) []byte {
-	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
-	page = descriptionPattern.ReplaceAll(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`">`))
+	page := titlePattern.ReplaceAllLiteral(shell, []byte("<title>"+html.EscapeString(meta.Title)+"</title>"))
+	page = descriptionPattern.ReplaceAllLiteral(page, []byte(`<meta name="description" content="`+html.EscapeString(meta.Description)+`">`))
 	head := strings.Builder{}
 	if meta.Index {
 		head.WriteString(`<link rel="canonical" href="` + html.EscapeString(base+path) + `">` + "\n")
@@ -546,8 +548,8 @@ func withProductMeta(
 		head.WriteString(`<script type="application/ld+json">` + string(encoded) + "</script>\n")
 	}
 
-	page := titlePattern.ReplaceAll(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
-	page = descriptionPattern.ReplaceAll(
+	page := titlePattern.ReplaceAllLiteral(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
+	page = descriptionPattern.ReplaceAllLiteral(
 		page, []byte(`<meta name="description" content="`+html.EscapeString(description)+`">`),
 	)
 	page = bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)

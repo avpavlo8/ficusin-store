@@ -43,12 +43,11 @@ type CreateInput struct {
 	Items      []ItemInput
 	CDEK       CDEKInput
 	CustomerID *int64
-	// Consent is the agreement to the privacy policy and the offer that the
-	// checkout form collects. It is recorded alongside the order so the
-	// agreement can be evidenced later.
-	Consent   bool
-	ClientIP  string
-	UserAgent string
+	// Consent and OfferAccepted are independent explicit confirmations.
+	Consent       bool
+	OfferAccepted bool
+	ClientIP      string
+	UserAgent     string
 	// PaymentMethod is what the customer chose at the checkout. Whether
 	// they were allowed to choose it is decided before we get here.
 	PaymentMethod string
@@ -195,63 +194,22 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if !input.Consent {
 		return Created{}, invalid("Подтвердите согласие на обработку персональных данных")
 	}
+	if !input.OfferAccepted {
+		return Created{}, invalid("Примите условия оферты")
+	}
 	if input.Delivery != "pickup" && input.Delivery != "cdek" {
 		return Created{}, invalid("Выберите доступный способ получения")
 	}
 
-	transaction, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return Created{}, fmt.Errorf("begin order: %w", err)
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-
-	// Скидка берётся из карточки покупателя, а не из браузера, и читается в
-	// той же транзакции, что и цены: между «показали цену» и «записали
-	// заказ» владелец мог её изменить, и заказ должен посчитаться по одному
-	// набору чисел.
-	discountBPS, err := retailDiscountBPS(ctx, transaction, input.CustomerID)
+	// Read the package before carrier GETs, without holding a database transaction.
+	requestedItems := mergeItems(input.Items)
+	items, err := loadCheckoutItems(ctx, service.pool, requestedItems, 0)
 	if err != nil {
 		return Created{}, err
 	}
-
-	requestedItems := mergeItems(input.Items)
-	items := make([]purchasableItem, 0, len(requestedItems))
-	for _, requested := range requestedItems {
-		var item purchasableItem
-		var priceMinor int64
-		err := transaction.QueryRow(ctx, `
-			SELECT pv.sku, p.id, p.name, pv.id, pv.label, variant_numeric_attribute(pv.id, 'height_cm')::INTEGER, variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.base_price_minor,
-				COALESCE(variant_numeric_attribute(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_width_cm'), 0)::INTEGER,
-				COALESCE(variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
-			FROM products p
-			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND pv.archived_at IS NULL
-                AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=pv.id)
-			WHERE pv.sku = $1 AND p.status = 'published'
-			LIMIT 1
-		`, requested.ID).Scan(
-			&item.ID, &item.ProductID, &item.Name, &item.VariantID, &item.VariantLabel,
-			&item.HeightCM, &item.PotDiameterCM, &priceMinor,
-			&item.Parcel.LengthCM, &item.Parcel.WidthCM,
-			&item.Parcel.HeightCM, &item.Parcel.WeightGrams,
-		)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Created{}, invalid("Товар больше не доступен. Обновите страницу")
-		}
-		if err != nil {
-			return Created{}, fmt.Errorf("load order product: %w", err)
-		}
-		item.Quantity = max(1, min(20, requested.Quantity))
-		item.Price = float64(discountedMinor(priceMinor, discountBPS)) / 100
-		items = append(items, item)
-	}
-	if len(items) == 0 {
-		return Created{}, invalid("Корзина пуста")
-	}
+	quotedBox, quotedMeasured := shippingBox(items)
 
 	subtotal := 0.0
-	for _, item := range items {
-		subtotal += item.Price * float64(item.Quantity)
-	}
 	deliveryFee := 0.0
 	regularDelivery := input.Delivery == "pickup"
 	deliveryAddress := input.Customer.Address
@@ -324,6 +282,33 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		cityName = &resolvedCityName
 	} else if !regularDelivery {
 		return Created{}, invalid("Выберите способ получения")
+	}
+
+	transaction, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Created{}, fmt.Errorf("begin order: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+	// Re-read prices, customer discount, publication and dimensions after the
+	// network calls. The preflight is not authority for the saved order.
+	discountBPS, err := retailDiscountBPS(ctx, transaction, input.CustomerID)
+	if err != nil {
+		return Created{}, err
+	}
+	items, err = loadCheckoutItems(ctx, transaction, requestedItems, discountBPS)
+	if err != nil {
+		return Created{}, err
+	}
+	currentBox, currentMeasured := shippingBox(items)
+	if input.Delivery == "cdek" && (currentBox != quotedBox || currentMeasured != quotedMeasured) {
+		// Changed packing invalidates the quote, not the customer's order.
+		feePending = true
+		deliveryFee = 0
+		tariffCode = nil
+	}
+	subtotal = 0
+	for _, item := range items {
+		subtotal += item.Price * float64(item.Quantity)
 	}
 
 	// Availability is a checkout snapshot only. No order reserves stock; availability
@@ -415,7 +400,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if err := recordPreorderRequests(ctx, transaction, orderID); err != nil {
 		return Created{}, err
 	}
-	if err := consent.Record(ctx, transaction, consent.Event{
+	if err := consent.RecordOrder(ctx, transaction, consent.Event{
 		CustomerID: input.CustomerID,
 		OrderID:    &orderID,
 		Event:      consent.EventOrder,
@@ -545,4 +530,45 @@ func letterLines(items []purchasableItem) []mail.OrderLine {
 		})
 	}
 	return lines
+}
+
+type checkoutItemReader interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func loadCheckoutItems(ctx context.Context, reader checkoutItemReader, requestedItems []ItemInput, discountBPS int) ([]purchasableItem, error) {
+	items := make([]purchasableItem, 0, len(requestedItems))
+	for _, requested := range requestedItems {
+		var item purchasableItem
+		var priceMinor int64
+		err := reader.QueryRow(ctx, `
+			SELECT pv.sku, p.id, p.name, pv.id, pv.label, variant_numeric_attribute(pv.id, 'height_cm')::INTEGER, variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.base_price_minor,
+				COALESCE(variant_numeric_attribute(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_width_cm'), 0)::INTEGER,
+				COALESCE(variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
+			FROM products p
+			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND pv.archived_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=pv.id)
+			WHERE pv.sku = $1 AND p.status = 'published'
+			LIMIT 1
+		`, requested.ID).Scan(
+			&item.ID, &item.ProductID, &item.Name, &item.VariantID, &item.VariantLabel,
+			&item.HeightCM, &item.PotDiameterCM, &priceMinor,
+			&item.Parcel.LengthCM, &item.Parcel.WidthCM,
+			&item.Parcel.HeightCM, &item.Parcel.WeightGrams,
+		)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, invalid("Товар больше не доступен. Обновите страницу")
+		}
+		if err != nil {
+			return nil, fmt.Errorf("load order product: %w", err)
+		}
+		item.Quantity = max(1, min(20, requested.Quantity))
+		item.Price = float64(discountedMinor(priceMinor, discountBPS)) / 100
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		return nil, invalid("Корзина пуста")
+	}
+
+	return items, nil
 }

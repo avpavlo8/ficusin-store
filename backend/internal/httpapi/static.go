@@ -58,6 +58,15 @@ func spaFallback(
 			return
 		}
 
+		if (request.Method == http.MethodGet || request.Method == http.MethodHead) && (request.URL.Path == "/catalog" || request.URL.Path == "/catalog/") {
+			target := "/"
+			if request.URL.RawQuery != "" {
+				target += "?" + request.URL.RawQuery
+			}
+			http.Redirect(response, request, target+"#catalog", http.StatusMovedPermanently)
+			return
+		}
+
 		// Карту сайта собирает обработчик, а не файл на диске: каталог
 		// меняется каждый день.
 		if request.URL.Path == "/sitemap.xml" && sitemap != nil {

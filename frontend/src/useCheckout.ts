@@ -251,6 +251,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
       consent: form.get("consent") === "on",
+      offerAccepted: form.get("offerAccepted") === "on",
 	  paymentMethod: hasPreorder && delivery !== "pickup" ? "" : paymentMethods.some((option) => option.id === paymentMethod) ? paymentMethod : "",
 	  attribution: getOrderAttribution(),
     };

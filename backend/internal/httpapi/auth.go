@@ -3,6 +3,9 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,7 +26,7 @@ var (
 )
 
 type authService interface {
-	RequestCall(ctx context.Context, phone string) (checkID, callPhone, callPhonePretty string, err error)
+	RequestCall(ctx context.Context, phone, proofHash string) (checkID, callPhone, callPhonePretty string, err error)
 	ConfirmCall(
 		ctx context.Context,
 		phone, checkID string,
@@ -89,7 +92,13 @@ func (handlers authHandlers) requestCode(response http.ResponseWriter, request *
 		return
 	}
 
-	checkID, callPhone, callPhonePretty, err := handlers.service.RequestCall(request.Context(), phone)
+	proof := make([]byte, 32)
+	if _, err := rand.Read(proof); err != nil {
+		writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "Не удалось подготовить вход"})
+		return
+	}
+	proofToken := hex.EncodeToString(proof)
+	checkID, callPhone, callPhonePretty, err := handlers.service.RequestCall(request.Context(), phone, callProofHash(proofToken))
 	if errors.Is(err, auth.ErrRequestTooSoon) {
 		writeJSON(response, http.StatusTooManyRequests, errorResponse{
 			Error: "Номер для звонка уже выдан. Подождите немного перед повторным запросом",
@@ -104,6 +113,7 @@ func (handlers authHandlers) requestCode(response http.ResponseWriter, request *
 		return
 	}
 
+	handlers.setCallProofCookie(response, proofToken, 300)
 	writeJSON(response, http.StatusOK, map[string]any{
 		"ok":              true,
 		"checkId":         checkID,
@@ -134,12 +144,17 @@ func (handlers authHandlers) verifyCode(response http.ResponseWriter, request *h
 		return
 	}
 
+	cookie, cookieErr := request.Cookie(callProofCookieName)
+	if cookieErr != nil || callProofHash(cookie.Value) == "" {
+		writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Запросите номер для звонка ещё раз в этом браузере"})
+		return
+	}
 	token, expiresAt, pending, err := handlers.service.ConfirmCall(
 		request.Context(),
 		phone,
 		checkID,
 		registration,
-		auth.ClientMeta{UserAgent: request.UserAgent(), IPAddress: clientIP(request)},
+		auth.ClientMeta{UserAgent: request.UserAgent(), IPAddress: clientIP(request), CallProofHash: callProofHash(cookie.Value)},
 	)
 	switch {
 	case errors.Is(err, auth.ErrConsentRequired):
@@ -178,6 +193,7 @@ func (handlers authHandlers) verifyCode(response http.ResponseWriter, request *h
 		return
 	}
 
+	handlers.setCallProofCookie(response, "", -1)
 	handlers.setSessionCookie(response, token, expiresAt)
 	writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -402,4 +418,27 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 
 func innLengthInvalid(inn string) bool {
 	return len(inn) != 10 && len(inn) != 12
+}
+
+const callProofCookieName = "ficusin_call_challenge"
+
+// Only the browser gets the random proof; the database stores its hash.
+func callProofHash(token string) string {
+	if len(token) != 64 {
+		return ""
+	}
+	raw, err := hex.DecodeString(token)
+	if err != nil || len(raw) != 32 {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func (handlers authHandlers) setCallProofCookie(response http.ResponseWriter, token string, maxAge int) {
+	cookie := &http.Cookie{Name: callProofCookieName, Value: token, Path: "/api/v1/auth", MaxAge: maxAge, HttpOnly: true, Secure: handlers.cookieSecure, SameSite: http.SameSiteStrictMode}
+	if maxAge > 0 {
+		cookie.Expires = time.Now().Add(time.Duration(maxAge) * time.Second)
+	}
+	http.SetCookie(response, cookie)
 }

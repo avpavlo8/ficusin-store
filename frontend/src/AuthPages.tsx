@@ -326,8 +326,7 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
                 <label className="consent-check">
                   <input type="checkbox" name="consent" required defaultChecked={registration.consent} />
                   <span>
-                    Я принимаю <a href="/offer" target="_blank" rel="noreferrer">оферту</a> и даю
-                    согласие на обработку данных, включая сообщения, фотографии, видео и файлы в чате, по{" "}
+                    Даю <a href="/personal-data-consent" target="_blank" rel="noreferrer">согласие</a> на обработку данных, включая сообщения, фотографии, видео и файлы в чате, по{" "}
                     <a href="/privacy" target="_blank" rel="noreferrer">политике конфиденциальности</a>.
                   </span>
                 </label>
