@@ -50,7 +50,7 @@
   accent-color: var(--green);
 }
 .admin-setting input[type="text"],
-.admin-setting input[type="number"] {
+.admin-setting input.numeric-input {
   width: 190px;
   padding: 9px 12px;
   border: 1px solid var(--line);
@@ -2476,18 +2476,18 @@
 .admin-pim-editor {
   margin-top: 16px;
 }
-.admin-pim input[type="number"],
-.variant-editor input[type="number"],
-.product-form input[type="number"] {
+.admin-pim input.numeric-input,
+.variant-editor input.numeric-input,
+.product-form input.numeric-input {
   -moz-appearance: textfield;
   appearance: textfield;
 }
-.admin-pim input[type="number"]::-webkit-inner-spin-button,
-.admin-pim input[type="number"]::-webkit-outer-spin-button,
-.variant-editor input[type="number"]::-webkit-inner-spin-button,
-.variant-editor input[type="number"]::-webkit-outer-spin-button,
-.product-form input[type="number"]::-webkit-inner-spin-button,
-.product-form input[type="number"]::-webkit-outer-spin-button {
+.admin-pim input.numeric-input::-webkit-inner-spin-button,
+.admin-pim input.numeric-input::-webkit-outer-spin-button,
+.variant-editor input.numeric-input::-webkit-inner-spin-button,
+.variant-editor input.numeric-input::-webkit-outer-spin-button,
+.product-form input.numeric-input::-webkit-inner-spin-button,
+.product-form input.numeric-input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }

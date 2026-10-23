@@ -1,3 +1,5 @@
+import { AdminOrderProductSearch } from "./AdminOrderProductSearch";
+import { NumericInput } from "./NumericInput";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { api, money } from "./adminShared";
 import type { Order, Product } from "./adminTypes";
@@ -615,9 +617,8 @@ export function AdminOrderEditor({
                   {payment.refundOptions!.map((item) => (
                     <label key={`${item.paymentId}:${item.itemIndex}`}>
                       {item.name} · {money.format(item.price)} · платёж №{item.paymentId}
-                      <input
+                      <NumericInput
                         aria-label={`Вернуть: ${item.name}, платёж ${item.paymentId}`}
-                        type="number"
                         min="0"
                         max={item.quantity}
                         step="1"
@@ -640,8 +641,7 @@ export function AdminOrderEditor({
               <div className="admin-form-grid">
                 <label>
                   Сумма возврата, ₽
-                  <input
-                    type="number"
+                  <NumericInput
                     min="0.01"
                     step="0.01"
                     max={payment.netPaid}
@@ -753,9 +753,8 @@ export function AdminOrderEditor({
               {line.variantLabel && <small>{line.variantLabel}</small>}
               <small>{money.format(line.unitPrice)} / шт.</small>
             </span>
-            <input
+            <NumericInput
               aria-label={`Количество ${line.productName}`}
-              type="number"
               min="1"
               max="100"
               value={line.quantity}
@@ -774,19 +773,12 @@ export function AdminOrderEditor({
           </div>
         ))}
         <div className="admin-order-add-line">
-          <select
-            aria-label="Добавить товар в заказ"
+          <AdminOrderProductSearch
+            products={availableProducts}
             value={addProduct}
             disabled={formDisabled}
-            onChange={(event) => setAddProduct(event.target.value)}
-          >
-            <option value="">Добавить товар…</option>
-            {availableProducts.map((product) => (
-              <option value={product.sku} key={product.id}>
-                {product.name} · {money.format(product.price)} · остаток {product.stock}
-              </option>
-            ))}
-          </select>
+            onChange={setAddProduct}
+          />
           <button
             type="button"
             className="admin-action"
@@ -799,9 +791,8 @@ export function AdminOrderEditor({
         <div className="order-discount">
           <label>
             Скидка на товары
-            <input
+            <NumericInput
               aria-label="Скидка на заказ"
-              type="number"
               min="0"
               max={discountType === "percent" ? 100 : draftSubtotal}
               step="0.01"
@@ -857,8 +848,7 @@ export function AdminOrderEditor({
                 {adjustment.deliveryPayee === "carrier"
                   ? "Стоимость доставки, справочно, ₽"
                   : "Стоимость доставки, ₽"}
-                <input
-                  type="number"
+                <NumericInput
                   min="0"
                   step="1"
                   value={deliveryFee}

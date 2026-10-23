@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPicker } from "./AdminCatalog";
 import { Dialog, api, money } from "./adminShared";
@@ -107,7 +108,7 @@ export function AttributeFields({
     return (
       <label className="attribute-control" key={attribute.code}>
         <span>{title}</span>
-        <input
+        <NumericInput
           aria-label={title}
           type={attribute.dataType === "number" ? "number" : "text"}
           min={attribute.dataType === "number" ? 0 : undefined}

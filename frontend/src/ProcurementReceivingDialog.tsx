@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useState } from "react";
 import { api } from "./adminShared";
 import type {
@@ -171,9 +172,8 @@ export function ProcurementReceivingDialog({
                   </div>
                   <label>
                     Количество
-                    <input
+                    <NumericInput
                       aria-label={`Количество: ${part.name}`}
-                      type="number"
                       min="1"
                       step="1"
                       value={part.quantity || ""}

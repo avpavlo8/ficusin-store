@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useEffect, useState } from "react";
 import { ProcurementEconomicsFields, PricingQuoteSummary } from "./ProcurementEconomics";
 import { api } from "./adminShared";
@@ -339,16 +340,14 @@ export function ProcurementSettingsPanel({
       <div className="procurement-settings-grid">
         <label>
           Период анализа продаж, дней
-          <input
-            type="number"
+          <NumericInput
             value={draft.recommendationDays}
             onChange={(event) => number("recommendationDays", event.target.value)}
           />
         </label>
         <label>
           Закупаем запас на, дней
-          <input
-            type="number"
+          <NumericInput
             value={draft.targetCoverDays}
             onChange={(event) => number("targetCoverDays", event.target.value)}
           />
@@ -380,8 +379,7 @@ export function PercentField({
   return (
     <label>
       {label}, %
-      <input
-        type="number"
+      <NumericInput
         step="0.1"
         value={Math.round(value * 10000) / 100}
         onChange={(event) => onChange(Number(event.target.value) / 100)}

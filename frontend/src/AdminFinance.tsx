@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useState } from "react";
 import { api, money, PageHeading } from "./adminShared";
 import type { FinanceImport, FinanceOverview, FinanceTransaction } from "./adminTypes";
@@ -421,8 +422,7 @@ function Cash({
         <p>Продажи из СБИС и ручные движения. Внесение в банк связывается как перевод.</p>
         <label>
           Фактически в кассе
-          <input
-            type="number"
+          <NumericInput
             min="0"
             step="0.01"
             value={actual}
@@ -465,8 +465,7 @@ function Cash({
         </div>
         <label>
           Сумма
-          <input
-            type="number"
+          <NumericInput
             min="0.01"
             step="0.01"
             value={amount}

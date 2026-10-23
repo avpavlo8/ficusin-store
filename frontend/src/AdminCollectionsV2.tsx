@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeading, api } from "./adminShared";
 import { catalogSlug, normalizeCatalogQuery, type RegisterCatalogLeave } from "./adminCatalogLogic";
@@ -599,8 +600,7 @@ function CollectionEditor({
           </label>
           <label>
             Порядок
-            <input
-              type="number"
+            <NumericInput
               value={draft.sortOrder}
               onChange={(event) => setDraft({ ...draft, sortOrder: Number(event.target.value) })}
             />

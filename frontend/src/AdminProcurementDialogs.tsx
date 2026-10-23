@@ -1,3 +1,4 @@
+import { NumericInput } from "./NumericInput";
 import { receivingModeLabel } from "./procurementUX";
 import { ProcurementLineEditor } from "./ProcurementLineEditor";
 import { ProcurementReceivingDialog } from "./ProcurementReceivingDialog";
@@ -671,8 +672,7 @@ export function ProcurementPlanDialog({
             <>
               <label>
                 Курс, ₽/{currencySymbol}
-                <input
-                  type="number"
+                <NumericInput
                   min="0"
                   step="0.01"
                   value={exchangeRate}
@@ -681,8 +681,7 @@ export function ProcurementPlanDialog({
               </label>
               <label>
                 До Москвы, ₽
-                <input
-                  type="number"
+                <NumericInput
                   min="0"
                   value={deliveryToMoscowRub}
                   placeholder="0"
@@ -691,8 +690,7 @@ export function ProcurementPlanDialog({
               </label>
               <label>
                 Москва → Рязань, ₽
-                <input
-                  type="number"
+                <NumericInput
                   min="0"
                   value={deliveryToRyazanRub}
                   placeholder="0"
@@ -1900,8 +1898,7 @@ export function ProcurementOrderDetailDialog({
                     <>
                       <label>
                         Курс оплаты
-                        <input
-                          type="number"
+                        <NumericInput
                           step="0.01"
                           value={costs.exchangeRate}
                           onChange={(event) =>
@@ -1911,8 +1908,7 @@ export function ProcurementOrderDetailDialog({
                       </label>
                       <label>
                         До Москвы, ₽
-                        <input
-                          type="number"
+                        <NumericInput
                           step="0.01"
                           value={costs.deliveryToMoscowRub}
                           onChange={(event) =>
@@ -1922,8 +1918,7 @@ export function ProcurementOrderDetailDialog({
                       </label>
                       <label>
                         Москва → Рязань, ₽
-                        <input
-                          type="number"
+                        <NumericInput
                           value={costs.deliveryToRyazanRub}
                           onChange={(event) =>
                             setCosts({ ...costs, deliveryToRyazanRub: Number(event.target.value) })
@@ -1935,8 +1930,7 @@ export function ProcurementOrderDetailDialog({
                   {detail.order.currency === "RUB" && (
                     <label>
                       Доставка до склада, ₽
-                      <input
-                        type="number"
+                      <NumericInput
                         min="0"
                         step="0.01"
                         value={costs.deliveryToMoscowRub}
@@ -1948,8 +1942,7 @@ export function ProcurementOrderDetailDialog({
                   )}
                   <label>
                     Прочие расходы закупки, ₽
-                    <input
-                      type="number"
+                    <NumericInput
                       min="0"
                       step="0.01"
                       value={costs.additionalCostsRub}
