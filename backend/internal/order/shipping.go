@@ -854,13 +854,17 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		if mapped, known := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; known {
 			nextStatus = mapped
 		}
-		if _, err := worker.pool.Exec(ctx, `
+		command, err := worker.pool.Exec(ctx, `
 			UPDATE orders
 			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') OR $5='' THEN status ELSE $5 END,
 				cdek_synced_at = CURRENT_TIMESTAMP
 			WHERE id = $1 AND cdek_uuid=$6
-		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, item.uuid); err != nil {
+		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, item.uuid)
+		if err != nil {
 			worker.logger.Error("store shipment status failed", "error", err, "order", item.number)
+			continue
+		}
+		if command.RowsAffected() == 0 {
 			continue
 		}
 		// The customer hears about the milestone, not about every scan at

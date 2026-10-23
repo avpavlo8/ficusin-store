@@ -74,3 +74,46 @@ func TestPackingReopenWaitsForConfirmedCarrierRemovalOnLiveDatabase(t *testing.T
 		})
 	}
 }
+
+type staleTrackingCarrier struct {
+	*stage13CDEK
+	beforeFetch func()
+}
+
+func (c *staleTrackingCarrier) FetchOrder(context.Context, string) (integration.Shipment, error) {
+	c.beforeFetch()
+	return integration.Shipment{Status: "DELIVERED", TrackNumber: "retired-track"}, nil
+}
+
+type reopenNotifier struct{ calls int }
+
+func (n *reopenNotifier) NotifyOrderStatus(context.Context, int64, string, string) error {
+	n.calls++
+	return nil
+}
+func TestReopenIgnoresRetiredTrackingResponseOnLiveDatabase(t *testing.T) {
+	ctx, pool := cdekReviewPool(t)
+	var customer, id int64
+	key := fmt.Sprintf("retired-tracking-%d", time.Now().UnixNano())
+	must := func(e error) {
+		t.Helper()
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$1,'Tracking',CURRENT_TIMESTAMP) RETURNING id`, key+"@example.invalid").Scan(&customer))
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id)
+		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)
+	}()
+	must(pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,address,delivery_method,subtotal,total,status,cdek_uuid,cdek_track_number,cdek_create_state,cdek_status) VALUES($1,$2,'Tracking','+70000000000','','','cdek',100,100,'new',$1,'old-track','registered','CREATED') RETURNING id`, key, customer).Scan(&id))
+	carrier := &staleTrackingCarrier{stage13CDEK: &stage13CDEK{}, beforeFetch: func() { _, err := pool.Exec(ctx, `UPDATE orders SET cdek_uuid='' WHERE id=$1`, id); must(err) }}
+	notifier := &reopenNotifier{}
+	worker := NewShippingWorker(pool, carrier, nil, notifier, quietLogger())
+	worker.refreshStatuses(ctx)
+	var status, track string
+	must(pool.QueryRow(ctx, `SELECT status,cdek_track_number FROM orders WHERE id=$1`, id).Scan(&status, &track))
+	if notifier.calls != 0 || status != "new" || track != "old-track" {
+		t.Fatalf("retired response changed order: notifications=%d status=%s track=%s", notifier.calls, status, track)
+	}
+}
