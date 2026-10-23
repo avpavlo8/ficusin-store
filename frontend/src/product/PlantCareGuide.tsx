@@ -138,16 +138,14 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
       aria-labelledby={`plant-${key}-title`}
       key={key}
     >
-      {key !== "growthRate" && (
-        <img
-          className="plant-care-art"
-          src={`/assets/care/guide-v4/${key}.jpg`}
-          alt=""
-          width="1200"
-          height="600"
-          loading="lazy"
-        />
-      )}
+      <img
+        className="plant-care-art"
+        src={`/assets/care/guide-v4/${key}.jpg`}
+        alt=""
+        width="1200"
+        height="600"
+        loading="lazy"
+      />
       <div className="plant-care-text">
         <h3 className="plant-care-heading" id={`plant-${key}-title`}>
           {title}
@@ -212,6 +210,14 @@ export function PlantCareGuide({ product }: { product: ProductDetail }) {
               aria-labelledby={`plant-${key}-title`}
               key={key}
             >
+              <img
+                className="plant-care-art"
+                src={`/assets/care/guide-v4/${key}.jpg`}
+                alt=""
+                width="1200"
+                height="600"
+                loading="lazy"
+              />
               <div className="plant-care-text">
                 <h3 className="plant-care-heading" id={`plant-${key}-title`}>
                   {title}
