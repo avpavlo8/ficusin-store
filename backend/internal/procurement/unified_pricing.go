@@ -3,7 +3,6 @@ package procurement
 import (
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
-	"math"
 	"math/big"
 )
 
@@ -40,7 +39,9 @@ func (p *PricingPackage) Liters() float64 {
 	if p == nil {
 		return 0
 	}
-	return p.LengthCM * p.WidthCM * p.HeightCM / 1000
+	volume := new(big.Rat).Mul(money.Decimal(p.LengthCM), money.Decimal(p.WidthCM))
+	volume.Mul(volume, money.Decimal(p.HeightCM))
+	return decimalFloat(volume.Quo(volume, big.NewRat(1000, 1)))
 }
 func (p *PricingPackage) valid() bool {
 	if p == nil {
@@ -92,6 +93,9 @@ func validateUnified(p *UnifiedPricing, channels map[string]ChannelCosts, tax fl
 // previews and manual site edits. Manual SKU prices/cost overrides are not
 // applied in this mode. Public prices are never changed by this function.
 func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) map[string]ChannelQuote {
+	return unifiedChannelQuotesDecimal(s, cost, box, nil)
+}
+func unifiedChannelQuotesDecimal(s PricingSettings, cost float64, box *PricingPackage, costExact *big.Rat) map[string]ChannelQuote {
 	quotes := map[string]ChannelQuote{}
 	p := s.Economics.Unified
 	if p == nil || !p.Enabled {
@@ -103,7 +107,11 @@ func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) 
 		}
 		return quotes
 	}
-	target := decimalFloat(new(big.Rat).Mul(money.Decimal(cost), money.Decimal(p.MarkupRate)))
+	if costExact == nil {
+		costExact = money.Decimal(cost)
+	}
+	targetExact := new(big.Rat).Mul(costExact, money.Decimal(p.MarkupRate))
+	target := decimalFloat(targetExact)
 	for _, ch := range []string{"site", "wb", "ozon"} {
 		costs := s.Economics.Channels[ch]
 		notes := []string{}
@@ -125,7 +133,11 @@ func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) 
 			}
 			costs.PackagingRUB = &packaging
 			if ch == "wb" {
-				additional := new(big.Rat).Mul(money.Decimal(math.Max(0, liters-1)), money.Decimal(p.WBAdditionalLiterRUB))
+				additionalLiters := new(big.Rat).Sub(money.Decimal(liters), big.NewRat(1, 1))
+				if additionalLiters.Sign() < 0 {
+					additionalLiters.SetInt64(0)
+				}
+				additional := new(big.Rat).Mul(additionalLiters, money.Decimal(p.WBAdditionalLiterRUB))
 				forward := decimalFloat(new(big.Rat).Add(decimalSum(p.WBFirstLiterRUB, p.WBHandlingRUB), additional))
 				costs.LogisticsRUB = &forward
 			} else {
@@ -146,7 +158,7 @@ func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) 
 			}
 			notes = append(notes, "Упаковка и потери — плановые нормативы. Фактическая доставка отдельного заказа может отличаться.")
 		}
-		q := channelQuote(cost, target, s.TaxRate, costs, s.Economics.MonthlyFixedCostsRUB)
+		q := channelQuoteDecimal(costExact, targetExact, s.TaxRate, costs, s.Economics.MonthlyFixedCostsRUB)
 		q.Model = "unified"
 		q.TargetRUB = target
 		q.Costs = &costs

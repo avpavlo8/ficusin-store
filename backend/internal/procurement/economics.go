@@ -77,18 +77,24 @@ func (costs ChannelCosts) missing() []string {
 }
 
 func channelQuote(cost, contribution, tax float64, costs ChannelCosts, fixed float64) ChannelQuote {
+	if !finiteNonnegative(cost) || !finiteNonnegative(contribution) {
+		return ChannelQuote{Missing: []string{"проверьте расходы: сумма удержаний должна быть меньше 100%"}}
+	}
+	return channelQuoteDecimal(money.Decimal(cost), money.Decimal(contribution), tax, costs, fixed)
+}
+func channelQuoteDecimal(cost, contribution *big.Rat, tax float64, costs ChannelCosts, fixed float64) ChannelQuote {
 	quote := ChannelQuote{Missing: costs.missing()}
 	if len(quote.Missing) != 0 {
 		return quote
 	}
-	if !validateChannelCosts(costs, tax) || !finiteNonnegative(cost) || !finiteNonnegative(contribution) {
+	if !validateChannelCosts(costs, tax) || cost.Sign() < 0 || contribution.Sign() < 0 {
 		quote.Missing = []string{"проверьте расходы: сумма удержаний должна быть меньше 100%"}
 		return quote
 	}
 	keep := retainedDecimal(tax, costs)
-	variable := decimalSum(cost, *costs.PackagingRUB, *costs.LogisticsRUB, *costs.LossRUB)
+	variable := new(big.Rat).Add(cost, decimalSum(*costs.PackagingRUB, *costs.LogisticsRUB, *costs.LossRUB))
 	floor := new(big.Rat).Quo(variable, keep)
-	price := new(big.Rat).Quo(new(big.Rat).Add(variable, money.Decimal(contribution)), keep)
+	price := new(big.Rat).Quo(new(big.Rat).Add(variable, contribution), keep)
 	if price.Cmp(big.NewRat(1_000_000_000_000, 1)) > 0 || price.Sign() < 0 {
 		quote.Missing = []string{"проверьте сумму расходов"}
 		return quote
@@ -132,7 +138,8 @@ func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64
 		}
 		return applyMarketPrices(quotes, settings, cost, profiles, marketPrices)
 	}
-	contribution := decimalFloat(contributionDecimal(float64(retail), cost, settings.TaxRate, site))
+	contributionExact := contributionDecimal(float64(retail), cost, settings.TaxRate, site)
+	contribution := decimalFloat(contributionExact)
 	if contribution <= 0 {
 		contribution = 0
 		siteQuote.PriceRUB = nil
@@ -143,7 +150,7 @@ func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64
 		siteQuote.PriceRUB = &retail
 		siteQuote.ContributionRUB = &contribution
 		if settings.Economics.MonthlyFixedCostsRUB > 0 && settings.Economics.MonthlyFixedCostsRUB/contribution < 1e12 {
-			n := int64(math.Ceil(settings.Economics.MonthlyFixedCostsRUB / contribution))
+			n := decimalCeil(new(big.Rat).Quo(money.Decimal(settings.Economics.MonthlyFixedCostsRUB), contributionExact))
 			siteQuote.CoverUnits = &n
 		}
 	}
@@ -174,7 +181,8 @@ func applyMarketPrices(quotes map[string]ChannelQuote, settings PricingSettings,
 		q.Manual = true
 		if q.PriceRUB != nil {
 			q.CoverUnits = nil
-			actual := decimalFloat(contributionDecimal(float64(price), cost, settings.TaxRate, costs))
+			actualExact := contributionDecimal(float64(price), cost, settings.TaxRate, costs)
+			actual := decimalFloat(actualExact)
 			if actual <= 0 {
 				q.PriceRUB = nil
 				q.ContributionRUB = nil
@@ -184,7 +192,7 @@ func applyMarketPrices(quotes map[string]ChannelQuote, settings PricingSettings,
 				q.PriceRUB = &p
 				q.ContributionRUB = &actual
 				if settings.Economics.MonthlyFixedCostsRUB > 0 && settings.Economics.MonthlyFixedCostsRUB/actual < 1e12 {
-					n := int64(math.Ceil(settings.Economics.MonthlyFixedCostsRUB / actual))
+					n := decimalCeil(new(big.Rat).Quo(money.Decimal(settings.Economics.MonthlyFixedCostsRUB), actualExact))
 					q.CoverUnits = &n
 				}
 			}

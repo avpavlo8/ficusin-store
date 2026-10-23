@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
-	"math"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
@@ -143,9 +142,9 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 			)`, productID); err != nil {
 		return err
 	}
-	retail := float64(newMinor) / 100
-	market := math.Floor((retail + packageRUB + math.Max(height, 0)*math.Max(logisticsRate, 0)) * (1 + returnRate + marketplaceRate + taxRate + reserveRate))
-	strike := math.Floor(market * (1 + strikeRate))
+	retail := money.Rubles(newMinor)
+	marketPrice, strikePrice := procurement.LegacyMarketplacePrices(newMinor, packageRUB, height, logisticsRate, returnRate, marketplaceRate, taxRate, reserveRate, strikeRate)
+	market, strike := float64(marketPrice), float64(strikePrice)
 	unifiedQuotes, unified, err := procurement.UnifiedVariantPriceQuotes(ctx, tx, variantID)
 	if err != nil {
 		return err
@@ -166,7 +165,7 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 				continue
 			}
 			channel.price = float64(*q.PriceRUB)
-			compare := math.Ceil(channel.price * (1 + strikeRate))
+			compare := float64(procurement.CompareAtPrice(*q.PriceRUB, strikeRate))
 			channel.compare = &compare
 		}
 		var old *float64

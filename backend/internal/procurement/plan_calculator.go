@@ -116,7 +116,7 @@ func calculatePlan(settings PricingSettings, kind string, input PlanCreate) ([]c
 
 	moscowWeights, ryazanWeights, extraWeights := []allocationWeight{}, []allocationWeight{}, []allocationWeight{}
 	for i, item := range input.Items {
-		value := item.ExpectedUnitPrice * float64(item.Quantity)
+		value := decimalProduct(item.ExpectedUnitPrice, float64(item.Quantity))
 		mw, rw := value, value
 		if kind == KindInternational {
 			volume := volumes[item.LoadUnit]
