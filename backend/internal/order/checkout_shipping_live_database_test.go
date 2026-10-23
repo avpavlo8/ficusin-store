@@ -113,7 +113,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	service := NewService(pool, client, liveOrderNotifier{}, shop, quietLogger()).WithShipmentWake(func() { wakes++; worker.Wake() })
 	makeOrder := func(repack bool) int64 {
 		t.Helper()
-		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, ClientIP: "127.0.0.1"})
+		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, OfferAccepted: true, ClientIP: "127.0.0.1"})
 		if err != nil {
 			t.Fatal(err)
 		}

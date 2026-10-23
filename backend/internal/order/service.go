@@ -43,12 +43,11 @@ type CreateInput struct {
 	Items      []ItemInput
 	CDEK       CDEKInput
 	CustomerID *int64
-	// Consent is the agreement to the privacy policy and the offer that the
-	// checkout form collects. It is recorded alongside the order so the
-	// agreement can be evidenced later.
-	Consent   bool
-	ClientIP  string
-	UserAgent string
+	// Consent and OfferAccepted are independent explicit confirmations.
+	Consent       bool
+	OfferAccepted bool
+	ClientIP      string
+	UserAgent     string
 	// PaymentMethod is what the customer chose at the checkout. Whether
 	// they were allowed to choose it is decided before we get here.
 	PaymentMethod string
@@ -194,6 +193,9 @@ func (service *Service) WithShipmentWake(wake func()) *Service {
 func (service *Service) Create(ctx context.Context, input CreateInput) (Created, error) {
 	if !input.Consent {
 		return Created{}, invalid("Подтвердите согласие на обработку персональных данных")
+	}
+	if !input.OfferAccepted {
+		return Created{}, invalid("Примите условия оферты")
 	}
 	if input.Delivery != "pickup" && input.Delivery != "cdek" {
 		return Created{}, invalid("Выберите доступный способ получения")
@@ -398,7 +400,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	if err := recordPreorderRequests(ctx, transaction, orderID); err != nil {
 		return Created{}, err
 	}
-	if err := consent.Record(ctx, transaction, consent.Event{
+	if err := consent.RecordOrder(ctx, transaction, consent.Event{
 		CustomerID: input.CustomerID,
 		OrderID:    &orderID,
 		Event:      consent.EventOrder,

@@ -15,11 +15,11 @@ import (
 // Version identifies the revision of the legal pages a person saw. Bump it
 // whenever the wording of the privacy policy or the offer changes, so old
 // records keep pointing at the text that was actually agreed to.
-const Version = "2026-10-22.1"
+const Version = "2026-10-23.1"
 
-// Documents lists what the checkbox covers, in the order the wording names
-// them.
-const Documents = "privacy_policy,offer"
+// Each confirmation points to one separately presented document.
+const Documents = "personal_data_consent"
+const OfferDocument = "offer"
 
 const (
 	EventRegistration = "registration"
@@ -35,6 +35,7 @@ type Event struct {
 	Phone      string
 	IPAddress  string
 	UserAgent  string
+	Document   string
 }
 
 // Executor is satisfied by both a pgx pool and a transaction, so the
@@ -45,6 +46,13 @@ type Executor interface {
 }
 
 func Record(ctx context.Context, executor Executor, event Event) error {
+	document := event.Document
+	if document == "" {
+		document = Documents
+	}
+	if document != Documents && document != OfferDocument {
+		return fmt.Errorf("unknown consent document")
+	}
 	if _, err := executor.Exec(ctx, `
 		INSERT INTO consent_events (
 			customer_id, order_id, event, documents, document_version,
@@ -54,7 +62,7 @@ func Record(ctx context.Context, executor Executor, event Event) error {
 		event.CustomerID,
 		event.OrderID,
 		event.Event,
-		Documents,
+		document,
 		Version,
 		truncate(event.Phone, 32),
 		truncate(event.IPAddress, 64),
@@ -71,4 +79,15 @@ func truncate(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit])
+}
+
+// The caller supplies the order transaction, so either both independent
+// confirmations and the order are saved, or the whole operation rolls back.
+func RecordOrder(ctx context.Context, executor Executor, event Event) error {
+	event.Document = Documents
+	if err := Record(ctx, executor, event); err != nil {
+		return err
+	}
+	event.Document = OfferDocument
+	return Record(ctx, executor, event)
 }

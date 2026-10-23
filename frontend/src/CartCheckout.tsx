@@ -242,6 +242,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const [deliveryError, setDeliveryError] = useState("");
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
   const [consentGiven, setConsentGiven] = useState(false);
+  const [offerAccepted, setOfferAccepted] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
   const [deliveryFocus, setDeliveryFocus] = useState("");
@@ -252,7 +253,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     const fields = Array.from(form.querySelectorAll<HTMLInputElement>("input,textarea,select"));
     const phoneField = fields.find((field) => field.name === "phone");
     if (phoneField) phoneField.setCustomValidity(normalizeRussianPhone(phoneField.value) ? "" : "Укажите номер телефона");
-    const errors = Object.fromEntries(fields.filter((field) => !field.checkValidity()).map((field) => [field.name, field.name === "consent" ? "Подтвердите согласие перед оформлением" : field.validity.valueMissing ? "Заполните это поле" : field.validity.typeMismatch && field.type === "email" ? "Проверьте адрес электронной почты" : field.validationMessage]));
+    const errors = Object.fromEntries(fields.filter((field) => !field.checkValidity()).map((field) => [field.name, field.name === "offerAccepted" ? "Примите условия оферты" : field.name === "consent" ? "Подтвердите согласие перед оформлением" : field.validity.valueMissing ? "Заполните это поле" : field.validity.typeMismatch && field.type === "email" ? "Проверьте адрес электронной почты" : field.validationMessage]));
     setContactErrors(errors);
     setDeliveryError(!deliveryChosen ? "Выберите способ получения" : deliveryBlocked ? "Выберите город и пункт выдачи СДЭК" : "");
     const invalidContact = fields.find((field) => ["name", "phone", "email"].includes(field.name) && !field.checkValidity());
@@ -274,7 +275,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
   const deliveryNeedsManager = deliveryChosen && !deliveryBlocked && !deliveryCalculating && deliveryFeePending;
   const deliveryUnknown = deliveryNotChosen || deliveryBlocked || deliveryCalculating || deliveryFeePending;
   const deliveryStatus = deliveryNotChosen ? "Выберите способ получения" : deliveryBlocked ? cdekCity ? "Выберите пункт выдачи" : "Выберите город" : deliveryCalculating ? "Рассчитываем…" : deliveryNeedsManager ? "Уточнит менеджер" : deliveryFee === 0 ? "Бесплатно" : money(deliveryFee);
-  const submitHint = !checkoutProfile.name.trim() ? "Укажите имя" : !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkoutProfile.email.trim()) ? "Укажите корректный email для чека" : deliveryNotChosen ? "Выберите способ получения" : deliveryBlocked ? cdekCity ? "Выберите пункт выдачи СДЭК" : "Выберите город из списка" : deliveryCalculating ? "Дождитесь расчёта доставки" : !consentGiven ? "Подтвердите согласие перед оформлением" : !pricingReady ? "Проверяем стоимость заказа…" : pricingError ? "Не удалось проверить цену. Обновите страницу" : !hasPreorder && !paymentMethods.length ? "Способы оплаты ещё не загружены" : "";
+  const submitHint = !checkoutProfile.name.trim() ? "Укажите имя" : !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkoutProfile.email.trim()) ? "Укажите корректный email для чека" : deliveryNotChosen ? "Выберите способ получения" : deliveryBlocked ? cdekCity ? "Выберите пункт выдачи СДЭК" : "Выберите город из списка" : deliveryCalculating ? "Дождитесь расчёта доставки" : !offerAccepted ? "Примите условия оферты" : !consentGiven ? "Подтвердите согласие перед оформлением" : !pricingReady ? "Проверяем стоимость заказа…" : pricingError ? "Не удалось проверить цену. Обновите страницу" : !hasPreorder && !paymentMethods.length ? "Способы оплаты ещё не загружены" : "";
   const emailError = contactErrors.email || ((touched.email || submitted) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(checkoutProfile.email.trim()) ? "Укажите корректный email для чека" : "");
   const phoneError = contactErrors.phone || ((touched.phone || submitted) && !normalizeRussianPhone(checkoutProfile.phone) ? "Укажите номер телефона" : "");
   const nameError = contactErrors.name || ((touched.name || submitted) && !checkoutProfile.name.trim() ? "Укажите имя" : "");
@@ -333,6 +334,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           onChange={(event) => {
             const consent = event.currentTarget.elements.namedItem("consent") as HTMLInputElement;
             setConsentGiven(consent.checked);
+            setOfferAccepted((event.currentTarget.elements.namedItem("offerAccepted") as HTMLInputElement).checked);
           }} noValidate>
           <div className="checkout-form-main">
           <fieldset className="checkout-form-section checkout-contact-section">
@@ -404,7 +406,9 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           </div>
         </aside>
           <section className="checkout-submit-section" aria-label="Подтверждение заказа">
-            <label className="consent-check"><input type="checkbox" name="consent" required aria-invalid={!!contactErrors.consent} aria-describedby={contactErrors.consent ? "consent-error" : undefined} onChange={() => setContactErrors((current) => ({ ...current, consent: "" }))} /><span>Принимаю <a href="/offer" target="_blank">оферту</a> и даю <a href="/privacy" target="_blank">согласие на обработку персональных данных</a>.</span></label>
+            <label className="consent-check"><input type="checkbox" name="offerAccepted" required aria-invalid={!!contactErrors.offerAccepted} aria-describedby={contactErrors.offerAccepted ? "offer-error" : undefined} onChange={() => setContactErrors((current) => ({ ...current, offerAccepted: "" }))} /><span>Принимаю условия <a href="/offer" target="_blank" rel="noreferrer">публичной оферты</a>.</span></label>
+            {contactErrors.offerAccepted && <p className="field-error" id="offer-error">{contactErrors.offerAccepted}</p>}
+            <label className="consent-check"><input type="checkbox" name="consent" required aria-invalid={!!contactErrors.consent} aria-describedby={contactErrors.consent ? "consent-error" : undefined} onChange={() => setContactErrors((current) => ({ ...current, consent: "" }))} /><span>Даю <a href="/personal-data-consent" target="_blank" rel="noreferrer">согласие на обработку персональных данных</a>.</span></label>
             {contactErrors.consent && <p className="field-error" id="consent-error">{contactErrors.consent}</p>}
             {footerHint && <p className="checkout-submit-hint" id="checkout-submit-hint" role="status">{footerHint}</p>}
             {feedbackMessage && <p className="field-error" role="alert">{feedbackMessage}</p>}

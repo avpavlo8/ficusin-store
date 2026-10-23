@@ -103,6 +103,7 @@ test("@desktop стоимость СДЭК входит в сумму онлай
   await expect(summary).toContainText(/Доставка\s*590/);
   await expect(summary).toContainText(/Итого\s*2.?080/);
   await expect(submit).toBeDisabled();
+  await page.locator('input[name="offerAccepted"]').check();
   await page.locator('input[name="consent"]').check();
   await expect(submit).toBeEnabled();
   await page.getByLabel("Email для чека").fill("invalid-email");
@@ -132,6 +133,7 @@ test("@desktop растение под заказ оформляется без 
   await page.locator('input[name="delivery"][value="pickup"]').check();
   await expect(page.locator(".checkout-order-summary")).toContainText("Сейчас платить не нужно");
   await expect(page.getByText("Способ оплаты заказа")).toHaveCount(0);
+  await page.locator('.checkout-submit-section input[name="offerAccepted"]').check();
   await page.locator('.checkout-submit-section input[name="consent"]').check();
   await page.getByRole("button", { name: "Отправить заказ" }).click();
   await expect(page.getByText("Заказ отправлен менеджеру")).toBeVisible();
@@ -162,6 +164,7 @@ test("@desktop самовывоз сохраняет оплату наличны
   await page.locator('input[name="delivery"][value="pickup"]').check();
   await page.locator('input[name="paymentMethod"][value="on_delivery"]').check();
   await expect(page.getByText("Растения и доставка оплачиваются на сайте.", { exact: false })).toHaveCount(0);
+  await page.locator('input[name="offerAccepted"]').check();
   await page.locator('input[name="consent"]').check();
   await page.getByRole("button", { name: "Отправить заказ" }).click();
   await expect(page.getByText("Заказ отправлен менеджеру")).toBeVisible();
@@ -186,6 +189,7 @@ test("@desktop @phone гостевая оплата передаёт отдел�
  await page.getByLabel("Email для чека",{exact:true}).fill("guest@example.invalid");
  await page.locator('input[name="delivery"][value="pickup"]').check();
  await page.locator('input[name="paymentMethod"][value="online"]').check();
+ await page.locator('input[name="offerAccepted"]').check();
  await page.locator('input[name="consent"]').check();
  await page.locator('.checkout-navigation button.primary-button').click();
  await expect.poll(()=>suppliedToken).toBe(token);

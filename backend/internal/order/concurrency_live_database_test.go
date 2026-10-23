@@ -87,7 +87,7 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 					Email: fmt.Sprintf("ci-load-%s-%d@example.invalid", suffix, buyer),
 				},
 				Delivery: "pickup", Items: []ItemInput{{ID: sku, Quantity: 1}},
-				Consent: true, PaymentMethod: payment.MethodOnDelivery,
+				Consent: true, OfferAccepted: true, PaymentMethod: payment.MethodOnDelivery,
 			})
 			if err != nil {
 				errorsFound <- err

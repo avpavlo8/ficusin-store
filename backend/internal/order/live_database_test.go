@@ -126,9 +126,9 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		Delivery:      "pickup",
 		Items:         []ItemInput{{ID: sku, Quantity: 2}},
 		PaymentMethod: payment.MethodOnDelivery,
-		Consent:       true,
-		ClientIP:      "127.0.0.1",
-		UserAgent:     "ficusin-release-test",
+		Consent:       true, OfferAccepted: true,
+		ClientIP:  "127.0.0.1",
+		UserAgent: "ficusin-release-test",
 	})
 	if err != nil {
 		t.Fatalf("create order: %v", err)
@@ -157,8 +157,13 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	`, created.OrderNumber, email).Scan(&orderID, &facts); err != nil {
 		t.Fatalf("read order facts: %v", err)
 	}
-	if facts != payment.StatusOnDelivery+":2980.00:"+sku+":2:0:0:1:1:0:0" {
+	if facts != payment.StatusOnDelivery+":2980.00:"+sku+":2:0:0:2:1:0:0" {
 		t.Fatalf("commerce transaction is incomplete: %s", facts)
+	}
+
+	var documentCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(DISTINCT documents) FROM consent_events WHERE order_id=$1 AND documents IN ('personal_data_consent','offer') AND document_version='2026-10-23.1'`, orderID).Scan(&documentCount); err != nil || documentCount != 2 {
+		t.Fatalf("independent consent evidence missing: %d %v", documentCount, err)
 	}
 
 	worker := &ExpiryWorker{pool: pool, logger: quietLogger()}
@@ -189,7 +194,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	preorder, err := service.Create(ctx, CreateInput{
 		Customer: CustomerInput{Name: "CI Preorder", Phone: phone, Email: email},
 		Delivery: "pickup", Items: []ItemInput{{ID: sku, Quantity: 1}},
-		Consent: true, OnlinePaymentReady: true,
+		Consent: true, OfferAccepted: true, OnlinePaymentReady: true,
 		ClientIP: "127.0.0.1", UserAgent: "ficusin-release-test",
 	})
 	if err != nil {

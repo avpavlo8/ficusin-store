@@ -483,13 +483,22 @@ paths:
   /orders:
     post:
       operationId: createOrder
+      description: Requires two independent explicit confirmations, consent and offerAccepted. A combined legacy consent flag does not accept the offer.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [customer, delivery, items, consent, offerAccepted]
               properties:
+                consent: {type: boolean, enum: [true], description: Separate acceptance of personal_data_consent.}
+                offerAccepted: {type: boolean, enum: [true], description: Separate acceptance of the public offer.}
+                customer: {type: object}
+                delivery: {type: string, enum: [pickup, cdek]}
+                items:
+                  type: array
+                  items: {$ref: "#/components/schemas/OrderItemInput"}
                 attribution:
                   type: object
                   properties:

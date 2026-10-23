@@ -17,6 +17,7 @@ const LoginPage = lazy(() => import("./AuthPages").then((module) => ({ default: 
 const RegisterPage = lazy(() => import("./AuthPages").then((module) => ({ default: module.RegisterPage })));
 const DeliveryPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.DeliveryPage })));
 const OfferPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.OfferPage })));
+const PersonalDataConsentPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.PersonalDataConsentPage })));
 const PrivacyPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.PrivacyPage })));
 const RequisitesPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.RequisitesPage })));
 const ContactsPage = lazy(() => import("./LegalPages").then((module) => ({ default: module.ContactsPage })));
@@ -87,6 +88,8 @@ export default function Root() {
       return withFooter(<CartPage checkout />);
     case "/offer":
       return withFooter(<OfferPage />);
+    case "/personal-data-consent":
+      return withFooter(<PersonalDataConsentPage />);
     case "/privacy":
       return withFooter(<PrivacyPage />);
     case "/requisites":
