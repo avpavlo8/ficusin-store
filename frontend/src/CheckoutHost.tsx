@@ -1,3 +1,4 @@
+import { sumMoney } from "./lib/money";
 import { storeSession } from "./lib/store-session";
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { CartDrawer, CheckoutPanel } from "./CartCheckout";
@@ -68,7 +69,7 @@ export default function CheckoutHost({
     .filter((product) => cart[product.sku])
     .map((product) => ({ ...product, id: product.sku, quantity: cart[product.sku] }));
   const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = sumMoney(cartLines);
   const checkout = useCheckout({ cartLines, cartCount, setCart, setNotice, discountBps: user?.retailDiscountBps ?? 0, initialOpen: checkoutPage });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
   // Local review of the post-order screens without creating an order or clearing the cart.

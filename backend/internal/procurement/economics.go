@@ -2,7 +2,9 @@ package procurement
 
 import (
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
+	"math/big"
 )
 
 // Missing charges are distinct from an explicitly verified zero. All amounts
@@ -83,21 +85,24 @@ func channelQuote(cost, contribution, tax float64, costs ChannelCosts, fixed flo
 		quote.Missing = []string{"проверьте расходы: сумма удержаний должна быть меньше 100%"}
 		return quote
 	}
-	keep := retainedRate(tax, costs)
-	variable := cost + *costs.PackagingRUB + *costs.LogisticsRUB + *costs.LossRUB
-	// Round upwards: rounding a floor down would create a loss at the floor.
-	floor := math.Ceil(variable / keep)
-	price := math.Ceil((variable + contribution) / keep)
-	if math.IsInf(price, 0) || price > 1e12 {
+	keep := retainedDecimal(tax, costs)
+	variable := decimalSum(cost, *costs.PackagingRUB, *costs.LogisticsRUB, *costs.LossRUB)
+	floor := new(big.Rat).Quo(variable, keep)
+	price := new(big.Rat).Quo(new(big.Rat).Add(variable, money.Decimal(contribution)), keep)
+	if price.Cmp(big.NewRat(1_000_000_000_000, 1)) > 0 || price.Sign() < 0 {
 		quote.Missing = []string{"проверьте сумму расходов"}
 		return quote
 	}
-	p, f := int64(price), int64(floor)
-	actual := price*keep - variable
+	p, f := decimalCeil(price), decimalCeil(floor)
+	actualDecimal := new(big.Rat).Sub(new(big.Rat).Mul(new(big.Rat).SetInt64(p), keep), variable)
+	actual := decimalFloat(actualDecimal)
 	quote.PriceRUB, quote.BreakEvenRUB, quote.ContributionRUB = &p, &f, &actual
-	if actual > 0 && fixed > 0 && fixed/actual < 1e12 {
-		n := int64(math.Ceil(fixed / actual))
-		quote.CoverUnits = &n
+	if actualDecimal.Sign() > 0 && fixed > 0 {
+		units := new(big.Rat).Quo(money.Decimal(fixed), actualDecimal)
+		if units.Cmp(big.NewRat(1_000_000_000_000, 1)) < 0 {
+			n := decimalCeil(units)
+			quote.CoverUnits = &n
+		}
 	}
 	return quote
 }
@@ -127,9 +132,7 @@ func calculateChannelQuotes(settings PricingSettings, cost float64, retail int64
 		}
 		return applyMarketPrices(quotes, settings, cost, profiles, marketPrices)
 	}
-	keep := retainedRate(settings.TaxRate, site)
-	variable := cost + *site.PackagingRUB + *site.LogisticsRUB + *site.LossRUB
-	contribution := float64(retail)*keep - variable
+	contribution := decimalFloat(contributionDecimal(float64(retail), cost, settings.TaxRate, site))
 	if contribution <= 0 {
 		contribution = 0
 		siteQuote.PriceRUB = nil
@@ -171,7 +174,7 @@ func applyMarketPrices(quotes map[string]ChannelQuote, settings PricingSettings,
 		q.Manual = true
 		if q.PriceRUB != nil {
 			q.CoverUnits = nil
-			actual := float64(price)*retainedRate(settings.TaxRate, costs) - cost - *costs.PackagingRUB - *costs.LogisticsRUB - *costs.LossRUB
+			actual := decimalFloat(contributionDecimal(float64(price), cost, settings.TaxRate, costs))
 			if actual <= 0 {
 				q.PriceRUB = nil
 				q.ContributionRUB = nil

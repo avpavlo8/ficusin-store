@@ -26,7 +26,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm run test:phone && npm run test:payment-result
+      - run: npm run test:phone && npm run test:payment-result && npm run test:money
       - run: node ../e2e/verify-chat-notification-worker.mjs
       - run: npm run build
       - run: npm run budget

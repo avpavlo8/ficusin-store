@@ -1,3 +1,4 @@
+import { toKopecks } from "./money.ts";
 export type PaymentResultOrder = {
   metrikaServer?: boolean;
   orderNumber: string;
@@ -27,16 +28,16 @@ export function readPaymentResultOrder(value: unknown, expectedNumber: string): 
 }
 
 export function netOrderPayment(order: PaymentResultOrder): number {
-  return Math.max(0, Math.round((order.paidAmount - order.refundedAmount) * 100)) / 100;
+  return Math.max(0, toKopecks(order.paidAmount) - toKopecks(order.refundedAmount)) / 100;
 }
 
 // A provider return URL is only a request to check. Success requires server
 // payment status and the order balance, including refunds and carrier fees.
 export function paymentResultState(order: PaymentResultOrder): PaymentResultState {
-  const net = Math.round(netOrderPayment(order) * 100);
+  const net = toKopecks(netOrderPayment(order));
   if (order.paymentStatus === "refunded" && order.refundedAmount > 0 && net === 0) return "refunded";
   if (order.status === "cancelled") return "cancelled";
-  const expected = Math.round((order.deliveryPayee === "carrier" ? order.subtotal : order.total) * 100);
+  const expected = toKopecks(order.deliveryPayee === "carrier" ? order.subtotal : order.total);
   if (order.paymentStatus === "paid" && order.amountDue === 0 && expected > 0 && net >= expected) return "success";
   if (net > 0 && order.amountDue > 0) return "partial";
   if (["on_delivery", "invoice"].includes(order.paymentStatus)) return "unconfirmed";

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
 	"os"
 	"os/exec"
@@ -232,11 +233,11 @@ func parseDimension(text string, pattern *regexp.Regexp) *float64 {
 }
 
 func sumLines(lines []ParsedLine) float64 {
-	var total float64
+	var total int64
 	for _, line := range lines {
-		total += line.LineTotal
+		total += money.Kopecks(line.LineTotal)
 	}
-	return math.Round(total*100) / 100
+	return money.Rubles(total)
 }
 
 func linesAreValid(lines []ParsedLine) bool {

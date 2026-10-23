@@ -1,7 +1,9 @@
 package procurement
 
 import (
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
+	"math/big"
 	"sort"
 )
 
@@ -30,35 +32,36 @@ func allocateMoneyPerUnit(total float64, weights []allocationWeight) map[int64]f
 	if !finiteNonnegative(total) || total > 1e12 {
 		return result
 	}
-	cents := int64(math.Round(total * 100))
+	cents := money.Kopecks(total)
 	type share struct {
 		item     allocationWeight
 		cents    int64
-		fraction float64
+		fraction *big.Rat
 	}
 	eligible := []share{}
-	weightTotal := 0.
+	weightTotal := new(big.Rat)
 	for _, item := range weights {
 		if item.Weight > 0 && finiteNonnegative(item.Weight) && item.Quantity > 0 {
 			eligible = append(eligible, share{item: item})
-			weightTotal += item.Weight
+			weightTotal.Add(weightTotal, money.Decimal(item.Weight))
 		}
 	}
-	if cents <= 0 || weightTotal <= 0 || math.IsInf(weightTotal, 0) {
+	if cents <= 0 || weightTotal.Sign() <= 0 {
 		return result
 	}
 	remaining := cents
 	for i := range eligible {
-		exact := float64(cents) * eligible[i].item.Weight / weightTotal
-		whole := int64(math.Floor(exact))
+		exact := new(big.Rat).Mul(new(big.Rat).SetInt64(cents), money.Decimal(eligible[i].item.Weight))
+		exact.Quo(exact, weightTotal)
+		whole := new(big.Int).Quo(exact.Num(), exact.Denom()).Int64()
 		if whole > remaining {
 			whole = remaining
 		}
 		eligible[i].cents = whole
-		eligible[i].fraction = exact - float64(whole)
+		eligible[i].fraction = new(big.Rat).Sub(exact, new(big.Rat).SetInt64(whole))
 		remaining -= whole
 	}
-	sort.SliceStable(eligible, func(i, j int) bool { return eligible[i].fraction > eligible[j].fraction })
+	sort.SliceStable(eligible, func(i, j int) bool { return eligible[i].fraction.Cmp(eligible[j].fraction) > 0 })
 	for i := int64(0); i < remaining; i++ {
 		eligible[i%int64(len(eligible))].cents++
 	}
@@ -76,16 +79,20 @@ func calculateAllocatedLine(
 	kind string,
 	unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit, heightCM float64, additional ...float64,
 ) calculatedLine {
-	purchase := unitPrice
+	purchaseDecimal := money.Decimal(unitPrice)
 	if kind == KindInternational {
-		purchase *= exchangeRate
+		purchaseDecimal.Mul(purchaseDecimal, money.Decimal(exchangeRate))
 	}
 	extra := 0.
 	if len(additional) > 0 {
 		extra = additional[0]
 	}
-	unitCost := purchase + trolleyPerUnit + ryazanPerUnit + extra
-	retailBase := unitCost * settings.RetailMarkupMultiplier
+	purchase, _ := purchaseDecimal.Float64()
+	unitDecimal := new(big.Rat).Add(purchaseDecimal, money.Decimal(trolleyPerUnit))
+	unitDecimal.Add(unitDecimal, money.Decimal(ryazanPerUnit))
+	unitDecimal.Add(unitDecimal, money.Decimal(extra))
+	unitCost, _ := unitDecimal.Float64()
+	retailBase, _ := new(big.Rat).Mul(unitDecimal, money.Decimal(settings.RetailMarkupMultiplier)).Float64()
 	retail := roundRetail(retailBase, settings.RoundPrices)
 	if settings.Economics.Unified != nil && settings.Economics.Unified.Enabled {
 		if q := UnifiedChannelQuotes(settings, unitCost, nil)["site"]; q.PriceRUB != nil {

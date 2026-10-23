@@ -2,7 +2,9 @@ package procurement
 
 import (
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
+	"math/big"
 )
 
 // Norms price a population of orders, not its single most expensive route.
@@ -101,7 +103,7 @@ func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) 
 		}
 		return quotes
 	}
-	target := cost * p.MarkupRate
+	target := decimalFloat(new(big.Rat).Mul(money.Decimal(cost), money.Decimal(p.MarkupRate)))
 	for _, ch := range []string{"site", "wb", "ozon"} {
 		costs := s.Economics.Channels[ch]
 		notes := []string{}
@@ -115,15 +117,16 @@ func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) 
 				continue
 			}
 			liters := box.Liters()
-			packaging := p.MaterialsRUB + p.LargeBoxRUB
+			packaging := decimalFloat(decimalSum(p.MaterialsRUB, p.LargeBoxRUB))
 			if liters <= 5 {
-				packaging = p.MaterialsRUB + p.SmallBoxRUB
+				packaging = decimalFloat(decimalSum(p.MaterialsRUB, p.SmallBoxRUB))
 			} else if liters <= 15 {
-				packaging = p.MaterialsRUB + p.MediumBoxRUB
+				packaging = decimalFloat(decimalSum(p.MaterialsRUB, p.MediumBoxRUB))
 			}
 			costs.PackagingRUB = &packaging
 			if ch == "wb" {
-				forward := p.WBFirstLiterRUB + math.Max(0, liters-1)*p.WBAdditionalLiterRUB + p.WBHandlingRUB
+				additional := new(big.Rat).Mul(money.Decimal(math.Max(0, liters-1)), money.Decimal(p.WBAdditionalLiterRUB))
+				forward := decimalFloat(new(big.Rat).Add(decimalSum(p.WBFirstLiterRUB, p.WBHandlingRUB), additional))
 				costs.LogisticsRUB = &forward
 			} else {
 				var selected *LogisticsNorm

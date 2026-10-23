@@ -150,3 +150,11 @@ func TestInvoiceDimensionsMustNotBeReplacedToFitWrongCatalogueVariant(t *testing
 		t.Fatal("normal whole-centimeter rounding rejected")
 	}
 }
+
+func TestQuoteExactDecimalBoundaryDoesNotAddRuble(t *testing.T) {
+	costs := ChannelCosts{CommissionRate: amount(.7), AcquiringRate: amount(.2), PackagingRUB: amount(0), LogisticsRUB: amount(0), LossRUB: amount(0)}
+	q := channelQuote(.1, 0, 0, costs, 0)
+	if q.PriceRUB == nil || *q.PriceRUB != 1 || *q.BreakEvenRUB != 1 {
+		t.Fatalf("binary rate added a ruble: %+v", q)
+	}
+}

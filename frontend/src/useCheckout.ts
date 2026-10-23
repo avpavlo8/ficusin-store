@@ -1,3 +1,4 @@
+import { sumMoney, addMoney } from "./lib/money";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { CartLine } from "./CartCheckout";
@@ -140,9 +141,9 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
     () => baseDeliveryOptions.filter((item) => item.id !== "cdek" || cdekAvailable),
     [cdekAvailable],
   );
-  const originalSubtotal = cartLines.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const subtotal = cartLines.reduce((sum, item) => sum + discountedPrice(item.price, discountBps) * item.quantity, 0);
-  const discountAmount = Math.round((originalSubtotal - subtotal) * 100) / 100;
+  const originalSubtotal = sumMoney(cartLines);
+  const subtotal = sumMoney(cartLines.map((item) => ({ price: discountedPrice(item.price, discountBps), quantity: item.quantity })));
+  const discountAmount = addMoney(originalSubtotal, -subtotal);
   const hasPreorder = cartLines.some((item) => item.stock !== undefined && item.stock < item.quantity);
   const availableDelivery = deliveryOptions;
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
@@ -165,7 +166,7 @@ export function useCheckout({ cartLines, cartCount, setCart, setNotice, discount
       : cdekOffices
   ).slice(0, 12);
   const selectedOffice = cdekOffices.find((office) => office.code === cdekOfficeCode) ?? null;
-  const total = subtotal + deliveryFee;
+  const total = addMoney(subtotal, deliveryFee);
 
   async function chooseCdekCity(city: CdekCity) {
     setCdekCity(city);

@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
 	"time"
 
@@ -86,7 +87,7 @@ func currentAvitoProposal(ctx context.Context, query interface {
 	if !stockReady {
 		return "Нужен свежий остаток СБИС для всех размеров", nil
 	}
-	if currentMin == nil || *currentMin != int64(math.Round(price*100)) {
+	if currentMin == nil || *currentMin != money.Kopecks(price) {
 		return "Минимальная доступная цена сайта изменилась", nil
 	}
 	return "", nil

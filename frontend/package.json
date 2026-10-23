@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint . --max-warnings=0 && npm run lint:css",
     "lint:css": "node scripts/check-dead-css.mjs",
+    "test:money": "node --experimental-strip-types --test tests/money.test.mjs",
     "test:phone": "node --experimental-strip-types --test tests/phone.test.mjs",
     "test:payment-result": "node --experimental-strip-types --test tests/payment-result.test.mjs"
   },

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"strings"
 	"time"
 
@@ -59,6 +60,10 @@ func (service *Service) refundIssues(ctx context.Context, orderID int64) ([]Refu
 // The preparation lock serializes the decision and all durable attempts for
 // this order. Each split is saved before any external request can be made.
 func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount float64, reason string) (Balance, error) {
+	requested, inputErr := money.Exact(amount)
+	if inputErr != nil || requested <= 0 {
+		return Balance{}, errors.New("укажите положительную сумму возврата в целых копейках")
+	}
 	if !service.Configured() {
 		return Balance{}, errors.New("возврат недоступен: оплата не настроена")
 	}
@@ -97,7 +102,6 @@ func (service *Service) RefundAmount(ctx context.Context, orderID int64, amount 
 	if err != nil {
 		return balance, err
 	}
-	requested := cents(amount)
 	if requested <= 0 || requested > cents(balance.NetPaid) {
 		return balance, errors.New("сумма возврата должна быть больше нуля и не превышать полученную оплату")
 	}
