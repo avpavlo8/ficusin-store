@@ -56,6 +56,13 @@ Keyboard users can switch with Left/Right, Home and End. Incoming care links
 continue to open the care tab and scroll to the requested topic.
 
 This removes the click requirement for content discovery in the rendered DOM.
-It does not introduce server rendering of the product body or guarantee indexing.
-The initial HTTP response still supplies metadata and structured data; full
-server rendering remains a separate technical SEO improvement.
+The initial HTTP response also includes a readable product body inside the
+React root: description, plant care/passport, warnings, FAQ and public reviews.
+This is ordinary visible HTML for every user agent, not a bot-only response or
+a `noscript` block. React replaces it with the interactive page on startup, so
+the enhanced page has no duplicate fallback text. Product data comes from the
+same catalogue lookup that supplies metadata; no extra database call is needed.
+This removes the JavaScript requirement for primary catalogue text, while the
+interactive tabs keep all panels mounted after product data loads. It does not
+guarantee indexing or ranking. The production smoke checks both JavaScript-free
+content and normal tab behavior against current public catalogue data.

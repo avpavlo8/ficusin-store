@@ -248,6 +248,31 @@ func TestProductMetaLeavesShellWhenMissing(t *testing.T) {
 	}
 }
 
+func TestProductHTMLIsAvailableWithoutJavaScriptAndEscapesCatalogueText(t *testing.T) {
+	detail := catalog.ProductDetail{ID: "33", Name: "Антуриум", CatalogSection: "plants",
+		Description: `Описание <script>alert("x")</script>`, CareInstructions: "Общий уход",
+		Passport: catalog.PlantPassport{Lighting: "Яркий рассеянный свет", Watering: "Полив после подсыхания", Pests: "Проверяйте листья",
+			FAQ: []catalog.FAQItem{{Question: "Как поливать?", Answer: "Без застоя воды"}}},
+		ImportantWarnings: []string{"Беречь от животных"}, Reviews: []catalog.Review{{Author: "Покупатель", Text: `Отзыв <img src=x onerror=alert(1)>`}},
+	}
+	shell := []byte(`<html><head><title>shop</title></head><body><div id="root"></div></body></html>`)
+	page, _, err := withProductMeta(context.Background(), slog.Default(), productMetaStub{detail: detail}, "https://ficusin.ru", "33", shell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.SplitN(string(page), "</head>", 2)[1]
+	for _, want := range []string{`data-product-html`, "Антуриум", "Общий уход", "Яркий рассеянный свет", "Полив после подсыхания", "Проверяйте листья", "Как поливать?", "Без застоя воды", "Беречь от животных", "Покупатель", "Отзыв &lt;img", "Описание &lt;script&gt;"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("initial body is missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"<script>", "<img", "hidden", "<noscript"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("unsafe or hidden initial body: %q", forbidden)
+		}
+	}
+}
+
 func TestSPAFallbackRedirectsResolvedLegacyProduct(t *testing.T) {
 	staticDir := t.TempDir()
 	shell := `<html><head><title>Фикусин</title><meta name="description" content="магазин"></head><body></body></html>`
