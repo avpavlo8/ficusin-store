@@ -78,7 +78,7 @@ methods = {item["id"] for item in json.loads(sys.argv[1])["methods"]}
 assert methods == {"on_delivery"}, methods
 PY
 
-order_payload="{\"customer\":{\"name\":\"CI Commerce\",\"phone\":\"+7 900 000-00-00\",\"email\":\"${email}\"},\"delivery\":\"pickup\",\"items\":[{\"id\":\"${sku}\",\"quantity\":2}],\"consent\":true,\"paymentMethod\":\"on_delivery\"}"
+order_payload="{\"customer\":{\"name\":\"CI Commerce\",\"phone\":\"+7 900 000-00-00\",\"email\":\"${email}\"},\"delivery\":\"pickup\",\"items\":[{\"id\":\"${sku}\",\"quantity\":2}],\"consent\":true,\"offerAccepted\":true,\"paymentMethod\":\"on_delivery\"}"
 
 # A forged payment choice must be rejected before it can create an order.
 forged_payload="${order_payload/\"on_delivery\"/\"online\"}"
@@ -108,7 +108,7 @@ facts="$(psql_ci -Atq -F ':' -c "
   JOIN order_items oi ON oi.order_id=o.id
   JOIN inventory i ON i.variant_id=oi.variant_id
   WHERE o.order_number='${order_number}'")"
-expected="on_delivery:2980.00:shop:${sku}:2:0:0:1:1:0"
+expected="on_delivery:2980.00:shop:${sku}:2:0:0:2:1:0"
 if [[ "$facts" != "$expected" ]]; then
   echo "Incomplete commerce transaction: ${facts}; expected ${expected}." >&2
   exit 1
