@@ -647,6 +647,9 @@ export default function ProductPage({ slug }: { slug: string }) {
       {variant && (
         <div className="pdp-mobile-purchase" aria-label="Быстрая покупка">
           <div>
+            <span className="pdp-mobile-name" title={product.name}>
+              {product.name}
+            </span>
             <strong>{money(variant.price)}</strong>
             <small>{variant.stock > 0 ? "В наличии" : "Под заказ · цена ориентировочная"}</small>
           </div>

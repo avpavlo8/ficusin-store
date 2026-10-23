@@ -2429,6 +2429,20 @@
     border-top: 1px solid #dfd1c0;
     background: #fffaf3;
   }
+  .pdp-mobile-purchase > div {
+    min-width: 0;
+  }
+  .pdp-mobile-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 4px;
+    color: #31482c;
+    font:
+      600 12px/1.35 Arial,
+      sans-serif;
+  }
   .pdp-mobile-purchase strong {
     display: block;
     color: #31482c;
@@ -2458,7 +2472,7 @@
     cursor: pointer;
   }
   body:has(.pdp-mobile-purchase) {
-    padding-bottom: calc(var(--store-tab-height, 76px) + 80px);
+    padding-bottom: calc(var(--store-tab-height, 76px) + 104px);
   }
   body:is(.menu-open, .modal-open, .quick-chat-open) .pdp-mobile-purchase,
   body:has(.pdp-lightbox) .pdp-mobile-purchase {
