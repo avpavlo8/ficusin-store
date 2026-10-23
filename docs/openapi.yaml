@@ -6262,13 +6262,16 @@ paths:
       x-source: backend/internal/httpapi/reviews.go#createReviewHandler
       tags:
         - Storefront
-      security: []
+      security:
+        - Session: []
       parameters:
         - in: path
           name: slug
           required: true
           schema:
             type: string
+      description: Authenticated customer only. Requires a completed purchase of this product; rejects
+        duplicate reviews. Media and content are validated by the server.
   /push/key:
     get:
       operationId: get_push_key
