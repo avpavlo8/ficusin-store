@@ -388,7 +388,7 @@ test("@desktop оформление отправляет заказ с норм�
   await expect(checkout.locator('input[name="consent"]')).not.toBeChecked();
   await checkout.locator('input[name="consent"]').check();
   await expect(checkout.locator('input[name="offerAccepted"]')).not.toBeChecked();
-  await checkout.getByRole("button", { name: /Оформить заказ/ }).click();
+  await expect(checkout.getByRole("button", { name: /Оформить заказ/ })).toBeDisabled();
   expect(order).toBeUndefined();
   await expect(checkout.getByText("Примите условия оферты", { exact: true }).first()).toBeVisible();
   await checkout.locator('input[name="offerAccepted"]').check();

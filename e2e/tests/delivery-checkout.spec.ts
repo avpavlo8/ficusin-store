@@ -196,3 +196,26 @@ test("@desktop @phone гостевая оплата передаёт отдел�
  const stored=await page.evaluate(()=>JSON.stringify({...localStorage}));
  expect(stored).not.toContain(token);
 });
+
+test("@desktop @phone оферта и согласие подтверждаются независимо", async ({page},testInfo)=>{
+ await mockApi(page);
+ await setStoredCounts(page,[],{"1":1});
+ await page.goto("/checkout");
+ const offer=page.locator('input[name="offerAccepted"]');
+ const consent=page.locator('input[name="consent"]');
+ await expect(offer).not.toBeChecked();
+ await expect(consent).not.toBeChecked();
+ await consent.check();
+ await expect(offer).not.toBeChecked();
+ await offer.check();
+ await consent.uncheck();
+ await expect(offer).toBeChecked();
+ await expect(consent).not.toBeChecked();
+ await expect(page.locator('.checkout-submit-section a[href="/personal-data-consent"]')).toBeVisible();
+ await page.locator('.checkout-submit-section').scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath("separate-consents.png")});
+ await page.goto("/personal-data-consent");
+ await expect(page.getByRole("heading",{level:1,name:"Согласие на обработку персональных данных"})).toBeVisible();
+ await expect(page.getByText("Это согласие не является согласием на рекламную рассылку.",{exact:false})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
