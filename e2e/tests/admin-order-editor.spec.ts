@@ -101,6 +101,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       if (path === "/api/v1/admin/orders/30/packing/quote" && init?.method === "POST") {
         const body = JSON.parse(String(init.body || "{}"));
         (window as typeof window & { __packingQuote?: unknown }).__packingQuote = body;
+        if (body.boxes.some((box: { contents: Array<{ quantity: number }> }) => box.contents.some((line) => line.quantity <= 0))) return json({ error: "некорректный состав коробки 1" }, 400);
         return json({ revision: 1, quotes: [{ tariffCode: 136, tariffName: "Посылка склад-склад", price: 590, daysMin: 2, daysMax: 4 }] });
       }
       if (path === "/api/v1/admin/orders/30/packing/finalize" && init?.method === "POST") {
@@ -438,4 +439,54 @@ test("@desktop менеджер видит возврат без финансо�
  await expect(section).toBeVisible();
  await expect(section.getByText("Вернуть деньги покупателю",{exact:true})).toHaveCount(0);
  await expect(section.getByRole("button",{name:"Чек уже сформирован"})).toHaveCount(0);
+});
+
+
+test("@desktop @phone распределение на две коробки исключает нули при расчёте и подтверждении", async ({ page }) => {
+  const state = await mockOrderEditor(page, false, "success");
+  await page.goto("/admin?section=orders&order=30");
+  const packing = await fillPackingBox(page);
+  await packing.getByRole("button", { name: "Добавить коробку", exact: true }).click();
+  await packing.getByRole("spinbutton", { name: "Алоказия D6 в коробке 1", exact: true }).fill("0");
+  await packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 2", exact: true }).fill("0");
+  await packing.getByRole("spinbutton", { name: "Алоказия D6 в коробке 2", exact: true }).fill("1");
+  for (const [name, value] of [["Длина коробки 2, см", "40"], ["Ширина коробки 2, см", "15"], ["Высота коробки 2, см", "15"], ["Вес с упаковкой коробки 2, кг", "1"]]) {
+    await packing.getByRole("textbox", { name, exact: true }).fill(value);
+  }
+  await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
+  await expect(packing.getByRole("radio")).toBeChecked();
+  const quoted = await page.evaluate(() => (window as typeof window & { __packingQuote?: { boxes: Array<{ contents: unknown[] }> } }).__packingQuote);
+  expect(quoted?.boxes.map((box) => box.contents)).toEqual([[{ orderItemId: 11, quantity: 1 }], [{ orderItemId: 12, quantity: 1 }]]);
+  await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
+  await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
+  expect((await state.packingFinalizations())[0].boxes.map((box) => box.contents)).toEqual(quoted?.boxes.map((box) => box.contents));
+});
+
+test("@desktop @phone атрибуты заполняют отдельные коробки и сбрасывают прежний тариф", async ({ page }, testInfo) => {
+  await mockOrderEditor(page, false, "success", true);
+  await page.goto("/admin?section=orders&order=30");
+  const packing = await fillPackingBox(page);
+  await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
+  await expect(packing.getByRole("radio")).toBeChecked();
+  await packing.getByRole("button", { name: "Заполнить из атрибутов растений", exact: true }).click();
+  await expect(packing.getByRole("radio")).toHaveCount(0);
+  await expect(packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true })).toHaveCount(0);
+  await expect(packing.locator(".order-packing-box")).toHaveCount(2);
+  await expect(packing.getByRole("textbox", { name: "Длина коробки 1, см", exact: true })).toHaveValue("20");
+  await expect(packing.getByRole("textbox", { name: "Высота коробки 2, см", exact: true })).toHaveValue("40");
+  await expect(packing.getByRole("textbox", { name: "Вес с упаковкой коробки 2, кг", exact: true })).toHaveValue("0.7");
+  await expect(packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 2", exact: true })).toHaveValue("0");
+  await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
+  await expect(packing.getByRole("radio")).toBeChecked();
+  await packing.screenshot({ path: testInfo.outputPath("packing-attributes.png") });
+});
+
+test("@desktop без атрибутов коробки распределены, но расчёт ждёт размеров и веса", async ({ page }) => {
+  await mockOrderEditor(page, false, "success");
+  await page.goto("/admin?section=orders&order=30");
+  const packing = page.getByRole("region", { name: "Подготовить заказ к отправке" });
+  await packing.getByRole("button", { name: "Заполнить из атрибутов растений", exact: true }).click();
+  await expect(packing.locator(".order-packing-box")).toHaveCount(2);
+  await expect(packing.getByRole("button", { name: "Рассчитать доставку", exact: true })).toBeDisabled();
+  await expect(packing.getByRole("spinbutton", { name: "Азалия D9 в коробке 1", exact: true })).toHaveValue("1");
 });
