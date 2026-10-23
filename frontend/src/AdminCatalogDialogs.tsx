@@ -1,3 +1,4 @@
+import { AdminProductSearch } from "./AdminProductSearch";
 import { NumericInput } from "./NumericInput";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CategoryPicker } from "./AdminCatalog";
@@ -1421,13 +1422,18 @@ export function MergeProductsDialog({
       </p>
       <label className="wide">
         Основная карточка
-        <select value={targetId} onChange={(event) => setTargetId(Number(event.target.value))}>
-          {products.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} · {item.sabyCode || item.sku}
-            </option>
-          ))}
-        </select>
+        <AdminProductSearch
+          label="Основная карточка"
+          value={String(targetId)}
+          disabled={busy}
+          options={products.map((item) => ({
+            value: String(item.id),
+            name: item.name,
+            detail: item.sabyCode || item.sku,
+            search: `${item.latinName} ${item.variantLabel} ${item.productCode} ${item.sku} ${item.slug} ${item.id}`,
+          }))}
+          onChange={(value) => setTargetId(Number(value))}
+        />
       </label>
       <div className="admin-merge-preview">
         <strong>Будет одна карточка: {target?.name}</strong>
@@ -1593,25 +1599,24 @@ export function PublishedMergePreviewDialog({
       </ul>
       <label className="wide">
         Основная карточка
-        <select
+        <AdminProductSearch
+          label="Основная карточка"
+          value={String(targetId)}
           disabled={busy}
-          value={targetId}
-          onChange={(event) => {
-            setTargetId(Number(event.target.value));
-            setReviewedIdentity(
-              products.find((item) => item.id === Number(event.target.value))?.name || "",
-            );
+          options={products.map((item) => ({
+            value: String(item.id),
+            name: item.name,
+            detail: `ID ${item.id} · ${item.slug} · ${item.sku}`,
+            search: `${item.latinName} ${item.variantLabel} ${item.productCode} ${item.sabyCode}`,
+          }))}
+          onChange={(value) => {
+            setTargetId(Number(value));
+            setReviewedIdentity(products.find((item) => item.id === Number(value))?.name || "");
             setPreview(null);
             setConfirmation("");
             setContentNotice("");
           }}
-        >
-          {products.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} · ID {item.id} · {item.slug}
-            </option>
-          ))}
-        </select>
+        />
       </label>
       <label className="wide">
         Подтверждённый вид или сорт

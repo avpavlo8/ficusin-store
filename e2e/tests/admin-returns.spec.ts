@@ -254,3 +254,14 @@ test("@desktop @phone catalogue styles and 50-row intake keep search aligned and
   expect(footer!.y + footer!.height).toBeLessThanOrEqual(sizes.at(-1)!.height);
   expect(state.getIntake()?.items).toHaveLength(50);
 });
+
+test("@desktop @phone returns product search finds SKU and keeps the exact variant", async ({page})=>{
+ const state=await setup(page);
+ const input=page.getByRole('combobox',{name:'Название растения 1',exact:true});
+ await input.fill('mon-d17');
+ await expect(page.getByRole('listbox',{name:'Каталог растений'}).getByRole('option')).toHaveCount(1);
+ await page.getByRole('option',{name:/Монстера Делициоза/}).click();
+ await expect(page.getByText('Черновик сохранён',{exact:true})).toBeVisible();
+ expect(state.getIntake()?.data.rows[0]).toMatchObject({variantId:102,sku:'MON-D17'});
+ expect(state.receiptCalls()).toBe(0);
+});

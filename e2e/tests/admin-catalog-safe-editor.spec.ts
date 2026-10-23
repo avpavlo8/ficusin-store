@@ -180,3 +180,54 @@ test('@desktop ссылки на витрину используют посто�
  await open(page);await expect(page.locator('table.products').getByRole('link',{name:'На сайте ↗'})).toHaveAttribute('href','/product/201');
  const d=await edit(page);await expect(d.getByRole('link',{name:'На сайте ↗'})).toHaveAttribute('href','/product/201');
 });
+
+for (const published of [false, true]) {
+ test(`@desktop @phone поиск основной карточки ${published ? 'опубликованных товаров' : 'черновиков'}`, async ({page}, testInfo) => {
+  const f = await fixture(page);
+  if (published) await page.route('**/api/v1/admin/products', route => route.fulfill({json:{products:[1,2].map(id=>({...product(id),status:'published'}))}}));
+  let merges = 0;
+  await page.route('**/api/v1/admin/products/merge*', route => { merges++; return route.fulfill({json:{}}); });
+  await open(page);
+  await page.getByRole('checkbox',{name:'Выбрать Аглаонема Мария',exact:true}).check();
+  await page.getByRole('checkbox',{name:'Выбрать Хлорофитум',exact:true}).check();
+  await page.getByRole('button',{name:published ? 'Проверить объединение' : 'Объединить размеры',exact:true}).click();
+  const d = page.getByRole('dialog');
+  const picker = d.getByRole('combobox',{name:'Основная карточка',exact:true});
+  await picker.fill('  хЛОРО  2 ');
+  await expect(d.getByRole('option')).toHaveCount(1);
+  await expect(d.getByRole('option')).toContainText('Хлорофитум');
+  await page.screenshot({path:testInfo.outputPath('product-search.png')});
+  await picker.press('ArrowDown');
+  await picker.press('Enter');
+  await expect(picker).toHaveValue(/Хлорофитум/);
+  if (published) await expect(d.getByLabel('Подтверждённый вид или сорт')).toHaveValue('Хлорофитум');
+  else await expect(d.getByText('Будет одна карточка: Хлорофитум')).toBeVisible();
+  await picker.fill('нет-такого-товара');
+  await expect(d.getByRole('status')).toContainText('Товар не найден');
+  await picker.press('Escape');
+  await expect(d).toBeVisible();
+  await expect(picker).toHaveValue(/Хлорофитум/);
+  await picker.fill('D11');
+  await expect(d.getByRole('option')).toHaveCount(2);
+  await picker.fill('Aglaonema plant-1');
+  await expect(d.getByRole('option')).toHaveCount(1);
+  await d.getByRole('option').click();
+  await expect(picker).toHaveValue(/Аглаонема Мария/);
+  expect(f.updates).toHaveLength(0);
+  expect(merges).toBe(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ });
+}
+
+test('@desktop @phone поиск товара в подборку по размеру и артикулу', async ({page})=>{
+ const writes=await manualCollection(page);
+ await page.route('**/api/v1/admin/products', route=>route.fulfill({json:{products:[{...product(1),sku:'FIC-D12',variantLabel:'D12'},{...product(2),sku:'MON-D17',variantLabel:'D17'}]}}));
+ await page.goto('/admin?section=collections&collection=1');
+ const e=page.locator('.collection-editor-v2');
+ await e.getByLabel('Найти товар в подборку').fill('MON-D17');
+ await expect(e.locator('.admin-collection-list label')).toHaveCount(1);
+ await expect(e.locator('.admin-collection-list label')).toContainText('Хлорофитум');
+ await e.getByLabel('Найти товар в подборку').fill('D12');
+ await expect(e.locator('.admin-collection-list label')).toHaveCount(1);
+ expect(writes).toHaveLength(0);
+});

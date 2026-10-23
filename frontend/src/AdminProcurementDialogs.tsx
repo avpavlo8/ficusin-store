@@ -1,3 +1,4 @@
+import { AdminProductSearch } from "./AdminProductSearch";
 import { NumericInput } from "./NumericInput";
 import { receivingModeLabel } from "./procurementUX";
 import { ProcurementLineEditor } from "./ProcurementLineEditor";
@@ -816,12 +817,30 @@ export function ProcurementPlanDialog({
                       {!item.potDiameterCm &&
                         !item.heightCm &&
                         (sabyBalances[item.sabyId]?.defaults?.length || 0) > 1 && (
-                          <select
-                            aria-label={`Размер для ${item.sabyName}`}
+                          <AdminProductSearch
+                            label={`Размер для ${item.sabyName}`}
+                            placeholder="Найти размер или артикул…"
                             value=""
-                            onChange={(event) => {
-                              const value =
-                                sabyBalances[item.sabyId].defaults[Number(event.target.value)];
+                            options={sabyBalances[item.sabyId].defaults.map((value, index) => ({
+                              value: String(index),
+                              name:
+                                [
+                                  value.potDiameterCm && `D${value.potDiameterCm}`,
+                                  value.heightCm && `${value.heightCm} см`,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || item.sabyName,
+                              detail: [
+                                value.article,
+                                value.unitPrice != null &&
+                                  `${value.unitPrice} ${selectedSupplier?.defaultCurrency || ""}`,
+                              ]
+                                .filter(Boolean)
+                                .join(" · "),
+                              search: item.sabyName,
+                            }))}
+                            onChange={(selected) => {
+                              const value = sabyBalances[item.sabyId].defaults[Number(selected)];
                               if (value)
                                 updateItem(item.id, {
                                   category: value.category,
@@ -832,21 +851,7 @@ export function ProcurementPlanDialog({
                                   unitsPerPackage: String(value.unitsPerPackage),
                                 });
                             }}
-                          >
-                            <option value="">Выберите размер</option>
-                            {sabyBalances[item.sabyId].defaults.map((value, index) => (
-                              <option key={index} value={index}>
-                                {[
-                                  value.potDiameterCm && `D${value.potDiameterCm}`,
-                                  value.heightCm && `${value.heightCm} см`,
-                                  value.unitPrice != null &&
-                                    `${value.unitPrice} ${selectedSupplier?.defaultCurrency || ""}`,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         )}
                     </td>
                     <td>

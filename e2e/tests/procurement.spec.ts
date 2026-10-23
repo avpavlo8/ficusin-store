@@ -115,7 +115,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -193,6 +193,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       return orderDetail;
     });
   }
+  if(options.sizeDefaults) Object.assign(procurement.recommendations[0],{potDiameterCm:null,heightCm:null});
   const dashboard = {
       user: { fullName: "Тестовый владелец" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit", "integrations.edit", "catalog.delete"],
@@ -236,7 +237,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       unitPrice:350,unitCostRub:350,currentRetailRub:0,proposedRetailRub:636+index}));
     orderDetail.lines.push({...orderDetail.lines[0],id:9,sabyId:"EXISTING",canonicalVariantId:99});
   }
-  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch, dimensionReview }) => {
+  await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch, dimensionReview, sizeDefaults }) => {
     const originalFetch = window.fetch.bind(window);
     const sabyExports: unknown[] = [];
     Object.assign(window, { sabyExports });
@@ -338,7 +339,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/procurement/plans/preview" && init?.method === "POST") {
         return json({ lines: [{ purchase: 636, cost: 700, retail: 1490 }] });
       }
-      if (path === "/api/v1/admin/procurement/nomenclature/balances") return json({ items: [{ sabyId: "TEST-SABY-1", balance: 2, seenAt: "2026-08-10T12:00:00Z" }, { sabyId: "TEST-SABY-3", balance: 4, seenAt: "2026-08-10T12:00:00Z" }] });
+      if (path === "/api/v1/admin/procurement/nomenclature/balances") return json({ items: [{ sabyId: "TEST-SABY-1", balance: 2, defaults: sizeDefaults ? [{category:"Растения",article:"SIZE-SMALL",potDiameterCm:12,heightCm:35,unitPrice:5.3,unitsPerPackage:6},{category:"Растения",article:"SIZE-LARGE",potDiameterCm:17,heightCm:70,unitPrice:12.5,unitsPerPackage:8}] : [], seenAt: "2026-08-10T12:00:00Z" }, { sabyId: "TEST-SABY-3", balance: 4, seenAt: "2026-08-10T12:00:00Z" }] });
       if (path === "/api/v1/admin/procurement/nomenclature") {
         return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "X616872557", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7, sabySales: 1, wbSales: 3, ozonSales: 2, siteSales: 1, supplierLinked: true }] });
       }
@@ -364,7 +365,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "", catalogMatch: !!options.catalogMatch, dimensionReview: !!options.dimensionReview });
+  }, { user: owner.user, dashboard, procurement, orderDetail, requestError: options.requestError || "", catalogMatch: !!options.catalogMatch, dimensionReview: !!options.dimensionReview, sizeDefaults: !!options.sizeDefaults });
 }
 
 test("@desktop @phone request validates integer quantity, traps focus, archives and restores", async ({ page }) => {
@@ -1117,4 +1118,21 @@ test("@desktop @phone first Saby file prices include hidden new rows after expli
  expect((await download).suggestedFilename()).toBe('first-prices.xlsx');
  expect(await page.evaluate(()=>Reflect.get(window,'sabyExports'))).toEqual([{method:'POST',body:{firstPrices:Array.from({length:8},(_,index)=>({sabyId:`NEW-${index+1}`,priceRub:636+index}))}}]);
  await page.screenshot({path:testInfo.outputPath('first-saby-prices.png'),fullPage:true});
+});
+
+test('@desktop @phone поиск размера при закупке заполняет выбранный вариант',async({page},testInfo)=>{
+ await mockProcurement(page,{sizeDefaults:true});
+ await page.goto('/admin?section=procurement&view=recommendations');
+ await page.getByLabel('Выбрать Тестовый товар D10').check();
+ await page.getByRole('button',{name:'Сформировать заказ',exact:true}).click();
+ const d=page.getByRole('dialog',{name:'Новый заказ поставщику',exact:true});
+ const picker=d.getByRole('combobox',{name:'Размер для Тестовый товар D10',exact:true});
+ await picker.fill('SIZE-LARGE');
+ await expect(d.getByRole('listbox',{name:'Найденные товары'}).getByRole('option')).toHaveCount(1);
+ await page.screenshot({path:testInfo.outputPath('size-search.png')});
+ await d.getByRole('listbox',{name:'Найденные товары'}).getByRole('option').click();
+ await expect(d.getByLabel('Горшок, см',{exact:true})).toHaveValue('17');
+ await expect(d.getByLabel('Высота, см',{exact:true})).toHaveValue('70');
+ await expect(d.getByLabel('Штук в упаковке',{exact:true})).toHaveValue('8');
+ await expect(d.locator('input[value="SIZE-LARGE"]')).toBeVisible();
 });

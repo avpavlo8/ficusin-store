@@ -458,9 +458,9 @@ function CollectionEditor({
   const shown = useMemo(
     () =>
       products.filter((product) =>
-        normalizeCatalogQuery(`${product.name} ${product.latinName} ${product.sku}`).includes(
-          normalizeCatalogQuery(query),
-        ),
+        normalizeCatalogQuery(
+          `${product.name} ${product.latinName} ${product.sku} ${product.variantLabel ?? ""} ${product.productCode ?? ""} ${product.sabyCode ?? ""}`,
+        ).includes(normalizeCatalogQuery(query)),
       ),
     [products, query],
   );
