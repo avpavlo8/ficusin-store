@@ -106,7 +106,7 @@ func TestReopenIgnoresRetiredTrackingResponseOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id)
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)
 	}()
-	must(pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,address,delivery_method,subtotal,total,status,cdek_uuid,cdek_track_number,cdek_create_state,cdek_status) VALUES($1,$2,'Tracking','+70000000000','','','cdek',100,100,'new',$1,'old-track','registered','CREATED') RETURNING id`, key, customer).Scan(&id))
+	must(pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,address,delivery_method,delivery_fee,subtotal,total,status,cdek_uuid,cdek_track_number,cdek_create_state,cdek_status) VALUES($1,$2,'Tracking','+70000000000','','','cdek',0,100,100,'new',$1,'old-track','registered','CREATED') RETURNING id`, key, customer).Scan(&id))
 	carrier := &staleTrackingCarrier{stage13CDEK: &stage13CDEK{}, beforeFetch: func() { _, err := pool.Exec(ctx, `UPDATE orders SET cdek_uuid='' WHERE id=$1`, id); must(err) }}
 	notifier := &reopenNotifier{}
 	worker := NewShippingWorker(pool, carrier, nil, notifier, quietLogger())
