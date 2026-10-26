@@ -71,7 +71,7 @@ def balance():
 body = {
     "product": "delivery", "pointId": env["point_id"],
     "comment": "ТЕСТ API Фикусин 26.10.2026. Только X380416519. Без оплаты и чека. run=" + os.environ.get("GITHUB_RUN_ID", "local"),
-    "customer": {"externalId": "ficusin-api-fixture-20261026", "name": "ТЕСТ API Фикусин", "phone": "70000000000"},
+    "customer": {"name": "ТЕСТ API Фикусин", "phone": "70000000000"},
     "datetime": (datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S"),
     "nomenclatures": [{"externalId": fixture["externalId"], "priceListId": 19, "count": 1, "cost": 1}],
     "delivery": {"isPickup": True, "paymentType": "cash"},
