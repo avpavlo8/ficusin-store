@@ -130,6 +130,7 @@ try:
         time.sleep(5)
         _, state = call("GET", "/retail/order/" + order_id + "/state")
         report["stateAfterPayment"] = state
+        report["paymentRegistered"] = isinstance(state, dict) and state.get("payState") == 200 and any(p.get("isClosed") is True for p in state.get("payments") or [])
         report["balanceAfterPayment"] = balance()
         save()
 finally:
@@ -138,6 +139,7 @@ finally:
         save()
         status, cancelled = call("PUT", "/retail/order/" + order_id + "/cancel")
         report["cancelHTTP"] = status
+        report["cancelResponse"] = cancelled
         if status >= 400:
             report["cancelError"] = cancelled
         time.sleep(3)
@@ -149,4 +151,8 @@ finally:
 if payment_test and (report.get("paymentHTTP", 500) >= 400 or
                      not isinstance(report.get("paymentResponse"), dict) or
                      report["paymentResponse"].get("successFlag") is not True):
-    raise SystemExit("Nonfiscal external payment was rejected; fixture order cancelled")
+    raise SystemExit("Nonfiscal external payment was rejected; inspect cancellation readback")
+if payment_test and not report["paymentRegistered"]:
+    raise SystemExit("Payment was queued, not confirmed. Do not replay registration")
+if not isinstance(report.get("stateAfterCancel"), dict) or report["stateAfterCancel"].get("state") not in (42, 220):
+    raise SystemExit("Cancellation was not confirmed. Reconcile this order; do not create another")

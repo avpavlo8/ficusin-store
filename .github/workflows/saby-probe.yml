@@ -57,7 +57,7 @@ jobs:
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
           SABY_FIXTURE_RECONCILE: ${{ inputs.fixture_reconcile }}
         run: python3 scripts/saby-order-preflight.py
-      - name: Single unpaid fixture order create and cancel
+      - name: Single fixture order lifecycle with verified readback
         if: inputs.fixture_create_cancel
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
