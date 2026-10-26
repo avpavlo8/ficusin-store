@@ -22,6 +22,10 @@ on:
         description: Owner-authorized single unpaid create/cancel for disposable fixture X380416519 only
         type: boolean
         default: false
+      fixture_nonfiscal_payment:
+        description: Explicit simulated external 1 RUB payment with nonFiscal=true; requires fixture_create_cancel
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,6 +59,7 @@ jobs:
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+          SABY_FIXTURE_NONFISCAL_TEST: ${{ inputs.fixture_nonfiscal_payment }}
         run: python3 scripts/saby-order-fixture-probe.py
       - uses: actions/upload-artifact@v4
         if: always() && inputs.fixture_create_cancel

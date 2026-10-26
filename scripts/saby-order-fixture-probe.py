@@ -1,6 +1,7 @@
 """One owner-authorized create/cancel test, exclusively for fixture X380416519.
 
-Never registers a payment, calls a payment link, or creates a fiscal receipt.
+An explicit test mode may register a simulated external payment with nonFiscal=true.
+Never calls a payment link or a fiscal payment operation.
 Never retries a mutation. An unknown create result requires manual reconciliation.
 """
 
@@ -29,6 +30,8 @@ assert str(env["test_price_id"]) == "19", "Expected the isolated fixture price l
 
 report_path = Path("fixture-order-result.json")
 report = {"fixture": "X380416519", "priceListId": 19, "balanceBefore": fixture["balance"], "paymentRegistered": False}
+payment_test = os.environ.get("SABY_FIXTURE_NONFISCAL_TEST") == "true"
+report["nonFiscalPaymentTest"] = payment_test
 
 
 def save():
@@ -70,7 +73,7 @@ def balance():
 
 body = {
     "product": "delivery", "pointId": env["point_id"],
-    "comment": "ТЕСТ API Фикусин 26.10.2026. Только X380416519. Без оплаты и чека. run=" + os.environ.get("GITHUB_RUN_ID", "local"),
+    "comment": "ТЕСТ API Фикусин 26.10.2026. Только X380416519. Без реального платежа и фискального чека. run=" + os.environ.get("GITHUB_RUN_ID", "local"),
     "customer": {"name": "ТЕСТ API Фикусин", "phone": "70000000000"},
     "datetime": (datetime.now(ZoneInfo("Europe/Moscow")) + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S"),
     "nomenclatures": [{"externalId": fixture["externalId"], "priceListId": 19, "count": 1, "cost": 1}],
@@ -111,6 +114,23 @@ try:
     report["stateAfterCreate"] = state
     report["balanceAfterCreate"] = balance()
     save()
+    if payment_test:
+        # Short observation window for the owner-visible reservation report.
+        print("Fixture order created; observation window before nonfiscal test", flush=True)
+        time.sleep(45)
+        payment_params = {"bankSum": 1, "paymentType": "full", "nonFiscal": "true"}
+        report["paymentAttempted"] = True
+        report["paymentParameters"] = payment_params
+        save()
+        status, payment = call("GET", "/retail/order/" + order_id + "/register-payment?" + urllib.parse.urlencode(payment_params))
+        report["paymentHTTP"] = status
+        report["paymentResponse"] = payment
+        save()
+        time.sleep(5)
+        _, state = call("GET", "/retail/order/" + order_id + "/state")
+        report["stateAfterPayment"] = state
+        report["balanceAfterPayment"] = balance()
+        save()
 finally:
     if order_id:
         report["cancelAttempted"] = True
@@ -125,3 +145,5 @@ finally:
         report["balanceAfterCancel"] = balance()
     save()
     print(json.dumps(report, ensure_ascii=False))
+if payment_test and report.get("paymentHTTP", 500) >= 400:
+    raise SystemExit("Nonfiscal external payment was rejected; fixture order cancelled")
