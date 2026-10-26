@@ -115,14 +115,13 @@ try:
     report["balanceAfterCreate"] = balance()
     save()
     if payment_test:
-        # Short observation window for the owner-visible reservation report.
-        print("Fixture order created; observation window before nonfiscal test", flush=True)
-        time.sleep(45)
-        payment_params = {"bankSum": 1, "paymentType": "full", "nonFiscal": "true"}
+        # Live API rejects the GET advertised in the public docs and explicitly
+        # requires POST. The previous GET left payState=0 and was cancelled.
+        payment_params = {"bankSum": 1, "paymentType": "full", "nonFiscal": True}
         report["paymentAttempted"] = True
         report["paymentParameters"] = payment_params
         save()
-        status, payment = call("GET", "/retail/order/" + order_id + "/register-payment?" + urllib.parse.urlencode(payment_params))
+        status, payment = call("POST", "/retail/order/" + order_id + "/register-payment", payment_params)
         report["paymentHTTP"] = status
         report["paymentResponse"] = payment
         save()
