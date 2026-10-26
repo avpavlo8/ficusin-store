@@ -68,11 +68,16 @@ prices = get("/retail/nomenclature/price-list", pointId=point_id,
              actualDate=datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d"), page=0, pageSize=100)
 print("price_list_result_fields", sorted(prices) if isinstance(prices, dict) else "list")
 price_rows = prices if isinstance(prices, list) else next((v for v in prices.values() if isinstance(v, list)), [])
+test_price_id = None
 for price in price_rows:
     if str(price.get("id")) == "6":
         print("price_list_6_name", price.get("name"))
+    if price.get("name") == "ТЕСТ API Фикусин 26.10.2026":
+        test_price_id = price.get("id")
+        print("fixture_price_list_id", test_price_id)
 
-for price_list in (None, 6):
+catalogue_fixture = None
+for price_list in dict.fromkeys((None, 6, test_price_id)):
     params = dict(pointId=point_id, searchString=CODE, withBalance="true", page=0, pageSize=50)
     if price_list:
         params["priceListId"] = price_list
@@ -82,7 +87,9 @@ for price_list in (None, 6):
         print("Unexpected catalogue response shape")
         continue
     fixtures = [r for r in rows if r.get("name") == NAME and r.get("nomNumber") == CODE and not r.get("isParent")]
-    print("fixture_in_" + ("price_list_6" if price_list else "catalogue"), len(fixtures) == 1)
+    print("fixture_in_" + ("price_list_" + str(price_list) if price_list else "catalogue"), len(fixtures) == 1)
     for row in fixtures:
+        if price_list is None:
+            catalogue_fixture = row
         print("fixture_balance", row.get("balance"))
         print("fixture_fields", sorted(row))
