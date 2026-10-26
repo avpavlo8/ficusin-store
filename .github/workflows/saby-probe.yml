@@ -18,6 +18,10 @@ on:
         description: Read-only delivery API preflight for disposable fixture X380416519
         type: boolean
         default: false
+      fixture_create_cancel:
+        description: Owner-authorized single unpaid create/cancel for disposable fixture X380416519 only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Saby nomenclature
-        if: inputs.receipt_id == '' && !inputs.order_preflight
+        if: inputs.receipt_id == '' && !inputs.order_preflight && !inputs.fixture_create_cancel
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -44,6 +48,20 @@ jobs:
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
         run: python3 scripts/saby-order-preflight.py
+      - name: Single unpaid fixture order create and cancel
+        if: inputs.fixture_create_cancel
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+        run: python3 scripts/saby-order-fixture-probe.py
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.fixture_create_cancel
+        with:
+          name: fixture-order-result
+          path: fixture-order-result.json
+          retention-days: 7
       - name: Probe existing receipt response schema without values
         if: inputs.receipt_id != ''
         env:
