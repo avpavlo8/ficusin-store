@@ -48,6 +48,7 @@ def get(path, **params):
 
 
 point_id = int(os.environ.get("SABY_POINT_ID") or 278)
+test_bank_type = None
 for product in ("retail", "delivery"):
     result = get("/retail/point/list", pointId=point_id, product=product, withPrices="true")
     points = result.get("salesPoints") or []
@@ -57,6 +58,10 @@ for product in ("retail", "delivery"):
     print(product + "_point_found", len(matched) == 1)
     if len(matched) == 1:
         print(product + "_payment_kind_count", len(matched[0].get("paymentKinds") or []))
+        for kind in matched[0].get("paymentKinds") or []:
+            if kind.get("name") == "ТЕСТ API Фикусин — внешняя оплата":
+                test_bank_type = kind.get("id")
+                print("fixture_bank_type", test_bank_type)
         print(product + "_point_fields", sorted(matched[0]))
         delivery_settings = matched[0].get("deliverySettings")
         print(product + "_delivery_settings_type", type(delivery_settings).__name__)

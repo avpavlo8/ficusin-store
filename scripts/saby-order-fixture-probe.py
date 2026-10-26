@@ -32,6 +32,8 @@ report_path = Path("fixture-order-result.json")
 report = {"fixture": "X380416519", "priceListId": 19, "balanceBefore": fixture["balance"], "paymentRegistered": False}
 payment_test = os.environ.get("SABY_FIXTURE_NONFISCAL_TEST") == "true"
 report["nonFiscalPaymentTest"] = payment_test
+if payment_test:
+    assert env["test_bank_type"], "Explicit fixture-only custom bank type must be configured first"
 
 
 def save():
@@ -117,7 +119,7 @@ try:
     if payment_test:
         # Live API rejects the GET advertised in the public docs and explicitly
         # requires POST. The previous GET left payState=0 and was cancelled.
-        payment_params = {"bankSum": 1, "paymentType": "full", "nonFiscal": True}
+        payment_params = {"bankSum": 1, "bankType": env["test_bank_type"], "paymentType": "full", "nonFiscal": True}
         report["paymentAttempted"] = True
         report["paymentParameters"] = payment_params
         save()
