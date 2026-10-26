@@ -6,6 +6,8 @@ Only fixture values and capability counts are printed to public CI logs.
 
 import json
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -49,7 +51,9 @@ point_id = int(os.environ.get("SABY_POINT_ID") or 278)
 for product in ("retail", "delivery"):
     result = get("/retail/point/list", pointId=point_id, product=product, withPrices="true")
     points = result.get("salesPoints") or []
-    matched = [p for p in points if p.get("id") == point_id]
+    print(product + "_point_result_fields", sorted(result))
+    print(product + "_point_result_count", len(points))
+    matched = [p for p in points if str(p.get("id")) == str(point_id)]
     print(product + "_point_found", len(matched) == 1)
     if len(matched) == 1:
         print(product + "_payment_kind_count", len(matched[0].get("paymentKinds") or []))
@@ -59,6 +63,14 @@ for product in ("retail", "delivery"):
         if isinstance(delivery_settings, dict):
             print(product + "_delivery_settings_fields", sorted(delivery_settings))
             print(product + "_delivery_settings_flags", {k: v for k, v in delivery_settings.items() if isinstance(v, bool)})
+
+prices = get("/retail/nomenclature/price-list", pointId=point_id,
+             actualDate=datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d"), page=0, pageSize=100)
+print("price_list_result_fields", sorted(prices) if isinstance(prices, dict) else "list")
+price_rows = prices if isinstance(prices, list) else next((v for v in prices.values() if isinstance(v, list)), [])
+for price in price_rows:
+    if str(price.get("id")) == "6":
+        print("price_list_6_name", price.get("name"))
 
 for price_list in (None, 6):
     params = dict(pointId=point_id, searchString=CODE, withBalance="true", page=0, pageSize=50)
