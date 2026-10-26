@@ -144,5 +144,7 @@ finally:
         report["balanceAfterCancel"] = balance()
     save()
     print(json.dumps(report, ensure_ascii=False))
-if payment_test and report.get("paymentHTTP", 500) >= 400:
+if payment_test and (report.get("paymentHTTP", 500) >= 400 or
+                     not isinstance(report.get("paymentResponse"), dict) or
+                     report["paymentResponse"].get("successFlag") is not True):
     raise SystemExit("Nonfiscal external payment was rejected; fixture order cancelled")
