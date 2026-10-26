@@ -14,6 +14,10 @@ on:
       receipt_guid:
         description: UUID существующего поступления (только чтение схемы)
         required: false
+      order_preflight:
+        description: Read-only delivery API preflight for disposable fixture X380416519
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Saby nomenclature
-        if: inputs.receipt_id == ''
+        if: inputs.receipt_id == '' && !inputs.order_preflight
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -32,6 +36,14 @@ jobs:
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
           SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-probe.py
+      - name: Read-only order integration preflight
+        if: inputs.order_preflight
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+        run: python3 scripts/saby-order-preflight.py
       - name: Probe existing receipt response schema without values
         if: inputs.receipt_id != ''
         env:
