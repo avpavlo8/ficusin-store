@@ -26,6 +26,10 @@ on:
         description: Explicit simulated external 1 RUB payment with nonFiscal=true; requires fixture_create_cancel
         type: boolean
         default: false
+      fixture_reconcile:
+        description: Read-only state of the already-created fixture order 3376
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,6 +55,7 @@ jobs:
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
+          SABY_FIXTURE_RECONCILE: ${{ inputs.fixture_reconcile }}
         run: python3 scripts/saby-order-preflight.py
       - name: Single unpaid fixture order create and cancel
         if: inputs.fixture_create_cancel

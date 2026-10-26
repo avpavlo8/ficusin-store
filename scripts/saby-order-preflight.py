@@ -98,3 +98,13 @@ for price_list in dict.fromkeys((None, 6, test_price_id)):
             catalogue_fixture = row
         print("fixture_balance", row.get("balance"))
         print("fixture_fields", sorted(row))
+
+if os.environ.get("SABY_FIXTURE_RECONCILE") == "true":
+    # Fixed owner-authorized fixture order only. Never a write or a payment retry.
+    order_id = "01a177ee-1ac4-780f-82d7-045b9fdfba13"
+    state = get("/retail/order/" + order_id + "/state")
+    print("fixture_order_state", json.dumps(state, ensure_ascii=False))
+    order = get("/retail/order/" + order_id)
+    print("fixture_order_readback_fields", sorted(order))
+    print("fixture_order_number", order.get("number"), order.get("orderNumber"))
+    print("fixture_order_position_fields", [sorted(r) for r in order.get("nomenclatures") or []])
