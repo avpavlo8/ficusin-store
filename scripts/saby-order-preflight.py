@@ -54,6 +54,11 @@ for product in ("retail", "delivery"):
     if len(matched) == 1:
         print(product + "_payment_kind_count", len(matched[0].get("paymentKinds") or []))
         print(product + "_point_fields", sorted(matched[0]))
+        delivery_settings = matched[0].get("deliverySettings")
+        print(product + "_delivery_settings_type", type(delivery_settings).__name__)
+        if isinstance(delivery_settings, dict):
+            print(product + "_delivery_settings_fields", sorted(delivery_settings))
+            print(product + "_delivery_settings_flags", {k: v for k, v in delivery_settings.items() if isinstance(v, bool)})
 
 for price_list in (None, 6):
     params = dict(pointId=point_id, searchString=CODE, withBalance="true", page=0, pageSize=50)
@@ -64,7 +69,7 @@ for price_list in (None, 6):
     if not isinstance(rows, list):
         print("Unexpected catalogue response shape")
         continue
-    fixtures = [r for r in rows if r.get("name") == NAME and r.get("code") == CODE and not r.get("isParent")]
+    fixtures = [r for r in rows if r.get("name") == NAME and r.get("nomNumber") == CODE and not r.get("isParent")]
     print("fixture_in_" + ("price_list_6" if price_list else "catalogue"), len(fixtures) == 1)
     for row in fixtures:
         print("fixture_balance", row.get("balance"))
