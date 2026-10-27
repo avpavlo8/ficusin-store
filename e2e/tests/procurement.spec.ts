@@ -422,7 +422,7 @@ test("@desktop request save error is visible inside the dialog and preserves inp
 test("@desktop calculator keeps its inputs across tabs and creates a request", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin?section=procurement&view=calculator");
-  await page.getByLabel("Название", { exact: true }).fill("Фикус под заказ");
+  await expect(page.getByLabel("Название", { exact: true })).toHaveCount(0);
   await page.getByLabel("Цена поставщика, €").fill("4,85");
   await page.getByLabel("Диаметр горшка, см").fill("14");
   await page.getByLabel("Высота растения, см").fill("40");
@@ -430,7 +430,7 @@ test("@desktop calculator keeps its inputs across tabs and creates a request", a
   await page.getByRole("button", { name: "Калькулятор", exact: true }).click();
   await expect(page.getByLabel("Цена поставщика, €")).toHaveValue("4,85");
   await page.getByRole("button", { name: "Создать запрос", exact: true }).click();
-  await expect(page.getByRole("dialog").getByLabel("Название товара", { exact: true })).toHaveValue("Фикус под заказ");
+  await expect(page.getByRole("dialog").getByLabel("Название товара", { exact: true })).toHaveValue("");
   await expect(page.getByRole("dialog").getByLabel("Комментарий", { exact: true })).toHaveValue(/Предварительный расчёт/);
 });
 
@@ -1155,6 +1155,9 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  });
  const lastInput=()=>page.evaluate(()=>(window as unknown as {calculatorInputs: Record<string,unknown>[]}).calculatorInputs.at(-1));
  const calc=page.getByRole('region',{name:'Калькулятор цен'});
+ await expect(calc.locator('input')).toHaveCount(3);
+ await page.screenshot({path:`../../calculator-initial-${test.info().project.name}.png`,fullPage:true});
+ await expect(calc.getByLabel('Курс, ₽/€')).toHaveCount(0);
  await calc.getByLabel('Цена поставщика, €').fill('4,85');
  await calc.getByLabel('Диаметр горшка, см').fill('14');
  await calc.getByLabel('Высота растения, см').fill('40');
@@ -1164,7 +1167,7 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect.poll(lastInput).toBeTruthy();
  await expect(calc.getByRole('combobox')).toHaveCount(0);
  await calc.getByLabel('Себестоимость, ₽').fill('1000,25');
- await expect(calc.getByLabel('Диаметр горшка, см')).toBeDisabled();
+ await expect(calc.getByLabel('Диаметр горшка, см')).toHaveCount(0);
  await calc.getByLabel('Наценка, %').fill('75');
  await expect.poll(async()=>(await lastInput())?.costRub).toBe(1000.25);
  await expect.poll(async()=>(await lastInput())?.markupRate).toBe(.75);
@@ -1174,9 +1177,9 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect.poll(async()=>(await lastInput())?.retailRub).toBe(2000.37);
  expect((await lastInput())?.costRub).toBeUndefined();
  await expect(calc.getByText(/остаётся .* с продажи/)).toHaveCount(0);
- await expect(calc.getByLabel('Наценка, %')).toBeDisabled();
- await expect(calc.getByLabel('Диаметр горшка, см')).toBeDisabled();
- await expect(calc.getByLabel('Высота растения, см')).toBeDisabled();
+ await expect(calc.getByLabel('Наценка, %')).toHaveCount(0);
+ await expect(calc.getByLabel('Диаметр горшка, см')).toHaveCount(0);
+ await expect(calc.getByLabel('Высота растения, см')).toHaveCount(0);
  await expect(calc.getByLabel('Длина коробки, см')).toHaveValue('15');
  await expect(calc.getByRole('button',{name:'Копировать расчёт'})).toBeEnabled();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
@@ -1189,6 +1192,6 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect(calc.getByLabel('Диаметр горшка, см')).toBeEnabled();
  await expect(calc.getByLabel('Высота растения, см')).toHaveValue('40');
  await calc.getByLabel('Себестоимость, ₽').fill('1000,25');
- await expect(calc.getByLabel('Диаметр горшка, см')).toBeDisabled();
+ await expect(calc.getByLabel('Диаметр горшка, см')).toHaveCount(0);
  await expect(calc.getByLabel('Наценка, %')).toBeEnabled();
 });
