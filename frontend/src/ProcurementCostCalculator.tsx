@@ -3,10 +3,11 @@ import { api } from "./adminShared";
 import { PricingQuoteSummary } from "./ProcurementEconomics";
 import type { ProcurementChannelQuote, ProcurementSettings } from "./adminTypes";
 
-const money = (value: number) =>
-  new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-    value,
-  );
+const rubles = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const money = (value: number) => rubles.format(value);
 const number = (value: string) => Number(value.replace(",", "."));
 type Mode = "purchase" | "cost" | "retail";
 export type ProcurementCalculatorDraft = Record<
@@ -150,7 +151,6 @@ export function ProcurementCostCalculator({
     label: string,
     isValid: boolean,
     hint = "Введите число больше нуля",
-    disabled = false,
     displayValue = draft[key] || "",
   ) => (
     <label key={key}>
@@ -158,13 +158,10 @@ export function ProcurementCostCalculator({
       <input
         inputMode="decimal"
         value={displayValue}
-        disabled={disabled}
-        aria-invalid={!disabled && Boolean(displayValue) && !isValid}
+        aria-invalid={Boolean(displayValue) && !isValid}
         onChange={(e) => change(key, e.target.value)}
       />
-      {!disabled && Boolean(displayValue) && !isValid && (
-        <small className="procurement-warning">{hint}</small>
-      )}
+      {Boolean(displayValue) && !isValid && <small className="procurement-warning">{hint}</small>}
     </label>
   );
   const costValue =
@@ -198,7 +195,6 @@ export function ProcurementCostCalculator({
                 "Цена поставщика, €",
                 mode !== "purchase" || positive(draft.price),
                 undefined,
-                false,
                 mode === "purchase" ? draft.price : "",
               )}
               {field(
@@ -206,7 +202,6 @@ export function ProcurementCostCalculator({
                 "Себестоимость, ₽",
                 mode !== "cost" || positive(draft.cost),
                 undefined,
-                false,
                 costValue,
               )}
               {field(
@@ -214,7 +209,6 @@ export function ProcurementCostCalculator({
                 "Цена в магазине, ₽",
                 mode !== "retail" || positive(draft.retail),
                 undefined,
-                false,
                 retailValue,
               )}
               {hasSource &&
@@ -245,27 +239,9 @@ export function ProcurementCostCalculator({
               <div className="procurement-calculator-fields">
                 {mode === "purchase" && (
                   <>
-                    {field(
-                      "rate",
-                      "Курс, ₽/€",
-                      positive(draft.rate),
-                      undefined,
-                      mode !== "purchase",
-                    )}
-                    {field(
-                      "pot",
-                      "Диаметр горшка, см",
-                      positive(draft.pot),
-                      undefined,
-                      mode !== "purchase",
-                    )}
-                    {field(
-                      "height",
-                      "Высота растения, см",
-                      positive(draft.height),
-                      undefined,
-                      mode !== "purchase",
-                    )}
+                    {field("rate", "Курс, ₽/€", positive(draft.rate), undefined)}
+                    {field("pot", "Диаметр горшка, см", positive(draft.pot), undefined)}
+                    {field("height", "Высота растения, см", positive(draft.height), undefined)}
                   </>
                 )}
                 {field(
@@ -273,7 +249,6 @@ export function ProcurementCostCalculator({
                   "Наценка, %",
                   nonnegative(draft.markup, 1000),
                   "Укажите наценку от 0 до 1000%",
-                  false,
                 )}
               </div>
             </div>
@@ -311,21 +286,18 @@ export function ProcurementCostCalculator({
                   "Стоимость телеги, ₽",
                   nonnegative(draft.trolleyCost),
                   "Стоимость не может быть отрицательной",
-                  mode !== "purchase",
                 )}
                 {field(
                   "fill",
                   "Заполнение, %",
                   positive(draft.fill, 100),
                   "Введите заполнение больше 0 и не больше 100%",
-                  mode !== "purchase",
                 )}
                 {field(
                   "trolleyVolume",
                   "Объём телеги, см³",
                   positive(draft.trolleyVolume),
                   undefined,
-                  mode !== "purchase",
                 )}
               </div>
             </details>
