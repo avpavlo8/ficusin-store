@@ -1172,7 +1172,10 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect.poll(async()=>(await lastInput())?.costRub).toBe(1000.25);
  await expect.poll(async()=>(await lastInput())?.markupRate).toBe(.75);
  await expect(calc.getByLabel('Цена в магазине, ₽')).toHaveValue('1490');
- await expect(calc.getByLabel('Цена WB, ₽')).toHaveValue('2490');
+ await expect(calc.getByLabel('Цена WB, ₽')).toHaveCount(0);
+ await expect(calc.getByLabel('Цена Ozon, ₽')).toHaveCount(0);
+ await expect(calc.locator('aside')).toContainText('Wildberries');
+ await expect(calc.locator('aside')).toContainText('Ozon');
  await calc.getByLabel('Цена в магазине, ₽').fill('2000,37');
  await expect.poll(async()=>(await lastInput())?.retailRub).toBe(2000.37);
  expect((await lastInput())?.costRub).toBeUndefined();

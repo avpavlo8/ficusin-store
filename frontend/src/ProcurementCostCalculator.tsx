@@ -202,17 +202,6 @@ export function ProcurementCostCalculator({
                 undefined,
                 retailValue,
               )}
-              {hasSource &&
-                (["wb", "ozon"] as const).map((ch) => (
-                  <label key={ch}>
-                    {ch === "wb" ? "Цена WB, ₽" : "Цена Ozon, ₽"}
-                    <input
-                      readOnly
-                      value={checked?.quotes[ch]?.priceRub ?? ""}
-                      placeholder={boxValid ? "Ожидает расчёта" : "Нужны размеры коробки"}
-                    />
-                  </label>
-                ))}
             </div>
             {hasSource && (
               <p role="status">
