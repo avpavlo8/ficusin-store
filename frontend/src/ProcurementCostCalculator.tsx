@@ -175,16 +175,7 @@ export function ProcurementCostCalculator({
   const retailValue =
     mode === "retail" ? draft.retail || "" : checked ? String(checked.retailRub) : "";
   return (
-    <section className="procurement-calculator" aria-labelledby="procurement-calculator-title">
-      <div className="procurement-calculator-heading">
-        <div>
-          <h2 id="procurement-calculator-title">Калькулятор цен</h2>
-          <p>
-            Введите закупку в евро, готовую себестоимость или цену магазина — остальные цены
-            рассчитаются автоматически.
-          </p>
-        </div>
-      </div>
+    <section className="procurement-calculator" aria-label="Калькулятор цен">
       <div className="procurement-calculator-layout">
         <div className="procurement-calculator-form">
           <div className="procurement-calculator-group">

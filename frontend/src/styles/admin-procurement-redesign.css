@@ -278,39 +278,6 @@
 .admin-page .procurement-calculator {
   padding: 0 0 20px;
 }
-.admin-page .procurement-calculator-heading {
-  margin-bottom: 18px;
-  padding: 24px 28px;
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: start;
-  border: 1px solid #e3d4c9;
-  border-radius: 10px;
-  background: #f5eae2;
-}
-.admin-page .procurement-calculator-heading h2 {
-  margin: 5px 0 8px;
-  font:
-    400 clamp(25px, 2.4vw, 34px) / 1.1 Georgia,
-    serif;
-  color: #3e3530;
-}
-.admin-page .procurement-calculator-heading p {
-  margin: 0;
-  color: #73635b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.admin-page .procurement-calculator-heading > span {
-  padding: 6px 9px;
-  flex: none;
-  border-radius: 99px;
-  background: #fff;
-  color: #9c4d34;
-  font-size: 10px;
-  font-weight: 700;
-}
 .admin-page .procurement-calculator-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.75fr);
@@ -463,14 +430,6 @@
   }
   .admin-page .procurement-calculator-result {
     position: static;
-  }
-  .admin-page .procurement-calculator-heading {
-    padding: 20px;
-    display: block;
-  }
-  .admin-page .procurement-calculator-heading > span {
-    display: inline-block;
-    margin-top: 12px;
   }
 }
 @media (max-width: 520px) {
