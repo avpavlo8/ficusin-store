@@ -8367,6 +8367,17 @@ components:
       type: object
     procurement.UnitPriceInput:
       properties:
+        mode:
+          type: string
+          enum: ["", cost, retail]
+          description: Omitted for legacy input; cost uses landed cost, retail uses the exact store price.
+        markupRate:
+          anyOf:
+            - type: number
+              minimum: 0
+              maximum: 10
+            - type: "null"
+          description: Optional preview-only contribution rate from landed cost; defaults to current settings.
         costRub:
           type: number
         package:

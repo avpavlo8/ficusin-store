@@ -827,3 +827,16 @@
     flex-direction: column;
   }
 }
+
+.admin-page .procurement-calculator-fields input:disabled {
+  background: #edeae4;
+  color: #736b61;
+  cursor: not-allowed;
+}
+.admin-page .procurement-calculator-result .procurement-settings-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-page .procurement-calculator-result .procurement-checklist {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

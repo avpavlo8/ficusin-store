@@ -95,7 +95,16 @@ func validateUnified(p *UnifiedPricing, channels map[string]ChannelCosts, tax fl
 func UnifiedChannelQuotes(s PricingSettings, cost float64, box *PricingPackage) map[string]ChannelQuote {
 	return unifiedChannelQuotesDecimal(s, cost, box, nil)
 }
+func unifiedChannelQuotesTarget(s PricingSettings, cost float64, box *PricingPackage, markup float64) map[string]ChannelQuote {
+	target := new(big.Rat).Mul(money.Decimal(cost), money.Decimal(markup))
+	return unifiedChannelQuotesWithTarget(s, cost, box, nil, target)
+}
+
 func unifiedChannelQuotesDecimal(s PricingSettings, cost float64, box *PricingPackage, costExact *big.Rat) map[string]ChannelQuote {
+	return unifiedChannelQuotesWithTarget(s, cost, box, costExact, nil)
+}
+
+func unifiedChannelQuotesWithTarget(s PricingSettings, cost float64, box *PricingPackage, costExact, targetExact *big.Rat) map[string]ChannelQuote {
 	quotes := map[string]ChannelQuote{}
 	p := s.Economics.Unified
 	if p == nil || !p.Enabled {
@@ -110,7 +119,9 @@ func unifiedChannelQuotesDecimal(s PricingSettings, cost float64, box *PricingPa
 	if costExact == nil {
 		costExact = money.Decimal(cost)
 	}
-	targetExact := new(big.Rat).Mul(costExact, money.Decimal(p.MarkupRate))
+	if targetExact == nil {
+		targetExact = new(big.Rat).Mul(costExact, money.Decimal(p.MarkupRate))
+	}
 	target := decimalFloat(targetExact)
 	for _, ch := range []string{"site", "wb", "ozon"} {
 		costs := s.Economics.Channels[ch]
