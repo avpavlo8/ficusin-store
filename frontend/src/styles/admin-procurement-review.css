@@ -827,3 +827,46 @@
     flex-direction: column;
   }
 }
+
+.admin-page .procurement-calculator-fields input:disabled {
+  background: #edeae4;
+  color: #736b61;
+  cursor: not-allowed;
+}
+.admin-page .procurement-calculator-result .procurement-settings-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-page .procurement-calculator-result .procurement-checklist {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-page .procurement-calculator-form {
+  padding: 18px;
+}
+.admin-page .procurement-calculator-form .procurement-calculator-fields {
+  grid-template-columns: repeat(3, minmax(0, 180px));
+  gap: 10px;
+}
+.admin-page .procurement-calculator-form .procurement-calculator-fields label {
+  min-width: 0;
+  gap: 4px;
+}
+.admin-page .procurement-calculator-form .procurement-calculator-fields input {
+  height: 34px;
+  padding: 0 8px;
+  font-size: 14px;
+}
+.admin-page .procurement-calculator-form .procurement-calculator-group h3 {
+  margin-bottom: 12px;
+  font-size: 21px;
+}
+@media (max-width: 520px) {
+  .admin-page .procurement-calculator-form .procurement-calculator-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-page .procurement-calculator-form .procurement-calculator-fields input {
+    height: 38px;
+    font-size: 16px;
+  }
+}

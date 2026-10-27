@@ -3,24 +3,19 @@ import { api } from "./adminShared";
 import { PricingQuoteSummary } from "./ProcurementEconomics";
 import type { ProcurementChannelQuote, ProcurementSettings } from "./adminTypes";
 
-const money = (value: number) =>
-  new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-    value,
-  );
+const rubles = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const money = (value: number) => rubles.format(value);
 const number = (value: string) => Number(value.replace(",", "."));
-
+type Mode = "purchase" | "cost" | "retail";
 export type ProcurementCalculatorDraft = Record<
-  | "name"
-  | "price"
-  | "rate"
-  | "pot"
-  | "height"
-  | "markup"
-  | "trolleyCost"
-  | "trolleyVolume"
-  | "fill",
+  "price" | "rate" | "pot" | "height" | "markup" | "trolleyCost" | "trolleyVolume" | "fill",
   string
->;
+> &
+  Partial<Record<"mode" | "cost" | "retail" | "boxLength" | "boxWidth" | "boxHeight", string>>;
+type Preview = { retailRub: number; quotes: Record<string, ProcurementChannelQuote> };
 
 export function ProcurementCostCalculator({
   settings,
@@ -38,65 +33,89 @@ export function ProcurementCostCalculator({
   const [draft, setDraft] = useState<ProcurementCalculatorDraft>(
     () =>
       initialDraft || {
-        name: "",
         price: "",
         rate: String(settings.defaultExchangeRate),
         pot: "",
         height: "",
-        markup: String(Math.round((settings.retailMarkupMultiplier - 1) * 10000) / 100),
+        markup: String(
+          Math.round(
+            (settings.economics?.unified?.enabled
+              ? settings.economics.unified.markupRate
+              : settings.retailMarkupMultiplier - 1) * 10000,
+          ) / 100,
+        ),
         trolleyCost: String(settings.trolleyCostRub),
         trolleyVolume: String(settings.trolleyVolumeCm3),
         fill: String(settings.trolleyFillRatio * 100),
       },
   );
-  const { name, price, rate, pot, height, markup, trolleyCost, trolleyVolume, fill } = draft;
+  const mode: Mode = draft.mode === "cost" || draft.mode === "retail" ? draft.mode : "purchase";
+  const hasSource = Boolean(
+    (mode === "purchase" ? draft.price : mode === "cost" ? draft.cost : draft.retail)?.trim(),
+  );
   const change = (key: keyof ProcurementCalculatorDraft, value: string) => {
     const next = { ...draft, [key]: value };
+    if (key === "price") next.mode = "purchase";
+    if (key === "cost") next.mode = value.trim() ? "cost" : "purchase";
+    if (key === "retail")
+      next.mode = value.trim() ? "retail" : draft.cost?.trim() ? "cost" : "purchase";
     setDraft(next);
     onDraftChange(next);
     setCopied(false);
+    setCopyError("");
   };
-  const inputs = [price, rate, pot, height, markup, trolleyCost, trolleyVolume, fill].map(number);
-  const [eur, rubRate, diameter, plantHeight, enteredPercent, cartCost, cartVolume, occupancy] =
-    inputs;
-  const percent = settings.economics?.unified?.enabled
-    ? settings.economics.unified.markupRate * 100
-    : enteredPercent;
-  const [box, setBox] = useState({ length: "", width: "", height: "" });
+  const positive = (value: string | undefined, max = 1e9) =>
+    Boolean(value?.trim()) &&
+    Number.isFinite(number(value!)) &&
+    number(value!) > 0 &&
+    number(value!) <= max;
+  const nonnegative = (value: string, max = 1e9) =>
+    Boolean(value.trim()) &&
+    Number.isFinite(number(value)) &&
+    number(value) >= 0 &&
+    number(value) <= max;
+  const purchase = number(draft.price) * number(draft.rate);
+  const delivery =
+    (number(draft.trolleyCost) * Math.PI * (number(draft.pot) / 2) ** 2 * number(draft.height)) /
+    ((number(draft.trolleyVolume) * number(draft.fill)) / 100);
+  const cost = mode === "purchase" ? purchase + delivery : number(draft.cost || "");
+  const percent = number(draft.markup);
   const valid =
-    inputs.every(Number.isFinite) &&
-    eur > 0 &&
-    rubRate > 0 &&
-    diameter > 0 &&
-    plantHeight > 0 &&
-    percent >= 0 &&
-    cartCost >= 0 &&
-    cartVolume > 0 &&
-    occupancy > 0 &&
-    occupancy <= 100;
-  const purchase = eur * rubRate;
-  const volume = Math.PI * (diameter / 2) ** 2 * plantHeight;
-  const usableVolume = (cartVolume * occupancy) / 100;
-  const delivery = (cartCost * volume) / usableVolume;
-  const cost = purchase + delivery;
-  const added = (cost * percent) / 100;
-  type Preview = { retailRub: number; quotes: Record<string, ProcurementChannelQuote> };
-  const [preview, setPreview] = useState<{ key: string; data: Preview } | null>(null);
-  const [previewError, setPreviewError] = useState("");
+    mode === "retail"
+      ? positive(draft.retail)
+      : nonnegative(draft.markup, 1000) &&
+        (mode === "cost"
+          ? positive(draft.cost)
+          : [draft.price, draft.rate, draft.pot, draft.height, draft.trolleyVolume].every((v) =>
+              positive(v),
+            ) &&
+            nonnegative(draft.trolleyCost) &&
+            positive(draft.fill, 100) &&
+            Number.isFinite(cost) &&
+            cost > 0 &&
+            cost <= 1e9);
+  const boxKeys = ["boxLength", "boxWidth", "boxHeight"] as const;
+  const boxValid = boxKeys.every((key) => positive(draft[key], 1000));
+  const boxTouched = boxKeys.some((key) => Boolean(draft[key]?.trim()));
   const requestKey = valid
     ? JSON.stringify({
-        costRub: cost,
-        retailRub: cost + added,
-        package: Object.values(box).every((v) => number(v) > 0)
+        mode: mode === "retail" ? "retail" : "cost",
+        ...(mode === "retail"
+          ? { retailRub: number(draft.retail!) }
+          : { costRub: cost, markupRate: percent / 100 }),
+        package: boxValid
           ? {
-              lengthCm: number(box.length),
-              widthCm: number(box.width),
-              heightCm: number(box.height),
+              lengthCm: number(draft.boxLength!),
+              widthCm: number(draft.boxWidth!),
+              heightCm: number(draft.boxHeight!),
               source: "Ручной расчёт",
             }
           : undefined,
       })
     : "";
+  const [preview, setPreview] = useState<{ key: string; data: Preview } | null>(null);
+  const [failure, setFailure] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     const timer = window.setTimeout(() => {
@@ -108,13 +127,13 @@ export function ProcurementCostCalculator({
         .then((data) => {
           if (!cancelled) {
             setPreview({ key: requestKey, data });
-            setPreviewError("");
+            setFailure("");
           }
         })
         .catch(() => {
           if (!cancelled) {
             setPreview(null);
-            setPreviewError("Не удалось проверить цену с расходами. Повторите расчёт.");
+            setFailure(requestKey);
           }
         });
     }, 350);
@@ -122,240 +141,260 @@ export function ProcurementCostCalculator({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [requestKey]);
+  }, [requestKey, attempt]);
   const checked = preview?.key === requestKey ? preview.data : null;
-  const canQuote = Boolean(checked?.quotes?.site?.priceRub);
-  const quote = `${name.trim() || "Растение под заказ"} — ${money(checked?.retailRub || 0)} ₽. Предварительный расчёт от ${new Date().toLocaleDateString("ru-RU")}. Окончательная цена после подтверждения поставщика и доставки.`;
+  const failed = failure === requestKey && Boolean(requestKey);
+  const canQuote = Boolean(checked && (mode === "retail" || checked.quotes.site?.priceRub));
+  const quote = `Магазин: ${money(checked?.retailRub || 0)} ₽.${(["wb", "ozon"] as const).map((ch) => (checked?.quotes[ch]?.priceRub != null ? ` ${ch === "wb" ? "WB" : "Ozon"}: ${money(checked.quotes[ch].priceRub!)} ₽.` : "")).join("")} Предварительный расчёт от ${new Date().toLocaleDateString("ru-RU")}. Окончательная цена после подтверждения поставщика и доставки.`;
+  const field = (
+    key: keyof ProcurementCalculatorDraft,
+    label: string,
+    isValid: boolean,
+    hint = "Введите число больше нуля",
+    displayValue = draft[key] || "",
+  ) => (
+    <label key={key}>
+      {label}
+      <input
+        inputMode="decimal"
+        value={displayValue}
+        aria-invalid={Boolean(displayValue) && !isValid}
+        onChange={(e) => change(key, e.target.value)}
+      />
+      {Boolean(displayValue) && !isValid && <small className="procurement-warning">{hint}</small>}
+    </label>
+  );
+  const costValue =
+    mode === "purchase"
+      ? valid
+        ? String(Math.round(cost * 100) / 100)
+        : ""
+      : mode === "cost"
+        ? draft.cost || ""
+        : "";
+  const retailValue =
+    mode === "retail" ? draft.retail || "" : checked ? String(checked.retailRub) : "";
   return (
-    <section className="procurement-calculator" aria-labelledby="procurement-calculator-title">
-      <div className="procurement-calculator-heading">
-        <div>
-          <p className="eyebrow">Предварительная цена</p>
-          <h2 id="procurement-calculator-title">Калькулятор разовой закупки</h2>
-          <p>Расчёт стоимости растения под заказ.</p>
-        </div>
-        <span>Расчёт до инвойса</span>
-      </div>
+    <section className="procurement-calculator" aria-label="Калькулятор цен">
       <div className="procurement-calculator-layout">
         <div className="procurement-calculator-form">
           <div className="procurement-calculator-group">
-            <h3>Растение</h3>
+            <h3>Исходная сумма</h3>
             <div className="procurement-calculator-fields">
-              <label className="wide">
-                Название
-                <input
-                  value={name}
-                  onChange={(event) => change("name", event.target.value)}
-                  placeholder="Например, фикус Лирата для клиента"
-                />
-              </label>
-              <label>
-                Цена поставщика, €
-                <input
-                  aria-invalid={price !== "" && (eur <= 0 || !Number.isFinite(number(price)))}
-                  inputMode="decimal"
-                  value={price}
-                  onChange={(event) => change("price", event.target.value)}
-                  placeholder="0,00"
-                />
-                {price !== "" && (eur <= 0 || !Number.isFinite(eur)) && (
-                  <small className="procurement-warning">Укажите цену больше нуля</small>
-                )}
-              </label>
-              <label>
-                Курс, ₽/€
-                <input
-                  aria-invalid={rate !== "" && (rubRate <= 0 || !Number.isFinite(number(rate)))}
-                  inputMode="decimal"
-                  value={rate}
-                  onChange={(event) => change("rate", event.target.value)}
-                />
-                {(rubRate <= 0 || !Number.isFinite(rubRate)) && (
-                  <small className="procurement-warning">Курс должен быть больше нуля</small>
-                )}
-              </label>
-              <label>
-                Диаметр горшка, см
-                <input
-                  aria-invalid={pot !== "" && (diameter <= 0 || !Number.isFinite(number(pot)))}
-                  inputMode="decimal"
-                  value={pot}
-                  onChange={(event) => change("pot", event.target.value)}
-                  placeholder="D"
-                />
-                {pot !== "" && (diameter <= 0 || !Number.isFinite(diameter)) && (
-                  <small className="procurement-warning">Диаметр должен быть больше нуля</small>
-                )}
-              </label>
-              <label>
-                Высота растения, см
-                <input
-                  aria-invalid={
-                    height !== "" && (plantHeight <= 0 || !Number.isFinite(number(height)))
-                  }
-                  inputMode="decimal"
-                  value={height}
-                  onChange={(event) => change("height", event.target.value)}
-                  placeholder="H"
-                />
-                {height !== "" && (plantHeight <= 0 || !Number.isFinite(plantHeight)) && (
-                  <small className="procurement-warning">Высота должна быть больше нуля</small>
-                )}
-              </label>
-              <label>
-                Стартовая наценка, %
-                <input
-                  aria-invalid={markup !== "" && (percent < 0 || !Number.isFinite(number(markup)))}
-                  inputMode="decimal"
-                  readOnly={settings.economics?.unified?.enabled}
-                  value={settings.economics?.unified?.enabled ? String(percent) : markup}
-                  onChange={(event) => change("markup", event.target.value)}
-                />
-                {(percent < 0 || !Number.isFinite(percent)) && (
-                  <small className="procurement-warning">
-                    Прибавка не может быть отрицательной
-                  </small>
-                )}
-              </label>
+              {field(
+                "price",
+                "Цена поставщика, €",
+                mode !== "purchase" || positive(draft.price),
+                undefined,
+                mode === "purchase" ? draft.price : "",
+              )}
+              {field(
+                "cost",
+                "Себестоимость, ₽",
+                mode !== "cost" || positive(draft.cost),
+                undefined,
+                costValue,
+              )}
+              {field(
+                "retail",
+                "Цена в магазине, ₽",
+                mode !== "retail" || positive(draft.retail),
+                undefined,
+                retailValue,
+              )}
             </div>
+            {hasSource && (
+              <p role="status">
+                {mode === "cost"
+                  ? "Считаем от введённой себестоимости с доставкой до Рязани. Размеры растения и закупочная логистика не участвуют."
+                  : mode === "retail"
+                    ? "Считаем от введённой цены магазина. Цены МП сохраняют ту же сумму после расходов продажи. Себестоимость и прибыль без закупочных данных неизвестны."
+                    : "Считаем от закупки в евро и логистики до Рязани. Можно сразу ввести готовую себестоимость или цену магазина."}
+              </p>
+            )}
           </div>
-          <div className="procurement-calculator-group">
-            <h3>Упаковка для расчёта МП</h3>
-            <p>
-              Габариты коробки в сантиметрах. Без них цена сайта доступна, а доставка МП не
-              подставляется приблизительно.
-            </p>
-            <div className="procurement-calculator-fields">
-              {(["length", "width", "height"] as const).map((key, index) => (
-                <label key={key}>
-                  {["Длина коробки, см", "Ширина коробки, см", "Высота коробки, см"][index]}
-                  <input
-                    inputMode="decimal"
-                    value={box[key]}
-                    onChange={(e) => setBox({ ...box, [key]: e.target.value })}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-          <details className="procurement-calculator-assumptions">
-            <summary>Параметры телеги и доставки</summary>
-            <div className="procurement-calculator-fields">
-              <label>
-                Стоимость телеги, ₽
-                <input
-                  aria-invalid={
-                    trolleyCost !== "" && (cartCost < 0 || !Number.isFinite(number(trolleyCost)))
-                  }
-                  inputMode="decimal"
-                  value={trolleyCost}
-                  onChange={(event) => change("trolleyCost", event.target.value)}
-                />
-                {(cartCost < 0 || !Number.isFinite(cartCost)) && (
-                  <small className="procurement-warning">
-                    Стоимость не может быть отрицательной
-                  </small>
+          {hasSource && mode !== "retail" && (
+            <div className="procurement-calculator-group">
+              <h3>{mode === "purchase" ? "Параметры закупки" : "Наценка"}</h3>
+              <div className="procurement-calculator-fields">
+                {mode === "purchase" && (
+                  <>
+                    {field("rate", "Курс, ₽/€", positive(draft.rate), undefined)}
+                    {field("pot", "Диаметр горшка, см", positive(draft.pot), undefined)}
+                    {field("height", "Высота растения, см", positive(draft.height), undefined)}
+                  </>
                 )}
-              </label>
-              <label>
-                Заполнение, %
-                <input
-                  aria-invalid={
-                    fill !== "" &&
-                    (occupancy <= 0 || occupancy > 100 || !Number.isFinite(number(fill)))
-                  }
-                  inputMode="decimal"
-                  value={fill}
-                  onChange={(event) => change("fill", event.target.value)}
-                />
-                {(occupancy <= 0 || occupancy > 100 || !Number.isFinite(occupancy)) && (
-                  <small className="procurement-warning">
-                    Введите заполнение больше нуля и не больше 100%
-                  </small>
+                {field(
+                  "markup",
+                  "Наценка, %",
+                  nonnegative(draft.markup, 1000),
+                  "Укажите наценку от 0 до 1000%",
                 )}
-              </label>
-              <label>
-                Объём телеги, см³
-                <input
-                  aria-invalid={
-                    trolleyVolume !== "" &&
-                    (cartVolume <= 0 || !Number.isFinite(number(trolleyVolume)))
-                  }
-                  inputMode="decimal"
-                  value={trolleyVolume}
-                  onChange={(event) => change("trolleyVolume", event.target.value)}
-                />
-                {(cartVolume <= 0 || !Number.isFinite(cartVolume)) && (
-                  <small className="procurement-warning">Объём должен быть больше нуля</small>
-                )}
-              </label>
-            </div>
-          </details>
-        </div>
-        <aside className="procurement-calculator-result" aria-live="polite">
-          <span className="eyebrow">Цена для клиента</span>
-          {valid ? (
-            <>
-              <strong>{checked ? `${money(checked.retailRub)} ₽` : "Проверяем цену…"}</strong>
-              <p>{name.trim() || "Разовая позиция"}</p>
-              <dl>
-                <div>
-                  <dt>Растение по курсу</dt>
-                  <dd>{money(purchase)} ₽</dd>
-                </div>
-                <div>
-                  <dt>Расчётная логистика</dt>
-                  <dd>{money(delivery)} ₽</dd>
-                </div>
-                <div className="total">
-                  <dt>Себестоимость</dt>
-                  <dd>{money(cost)} ₽</dd>
-                </div>
-                <div>
-                  <dt>Прибавка {money(percent)}%</dt>
-                  <dd>{money(added)} ₽</dd>
-                </div>
-              </dl>
-              <PricingQuoteSummary quotes={checked?.quotes} />
-              {previewError && <p role="alert">{previewError}</p>}
-              <div className="procurement-inline-actions">
-                <button
-                  disabled={!canQuote}
-                  onClick={() => {
-                    void navigator.clipboard
-                      .writeText(quote)
-                      .then(() => {
-                        setCopied(true);
-                        setCopyError("");
-                      })
-                      .catch(() =>
-                        setCopyError("Не удалось скопировать. Выделите текст расчёта вручную."),
-                      );
-                  }}
-                >
-                  {copied ? "Расчёт скопирован" : "Копировать расчёт"}
-                </button>
-                <button
-                  disabled={!canQuote}
-                  onClick={() => onRequest(name.trim() || "Растение под заказ", quote)}
-                >
-                  Создать запрос
-                </button>
               </div>
-              {copyError && (
-                <p role="status">
-                  {copyError} {quote}
+            </div>
+          )}
+          {hasSource && (
+            <div className="procurement-calculator-group">
+              <h3>Коробка для маркетплейсов</h3>
+              <p>
+                Габариты упакованного товара нужны во всех режимах для расчёта упаковки и логистики
+                WB и Ozon.
+              </p>
+              <div className="procurement-calculator-fields">
+                {boxKeys.map((key, i) =>
+                  field(
+                    key,
+                    ["Длина коробки, см", "Ширина коробки, см", "Высота коробки, см"][i],
+                    positive(draft[key], 1000),
+                    "Укажите размер больше 0 и не больше 1000 см",
+                  ),
+                )}
+              </div>
+              {boxTouched && !boxValid && (
+                <p className="procurement-warning">
+                  Заполните все три размера коробки корректными числами.
                 </p>
               )}
-              <small>
-                Предварительная цена. Фактическая доставка уточняется по инвойсу. Сопоставьте цену с
-                рынком; остаток с продажи ещё должен покрыть месячные расходы.
-              </small>
-            </>
-          ) : (
-            <p>Введите цену, курс и размеры, чтобы увидеть расчёт.</p>
+            </div>
           )}
-        </aside>
+          {hasSource && mode === "purchase" && (
+            <details className="procurement-calculator-assumptions">
+              <summary>Параметры телеги и доставки</summary>
+              <div className="procurement-calculator-fields">
+                {field(
+                  "trolleyCost",
+                  "Стоимость телеги, ₽",
+                  nonnegative(draft.trolleyCost),
+                  "Стоимость не может быть отрицательной",
+                )}
+                {field(
+                  "fill",
+                  "Заполнение, %",
+                  positive(draft.fill, 100),
+                  "Введите заполнение больше 0 и не больше 100%",
+                )}
+                {field(
+                  "trolleyVolume",
+                  "Объём телеги, см³",
+                  positive(draft.trolleyVolume),
+                  undefined,
+                )}
+              </div>
+            </details>
+          )}
+        </div>
+        {hasSource && (
+          <aside className="procurement-calculator-result" aria-live="polite">
+            <h3>Цена в магазине</h3>
+            {valid ? (
+              <>
+                <strong>
+                  {checked
+                    ? `${money(checked.retailRub)} ₽`
+                    : failed
+                      ? "Расчёт недоступен"
+                      : "Считаем цены…"}
+                </strong>
+                {mode !== "retail" && (
+                  <dl>
+                    {mode === "purchase" && (
+                      <>
+                        <div>
+                          <dt>Растение по курсу</dt>
+                          <dd>{money(purchase)} ₽</dd>
+                        </div>
+                        <div>
+                          <dt>Логистика до Рязани</dt>
+                          <dd>{money(delivery)} ₽</dd>
+                        </div>
+                      </>
+                    )}
+                    <div className="total">
+                      <dt>Себестоимость</dt>
+                      <dd>{money(cost)} ₽</dd>
+                    </div>
+                    <div>
+                      <dt>Наценка {money(percent)}%</dt>
+                      <dd>{money((cost * percent) / 100)} ₽</dd>
+                    </div>
+                  </dl>
+                )}
+                {mode === "retail" ? (
+                  <div className="procurement-settings-grid">
+                    {(["wb", "ozon"] as const).map((ch) => (
+                      <div className="procurement-checklist" key={ch}>
+                        <strong>{ch === "wb" ? "Wildberries · FBS" : "Ozon · FBS"}</strong>
+                        <p>
+                          {checked?.quotes[ch]?.priceRub != null
+                            ? `${money(checked.quotes[ch].priceRub!)} ₽`
+                            : checked?.quotes[ch]?.missing?.join(", ") || "Нужен расчёт расходов."}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <PricingQuoteSummary quotes={checked?.quotes} />
+                )}
+                {!boxValid && (
+                  <p className="procurement-warning">
+                    Введите размеры коробки, чтобы увидеть цены WB и Ozon.
+                  </p>
+                )}
+                {failed && (
+                  <p role="alert">
+                    Не удалось рассчитать цены.{" "}
+                    <button
+                      onClick={() => {
+                        setFailure("");
+                        setAttempt((v) => v + 1);
+                      }}
+                    >
+                      Повторить расчёт
+                    </button>
+                  </p>
+                )}
+                <div className="procurement-inline-actions">
+                  <button
+                    disabled={!canQuote}
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(quote)
+                        .then(() => {
+                          setCopied(true);
+                          setCopyError("");
+                        })
+                        .catch(() =>
+                          setCopyError("Не удалось скопировать. Выделите текст расчёта вручную."),
+                        );
+                    }}
+                  >
+                    {copied ? "Расчёт скопирован" : "Копировать расчёт"}
+                  </button>
+                  <button disabled={!canQuote} onClick={() => onRequest("", quote)}>
+                    Создать запрос
+                  </button>
+                </div>
+                {copyError && (
+                  <p role="status">
+                    {copyError} {quote}
+                  </p>
+                )}
+                <small>
+                  Предварительный расчёт по действующим настройкам расходов. Цены товаров не
+                  изменяются.
+                </small>
+              </>
+            ) : (
+              <p>
+                {mode === "purchase"
+                  ? "Введите цену, курс и размеры растения, чтобы увидеть расчёт."
+                  : mode === "cost"
+                    ? "Введите себестоимость, чтобы увидеть расчёт."
+                    : "Введите цену в магазине, чтобы увидеть расчёт."}
+              </p>
+            )}
+          </aside>
+        )}
       </div>
     </section>
   );
