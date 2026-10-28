@@ -6,6 +6,7 @@ Only fixture values and capability counts are printed to public CI logs.
 
 import json
 import os
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import urllib.error
@@ -14,6 +15,29 @@ import urllib.request
 
 CODE = "X380416519"
 NAME = "ТЕСТ API Фикусин — резерв и отмена 26.10.2026"
+evidence_path = Path("fixture-readback.json")
+evidence = {"readOnly": True, "fixture": CODE, "requests": []}
+
+
+def record_fixture_read(url, status, result):
+    """Keep complete fixture-only responses, never auth, headers or other SKUs."""
+    parsed = urllib.parse.urlparse(url)
+    params = urllib.parse.parse_qs(parsed.query)
+    fixture_state = parsed.path == "/retail/order/01a177ee-1ac4-780f-82d7-045b9fdfba13/state"
+    fixture_catalogue = parsed.path == "/retail/v2/nomenclature/list" and params.get("searchString") == [CODE]
+    if not (fixture_state or fixture_catalogue):
+        return
+    if fixture_catalogue:
+        if not isinstance(result, dict):
+            return
+        rows = result.get("nomenclatures") or result.get("items") or []
+        if not isinstance(rows, list) or any(not isinstance(r, dict) or r.get("nomNumber") != CODE or r.get("name") != NAME for r in rows):
+            return  # Never persist a broader catalogue response.
+    evidence["requests"].append({
+        "at": datetime.now(ZoneInfo("Europe/Moscow")).isoformat(),
+        "method": "GET", "url": url, "httpStatus": status, "response": result,
+    })
+    evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2))
 
 
 def request(url, token=None, data=None):
@@ -26,7 +50,10 @@ def request(url, token=None, data=None):
     )
     try:
         with urllib.request.urlopen(req, timeout=45) as response:
-            return json.load(response)
+            result = json.load(response)
+            if data is None and token:
+                record_fixture_read(url, response.status, result)
+            return result
     except urllib.error.HTTPError as error:
         # Do not expose vendor response bodies or request headers in CI.
         print("endpoint", urllib.parse.urlparse(url).path, "HTTP", error.code)
@@ -73,6 +100,7 @@ prices = get("/retail/nomenclature/price-list", pointId=point_id,
              actualDate=datetime.now(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d"), page=0, pageSize=100)
 print("price_list_result_fields", sorted(prices) if isinstance(prices, dict) else "list")
 price_rows = prices if isinstance(prices, list) else next((v for v in prices.values() if isinstance(v, list)), [])
+print("price_list_count", len(price_rows))
 test_price_id = None
 for price in price_rows:
     if str(price.get("id")) == "6":
@@ -82,7 +110,7 @@ for price in price_rows:
         print("fixture_price_list_id", test_price_id)
 
 catalogue_fixture = None
-for price_list in dict.fromkeys((None, 6, test_price_id)):
+for price_list in dict.fromkeys((None, 6, 19, test_price_id)):
     params = dict(pointId=point_id, searchString=CODE, withBalance="true", page=0, pageSize=50)
     if price_list:
         params["priceListId"] = price_list
@@ -108,3 +136,7 @@ if os.environ.get("SABY_FIXTURE_RECONCILE") == "true":
     print("fixture_order_readback_fields", sorted(order))
     print("fixture_order_number", order.get("number"), order.get("orderNumber"))
     print("fixture_order_position_fields", [sorted(r) for r in order.get("nomenclatures") or []])
+
+evidence["fixturePriceListed"] = test_price_id == 19
+evidence["fixtureBankType"] = test_bank_type
+evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2))
