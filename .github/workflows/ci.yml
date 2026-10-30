@@ -466,7 +466,12 @@ jobs:
           # file alone is not recovery evidence.
           docker stop ficusin-runtime >/dev/null
           createdb -h 127.0.0.1 -U postgres ficusin_restore_ci
-          bash scripts/verify-backup-restore.sh \
+          # Match pg_dump/pg_restore to the PostgreSQL 16 service. The runner's
+          # newer client emits settings (e.g. transaction_timeout) that PG16
+          # cannot restore, even though the application and backup are valid.
+          docker run --rm --network host -e PGPASSWORD \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            postgres:16 bash scripts/verify-backup-restore.sh \
             'postgres://postgres:postgres@127.0.0.1:5432/ficusin_runtime?sslmode=disable' \
             'postgres://postgres:postgres@127.0.0.1:5432/ficusin_restore_ci?sslmode=disable'
           dropdb -h 127.0.0.1 -U postgres ficusin_restore_ci

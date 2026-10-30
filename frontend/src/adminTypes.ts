@@ -959,7 +959,13 @@ export type AdminCollection = {
   products: number[];
 };
 
-export type SettingDefinition = { key: string; title: string; note: string; kind: string };
+export type SettingDefinition = {
+  key: string;
+  title: string;
+  note: string;
+  kind: string;
+  options?: { value: string; title: string }[];
+};
 
 export type ImportEntry = {
   code: string;

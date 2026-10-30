@@ -917,8 +917,8 @@ func (worker *ShippingWorker) shipmentContents(
 ) ([]integration.ShipmentItem, integration.Parcel, error) {
 	rows, err := worker.pool.Query(ctx, `
 		SELECT oi.product_name, oi.unit_price::DOUBLE PRECISION, oi.quantity,
-			COALESCE(variant_numeric_attribute(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_width_cm'), 0)::INTEGER,
-			COALESCE(variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
+			COALESCE((oi.variant_snapshot->>'packageLengthCm')::INTEGER, variant_numeric_attribute(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE((oi.variant_snapshot->>'packageWidthCm')::INTEGER, variant_numeric_attribute(pv.id, 'package_width_cm'), 0)::INTEGER,
+			COALESCE((oi.variant_snapshot->>'packageHeightCm')::INTEGER, variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE((oi.variant_snapshot->>'packageWeightGrams')::INTEGER, variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
 		FROM order_items oi
 		LEFT JOIN product_variants pv ON pv.id = oi.variant_id
 		WHERE oi.order_id = $1

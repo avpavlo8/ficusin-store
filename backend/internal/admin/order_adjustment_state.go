@@ -41,7 +41,7 @@ func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id in
 	// Редактор правит SKU, а не карточку товара, поэтому состояние обязано
 	// нести sku и название варианта: иначе менеджер не видит, какой размер
 	// лежит в заказе, а сохранение уходит без идентичности строки.
-	rows, err := repository.pool.Query(ctx, `SELECT oi.id,COALESCE(oi.product_id,0),COALESCE(oi.sku,''),COALESCE(oi.variant_label,''),oi.product_name,oi.unit_price::DOUBLE PRECISION,oi.quantity,COALESCE(variant_numeric_attribute(oi.variant_id,'package_length_cm'),0)::INTEGER,COALESCE(variant_numeric_attribute(oi.variant_id,'package_width_cm'),0)::INTEGER,COALESCE(variant_numeric_attribute(oi.variant_id,'package_height_cm'),0)::INTEGER,COALESCE(variant_numeric_attribute(oi.variant_id,'package_weight_grams'),0)::INTEGER FROM order_items oi WHERE oi.order_id=$1 ORDER BY oi.id`, id)
+	rows, err := repository.pool.Query(ctx, `SELECT oi.id,COALESCE(oi.product_id,0),COALESCE(oi.sku,''),COALESCE(oi.variant_label,''),oi.product_name,oi.unit_price::DOUBLE PRECISION,oi.quantity,COALESCE((oi.variant_snapshot->>'packageLengthCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_length_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageWidthCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_width_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageHeightCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_height_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageWeightGrams')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_weight_grams'), 0)::INTEGER FROM order_items oi WHERE oi.order_id=$1 ORDER BY oi.id`, id)
 	if err != nil {
 		return state, fmt.Errorf("query order adjustment lines: %w", err)
 	}

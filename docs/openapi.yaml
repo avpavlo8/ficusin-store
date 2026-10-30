@@ -4805,7 +4805,9 @@ paths:
       security:
         - Session: []
       description: Owner only. Read or change non-secret runtime settings; credentials remain in
-        environment variables.
+        environment variables. cdek.packaging_season accepts summer or winter (default summer).
+        Its definition has kind select and options with value/title. The selection applies to
+        new quotes; saved order packing stays unchanged. Missing seasonal dimensions require a manual quote.
     put:
       operationId: put_admin_settings
       responses:
@@ -4819,7 +4821,9 @@ paths:
       security:
         - Session: []
       description: Owner only. Read or change non-secret runtime settings; credentials remain in
-        environment variables.
+        environment variables. cdek.packaging_season accepts summer or winter (default summer).
+        Its definition has kind select and options with value/title. The selection applies to
+        new quotes; saved order packing stays unchanged. Missing seasonal dimensions require a manual quote.
       requestBody:
         required: true
         content:

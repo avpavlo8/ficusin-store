@@ -552,7 +552,7 @@ func validateVariantInput(input VariantInput) error {
 }
 
 func validatePackageMeasurement(code string, value any) error {
-	if code != "package_length_cm" && code != "package_width_cm" && code != "package_height_cm" && code != "package_weight_grams" {
+	if code != "package_length_cm" && code != "package_width_cm" && code != "package_height_cm" && code != "package_weight_grams" && code != "package_winter_length_cm" && code != "package_winter_width_cm" && code != "package_winter_height_cm" {
 		return nil
 	}
 	number, ok := value.(float64)

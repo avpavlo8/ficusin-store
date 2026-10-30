@@ -44,6 +44,10 @@ func (handlers settingsHandlers) update(response http.ResponseWriter, request *h
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные настройки"})
 		return
 	}
+	if season, changed := body.Values[settings.CDEKPackagingSeason]; changed && season != "summer" && season != "winter" {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Выберите летнюю или зимнюю упаковку"})
+		return
+	}
 	if err := handlers.settings.Save(request.Context(), body.Values); err != nil {
 		handlers.logger.Error("save settings failed", "error", err)
 		writeJSON(response, http.StatusInternalServerError, errorResponse{

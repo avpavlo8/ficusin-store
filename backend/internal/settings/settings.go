@@ -21,29 +21,39 @@ import (
 // Keys. Adding one here and to defaults is all it takes for it to appear in
 // the panel.
 const (
-	CDEKOrdersEnabled  = "cdek.orders_enabled"
-	CDEKSenderName     = "cdek.sender_name"
-	CDEKSenderPhone    = "cdek.sender_phone"
-	CDEKSenderAddress  = "cdek.sender_address"
-	PaymentsEnabled    = "payments.enabled"
-	TelegramEnabled    = "telegram.enabled"
-	AutoCancelHours    = "orders.auto_cancel_hours"
-	SabyStockEnabled   = "saby.stock_enabled"
-	MetrikaID          = "analytics.metrika_id"
-	YandexVerification = "seo.yandex_verification"
-	GoogleVerification = "seo.google_verification"
+	CDEKPackagingSeason = "cdek.packaging_season"
+	CDEKOrdersEnabled   = "cdek.orders_enabled"
+	CDEKSenderName      = "cdek.sender_name"
+	CDEKSenderPhone     = "cdek.sender_phone"
+	CDEKSenderAddress   = "cdek.sender_address"
+	PaymentsEnabled     = "payments.enabled"
+	TelegramEnabled     = "telegram.enabled"
+	AutoCancelHours     = "orders.auto_cancel_hours"
+	SabyStockEnabled    = "saby.stock_enabled"
+	MetrikaID           = "analytics.metrika_id"
+	YandexVerification  = "seo.yandex_verification"
+	GoogleVerification  = "seo.google_verification"
 )
 
 // Definition is what the panel needs to draw one setting.
 type Definition struct {
-	Key   string `json:"key"`
+	Key     string   `json:"key"`
+	Title   string   `json:"title"`
+	Note    string   `json:"note"`
+	Kind    string   `json:"kind"` // "switch", "text", "number" or "select"
+	Options []Option `json:"options,omitempty"`
+}
+
+type Option struct {
+	Value string `json:"value"`
 	Title string `json:"title"`
-	Note  string `json:"note"`
-	Kind  string `json:"kind"` // "switch", "text" or "number"
 }
 
 // Definitions is the whole list, in the order the panel shows it.
 var Definitions = []Definition{
+	{Key: CDEKPackagingSeason, Title: "Упаковка для расчёта СДЭК", Kind: "select",
+		Note:    "Выберите летние или зимние габариты для новых расчётов. Если выбранная упаковка не заполнена, доставку рассчитает менеджер. Вес общий для обоих вариантов. Сохранённые коробки заказов не меняются.",
+		Options: []Option{{Value: "summer", Title: "Летняя упаковка"}, {Value: "winter", Title: "Зимняя упаковка"}}},
 	{
 		Key:   PaymentsEnabled,
 		Title: "Оплата картой",
@@ -116,14 +126,15 @@ var Definitions = []Definition{
 // integrations start switched on so that an existing shop does not quietly
 // lose them the moment this ships.
 var defaults = map[string]string{
-	PaymentsEnabled:   "1",
-	CDEKOrdersEnabled: "0",
-	TelegramEnabled:   "1",
-	AutoCancelHours:   "24",
-	SabyStockEnabled:  "0",
-	CDEKSenderName:    "",
-	CDEKSenderPhone:   "",
-	CDEKSenderAddress: "",
+	CDEKPackagingSeason: "summer",
+	PaymentsEnabled:     "1",
+	CDEKOrdersEnabled:   "0",
+	TelegramEnabled:     "1",
+	AutoCancelHours:     "24",
+	SabyStockEnabled:    "0",
+	CDEKSenderName:      "",
+	CDEKSenderPhone:     "",
+	CDEKSenderAddress:   "",
 	// Пусто по умолчанию: пока владелец не завёл счётчик, магазин не должен
 	// грузить чужой скрипт на каждой странице.
 	MetrikaID:          "",

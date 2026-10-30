@@ -62,7 +62,18 @@ export function Settings({ onError }: { onError: (value: string) => void }) {
               <b>{definition.title}</b>
               <small>{definition.note}</small>
             </span>
-            {definition.kind !== "switch" ? (
+            {definition.kind === "select" ? (
+              <select
+                value={values[definition.key] ?? "summer"}
+                onChange={(event) => setValues({ ...values, [definition.key]: event.target.value })}
+              >
+                {definition.options?.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.title}
+                  </option>
+                ))}
+              </select>
+            ) : definition.kind !== "switch" ? (
               <NumericInput
                 type={definition.kind === "number" ? "number" : "text"}
                 min="0"
