@@ -217,19 +217,22 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			return Order{}, err
 		}
 		oldPrices := map[string]float64{}
-		rows, err := tx.Query(ctx, `SELECT COALESCE(sku,''),unit_price::DOUBLE PRECISION FROM order_items WHERE order_id=$1`, id)
+		oldSnapshots := map[string][]byte{}
+		rows, err := tx.Query(ctx, `SELECT COALESCE(sku,''),unit_price::DOUBLE PRECISION,variant_snapshot FROM order_items WHERE order_id=$1`, id)
 		if err != nil {
 			return Order{}, err
 		}
 		for rows.Next() {
 			var sku string
 			var price float64
-			if err := rows.Scan(&sku, &price); err != nil {
+			var snapshot []byte
+			if err := rows.Scan(&sku, &price, &snapshot); err != nil {
 				rows.Close()
 				return Order{}, err
 			}
 			if sku != "" {
 				oldPrices[sku] = price
+				oldSnapshots[sku] = snapshot
 			}
 		}
 		rows.Close()
@@ -256,6 +259,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		for _, requested := range lines {
 			var line editableOrderLine
 			var priceMinor int64
+			var packageSnapshot []byte
 			// Строка ищется по SKU. Прежний запрос искал товар по products.slug —
 			// колонке, которую миграция 056 вывела из оборота, — и всегда брал
 			// первый вариант карточки, то есть мог поставить в заказ не тот размер
@@ -263,11 +267,15 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			if err := tx.QueryRow(ctx, `
 				SELECT pv.sku,pv.id,p.id,p.name,pv.label,pv.base_price_minor,COALESCE(pv.saby_id,''),
 					variant_numeric_attribute(pv.id,'height_cm')::INTEGER,
-					variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER
+					variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER,
+					jsonb_build_object('packageLengthCm',COALESCE(shipping_package_dimension(pv.id,'package_length_cm'),0)::INTEGER,
+					'packageWidthCm',COALESCE(shipping_package_dimension(pv.id,'package_width_cm'),0)::INTEGER,
+					'packageHeightCm',COALESCE(shipping_package_dimension(pv.id,'package_height_cm'),0)::INTEGER,
+					'packageWeightGrams',COALESCE(variant_numeric_attribute(pv.id,'package_weight_grams'),0)::INTEGER)
 				FROM product_variants pv JOIN products p ON p.id=pv.product_id
 				WHERE pv.sku=$1 AND pv.is_active=1 AND pv.archived_at IS NULL AND p.status='published'
 				LIMIT 1
-			`, requested.identity()).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM); err != nil {
+			`, requested.identity()).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM, &packageSnapshot); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return Order{}, fmt.Errorf("товар %s больше не доступен", requested.identity())
 				}
@@ -291,13 +299,17 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				return Order{}, err
 			}
 			hasPreorder = hasPreorder || line.preorder
+			// Retained SKUs keep the checkout packing even if the season changed.
+			if snapshot, exists := oldSnapshots[line.sku]; exists {
+				packageSnapshot = snapshot
+			}
 			// Строка обязана нести полный кортеж PRODUCT + variant + SKU:
 			// order_items_catalog_identity_check отвергает всё остальное, а без
 			// снимка размеров историю заказа потом нечем объяснить.
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
-				VALUES($1,$2,$3,$4,$5,$6,jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)),$9,$10,$11,$12)
-			`, id, line.productID, line.variantID, line.sku, line.name, line.variantLabel, line.heightCM, line.potDiameterCM, line.price, line.quantity, boolToSmallInt(line.preorder), line.reserved); err != nil {
+				VALUES($1,$2,$3,$4,$5,$6,jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)) || $13::JSONB,$9,$10,$11,$12)
+			`, id, line.productID, line.variantID, line.sku, line.name, line.variantLabel, line.heightCM, line.potDiameterCM, line.price, line.quantity, boolToSmallInt(line.preorder), line.reserved, packageSnapshot); err != nil {
 				return Order{}, err
 			}
 			if line.preorder {

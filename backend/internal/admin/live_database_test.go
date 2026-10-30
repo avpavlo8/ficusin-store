@@ -199,6 +199,12 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	})
 
 	t.Run("редактор учитывает только свежий остаток основного склада СБИС", func(t *testing.T) {
+		// Editing quantities must keep the saved winter packing even when the
+		// currently selected catalogue season/measurements are different.
+		if _, err := pool.Exec(ctx, `UPDATE order_items SET variant_snapshot=variant_snapshot || '{"packageLengthCm":40,"packageWidthCm":20,"packageHeightCm":20,"packageWeightGrams":1500}'::jsonb WHERE order_id=$1`, orderID); err != nil {
+			t.Fatal(err)
+		}
+
 		if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
 			t.Fatal(err)
 		}
@@ -212,6 +218,14 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		if !edited.HasPreorder {
 			t.Fatal("устаревший остаток нельзя считать подтверждённым наличием")
 		}
+		var savedWidth int
+		if err := pool.QueryRow(ctx, `SELECT (variant_snapshot->>'packageWidthCm')::INTEGER FROM order_items WHERE order_id=$1`, orderID).Scan(&savedWidth); err != nil {
+			t.Fatal(err)
+		}
+		if savedWidth != 20 {
+			t.Fatalf("order edit lost winter snapshot: %d", savedWidth)
+		}
+
 		var reserved int
 		if err := pool.QueryRow(ctx, `SELECT reserved_qty FROM order_items WHERE order_id=$1`, orderID).Scan(&reserved); err != nil {
 			t.Fatal(err)
