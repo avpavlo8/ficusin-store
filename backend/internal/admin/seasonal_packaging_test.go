@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestWinterPackageMeasurements(t *testing.T) {
@@ -34,7 +35,7 @@ func TestManagerCanSaveWinterPackagingOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	var productID, variantID int64
+	var productID, variantID, staffID int64
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	if err = pool.QueryRow(ctx, `INSERT INTO products(name,slug,category_id,status) SELECT 'Seasonal packaging test',$1,id,'draft' FROM categories WHERE slug='plants' RETURNING id`, "seasonal-"+suffix).Scan(&productID); err != nil {
 		t.Fatal(err)
@@ -43,8 +44,15 @@ func TestManagerCanSaveWinterPackagingOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,is_active) VALUES($1,'Seasonal test',0) RETURNING id`, productID).Scan(&variantID); err != nil {
 		t.Fatal(err)
 	}
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,password_hash,full_name,consent_at) VALUES($1,'','Seasonal manager',CURRENT_TIMESTAMP) RETURNING id`, "seasonal-manager-"+suffix).Scan(&staffID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, staffID)
+		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, staffID)
+	}()
 	repository := NewPostgresRepository(pool)
-	result, err := repository.UpdateVariantContent(ctx, Actor{Role: RoleManager}, variantID, VariantContentUpdate{Attributes: map[string]any{"package_winter_length_cm": float64(40), "package_winter_width_cm": float64(20), "package_winter_height_cm": float64(20)}})
+	result, err := repository.UpdateVariantContent(ctx, Actor{CustomerID: staffID, Role: RoleManager}, variantID, VariantContentUpdate{Attributes: map[string]any{"package_winter_length_cm": float64(40), "package_winter_width_cm": float64(20), "package_winter_height_cm": float64(20)}})
 	if err != nil {
 		t.Fatal(err)
 	}
