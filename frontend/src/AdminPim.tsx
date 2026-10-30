@@ -1085,7 +1085,7 @@ function DynamicValue({
       </fieldset>
     );
   }
-  const isPackageSize = /^package_(length|width|height)_cm$/.test(attribute.code);
+  const isPackageSize = /^package_(winter_)?(length|width|height)_cm$/.test(attribute.code);
   return (
     <label>
       {title}
@@ -1238,9 +1238,6 @@ export function VariantsEditor({
       }
     />
   );
-  const length = Number(draft?.attributes.package_length_cm || 0),
-    width = Number(draft?.attributes.package_width_cm || 0),
-    height = Number(draft?.attributes.package_height_cm || 0);
   const grams = Number(draft?.attributes.package_weight_grams || 0);
   return (
     <section className="variant-editor wide">
@@ -1359,36 +1356,64 @@ export function VariantsEditor({
               )}
               <h4 className="wide">ОВХ · упаковка для отправки</h4>
               <p className="wide admin-hint">
-                Измерьте упакованный товар: длина × ширина × высота в сантиметрах, полный вес в
-                килограммах.
+                Заполните два варианта коробки: длину × ширину × высоту в сантиметрах. В настройках
+                магазина выбирается упаковка для расчёта СДЭК. Если выбранный вариант не заполнен,
+                доставку рассчитает менеджер.
               </p>
-              {packaging.map(field)}
+              {packaging
+                .filter((x) => !/^package_(winter_)?(length|width|height)_cm$/.test(x.code))
+                .map(field)}
+              {packaging.length > 0 && (
+                <p className="wide admin-hint">
+                  Полный вес упакованного товара в килограммах — общий для обоих вариантов.
+                </p>
+              )}
+              {[
+                { title: "Летняя упаковка", prefix: "package_" },
+                { title: "Зимняя упаковка", prefix: "package_winter_" },
+              ].map(({ title, prefix }) => {
+                const fields = packaging.filter((x) =>
+                  ["length_cm", "width_cm", "height_cm"].some((axis) => x.code === prefix + axis),
+                );
+                if (!fields.length) return null;
+                const length = Number(draft.attributes[prefix + "length_cm"] || 0);
+                const width = Number(draft.attributes[prefix + "width_cm"] || 0);
+                const height = Number(draft.attributes[prefix + "height_cm"] || 0);
+                return (
+                  <section className="wide" key={prefix} aria-label={title}>
+                    <h4>{title}</h4>
+                    <div className="admin-form-grid">{fields.map(field)}</div>
+                    {length > 0 && width > 0 && height > 0 ? (
+                      <div className="catalog-package-summary">
+                        <strong>
+                          Объём: {((length * width * height) / 1000).toLocaleString("ru-RU")} л
+                        </strong>
+                        <span>
+                          Объёмный вес:{" "}
+                          {((length * width * height) / 5000).toLocaleString("ru-RU", {
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          кг
+                        </span>
+                        {grams > 0 && (
+                          <span>
+                            Расчётный вес одной упаковки:{" "}
+                            {Math.max(
+                              grams / 1000,
+                              (length * width * height) / 5000,
+                            ).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}{" "}
+                            кг
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="admin-hint">Габариты не заполнены полностью.</p>
+                    )}
+                  </section>
+                );
+              })}
               {!packaging.length && (
                 <p className="wide admin-hint">Выберите категорию товара, чтобы заполнить ОВХ.</p>
-              )}
-              {length > 0 && width > 0 && height > 0 && (
-                <div className="wide catalog-package-summary">
-                  <strong>
-                    Объём: {((length * width * height) / 1000).toLocaleString("ru-RU")} л
-                  </strong>
-                  <span>
-                    Объёмный вес:{" "}
-                    {((length * width * height) / 5000).toLocaleString("ru-RU", {
-                      maximumFractionDigits: 2,
-                    })}{" "}
-                    кг
-                  </span>
-                  {grams > 0 && (
-                    <span>
-                      Расчётный вес одной упаковки:{" "}
-                      {Math.max(grams / 1000, (length * width * height) / 5000).toLocaleString(
-                        "ru-RU",
-                        { maximumFractionDigits: 2 },
-                      )}{" "}
-                      кг
-                    </span>
-                  )}
-                </div>
               )}
               <details className="wide catalog-variant-integrations">
                 <summary>Связи площадок и артикулы ({draft.externalIds.length})</summary>

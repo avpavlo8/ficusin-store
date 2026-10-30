@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -273,4 +274,88 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	if wakes != 6 {
 		t.Fatalf("unexpected checkout wake count: %d", wakes)
 	}
+	t.Run("seasonal packing quotes and immutable checkout snapshot", func(t *testing.T) {
+		// This pool owns one connection. Shadow settings only on that connection;
+		// other live test packages never see these season changes.
+		if _, err := pool.Exec(ctx, `CREATE TEMP TABLE settings AS TABLE public.settings`); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _, _ = pool.Exec(ctx, `DROP TABLE pg_temp.settings`) }()
+		setSeason := func(season string) {
+			t.Helper()
+			if _, err := pool.Exec(ctx, `UPDATE settings SET value=$1 WHERE key='cdek.packaging_season'`, season); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := pool.Exec(ctx, `UPDATE inventory SET available_qty=10 WHERE variant_id=$1`, variantID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value) SELECT $1,d.id,to_jsonb(v.n) FROM attribute_definitions d JOIN (VALUES('package_length_cm',40),('package_width_cm',15),('package_height_cm',15),('package_winter_length_cm',40),('package_winter_width_cm',20),('package_winter_height_cm',20)) v(code,n) ON v.code=d.code ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, variantID); err != nil {
+			t.Fatal(err)
+		}
+		checkParcel := func(want integration.Parcel) {
+			t.Helper()
+			rows, err := loadCheckoutItems(ctx, pool, []ItemInput{{ID: sku, Quantity: 1}}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 || rows[0].Parcel != want {
+				t.Fatalf("checkout packing: %+v, want %+v", rows, want)
+			}
+			sizes, err := catalog.NewPostgresRepository(pool).PackageSizes(ctx, []string{sku})
+			if err != nil {
+				t.Fatal(err)
+			}
+			size := sizes[sku]
+			if size.LengthCM != want.LengthCM || size.WidthCM != want.WidthCM || size.HeightCM != want.HeightCM || size.WeightGrams != want.WeightGrams {
+				t.Fatalf("public quote differs: %+v, want %+v", size, want)
+			}
+		}
+		summer := integration.Parcel{LengthCM: 40, WidthCM: 15, HeightCM: 15, WeightGrams: 1500}
+		winter := integration.Parcel{LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1500}
+		setSeason("summer")
+		checkParcel(summer)
+		summerID := makeOrder(false)
+		setSeason("winter")
+		checkParcel(winter)
+		winterID := makeOrder(false)
+		setSeason("summer")
+		for id, want := range map[int64]integration.Parcel{summerID: summer, winterID: winter} {
+			_, got, err := worker.shipmentContents(ctx, id)
+			if err != nil || got != want {
+				t.Fatalf("season switch changed order packing: got %+v, err %v, want %+v", got, err, want)
+			}
+		}
+		// A flip while the carrier is replying invalidates its quote at checkout.
+		client.beforeQuote = func(context.Context) { setSeason("winter") }
+		changedID := makeOrder(false)
+		client.beforeQuote = nil
+		var pending int
+		var fee float64
+		if err := pool.QueryRow(ctx, `SELECT delivery_fee_pending,delivery_fee FROM orders WHERE id=$1`, changedID).Scan(&pending, &fee); err != nil {
+			t.Fatal(err)
+		}
+		if pending != 1 || fee != 0 {
+			t.Fatalf("season changed during quote: pending=%d, fee=%v", pending, fee)
+		}
+		// An incomplete winter set must not mix a summer side into the box.
+		if _, err := pool.Exec(ctx, `DELETE FROM variant_attribute_values WHERE variant_id=$1 AND attribute_id=(SELECT id FROM attribute_definitions WHERE code='package_winter_width_cm')`, variantID); err != nil {
+			t.Fatal(err)
+		}
+		missingID := makeOrder(false)
+		if err := pool.QueryRow(ctx, `SELECT delivery_fee_pending,delivery_fee FROM orders WHERE id=$1`, missingID).Scan(&pending, &fee); err != nil {
+			t.Fatal(err)
+		}
+		if pending != 1 || fee != 0 {
+			t.Fatalf("incomplete winter set quoted: pending=%d, fee=%v", pending, fee)
+		}
+		// The saved winter order still has its complete packing after catalogue edits.
+		_, got, err := worker.shipmentContents(ctx, winterID)
+		if err != nil || got != winter {
+			t.Fatalf("catalogue edit changed saved packing: %+v, %v", got, err)
+		}
+		setSeason("summer")
+		checkParcel(summer)
+	})
+
 }

@@ -43,7 +43,7 @@ func validateManagerAttributes(ctx context.Context, tx pgx.Tx, actor Actor, valu
 		var allowed bool
 		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM attribute_definitions
    WHERE code=$1 AND (audience='customer' OR code IN
-   ('package_length_cm','package_width_cm','package_height_cm','package_weight_grams')))`, strings.TrimSpace(code)).Scan(&allowed)
+   ('package_length_cm','package_width_cm','package_height_cm','package_weight_grams','package_winter_length_cm','package_winter_width_cm','package_winter_height_cm')))`, strings.TrimSpace(code)).Scan(&allowed)
 		if err != nil {
 			return err
 		}

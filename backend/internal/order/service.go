@@ -398,11 +398,13 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 				order_id, product_id, variant_id, sku, product_name, variant_label, variant_snapshot,
 				unit_price, quantity, is_preorder, reserved_qty
 			) VALUES ($1, $2, $3, $4, $5, $6,
-				jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)),
+				jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER,
+					'packageLengthCm',$13::INTEGER,'packageWidthCm',$14::INTEGER,
+					'packageHeightCm',$15::INTEGER,'packageWeightGrams',$16::INTEGER)),
 				$9, $10, $11, $12)
 		`, orderID, item.ProductID, item.VariantID, item.ID, item.Name, item.VariantLabel,
 			item.HeightCM, item.PotDiameterCM, money.Rubles(item.PriceMinor), item.Quantity,
-			boolToInt(item.Preorder), item.Reserved); err != nil {
+			boolToInt(item.Preorder), item.Reserved, item.Parcel.LengthCM, item.Parcel.WidthCM, item.Parcel.HeightCM, item.Parcel.WeightGrams); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}
@@ -552,8 +554,8 @@ func loadCheckoutItems(ctx context.Context, reader checkoutItemReader, requested
 		var priceMinor int64
 		err := reader.QueryRow(ctx, `
 			SELECT pv.sku, p.id, p.name, pv.id, pv.label, variant_numeric_attribute(pv.id, 'height_cm')::INTEGER, variant_numeric_attribute(pv.id, 'pot_diameter_cm')::INTEGER, pv.base_price_minor,
-				COALESCE(variant_numeric_attribute(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_width_cm'), 0)::INTEGER,
-				COALESCE(variant_numeric_attribute(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
+				COALESCE(shipping_package_dimension(pv.id, 'package_length_cm'), 0)::INTEGER, COALESCE(shipping_package_dimension(pv.id, 'package_width_cm'), 0)::INTEGER,
+				COALESCE(shipping_package_dimension(pv.id, 'package_height_cm'), 0)::INTEGER, COALESCE(variant_numeric_attribute(pv.id, 'package_weight_grams'), 0)::INTEGER
 			FROM products p
 			JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND pv.archived_at IS NULL
                 AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=pv.id)

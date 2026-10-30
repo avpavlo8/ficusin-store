@@ -5,6 +5,7 @@ const passport={origin:'',lighting:'Рассеянный свет',watering:'У�
 const product=(id:number)=>({id,sabyId:'',sabyCode:'',slug:`plant-${id}`,name:id===1?'Аглаонема Мария':id===2?'Хлорофитум':`Растение ${id}`,latinName:'Aglaonema',shortDescription:'Старое краткое описание',description:id===2?'':'Описание растения',careInstructions:'Уход',status:'draft',featured:false,image:'/assets/hero-monstera.webp',price:1490,stock:0,sku:String(id),variantLabel:'D11',wholesaleMinQty:1,overrideFields:[],sabyFields:['stock'],passport,importantWarnings:[],externalIds:[],attributes:{light:'diffused'},categoryId:2,catalogSection:'plants',variantCount:2,updatedAt:'2026-10-15T12:00:00Z'});
 const schema=[{id:1,code:'light',name:'Освещение',dataType:'enum',unit:'',options:['diffused'],optionLabels:{diffused:'Рассеянный свет'},audience:'customer',scope:'product',required:false,filterable:true,showOnPdp:true,keyCharacteristic:true,badge:false,sortOrder:1}];
 const effective=['length_cm','width_cm','height_cm','weight_grams'].map((code,i)=>({id:i+2,code:`package_${code}`,name:['Длина упаковки','Ширина упаковки','Высота упаковки','Вес упаковки'][i],unit:i===3?'г':'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:true}));
+effective.push(...['length_cm','width_cm','height_cm'].map((code,i)=>({id:20+i,code:`package_winter_${code}`,name:['Длина зимней упаковки','Ширина зимней упаковки','Высота зимней упаковки'][i],unit:'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:false})));
 const size=(id:number,pid:number,label:string)=>({id,productId:pid,sku:String(id),label,price:1490,stock:0,wholesaleMinQty:1,active:false,archived:false,attributes:{package_length_cm:20,package_width_cm:20,package_height_cm:50,package_weight_grams:1000},externalIds:[],images:[],stockSource:'saby'});
 async function fixture(page:Page,{total=2,failSave=false,variantTasks=[] as string[]}={}){
  let products=Array.from({length:total},(_,i)=>product(i+1));if(variantTasks.length)Object.assign(products[0],{variantTasks});const variants=new Map(products.map(p=>[p.id,[size(p.id*10,p.id,'D11'),size(p.id*10+1,p.id,'D17')]]));const updates:Array<Record<string,any>>=[],calls:string[]=[];let nextId=1000;
@@ -230,4 +231,30 @@ test('@desktop @phone поиск товара в подборку по разм�
  await e.getByLabel('Найти товар в подборку').fill('D12');
  await expect(e.locator('.admin-collection-list label')).toHaveCount(1);
  expect(writes).toHaveLength(0);
+});
+
+
+test('@desktop @phone seasonal packaging stays separate and survives reload',async({page})=>{
+ const f=await fixture(page);await open(page);let d=await edit(page);
+ await d.getByRole('button',{name:'Размеры и цены',exact:true}).click();
+ const summer=d.getByRole('region',{name:'Летняя упаковка',exact:true});
+ const winter=d.getByRole('region',{name:'Зимняя упаковка',exact:true});
+ await summer.getByLabel('Длина упаковки, см').fill('40');
+ await summer.getByLabel('Ширина упаковки, см').fill('15');
+ await summer.getByLabel('Высота упаковки, см').fill('15');
+ await winter.getByLabel('Длина зимней упаковки, см').fill('40');
+ await winter.getByLabel('Ширина зимней упаковки, см').fill('20');
+ await winter.getByLabel('Высота зимней упаковки, см').fill('20');
+ await expect(summer).toContainText('Объём: 9 л');
+ await expect(winter).toContainText('Объём: 16 л');
+ await d.getByRole('button',{name:'Сохранить изменения',exact:true}).click();
+ await expect(d.getByRole('status')).toContainText('Товар и размеры сохранены');
+ const values=f.updates[0].body.variants[0].attributes;
+ expect(values.package_width_cm).toBe(15);expect(values.package_winter_width_cm).toBe(20);
+ await page.reload();d=page.getByRole('dialog');
+ await expect(d.getByLabel('Ширина упаковки, см',{exact:true})).toHaveValue('15');
+ await expect(d.getByLabel('Ширина зимней упаковки, см',{exact:true})).toHaveValue('20');
+ expect(await d.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+ await d.getByRole('region',{name:'Зимняя упаковка',exact:true}).scrollIntoViewIfNeeded();
+ if(process.env.SEASONAL_VISUAL_DIR)await page.screenshot({path:`${process.env.SEASONAL_VISUAL_DIR}/packaging-${test.info().project.name}.png`});
 });

@@ -761,9 +761,9 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 	}
 	rows, err := repository.pool.Query(ctx, `
 		SELECT variant.sku,
-			COALESCE(variant_numeric_attribute(variant.id,'package_length_cm'),0)::INTEGER,
-			COALESCE(variant_numeric_attribute(variant.id,'package_width_cm'),0)::INTEGER,
-			COALESCE(variant_numeric_attribute(variant.id,'package_height_cm'),0)::INTEGER,
+			COALESCE(shipping_package_dimension(variant.id, 'package_length_cm'),0)::INTEGER,
+			COALESCE(shipping_package_dimension(variant.id, 'package_width_cm'),0)::INTEGER,
+			COALESCE(shipping_package_dimension(variant.id, 'package_height_cm'),0)::INTEGER,
 			COALESCE(variant_numeric_attribute(variant.id,'package_weight_grams'),0)::INTEGER
 		FROM product_variants variant
 		JOIN products product ON product.id=variant.product_id AND product.status='published'

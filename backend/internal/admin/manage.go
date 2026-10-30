@@ -477,8 +477,8 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			COALESCE((SELECT SUM(GREATEST(available_qty - reserved_qty, 0))
 				FROM inventory WHERE variant_id = pv.id), 0)::INTEGER,
 			COALESCE(pv.sku, ''), COALESCE(pv.label, ''), pv.height_cm,
-			pv.pot_diameter_cm, pv.package_length_cm, pv.package_width_cm,
-			pv.package_height_cm, pv.package_weight_grams,
+			pv.pot_diameter_cm, shipping_package_dimension(pv.id, 'package_length_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_width_cm')::INTEGER,
+			shipping_package_dimension(pv.id, 'package_height_cm')::INTEGER, variant_numeric_attribute(pv.id,'package_weight_grams')::INTEGER,
 			COALESCE(pv.wholesale_min_qty, 1),
 			ARRAY(SELECT DISTINCT unnest(p.override_fields || COALESCE(pv.override_fields, '{}'))),
 			p.saby_fields,
