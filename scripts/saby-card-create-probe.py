@@ -78,23 +78,27 @@ def main():
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
     before=find();emit('before_full_test_row',before)
     assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
-    # CML Ид was stored as nomNumber, whereas Retail exposes a separate externalId.
-    # Check the documented UUID identity while preserving the original explicit code.
     root=E.fromstring(cml(None,'13','37'))
     item=root.find('./Каталог/Товары/Товар')
-    external=before[0].get('externalId')
-    assert external=='6ed33cff-133b-4400-8d3f-9f37a01e5717'
-    item.find('Ид').text=external
-    E.SubElement(item,'Код').text=GUID
-    item.find('Наименование').text=NAME+' — проверка UUID'
-    raw=E.tostring(root,encoding='utf-16',xml_declaration=True)
-    emit('external_identity_scope',{'id':3952,'externalId':external,'preserved_code':GUID})
-    emit('external_identity_response',send(raw))
-    time.sleep(12)
-    final=find();emit('external_identity_readback',final)
-    report['final_test_count']=len(final)
-    report['same_id']=len(final)==1 and final[0].get('id')==3952
-    report['attributes_updated']=report['same_id'] and final[0].get('attributes',{}).get('Высота')=='37' and final[0].get('attributes',{}).get('Диаметр горшка')=='13'
+    item.find('Наименование').text=NAME+' — обновлено'
+    # Match the exact XML prolog bytes of the successful creation, not only the encoding.
+    raw=('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(root,encoding='unicode')).encode('utf-16')
+    emit('strict_prolog_scope',{'id':3952,'pot':13,'height':37,'xml_prolog':raw.decode('utf-16').splitlines()[0]})
+    emit('strict_prolog_response',send(raw))
+    time.sleep(10)
+    after=find();emit('strict_prolog_readback',after)
+    report['same_id']=len(after)==1 and after[0].get('id')==3952
+    report['attributes_updated']=report['same_id'] and after[0].get('attributes',{}).get('Высота')=='37' and after[0].get('attributes',{}).get('Диаметр горшка')=='13'
+    report['final_test_count']=len(after)
+    if report['attributes_updated']:
+        emit('strict_repeat_response',send(raw));time.sleep(5);emit('strict_repeat_readback',find())
+        # Try the same scoped offer using the corrected strict prolog.
+        price_root=E.fromstring(cml('configured-column-6','13','37','1278.90'))
+        price_root.find('./Каталог/Товары/Товар/Наименование').text=NAME+' — обновлено'
+        offers=price_root.find('ПакетПредложений');offers.remove(offers.find('ТипыЦен'))
+        price_raw=('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(price_root,encoding='unicode')).encode('utf-16')
+        emit('strict_price_response',send(price_raw));time.sleep(10)
+        emit('strict_price_catalog_readback',find());emit('strict_price_column_readback',find(True))
 
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
