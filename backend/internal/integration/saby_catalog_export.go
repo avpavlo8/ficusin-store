@@ -38,8 +38,8 @@ func buildSabyCML(s catalogsync.Snapshot, price bool) ([]byte, error) {
 	}
 	const classifier = "69ebc10b-4a6e-50ae-bc3e-0ebd2dd41fed"
 	const catalog = "47ab728e-9d1f-54f3-b4a5-223ec2a4d939"
-	const pot = "a588ea1e-b55b-5ca0-9e42-f9acc06b92ae"
-	const height = "f6d8e899-abf5-5bf4-8ecf-46d2a4ad63d6"
+	const pot = "4cb084bb-7cd7-57dc-9fbe-86736199e6b8"
+	const height = "df18b5e4-37ff-593b-9b20-fa13f0d22c49"
 	const priceID = "049706e3-c40d-5fc1-ad72-ccac8d4c07a7"
 	number := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 	property := func(id, name string) cmlNode {
