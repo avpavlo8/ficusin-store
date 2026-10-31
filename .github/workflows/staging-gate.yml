@@ -1,0 +1,18 @@
+name: Staging release gate
+on:
+  pull_request:
+permissions:
+  contents: read
+  deployments: read
+jobs:
+  staging-required:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require a successful staging verification of this exact candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+          STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: python3 scripts/require-staging.py
