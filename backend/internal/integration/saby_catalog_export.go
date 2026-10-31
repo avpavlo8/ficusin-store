@@ -119,7 +119,8 @@ func (client *SabyClient) Lookup(ctx context.Context, s catalogsync.Snapshot) (*
 		queries = append(queries, strings.Join(fields[:len(fields)-1], " "))
 	}
 	seen := map[string]bool{}
-	var found, verified *catalogsync.Remote
+	var found *catalogsync.Remote
+	var externalID string
 	for _, query := range queries {
 		query = strings.TrimSpace(query)
 		if query == "" || seen[query] {
@@ -150,9 +151,11 @@ func (client *SabyClient) Lookup(ctx context.Context, s catalogsync.Snapshot) (*
 					if r.Code != s.Code || (s.SabyID != "" && r.ID != s.SabyID) || (found != nil && found.ID != r.ID) {
 						return nil, errors.New("СБИС вернул противоречивые идентификаторы. Проверьте связь товара")
 					}
-					if s.Matches(r) {
-						verified = r
+					uuid := sabyValue(row["externalId"])
+					if externalID != "" && uuid != externalID {
+						return nil, errors.New("СБИС вернул противоречивые UUID карточки")
 					}
+					externalID = uuid
 					found = r
 				} else if s.SabyID == "" && ((s.Article != "" && r.Article == s.Article) || strings.EqualFold(r.Name, s.Name)) {
 					return nil, errors.New("В СБИС уже есть похожая карточка. Свяжите существующий товар вместо создания нового")
@@ -167,8 +170,22 @@ func (client *SabyClient) Lookup(ctx context.Context, s catalogsync.Snapshot) (*
 			}
 		}
 	}
-	if verified != nil {
-		return verified, nil
+	if found == nil {
+		return nil, nil
 	}
-	return found, nil
+	// Search projections can retain obsolete attributes even while name and
+	// price are current. Never use them as write confirmation or price preflight.
+	if externalID == "" {
+		return nil, errors.New("СБИС не вернул UUID для проверки карточки")
+	}
+	var detail map[string]any
+	if e := client.authorizedJSON(ctx, http.MethodGet, client.apiBase+"/retail/nomenclature/"+url.PathEscape(externalID), nil, &detail); e != nil {
+		return nil, e
+	}
+	current := catalogueRemote(detail)
+	if current.ID != found.ID || current.Code != s.Code || sabyValue(detail["externalId"]) != externalID {
+		return nil, errors.New("Идентификаторы карточки СБИС не совпали при проверке")
+	}
+	current.Article = found.Article
+	return current, nil
 }
