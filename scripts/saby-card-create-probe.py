@@ -67,6 +67,8 @@ def cml(price_name,pot='12',height='35',price='1234.56'):
     return E.tostring(root,encoding='utf-8',xml_declaration=True)
 def send(raw):
     return request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИмпортНоменклатурыИзCML','params':{'Параметр':{'Файл':base64.b64encode(raw).decode()}},'id':1})
+def send_flat(raw):
+    return request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИмпортНоменклатурыИзCML','params':{'Файл':base64.b64encode(raw).decode()},'id':1})
 def main():
     global token
     assert os.environ.get('GITHUB_REF_NAME')=='probe/saby-card-api-20261031' and os.environ.get('SABY_PROBE_SEARCH')==MARKER,'Explicit probe branch/marker required'
@@ -78,7 +80,9 @@ def main():
     emit('price_list_rows', rows(price_data))
     baseline=request('https://api.sbis.ru/retail/v2/nomenclature/list?'+urllib.parse.urlencode({'pointId':278,'searchString':'Аглаонема D12 в асс.','pageSize':25,'page':0}))
     emit('connection_catalog_check', [{'id':r.get('id'),'name':r.get('name'),'article':r.get('article'),'cost':r.get('cost')} for r in rows(baseline) if not r.get('isParent')][:2])
-    emit('public_api_version',request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИнформацияОВерсии','params':{},'id':1}))
+    for column in [6,999999999]:
+        control=request('https://api.sbis.ru/retail/v2/nomenclature/list?'+urllib.parse.urlencode({'pointId':278,'priceListId':column,'searchString':'Аглаонема D12 в асс.','pageSize':25,'page':0}))
+        emit('price_column_control',{'column':column,'rows':[{'id':r.get('id'),'name':r.get('name'),'cost':r.get('cost')} for r in rows(control) if not r.get('isParent')][:2]})
     selected=[r for r in rows(price_data) if str(r.get('id'))=='6']
     emit('price_list_schema',{'keys':list(price_data) if isinstance(price_data,dict) else [],'selected':[{'id':r.get('id'),'name':r.get('name')} for r in selected]})
     price_name=selected[0].get('name') if selected else None
@@ -93,6 +97,13 @@ def main():
         if response.get('error'):
             report['creation']='rejected';emit('after_rejected_create',snapshot(find()));return
         first=wait_find()
+        if not first:
+            # Same immutable test identity, alternate parameter shape shown
+            # by the prose API reference; never touches any existing product.
+            try:
+                response=send_flat(raw);emit('flat_parameter_response',response)
+                first=wait_find()
+            except Exception as error:emit('flat_parameter_response',str(error))
     else:first=before
     emit('after_create',snapshot(first))
     if len(first)!=1:report['creation']='unknown_no_retry';return
