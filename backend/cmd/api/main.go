@@ -19,6 +19,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogsync"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
@@ -194,6 +195,8 @@ func main() {
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
+	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), sabyProcurementClient, logger)
+	go catalogExportService.Run(ctx)
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).
 		WithSabyCatalogSync(sabyService)
@@ -220,6 +223,7 @@ func main() {
 		CDEK:             cdekClient,
 		Admin:            adminRepository,
 		Saby:             sabyService,
+		CatalogExport:    catalogExportService,
 		Push:             pushService,
 		Chat:             chatStore,
 		Cart:             cart.NewStore(pool),

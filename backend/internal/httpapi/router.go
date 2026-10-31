@@ -35,6 +35,7 @@ type Dependencies struct {
 	CDEK             cdekService
 	Admin            adminRepository
 	Saby             sabySyncService
+	CatalogExport    catalogExportService
 	Push             pushService
 	Chat             *chat.Store
 	Cart             cartStore
@@ -86,6 +87,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.Refunds,
 	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
+	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, false))
+	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, true))
 	if dependencies.Avito != nil {
 		mux.HandleFunc("GET /api/v1/admin/avito", avitoListHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))

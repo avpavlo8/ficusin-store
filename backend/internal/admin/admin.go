@@ -288,6 +288,7 @@ type ProductUpdate struct {
 
 // ProductCreate — карточка, заведённая в магазине с нуля.
 type ProductCreate struct {
+	VariantAttributes  map[string]any `json:"variantAttributes"`
 	Name               string         `json:"name"`
 	LatinName          string         `json:"latinName"`
 	ShortDescription   string         `json:"shortDescription"`

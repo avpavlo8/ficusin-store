@@ -347,6 +347,11 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
         run: go test -p 1 ./internal/admin/ ./internal/auth/ ./internal/avito/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ ./internal/analytics/ -run 'LiveDatabase' -v
+      - name: Verify durable Saby catalogue commands and duplicate guards
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
+        run: go test -race ./internal/catalogsync -run '^TestDurableCatalogueExportOnDatabase$' -count=1 -v
       - name: Verify procurement price recovery and variant links
         working-directory: backend
         env:
