@@ -352,6 +352,11 @@ jobs:
         env:
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
         run: go test ./internal/procurement -run '^TestUnified|^TestFailedReceiptPriceRefresh|^TestProcurementChannelEditTargetsExactVariant|^TestReceiptReadOnlyRecheck' -v
+      - name: Verify atomic owner-reviewed measurement import and rollback guards
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
+        run: go test ./internal/migrate -run '^TestAgreedMeasurementsAtomicImport$' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest
