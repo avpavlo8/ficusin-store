@@ -46,6 +46,7 @@ func TestSabyCatalogueLiveConnection(t *testing.T) {
 	}
 	target := baseline
 	target.Name += " — проверка сайта"
+	target.PotCM = 15
 	target.HeightCM = 39
 	target.PriceMinor = 130001
 	defer func() {
