@@ -111,7 +111,7 @@ func TestSabyCatalogueNullAcceptanceAndDefiniteRejection(t *testing.T) {
 		server.Close()
 	}
 }
-func TestCatalogueLookupUsesFreshProjectionAndRejectsNameOnly(t *testing.T) {
+func TestCatalogueLookupUsesDirectCardAndRejectsNameOnly(t *testing.T) {
 	s := catalogueSnapshot()
 	s.Name = "Калатея D12"
 	s.LookupName = "Калатея"
@@ -121,11 +121,13 @@ func TestCatalogueLookupUsesFreshProjectionAndRejectsNameOnly(t *testing.T) {
 			_, _ = io.WriteString(w, `{"token":"token"}`)
 			return
 		}
-		height := 30
-		if r.URL.Query().Get("searchString") == "Калатея" {
-			height = 40
+		row := map[string]any{"id": 71, "externalId": "card-uuid", "nomNumber": "catalogue-code", "name": s.Name, "cost": 1490.99, "attributes": map[string]any{"Диаметр горшка": "11.3", "Высота": 30}}
+		if r.URL.Path == "/retail/nomenclature/card-uuid" {
+			row["attributes"] = map[string]any{"Диаметр горшка": "11.3", "Высота": 40}
+			_ = json.NewEncoder(w).Encode(row)
+			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"nomenclatures": []any{map[string]any{"id": 71, "nomNumber": "catalogue-code", "name": s.Name, "cost": 1490.99, "attributes": map[string]any{"Диаметр горшка": "11.3", "Высота": height}}}, "outcome": false})
+		_ = json.NewEncoder(w).Encode(map[string]any{"nomenclatures": []any{row}, "outcome": false})
 	}))
 	defer server.Close()
 	c := NewSabyClient("id", "secret", "key", 278, 6)
