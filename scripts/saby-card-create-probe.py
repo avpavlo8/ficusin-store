@@ -78,30 +78,28 @@ def main():
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
     before=find();emit('before_full_test_row',before)
     assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
-    def strict(root):return ('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(root,encoding='unicode')).encode('utf-16')
-    root=E.fromstring(cml(None,'13','37'))
-    item=root.find('./Каталог/Товары/Товар')
-    item.find('Наименование').text=NAME+' — обновлено'
-    item.remove(item.find('ЗначенияСвойств'))
-    attrs=E.SubElement(item,'ХарактеристикиТовара')
-    for name,value in [('Диаметр горшка','13'),('Высота','37')]:
-        attr=E.SubElement(attrs,'ХарактеристикаТовара')
-        E.SubElement(attr,'Наименование').text=name;E.SubElement(attr,'Значение').text=value
-    emit('named_characteristics_response',send(strict(root)))
-    time.sleep(10);emit('named_characteristics_readback',find())
-    # Isolated price type: never refer to, rename, or overwrite a live price column.
-    price_root=E.fromstring(cml('ТЕСТ API Фикусин — НЕ ПРОДАВАТЬ','13','37','1278.90'))
-    price_root.find('./Каталог/Товары/Товар/Наименование').text=NAME+' — обновлено'
+    root=E.fromstring(cml('ТЕСТ API Фикусин — НЕ ПРОДАВАТЬ','14','38','1299.90'))
     for path in ['./ПакетПредложений/ТипыЦен/ТипЦены/Ид','./ПакетПредложений/Предложения/Предложение/Цены/Цена/ИдТипаЦены']:
-        price_root.find(path).text=uid('isolated-price')
-    emit('isolated_price_scope',{'product_id':3952,'price_type':uid('isolated-price'),'price':'1278.90'})
-    emit('isolated_price_response',send(strict(price_root)))
-    time.sleep(10)
-    final=find();emit('final_full_test_row',final)
-    emit('final_price_lists',request('https://api.sbis.ru/retail/nomenclature/price-list?'+urllib.parse.urlencode({'pointId':278,'actualDate':'2026-10-31','page':0,'pageSize':100})))
+        root.find(path).text=uid('isolated-price')
+    raw=('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(root,encoding='unicode')).encode('utf-16')
+    emit('roundtrip_expected',{'id':3952,'name':NAME,'pot':'14','height':'38','price':1299.90})
+    emit('roundtrip_write_response',send(raw))
+    time.sleep(3)
+    emit('roundtrip_repeat_response',send(raw))
+    final=[]
+    for attempt in range(20):
+        final=find()
+        emit('roundtrip_readback_'+str(attempt),snapshot(final))
+        if len(final)>1:break
+        if len(final)==1:
+            item=final[0];attrs=item.get('attributes',{})
+            if item.get('id')==3952 and attrs.get('Высота')=='38' and attrs.get('Диаметр горшка')=='14' and abs((item.get('cost') or 0)-1299.90)<0.001 and item.get('name')==NAME:break
+        time.sleep(4)
+    emit('final_full_test_row',final)
     report['final_test_count']=len(final)
-    report['same_id']=len(final)==1 and final[0].get('id')==3952
-    report['attributes_updated']=report['same_id'] and final[0].get('attributes',{}).get('Высота')=='37' and final[0].get('attributes',{}).get('Диаметр горшка')=='13'
+    report['same_id_after_repeat']=len(final)==1 and final[0].get('id')==3952
+    report['attributes_updated']=report['same_id_after_repeat'] and final[0].get('attributes',{}).get('Высота')=='38' and final[0].get('attributes',{}).get('Диаметр горшка')=='14'
+    report['price_updated']=report['same_id_after_repeat'] and abs((final[0].get('cost') or 0)-1299.90)<0.001
 
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
