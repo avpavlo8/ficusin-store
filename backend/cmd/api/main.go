@@ -99,7 +99,7 @@ func main() {
 	liveHandler := newSwitchHandler(http.HandlerFunc(bootstrapHTTPHandler))
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address,
-		Handler:           liveHandler,
+		Handler:           httpapi.EnvironmentGuard(liveHandler, cfg.Environment),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -127,6 +127,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	if cfg.Environment == "staging" {
+		var databaseName string
+		if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&databaseName); err != nil || cfg.ValidateDatabaseName(databaseName) != nil {
+			logger.Error("staging database isolation check failed")
+			os.Exit(1)
+		}
+	}
 
 	if err := migrate.Apply(ctx, pool, cfg.MigrationsDir); err != nil {
 		logger.Error("database migrations failed", "error", err)
