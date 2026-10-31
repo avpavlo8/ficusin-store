@@ -161,6 +161,9 @@ func main() {
 	if pushService == nil {
 		logger.Info("push notifications are off; set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to enable them")
 	}
+	if pushService != nil {
+		go order.NewStaffOrderPushWorker(pool, pushService, logger).Run(ctx)
+	}
 	if !cdekClient.Configured() {
 		logger.Warn("CDEK delivery is off; set CDEK_CLIENT_ID and CDEK_CLIENT_SECRET to enable pick-up points")
 	}

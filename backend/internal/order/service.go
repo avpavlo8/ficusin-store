@@ -454,6 +454,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	`, input.Customer.Email, letter.Subject, letter.Body); err != nil {
 		return Created{}, fmt.Errorf("queue confirmation letter: %w", err)
 	}
+	if err := queueStaffOrderPush(ctx, transaction, orderID); err != nil {
+		return Created{}, fmt.Errorf("queue staff order push: %w", err)
+	}
 	if err := transaction.Commit(ctx); err != nil {
 		return Created{}, fmt.Errorf("commit order: %w", err)
 	}
