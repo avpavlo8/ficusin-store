@@ -78,28 +78,15 @@ def main():
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
     before=find();emit('before_full_test_row',before)
     assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
-    root=E.fromstring(cml('ТЕСТ API Фикусин — НЕ ПРОДАВАТЬ','14','38','1299.90'))
-    for path in ['./ПакетПредложений/ТипыЦен/ТипЦены/Ид','./ПакетПредложений/Предложения/Предложение/Цены/Цена/ИдТипаЦены']:
-        root.find(path).text=uid('isolated-price')
-    raw=('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(root,encoding='unicode')).encode('utf-16')
-    emit('roundtrip_expected',{'id':3952,'name':NAME,'pot':'14','height':'38','price':1299.90})
-    emit('roundtrip_write_response',send(raw))
-    time.sleep(3)
-    emit('roundtrip_repeat_response',send(raw))
-    final=[]
-    for attempt in range(20):
-        final=find()
-        emit('roundtrip_readback_'+str(attempt),snapshot(final))
-        if len(final)>1:break
-        if len(final)==1:
-            item=final[0];attrs=item.get('attributes',{})
-            if item.get('id')==3952 and attrs.get('Высота')=='38' and attrs.get('Диаметр горшка')=='14' and abs((item.get('cost') or 0)-1299.90)<0.001 and item.get('name')==NAME:break
-        time.sleep(4)
-    emit('final_full_test_row',final)
-    report['final_test_count']=len(final)
-    report['same_id_after_repeat']=len(final)==1 and final[0].get('id')==3952
-    report['attributes_updated']=report['same_id_after_repeat'] and final[0].get('attributes',{}).get('Высота')=='38' and final[0].get('attributes',{}).get('Диаметр горшка')=='14'
-    report['price_updated']=report['same_id_after_repeat'] and abs((final[0].get('cost') or 0)-1299.90)<0.001
+    for label,params in [
+        ('without_point',{'searchString':MARKER,'pageSize':25,'page':0}),
+        ('with_point_no_balance',{'pointId':278,'searchString':MARKER,'pageSize':25,'page':0}),
+        ('prefix_search',{'pointId':278,'searchString':'ТЕСТ API Фикусин','pageSize':25,'page':0})]:
+        url='https://api.sbis.ru/retail/v2/nomenclature/list?'+urllib.parse.urlencode(params)
+        req=urllib.request.Request(url,headers={'X-SBISAccessToken':token,'Accept':'application/json','Cache-Control':'no-cache'})
+        with urllib.request.urlopen(req,timeout=45) as response:data=json.load(response)
+        emit(label,snapshot([item for item in rows(data) if item.get('id')==3952]))
+    report['read_only']=True
 
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
