@@ -32,6 +32,7 @@ func TestSabyCatalogueLiveConnection(t *testing.T) {
 	wait := func(waitCtx context.Context, expected catalogsync.Snapshot) bool {
 		for range 12 {
 			r, e := c.Lookup(waitCtx, expected)
+			t.Logf("synthetic readback expected height %.0f price %d: %+v error %v", expected.HeightCM, expected.PriceMinor, r, e)
 			if e == nil && expected.Matches(r) {
 				return true
 			}
