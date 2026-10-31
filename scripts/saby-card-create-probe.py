@@ -64,7 +64,7 @@ def cml(price_name,pot='12',height='35',price='1234.56'):
         val=add(add(offer,'Цены'),'Цена');add(val,'ИдТипаЦены','6');add(val,'ЦенаЗаЕдиницу',price);add(val,'Валюта','RUB');add(val,'Единица','шт');add(val,'Коэффициент','1')
     assert len(root.findall('.//Товар'))==1 and root.find('.//Товар/Артикул').text==MARKER
     assert root.find('.//Количество') is None
-    return E.tostring(root,encoding='utf-8',xml_declaration=True)
+    return E.tostring(root,encoding='utf-16',xml_declaration=True)
 def send(raw):
     return request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИмпортНоменклатурыИзCML','params':{'Параметр':{'Файл':base64.b64encode(raw).decode()}},'id':1})
 def send_flat(raw):
@@ -91,7 +91,7 @@ def main():
     assert len(before)<=1,'Existing duplicate test entries; refusing writes'
     raw=cml(price_name)
     # Match the encoding in the official downloadable request exactly.
-    raw=raw.decode('utf-8').replace("encoding='utf-8'",'encoding="UTF-16"').encode('utf-16')
+    # cml() uses UTF-16 for creates and updates consistently.
     if not before:
         response=send(raw);emit('create_response',response)
         if response.get('error'):
@@ -116,7 +116,27 @@ def main():
     if not report['same_id_after_repeat']:return
     response=send(cml(price_name,'13','37','1278.90'));emit('update_response',response)
     if response.get('error'):return
-    emit('after_update',snapshot(wait_find()));emit('updated_price_readback',snapshot(find(True)))
+    updated=[]
+    for attempt in range(10):
+        updated=find()
+        if len(updated)==1 and updated[0].get('attributes',{}).get('Высота')=='37' and updated[0].get('attributes',{}).get('Диаметр горшка')=='13':break
+        time.sleep(3)
+    emit('after_update',snapshot(updated))
+    report['attributes_updated']=len(updated)==1 and updated[0].get('attributes',{}).get('Высота')=='37' and updated[0].get('attributes',{}).get('Диаметр горшка')=='13'
+    # Reference only configured column 6. Do not define, create, or rename any price type.
+    price_xml=E.fromstring(cml('configured-column-6','13','37','1278.90'))
+    offers=price_xml.find('ПакетПредложений');offers.remove(offers.find('ТипыЦен'))
+    emit('price_attempt_scope',{'product_id':first[0].get('id'),'column':6,'price':'1278.90','defines_price_types':False})
+    emit('price_attempt_response',send(E.tostring(price_xml,encoding='utf-16',xml_declaration=True)))
+    final=[]
+    for attempt in range(10):
+        final=find(True)
+        if len(final)==1 and str(final[0].get('cost')) in ['1278.9','1278.90']:break
+        time.sleep(3)
+    emit('updated_price_readback',snapshot(final))
+    emit('final_catalog_readback',snapshot(find()))
+    report['price_write_confirmed']=len(final)==1 and str(final[0].get('cost')) in ['1278.9','1278.90']
+    report['final_test_count']=len(find())
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
 finally:emit('summary',report)
