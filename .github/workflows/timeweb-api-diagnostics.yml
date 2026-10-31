@@ -1,6 +1,17 @@
 name: Timeweb staging inspection
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [plan, provision]
+        default: plan
+      approved_monthly_rub:
+        type: string
+        default: '0'
+      candidate_sha:
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -12,3 +23,11 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/timeweb-staging-inspect.py
+      - name: Prepare or provision isolated staging
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          STAGING_ACCESS_TOKEN: ${{ secrets.STAGING_ACCESS_TOKEN }}
+          STAGING_OPERATION: ${{ inputs.operation }}
+          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
+          STAGING_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: python3 scripts/timeweb-staging-provision.py
