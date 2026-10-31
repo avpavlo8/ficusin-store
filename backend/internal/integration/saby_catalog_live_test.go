@@ -45,6 +45,7 @@ func TestSabyCatalogueLiveConnection(t *testing.T) {
 	}
 	target := baseline
 	target.Name += " — проверка сайта"
+	target.PotCM = 15
 	target.HeightCM = 39
 	target.PriceMinor = 130001
 	defer func() {
@@ -70,5 +71,5 @@ func TestSabyCatalogueLiveConnection(t *testing.T) {
 	if !wait(ctx, target) {
 		t.Fatal("same-code replay not confirmed")
 	}
-	t.Log("Go adapter: existing synthetic ID 3952 updated, price 1300.01 and height 39 confirmed; replay retained the identity. Deferred restoration verifies original 14/38/1299.90.")
+	t.Log("Go adapter: existing synthetic ID 3952 updated, pot 15, height 39 and price 1300.01 confirmed; replay retained the identity. Deferred restoration verifies original 14/38/1299.90.")
 }

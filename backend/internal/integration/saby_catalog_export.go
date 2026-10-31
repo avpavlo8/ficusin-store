@@ -186,6 +186,22 @@ func (client *SabyClient) Lookup(ctx context.Context, s catalogsync.Snapshot) (*
 	if current.ID != found.ID || current.Code != s.Code || sabyValue(detail["externalId"]) != externalID {
 		return nil, errors.New("Идентификаторы карточки СБИС не совпали при проверке")
 	}
-	current.Article = found.Article
+	id, err := strconv.ParseInt(found.ID, 10, 64)
+	if err != nil || id <= 0 {
+		return nil, errors.New("СБИС вернул неверный ID карточки")
+	}
+	var record map[string]any
+	if err := client.rpc(ctx, "Номенклатура.Прочитать", map[string]any{"ИдО": id, "Расширение": nil}, &record); err != nil {
+		return nil, err
+	}
+	if sabyValue(sabyRecordField(record, "@Номенклатура")) != found.ID || sabyValue(sabyRecordField(record, "НомНомер")) != s.Code || sabyValue(sabyRecordField(record, "Идентификатор")) != externalID {
+		return nil, errors.New("Идентификаторы номенклатуры СБИС не совпали при прямой проверке")
+	}
+	attributes, _ := sabyRecordField(record, "NomenclatureExt.Attributes").(map[string]any)
+	values, _ := attributes["values"].(map[string]any)
+	current.PotCM = remoteNumber(values["@@_Диаметр горшка"])
+	current.HeightCM = remoteNumber(values["@@_Высота"])
+	current.Name = sabyValue(sabyRecordField(record, "Наименование"))
+	current.Article = sabyValue(sabyRecordField(record, "NomenclatureExt.Article"))
 	return current, nil
 }

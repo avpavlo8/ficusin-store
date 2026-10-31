@@ -111,16 +111,35 @@ func TestSabyCatalogueNullAcceptanceAndDefiniteRejection(t *testing.T) {
 		server.Close()
 	}
 }
-func TestCatalogueLookupUsesDirectCardAndRejectsNameOnly(t *testing.T) {
+func TestCatalogueLookupRequiresCanonicalDimensionsAndExactIdentity(t *testing.T) {
 	s := catalogueSnapshot()
 	s.Name = "Калатея D12"
 	s.LookupName = "Калатея"
 	s.SabyID = "71"
 	listHeight, detailHeight := 30, 40
+	canonicalHeight, canonicalID := 40, 71
 	detailCode, uuid := "catalogue-code", "card-uuid"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/auth" {
 			_, _ = io.WriteString(w, `{"token":"token"}`)
+			return
+		}
+		if r.URL.Path == "/service/" {
+			var input struct {
+				Method string         `json:"method"`
+				Params map[string]any `json:"params"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				t.Error(err)
+			}
+			if input.Method != "Номенклатура.Прочитать" || input.Params["ИдО"] != float64(71) {
+				t.Error("unexpected canonical read")
+			}
+			if _, ok := input.Params["Расширение"]; !ok {
+				t.Error("required extension parameter missing")
+			}
+			record := sabyRecord(map[string]any{"@Номенклатура": canonicalID, "НомНомер": "catalogue-code", "Идентификатор": "card-uuid", "Наименование": s.Name, "NomenclatureExt.Article": "site-sku", "NomenclatureExt.Attributes": map[string]any{"values": map[string]any{"@@_Диаметр горшка": "11.3", "@@_Высота": canonicalHeight}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "result": record, "id": 1})
 			return
 		}
 		row := map[string]any{"id": 71, "externalId": uuid, "nomNumber": "catalogue-code", "name": s.Name, "cost": 1490.99, "attributes": map[string]any{"Диаметр горшка": "11.3", "Высота": listHeight}}
@@ -136,16 +155,22 @@ func TestCatalogueLookupUsesDirectCardAndRejectsNameOnly(t *testing.T) {
 	c := NewSabyClient("id", "secret", "key", 278, 6)
 	c.authURL = server.URL + "/auth"
 	c.apiBase = server.URL
+	c.serviceURL = server.URL + "/service/"
 	r, e := c.Lookup(context.Background(), s)
 	if e != nil || !s.Matches(r) {
 		t.Fatalf("fresh result missing: %+v %v", r, e)
 	}
 
-	listHeight, detailHeight = 40, 30
+	listHeight, detailHeight, canonicalHeight = 40, 40, 30
 	r, e = c.Lookup(context.Background(), s)
 	if e != nil || s.Matches(r) {
 		t.Fatalf("stale search must never confirm write: %+v %v", r, e)
 	}
+	canonicalHeight, canonicalID = 40, 99
+	if _, e = c.Lookup(context.Background(), s); e == nil {
+		t.Fatal("wrong canonical identity accepted")
+	}
+	canonicalID = 71
 	detailCode = "wrong-card"
 	if _, e = c.Lookup(context.Background(), s); e == nil {
 		t.Fatal("wrong direct card identity accepted")
