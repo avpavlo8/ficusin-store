@@ -75,6 +75,10 @@ def main():
     assert token,'Service authentication returned no token'
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
     price_data=request('https://api.sbis.ru/retail/nomenclature/price-list?'+urllib.parse.urlencode({'pointId':278,'actualDate':'2026-10-31','page':0,'pageSize':100}))
+    emit('price_list_rows', rows(price_data))
+    baseline=request('https://api.sbis.ru/retail/v2/nomenclature/list?'+urllib.parse.urlencode({'pointId':278,'searchString':'Аглаонема D12 в асс.','pageSize':25,'page':0}))
+    emit('connection_catalog_check', [{'id':r.get('id'),'name':r.get('name'),'article':r.get('article'),'cost':r.get('cost')} for r in rows(baseline) if not r.get('isParent')][:2])
+    emit('public_api_version',request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИнформацияОВерсии','params':{},'id':1}))
     selected=[r for r in rows(price_data) if str(r.get('id'))=='6']
     emit('price_list_schema',{'keys':list(price_data) if isinstance(price_data,dict) else [],'selected':[{'id':r.get('id'),'name':r.get('name')} for r in selected]})
     price_name=selected[0].get('name') if selected else None
@@ -82,6 +86,8 @@ def main():
     before=find();emit('before',snapshot(before))
     assert len(before)<=1,'Existing duplicate test entries; refusing writes'
     raw=cml(price_name)
+    # Match the encoding in the official downloadable request exactly.
+    raw=raw.decode('utf-8').replace("encoding='utf-8'",'encoding="UTF-16"').encode('utf-16')
     if not before:
         response=send(raw);emit('create_response',response)
         if response.get('error'):
