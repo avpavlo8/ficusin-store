@@ -79,6 +79,7 @@ def main():
     before=find();emit('before_full_test_row',before)
     assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
     for label,params in [
+        ('timestamp_query',{'pointId':278,'searchString':MARKER,'pageSize':25,'page':0,'_':str(time.time_ns())}),
         ('without_point',{'searchString':MARKER,'pageSize':25,'page':0}),
         ('with_point_no_balance',{'pointId':278,'searchString':MARKER,'pageSize':25,'page':0}),
         ('prefix_search',{'pointId':278,'searchString':'ТЕСТ API Фикусин','pageSize':25,'page':0})]:
