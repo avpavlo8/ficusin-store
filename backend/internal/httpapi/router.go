@@ -74,6 +74,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		cookieSecure: dependencies.CookieSecure,
 	}
 	cdekAPI := cdekHandlers{
+		auth:     dependencies.Auth,
 		logger:   logger,
 		service:  dependencies.CDEK,
 		packages: dependencies.Packages,

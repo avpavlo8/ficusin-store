@@ -5863,6 +5863,10 @@ paths:
       security: []
     post:
       operationId: cdekQuote
+      description: >-
+        Quotes include transport and a 0.75% declared-value charge on server-priced
+        goods after the customer discount, excluding delivery. The fee is rounded
+        to kopecks, then the combined total is rounded upward to a whole RUB.
       requestBody:
         required: true
         content:

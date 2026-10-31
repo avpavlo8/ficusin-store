@@ -60,15 +60,25 @@ func TestStage13ShipmentOfferUsesServerCDEKQuoteForExactBoxes(t *testing.T) {
 		DeliveryFee:    1,
 		CDEKTariffCode: func() *int { value := 136; return &value }(),
 	}
+	var currentMinor int64
+	if err := pool.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, variantID).Scan(&currentMinor); err != nil {
+		t.Fatal(err)
+	}
+	var discount int
+	if err := pool.QueryRow(ctx, `SELECT retail_discount_bps FROM customers WHERE id=$1`, customerID).Scan(&discount); err != nil {
+		t.Fatal(err)
+	}
+	declaredMinor := (currentMinor*int64(10000-max(0, min(9000, discount))) + 5000) / 10000
+	expected := integration.CDEKWithDeclaredValue([]integration.CDEKQuote{{Price: 777}}, declaredMinor)[0].Price
 	preview, err := repository.QuoteShipmentOffer(ctx, Actor{CustomerID: customerID, Role: RoleManager}, orderID, input)
-	if err != nil || len(preview.Quotes) != 1 || preview.Quotes[0].Price != 777 {
+	if err != nil || len(preview.Quotes) != 1 || preview.Quotes[0].Price != expected {
 		t.Fatalf("unexpected quote: %+v err=%v", preview, err)
 	}
 	offer, err := repository.CreateShipmentOffer(ctx, Actor{CustomerID: customerID, Role: RoleManager}, orderID, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if offer.DeliveryFee != 777 || offer.CDEKTariffCode == nil || *offer.CDEKTariffCode != 136 || offer.CDEKTariffName != "Посылка склад-склад" {
+	if offer.DeliveryFee != float64(expected) || offer.CDEKTariffCode == nil || *offer.CDEKTariffCode != 136 || offer.CDEKTariffName != "Посылка склад-склад" {
 		t.Fatalf("client fee was trusted or tariff was not saved: %+v", offer)
 	}
 	if len(quoter.boxes) != 1 || quoter.boxes[0] != (integration.Parcel{LengthCM: 55, WidthCM: 25, HeightCM: 30, WeightGrams: 1800}) {

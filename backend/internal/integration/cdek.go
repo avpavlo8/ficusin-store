@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 )
 
 const (
@@ -49,11 +51,12 @@ type CDEKOffice struct {
 }
 
 type CDEKQuote struct {
-	TariffCode int    `json:"tariffCode"`
-	TariffName string `json:"tariffName"`
-	Price      int    `json:"price"`
-	DaysMin    int    `json:"daysMin"`
-	DaysMax    int    `json:"daysMax"`
+	transportMinor int64  // Preserve carrier kopecks until the final customer total is rounded.
+	TariffCode     int    `json:"tariffCode"`
+	TariffName     string `json:"tariffName"`
+	Price          int    `json:"price"`
+	DaysMin        int    `json:"daysMin"`
+	DaysMax        int    `json:"daysMax"`
 }
 
 // Parcel is one box, in centimetres and grams.
@@ -246,12 +249,17 @@ func (client *CDEKClient) CalculatePVZPackages(
 		if option.DeliverySum <= 0 || (option.DeliveryMode != 2 && option.DeliveryMode != 4) {
 			continue
 		}
+		transportMinor, err := money.Minor(option.DeliverySum)
+		if err != nil {
+			continue
+		}
 		quotes = append(quotes, CDEKQuote{
-			TariffCode: option.Code,
-			TariffName: option.Name,
-			Price:      int(option.DeliverySum + .999999),
-			DaysMin:    option.PeriodMin,
-			DaysMax:    option.PeriodMax,
+			TariffCode:     option.Code,
+			TariffName:     option.Name,
+			Price:          int(option.DeliverySum + .999999),
+			transportMinor: transportMinor,
+			DaysMin:        option.PeriodMin,
+			DaysMax:        option.PeriodMax,
 		})
 	}
 	if len(quotes) == 0 {

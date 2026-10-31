@@ -170,7 +170,17 @@ func (repository *PostgresRepository) QuoteShipmentOffer(ctx context.Context, ac
 	if repository.shipmentQuotes == nil || !repository.shipmentQuotes.Configured() {
 		return ShipmentOfferQuote{}, errors.New("СДЭК не настроен")
 	}
+	// Match the current discounted unit values saved by CreateShipmentOffer.
+	var declaredMinor int64
+	for _, item := range input.Items {
+		var price float64
+		if err := repository.pool.QueryRow(ctx, `SELECT CASE WHEN pv.base_price_minor>0 THEN ((pv.base_price_minor*(10000-LEAST(9000,GREATEST(0,COALESCE(c.retail_discount_bps,0))))+5000)/10000)::numeric/100 ELSE oi.unit_price END::double precision FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN product_variants pv ON pv.id=oi.variant_id WHERE oi.id=$1 AND oi.order_id=$2`, item.OrderItemID, orderID).Scan(&price); err != nil {
+			return ShipmentOfferQuote{}, err
+		}
+		declaredMinor += money.Kopecks(price) * int64(item.Quantity)
+	}
 	quotes, err := repository.shipmentQuotes.CalculatePVZPackages(ctx, cityCode, shipmentParcels(input.Boxes))
+	quotes = integration.CDEKWithDeclaredValue(quotes, declaredMinor)
 	if err != nil {
 		return ShipmentOfferQuote{}, fmt.Errorf("не удалось пересчитать доставку СДЭК: %w", err)
 	}
@@ -310,6 +320,7 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context, a
 		if quoteErr != nil {
 			return ShipmentOffer{}, fmt.Errorf("не удалось подтвердить тариф СДЭК: %w", quoteErr)
 		}
+		quotes = integration.CDEKWithDeclaredValue(quotes, subtotalMinor)
 		matched := false
 		for _, quote := range quotes {
 			if input.CDEKTariffCode != nil && quote.TariffCode == *input.CDEKTariffCode {
