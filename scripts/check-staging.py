@@ -1,5 +1,6 @@
 """Verify the exact candidate on the isolated staging origin, without writes."""
 import hashlib
+import base64
 import json
 import os
 import pathlib
@@ -25,7 +26,8 @@ checksums += [hashlib.sha256((frontend/'index.html').read_bytes()).hexdigest(),h
 version = hashlib.sha256(('\n'.join(checksums)+'\n').encode()).hexdigest()[:16]
 
 def read(path):
-    request = urllib.request.Request(base+path,headers={'Cache-Control':'no-cache'})
+    authorization = base64.b64encode(('staging:'+os.environ['STAGING_ACCESS_TOKEN']).encode()).decode()
+    request = urllib.request.Request(base+path,headers={'Cache-Control':'no-cache','Authorization':'Basic '+authorization})
     with urllib.request.urlopen(request,timeout=20) as response:
         if response.headers.get('X-Ficusin-Environment') != 'staging':
             raise RuntimeError('Target is not running in isolated staging mode')

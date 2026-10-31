@@ -4,6 +4,7 @@ import "testing"
 
 func TestStagingRejectsProductionDatabaseAndOrigin(t *testing.T) {
 	t.Setenv("APP_ENV", "staging")
+	t.Setenv("STAGING_ACCESS_TOKEN", "a-separate-test-secret-for-staging-only")
 	t.Setenv("DATABASE_URL", "postgres://localhost/ficusin")
 	t.Setenv("SITE_URL", "https://preview.twc1.net")
 	if _, err := Load(); err == nil {
@@ -18,6 +19,7 @@ func TestStagingRejectsProductionDatabaseAndOrigin(t *testing.T) {
 
 func TestStagingDisablesCopiedProductionCredentials(t *testing.T) {
 	t.Setenv("APP_ENV", "staging")
+	t.Setenv("STAGING_ACCESS_TOKEN", "a-separate-test-secret-for-staging-only")
 	t.Setenv("DATABASE_URL", "postgres://localhost/ficusin_staging_20261031")
 	t.Setenv("SITE_URL", "https://preview.twc1.net")
 	for _, key := range []string{"SABY_APP_CLIENT_ID", "SABY_APP_SECRET", "SABY_SECRET_KEY", "WB_API_TOKEN", "OZON_CLIENT_ID", "OZON_API_KEY", "YOOKASSA_SHOP_ID", "YOOKASSA_SECRET_KEY", "SMSRU_API_KEY", "TELEGRAM_BOT_TOKEN", "VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY", "SMTP_HOST", "S3_ACCESS_KEY", "S3_SECRET_KEY", "METRIKA_MP_TOKEN", "AVITO_CLIENT_ID", "AVITO_CLIENT_SECRET"} {

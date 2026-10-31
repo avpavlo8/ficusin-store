@@ -99,7 +99,7 @@ func main() {
 	liveHandler := newSwitchHandler(http.HandlerFunc(bootstrapHTTPHandler))
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address,
-		Handler:           httpapi.EnvironmentGuard(liveHandler, cfg.Environment),
+		Handler:           httpapi.EnvironmentGuard(liveHandler, cfg.Environment, cfg.StagingAccessToken),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

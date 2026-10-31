@@ -8,26 +8,27 @@ import (
 )
 
 type Config struct {
-	Environment      string
-	HTTP             HTTP
-	Database         Database
-	Auth             Auth
-	SMS              SMS
-	MigrationsDir    string
-	TelegramChatID   string
-	TelegramBotToken string
-	YandexSuggestKey string
-	MetrikaMPToken   string
-	DaDataAPIKey     string
-	AdminEmails      []string
-	CDEK             CDEK
-	Push             Push
-	Payments         Payments
-	SiteURL          string
-	Mail             Mail
-	Photos           Photos
-	Marketplaces     Marketplaces
-	Saby             Saby
+	Environment        string
+	StagingAccessToken string
+	HTTP               HTTP
+	Database           Database
+	Auth               Auth
+	SMS                SMS
+	MigrationsDir      string
+	TelegramChatID     string
+	TelegramBotToken   string
+	YandexSuggestKey   string
+	MetrikaMPToken     string
+	DaDataAPIKey       string
+	AdminEmails        []string
+	CDEK               CDEK
+	Push               Push
+	Payments           Payments
+	SiteURL            string
+	Mail               Mail
+	Photos             Photos
+	Marketplaces       Marketplaces
+	Saby               Saby
 }
 
 // Marketplaces holds seller API credentials. Empty credentials keep the

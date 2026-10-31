@@ -18,6 +18,10 @@ func configureEnvironment(cfg Config) (Config, error) {
 	if cfg.Environment != "staging" {
 		return cfg, nil
 	}
+	cfg.StagingAccessToken = strings.TrimSpace(os.Getenv("STAGING_ACCESS_TOKEN"))
+	if len(cfg.StagingAccessToken) < 32 {
+		return Config{}, errors.New("staging requires a separate STAGING_ACCESS_TOKEN with at least 32 characters")
+	}
 	db, err := url.Parse(cfg.Database.URL)
 	if err != nil || !stagingDatabase.MatchString(strings.TrimPrefix(db.Path, "/")) {
 		return Config{}, errors.New("staging requires an isolated database named ficusin_staging or ficusin_staging_*")
