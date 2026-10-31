@@ -78,27 +78,23 @@ def main():
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
     before=find();emit('before_full_test_row',before)
     assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
+    # CML Ид was stored as nomNumber, whereas Retail exposes a separate externalId.
+    # Check the documented UUID identity while preserving the original explicit code.
     root=E.fromstring(cml(None,'13','37'))
-    root.set('ДатаФормирования',time.strftime('%Y-%m-%dT%H:%M:%S'))
     item=root.find('./Каталог/Товары/Товар')
-    item.find('Наименование').text=NAME+' — проверка обновления'
-    E.SubElement(item,'Версия').text='2'
+    external=before[0].get('externalId')
+    assert external=='6ed33cff-133b-4400-8d3f-9f37a01e5717'
+    item.find('Ид').text=external
+    E.SubElement(item,'Код').text=GUID
+    item.find('Наименование').text=NAME+' — проверка UUID'
     raw=E.tostring(root,encoding='utf-16',xml_declaration=True)
-    for mode in ['versioned_nested','flat_parameters']:
-        emit(mode+'_response',send(raw) if mode=='versioned_nested' else send_flat(raw))
-        time.sleep(12)
-        emit(mode+'_readback',find())
-    # Official sample's JSON transport is cp1251. Match it independently of XML encoding.
-    payload={'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИмпортНоменклатурыИзCML','params':{'Параметр':{'Файл':base64.b64encode(raw).decode()}},'id':1}
-    req=urllib.request.Request('https://online.sbis.ru/service/?srv=1',data=json.dumps(payload,ensure_ascii=False).encode('cp1251'),headers={'Content-Type':'application/json;charset=windows-1251','Accept':'application/json','X-SBISAccessToken':token})
-    try:
-        with urllib.request.urlopen(req,timeout=45) as response:emit('cp1251_response',json.load(response))
-    except urllib.error.HTTPError as err:emit('cp1251_response',{'status':err.code})
+    emit('external_identity_scope',{'id':3952,'externalId':external,'preserved_code':GUID})
+    emit('external_identity_response',send(raw))
     time.sleep(12)
-    final=find();emit('final_full_test_row',final)
+    final=find();emit('external_identity_readback',final)
     report['final_test_count']=len(final)
-    report['name_updated']=len(final)==1 and 'проверка обновления' in final[0].get('name','')
-    report['attributes_updated']=len(final)==1 and final[0].get('attributes',{}).get('Высота')=='37' and final[0].get('attributes',{}).get('Диаметр горшка')=='13'
+    report['same_id']=len(final)==1 and final[0].get('id')==3952
+    report['attributes_updated']=report['same_id'] and final[0].get('attributes',{}).get('Высота')=='37' and final[0].get('attributes',{}).get('Диаметр горшка')=='13'
 
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
