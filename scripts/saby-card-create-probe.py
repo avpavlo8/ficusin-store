@@ -71,72 +71,35 @@ def send_flat(raw):
     return request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИмпортНоменклатурыИзCML','params':{'Файл':base64.b64encode(raw).decode()},'id':1})
 def main():
     global token
-    assert os.environ.get('GITHUB_REF_NAME')=='probe/saby-card-api-20261031' and os.environ.get('SABY_PROBE_SEARCH')==MARKER,'Explicit probe branch/marker required'
-    assert os.environ.get('SABY_POINT_ID')=='278','Unexpected point'
+    assert os.environ.get('GITHUB_REF_NAME')=='probe/saby-card-api-20261031' and os.environ.get('SABY_PROBE_SEARCH')==MARKER
+    assert os.environ.get('SABY_POINT_ID')=='278'
     token=request('https://online.sbis.ru/oauth/service/',{'app_client_id':os.environ['SABY_APP_CLIENT_ID'],'app_secret':os.environ['SABY_APP_SECRET'],'secret_key':os.environ['SABY_SECRET_KEY']},False).get('token','')
-    assert token,'Service authentication returned no token'
+    assert token
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
-    price_data=request('https://api.sbis.ru/retail/nomenclature/price-list?'+urllib.parse.urlencode({'pointId':278,'actualDate':'2026-10-31','page':0,'pageSize':100}))
-    emit('price_list_rows', rows(price_data))
-    baseline=request('https://api.sbis.ru/retail/v2/nomenclature/list?'+urllib.parse.urlencode({'pointId':278,'searchString':'Аглаонема D12 в асс.','pageSize':25,'page':0}))
-    emit('connection_catalog_check', [{'id':r.get('id'),'name':r.get('name'),'article':r.get('article'),'cost':r.get('cost')} for r in rows(baseline) if not r.get('isParent')][:2])
-    for column in [6,999999999]:
-        control=request('https://api.sbis.ru/retail/v2/nomenclature/list?'+urllib.parse.urlencode({'pointId':278,'priceListId':column,'searchString':'Аглаонема D12 в асс.','pageSize':25,'page':0}))
-        emit('price_column_control',{'column':column,'rows':[{'id':r.get('id'),'name':r.get('name'),'cost':r.get('cost')} for r in rows(control) if not r.get('isParent')][:2]})
-    selected=[r for r in rows(price_data) if str(r.get('id'))=='6']
-    emit('price_list_schema',{'keys':list(price_data) if isinstance(price_data,dict) else [],'selected':[{'id':r.get('id'),'name':r.get('name')} for r in selected]})
-    price_name=selected[0].get('name') if selected else None
-    report['price_payload_included']=bool(price_name)
-    before=find();emit('before',snapshot(before))
-    assert len(before)<=1,'Existing duplicate test entries; refusing writes'
-    raw=cml(price_name)
-    # Match the encoding in the official downloadable request exactly.
-    # cml() uses UTF-16 for creates and updates consistently.
-    if not before:
-        response=send(raw);emit('create_response',response)
-        if response.get('error'):
-            report['creation']='rejected';emit('after_rejected_create',snapshot(find()));return
-        first=wait_find()
-        if not first:
-            # Same immutable test identity, alternate parameter shape shown
-            # by the prose API reference; never touches any existing product.
-            try:
-                response=send_flat(raw);emit('flat_parameter_response',response)
-                first=wait_find()
-            except Exception as error:emit('flat_parameter_response',str(error))
-    else:first=before
-    emit('after_create',snapshot(first))
-    if len(first)!=1:report['creation']='unknown_no_retry';return
-    report['creation']='confirmed';report['test_id']=first[0].get('id')
-    emit('price_readback',snapshot(find(True)))
-    response=send(raw);emit('repeat_response',response)
-    if response.get('error'):report['repeat']='rejected';return
-    after=wait_find();emit('after_repeat',snapshot(after))
-    report['same_id_after_repeat']=len(after)==1 and after[0].get('id')==first[0].get('id')
-    if not report['same_id_after_repeat']:return
-    response=send(cml(price_name,'13','37','1278.90'));emit('update_response',response)
-    if response.get('error'):return
-    updated=[]
-    for attempt in range(10):
-        updated=find()
-        if len(updated)==1 and updated[0].get('attributes',{}).get('Высота')=='37' and updated[0].get('attributes',{}).get('Диаметр горшка')=='13':break
-        time.sleep(3)
-    emit('after_update',snapshot(updated))
-    report['attributes_updated']=len(updated)==1 and updated[0].get('attributes',{}).get('Высота')=='37' and updated[0].get('attributes',{}).get('Диаметр горшка')=='13'
-    # Reference only configured column 6. Do not define, create, or rename any price type.
-    price_xml=E.fromstring(cml('configured-column-6','13','37','1278.90'))
-    offers=price_xml.find('ПакетПредложений');offers.remove(offers.find('ТипыЦен'))
-    emit('price_attempt_scope',{'product_id':first[0].get('id'),'column':6,'price':'1278.90','defines_price_types':False})
-    emit('price_attempt_response',send(E.tostring(price_xml,encoding='utf-16',xml_declaration=True)))
-    final=[]
-    for attempt in range(10):
-        final=find(True)
-        if len(final)==1 and str(final[0].get('cost')) in ['1278.9','1278.90']:break
-        time.sleep(3)
-    emit('updated_price_readback',snapshot(final))
-    emit('final_catalog_readback',snapshot(find()))
-    report['price_write_confirmed']=len(final)==1 and str(final[0].get('cost')) in ['1278.9','1278.90']
-    report['final_test_count']=len(find())
+    before=find();emit('before_full_test_row',before)
+    assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
+    root=E.fromstring(cml(None,'13','37'))
+    root.set('ДатаФормирования',time.strftime('%Y-%m-%dT%H:%M:%S'))
+    item=root.find('./Каталог/Товары/Товар')
+    item.find('Наименование').text=NAME+' — проверка обновления'
+    E.SubElement(item,'Версия').text='2'
+    raw=E.tostring(root,encoding='utf-16',xml_declaration=True)
+    for mode in ['versioned_nested','flat_parameters']:
+        emit(mode+'_response',send(raw) if mode=='versioned_nested' else send_flat(raw))
+        time.sleep(12)
+        emit(mode+'_readback',find())
+    # Official sample's JSON transport is cp1251. Match it independently of XML encoding.
+    payload={'jsonrpc':'2.0','protocol':3,'method':'СБИС.ИмпортНоменклатурыИзCML','params':{'Параметр':{'Файл':base64.b64encode(raw).decode()}},'id':1}
+    req=urllib.request.Request('https://online.sbis.ru/service/?srv=1',data=json.dumps(payload,ensure_ascii=False).encode('cp1251'),headers={'Content-Type':'application/json;charset=windows-1251','Accept':'application/json','X-SBISAccessToken':token})
+    try:
+        with urllib.request.urlopen(req,timeout=45) as response:emit('cp1251_response',json.load(response))
+    except urllib.error.HTTPError as err:emit('cp1251_response',{'status':err.code})
+    time.sleep(12)
+    final=find();emit('final_full_test_row',final)
+    report['final_test_count']=len(final)
+    report['name_updated']=len(final)==1 and 'проверка обновления' in final[0].get('name','')
+    report['attributes_updated']=len(final)==1 and final[0].get('attributes',{}).get('Высота')=='37' and final[0].get('attributes',{}).get('Диаметр горшка')=='13'
+
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
 finally:emit('summary',report)
