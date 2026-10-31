@@ -36,11 +36,11 @@ func buildSabyCML(s catalogsync.Snapshot, price bool) ([]byte, error) {
 	if e := s.Validate(); e != nil {
 		return nil, e
 	}
-	const classifier = "69ebc10b-4a6e-50ae-bc3e-0ebd2dd41fed"
-	const catalog = "47ab728e-9d1f-54f3-b4a5-223ec2a4d939"
+	const classifier = "f444c855-c42d-52c1-9920-e265748ea27e"
+	const catalog = "8008daaf-a71a-555c-bebd-8308d9c132f2"
 	const pot = "4cb084bb-7cd7-57dc-9fbe-86736199e6b8"
 	const height = "df18b5e4-37ff-593b-9b20-fa13f0d22c49"
-	const priceID = "049706e3-c40d-5fc1-ad72-ccac8d4c07a7"
+	const priceID = "ef54bbd6-cdab-570c-b956-efa030a914de"
 	number := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 	property := func(id, name string) cmlNode {
 		return node("Свойство", "", node("Ид", id), node("Наименование", name), node("ТипЗначений", "Число"))
@@ -60,7 +60,7 @@ func buildSabyCML(s catalogsync.Snapshot, price bool) ([]byte, error) {
 	root.Attrs = []xml.Attr{cmlAttr("ВерсияСхемы", "2.07"), cmlAttr("ДатаФормирования", time.Now().UTC().Format("2006-01-02"))}
 	if price {
 		amount := fmt.Sprintf("%d.%02d", s.PriceMinor/100, s.PriceMinor%100)
-		offers := node("ПакетПредложений", "", node("Ид", "0e44c363-a4b6-591c-89dc-aec972386742"), node("ИдКаталога", catalog), node("ИдКлассификатора", classifier), node("ТипыЦен", "", node("ТипЦены", "", node("Ид", priceID), node("Наименование", "Основная цена"), node("Валюта", "RUB"))), node("Предложения", "", node("Предложение", "", node("Ид", s.Code), node("Наименование", s.Name), node("Цены", "", node("Цена", "", node("ИдТипаЦены", priceID), node("ЦенаЗаЕдиницу", amount), node("Валюта", "RUB"), node("Единица", "шт"), node("Коэффициент", "1"))))))
+		offers := node("ПакетПредложений", "", node("Ид", "0a025fcc-6ece-5642-a271-dc76193a335c"), node("ИдКаталога", catalog), node("ИдКлассификатора", classifier), node("ТипыЦен", "", node("ТипЦены", "", node("Ид", priceID), node("Наименование", "Основная цена"), node("Валюта", "RUB"))), node("Предложения", "", node("Предложение", "", node("Ид", s.Code), node("Наименование", s.Name), node("Цены", "", node("Цена", "", node("ИдТипаЦены", priceID), node("ЦенаЗаЕдиницу", amount), node("Валюта", "RUB"), node("Единица", "шт"), node("Коэффициент", "1"))))))
 		offers.Attrs = []xml.Attr{cmlAttr("СодержитТолькоИзменения", "true")}
 		root.Children = append(root.Children, offers)
 	}
