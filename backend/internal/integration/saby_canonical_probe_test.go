@@ -17,7 +17,7 @@ func TestSabyCanonicalReadOnly(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	for _, protocol := range []int{6, 3} {
-		request := map[string]any{"jsonrpc": "2.0", "protocol": protocol, "method": "Номенклатура.Прочитать", "params": map[string]any{"ИдО": 3952}, "id": 1}
+		request := map[string]any{"jsonrpc": "2.0", "protocol": protocol, "method": "Номенклатура.Прочитать", "params": map[string]any{"ИдО": 3952, "Расширение": nil}, "id": 1}
 		var result json.RawMessage
 		err := c.authorizedJSON(ctx, http.MethodPost, c.serviceURL, request, &result)
 		t.Logf("canonical synthetic read protocol %d: %s error %v", protocol, result, err)
