@@ -16,6 +16,7 @@ for path in ['/api/v1/apps/229223','/api/v1/apps','/api/v1/presets/apps','/api/v
     try:
         data = get(path)
         print(path, 'root keys', list(data))
+        if 'privileges' in data: print('privilege definitions',json.dumps(data['privileges'],ensure_ascii=False))
         for key, value in data.items():
             if key == 'app':
                 print('env names',list(value.get('envs',{})))
