@@ -116,14 +116,17 @@ func TestCatalogueLookupUsesDirectCardAndRejectsNameOnly(t *testing.T) {
 	s.Name = "Калатея D12"
 	s.LookupName = "Калатея"
 	s.SabyID = "71"
+	listHeight, detailHeight := 30, 40
+	detailCode, uuid := "catalogue-code", "card-uuid"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/auth" {
 			_, _ = io.WriteString(w, `{"token":"token"}`)
 			return
 		}
-		row := map[string]any{"id": 71, "externalId": "card-uuid", "nomNumber": "catalogue-code", "name": s.Name, "cost": 1490.99, "attributes": map[string]any{"Диаметр горшка": "11.3", "Высота": 30}}
+		row := map[string]any{"id": 71, "externalId": uuid, "nomNumber": "catalogue-code", "name": s.Name, "cost": 1490.99, "attributes": map[string]any{"Диаметр горшка": "11.3", "Высота": listHeight}}
 		if r.URL.Path == "/retail/nomenclature/card-uuid" {
-			row["attributes"] = map[string]any{"Диаметр горшка": "11.3", "Высота": 40}
+			row["attributes"] = map[string]any{"Диаметр горшка": "11.3", "Высота": detailHeight}
+			row["nomNumber"] = detailCode
 			_ = json.NewEncoder(w).Encode(row)
 			return
 		}
@@ -137,6 +140,21 @@ func TestCatalogueLookupUsesDirectCardAndRejectsNameOnly(t *testing.T) {
 	if e != nil || !s.Matches(r) {
 		t.Fatalf("fresh result missing: %+v %v", r, e)
 	}
+
+	listHeight, detailHeight = 40, 30
+	r, e = c.Lookup(context.Background(), s)
+	if e != nil || s.Matches(r) {
+		t.Fatalf("stale search must never confirm write: %+v %v", r, e)
+	}
+	detailCode = "wrong-card"
+	if _, e = c.Lookup(context.Background(), s); e == nil {
+		t.Fatal("wrong direct card identity accepted")
+	}
+	detailCode, uuid = "catalogue-code", ""
+	if _, e = c.Lookup(context.Background(), s); e == nil {
+		t.Fatal("missing direct UUID accepted")
+	}
+	uuid = "card-uuid"
 	s.Code = "different-code"
 	s.SabyID = ""
 	_, e = c.Lookup(context.Background(), s)
