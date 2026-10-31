@@ -1,0 +1,4983 @@
+[
+  {
+    "sku": "1",
+    "variant_id": 1,
+    "product_code": 1,
+    "expected_name": "Аглаонема в ассортименте",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 1,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "2",
+    "variant_id": 2,
+    "product_code": 2,
+    "expected_name": "Аглаонема Вайт Ленс",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 1,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "3",
+    "variant_id": 3,
+    "product_code": 3,
+    "expected_name": "Аглаонема Даймонд Бей",
+    "expected_label": "D10",
+    "label": "D11",
+    "page": 1,
+    "attributes": {
+      "height_cm": 33.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "5",
+    "variant_id": 5,
+    "product_code": 5,
+    "expected_name": "Аглаонема Мария",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 1,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "6",
+    "variant_id": 6,
+    "product_code": 6,
+    "expected_name": "Аглаонема Мария Кристина",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 1,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "9",
+    "variant_id": 9,
+    "product_code": 9,
+    "expected_name": "Аглаонема Сиам Аврора",
+    "expected_label": "D12",
+    "label": "D9",
+    "page": 1,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 200,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "753",
+    "variant_id": 11288,
+    "product_code": 753,
+    "expected_name": "Аглаонема Сильвер Бей",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 1,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "10",
+    "variant_id": 10,
+    "product_code": 10,
+    "expected_name": "Аглаонема Сильвер Квин",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 1,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "12",
+    "variant_id": 12,
+    "product_code": 12,
+    "expected_name": "Аглаонема Чайна Ред",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 1,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "854",
+    "variant_id": 11389,
+    "product_code": 854,
+    "expected_name": "Адениум — пустынная роза",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 1,
+    "attributes": {
+      "height_cm": 27.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "13",
+    "variant_id": 13,
+    "product_code": 13,
+    "expected_name": "Азалия",
+    "expected_label": "D9",
+    "label": "D11",
+    "page": 1,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 350,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "598",
+    "variant_id": 11133,
+    "product_code": 598,
+    "expected_name": "Алоказия Анторо Вельвет",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 1,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "20",
+    "variant_id": 20,
+    "product_code": 20,
+    "expected_name": "Алоказия Блэк Вельвет",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 1,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "21",
+    "variant_id": 21,
+    "product_code": 21,
+    "expected_name": "Алоказия Венти",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 2,
+    "attributes": {
+      "height_cm": 45.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "736",
+    "variant_id": 11271,
+    "product_code": 736,
+    "expected_name": "Алоказия Дарк Стар",
+    "expected_label": "D21",
+    "label": "D20",
+    "page": 2,
+    "attributes": {
+      "height_cm": 100.0,
+      "package_weight_grams": 2000,
+      "package_length_cm": 110,
+      "package_width_cm": 25,
+      "package_height_cm": 25,
+      "package_winter_length_cm": 110,
+      "package_winter_width_cm": 25,
+      "package_winter_height_cm": 25,
+      "pot_diameter_cm": 20.0
+    }
+  },
+  {
+    "sku": "31",
+    "variant_id": 31,
+    "product_code": 31,
+    "expected_name": "Алоказия Драгон Скейл",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 2,
+    "attributes": {
+      "height_cm": 37.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "23",
+    "variant_id": 23,
+    "product_code": 23,
+    "expected_name": "Алоказия Лонгилоба",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 2,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 70,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "869",
+    "variant_id": 11404,
+    "product_code": 23,
+    "expected_name": "Алоказия Лонгилоба",
+    "expected_label": "D23",
+    "label": "D23",
+    "page": 2,
+    "attributes": {
+      "height_cm": 90.0,
+      "package_weight_grams": 2800,
+      "package_length_cm": 100,
+      "package_width_cm": 25,
+      "package_height_cm": 25,
+      "package_winter_length_cm": 100,
+      "package_winter_width_cm": 25,
+      "package_winter_height_cm": 25,
+      "pot_diameter_cm": 23.0
+    }
+  },
+  {
+    "sku": "16",
+    "variant_id": 16,
+    "product_code": 16,
+    "expected_name": "Алоказия микс",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 2,
+    "attributes": {
+      "height_cm": 26.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "17",
+    "variant_id": 17,
+    "product_code": 17,
+    "expected_name": "Алоказия Полли",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 2,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 470,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "18",
+    "variant_id": 18,
+    "product_code": 17,
+    "expected_name": "Алоказия Полли",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 2,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 1300,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "26",
+    "variant_id": 26,
+    "product_code": 26,
+    "expected_name": "Алоказия Регал Шилдс",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 2,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "868",
+    "variant_id": 11403,
+    "product_code": 26,
+    "expected_name": "Алоказия Регал Шилдс",
+    "expected_label": "D23",
+    "label": "D23",
+    "page": 2,
+    "attributes": {
+      "height_cm": 110.0,
+      "package_weight_grams": 2500,
+      "package_length_cm": 120,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 120,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 23.0
+    }
+  },
+  {
+    "sku": "483",
+    "variant_id": 11018,
+    "product_code": 26,
+    "expected_name": "Алоказия Регал Шилдс",
+    "expected_label": "D32",
+    "label": "D32",
+    "page": 2,
+    "attributes": {
+      "height_cm": 130.0,
+      "package_weight_grams": 5000,
+      "package_length_cm": 140,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 140,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 32.0
+    }
+  },
+  {
+    "sku": "27",
+    "variant_id": 27,
+    "product_code": 27,
+    "expected_name": "Алоказия Ред Секрет",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 2,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "28",
+    "variant_id": 28,
+    "product_code": 28,
+    "expected_name": "Алоказия Сильвер Драгон",
+    "expected_label": "D10",
+    "label": "D11",
+    "page": 2,
+    "attributes": {
+      "height_cm": 22.0,
+      "package_weight_grams": 150,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "30",
+    "variant_id": 30,
+    "product_code": 30,
+    "expected_name": "Алоказия Тайни Дансерс",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 2,
+    "attributes": {
+      "height_cm": 37.0,
+      "package_weight_grams": 450,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "33",
+    "variant_id": 33,
+    "product_code": 33,
+    "expected_name": "Антуриум Андре",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 2,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "852",
+    "variant_id": 11387,
+    "product_code": 852,
+    "expected_name": "Антуриум Блэк Лав",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 2,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 1400,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "532",
+    "variant_id": 11067,
+    "product_code": 532,
+    "expected_name": "Антуриум Вейча",
+    "expected_label": "D19",
+    "label": "D19",
+    "page": 3,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 5000,
+      "package_length_cm": 90,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 19.0
+    }
+  },
+  {
+    "sku": "644",
+    "variant_id": 11179,
+    "product_code": 644,
+    "expected_name": "Антуриум Квин оф Хартс",
+    "expected_label": "D12",
+    "label": "D13",
+    "page": 3,
+    "attributes": {
+      "height_cm": 41.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "36",
+    "variant_id": 36,
+    "product_code": 36,
+    "expected_name": "Антуриум Колорадо",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 3,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 1150,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "37",
+    "variant_id": 37,
+    "product_code": 37,
+    "expected_name": "Антуриум Лилли",
+    "expected_label": "D9",
+    "label": "D9",
+    "page": 3,
+    "attributes": {
+      "height_cm": 28.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "871",
+    "variant_id": 11406,
+    "product_code": 871,
+    "expected_name": "Антуриум папиллиламинум",
+    "expected_label": "D21",
+    "label": "D21",
+    "page": 3,
+    "attributes": {
+      "height_cm": 75.0,
+      "package_weight_grams": 2200,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 21.0
+    }
+  },
+  {
+    "sku": "870",
+    "variant_id": 11405,
+    "product_code": 870,
+    "expected_name": "Антуриум хрустальный",
+    "expected_label": "D21",
+    "label": "D21",
+    "page": 3,
+    "attributes": {
+      "height_cm": 75.0,
+      "package_weight_grams": 2350,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 21.0
+    }
+  },
+  {
+    "sku": "853",
+    "variant_id": 11388,
+    "product_code": 40,
+    "expected_name": "Араукария разнолистная",
+    "expected_label": "20 см · D10",
+    "label": "30 см · D10",
+    "page": 3,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "40",
+    "variant_id": 40,
+    "product_code": 40,
+    "expected_name": "Араукария разнолистная",
+    "expected_label": "50 см · D14",
+    "label": "56 см · D14",
+    "page": 3,
+    "attributes": {
+      "height_cm": 56.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "91",
+    "variant_id": 91,
+    "product_code": 91,
+    "expected_name": "Арека (дипсис желтеющий)",
+    "expected_label": "40 см · D10",
+    "label": "40 см · D10",
+    "page": 3,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "92",
+    "variant_id": 92,
+    "product_code": 91,
+    "expected_name": "Арека (дипсис желтеющий)",
+    "expected_label": "55 см · D17",
+    "label": "80 см · D17",
+    "page": 3,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 900,
+      "package_length_cm": 100,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 100,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "565",
+    "variant_id": 11100,
+    "product_code": 91,
+    "expected_name": "Арека (дипсис желтеющий)",
+    "expected_label": "D24",
+    "label": "D24",
+    "page": 3,
+    "attributes": {
+      "height_cm": 170.0,
+      "package_weight_grams": 2900,
+      "package_length_cm": 180,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 180,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "731",
+    "variant_id": 11266,
+    "product_code": 731,
+    "expected_name": "Аспарагус перистый",
+    "expected_label": "D20",
+    "label": "D20",
+    "page": 3,
+    "attributes": {
+      "height_cm": 51.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 20.0
+    }
+  },
+  {
+    "sku": "42",
+    "variant_id": 42,
+    "product_code": 42,
+    "expected_name": "Аспидистра высокая",
+    "expected_label": "D13",
+    "label": "D13",
+    "page": 3,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "817",
+    "variant_id": 11352,
+    "product_code": 42,
+    "expected_name": "Аспидистра высокая",
+    "expected_label": "D25",
+    "label": "D30",
+    "page": 3,
+    "attributes": {
+      "height_cm": 120.0,
+      "package_weight_grams": 4500,
+      "package_length_cm": 130,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 130,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 30.0
+    }
+  },
+  {
+    "sku": "805",
+    "variant_id": 11340,
+    "product_code": 805,
+    "expected_name": "Аспидистра высокая Вариегата",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 3,
+    "attributes": {
+      "height_cm": 90.0,
+      "package_weight_grams": 1600,
+      "package_length_cm": 100,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 100,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 19.0
+    }
+  },
+  {
+    "sku": "44",
+    "variant_id": 44,
+    "product_code": 43,
+    "expected_name": "Асплениум Криспи Вейв",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 3,
+    "attributes": {
+      "height_cm": 16.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "43",
+    "variant_id": 43,
+    "product_code": 43,
+    "expected_name": "Асплениум Криспи Вейв",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 4,
+    "attributes": {
+      "height_cm": 27.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "45",
+    "variant_id": 45,
+    "product_code": 45,
+    "expected_name": "Асплениум Парвати",
+    "expected_label": "D8",
+    "label": "D11",
+    "page": 4,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "153",
+    "variant_id": 153,
+    "product_code": 153,
+    "expected_name": "Банан",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 4,
+    "attributes": {
+      "height_cm": 42.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "49",
+    "variant_id": 49,
+    "product_code": 48,
+    "expected_name": "Бокарнея (нолина)",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 4,
+    "attributes": {
+      "height_cm": 26.0,
+      "package_weight_grams": 150,
+      "package_length_cm": 40,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "48",
+    "variant_id": 48,
+    "product_code": 48,
+    "expected_name": "Бокарнея (нолина)",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 4,
+    "attributes": {
+      "height_cm": 55.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "698",
+    "variant_id": 11233,
+    "product_code": 698,
+    "expected_name": "Бокарнея (нолина)",
+    "expected_label": "D27",
+    "label": "D27",
+    "page": 4,
+    "attributes": {
+      "height_cm": 130.0,
+      "package_weight_grams": 5000,
+      "package_length_cm": 140,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 140,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 27.0
+    }
+  },
+  {
+    "sku": "54",
+    "variant_id": 54,
+    "product_code": 54,
+    "expected_name": "Бонсай Араукария разнолистная",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 4,
+    "attributes": {
+      "height_cm": 57.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "58",
+    "variant_id": 58,
+    "product_code": 58,
+    "expected_name": "Бонсай Вяз мелколистный",
+    "expected_label": "D10",
+    "label": "D15",
+    "page": 4,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "59",
+    "variant_id": 59,
+    "product_code": 58,
+    "expected_name": "Бонсай Вяз мелколистный",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 4,
+    "attributes": {
+      "height_cm": 34.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "57",
+    "variant_id": 57,
+    "product_code": 57,
+    "expected_name": "Бонсай Зантоксилум перечный",
+    "expected_label": "D10",
+    "label": "D15",
+    "page": 4,
+    "attributes": {
+      "height_cm": 28.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "60",
+    "variant_id": 60,
+    "product_code": 60,
+    "expected_name": "Бонсай Кармона",
+    "expected_label": "D10",
+    "label": "D15",
+    "page": 4,
+    "attributes": {
+      "height_cm": 24.0,
+      "package_weight_grams": 900,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "61",
+    "variant_id": 61,
+    "product_code": 60,
+    "expected_name": "Бонсай Кармона",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 4,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 1500,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "62",
+    "variant_id": 62,
+    "product_code": 62,
+    "expected_name": "Бонсай Кипарисовик хиноки",
+    "expected_label": "D15",
+    "label": "D18",
+    "page": 4,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 18.0
+    }
+  },
+  {
+    "sku": "55",
+    "variant_id": 55,
+    "product_code": 55,
+    "expected_name": "Бонсай Клён японский Атропурпуреум",
+    "expected_label": "D15",
+    "label": "D13",
+    "page": 4,
+    "attributes": {
+      "height_cm": 32.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "64",
+    "variant_id": 64,
+    "product_code": 64,
+    "expected_name": "Бонсай Лжелиственница прекрасная",
+    "expected_label": "D13",
+    "label": "D13",
+    "page": 4,
+    "attributes": {
+      "height_cm": 33.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "70",
+    "variant_id": 70,
+    "product_code": 70,
+    "expected_name": "Бонсай Можжевельник",
+    "expected_label": "D13",
+    "label": "D13",
+    "page": 4,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "71",
+    "variant_id": 71,
+    "product_code": 70,
+    "expected_name": "Бонсай Можжевельник",
+    "expected_label": "D15",
+    "label": "D14",
+    "page": 5,
+    "attributes": {
+      "height_cm": 29.0,
+      "package_weight_grams": 900,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "549",
+    "variant_id": 11084,
+    "product_code": 549,
+    "expected_name": "Бонсай Можжевельник",
+    "expected_label": "D18",
+    "label": "D20",
+    "page": 5,
+    "attributes": {
+      "height_cm": 31.0,
+      "package_weight_grams": 1600,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 20.0
+    }
+  },
+  {
+    "sku": "74",
+    "variant_id": 74,
+    "product_code": 74,
+    "expected_name": "Бонсай Падуб городчатый",
+    "expected_label": "D15",
+    "label": "D13",
+    "page": 5,
+    "attributes": {
+      "height_cm": 32.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "77",
+    "variant_id": 77,
+    "product_code": 77,
+    "expected_name": "Бонсай Портулакария африканская",
+    "expected_label": "D10",
+    "label": "D11",
+    "page": 5,
+    "attributes": {
+      "height_cm": 26.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "78",
+    "variant_id": 78,
+    "product_code": 78,
+    "expected_name": "Бонсай Радермахера китайская",
+    "expected_label": "D13",
+    "label": "D10",
+    "page": 5,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "79",
+    "variant_id": 79,
+    "product_code": 79,
+    "expected_name": "Бонсай Сагереция чайная",
+    "expected_label": "D10",
+    "label": "D15",
+    "page": 5,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 900,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "80",
+    "variant_id": 80,
+    "product_code": 79,
+    "expected_name": "Бонсай Сагереция чайная",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 5,
+    "attributes": {
+      "height_cm": 32.0,
+      "package_weight_grams": 1200,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "81",
+    "variant_id": 81,
+    "product_code": 81,
+    "expected_name": "Бонсай Самшит вечнозелёный, прямой ствол",
+    "expected_label": "Основной размер",
+    "label": "Основной размер",
+    "page": 5,
+    "attributes": {
+      "height_cm": 28.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "82",
+    "variant_id": 82,
+    "product_code": 82,
+    "expected_name": "Бонсай Самшит Харланда",
+    "expected_label": "D18",
+    "label": "D17",
+    "page": 5,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 1200,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "84",
+    "variant_id": 84,
+    "product_code": 84,
+    "expected_name": "Бонсай Фикус микрокарпа",
+    "expected_label": "D10",
+    "label": "D15",
+    "page": 5,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "85",
+    "variant_id": 85,
+    "product_code": 84,
+    "expected_name": "Бонсай Фикус микрокарпа",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 5,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 1200,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "787",
+    "variant_id": 11322,
+    "product_code": 84,
+    "expected_name": "Бонсай Фикус микрокарпа",
+    "expected_label": "D27",
+    "label": "D27",
+    "page": 5,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 3000,
+      "package_length_cm": 90,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 27.0
+    }
+  },
+  {
+    "sku": "87",
+    "variant_id": 87,
+    "product_code": 87,
+    "expected_name": "Венерина мухоловка",
+    "expected_label": "D5",
+    "label": "D5",
+    "page": 5,
+    "attributes": {
+      "height_cm": 11.0,
+      "package_weight_grams": 70,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "510",
+    "variant_id": 11045,
+    "product_code": 510,
+    "expected_name": "Глоксиния (синнингия)",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 5,
+    "attributes": {
+      "height_cm": 22.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "89",
+    "variant_id": 89,
+    "product_code": 89,
+    "expected_name": "Даваллия",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 5,
+    "attributes": {
+      "height_cm": 33.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "90",
+    "variant_id": 90,
+    "product_code": 90,
+    "expected_name": "Декабрист (шлюмбергера)",
+    "expected_label": "D9",
+    "label": "D9",
+    "page": 6,
+    "attributes": {
+      "height_cm": 22.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "93",
+    "variant_id": 93,
+    "product_code": 93,
+    "expected_name": "Диффенбахия Ами",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 6,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "94",
+    "variant_id": 94,
+    "product_code": 94,
+    "expected_name": "Диффенбахия Бертина",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 6,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "95",
+    "variant_id": 95,
+    "product_code": 95,
+    "expected_name": "Диффенбахия в ассортименте",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 6,
+    "attributes": {
+      "height_cm": 34.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "96",
+    "variant_id": 96,
+    "product_code": 96,
+    "expected_name": "Диффенбахия Камилла",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 6,
+    "attributes": {
+      "height_cm": 38.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "97",
+    "variant_id": 97,
+    "product_code": 97,
+    "expected_name": "Диффенбахия Компакта",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 6,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "856",
+    "variant_id": 11391,
+    "product_code": 856,
+    "expected_name": "Диффенбахия Рефлектор",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 6,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 2300,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 20.0
+    }
+  },
+  {
+    "sku": "98",
+    "variant_id": 98,
+    "product_code": 98,
+    "expected_name": "Диффенбахия Саммер Стайл",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 6,
+    "attributes": {
+      "height_cm": 43.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "100",
+    "variant_id": 100,
+    "product_code": 100,
+    "expected_name": "Драцена Маргината",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 6,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "101",
+    "variant_id": 101,
+    "product_code": 100,
+    "expected_name": "Драцена Маргината",
+    "expected_label": "Два ствола · D17",
+    "label": "Два ствола · D17",
+    "page": 6,
+    "attributes": {
+      "height_cm": 78.0,
+      "package_weight_grams": 1100,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 16.0
+    }
+  },
+  {
+    "sku": "102",
+    "variant_id": 102,
+    "product_code": 102,
+    "expected_name": "Драцена Маргината Маджента",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 6,
+    "attributes": {
+      "height_cm": 52.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "103",
+    "variant_id": 103,
+    "product_code": 103,
+    "expected_name": "Драцена Маргината, окрашенная в розовый",
+    "expected_label": "D5",
+    "label": "D6",
+    "page": 6,
+    "attributes": {
+      "height_cm": 37.0,
+      "package_weight_grams": 200,
+      "package_length_cm": 40,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "46",
+    "variant_id": 46,
+    "product_code": 46,
+    "expected_name": "Драцена Сандера «Лаки-бамбук»",
+    "expected_label": "Спираль",
+    "label": "Спираль",
+    "page": 6,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 60,
+      "package_length_cm": 50,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 3.0
+    }
+  },
+  {
+    "sku": "47",
+    "variant_id": 47,
+    "product_code": 46,
+    "expected_name": "Драцена Сандера «Лаки-бамбук»",
+    "expected_label": "Прямой стебель",
+    "label": "Прямой стебель",
+    "page": 6,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 80,
+      "package_length_cm": 60,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 3.0
+    }
+  },
+  {
+    "sku": "185",
+    "variant_id": 185,
+    "product_code": 185,
+    "expected_name": "Драцена Сандера «Лаки-бамбук», композиция в воде",
+    "expected_label": "D15",
+    "label": "D12",
+    "page": 6,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "104",
+    "variant_id": 104,
+    "product_code": 104,
+    "expected_name": "Драцена Сандера, переплетённые стволы",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 7,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "106",
+    "variant_id": 106,
+    "product_code": 106,
+    "expected_name": "Замиокулькас",
+    "expected_label": "30 см · D12",
+    "label": "30 см · D11",
+    "page": 7,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "107",
+    "variant_id": 107,
+    "product_code": 106,
+    "expected_name": "Замиокулькас",
+    "expected_label": "40 см · D12",
+    "label": "40 см · D11",
+    "page": 7,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "108",
+    "variant_id": 108,
+    "product_code": 106,
+    "expected_name": "Замиокулькас",
+    "expected_label": "50 см · D12",
+    "label": "50 см · D11",
+    "page": 7,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "109",
+    "variant_id": 109,
+    "product_code": 106,
+    "expected_name": "Замиокулькас",
+    "expected_label": "60 см · D14",
+    "label": "60 см · D14",
+    "page": 7,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "111",
+    "variant_id": 111,
+    "product_code": 110,
+    "expected_name": "Замиокулькас Зензи",
+    "expected_label": "D9",
+    "label": "D6",
+    "page": 7,
+    "attributes": {
+      "height_cm": 17.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "110",
+    "variant_id": 110,
+    "product_code": 110,
+    "expected_name": "Замиокулькас Зензи",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 7,
+    "attributes": {
+      "height_cm": 42.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "798",
+    "variant_id": 11333,
+    "product_code": 110,
+    "expected_name": "Замиокулькас Зензи",
+    "expected_label": "D21",
+    "label": "D21",
+    "page": 7,
+    "attributes": {
+      "height_cm": 63.0,
+      "package_weight_grams": 2800,
+      "package_length_cm": 70,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 21.0
+    }
+  },
+  {
+    "sku": "112",
+    "variant_id": 112,
+    "product_code": 112,
+    "expected_name": "Замиокулькас Равен",
+    "expected_label": "45 см · D14",
+    "label": "48 см · D14",
+    "page": 7,
+    "attributes": {
+      "height_cm": 48.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "113",
+    "variant_id": 113,
+    "product_code": 112,
+    "expected_name": "Замиокулькас Равен",
+    "expected_label": "65 см · D17",
+    "label": "63 см · D16",
+    "page": 7,
+    "attributes": {
+      "height_cm": 63.0,
+      "package_weight_grams": 1300,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 16.0
+    }
+  },
+  {
+    "sku": "857",
+    "variant_id": 11392,
+    "product_code": 857,
+    "expected_name": "Замиокулькас Раундлиф",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 7,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 2700,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 20.0
+    }
+  },
+  {
+    "sku": "520",
+    "variant_id": 11055,
+    "product_code": 520,
+    "expected_name": "Замиокулькас Хамелеон",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 7,
+    "attributes": {
+      "height_cm": 32.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "500",
+    "variant_id": 11035,
+    "product_code": 476,
+    "expected_name": "Кактус",
+    "expected_label": "D30",
+    "label": "D22",
+    "page": 7,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 6100,
+      "package_length_cm": 40,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 22.0
+    }
+  },
+  {
+    "sku": "115",
+    "variant_id": 115,
+    "product_code": 115,
+    "expected_name": "Кактус с декором из сухоцветов",
+    "expected_label": "D5",
+    "label": "D5",
+    "page": 7,
+    "attributes": {
+      "height_cm": 11.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 15,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 15,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "114",
+    "variant_id": 114,
+    "product_code": 114,
+    "expected_name": "Кактус, микс",
+    "expected_label": "D5,5",
+    "label": "D5",
+    "page": 7,
+    "attributes": {
+      "height_cm": 8.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "117",
+    "variant_id": 117,
+    "product_code": 117,
+    "expected_name": "Каламондин",
+    "expected_label": "D12",
+    "label": "D13",
+    "page": 8,
+    "attributes": {
+      "height_cm": 45.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "872",
+    "variant_id": 11407,
+    "product_code": 872,
+    "expected_name": "Каламондин цитрус микс D9",
+    "expected_label": "D9",
+    "label": "D10",
+    "page": 8,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "119",
+    "variant_id": 119,
+    "product_code": 119,
+    "expected_name": "Калатея, микс сортов",
+    "expected_label": "D10",
+    "label": "D9",
+    "page": 8,
+    "attributes": {
+      "height_cm": 22.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "121",
+    "variant_id": 121,
+    "product_code": 121,
+    "expected_name": "Клузия",
+    "expected_label": "D17",
+    "label": "D15",
+    "page": 8,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 1100,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "126",
+    "variant_id": 126,
+    "product_code": 126,
+    "expected_name": "Кодиеум пёстрый (кротон)",
+    "expected_label": "D12",
+    "label": "D10",
+    "page": 8,
+    "attributes": {
+      "height_cm": 20.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "475",
+    "variant_id": 11010,
+    "product_code": 475,
+    "expected_name": "Кодиеум пёстрый (кротон)",
+    "expected_label": "D22",
+    "label": "D21",
+    "page": 8,
+    "attributes": {
+      "height_cm": 87.0,
+      "package_weight_grams": 2100,
+      "package_length_cm": 90,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 21.0
+    }
+  },
+  {
+    "sku": "803",
+    "variant_id": 11338,
+    "product_code": 803,
+    "expected_name": "Кодиеум пёстрый (кротон)",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 8,
+    "attributes": {
+      "height_cm": 45.0,
+      "package_weight_grams": 1100,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "741",
+    "variant_id": 11276,
+    "product_code": 741,
+    "expected_name": "Композиция из растений",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 8,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 1200,
+      "package_length_cm": 85,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 85,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 30.0
+    }
+  },
+  {
+    "sku": "729",
+    "variant_id": 11264,
+    "product_code": 729,
+    "expected_name": "Композиция из растений с арекой",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 8,
+    "attributes": {
+      "height_cm": 83.0,
+      "package_weight_grams": 3000,
+      "package_length_cm": 90,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 26.0
+    }
+  },
+  {
+    "sku": "809",
+    "variant_id": 11344,
+    "product_code": 809,
+    "expected_name": "Композиция из растений с лаки-бамбуком",
+    "expected_label": "D16",
+    "label": "D16",
+    "page": 8,
+    "attributes": {
+      "height_cm": 64.0,
+      "package_weight_grams": 1200,
+      "package_length_cm": 70,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 16.0
+    }
+  },
+  {
+    "sku": "735",
+    "variant_id": 11270,
+    "product_code": 735,
+    "expected_name": "Композиция с Монстерой",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 8,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 2100,
+      "package_length_cm": 90,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "865",
+    "variant_id": 11400,
+    "product_code": 865,
+    "expected_name": "Кордилина Киви",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 8,
+    "attributes": {
+      "height_cm": 47.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "122",
+    "variant_id": 122,
+    "product_code": 122,
+    "expected_name": "Кордилина, микс",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 8,
+    "attributes": {
+      "height_cm": 31.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "123",
+    "variant_id": 123,
+    "product_code": 123,
+    "expected_name": "Кофе Арабика",
+    "expected_label": "D9",
+    "label": "D7",
+    "page": 8,
+    "attributes": {
+      "height_cm": 20.0,
+      "package_weight_grams": 200,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 7.0
+    }
+  },
+  {
+    "sku": "125",
+    "variant_id": 125,
+    "product_code": 125,
+    "expected_name": "Крестовник Роули",
+    "expected_label": "D12",
+    "label": "D10",
+    "page": 8,
+    "attributes": {
+      "height_cm": 10.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "128",
+    "variant_id": 128,
+    "product_code": 128,
+    "expected_name": "Кумкват на штамбе",
+    "expected_label": "D15",
+    "label": "D13",
+    "page": 9,
+    "attributes": {
+      "height_cm": 49.0,
+      "package_weight_grams": 1900,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "130",
+    "variant_id": 130,
+    "product_code": 130,
+    "expected_name": "Лавр благородный",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 9,
+    "attributes": {
+      "height_cm": 47.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "131",
+    "variant_id": 131,
+    "product_code": 131,
+    "expected_name": "Лавр благородный, куст",
+    "expected_label": "Основной размер",
+    "label": "Основной размер",
+    "page": 9,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "133",
+    "variant_id": 133,
+    "product_code": 133,
+    "expected_name": "Лайм Рангпур",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 9,
+    "attributes": {
+      "height_cm": 27.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "873",
+    "variant_id": 11408,
+    "product_code": 873,
+    "expected_name": "Лайм цитрус микс D9",
+    "expected_label": "D9",
+    "label": "D10",
+    "page": 9,
+    "attributes": {
+      "height_cm": 31.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "858",
+    "variant_id": 11393,
+    "product_code": 858,
+    "expected_name": "Лес из метасеквойи с кашпо",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 9,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 1300,
+      "package_length_cm": 70,
+      "package_width_cm": 50,
+      "package_height_cm": 50,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 50,
+      "package_winter_height_cm": 50,
+      "pot_diameter_cm": 40.0
+    }
+  },
+  {
+    "sku": "134",
+    "variant_id": 134,
+    "product_code": 134,
+    "expected_name": "Ливистона",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 9,
+    "attributes": {
+      "height_cm": 47.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "136",
+    "variant_id": 136,
+    "product_code": 136,
+    "expected_name": "Лимон вариегатный",
+    "expected_label": "D11",
+    "label": "D11",
+    "page": 9,
+    "attributes": {
+      "height_cm": 31.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "137",
+    "variant_id": 137,
+    "product_code": 137,
+    "expected_name": "Лимон Мейера",
+    "expected_label": "D12",
+    "label": "D14",
+    "page": 9,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 1300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "874",
+    "variant_id": 11409,
+    "product_code": 874,
+    "expected_name": "Лимон цитрус микс D9",
+    "expected_label": "D9",
+    "label": "D11",
+    "page": 9,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "141",
+    "variant_id": 141,
+    "product_code": 140,
+    "expected_name": "Микросорум Крокодилус",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 9,
+    "attributes": {
+      "height_cm": 21.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "140",
+    "variant_id": 140,
+    "product_code": 140,
+    "expected_name": "Микросорум Крокодилус",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 9,
+    "attributes": {
+      "height_cm": 27.0,
+      "package_weight_grams": 150,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "143",
+    "variant_id": 143,
+    "product_code": 143,
+    "expected_name": "Мирсина африканская",
+    "expected_label": "D12",
+    "label": "D11.3",
+    "page": 9,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.3
+    }
+  },
+  {
+    "sku": "145",
+    "variant_id": 145,
+    "product_code": 145,
+    "expected_name": "Мирт",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 9,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 350,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "761",
+    "variant_id": 11296,
+    "product_code": 761,
+    "expected_name": "Монстера Альба",
+    "expected_label": "D19",
+    "label": "D24",
+    "page": 9,
+    "attributes": {
+      "height_cm": 96.0,
+      "package_weight_grams": 3800,
+      "package_length_cm": 100,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 100,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "149",
+    "variant_id": 149,
+    "product_code": 149,
+    "expected_name": "Монстера делициоза",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 9,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 350,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "150",
+    "variant_id": 150,
+    "product_code": 149,
+    "expected_name": "Монстера делициоза",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 10,
+    "attributes": {
+      "height_cm": 65.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 80,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "815",
+    "variant_id": 11350,
+    "product_code": 149,
+    "expected_name": "Монстера делициоза",
+    "expected_label": "D24",
+    "label": "D24",
+    "page": 10,
+    "attributes": {
+      "height_cm": 90.0,
+      "package_weight_grams": 4500,
+      "package_length_cm": 100,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 100,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "148",
+    "variant_id": 148,
+    "product_code": 148,
+    "expected_name": "Монстера Манки Лиф",
+    "expected_label": "D5",
+    "label": "D6",
+    "page": 10,
+    "attributes": {
+      "height_cm": 21.0,
+      "package_weight_grams": 150,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "151",
+    "variant_id": 151,
+    "product_code": 151,
+    "expected_name": "Монстера Медиум Сильвер",
+    "expected_label": "D10",
+    "label": "D9",
+    "page": 10,
+    "attributes": {
+      "height_cm": 22.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "152",
+    "variant_id": 152,
+    "product_code": 152,
+    "expected_name": "Монстера Тайское созвездие",
+    "expected_label": "D6",
+    "label": "D9",
+    "page": 10,
+    "attributes": {
+      "height_cm": 31.0,
+      "package_weight_grams": 250,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "154",
+    "variant_id": 154,
+    "product_code": 154,
+    "expected_name": "Непентес, микс",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 10,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "155",
+    "variant_id": 155,
+    "product_code": 155,
+    "expected_name": "Нефролепис Бостон Блонди",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 10,
+    "attributes": {
+      "height_cm": 31.0,
+      "package_weight_grams": 550,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "156",
+    "variant_id": 156,
+    "product_code": 506,
+    "expected_name": "Нефролепис Грин Леди",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 10,
+    "attributes": {
+      "height_cm": 29.0,
+      "package_weight_grams": 450,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "563",
+    "variant_id": 11098,
+    "product_code": 506,
+    "expected_name": "Нефролепис Грин Леди",
+    "expected_label": "D17",
+    "label": "D16",
+    "page": 10,
+    "attributes": {
+      "height_cm": 45.0,
+      "package_weight_grams": 1650,
+      "package_length_cm": 50,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 16.0
+    }
+  },
+  {
+    "sku": "506",
+    "variant_id": 11041,
+    "product_code": 506,
+    "expected_name": "Нефролепис Грин Леди",
+    "expected_label": "D21",
+    "label": "D19",
+    "page": 10,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 1750,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 19.0
+    }
+  },
+  {
+    "sku": "859",
+    "variant_id": 11394,
+    "product_code": 859,
+    "expected_name": "Нефролепис Даффи",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 10,
+    "attributes": {
+      "height_cm": 44.0,
+      "package_weight_grams": 1100,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "860",
+    "variant_id": 11395,
+    "product_code": 860,
+    "expected_name": "Нефролепис Тедди Джуниор",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 10,
+    "attributes": {
+      "height_cm": 28.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "159",
+    "variant_id": 159,
+    "product_code": 159,
+    "expected_name": "Олива европейская",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 10,
+    "attributes": {
+      "height_cm": 38.0,
+      "package_weight_grams": 250,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "160",
+    "variant_id": 160,
+    "product_code": 160,
+    "expected_name": "Олива европейская, штамб",
+    "expected_label": "D15",
+    "label": "D13",
+    "page": 10,
+    "attributes": {
+      "height_cm": 67.0,
+      "package_weight_grams": 1850,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "516",
+    "variant_id": 11051,
+    "product_code": 160,
+    "expected_name": "Олива европейская, штамб",
+    "expected_label": "D22",
+    "label": "D24",
+    "page": 10,
+    "attributes": {
+      "height_cm": 110.0,
+      "package_weight_grams": 3200,
+      "package_length_cm": 120,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 120,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "489",
+    "variant_id": 11024,
+    "product_code": 489,
+    "expected_name": "Пальма ликуала",
+    "expected_label": "D24",
+    "label": "D22",
+    "page": 10,
+    "attributes": {
+      "height_cm": 105.0,
+      "package_weight_grams": 2200,
+      "package_length_cm": 115,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 115,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 22.0
+    }
+  },
+  {
+    "sku": "830",
+    "variant_id": 11365,
+    "product_code": 830,
+    "expected_name": "Панданус",
+    "expected_label": "D16",
+    "label": "D14",
+    "page": 11,
+    "attributes": {
+      "height_cm": 77.0,
+      "package_weight_grams": 1150,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "165",
+    "variant_id": 165,
+    "product_code": 165,
+    "expected_name": "Пахира акватика, плетёная",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 11,
+    "attributes": {
+      "height_cm": 37.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "801",
+    "variant_id": 11336,
+    "product_code": 801,
+    "expected_name": "Педилантус",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 11,
+    "attributes": {
+      "height_cm": 29.0,
+      "package_weight_grams": 550,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "166",
+    "variant_id": 166,
+    "product_code": 166,
+    "expected_name": "Пеперомия, микс видов и сортов",
+    "expected_label": "D6",
+    "label": "D5",
+    "page": 11,
+    "attributes": {
+      "height_cm": 9.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "167",
+    "variant_id": 167,
+    "product_code": 167,
+    "expected_name": "Платицериум",
+    "expected_label": "D17",
+    "label": "D15",
+    "page": 11,
+    "attributes": {
+      "height_cm": 54.0,
+      "package_weight_grams": 1500,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "171",
+    "variant_id": 171,
+    "product_code": 170,
+    "expected_name": "Рипсалис",
+    "expected_label": "D6",
+    "label": "D5",
+    "page": 11,
+    "attributes": {
+      "height_cm": 13.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "170",
+    "variant_id": 170,
+    "product_code": 170,
+    "expected_name": "Рипсалис",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 11,
+    "attributes": {
+      "height_cm": 55.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "173",
+    "variant_id": 173,
+    "product_code": 173,
+    "expected_name": "Роза Патио",
+    "expected_label": "D12",
+    "label": "D10",
+    "page": 11,
+    "attributes": {
+      "height_cm": 26.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "177",
+    "variant_id": 177,
+    "product_code": 177,
+    "expected_name": "Сансевиерия Дигиторум",
+    "expected_label": "D5",
+    "label": "D7",
+    "page": 11,
+    "attributes": {
+      "height_cm": 24.0,
+      "package_weight_grams": 150,
+      "package_length_cm": 30,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 7.0
+    }
+  },
+  {
+    "sku": "178",
+    "variant_id": 178,
+    "product_code": 178,
+    "expected_name": "Сансевиерия Спагетти",
+    "expected_label": "D5",
+    "label": "D6",
+    "page": 11,
+    "attributes": {
+      "height_cm": 18.0,
+      "package_weight_grams": 150,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "176",
+    "variant_id": 176,
+    "product_code": 175,
+    "expected_name": "Сансевиерия цилиндрическая Твист",
+    "expected_label": "D5",
+    "label": "D5",
+    "page": 11,
+    "attributes": {
+      "height_cm": 15.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "175",
+    "variant_id": 175,
+    "product_code": 175,
+    "expected_name": "Сансевиерия цилиндрическая Твист",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 11,
+    "attributes": {
+      "height_cm": 36.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "174",
+    "variant_id": 174,
+    "product_code": 174,
+    "expected_name": "Сансевиерия, микс видов и сортов",
+    "expected_label": "Основной размер",
+    "label": "Основной размер",
+    "page": 11,
+    "attributes": {
+      "height_cm": 32.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "179",
+    "variant_id": 179,
+    "product_code": 179,
+    "expected_name": "Сингониум, микс видов и сортов",
+    "expected_label": "D10",
+    "label": "D9",
+    "page": 11,
+    "attributes": {
+      "height_cm": 36.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "482",
+    "variant_id": 11017,
+    "product_code": 482,
+    "expected_name": "Сингониум, микс видов и сортов",
+    "expected_label": "D21",
+    "label": "D20",
+    "page": 11,
+    "attributes": {
+      "height_cm": 84.0,
+      "package_weight_grams": 3400,
+      "package_length_cm": 90,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 20.0
+    }
+  },
+  {
+    "sku": "181",
+    "variant_id": 181,
+    "product_code": 181,
+    "expected_name": "Соланум — паслён ложноперечный",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 12,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "738",
+    "variant_id": 11273,
+    "product_code": 738,
+    "expected_name": "Спатифиллум",
+    "expected_label": "D24",
+    "label": "D24",
+    "page": 12,
+    "attributes": {
+      "height_cm": 75.0,
+      "package_weight_grams": 3000,
+      "package_length_cm": 80,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "184",
+    "variant_id": 184,
+    "product_code": 184,
+    "expected_name": "Спатифиллум Шопен",
+    "expected_label": "D6",
+    "label": "D9",
+    "page": 12,
+    "attributes": {
+      "height_cm": 37.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "186",
+    "variant_id": 186,
+    "product_code": 186,
+    "expected_name": "Стрелиция Николая",
+    "expected_label": "D13",
+    "label": "D13",
+    "page": 12,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 70,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "187",
+    "variant_id": 187,
+    "product_code": 187,
+    "expected_name": "Суккулент, микс",
+    "expected_label": "D5",
+    "label": "D5",
+    "page": 12,
+    "attributes": {
+      "height_cm": 12.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 5.0
+    }
+  },
+  {
+    "sku": "189",
+    "variant_id": 189,
+    "product_code": 189,
+    "expected_name": "Тилландсия атмосферная, микс",
+    "expected_label": "Основной размер",
+    "label": "Основной размер",
+    "page": 12,
+    "attributes": {
+      "height_cm": 9.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": null
+    }
+  },
+  {
+    "sku": "188",
+    "variant_id": 188,
+    "product_code": 188,
+    "expected_name": "Тилландсия атмосферная, свисающая форма",
+    "expected_label": "Основной размер",
+    "label": "Основной размер",
+    "page": 12,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 15,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 15,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": null
+    }
+  },
+  {
+    "sku": "190",
+    "variant_id": 190,
+    "product_code": 190,
+    "expected_name": "Традесканция зебрина",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 12,
+    "attributes": {
+      "height_cm": 17.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "867",
+    "variant_id": 11402,
+    "product_code": 867,
+    "expected_name": "Традесканция зебрина",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 12,
+    "attributes": {
+      "height_cm": 23.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "162",
+    "variant_id": 162,
+    "product_code": 162,
+    "expected_name": "Фаленопсис Элегант, каскад, 2 цветоноса",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 12,
+    "attributes": {
+      "height_cm": 55.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "163",
+    "variant_id": 163,
+    "product_code": 163,
+    "expected_name": "Фаленопсис Элегант, каскад, микс",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 12,
+    "attributes": {
+      "height_cm": 56.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "161",
+    "variant_id": 161,
+    "product_code": 161,
+    "expected_name": "Фаленопсис, 3 цветоноса",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 12,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 70,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "193",
+    "variant_id": 193,
+    "product_code": 193,
+    "expected_name": "Фикус Али",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 12,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "194",
+    "variant_id": 194,
+    "product_code": 194,
+    "expected_name": "Фикус Алтиссима",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 12,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "522",
+    "variant_id": 11057,
+    "product_code": 522,
+    "expected_name": "Фикус Амстел на круглой опоре",
+    "expected_label": "D35",
+    "label": "D35",
+    "page": 12,
+    "attributes": {
+      "height_cm": 210.0,
+      "package_weight_grams": 5000,
+      "package_length_cm": 220,
+      "package_width_cm": 40,
+      "package_height_cm": 40,
+      "package_winter_length_cm": 220,
+      "package_winter_width_cm": 40,
+      "package_winter_height_cm": 40,
+      "pot_diameter_cm": 35.0
+    }
+  },
+  {
+    "sku": "196",
+    "variant_id": 196,
+    "product_code": 196,
+    "expected_name": "Фикус бенгальский Одри",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 13,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 700,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "692",
+    "variant_id": 11227,
+    "product_code": 196,
+    "expected_name": "Фикус бенгальский Одри",
+    "expected_label": "D22",
+    "label": "D25",
+    "page": 13,
+    "attributes": {
+      "height_cm": 85.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 90,
+      "package_width_cm": 25,
+      "package_height_cm": 25,
+      "package_winter_length_cm": 90,
+      "package_winter_width_cm": 25,
+      "package_winter_height_cm": 25,
+      "pot_diameter_cm": 25.0
+    }
+  },
+  {
+    "sku": "523",
+    "variant_id": 11058,
+    "product_code": 523,
+    "expected_name": "Фикус бенгальский Одри, спиральный ствол",
+    "expected_label": "D32",
+    "label": "D32",
+    "page": 13,
+    "attributes": {
+      "height_cm": 137.0,
+      "package_weight_grams": 10000,
+      "package_length_cm": 170,
+      "package_width_cm": 40,
+      "package_height_cm": 40,
+      "package_winter_length_cm": 170,
+      "package_winter_width_cm": 40,
+      "package_winter_height_cm": 40,
+      "pot_diameter_cm": 32.0
+    }
+  },
+  {
+    "sku": "197",
+    "variant_id": 197,
+    "product_code": 197,
+    "expected_name": "Фикус Бенджамина Банди",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 13,
+    "attributes": {
+      "height_cm": 67.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "204",
+    "variant_id": 204,
+    "product_code": 204,
+    "expected_name": "Фикус Бенджамина Голден Кинг",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 13,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "198",
+    "variant_id": 198,
+    "product_code": 198,
+    "expected_name": "Фикус Бенджамина Грин Кинки",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 13,
+    "attributes": {
+      "height_cm": 36.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "486",
+    "variant_id": 11021,
+    "product_code": 198,
+    "expected_name": "Фикус Бенджамина Грин Кинки",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 13,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "199",
+    "variant_id": 199,
+    "product_code": 199,
+    "expected_name": "Фикус Бенджамина Кинки",
+    "expected_label": "D12",
+    "label": "D11",
+    "page": 13,
+    "attributes": {
+      "height_cm": 36.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 11.0
+    }
+  },
+  {
+    "sku": "200",
+    "variant_id": 200,
+    "product_code": 200,
+    "expected_name": "Фикус Бенджамина Кумани",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 13,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "201",
+    "variant_id": 201,
+    "product_code": 201,
+    "expected_name": "Фикус Бенджамина Лакки",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 13,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "210",
+    "variant_id": 210,
+    "product_code": 210,
+    "expected_name": "Фикус Бенджамина Наташа",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 13,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 200,
+      "package_length_cm": 30,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 15,
+      "package_winter_height_cm": 15,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "202",
+    "variant_id": 202,
+    "product_code": 202,
+    "expected_name": "Фикус Бенджамина Сафрана",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 13,
+    "attributes": {
+      "height_cm": 63.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "203",
+    "variant_id": 203,
+    "product_code": 203,
+    "expected_name": "Фикус Бенджамина Тарана",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 13,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "755",
+    "variant_id": 11290,
+    "product_code": 755,
+    "expected_name": "Фикус Бенджамина Экзотика",
+    "expected_label": "D31",
+    "label": "D31",
+    "page": 13,
+    "attributes": {
+      "height_cm": 144.0,
+      "package_weight_grams": 8000,
+      "package_length_cm": 150,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 150,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 31.0
+    }
+  },
+  {
+    "sku": "752",
+    "variant_id": 11287,
+    "product_code": 752,
+    "expected_name": "Фикус лирата",
+    "expected_label": "D27",
+    "label": "D27",
+    "page": 13,
+    "attributes": {
+      "height_cm": 140.0,
+      "package_weight_grams": 10000,
+      "package_length_cm": 150,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 150,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 27.0
+    }
+  },
+  {
+    "sku": "205",
+    "variant_id": 205,
+    "product_code": 689,
+    "expected_name": "Фикус лирата Бамбино",
+    "expected_label": "D12",
+    "label": "D10",
+    "page": 14,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "690",
+    "variant_id": 11225,
+    "product_code": 689,
+    "expected_name": "Фикус лирата Бамбино",
+    "expected_label": "D22",
+    "label": "D22",
+    "page": 14,
+    "attributes": {
+      "height_cm": 65.0,
+      "package_weight_grams": 3000,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 22.0
+    }
+  },
+  {
+    "sku": "689",
+    "variant_id": 11224,
+    "product_code": 689,
+    "expected_name": "Фикус лирата Бамбино",
+    "expected_label": "D29",
+    "label": "D28",
+    "page": 14,
+    "attributes": {
+      "height_cm": 75.0,
+      "package_weight_grams": 5000,
+      "package_length_cm": 80,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 28.0
+    }
+  },
+  {
+    "sku": "208",
+    "variant_id": 208,
+    "product_code": 208,
+    "expected_name": "Фикус микрокарпа Гинсенг",
+    "expected_label": "D9",
+    "label": "D12",
+    "page": 14,
+    "attributes": {
+      "height_cm": 36.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "206",
+    "variant_id": 206,
+    "product_code": 206,
+    "expected_name": "Фикус микрокарпа Майя",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 14,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 800,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "209",
+    "variant_id": 209,
+    "product_code": 209,
+    "expected_name": "Фикус микрокарпа Мокламе",
+    "expected_label": "D17",
+    "label": "D17",
+    "page": 14,
+    "attributes": {
+      "height_cm": 73.0,
+      "package_weight_grams": 1100,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 17.0
+    }
+  },
+  {
+    "sku": "494",
+    "variant_id": 11029,
+    "product_code": 494,
+    "expected_name": "Фикус микрокарпа Нитида",
+    "expected_label": "D34",
+    "label": "D34",
+    "page": 14,
+    "attributes": {
+      "height_cm": 150.0,
+      "package_weight_grams": 10000,
+      "package_length_cm": 160,
+      "package_width_cm": 40,
+      "package_height_cm": 40,
+      "package_winter_length_cm": 160,
+      "package_winter_width_cm": 40,
+      "package_winter_height_cm": 40,
+      "pot_diameter_cm": 34.0
+    }
+  },
+  {
+    "sku": "207",
+    "variant_id": 207,
+    "product_code": 207,
+    "expected_name": "Фикус микрокарпа, тонкие стволы",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 14,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "215",
+    "variant_id": 215,
+    "product_code": 215,
+    "expected_name": "Фикус эластика Абиджан",
+    "expected_label": "D12",
+    "label": "D10",
+    "page": 14,
+    "attributes": {
+      "height_cm": 54.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "216",
+    "variant_id": 216,
+    "product_code": 216,
+    "expected_name": "Фикус эластика Белиз",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 14,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "685",
+    "variant_id": 11220,
+    "product_code": 685,
+    "expected_name": "Фикус эластика Робуста",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 14,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "740",
+    "variant_id": 11275,
+    "product_code": 685,
+    "expected_name": "Фикус эластика Робуста",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 14,
+    "attributes": {
+      "height_cm": 75.0,
+      "package_weight_grams": 2000,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "784",
+    "variant_id": 11319,
+    "product_code": 685,
+    "expected_name": "Фикус эластика Робуста",
+    "expected_label": "D25",
+    "label": "D24",
+    "page": 14,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 3000,
+      "package_length_cm": 80,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_diameter_cm": 24.0
+    }
+  },
+  {
+    "sku": "745",
+    "variant_id": 11280,
+    "product_code": 685,
+    "expected_name": "Фикус эластика Робуста",
+    "expected_label": "D29",
+    "label": "D26",
+    "page": 14,
+    "attributes": {
+      "height_cm": 95.0,
+      "package_weight_grams": 4000,
+      "package_length_cm": 100,
+      "package_width_cm": 25,
+      "package_height_cm": 25,
+      "package_winter_length_cm": 100,
+      "package_winter_width_cm": 25,
+      "package_winter_height_cm": 25,
+      "pot_diameter_cm": 26.0
+    }
+  },
+  {
+    "sku": "212",
+    "variant_id": 212,
+    "product_code": 212,
+    "expected_name": "Фикус эластика Руби",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 14,
+    "attributes": {
+      "height_cm": 43.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "684",
+    "variant_id": 11219,
+    "product_code": 212,
+    "expected_name": "Фикус эластика Руби",
+    "expected_label": "D22",
+    "label": "D22",
+    "page": 14,
+    "attributes": {
+      "height_cm": 66.0,
+      "package_weight_grams": 4000,
+      "package_length_cm": 70,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 22.0
+    }
+  },
+  {
+    "sku": "214",
+    "variant_id": 214,
+    "product_code": 214,
+    "expected_name": "Фикус эластика Шивериана",
+    "expected_label": "D9",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "218",
+    "variant_id": 218,
+    "product_code": 218,
+    "expected_name": "Филодендрон Биркин",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "227",
+    "variant_id": 227,
+    "product_code": 226,
+    "expected_name": "Филодендрон Бразил",
+    "expected_label": "D7",
+    "label": "D7",
+    "page": 15,
+    "attributes": {
+      "height_cm": 16.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 7.0
+    }
+  },
+  {
+    "sku": "226",
+    "variant_id": 226,
+    "product_code": 226,
+    "expected_name": "Филодендрон Бразил",
+    "expected_label": "D18",
+    "label": "D16",
+    "page": 15,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 16.0
+    }
+  },
+  {
+    "sku": "219",
+    "variant_id": 219,
+    "product_code": 219,
+    "expected_name": "Филодендрон Вайт Принцесс",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 36.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "220",
+    "variant_id": 220,
+    "product_code": 220,
+    "expected_name": "Филодендрон Грин Принцесс",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "579",
+    "variant_id": 11114,
+    "product_code": 579,
+    "expected_name": "Филодендрон Империал Грин",
+    "expected_label": "D19",
+    "label": "D19",
+    "page": 15,
+    "attributes": {
+      "height_cm": 80.0,
+      "package_weight_grams": 3000,
+      "package_length_cm": 80,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 80,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 19.0
+    }
+  },
+  {
+    "sku": "221",
+    "variant_id": 221,
+    "product_code": 221,
+    "expected_name": "Филодендрон Империал Ред",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "222",
+    "variant_id": 222,
+    "product_code": 222,
+    "expected_name": "Филодендрон МакКолли Финал",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 30.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "225",
+    "variant_id": 225,
+    "product_code": 225,
+    "expected_name": "Филодендрон Пинк Принцесс",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 15,
+    "attributes": {
+      "height_cm": 20.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "223",
+    "variant_id": 223,
+    "product_code": 223,
+    "expected_name": "Филодендрон Принс оф Оранж",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 15,
+    "attributes": {
+      "height_cm": 19.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "224",
+    "variant_id": 224,
+    "product_code": 224,
+    "expected_name": "Филодендрон Ринг оф Файер",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 15,
+    "attributes": {
+      "height_cm": 38.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "228",
+    "variant_id": 228,
+    "product_code": 228,
+    "expected_name": "Фиттония, микс сортов",
+    "expected_label": "D9",
+    "label": "D9",
+    "page": 15,
+    "attributes": {
+      "height_cm": 17.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "537",
+    "variant_id": 11072,
+    "product_code": 537,
+    "expected_name": "Флорариум открытый",
+    "expected_label": "Основной вариант",
+    "label": "Основной вариант",
+    "page": 15,
+    "attributes": {
+      "height_cm": 25.0,
+      "package_weight_grams": 1500,
+      "package_length_cm": 30,
+      "package_width_cm": 30,
+      "package_height_cm": 30,
+      "package_winter_length_cm": 30,
+      "package_winter_width_cm": 30,
+      "package_winter_height_cm": 30,
+      "pot_width_cm": 20.0,
+      "pot_diameter_cm": null
+    }
+  },
+  {
+    "sku": "229",
+    "variant_id": 229,
+    "product_code": 229,
+    "expected_name": "Хамедорея изящная — Элеганс",
+    "expected_label": "D10",
+    "label": "D12",
+    "page": 15,
+    "attributes": {
+      "height_cm": 43.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "230",
+    "variant_id": 230,
+    "product_code": 230,
+    "expected_name": "Хедера — комнатный плющ",
+    "expected_label": "Вариант 1",
+    "label": "Вариант 1",
+    "page": 15,
+    "attributes": {
+      "height_cm": 12.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "231",
+    "variant_id": 231,
+    "product_code": 230,
+    "expected_name": "Хедера — комнатный плющ",
+    "expected_label": "D13",
+    "label": "D13",
+    "page": 16,
+    "attributes": {
+      "height_cm": 49.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "232",
+    "variant_id": 232,
+    "product_code": 230,
+    "expected_name": "Хедера — комнатный плющ",
+    "expected_label": "D19",
+    "label": "D19",
+    "page": 16,
+    "attributes": {
+      "height_cm": 110.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 19.0
+    }
+  },
+  {
+    "sku": "861",
+    "variant_id": 11396,
+    "product_code": 861,
+    "expected_name": "Хлорофитум кудрявый",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 16,
+    "attributes": {
+      "height_cm": 21.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "807",
+    "variant_id": 11342,
+    "product_code": 233,
+    "expected_name": "Хлорофитум хохлатый, полосатый",
+    "expected_label": "D10",
+    "label": "D10",
+    "page": 16,
+    "attributes": {
+      "height_cm": 35.0,
+      "package_weight_grams": 400,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 10.0
+    }
+  },
+  {
+    "sku": "233",
+    "variant_id": 233,
+    "product_code": 233,
+    "expected_name": "Хлорофитум хохлатый, полосатый",
+    "expected_label": "D13",
+    "label": "D13",
+    "page": 16,
+    "attributes": {
+      "height_cm": 45.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 50,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "236",
+    "variant_id": 236,
+    "product_code": 234,
+    "expected_name": "Хойя, микс видов и сортов",
+    "expected_label": "D6",
+    "label": "D6",
+    "page": 16,
+    "attributes": {
+      "height_cm": 12.0,
+      "package_weight_grams": 100,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 6.0
+    }
+  },
+  {
+    "sku": "237",
+    "variant_id": 237,
+    "product_code": 234,
+    "expected_name": "Хойя, микс видов и сортов",
+    "expected_label": "D7",
+    "label": "D9",
+    "page": 16,
+    "attributes": {
+      "height_cm": 23.0,
+      "package_weight_grams": 200,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "234",
+    "variant_id": 234,
+    "product_code": 234,
+    "expected_name": "Хойя, микс видов и сортов",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 16,
+    "attributes": {
+      "height_cm": 47.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "235",
+    "variant_id": 235,
+    "product_code": 234,
+    "expected_name": "Хойя, микс видов и сортов",
+    "expected_label": "D14",
+    "label": "D14",
+    "page": 16,
+    "attributes": {
+      "height_cm": 40.0,
+      "package_weight_grams": 500,
+      "package_length_cm": 40,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "238",
+    "variant_id": 238,
+    "product_code": 238,
+    "expected_name": "Цикас — саговник отогнутый",
+    "expected_label": "40 см · D14",
+    "label": "43 см · D13",
+    "page": 16,
+    "attributes": {
+      "height_cm": 43.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "239",
+    "variant_id": 239,
+    "product_code": 238,
+    "expected_name": "Цикас — саговник отогнутый",
+    "expected_label": "50 см · D14",
+    "label": "60 см · D14",
+    "page": 16,
+    "attributes": {
+      "height_cm": 60.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "240",
+    "variant_id": 240,
+    "product_code": 240,
+    "expected_name": "Циртомиум",
+    "expected_label": "D8",
+    "label": "D9",
+    "page": 16,
+    "attributes": {
+      "height_cm": 20.0,
+      "package_weight_grams": 200,
+      "package_length_cm": 20,
+      "package_width_cm": 10,
+      "package_height_cm": 10,
+      "package_winter_length_cm": 20,
+      "package_winter_width_cm": 10,
+      "package_winter_height_cm": 10,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "242",
+    "variant_id": 242,
+    "product_code": 242,
+    "expected_name": "Шеффлера Герда",
+    "expected_label": "D13",
+    "label": "D14",
+    "page": 16,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 60,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 14.0
+    }
+  },
+  {
+    "sku": "243",
+    "variant_id": 243,
+    "product_code": 243,
+    "expected_name": "Шеффлера Луизиана",
+    "expected_label": "D12",
+    "label": "D13",
+    "page": 16,
+    "attributes": {
+      "height_cm": 45.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 13.0
+    }
+  },
+  {
+    "sku": "241",
+    "variant_id": 241,
+    "product_code": 241,
+    "expected_name": "Шеффлера, микс сортов",
+    "expected_label": "D10",
+    "label": "D9",
+    "page": 16,
+    "attributes": {
+      "height_cm": 48.0,
+      "package_weight_grams": 300,
+      "package_length_cm": 50,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 50,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 9.0
+    }
+  },
+  {
+    "sku": "610",
+    "variant_id": 11145,
+    "product_code": 610,
+    "expected_name": "Шлюмбергера — декабрист",
+    "expected_label": "D18",
+    "label": "D18",
+    "page": 16,
+    "attributes": {
+      "height_cm": 50.0,
+      "package_weight_grams": 2300,
+      "package_length_cm": 60,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 60,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 18.0
+    }
+  },
+  {
+    "sku": "244",
+    "variant_id": 244,
+    "product_code": 244,
+    "expected_name": "Эпипремнум, микс сортов",
+    "expected_label": "D15",
+    "label": "D15",
+    "page": 17,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 600,
+      "package_length_cm": 40,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 40,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 15.0
+    }
+  },
+  {
+    "sku": "245",
+    "variant_id": 245,
+    "product_code": 245,
+    "expected_name": "Юкка комнатная",
+    "expected_label": "D12",
+    "label": "D12",
+    "page": 17,
+    "attributes": {
+      "height_cm": 70.0,
+      "package_weight_grams": 1000,
+      "package_length_cm": 70,
+      "package_width_cm": 15,
+      "package_height_cm": 15,
+      "package_winter_length_cm": 70,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 12.0
+    }
+  },
+  {
+    "sku": "541",
+    "variant_id": 11076,
+    "product_code": 541,
+    "expected_name": "Юкка комнатная, 3 ствола",
+    "expected_label": "D21",
+    "label": "D21",
+    "page": 17,
+    "attributes": {
+      "height_cm": 110.0,
+      "package_weight_grams": 4000,
+      "package_length_cm": 120,
+      "package_width_cm": 20,
+      "package_height_cm": 20,
+      "package_winter_length_cm": 120,
+      "package_winter_width_cm": 20,
+      "package_winter_height_cm": 20,
+      "pot_diameter_cm": 21.0
+    }
+  }
+]
