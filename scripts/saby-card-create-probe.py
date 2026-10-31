@@ -78,27 +78,30 @@ def main():
     print('::add-mask::'+token,flush=True);emit('service_auth','ok')
     before=find();emit('before_full_test_row',before)
     assert len(before)==1 and before[0].get('id')==3952,'Known isolated card required'
+    def strict(root):return ('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(root,encoding='unicode')).encode('utf-16')
     root=E.fromstring(cml(None,'13','37'))
     item=root.find('./Каталог/Товары/Товар')
     item.find('Наименование').text=NAME+' — обновлено'
-    # Match the exact XML prolog bytes of the successful creation, not only the encoding.
-    raw=('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(root,encoding='unicode')).encode('utf-16')
-    emit('strict_prolog_scope',{'id':3952,'pot':13,'height':37,'xml_prolog':raw.decode('utf-16').splitlines()[0]})
-    emit('strict_prolog_response',send(raw))
+    item.remove(item.find('ЗначенияСвойств'))
+    attrs=E.SubElement(item,'ХарактеристикиТовара')
+    for name,value in [('Диаметр горшка','13'),('Высота','37')]:
+        attr=E.SubElement(attrs,'ХарактеристикаТовара')
+        E.SubElement(attr,'Наименование').text=name;E.SubElement(attr,'Значение').text=value
+    emit('named_characteristics_response',send(strict(root)))
+    time.sleep(10);emit('named_characteristics_readback',find())
+    # Isolated price type: never refer to, rename, or overwrite a live price column.
+    price_root=E.fromstring(cml('ТЕСТ API Фикусин — НЕ ПРОДАВАТЬ','13','37','1278.90'))
+    price_root.find('./Каталог/Товары/Товар/Наименование').text=NAME+' — обновлено'
+    for path in ['./ПакетПредложений/ТипыЦен/ТипЦены/Ид','./ПакетПредложений/Предложения/Предложение/Цены/Цена/ИдТипаЦены']:
+        price_root.find(path).text=uid('isolated-price')
+    emit('isolated_price_scope',{'product_id':3952,'price_type':uid('isolated-price'),'price':'1278.90'})
+    emit('isolated_price_response',send(strict(price_root)))
     time.sleep(10)
-    after=find();emit('strict_prolog_readback',after)
-    report['same_id']=len(after)==1 and after[0].get('id')==3952
-    report['attributes_updated']=report['same_id'] and after[0].get('attributes',{}).get('Высота')=='37' and after[0].get('attributes',{}).get('Диаметр горшка')=='13'
-    report['final_test_count']=len(after)
-    if report['attributes_updated']:
-        emit('strict_repeat_response',send(raw));time.sleep(5);emit('strict_repeat_readback',find())
-        # Try the same scoped offer using the corrected strict prolog.
-        price_root=E.fromstring(cml('configured-column-6','13','37','1278.90'))
-        price_root.find('./Каталог/Товары/Товар/Наименование').text=NAME+' — обновлено'
-        offers=price_root.find('ПакетПредложений');offers.remove(offers.find('ТипыЦен'))
-        price_raw=('<?xml version="1.0" encoding="UTF-16"?>\r\n'+E.tostring(price_root,encoding='unicode')).encode('utf-16')
-        emit('strict_price_response',send(price_raw));time.sleep(10)
-        emit('strict_price_catalog_readback',find());emit('strict_price_column_readback',find(True))
+    final=find();emit('final_full_test_row',final)
+    emit('final_price_lists',request('https://api.sbis.ru/retail/nomenclature/price-list?'+urllib.parse.urlencode({'pointId':278,'actualDate':'2026-10-31','page':0,'pageSize':100})))
+    report['final_test_count']=len(final)
+    report['same_id']=len(final)==1 and final[0].get('id')==3952
+    report['attributes_updated']=report['same_id'] and final[0].get('attributes',{}).get('Высота')=='37' and final[0].get('attributes',{}).get('Диаметр горшка')=='13'
 
 try:main()
 except Exception as err:report['error']=str(err)[:1400]
