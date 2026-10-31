@@ -163,6 +163,13 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	wakes = 0
 
 	orderID := makeOrder(false)
+	var savedFee, savedTotal float64
+	if err := pool.QueryRow(ctx, `SELECT delivery_fee,total FROM orders WHERE id=$1`, orderID).Scan(&savedFee, &savedTotal); err != nil {
+		t.Fatal(err)
+	}
+	if savedFee != 462 || savedTotal != 1952 {
+		t.Fatalf("declared-value fee missing: delivery=%v total=%v", savedFee, savedTotal)
+	}
 	if wakes != 1 {
 		t.Fatalf("checkout did not wake worker after commit: %d", wakes)
 	}
@@ -307,6 +314,9 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 			size := sizes[sku]
+			if size.PriceMinor != rows[0].PriceMinor {
+				t.Fatalf("quote value differs from shipment value: %d vs %d", size.PriceMinor, rows[0].PriceMinor)
+			}
 			if size.LengthCM != want.LengthCM || size.WidthCM != want.WidthCM || size.HeightCM != want.HeightCM || size.WeightGrams != want.WeightGrams {
 				t.Fatalf("public quote differs: %+v, want %+v", size, want)
 			}

@@ -306,7 +306,12 @@ func (repository *PostgresRepository) QuoteOrderPacking(ctx context.Context, act
 	if err != nil {
 		return ShipmentOfferQuote{}, err
 	}
+	var declared float64
+	if err := repository.pool.QueryRow(ctx, `SELECT COALESCE(SUM(unit_price*quantity),0)::double precision FROM order_items WHERE order_id=$1`, id).Scan(&declared); err != nil {
+		return ShipmentOfferQuote{}, err
+	}
 	quotes, err := repository.shipmentQuotes.CalculatePVZPackages(ctx, city, shipmentParcels(input.Boxes))
+	quotes = integration.CDEKWithDeclaredValue(quotes, money.Kopecks(declared))
 	return ShipmentOfferQuote{Quotes: quotes}, err
 }
 

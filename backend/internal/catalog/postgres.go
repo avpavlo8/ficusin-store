@@ -742,6 +742,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 }
 
 type PackageSize struct {
+	PriceMinor  int64
 	LengthCM    int
 	WidthCM     int
 	HeightCM    int
@@ -764,7 +765,8 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 			COALESCE(shipping_package_dimension(variant.id, 'package_length_cm'),0)::INTEGER,
 			COALESCE(shipping_package_dimension(variant.id, 'package_width_cm'),0)::INTEGER,
 			COALESCE(shipping_package_dimension(variant.id, 'package_height_cm'),0)::INTEGER,
-			COALESCE(variant_numeric_attribute(variant.id,'package_weight_grams'),0)::INTEGER
+			COALESCE(variant_numeric_attribute(variant.id,'package_weight_grams'),0)::INTEGER,
+			variant.base_price_minor
 		FROM product_variants variant
 		JOIN products product ON product.id=variant.product_id AND product.status='published'
 		WHERE variant.sku=ANY($1) AND variant.is_active=1
@@ -777,7 +779,7 @@ func (repository *PostgresRepository) PackageSizes(ctx context.Context, skus []s
 	for rows.Next() {
 		var sku string
 		var size PackageSize
-		if err := rows.Scan(&sku, &size.LengthCM, &size.WidthCM, &size.HeightCM, &size.WeightGrams); err != nil {
+		if err := rows.Scan(&sku, &size.LengthCM, &size.WidthCM, &size.HeightCM, &size.WeightGrams, &size.PriceMinor); err != nil {
 			return nil, fmt.Errorf("scan package size: %w", err)
 		}
 		sizes[sku] = size

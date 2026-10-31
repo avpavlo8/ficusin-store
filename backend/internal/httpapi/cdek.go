@@ -7,8 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 )
 
 type cdekService interface {
@@ -25,6 +27,7 @@ type packageRepository interface {
 }
 
 type cdekHandlers struct {
+	auth     authService
 	logger   *slog.Logger
 	service  cdekService
 	packages packageRepository
@@ -109,9 +112,34 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 			sizes = loaded
 		}
 	}
+	discountBPS := 0
+	if handlers.auth != nil {
+		if cookie, err := request.Cookie(auth.CookieName); err == nil {
+			user, err := handlers.auth.UserByToken(request.Context(), cookie.Value)
+			if err != nil {
+				writeJSON(response, http.StatusOK, quoteUnavailable)
+				return
+			}
+			if user != nil {
+				discountBPS = max(0, min(9000, user.RetailDiscountBPS))
+			}
+		}
+	}
+	var declaredMinor int64
 	parcels := make([]integration.Parcel, 0, len(body.Items))
 	for _, item := range body.Items {
 		size := sizes[strings.TrimSpace(item.ID)]
+		if size.PriceMinor <= 0 || size.PriceMinor > money.MaxMinor/20 {
+			writeJSON(response, http.StatusOK, quoteUnavailable)
+			return
+		}
+		unitMinor := (size.PriceMinor*int64(10000-discountBPS) + 5000) / 10000
+		lineMinor := unitMinor * int64(max(1, min(20, item.Quantity)))
+		if declaredMinor > money.MaxMinor-lineMinor {
+			writeJSON(response, http.StatusOK, quoteUnavailable)
+			return
+		}
+		declaredMinor += lineMinor
 		parcel := integration.Parcel{
 			LengthCM:    size.LengthCM,
 			WidthCM:     size.WidthCM,
@@ -138,6 +166,11 @@ func (handlers cdekHandlers) calculate(response http.ResponseWriter, request *ht
 		writeJSON(response, http.StatusOK, quoteUnavailable)
 		return
 	}
+	if len(quotes) == 0 {
+		writeJSON(response, http.StatusOK, quoteUnavailable)
+		return
+	}
+	quotes = integration.CDEKWithDeclaredValue(quotes, declaredMinor)
 	// "quote" stays for the cheapest option: the checkout preselects it, and
 	// older clients that only read this field keep working.
 	writeJSON(response, http.StatusOK, map[string]any{

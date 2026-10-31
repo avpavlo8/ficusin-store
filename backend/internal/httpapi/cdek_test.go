@@ -2,18 +2,22 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 )
 
 type cdekStub struct {
 	configured bool
+	price      int
 	called     bool
 	box        integration.Parcel
 	err        error
@@ -58,7 +62,11 @@ func (stub *cdekStub) CalculatePVZ(
 ) ([]integration.CDEKQuote, error) {
 	stub.called = true
 	stub.box = box
-	return []integration.CDEKQuote{{TariffCode: 136, Price: 450}}, nil
+	price := stub.price
+	if price == 0 {
+		price = 450
+	}
+	return []integration.CDEKQuote{{TariffCode: 136, Price: price}}, nil
 }
 
 // The checkout asks this before drawing the delivery options, so it can hide
@@ -131,8 +139,8 @@ func TestCDEKQuoteUsesTheBoxOfTheProductsInTheCart(t *testing.T) {
 	dependencies := testDependencies(catalogStub{}, authStub{})
 	dependencies.CDEK = stub
 	dependencies.Packages = packageStub{
-		"pineapple": {LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200},
-		"monstera":  {LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300},
+		"pineapple": {LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200, PriceMinor: 100000},
+		"monstera":  {LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300, PriceMinor: 200000},
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(
@@ -179,7 +187,7 @@ func TestCDEKAsksTheManagerWhenABoxIsMissing(t *testing.T) {
 	dependencies := testDependencies(catalogStub{}, authStub{})
 	dependencies.CDEK = stub
 	dependencies.Packages = packageStub{
-		"monstera": {LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300},
+		"monstera": {LengthCM: 60, WidthCM: 20, HeightCM: 20, WeightGrams: 2300, PriceMinor: 200000},
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(
@@ -210,7 +218,7 @@ func TestCDEKQuoteCountsEachCopyOfTheSamePlant(t *testing.T) {
 	dependencies := testDependencies(catalogStub{}, authStub{})
 	dependencies.CDEK = stub
 	dependencies.Packages = packageStub{
-		"pineapple": {LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200},
+		"pineapple": {LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1200, PriceMinor: 100000},
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(
@@ -227,5 +235,38 @@ func TestCDEKQuoteCountsEachCopyOfTheSamePlant(t *testing.T) {
 	want := integration.Parcel{LengthCM: 40, WidthCM: 60, HeightCM: 20, WeightGrams: 3600}
 	if stub.box != want {
 		t.Fatalf("box = %+v, want %+v", stub.box, want)
+	}
+}
+
+func TestCDEKQuoteIncludesServerPricedDeclaredValue(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		discount, quantity, want int
+	}{
+		{"guest", 0, 1, 548}, {"quantity", 0, 2, 581}, {"discount", 1000, 1, 545},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			authentication := &recordingAuthService{user: &auth.User{ID: 1, RetailDiscountBPS: tc.discount}}
+			dependencies := testDependencies(catalogStub{}, authentication)
+			dependencies.CDEK = &cdekStub{configured: true, price: 515}
+			dependencies.Packages = packageStub{"bonsai": {LengthCM: 20, WidthCM: 20, HeightCM: 40, WeightGrams: 800, PriceMinor: 435000}}
+			body := fmt.Sprintf(`{"cityCode":44,"items":[{"id":"bonsai","quantity":%d}]}`, tc.quantity)
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/delivery/cdek", strings.NewReader(body))
+			if tc.discount > 0 {
+				request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "session"})
+			}
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+			var result struct {
+				Quote  integration.CDEKQuote
+				Quotes []integration.CDEKQuote
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Quote.Price != tc.want || len(result.Quotes) != 1 || result.Quotes[0].Price != tc.want {
+				t.Fatalf("got %s; want %d", response.Body, tc.want)
+			}
+		})
 	}
 }

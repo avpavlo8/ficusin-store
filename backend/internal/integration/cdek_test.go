@@ -85,3 +85,24 @@ func TestCombineParcelsRefusesToGuessAnUnmeasuredItem(t *testing.T) {
 		}
 	}
 }
+
+func TestCalculateCDEKPreservesKopecksForCombinedPrice(t *testing.T) {
+	client := NewCDEKClient("test", "test")
+	client.token, client.tokenExpiry = "test-token", time.Now().Add(time.Hour)
+	client.httpClient.Transport = cdekRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path != "/v2/calculator/tarifflist" {
+			t.Fatalf("unexpected path %s", request.URL.Path)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"tariff_codes":[{"tariff_code":136,"delivery_mode":4,"delivery_sum":515.10}]}`))}, nil
+	})
+	quotes, err := client.CalculatePVZ(context.Background(), 44, Parcel{LengthCM: 20, WidthCM: 20, HeightCM: 40, WeightGrams: 800})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quotes) != 1 {
+		t.Fatalf("quotes: %+v", quotes)
+	}
+	if price := CDEKWithDeclaredValue(quotes, 10000)[0].Price; price != 516 {
+		t.Fatalf("double rounding: %d", price)
+	}
+}

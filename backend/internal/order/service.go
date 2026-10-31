@@ -212,6 +212,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 
 	var subtotalMinor int64
 	var deliveryMinor int64
+	var selectedQuote *integration.CDEKQuote
 	regularDelivery := input.Delivery == "pickup"
 	deliveryAddress := input.Customer.Address
 	var cityCode, tariffCode *int
@@ -250,7 +251,7 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 					break
 				}
 			}
-			deliveryMinor = int64(quote.Price) * 100
+			selectedQuote = &quote
 			tariffCode = &quote.TariffCode
 		}
 
@@ -314,6 +315,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 			return Created{}, invalid("Сумма заказа слишком велика")
 		}
 		subtotalMinor += lineMinor
+	}
+
+	if input.Delivery == "cdek" && !feePending && selectedQuote != nil {
+		priced := integration.CDEKWithDeclaredValue([]integration.CDEKQuote{*selectedQuote}, subtotalMinor)
+		deliveryMinor = int64(priced[0].Price) * 100
 	}
 
 	// Availability is a checkout snapshot only. No order reserves stock; availability

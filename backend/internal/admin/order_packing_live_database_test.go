@@ -84,7 +84,7 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 		if err = pool.QueryRow(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,unit_price,quantity) VALUES($1,$2,$3,$4,'Packing plant',690,1) RETURNING id`, orderID, productID, variantID, sku).Scan(&itemID); err != nil {
 			t.Fatal(err)
 		}
-		fee := 840.0
+		fee := 846.0
 		return orderID, OrderPackingInput{Revision: 1, TariffCode: 136, QuotedDeliveryFee: &fee, IdempotencyKey: "prepare-" + unique + suffix, Boxes: []ShipmentBoxInput{{LengthCM: 42, WidthCM: 25, HeightCM: 35, WeightGrams: 2000, Contents: []ShipmentBoxContent{{OrderItemID: itemID, Quantity: 1}}}}}
 	}
 	t.Run("quote and confirmation do not depend on mail", func(t *testing.T) {
@@ -159,14 +159,17 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 		var total float64
-		if err := pool.QueryRow(ctx, `SELECT total::double precision FROM orders WHERE id=$1`, id).Scan(&total); err != nil || total != 1430 {
+		if err := pool.QueryRow(ctx, `SELECT total::double precision FROM orders WHERE id=$1`, id).Scan(&total); err != nil || total != 1436 {
 			t.Fatalf("delivery lost discount: %.2f %v", total, err)
 		}
 	})
 	t.Run("same amount reuses pending payment and concurrent retry", func(t *testing.T) {
 		orderID, input := create("same")
+		if _, err := pool.Exec(ctx, `UPDATE orders SET delivery_fee=846,total=1536 WHERE id=$1`, orderID); err != nil {
+			t.Fatal(err)
+		}
 		var paymentID int64
-		if err = pool.QueryRow(ctx, `INSERT INTO payments(order_id,idempotence_key,amount,status,confirmation_url) VALUES($1,$2,1530,'pending','https://pay.example.test/existing') RETURNING id`, orderID, input.IdempotencyKey).Scan(&paymentID); err != nil {
+		if err = pool.QueryRow(ctx, `INSERT INTO payments(order_id,idempotence_key,amount,status,confirmation_url) VALUES($1,$2,1536,'pending','https://pay.example.test/existing') RETURNING id`, orderID, input.IdempotencyKey).Scan(&paymentID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = repository.QuoteOrderPacking(ctx, actor, orderID, input); err != nil {
@@ -195,7 +198,7 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 		if err = pool.QueryRow(ctx, `SELECT p.status,o.total::double precision,(SELECT unit_price::double precision FROM order_items WHERE order_id=o.id),(SELECT count(*) FROM order_packing_workflows WHERE order_id=o.id) FROM orders o JOIN payments p ON p.order_id=o.id WHERE p.id=$1`, paymentID).Scan(&state, &total, &price, &count); err != nil {
 			t.Fatal(err)
 		}
-		if state != "pending" || total != 1530 || price != 690 || count != 1 {
+		if state != "pending" || total != 1536 || price != 690 || count != 1 {
 			t.Fatalf("unexpected payment/order mutation %s %.2f %.2f %d", state, total, price, count)
 		}
 		var orderStatus string
@@ -227,7 +230,7 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 		if fee != 840 || count != 0 {
 			t.Fatal("stale quote mutated order")
 		}
-		approved := 900.0
+		approved := 906.0
 		input.QuotedDeliveryFee = &approved
 		if _, err = pool.Exec(ctx, `INSERT INTO payments(order_id,idempotence_key,amount,status,confirmation_url) VALUES($1,$2,1530,'pending','https://pay.example.test/old')`, orderID, input.IdempotencyKey); err != nil {
 			t.Fatal(err)
@@ -288,7 +291,7 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 		if err = pool.QueryRow(ctx, `SELECT payment_status,total::double precision FROM orders WHERE id=$1`, orderID).Scan(&status, &total); err != nil {
 			t.Fatal(err)
 		}
-		if status != "partially_paid" || total != 1530 {
+		if status != "partially_paid" || total != 1536 {
 			t.Fatalf("delivery top-up still marked paid: %s %.2f", status, total)
 		}
 	})
@@ -296,7 +299,7 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 		orderID, input := create("legacy")
 		quote.price = 900
 		defer func() { quote.price = 840 }()
-		approved := 900.0
+		approved := 906.0
 		input.QuotedDeliveryFee = &approved
 		if _, err = pool.Exec(ctx, `INSERT INTO payments(order_id,idempotence_key,amount,status,provider_payment_id,confirmation_url) VALUES($1,$2,1530,'pending',$3,'https://pay.example.test/legacy')`, orderID, input.IdempotencyKey, "legacy-"+unique); err != nil {
 			t.Fatal(err)
