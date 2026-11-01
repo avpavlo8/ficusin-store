@@ -4,6 +4,7 @@ on:
 permissions:
   contents: read
   deployments: read
+  actions: read
 jobs:
   staging-required:
     runs-on: ubuntu-latest
