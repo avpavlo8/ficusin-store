@@ -20,7 +20,8 @@ frontend = root / 'frontend/dist'
 index = (frontend / 'index.html').read_text()
 expected_js = re.search(r'src="(/assets/[^"]+\.js)"', index).group(1)
 expected_css = re.search(r'href="(/assets/[^"]+\.css)"', index).group(1)
-files = sorted(p for p in (root/'backend').rglob('*') if p.is_file() and (p.suffix == '.go' or p.name in ('go.mod','go.sum')))
+# Match shell sort of full paths; Path ordering compares path components.
+files = sorted((p for p in (root/'backend').rglob('*') if p.is_file() and (p.suffix == '.go' or p.name in ('go.mod','go.sum'))), key=lambda p: p.as_posix())
 checksums = [hashlib.sha256(p.read_bytes()).hexdigest() for p in files]
 checksums += [hashlib.sha256((frontend/'index.html').read_bytes()).hexdigest(),hashlib.sha256((root/'Dockerfile').read_bytes()).hexdigest()]
 version = hashlib.sha256(('\n'.join(checksums)+'\n').encode()).hexdigest()[:16]

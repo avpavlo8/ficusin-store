@@ -71,6 +71,7 @@ type Command struct {
 }
 type View struct {
 	Configured  bool       `json:"configured"`
+	Simulation  bool       `json:"simulation,omitempty"`
 	State       string     `json:"state"`
 	Message     string     `json:"message"`
 	Snapshot    Snapshot   `json:"snapshot"`
@@ -109,9 +110,18 @@ type Service struct {
 func New(store Store, provider Provider, logger *slog.Logger) *Service {
 	return &Service{store: store, provider: provider, wake: make(chan struct{}, 1), logger: logger}
 }
+func (s *Service) decorate(v *View) {
+	v.Configured = s.provider != nil && s.provider.Configured()
+	if provider, ok := s.provider.(interface{ IsSimulation() bool }); ok && provider.IsSimulation() {
+		v.Simulation = true
+		if v.State == "synced" {
+			v.Message = "Тестовый прогон подтверждён. Рабочий СБИС не изменялся"
+		}
+	}
+}
 func (s *Service) View(ctx context.Context, id int64) (View, error) {
 	v, e := s.store.View(ctx, id)
-	v.Configured = s.provider != nil && s.provider.Configured()
+	s.decorate(&v)
 	return v, e
 }
 func (s *Service) Enqueue(ctx context.Context, id, actor int64, hash string, check bool) (View, error) {
@@ -119,7 +129,7 @@ func (s *Service) Enqueue(ctx context.Context, id, actor int64, hash string, che
 		return View{}, fmt.Errorf("%w: подключение СБИС не настроено", ErrInvalid)
 	}
 	v, e := s.store.Enqueue(ctx, id, actor, hash, check)
-	v.Configured = true
+	s.decorate(&v)
 	if e == nil {
 		select {
 		case s.wake <- struct{}{}:

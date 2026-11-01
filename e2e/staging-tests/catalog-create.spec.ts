@@ -63,10 +63,10 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
     dialog.getByLabel("Ширина зимней упаковки, см", { exact: true }),
   ).toHaveValue("20");
   const panel = dialog.getByRole("region", { name: /^СБИС: артикул / });
-  await expect(panel).toContainText("Подключение СБИС не настроено");
+  await expect(panel).toContainText("Тестовый контур.");
   await expect(
-    panel.getByRole("button", { name: "Создать в СБИС", exact: true }),
-  ).toBeDisabled();
+    panel.getByRole("button", { name: "Создать в СБИС (тест)", exact: true }),
+  ).toBeEnabled();
   await expect(panel).toContainText("11.3");
   await expect(panel).toContainText("40");
   const variantsResponse = await context.request.get(
@@ -88,18 +88,27 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
   expect(Math.round(variants[0].price * 100)).toBe(149099);
   const endpoint = `/api/v1/admin/variants/${variants[0].id}/saby-export`;
   const before = await (await context.request.get(endpoint)).json();
-  expect(before.configured).toBe(false);
-  const blocked = await context.request.post(endpoint, {
-    data: { fingerprint: before.fingerprint, checkOnly: false },
+  expect(before.configured).toBe(true);
+  expect(before.simulation).toBe(true);
+  await panel
+    .getByRole("button", { name: "Создать в СБИС (тест)", exact: true })
+    .click();
+  await expect(panel).toContainText("Тестовый прогон завершён");
+  const verified = await (await context.request.get(endpoint)).json();
+  expect(verified.state).toBe("synced");
+  expect(verified.snapshot.sabyId).toMatch(/^STG-/);
+  expect(verified.dirty).toBe(false);
+  const repeated = await context.request.post(endpoint, {
+    data: { fingerprint: verified.fingerprint, checkOnly: false },
     headers: { Origin: process.env.FICUSIN_BASE_URL! },
   });
-  expect(blocked.status()).toBe(400);
-  expect((await blocked.json()).error).toContain(
-    "подключение СБИС не настроено",
+  expect(repeated.status()).toBe(200);
+  expect((await repeated.json()).snapshot.sabyId).toBe(
+    verified.snapshot.sabyId,
   );
-  expect((await (await context.request.get(endpoint)).json()).state).toBe(
-    "idle",
-  );
+  await expect(
+    panel.getByRole("button", { name: "Обновить в СБИС (тест)", exact: true }),
+  ).toBeDisabled();
   await panel.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("real-staging-catalog.png"),
@@ -135,4 +144,28 @@ test("staging access stays open across guest 401 responses and reloads", async (
       page.getByRole("heading", { name: "Вход на стейджинг", exact: true }),
     ).toHaveCount(0);
   }
+});
+
+test("new customer can register without a real call and gets no admin access", async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies({ name: "ficusin_session" });
+  await page.goto("/register");
+  const phone = `+79993${Date.now().toString().slice(-6)}`;
+  await page.getByLabel("Фамилия", { exact: true }).fill("Регистрация");
+  await page.getByLabel("Имя", { exact: true }).fill("Тест");
+  await page.getByLabel("Телефон", { exact: true }).fill(phone);
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill(`test-${phone.slice(1)}@example.invalid`);
+  await page.locator('input[name="consent"]').check();
+  await page
+    .getByRole("button", { name: "Зарегистрироваться", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/account(?:\?|$)/);
+  expect((await context.request.get("/api/v1/auth/me")).status()).toBe(200);
+  expect((await context.request.get("/api/v1/admin/products")).status()).toBe(
+    403,
+  );
 });

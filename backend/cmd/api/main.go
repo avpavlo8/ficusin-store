@@ -202,7 +202,15 @@ func main() {
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
-	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), sabyProcurementClient, logger)
+	var catalogProvider catalogsync.Provider = sabyProcurementClient
+	if cfg.Environment == "staging" {
+		catalogProvider, err = catalogsync.NewStagingProvider(ctx, pool)
+		if err != nil {
+			logger.Error("staging catalogue configuration failed", "error", err)
+			os.Exit(1)
+		}
+	}
+	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), catalogProvider, logger)
 	go catalogExportService.Run(ctx)
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).

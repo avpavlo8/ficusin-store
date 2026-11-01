@@ -5,6 +5,7 @@ import type { AdminVariant } from "./AdminPim";
 
 type ExportView = {
   configured: boolean;
+  simulation?: boolean;
   state: "idle" | "queued" | "checking" | "verifying" | "unknown" | "synced" | "error";
   message: string;
   fingerprint: string;
@@ -91,13 +92,25 @@ export default function SabyExport({
     <section className="catalog-saby-export" aria-label={`СБИС: артикул ${variant.sku}`}>
       <div className="catalog-saby-heading">
         <h4>СБИС</h4>
-        <span aria-live="polite">{view ? labels[view.state] : "Загружаем состояние…"}</span>
+        <span aria-live="polite">
+          {view
+            ? view.simulation && view.state === "synced"
+              ? "Тестовый прогон завершён"
+              : labels[view.state]
+            : "Загружаем состояние…"}
+        </span>
       </div>
       {view && (
         <>
           <p>
             <strong>{view.snapshot.name}</strong>
           </p>
+          {view.simulation && (
+            <p className="admin-hint">
+              <strong>Тестовый контур.</strong> Проверяем создание и сохранение связи здесь. В
+              настоящий СБИС карточки и цены не отправляются.
+            </p>
+          )}
           <dl className="catalog-saby-values">
             <div>
               <dt>Горшок</dt>
@@ -122,7 +135,7 @@ export default function SabyExport({
             <p className="admin-hint">
               {view.dirty
                 ? "Отправим сохранённое название, горшок, высоту и основную цену. Остаток появится после складского обмена."
-                : "Сохранённые данные уже подтверждены в СБИС. Повторная отправка не нужна."}
+                : "Сохранённые данные уже подтверждены. Повторная отправка не нужна."}
             </p>
           )}
           {view.message && (
@@ -155,7 +168,15 @@ export default function SabyExport({
               }
               onClick={() => void send()}
             >
-              {busy ? "Передаём…" : linked ? "Обновить в СБИС" : "Создать в СБИС"}
+              {busy
+                ? "Передаём…"
+                : view.simulation
+                  ? linked
+                    ? "Обновить в СБИС (тест)"
+                    : "Создать в СБИС (тест)"
+                  : linked
+                    ? "Обновить в СБИС"
+                    : "Создать в СБИС"}
             </button>
             {waiting && (
               <button
