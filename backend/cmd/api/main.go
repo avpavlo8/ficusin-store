@@ -150,7 +150,7 @@ func main() {
 	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
 	orderRepository := order.NewPostgresRepository(pool)
 	cdekClient := integration.NewCDEKClient(cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
-	telegramClient, err := integration.NewTelegramClient(cfg.TelegramChatID, cfg.TelegramBotToken)
+	telegramClient, err := newTelegramNotifications(cfg)
 	if err != nil {
 		logger.Error("Telegram configuration failed", "error", err)
 		os.Exit(1)
