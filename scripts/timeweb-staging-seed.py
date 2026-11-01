@@ -24,15 +24,6 @@ domain = next(row['fqdn'] for row in app['domains'] if row.get('is_technical'))
 origin = 'https://'+domain
 assert domain.endswith('.twc1.net')
 
-for attempt in range(60):
-    try:
-        with urllib.request.urlopen(origin+'/api/v1/ready',timeout=15) as response:
-            if response.status == 200 and response.headers.get('X-Ficusin-Environment') == 'staging': break
-    except Exception: pass
-    if attempt % 6 == 0: print('Waiting for isolated app migrations/readiness',flush=True)
-    time.sleep(10)
-else: raise RuntimeError('Staging not ready; no catalog data was copied')
-
 temporary = tempfile.TemporaryDirectory()
 def connect(settings, url=None, readonly=False):
     options = {'connect_timeout':20,'options':'-c statement_timeout=120000'}

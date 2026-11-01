@@ -3,14 +3,16 @@ import json, os, re, urllib.request, urllib.error, urllib.parse
 
 def api(method, path, data=None):
     if method != 'GET':
-        assert method == 'PATCH' and path == f'/api/v1/apps/{app["id"]}'
+        assert method == 'PATCH' and path in (f'/api/v1/apps/{app["id"]}',f'/api/v1/apps/{app["id"]}/action/stop')
         assert app['id'] != 229223 and app['name'] == 'ficusin-staging'
         assert urllib.parse.urlsplit(app['envs']['DATABASE_URL']).path == '/ficusin_staging_20261031'
     request = urllib.request.Request('https://api.timeweb.cloud'+path, method=method,
         headers={'Authorization':'Bearer '+os.environ['TIMEWEB_CLOUD_TOKEN'],'Content-Type':'application/json'},
         data=None if data is None else json.dumps(data).encode())
     try:
-        with urllib.request.urlopen(request, timeout=60) as response: return json.load(response)
+        with urllib.request.urlopen(request, timeout=60) as response:
+            body = response.read()
+            return json.loads(body) if body else {}
     except urllib.error.HTTPError as error:
         raise RuntimeError(f'{method} {path}: HTTP {error.code}') from None
 
@@ -18,6 +20,10 @@ app = next(item for item in api('GET','/api/v1/apps')['apps'] if item['name'] ==
 app = api('GET',f'/api/v1/apps/{app["id"]}')['app']
 assert app['id'] != 229223 and app['name'] == 'ficusin-staging'
 operation = os.environ['STAGING_OPERATION']
+if operation == 'pause':
+    assert os.environ['APPROVED_STAGING_MONTHLY_RUB'] == '510'
+    api('PATCH',f'/api/v1/apps/{app["id"]}/action/stop')
+    app = api('GET',f'/api/v1/apps/{app["id"]}')['app']
 if operation in ('activate','configure','repair-health'):
     assert os.environ['APPROVED_STAGING_MONTHLY_RUB'] == '510'
     domain = next(row['fqdn'] for row in app['domains'] if row.get('is_technical'))
