@@ -31,9 +31,12 @@ if operation in ('activate','configure'):
     if operation == 'activate':
         payload.update(branch_name='staging',commit_sha=sha,is_auto_deploy=True)
     app = api('PATCH',f'/api/v1/apps/{app["id"]}',payload)['app']
-safe = ('id','name','status','branch_name','commit_sha','is_auto_deploy','domains','preset_id')
+safe = ('id','name','status','branch_name','commit_sha','is_auto_deploy','domains','preset_id','ip','branch','health_check')
 print('Staging app:',json.dumps({key:app.get(key) for key in safe},ensure_ascii=False),flush=True)
-for endpoint in ('deploys','logs'):
+deploys = api('GET',f'/api/v1/apps/{app["id"]}/deploys')['deploys']
+endpoints = ['deploys','logs']
+if deploys: endpoints.append(f'deploy/{deploys[0]["id"]}/logs')
+for endpoint in endpoints:
     result = api('GET',f'/api/v1/apps/{app["id"]}/{endpoint}')
     serialized = json.dumps(result,ensure_ascii=False)
     for key,value in app.get('envs',{}).items():
