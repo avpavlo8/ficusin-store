@@ -14,7 +14,11 @@ def api(method, path, data=None):
             body = response.read()
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as error:
-        raise RuntimeError(f'{method} {path}: HTTP {error.code}') from None
+        details = json.loads(error.read())
+        message = str(details.get('message',''))
+        for value in globals().get('app',{}).get('envs',{}).values():
+            if value and len(value)>8: message=message.replace(value,'[redacted]')
+        raise RuntimeError(f'{method} {path}: HTTP {error.code}: {details.get("error_code")} {message[:1000]}') from None
 
 app = next(item for item in api('GET','/api/v1/apps')['apps'] if item['name'] == 'ficusin-staging')
 app = api('GET',f'/api/v1/apps/{app["id"]}')['app']
