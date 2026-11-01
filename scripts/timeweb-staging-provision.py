@@ -88,7 +88,7 @@ envs = {key:source['envs'][key] for key in ('DATABASE_SSL_CA','DATABASE_SSL_VERI
 envs.update({'DATABASE_URL':database_url,'APP_ENV':'staging','SITE_URL':'https://staging.ficusin.ru','AUTH_COOKIE_SECURE':'true','STAGING_ACCESS_TOKEN':access})
 sha = os.environ['STAGING_CANDIDATE_SHA']
 assert len(sha)==40 and all(c in '0123456789abcdef' for c in sha)
-payload = {'type':'backend','name':NAME,'comment':'Isolated staging before production releases','provider_id':source['provider']['id'],'repository_id':source['repository']['id'],'branch_name':'feat/site-saby-catalog','commit_sha':sha,'language':'docker','framework':'docker','preset_id':PRESET,'build_cmd':'','run_cmd':'','env_version':None,'is_auto_deploy':False,'project_id':source['project_id'],'envs':envs,'health_check':'/api/v1/health'}
+payload = {'type':'backend','name':NAME,'comment':'Isolated staging before production releases','provider_id':source['provider']['id'],'repository_id':source['repository']['id'],'branch_name':'feat/site-saby-catalog','commit_sha':sha,'language':'docker','framework':'docker','preset_id':PRESET,'build_cmd':'','run_cmd':'','env_version':None,'is_auto_deploy':False,'project_id':source['project_id'],'envs':envs,'health_check':''}
 app = api('POST','/api/v2/apps',payload)['app']
 stage_id = app['id']
 assert stage_id != 229223 and app['name']==NAME
