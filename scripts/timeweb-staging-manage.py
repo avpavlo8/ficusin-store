@@ -18,7 +18,7 @@ app = next(item for item in api('GET','/api/v1/apps')['apps'] if item['name'] ==
 app = api('GET',f'/api/v1/apps/{app["id"]}')['app']
 assert app['id'] != 229223 and app['name'] == 'ficusin-staging'
 operation = os.environ['STAGING_OPERATION']
-if operation == 'activate':
+if operation in ('activate','configure'):
     assert os.environ['APPROVED_STAGING_MONTHLY_RUB'] == '510'
     domain = next(row['fqdn'] for row in app['domains'] if row.get('is_technical'))
     assert domain.endswith('.twc1.net') and '/' not in domain
@@ -27,8 +27,10 @@ if operation == 'activate':
     envs['SITE_URL'] = 'https://'+domain
     sha = os.environ['STAGING_CANDIDATE_SHA']
     assert re.fullmatch('[a-f0-9]{40}',sha)
-    app = api('PATCH',f'/api/v1/apps/{app["id"]}',{
-        'envs':envs,'branch_name':'staging','commit_sha':sha,'is_auto_deploy':True})['app']
+    payload = {'envs':envs}
+    if operation == 'activate':
+        payload.update(branch_name='staging',commit_sha=sha,is_auto_deploy=True)
+    app = api('PATCH',f'/api/v1/apps/{app["id"]}',payload)['app']
 safe = ('id','name','status','branch_name','commit_sha','is_auto_deploy','domains','preset_id')
 print('Staging app:',json.dumps({key:app.get(key) for key in safe},ensure_ascii=False),flush=True)
 for endpoint in ('deploys','logs'):
