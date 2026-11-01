@@ -92,7 +92,8 @@ with connect(env) as destination:
                     if sequence:
                         destination.execute(sql.SQL('SELECT setval(%s,GREATEST(COALESCE(max(id),0),1),COALESCE(max(id),0)>0) FROM {}').format(sql.Identifier(name)),(sequence,))
             destination.execute("UPDATE inventory SET reserved_qty=0")
-            destination.execute("SELECT setval('ficusin_sku_seq',GREATEST(COALESCE(max(substring(sku FROM 5)::bigint),0),1),true) FROM product_variants WHERE sku ~ '^FIC-[0-9]{6}$'")
+            destination.execute("SELECT setval('ficusin_sku_seq',GREATEST(COALESCE(max(sku::bigint),0),1),true) FROM product_variants WHERE sku ~ '^[0-9]+$'")
+            destination.execute("SELECT setval('ficusin_product_code_seq',GREATEST(COALESCE(max(product_code),0),1),true) FROM products")
         destination.execute('INSERT INTO staging_catalog_seed(id) VALUES(1)')
     else: print('Catalog already initialized; preserving subsequent staging edits',flush=True)
     destination.execute("INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES ('staging-owner@example.invalid','+70000000901','','Владелец проверки',now()) ON CONFLICT(email) DO NOTHING")
