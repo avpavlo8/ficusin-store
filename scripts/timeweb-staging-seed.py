@@ -26,7 +26,7 @@ assert domain.endswith('.twc1.net')
 
 for attempt in range(60):
     try:
-        with urllib.request.urlopen(origin+'/api/v1/health/ready',timeout=15) as response:
+        with urllib.request.urlopen(origin+'/api/v1/ready',timeout=15) as response:
             if response.status == 200 and response.headers.get('X-Ficusin-Environment') == 'staging': break
     except Exception: pass
     if attempt % 6 == 0: print('Waiting for isolated app migrations/readiness',flush=True)
