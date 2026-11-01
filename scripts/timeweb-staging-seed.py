@@ -50,7 +50,7 @@ with connect(env) as destination:
             count = restricted.execute("SELECT count(*) FROM pg_tables WHERE schemaname='public' AND (has_table_privilege(current_user,schemaname||'.'||tablename,'SELECT') OR has_table_privilege(current_user,schemaname||'.'||tablename,'INSERT,UPDATE,DELETE,TRUNCATE'))").fetchone()[0]
             assert count == 0, 'Staging user can access production tables'
     except psycopg.OperationalError as error:
-        if error.sqlstate not in ('42501','28000'): raise
+        if error.sqlstate not in ('42501','28000') and 'permission denied for database \"default_db\"' not in str(error): raise
     print('Verified: staging role cannot read or change production tables',flush=True)
     destination.execute('CREATE TABLE IF NOT EXISTS staging_catalog_seed (id INTEGER PRIMARY KEY CHECK(id=1),seeded_at TIMESTAMPTZ NOT NULL DEFAULT now())')
     already_seeded = destination.execute('SELECT count(*) FROM staging_catalog_seed').fetchone()[0] > 0
