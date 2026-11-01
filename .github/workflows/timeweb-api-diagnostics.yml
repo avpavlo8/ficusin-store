@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [plan, provision, status, configure, activate, repair-health, pause, seed]
+        options: [plan, provision, status, configure, activate, repair-health, pause, seed, repair-production-access]
         default: plan
       approved_monthly_rub:
         type: string
@@ -48,3 +48,11 @@ jobs:
         run: |
           python3 -m pip install 'psycopg[binary]==3.2.12'
           python3 scripts/timeweb-staging-seed.py
+      - name: Restore existing production owner ACL after provider role setup
+        if: inputs.operation == 'repair-production-access'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          STAGING_OPERATION: ${{ inputs.operation }}
+        run: |
+          python3 -m pip install 'psycopg[binary]==3.2.12'
+          python3 scripts/timeweb-repair-owner-access.py
