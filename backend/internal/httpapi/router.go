@@ -28,6 +28,7 @@ type readinessChecker interface {
 }
 
 type Dependencies struct {
+	Environment      string
 	Catalog          catalogRepository
 	Auth             authService
 	Orders           orderRepository
@@ -35,6 +36,7 @@ type Dependencies struct {
 	CDEK             cdekService
 	Admin            adminRepository
 	Saby             sabySyncService
+	CatalogExport    catalogExportService
 	Push             pushService
 	Chat             *chat.Store
 	Cart             cartStore
@@ -86,6 +88,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.Refunds,
 	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
+	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, false))
+	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, true))
 	if dependencies.Avito != nil {
 		mux.HandleFunc("GET /api/v1/admin/avito", avitoListHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))
@@ -121,7 +125,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/photos/{messageID}", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/attachments/{messageID}", chatAPI.serve)
 	}
-	callLimiter := newRateLimiter(5, 10*time.Minute)
+	callLimiter := newCallRateLimiter(dependencies.Environment)
 	verifyCallLimiter := newRateLimiter(120, time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)

@@ -856,6 +856,13 @@ func (repository *PostgresRepository) DeleteProductVariant(ctx context.Context, 
 	if !Can(actor.Role, PermissionDelete) {
 		return ErrForbidden
 	}
+	var exported bool
+	if err := repository.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND (state IN ('queued','checking','verifying','unknown') OR attempted_at IS NOT NULL OR remote_id<>''))`, variantID).Scan(&exported); err != nil {
+		return err
+	}
+	if exported {
+		return fmt.Errorf("%w: размер отправлен в СБИС; вместо удаления архивируйте его", ErrInvalidInput)
+	}
 	var sold bool
 	if err := repository.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)`, variantID).Scan(&sold); err != nil {
 		return err

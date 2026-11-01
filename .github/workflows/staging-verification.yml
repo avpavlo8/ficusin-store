@@ -1,0 +1,61 @@
+name: Staging verification
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+concurrency:
+  group: staging-verification
+  cancel-in-progress: true
+permissions:
+  contents: read
+  deployments: write
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_BASE_URL }}
+    env:
+      STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+      STAGING_ACCESS_TOKEN: ${{ secrets.STAGING_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build expected candidate frontend using production Docker stage
+        run: docker buildx build --target frontend-dist --output type=local,dest=frontend/dist .
+      - name: Verify isolated environment and exact deployed candidate
+        run: python3 scripts/check-staging.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+        working-directory: e2e
+      - name: Exercise storefront on desktop and mobile
+        env:
+          FICUSIN_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: >-
+          docker run --rm --ipc=host
+          -v "$GITHUB_WORKSPACE:/work" -w /work/e2e
+          -e FICUSIN_BASE_URL -e STAGING_ACCESS_TOKEN mcr.microsoft.com/playwright:v1.63.0-noble
+          npx playwright test --config playwright.production.config.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-browser-failures
+          path: |
+            e2e/test-results
+            e2e/playwright-report
+      - name: Exercise real draft creation and saved dimensions on staging only
+        env:
+          FICUSIN_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: >-
+          docker run --rm --ipc=host
+          -v "$GITHUB_WORKSPACE:/work" -w /work/e2e
+          -e FICUSIN_BASE_URL -e STAGING_ACCESS_TOKEN mcr.microsoft.com/playwright:v1.63.0-noble
+          npx playwright test --config playwright.staging.config.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-admin-evidence
+          path: e2e/test-results

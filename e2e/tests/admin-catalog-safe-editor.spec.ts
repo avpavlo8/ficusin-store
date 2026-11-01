@@ -13,7 +13,8 @@ async function fixture(page:Page,{total=2,failSave=false,variantTasks=[] as stri
  if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:'owner'}});
  if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role:'owner',permissions:['dashboard.read','products.read','products.edit','products.manage','products.sync','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
  if(path==='/api/v1/admin/products'&&method==='GET')return send({products});
- if(path==='/api/v1/admin/products'&&method==='POST'){const body=req.postDataJSON();const p={...product(++nextId),...body,image:'',price:0,status:'draft'};products.push(p);variants.set(p.id,[size(++nextId,p.id,'Основной')]);return send({product:p});}
+ if(path==='/api/v1/admin/products'&&method==='POST'){const body=req.postDataJSON();const p={...product(++nextId),...body,image:'',price:body.priceMinor/100,status:'draft'};products.push(p);variants.set(p.id,[{...size(++nextId,p.id,'Основной'),price:p.price,attributes:body.variantAttributes}]);return send({product:p});}
+ const exp=path.match(/\/variants\/(\d+)\/saby-export$/);if(exp){const v=[...variants.values()].flat().find(x=>x.id===Number(exp[1]));const p=products.find(x=>x.id===v?.productId);return send({configured:true,state:'idle',message:'',dirty:true,fingerprint:'saved-'+exp[1],validation:'',snapshot:{variantId:v?.id,productId:p?.id,sku:v?.sku,name:p?.name,potCm:Number(v?.attributes.pot_diameter_cm||11),heightCm:Number(v?.attributes.height_cm||40),priceMinor:Math.round((v?.price||1490)*100),sabyId:''}})}
  if(path==='/api/v1/admin/categories')return send({categories});
  if(/\/categories\/\d+\/attributes$/.test(path))return send({attributes:schema});
  if(/\/categories\/\d+\/effective-attributes$/.test(path))return send({attributes:effective});
@@ -131,7 +132,7 @@ test('@desktop пробелы не ломают поиск, URL восстана
 
 test('@desktop копия размера без складского остатка и внешних идентификаторов',async({page})=>{const f=await fixture(page);await open(page);const d=await edit(page);await d.getByRole('button',{name:'Размеры и цены',exact:true}).click();await d.getByRole('button',{name:'Копировать как новый размер'}).click();await expect(d.getByRole('button',{name:'В архив после сохранения',exact:true})).toHaveCount(0);expect(f.updates).toHaveLength(0);await d.getByRole('button',{name:'Сохранить изменения',exact:true}).click();await expect(d.getByRole('status')).toContainText('Товар и размеры сохранены');const v=f.updates[0].body.variants.find((v:any)=>v.id<0);expect(v.active).toBe(false);expect(v.externalIds).toEqual([]);expect(v.stock).toBeUndefined()});
 
-test('@desktop создание открывает тот же редактор скрытого черновика',async({page})=>{await fixture(page);await open(page);await page.getByRole('button',{name:'Добавить товар',exact:true}).click();let d=page.getByRole('dialog');await d.getByLabel('Название товара').fill('Новый фикус');await d.getByRole('button',{name:'Создать черновик и продолжить'}).click();d=page.getByRole('dialog');await expect(d.getByLabel('Название',{exact:true})).toHaveValue('Новый фикус');await expect(d.getByLabel('Статус товара')).toHaveValue('draft');await expect(d.getByRole('button',{name:'Фотографии',exact:true})).toBeVisible();await expect(d.getByLabel('URL фото')).toHaveCount(0)});
+test('@desktop @phone создание открывает тот же редактор скрытого черновика',async({page})=>{await fixture(page);await open(page);await page.getByRole('button',{name:'Добавить товар',exact:true}).click();let d=page.getByRole('dialog');await d.getByLabel('Название товара').fill('Новый фикус');await d.getByLabel('Диаметр горшка, см',{exact:true}).fill('11.3');await d.getByLabel('Высота растения, см',{exact:true}).fill('40');await d.getByLabel('Цена на сайте, ₽',{exact:true}).fill('1490.99');await d.getByRole('button',{name:'Создать карточку',exact:true}).click();d=page.getByRole('dialog');await expect(d.getByRole('button',{name:'Создать в СБИС',exact:true})).toBeEnabled();await d.getByRole('button',{name:'Основное',exact:true}).click();await expect(d.getByLabel('Название',{exact:true})).toHaveValue('Новый фикус');await expect(d.getByLabel('Статус товара')).toHaveValue('draft');await expect(d.getByRole('button',{name:'Фотографии',exact:true})).toBeVisible();await expect(d.getByLabel('URL фото')).toHaveCount(0)});
 
 test('@desktop несохранённые правки защищены при закрытии',async({page})=>{await fixture(page);await open(page);const d=await edit(page);await d.getByLabel('Описание',{exact:true}).fill('Несохранённый текст');page.once('dialog',confirmation=>void confirmation.dismiss());await d.locator('.product-editor-footer').getByRole('button',{name:'Закрыть',exact:true}).click();await expect(d).toBeVisible();await expect(d.getByLabel('Описание',{exact:true})).toHaveValue('Несохранённый текст')});
 
@@ -257,4 +258,46 @@ test('@desktop @phone seasonal packaging stays separate and survives reload',asy
  expect(await d.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
  await d.getByRole('region',{name:'Зимняя упаковка',exact:true}).scrollIntoViewIfNeeded();
  if(process.env.SEASONAL_VISUAL_DIR)await page.screenshot({path:`${process.env.SEASONAL_VISUAL_DIR}/packaging-${test.info().project.name}.png`});
+});
+
+for(const screen of ['@desktop','@phone'])test(`${screen} СБИС: явная отправка сохранённых данных, защита повтора и сверка`,async({page})=>{
+ const fixtureState=await fixture(page);const sends:Array<Record<string,unknown>>=[];let exportState='idle';
+ await page.route('**/api/v1/admin/variants/*/saby-export',async route=>{
+  const req=route.request();if(req.method()==='POST'){const body=req.postDataJSON();sends.push(body);exportState=body.checkOnly?'synced':'unknown'}
+  return route.fulfill({json:{configured:true,state:exportState,message:exportState==='unknown'?'Ответ СБИС не получен. Проверяем результат без повторного создания.':'',fingerprint:'saved-10',dirty:exportState!=='synced',validation:'',snapshot:{variantId:10,productId:1,sku:'10',name:'Аглаонема Мария D11',potCm:11,heightCm:40,priceMinor:149000,sabyId:exportState==='synced'?'3952':''}}});
+ });
+ await open(page);const d=await edit(page);await d.getByRole('button',{name:'Размеры и цены',exact:true}).click();
+ const panel=d.getByRole('region',{name:'СБИС: артикул 10'});await expect(panel).toContainText('Аглаонема Мария D11');await expect(panel).toContainText('40 см');
+ await panel.getByRole('button',{name:'Создать в СБИС',exact:true}).click();await expect(panel).toContainText('Нужна сверка результата');await expect(panel.getByRole('button',{name:'Создать в СБИС',exact:true})).toBeDisabled();
+ await expect.poll(()=>sends.length).toBe(1);await panel.getByRole('button',{name:'Проверить результат',exact:true}).click();await expect(panel).toContainText('Подтверждено в СБИС');await expect(panel).toContainText('№3952');
+ expect(sends).toEqual([{fingerprint:'saved-10',checkOnly:false},{fingerprint:'saved-10',checkOnly:true}]);
+ await expect(panel.getByRole('button',{name:'Обновить в СБИС',exact:true})).toBeDisabled();expect(fixtureState.updates).toHaveLength(0);
+ if(process.env.CATALOG_VISUAL_DIR)await page.screenshot({path:`${process.env.CATALOG_VISUAL_DIR}/saby-export-${test.info().project.name}.png`,fullPage:false});
+});
+
+test('@desktop СБИС не отправляет несохранённые изменения',async({page})=>{await fixture(page);await open(page);const d=await edit(page);await d.getByRole('button',{name:'Размеры и цены',exact:true}).click();const panel=d.getByRole('region',{name:'СБИС: артикул 10'});await expect(panel.getByRole('button',{name:'Создать в СБИС',exact:true})).toBeEnabled();await d.getByLabel('Название размера').fill('Новый размер');await expect(panel.getByRole('button',{name:'Создать в СБИС',exact:true})).toBeDisabled();await expect(panel).toContainText('Сначала сохраните правки карточки');});
+
+test('@desktop @phone late catalog snapshot cannot remove a newly created draft', async ({page}) => {
+ await fixture(page);
+ let release!:()=>void;
+ const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products',async route=>{
+  if(route.request().method()!=='GET')return route.fallback();
+  await held;
+  await route.fulfill({json:{products:[product(1),product(2)]}});
+ });
+ await page.goto('/admin?section=products');
+ await page.getByRole('button',{name:'Добавить товар',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await dialog.getByLabel('Название товара',{exact:true}).fill('Новый фикус после задержки');
+ await dialog.getByLabel('Диаметр горшка, см',{exact:true}).fill('12');
+ await dialog.getByLabel('Высота растения, см',{exact:true}).fill('40');
+ await dialog.getByLabel('Цена на сайте, ₽',{exact:true}).fill('1500');
+ await dialog.getByRole('button',{name:'Создать карточку',exact:true}).click();
+ await expect(dialog.getByRole('button',{name:'Размеры и цены',exact:true})).toBeVisible();
+ const completed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/admin/products'&&r.request().method()==='GET');
+ release();await completed;
+ await expect(page.getByRole('dialog')).toBeVisible();
+ await dialog.getByRole('button',{name:'Основное',exact:true}).click();
+ await expect(dialog.getByLabel('Название',{exact:true})).toHaveValue('Новый фикус после задержки');
 });

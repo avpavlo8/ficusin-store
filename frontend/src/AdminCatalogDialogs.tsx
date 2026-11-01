@@ -1,7 +1,7 @@
 import { AdminProductSearch } from "./AdminProductSearch";
 import { NumericInput } from "./NumericInput";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CategoryPicker } from "./AdminCatalog";
+import { CategoryPicker } from "./CategoryPicker";
 import { Dialog, api, money } from "./adminShared";
 import { channelLabels, mappingLabels, isPlantProduct, valueMissing } from "./adminCatalogLogic";
 import { VariantsEditor, type AdminVariant } from "./AdminPim";
@@ -1161,6 +1161,9 @@ export function NewProductDialog({
   onError: (value: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [pot, setPot] = useState("");
+  const [height, setHeight] = useState("");
+  const [price, setPrice] = useState("");
   const [categoryId, setCategoryId] = useState<number>();
   const [categories, setCategories] = useState<Category[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1171,7 +1174,8 @@ export function NewProductDialog({
       .catch((error) => onError(error.message));
   }, [onError]);
   const create = async () => {
-    if (!name.trim() || saving) return;
+    if (!name.trim() || Number(pot) <= 0 || Number(height) <= 0 || Number(price) <= 0 || saving)
+      return;
     setSaving(true);
     try {
       let root = categories.find((x) => x.id === categoryId);
@@ -1184,9 +1188,10 @@ export function NewProductDialog({
         method: "POST",
         body: JSON.stringify({
           name: name.trim(),
-          categoryId,
+          categoryId: categoryId || categories.find((item) => item.slug === "plants")?.id,
           catalogSection: root?.slug || "plants",
-          priceMinor: 0,
+          priceMinor: Math.round(Number(price) * 100),
+          variantAttributes: { pot_diameter_cm: Number(pot), height_cm: Number(height) },
         }),
       });
       onCreated(data.product);
@@ -1196,19 +1201,23 @@ export function NewProductDialog({
     }
   };
   const close = () => {
-    if (!saving && (!(name.trim() || categoryId) || window.confirm("Отменить создание товара?")))
+    if (
+      !saving &&
+      (!(name.trim() || categoryId || pot || height || price) ||
+        window.confirm("Отменить создание товара?"))
+    )
       onClose();
   };
   useEffect(() => {
     const protect = (event: BeforeUnloadEvent) => {
-      if (name.trim() || categoryId) {
+      if (name.trim() || categoryId || pot || height || price) {
         event.preventDefault();
         event.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", protect);
     return () => window.removeEventListener("beforeunload", protect);
-  }, [name, categoryId]);
+  }, [name, categoryId, pot, height, price]);
   return (
     <Dialog title="Добавить товар" onClose={close}>
       <form
@@ -1218,8 +1227,8 @@ export function NewProductDialog({
         }}
       >
         <p>
-          Начните с названия и категории. Затем откроется единый редактор: фото, размеры, ОВХ, уход
-          и публикация.
+          Укажите основные данные растения. После сохранения можно создать карточку в СБИС или
+          связать существующую.
         </p>
         <div className="admin-form-grid">
           <label className="wide">
@@ -1233,14 +1242,57 @@ export function NewProductDialog({
               placeholder="Например, Аглаонема Мария"
             />
           </label>
+          <label>
+            Диаметр горшка, см
+            <NumericInput
+              aria-label="Диаметр горшка, см"
+              required
+              min="0.1"
+              max="500"
+              step="any"
+              value={pot}
+              onChange={(event) => setPot(event.target.value)}
+              placeholder="12"
+            />
+          </label>
+          <label>
+            Высота растения, см
+            <NumericInput
+              aria-label="Высота растения, см"
+              required
+              min="0.1"
+              max="3000"
+              step="any"
+              value={height}
+              onChange={(event) => setHeight(event.target.value)}
+              placeholder="40"
+            />
+          </label>
+          <label className="wide">
+            Цена на сайте, ₽
+            <NumericInput
+              aria-label="Цена на сайте, ₽"
+              required
+              min="0.01"
+              max="10000000"
+              step="0.01"
+              value={price}
+              onChange={(event) => setPrice(event.target.value)}
+              placeholder="1 490"
+            />
+          </label>
           <div className="wide admin-field">
             <span className="admin-field-label">Категория</span>
-            <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+            <CategoryPicker
+              categories={categories}
+              value={categoryId || categories.find((item) => item.slug === "plants")?.id}
+              onChange={setCategoryId}
+            />
           </div>
         </div>
         <p className="admin-hint">
-          Создадим скрытый черновик без остатка. Цена и контент заполняются на сайте, остаток
-          появится после связи со СБИС.
+          Создадим скрытый черновик без остатка. СБИС и площадки подключаются отдельно; публикация
+          на сайте — после заполнения карточки.
         </p>
         {error && (
           <p role="alert" className="admin-inline-error">
@@ -1251,8 +1303,12 @@ export function NewProductDialog({
           <button type="button" disabled={saving} onClick={close}>
             Отмена
           </button>
-          <button type="submit" className="primary" disabled={saving || !name.trim()}>
-            {saving ? "Создаём…" : "Создать черновик и продолжить"}
+          <button
+            type="submit"
+            className="primary"
+            disabled={saving || !name.trim() || !pot || !height || !price}
+          >
+            {saving ? "Создаём…" : "Создать карточку"}
           </button>
         </div>
       </form>

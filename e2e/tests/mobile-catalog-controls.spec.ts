@@ -177,16 +177,20 @@ test("@desktop @phone card quantity persists, respects stock and removes the las
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
-test("@desktop @phone card plus disables at the available stock",async({page})=>{
+test("@desktop @phone card plus disables at the available stock",async({page,isMobile})=>{
   await mockApi(page);
   const {catalogue}=await import('./helpers');
   await page.route('**/api/v1/catalog',route=>route.fulfill({json:{products:[{...catalogue[0],stock:2}]}}));
   await page.goto('/');const card=page.locator('.storefront-card');
-  await card.getByRole('button',{name:'В корзину',exact:true}).click();
+  const add=card.getByRole('button',{name:'В корзину',exact:true});
+  if(isMobile)await add.tap();else await add.click();
   const plus=card.getByRole('button',{name:/Увеличить количество/});
-  await plus.click();await expect(plus).toBeDisabled();
+  if(isMobile)await plus.tap();else await plus.click();
+  await expect(plus).toBeDisabled();
   await expect(card.locator('.cart-item-count')).toHaveText('2');
-  await card.getByRole('button',{name:/Уменьшить количество/}).click();await expect(plus).toBeEnabled();
+  const minus=card.getByRole('button',{name:/Уменьшить количество/});
+  if(isMobile)await minus.tap();else await minus.click();
+  await expect(plus).toBeEnabled();
 });
 
 test('@desktop @phone delayed cart responses do not rewind rapid quantity clicks',async({page})=>{

@@ -1333,3 +1333,41 @@
     padding-top: 0;
   }
 }
+
+.catalog-saby-export {
+  padding: 20px 0;
+  margin-bottom: 20px;
+  border-block: 1px solid #d4decc;
+}
+.catalog-saby-heading,
+.catalog-saby-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.catalog-saby-heading {
+  justify-content: space-between;
+}
+.catalog-saby-heading h4,
+.catalog-saby-values dd {
+  margin: 0;
+}
+.catalog-saby-heading span,
+.catalog-saby-values dt {
+  font-size: 13px;
+  color: #42523b;
+}
+.catalog-saby-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin: 12px 0;
+}
+.catalog-saby-values dd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.catalog-saby-actions {
+  margin: 16px 0 8px;
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -76,6 +77,13 @@ func (repository *PostgresRepository) CreateProduct(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if input.CategoryID == nil && len(input.VariantAttributes) > 0 {
+		var categoryID int64
+		if err := tx.QueryRow(ctx, `SELECT id FROM categories WHERE slug='plants'`).Scan(&categoryID); err != nil {
+			return Product{}, err
+		}
+		input.CategoryID = &categoryID
+	}
 	images := make([]string, 0, 1)
 	if picture := strings.TrimSpace(input.Image); picture != "" {
 		images = append(images, picture)
@@ -124,8 +132,27 @@ func (repository *PostgresRepository) CreateProduct(
 	if input.PackageWeightGrams != nil {
 		variantAttributes["package_weight_grams"] = *input.PackageWeightGrams
 	}
+	for code, value := range input.VariantAttributes {
+		if code != "pot_diameter_cm" && code != "height_cm" {
+			return Product{}, fmt.Errorf("%w: при создании доступны только горшок и высота растения", ErrInvalidInput)
+		}
+		number, ok := value.(float64)
+		limit := 3000.0
+		if code == "pot_diameter_cm" {
+			limit = 500
+		}
+		if !ok || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 || number > limit {
+			return Product{}, fmt.Errorf("%w: укажите положительный размер растения", ErrInvalidInput)
+		}
+		variantAttributes[code] = number
+	}
 	if err := saveVariantPIMValues(ctx, tx, id, variantID, variantAttributes); err != nil {
 		return Product{}, err
+	}
+	if pot, ok := variantAttributes["pot_diameter_cm"]; ok {
+		if _, err := tx.Exec(ctx, `UPDATE product_variants SET label=$2 WHERE id=$1`, variantID, fmt.Sprintf("Горшок %v см", pot)); err != nil {
+			return Product{}, err
+		}
 	}
 	after, err := productAuditData(ctx, tx, id)
 	if err != nil {

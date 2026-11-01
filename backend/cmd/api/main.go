@@ -19,6 +19,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogsync"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
@@ -99,7 +100,7 @@ func main() {
 	liveHandler := newSwitchHandler(http.HandlerFunc(bootstrapHTTPHandler))
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address,
-		Handler:           liveHandler,
+		Handler:           httpapi.EnvironmentGuard(liveHandler, cfg.Environment, cfg.StagingAccessToken),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -127,6 +128,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	if cfg.Environment == "staging" {
+		var databaseName string
+		if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&databaseName); err != nil || cfg.ValidateDatabaseName(databaseName) != nil {
+			logger.Error("staging database isolation check failed")
+			os.Exit(1)
+		}
+	}
 
 	if err := migrate.Apply(ctx, pool, cfg.MigrationsDir); err != nil {
 		logger.Error("database migrations failed", "error", err)
@@ -143,7 +151,7 @@ func main() {
 	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
 	orderRepository := order.NewPostgresRepository(pool)
 	cdekClient := integration.NewCDEKClient(cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
-	telegramClient, err := integration.NewTelegramClient(cfg.TelegramChatID, cfg.TelegramBotToken)
+	telegramClient, err := newTelegramNotifications(cfg)
 	if err != nil {
 		logger.Error("Telegram configuration failed", "error", err)
 		os.Exit(1)
@@ -194,6 +202,16 @@ func main() {
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
+	var catalogProvider catalogsync.Provider = sabyProcurementClient
+	if cfg.Environment == "staging" {
+		catalogProvider, err = catalogsync.NewStagingProvider(ctx, pool)
+		if err != nil {
+			logger.Error("staging catalogue configuration failed", "error", err)
+			os.Exit(1)
+		}
+	}
+	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), catalogProvider, logger)
+	go catalogExportService.Run(ctx)
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).
 		WithSabyCatalogSync(sabyService)
@@ -213,6 +231,7 @@ func main() {
 	}
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
+		Environment:      cfg.Environment,
 		Catalog:          catalogRepository,
 		Auth:             authService,
 		Orders:           orderRepository,
@@ -220,6 +239,7 @@ func main() {
 		CDEK:             cdekClient,
 		Admin:            adminRepository,
 		Saby:             sabyService,
+		CatalogExport:    catalogExportService,
 		Push:             pushService,
 		Chat:             chatStore,
 		Cart:             cart.NewStore(pool),

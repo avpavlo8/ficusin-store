@@ -1,9 +1,11 @@
 import { NumericInput } from "./NumericInput";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api, money } from "./adminShared";
 import { VariantMediaManager } from "./VariantMediaManager";
 import { categoryPath } from "./adminCatalogLogic";
 import type { Category } from "./adminTypes";
+
+const SabyExport = lazy(() => import("./SabyExport"));
 
 export type AttributeOption = {
   id?: number;
@@ -1298,6 +1300,12 @@ export function VariantsEditor({
                   : "Замечаний по характеристикам размера нет"}
               </span>
             </div>
+            {owner && draft.id > 0 && !draft.archived && (
+              <Suspense fallback={<p className="admin-hint">Загружаем подключение СБИС…</p>}>
+                {" "}
+                <SabyExport key={draft.id} variant={draft} dirty={dirty} onReload={onReload} />{" "}
+              </Suspense>
+            )}
             <div className="admin-form-grid">
               <label className="wide">
                 Название размера
