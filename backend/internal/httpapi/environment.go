@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"crypto/sha256"
 	"crypto/subtle"
 	"net/http"
 )
@@ -23,8 +22,7 @@ func EnvironmentGuard(next http.Handler, environment, accessToken string) http.H
 		}
 		if r.URL.Path != "/api/v1/health" && r.URL.Path != "/api/v1/ready" {
 			username, password, ok := r.BasicAuth()
-			given, expected := sha256.Sum256([]byte(password)), sha256.Sum256([]byte(accessToken))
-			if !ok || username != "staging" || accessToken == "" || subtle.ConstantTimeCompare(given[:], expected[:]) != 1 {
+			if !ok || username != "staging" || accessToken == "" || subtle.ConstantTimeCompare([]byte(password), []byte(accessToken)) != 1 {
 				w.Header().Set("WWW-Authenticate", `Basic realm="Ficusin staging", charset="UTF-8"`)
 				http.Error(w, "Staging access required", http.StatusUnauthorized)
 				return
