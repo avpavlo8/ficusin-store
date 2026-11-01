@@ -16,12 +16,14 @@ def get(path):
         return json.load(response)
 
 for attempt in range(40):
+    runs = get(f'/repos/{repository}/actions/workflows/staging-verification.yml/runs?head_sha={sha}&status=success&per_page=100')['workflow_runs']
+    verified_run = any(run['head_sha'] == sha and run['conclusion'] == 'success' and run['path'] == '.github/workflows/staging-verification.yml' for run in runs)
     deployments = get(f'/repos/{repository}/deployments?sha={sha}&environment=staging&per_page=100')
     for deployment in deployments:
         if deployment['sha'] != sha or deployment['environment'] != 'staging':
             continue
         statuses = get(f'/repos/{repository}/deployments/{deployment["id"]}/statuses?per_page=1')
-        if statuses and statuses[0]['state']=='success' and statuses[0].get('environment_url','').rstrip('/')==url:
+        if verified_run and statuses and statuses[0]['state']=='success' and statuses[0].get('environment_url','').rstrip('/')==url:
             print('Exact PR commit verified on staging:',sha)
             raise SystemExit(0)
     print('Waiting for successful staging verification of',sha,flush=True)
