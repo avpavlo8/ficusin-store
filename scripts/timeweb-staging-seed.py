@@ -90,6 +90,9 @@ with connect(env) as destination:
             destination.execute(sql.SQL('TRUNCATE {} RESTART IDENTITY CASCADE').format(sql.SQL(',').join(map(sql.Identifier,tables))))
             for name in tables:
                 columns = [row[0] for row in source.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=%s AND is_generated='NEVER' ORDER BY ordinal_position",(name,))]
+                private_columns={row[0] for row in source.execute("SELECT a.attname FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey) WHERE c.contype='f' AND c.conrelid=%s::regclass AND c.confrelid IN ('customers'::regclass,'organizations'::regclass,'orders'::regclass,'admin_users'::regclass)",(name,))}
+                columns=[column for column in columns if column not in private_columns]
+                if private_columns: print('Excluded private actor references:',name,sorted(private_columns),flush=True)
                 identifiers = sql.SQL(',').join(map(sql.Identifier,columns))
                 with source.cursor().copy(sql.SQL('COPY (SELECT {} FROM {}) TO STDOUT (FORMAT BINARY)').format(identifiers,sql.Identifier(name))) as output:
                     with destination.cursor().copy(sql.SQL('COPY {} ({}) FROM STDIN (FORMAT BINARY)').format(sql.Identifier(name),identifiers)) as target:
