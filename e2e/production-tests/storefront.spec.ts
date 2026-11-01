@@ -66,7 +66,9 @@ test("production product 5 loads its optimized photo and review section", async 
   page.on("console", (message) => {
     const text = message.text();
     const instrumentationCSP = text.startsWith("Refused to execute a script because its hash, its nonce, or 'unsafe-inline'");
-    const blockedMetricaFrame = text.startsWith("Framing 'https://mc.yandex.ru/' violates the following Content Security Policy directive:") && /"(?:default-src|frame-src) 'self'/.test(text);
+    const blockedMetricaFrame =
+      (text.startsWith("Framing 'https://mc.yandex.ru/' violates the following Content Security Policy directive:") && /"(?:default-src|frame-src) 'self'/.test(text)) ||
+      /^Refused to load https:\/\/mc\.yandex\.ru\/[^\s]+ because it does not appear in the frame-src directive of the Content Security Policy\.$/.test(text);
     if (blockedMetricaFrame) {
       testInfo.annotations.push({ type: "analytics-csp", description: text });
       console.log("External analytics iframe blocked by the existing CSP: mc.yandex.ru");
