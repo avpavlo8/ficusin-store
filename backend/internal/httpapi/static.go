@@ -32,7 +32,7 @@ func setStaticCaching(response http.ResponseWriter, path string) {
 		response.Header().Set("Service-Worker-Allowed", "/")
 	case strings.HasPrefix(path, "/assets/"):
 		response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	case path == "/manifest.webmanifest":
+	case path == "/manifest.webmanifest" || path == "/admin.webmanifest":
 		response.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
 		response.Header().Set("Cache-Control", "public, max-age=3600")
 	}
@@ -163,6 +163,10 @@ func spaFallback(
 				return
 			}
 		}
+		if adminAppRequest(request) {
+			body = withAdminAppMeta(body)
+		}
+
 		// Счётчик ставится здесь, а не в сборке фронта: номер меняется в
 		// панели без выкладки, а образ не носит в себе чужой аккаунт.
 		if analytics != nil && !strings.HasPrefix(request.URL.Path, "/admin") {

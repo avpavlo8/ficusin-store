@@ -71,7 +71,8 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     headers,
   });
   if (response.status === 401) {
-    window.location.assign("/login?returnTo=/admin");
+    const returnTo = window.location.pathname + window.location.search;
+    window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
     throw new Error("Требуется вход");
   }
   if (response.status === 403) throw new Error("Недостаточно прав для этого действия");

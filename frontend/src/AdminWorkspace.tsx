@@ -4,6 +4,7 @@ import { sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
 import { roleLabel } from "./adminShared";
+import { AdminAppInstall } from "./AdminAppInstall";
 
 export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
   const paths: Record<Section | "search" | "arrow", string> = {
@@ -193,6 +194,7 @@ export function WorkspaceToolbar({
           </div>
         )}
       </div>
+      <AdminAppInstall />
       <a className="workspace-toolbar-profile" href="/account" aria-label="Личный кабинет">
         {data.user.fullName.trim().charAt(0) || "Ф"}
       </a>
