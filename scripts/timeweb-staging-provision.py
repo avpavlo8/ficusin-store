@@ -2,6 +2,10 @@
 import json
 import os
 import secrets
+import hashlib
+import hmac
+import base64
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -50,14 +54,20 @@ instance = next((item for item in instances if item['name']==DATABASE),None)
 if instance is None:
     instance = api('POST',f'/api/v1/databases/{CLUSTER}/instances',{'name':DATABASE,'description':'Isolated Ficusin staging - no customer or order copy'})['instance']
 print('Isolated database instance:',instance['id'],flush=True)
+for attempt in range(20):
+    instance = api('GET',f'/api/v1/databases/{CLUSTER}/instances/{instance["id"]}')['instance']
+    if instance.get('status') == 'created':
+        break
+    time.sleep(3)
+else:
+    raise RuntimeError('Staging database creation has not completed')
 admins_result = api('GET',f'/api/v1/databases/{CLUSTER}/admins')
 admins = admins_result.get('admins',[])
 admin = next((item for item in admins if item.get('login')==LOGIN),None)
+password = base64.urlsafe_b64encode(hmac.new(access.encode(),b'ficusin-stage-db-20261031',hashlib.sha256).digest()).decode().rstrip('=')+'Aa9!'
 if admin:
-    password = admin.get('password','')
-    assert password and '*' not in password, 'Existing staging role must be recovered before retry; no password changes performed'
+    assert admin.get('description') == 'Ficusin staging database only', 'Existing role is not the scoped staging role'
 else:
-    password = secrets.token_urlsafe(36)
     privileges = api('GET',f'/api/v1/databases/{CLUSTER}/privileges')['privileges']
     granted = [item['privilege'] for item in privileges if item['group']!='GLOBAL']
     admin = api('POST',f'/api/v1/databases/{CLUSTER}/admins',{'login':LOGIN,'password':password,'instance_id':instance['id'],'for_all':False,'privileges':granted,'description':'Ficusin staging database only'})['admin']
