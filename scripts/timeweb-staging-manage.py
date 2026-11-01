@@ -3,7 +3,7 @@ import json, os, re, urllib.request, urllib.error, urllib.parse
 
 def api(method, path, data=None):
     if method != 'GET':
-        assert method == 'PATCH' and path in (f'/api/v1/apps/{app["id"]}',f'/api/v1/apps/{app["id"]}/action/stop')
+        assert method == 'PATCH' and path in (f'/api/v1/apps/{app["id"]}',f'/api/v1/apps/{app["id"]}/action/pause')
         assert app['id'] != 229223 and app['name'] == 'ficusin-staging'
         assert urllib.parse.urlsplit(app['envs']['DATABASE_URL']).path == '/ficusin_staging_20261031'
     request = urllib.request.Request('https://api.timeweb.cloud'+path, method=method,
@@ -26,7 +26,7 @@ assert app['id'] != 229223 and app['name'] == 'ficusin-staging'
 operation = os.environ['STAGING_OPERATION']
 if operation == 'pause':
     assert os.environ['APPROVED_STAGING_MONTHLY_RUB'] == '510'
-    api('PATCH',f'/api/v1/apps/{app["id"]}/action/stop')
+    api('PATCH',f'/api/v1/apps/{app["id"]}/action/pause')
     app = api('GET',f'/api/v1/apps/{app["id"]}')['app']
 if operation in ('activate','configure','repair-health'):
     assert os.environ['APPROVED_STAGING_MONTHLY_RUB'] == '510'
