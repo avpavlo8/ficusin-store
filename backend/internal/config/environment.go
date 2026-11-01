@@ -19,6 +19,7 @@ func configureEnvironment(cfg Config) (Config, error) {
 		return cfg, nil
 	}
 	cfg.StagingAccessToken = strings.TrimSpace(os.Getenv("STAGING_ACCESS_TOKEN"))
+	cfg.Database.MaxConnections = 3
 	if len(cfg.StagingAccessToken) < 32 {
 		return Config{}, errors.New("staging requires a separate STAGING_ACCESS_TOKEN with at least 32 characters")
 	}

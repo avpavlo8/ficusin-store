@@ -119,6 +119,8 @@ type Database struct {
 	URL       string
 	CA        string
 	VerifyTLS bool
+	// Zero keeps the production pool limit. Preview shares cluster capacity.
+	MaxConnections int32
 }
 
 type Auth struct {

@@ -55,6 +55,9 @@ func Open(ctx context.Context, cfg config.Database) (*pgxpool.Pool, error) {
 	poolConfig.ConnConfig.Tracer = perf.QueryTracer{}
 
 	poolConfig.MaxConns = 10
+	if cfg.MaxConnections > 0 && cfg.MaxConnections < poolConfig.MaxConns {
+		poolConfig.MaxConns = cfg.MaxConnections
+	}
 	poolConfig.MinConns = 1
 	poolConfig.MaxConnLifetime = time.Hour
 	poolConfig.MaxConnIdleTime = 20 * time.Minute
