@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import base64
 import time
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,7 +32,11 @@ def api(method, path, data=None):
             return json.load(response)
     except urllib.error.HTTPError as error:
         # Provider errors can echo input credentials. Never print response bodies.
-        raise RuntimeError(f'Timeweb {method} {path}: HTTP {error.code}') from None
+        message = error.read().decode('utf-8','replace')
+        for secret in (token,os.environ.get('STAGING_ACCESS_TOKEN',''),globals().get('password','')):
+            if secret: message = message.replace(secret,'[redacted]')
+        message = re.sub(r'postgres(?:ql)?://[^\s\"}]+','[redacted database URL]',message)
+        raise RuntimeError(f'Timeweb {method} {path}: HTTP {error.code}: {message[:1500]}') from None
 
 source = api('GET','/api/v1/apps/229223')['app']
 assert source['name'] == 'ficusin-store' and source['repository']['full_name'] == 'avpavlo8/ficusin-store'
