@@ -40,9 +40,22 @@ jobs:
           -e FICUSIN_BASE_URL -e STAGING_ACCESS_TOKEN mcr.microsoft.com/playwright:v1.63.0-noble
           npx playwright test --config playwright.production.config.ts
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: staging-browser-failures
           path: |
             e2e/test-results
             e2e/playwright-report
+      - name: Exercise real draft creation and saved dimensions on staging only
+        env:
+          FICUSIN_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: >-
+          docker run --rm --ipc=host
+          -v "$GITHUB_WORKSPACE:/work" -w /work/e2e
+          -e FICUSIN_BASE_URL -e STAGING_ACCESS_TOKEN mcr.microsoft.com/playwright:v1.63.0-noble
+          npx playwright test --config playwright.staging.config.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-admin-evidence
+          path: e2e/test-results

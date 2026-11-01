@@ -1,0 +1,32 @@
+import { defineConfig, devices } from "@playwright/test";
+
+const baseURL = process.env.FICUSIN_BASE_URL || "";
+if (
+  !/^https:\/\/[^/]+\.twc1\.net$/.test(baseURL) ||
+  !process.env.STAGING_ACCESS_TOKEN
+) {
+  throw new Error(
+    "Isolated staging URL and access token required; never run on production",
+  );
+}
+export default defineConfig({
+  testDir: "./staging-tests",
+  timeout: 60_000,
+  retries: 0,
+  workers: 1,
+  reporter: [["list"]],
+  use: {
+    baseURL,
+    httpCredentials: {
+      username: "staging",
+      password: process.env.STAGING_ACCESS_TOKEN,
+      origin: baseURL,
+    },
+    trace: "retain-on-failure",
+    serviceWorkers: "block",
+  },
+  projects: [
+    { name: "staging-desktop", use: { ...devices["Desktop Chrome"] } },
+    { name: "staging-mobile", use: { ...devices["Pixel 5"] } },
+  ],
+});
