@@ -10,6 +10,22 @@ with urllib.request.urlopen(request,timeout=30) as response: app=json.load(respo
 assert app['id']==229223 and app['name']=='ficusin-store'
 env=app['envs']; parsed=urllib.parse.urlsplit(env['DATABASE_URL'])
 assert parsed.path=='/default_db' and parsed.username=='gen_user'
+# Keep the provider's declarative grants aligned too. Creating the scoped
+# preview role reconciled a stale CONNECT-only grant for the existing owner.
+def api(method,path,data=None):
+    assert method=='GET' or (method=='PATCH' and path=='/api/v1/databases/4192781/admins/429675')
+    request=urllib.request.Request('https://api.timeweb.cloud'+path,method=method,
+        headers={'Authorization':'Bearer '+os.environ['TIMEWEB_CLOUD_TOKEN'],'Content-Type':'application/json'},
+        data=None if data is None else json.dumps(data).encode())
+    with urllib.request.urlopen(request,timeout=60) as response:return json.load(response)
+stage=api('GET','/api/v1/apps/280757')['app']
+assert stage['name']=='ficusin-staging' and stage['status']=='paused'
+admin=next(row for row in api('GET','/api/v1/databases/4192781/admins')['admins'] if row['login']=='gen_user')
+assert admin['id']==429675 and not admin['for_all']
+available=api('GET','/api/v1/databases/4192781/privileges')['privileges']
+grants=[row['privilege'] for row in available if row['group']!='GLOBAL']
+api('PATCH','/api/v1/databases/4192781/admins/429675',{'instance_id':505949,'for_all':False,'privileges':grants})
+print('Provider grant restored for existing gen_user on default_db only; no password or global privileges changed',flush=True)
 with tempfile.TemporaryDirectory() as directory:
     options={'connect_timeout':20,'options':'-c statement_timeout=30000'}
     ca=env.get('DATABASE_SSL_CA','').strip().strip('\"\'').replace('\\n','\n')
