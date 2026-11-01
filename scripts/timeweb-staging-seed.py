@@ -65,6 +65,7 @@ with connect(env) as destination:
         assert destination.execute('SELECT count(*) FROM orders').fetchone()[0] == 0
         with connect(source_env,readonly=True) as source:
             assert source.execute('SHOW transaction_read_only').fetchone()[0] == 'on'
+            print('Source role/schema/select privilege:',source.execute("SELECT current_user,current_schema(),has_table_privilege(current_user,'public.categories','SELECT'),pg_get_userbyid(relowner) FROM pg_class WHERE oid='public.categories'::regclass").fetchone(),flush=True)
             assert source.execute('SELECT current_database()').fetchone()[0] == 'default_db'
             existing = {row[0] for row in source.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
             tables = [name for name in tables if name in existing]
