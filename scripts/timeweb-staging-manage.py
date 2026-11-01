@@ -18,7 +18,7 @@ app = next(item for item in api('GET','/api/v1/apps')['apps'] if item['name'] ==
 app = api('GET',f'/api/v1/apps/{app["id"]}')['app']
 assert app['id'] != 229223 and app['name'] == 'ficusin-staging'
 operation = os.environ['STAGING_OPERATION']
-if operation in ('activate','configure'):
+if operation in ('activate','configure','repair-health'):
     assert os.environ['APPROVED_STAGING_MONTHLY_RUB'] == '510'
     domain = next(row['fqdn'] for row in app['domains'] if row.get('is_technical'))
     assert domain.endswith('.twc1.net') and '/' not in domain
@@ -28,6 +28,7 @@ if operation in ('activate','configure'):
     sha = os.environ['STAGING_CANDIDATE_SHA']
     assert re.fullmatch('[a-f0-9]{40}',sha)
     payload = {'envs':envs}
+    if operation == 'repair-health': payload['health_check'] = ''
     if operation == 'activate':
         payload.update(branch_name='staging',commit_sha=sha,is_auto_deploy=True)
     app = api('PATCH',f'/api/v1/apps/{app["id"]}',payload)['app']
