@@ -52,6 +52,12 @@ with connect(env) as destination:
     except psycopg.OperationalError as error:
         if error.sqlstate not in ('42501','28000') and 'permission denied for database \"default_db\"' not in str(error): raise
     print('Verified: staging role cannot read or change production tables',flush=True)
+    # Provider role updates revoked owner ACLs in both databases. Restore only
+    # this isolated role's own objects; never grant anything to PUBLIC.
+    owned = destination.execute("SELECT n.nspname,c.relname,c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) AND c.relkind IN ('r','p','v','m','f','S')").fetchall()
+    for schema,name,kind in owned:
+        destination.execute(sql.SQL('GRANT ALL PRIVILEGES ON {} {} TO CURRENT_USER').format(sql.SQL('SEQUENCE' if kind=='S' else 'TABLE'),sql.Identifier(schema,name)))
+    print('Isolated owner privileges verified/restored:',len(owned),flush=True)
     destination.execute('CREATE TABLE IF NOT EXISTS staging_catalog_seed (id INTEGER PRIMARY KEY CHECK(id=1),seeded_at TIMESTAMPTZ NOT NULL DEFAULT now())')
     already_seeded = destination.execute('SELECT count(*) FROM staging_catalog_seed').fetchone()[0] > 0
     tables = [
