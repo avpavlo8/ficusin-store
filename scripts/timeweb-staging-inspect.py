@@ -9,10 +9,10 @@ def get(path):
         return json.load(r)
 
 def summary(row):
-    allowed = ('id','name','type','status','preset_id','location','region','price','price_day','price_month','cpu','ram','disk','framework','branch_name','is_auto_deploy','project_id','provider_id','repository_id','domains','url','default_domain','login','instance_id','description','is_enabled','language','health_check','build_cmd','run_cmd')
+    allowed = ('id','name','type','status','preset_id','location','region','price','price_day','price_month','cpu','ram','disk','framework','branch_name','is_auto_deploy','project_id','provider_id','repository_id','domains','url','default_domain','login','instance_id','description','is_enabled','for_all','instances','language','health_check','build_cmd','run_cmd')
     return {key:row[key] for key in allowed if key in row}
 
-for path in ['/api/v1/apps/229223','/api/v1/apps','/api/v1/presets/apps','/api/v1/databases','/api/v1/databases/4192781/instances','/api/v1/databases/4192781/privileges']:
+for path in ['/api/v1/apps/229223','/api/v1/apps','/api/v1/presets/apps','/api/v1/databases','/api/v1/databases/4192781/instances','/api/v1/databases/4192781/privileges','/api/v1/databases/4192781/admins']:
     try:
         data = get(path)
         print(path, 'root keys', list(data))
