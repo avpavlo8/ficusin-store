@@ -58,6 +58,7 @@ with connect(env) as destination:
     for schema,name,kind in owned:
         destination.execute(sql.SQL('GRANT ALL PRIVILEGES ON {} {} TO CURRENT_USER').format(sql.SQL('SEQUENCE' if kind=='S' else 'TABLE'),sql.Identifier(schema,name)))
     print('Isolated owner privileges verified/restored:',len(owned),flush=True)
+    destination.commit()
     destination.execute('CREATE TABLE IF NOT EXISTS staging_catalog_seed (id INTEGER PRIMARY KEY CHECK(id=1),seeded_at TIMESTAMPTZ NOT NULL DEFAULT now())')
     already_seeded = destination.execute('SELECT count(*) FROM staging_catalog_seed').fetchone()[0] > 0
     tables = [
@@ -75,6 +76,16 @@ with connect(env) as destination:
             assert source.execute('SELECT current_database()').fetchone()[0] == 'default_db'
             existing = {row[0] for row in source.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")}
             tables = [name for name in tables if name in existing]
+            # Keep FK/SQL constraints, but suppress owned PIM derivation triggers while
+            # restoring their canonical values from the source. Re-enable in the
+            # same transaction; rollback restores their original state too.
+            trigger_states=[]
+            for table in tables:
+                rows=destination.execute("SELECT tgname,tgenabled FROM pg_trigger WHERE tgrelid=%s::regclass AND NOT tgisinternal",(table,)).fetchall()
+                for trigger,state in rows:
+                    if state!='D':
+                        trigger_states.append((table,trigger,state))
+                        destination.execute(sql.SQL('ALTER TABLE {} DISABLE TRIGGER {}').format(sql.Identifier(table),sql.Identifier(trigger)))
             # This is the new, isolated DB only. No personal/financial table is copied.
             destination.execute(sql.SQL('TRUNCATE {} RESTART IDENTITY CASCADE').format(sql.SQL(',').join(map(sql.Identifier,tables))))
             for name in tables:
@@ -89,6 +100,9 @@ with connect(env) as destination:
                     sequence = destination.execute('SELECT pg_get_serial_sequence(%s,\'id\')',(name,)).fetchone()[0]
                     if sequence:
                         destination.execute(sql.SQL('SELECT setval(%s,GREATEST(COALESCE(max(id),0),1),COALESCE(max(id),0)>0) FROM {}').format(sql.Identifier(name)),(sequence,))
+            for table,trigger,state in trigger_states:
+                mode={'O':'ENABLE','R':'ENABLE REPLICA','A':'ENABLE ALWAYS'}[state]
+                destination.execute(sql.SQL('ALTER TABLE {} {} TRIGGER {}').format(sql.Identifier(table),sql.SQL(mode),sql.Identifier(trigger)))
             destination.execute("UPDATE inventory SET reserved_qty=0")
             destination.execute("SELECT setval('ficusin_sku_seq',GREATEST(COALESCE(max(sku::bigint),0),1),true) FROM product_variants WHERE sku ~ '^[0-9]+$'")
             destination.execute("SELECT setval('ficusin_product_code_seq',GREATEST(COALESCE(max(product_code),0),1),true) FROM products")
