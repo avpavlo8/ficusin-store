@@ -88,11 +88,11 @@ test("Product tabs keep all text mounted and show one section at a time live", a
   await expect(page.locator("#pdp-panel-about")).toBeVisible();
 });
 
-test("Product content is readable without JavaScript live", async ({ browser, request }) => {
+test("Product content is readable without JavaScript live", async ({ browser, request, context: sessionContext }) => {
   const response = await request.get("/api/v1/products/33");
   expect(response.ok()).toBeTruthy();
   const { product } = await response.json();
-  const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block" });
+  const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", storageState: await sessionContext.storageState() });
   try {
     const page = await context.newPage();
     const navigation = await page.goto(`${process.env.FICUSIN_BASE_URL || "https://www.ficusin.ru"}/product/33`, { waitUntil: "domcontentloaded" });

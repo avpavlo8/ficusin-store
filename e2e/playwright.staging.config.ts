@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { stagingState } from "./staging-access";
 
 const baseURL = process.env.FICUSIN_BASE_URL || "";
 if (
@@ -11,17 +12,14 @@ if (
 }
 export default defineConfig({
   testDir: "./staging-tests",
+  globalSetup: "./staging-owner.setup.ts",
   timeout: 60_000,
   retries: 0,
   workers: 1,
   reporter: [["list"]],
   use: {
     baseURL,
-    httpCredentials: {
-      username: "staging",
-      password: process.env.STAGING_ACCESS_TOKEN,
-      origin: baseURL,
-    },
+    storageState: stagingState(true),
     trace: "retain-on-failure",
     serviceWorkers: "block",
   },

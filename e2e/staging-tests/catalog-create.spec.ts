@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 test("real staging: draft, dimensions, seasonal boxes and outbound isolation", async ({
@@ -8,19 +7,6 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
 }, testInfo) => {
   const health = await request.get("/api/v1/ready");
   expect(health.headers()["x-ficusin-environment"]).toBe("staging");
-  const session = createHmac("sha256", process.env.STAGING_ACCESS_TOKEN!)
-    .update("ficusin-staging-owner-session")
-    .digest("hex");
-  await context.addCookies([
-    {
-      name: "ficusin_session",
-      value: session,
-      url: process.env.FICUSIN_BASE_URL!,
-      secure: true,
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
   await page.goto("/admin?section=products");
   await page
     .getByRole("button", { name: "Добавить товар", exact: true })
@@ -124,4 +110,29 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
       (element) => element.scrollWidth <= element.clientWidth + 1,
     ),
   ).toBeTruthy();
+});
+
+test("staging access stays open across guest 401 responses and reloads", async ({
+  page,
+  context,
+}) => {
+  await context.clearCookies();
+  await page.goto("/login");
+  await expect(
+    page.getByRole("heading", { name: "Вход на стейджинг", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Пароль", { exact: true })
+    .fill(process.env.STAGING_ACCESS_TOKEN!);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await expect(page).toHaveURL(/\/login$/);
+    const me = await context.request.get("/api/v1/auth/me");
+    expect(me.status()).toBe(401);
+    expect(me.headers()["www-authenticate"]).toBeUndefined();
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "Вход на стейджинг", exact: true }),
+    ).toHaveCount(0);
+  }
 });

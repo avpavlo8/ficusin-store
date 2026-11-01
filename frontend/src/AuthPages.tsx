@@ -211,14 +211,18 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
             <div className="auth-intro-copy">
               <h1>
                 {step === "waiting"
-                  ? "Подтвердите номер звонком"
+                  ? checkId === "dev-check"
+                    ? "Входим на тестовый сайт"
+                    : "Подтвердите номер звонком"
                   : isRegistration
                     ? "Регистрация"
                     : "Вход"}
               </h1>
               {(step === "waiting" || isRegistration) && (
                 <p>
-                  {step === "waiting" ? (
+                  {step === "waiting" && checkId === "dev-check" ? (
+                    "Это тестовый вход: звонить не нужно. Проверка завершится автоматически."
+                  ) : step === "waiting" ? (
                     <>
                       Позвоните с номера{" "}
                       <span className="auth-confirm-phone">{formatRussianPhoneInput(phone)}</span>{" "}
@@ -468,9 +472,20 @@ function AuthPage({ flow }: { flow: AuthFlow }) {
           {step === "waiting" && (
             <div className="auth-form">
               <p className="auth-call-number" aria-live="polite">
-                <a href={`tel:${callPhonePretty.replace(/[^+0-9]/g, "")}`}>{callPhonePretty}</a>
+                {checkId === "dev-check" ? (
+                  <strong>Звонить не нужно</strong>
+                ) : (
+                  <a href={`tel:${callPhonePretty.replace(/[^+0-9]/g, "")}`}>{callPhonePretty}</a>
+                )}
                 <small>
-                  Ожидаем звонок и автоматически завершим {isRegistration ? "регистрацию" : "вход"}…
+                  {checkId === "dev-check" ? (
+                    "Автоматически завершаем тестовый вход…"
+                  ) : (
+                    <>
+                      Ожидаем звонок и автоматически завершим{" "}
+                      {isRegistration ? "регистрацию" : "вход"}…
+                    </>
+                  )}
                 </small>
               </p>
               {error && (

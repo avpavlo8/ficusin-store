@@ -19,24 +19,22 @@ const LoginPage = lazy(() =>
 const RegisterPage = lazy(() =>
   import("./AuthPages").then((module) => ({ default: module.RegisterPage })),
 );
-const DeliveryPage = lazy(() =>
-  import("./LegalPages").then((module) => ({ default: module.DeliveryPage })),
-);
-const OfferPage = lazy(() =>
-  import("./LegalPages").then((module) => ({ default: module.OfferPage })),
-);
-const PersonalDataConsentPage = lazy(() =>
-  import("./LegalPages").then((module) => ({ default: module.PersonalDataConsentPage })),
-);
-const PrivacyPage = lazy(() =>
-  import("./LegalPages").then((module) => ({ default: module.PrivacyPage })),
-);
-const RequisitesPage = lazy(() =>
-  import("./LegalPages").then((module) => ({ default: module.RequisitesPage })),
-);
-const ContactsPage = lazy(() =>
-  import("./LegalPages").then((module) => ({ default: module.ContactsPage })),
-);
+// Keep the shared legal-page loader in one place instead of six wrappers.
+type LegalPageName =
+  | "DeliveryPage"
+  | "OfferPage"
+  | "PersonalDataConsentPage"
+  | "PrivacyPage"
+  | "RequisitesPage"
+  | "ContactsPage";
+const legalPage = (name: LegalPageName) =>
+  lazy(() => import("./LegalPages").then((module) => ({ default: module[name] })));
+const DeliveryPage = legalPage("DeliveryPage");
+const OfferPage = legalPage("OfferPage");
+const PersonalDataConsentPage = legalPage("PersonalDataConsentPage");
+const PrivacyPage = legalPage("PrivacyPage");
+const RequisitesPage = legalPage("RequisitesPage");
+const ContactsPage = legalPage("ContactsPage");
 
 function RouteLoading() {
   return (
