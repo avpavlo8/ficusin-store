@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [plan, provision, status, configure, activate, repair-health, pause, seed, redeploy, repair-production-access]
+        options: [plan, provision, status, configure, activate, repair-health, pause, seed, redeploy, owner-profile, repair-production-access]
         default: plan
       approved_monthly_rub:
         type: string
@@ -56,3 +56,11 @@ jobs:
         run: |
           python3 -m pip install 'psycopg[binary]==3.2.12'
           python3 scripts/timeweb-repair-owner-access.py
+      - name: Prepare only the operator owner account on staging
+        if: inputs.operation == 'owner-profile'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
+        run: |
+          python3 -m pip install 'psycopg[binary]==3.2.12'
+          python3 scripts/timeweb-staging-owner.py
