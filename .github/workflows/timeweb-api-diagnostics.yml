@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [plan, provision, status, configure, activate, repair-health, pause, seed, repair-production-access]
+        options: [plan, provision, status, configure, activate, repair-health, pause, seed, redeploy, repair-production-access]
         default: plan
       approved_monthly_rub:
         type: string
@@ -32,7 +32,7 @@ jobs:
           STAGING_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: python3 scripts/timeweb-staging-provision.py
       - name: Inspect or activate only the isolated staging application
-        if: inputs.operation == 'status' || inputs.operation == 'activate' || inputs.operation == 'configure' || inputs.operation == 'repair-health' || inputs.operation == 'pause'
+        if: inputs.operation == 'status' || inputs.operation == 'activate' || inputs.operation == 'configure' || inputs.operation == 'repair-health' || inputs.operation == 'pause' || inputs.operation == 'redeploy'
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           STAGING_OPERATION: ${{ inputs.operation }}
