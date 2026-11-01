@@ -10,123 +10,264 @@ type BrowserMetrics = {
 };
 
 const guestUnauthorized = (text: string) =>
-  text.includes("401 (Unauthorized)") || /Failed to load resource[\s\S]*\b401\b/.test(text);
+  text.includes("401 (Unauthorized)") ||
+  /Failed to load resource[\s\S]*\b401\b/.test(text);
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const state = window as typeof window & { __ficusinCLS?: number };
     state.__ficusinCLS = 0;
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as Array<PerformanceEntry & { hadRecentInput?: boolean; value?: number }>) {
-        if (!entry.hadRecentInput) state.__ficusinCLS = (state.__ficusinCLS || 0) + (entry.value || 0);
+      for (const entry of list.getEntries() as Array<
+        PerformanceEntry & { hadRecentInput?: boolean; value?: number }
+      >) {
+        if (!entry.hadRecentInput)
+          state.__ficusinCLS = (state.__ficusinCLS || 0) + (entry.value || 0);
       }
     }).observe({ type: "layout-shift", buffered: true });
   });
 });
 
-test("production catalogue is usable without shifts or failed first-party requests", async ({ page }, testInfo) => {
+test("production catalogue is usable without shifts or failed first-party requests", async ({
+  page,
+}, testInfo) => {
   const failures: string[] = [];
   page.on("requestfailed", (request) => {
-    const abortedAnalytics = request.url().endsWith("/api/v1/analytics/events") && request.failure()?.errorText === "net::ERR_ABORTED";
-    if (!abortedAnalytics && /ficusin\.ru|twcstorage\.ru/.test(request.url())) failures.push(`${request.url()}: ${request.failure()?.errorText}`);
+    const abortedAnalytics =
+      request.url().endsWith("/api/v1/analytics/events") &&
+      request.failure()?.errorText === "net::ERR_ABORTED";
+    if (!abortedAnalytics && /ficusin\.ru|twcstorage\.ru/.test(request.url()))
+      failures.push(`${request.url()}: ${request.failure()?.errorText}`);
   });
   page.on("response", (response) => {
-    const expectedGuest = response.status() === 401 && response.url().endsWith("/api/v1/auth/me");
-    if (!expectedGuest && response.status() >= 400 && /ficusin\.ru|twcstorage\.ru/.test(response.url())) failures.push(`${response.status()} ${response.url()}`);
+    const expectedGuest =
+      response.status() === 401 && response.url().endsWith("/api/v1/auth/me");
+    if (
+      !expectedGuest &&
+      response.status() >= 400 &&
+      /ficusin\.ru|twcstorage\.ru/.test(response.url())
+    )
+      failures.push(`${response.status()} ${response.url()}`);
   });
   const started = Date.now();
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
-  await expect(page.locator(".storefront-grid:not(.storefront-skeleton) .storefront-card").first()).toBeVisible();
+  await expect(
+    page.locator(".storefront-grid:not(.storefront-skeleton)"),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".storefront-grid:not(.storefront-skeleton) .storefront-card")
+      .first(),
+  ).toBeVisible();
   const interfaceMs = Date.now() - started;
   await page.waitForTimeout(500);
   const metrics = await page.evaluate<BrowserMetrics>(() => {
     const state = window as typeof window & { __ficusinCLS?: number };
-    return { cls: state.__ficusinCLS || 0, interfaceMs: 0, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    return {
+      cls: state.__ficusinCLS || 0,
+      interfaceMs: 0,
+      overflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    };
   });
   metrics.interfaceMs = interfaceMs;
-  console.log(`production metrics ${testInfo.project.name} catalogue ${JSON.stringify(metrics)}`);
+  console.log(
+    `production metrics ${testInfo.project.name} catalogue ${JSON.stringify(metrics)}`,
+  );
   expect(failures).toEqual([]);
   expect(metrics.overflow).toBe(0);
   expect(metrics.cls).toBeLessThan(0.25);
   expect(await page.locator('img[src*="hero-monstera.png"]').count()).toBe(0);
 });
 
-test("production product 5 loads its optimized photo and review section", async ({ page }, testInfo) => {
+test("production product 5 loads its optimized photo and review section", async ({
+  page,
+}, testInfo) => {
   const failures: string[] = [];
   const consoleErrors: string[] = [];
   page.on("requestfailed", (request) => {
-    const abortedAnalytics = request.url().endsWith("/api/v1/analytics/events") && request.failure()?.errorText === "net::ERR_ABORTED";
-    if (!abortedAnalytics && /ficusin\.ru|twcstorage\.ru/.test(request.url())) failures.push(`${request.url()}: ${request.failure()?.errorText}`);
+    const abortedAnalytics =
+      request.url().endsWith("/api/v1/analytics/events") &&
+      request.failure()?.errorText === "net::ERR_ABORTED";
+    if (!abortedAnalytics && /ficusin\.ru|twcstorage\.ru/.test(request.url()))
+      failures.push(`${request.url()}: ${request.failure()?.errorText}`);
   });
   page.on("response", (response) => {
-    const expectedGuest = response.status() === 401 && response.url().endsWith("/api/v1/auth/me");
-    if (!expectedGuest && response.status() >= 400 && /ficusin\.ru|twcstorage\.ru/.test(response.url())) failures.push(`${response.status()} ${response.url()}`);
+    const expectedGuest =
+      response.status() === 401 && response.url().endsWith("/api/v1/auth/me");
+    if (
+      !expectedGuest &&
+      response.status() >= 400 &&
+      /ficusin\.ru|twcstorage\.ru/.test(response.url())
+    )
+      failures.push(`${response.status()} ${response.url()}`);
   });
   page.on("console", (message) => {
     const text = message.text();
-    const instrumentationCSP = text.startsWith("Refused to execute a script because its hash, its nonce, or 'unsafe-inline'");
+    const instrumentationCSP = text.startsWith(
+      "Refused to execute a script because its hash, its nonce, or 'unsafe-inline'",
+    );
     const blockedMetricaFrame =
-      (text.startsWith("Framing 'https://mc.yandex.ru/' violates the following Content Security Policy directive:") && /"(?:default-src|frame-src) 'self'/.test(text)) ||
-      /^Refused to load https:\/\/mc\.yandex\.ru\/[^\s]+ because it does not appear in the frame-src directive of the Content Security Policy\.$/.test(text);
+      (text.startsWith(
+        "Framing 'https://mc.yandex.ru/' violates the following Content Security Policy directive:",
+      ) &&
+        /"(?:default-src|frame-src) 'self'/.test(text)) ||
+      /^Refused to load https:\/\/mc\.yandex\.ru\/[^\s]+ because it does not appear in the frame-src directive of the Content Security Policy\.$/.test(
+        text,
+      );
     if (blockedMetricaFrame) {
       testInfo.annotations.push({ type: "analytics-csp", description: text });
-      console.log("External analytics iframe blocked by the existing CSP: mc.yandex.ru");
+      console.log(
+        "External analytics iframe blocked by the existing CSP: mc.yandex.ru",
+      );
     }
-    if (message.type() === "error" && !guestUnauthorized(text) && !instrumentationCSP && !blockedMetricaFrame) consoleErrors.push(text);
+    if (
+      message.type() === "error" &&
+      !guestUnauthorized(text) &&
+      !instrumentationCSP &&
+      !blockedMetricaFrame
+    )
+      consoleErrors.push(text);
   });
   const started = Date.now();
   await page.goto("/product/5", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { level: 1, name: "Аглаонема Мария" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Аглаонема Мария" }),
+  ).toBeVisible();
   const interfaceMs = Date.now() - started;
-  const mainImage = page.getByRole("button", { name: "Открыть фотографию на весь экран" }).locator("img[aria-hidden='false']");
+  const mainImage = page
+    .getByRole("button", { name: "Открыть фотографию на весь экран" })
+    .locator("img[aria-hidden='false']");
   await expect(mainImage).toBeVisible();
-  await expect.poll(() => mainImage.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await expect
+    .poll(() =>
+      mainImage.evaluate((image) => image.complete && image.naturalWidth > 0),
+    )
+    .toBe(true);
   const imageMs = Date.now() - started;
   await expect(mainImage).toHaveAttribute("src", /-large\.jpg$/);
   const reviewMeta = page.locator(".purchase-review-meta");
   await expect(reviewMeta).toBeVisible();
   const reviewCountText = await reviewMeta.innerText();
-  await reviewMeta.click();
-  await expect(page.locator("#reviews")).toBeVisible();
   const reviewCount = Number(reviewCountText.match(/(\d+)\s*отзыв/)?.[1] || 0);
-  if (reviewCount > 0) await expect(page.locator("#reviews article").first()).toBeVisible();
-  else await expect(page.locator("#reviews")).toContainText(/отзывов пока нет|будьте первым/i);
+  await reviewMeta.click();
+  if (reviewCount === 0) {
+    // With no customer reviews, the purchase panel opens the first-review form.
+    const composer = page.getByRole("dialog");
+    await expect(
+      composer.getByLabel("Ваш отзыв", { exact: true }),
+    ).toBeVisible();
+    await composer
+      .getByRole("button", { name: "Закрыть", exact: true })
+      .click();
+    await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
+  }
+  await expect(page.locator("#reviews")).toBeVisible();
+  if (reviewCount > 0)
+    await expect(page.locator("#reviews article").first()).toBeVisible();
+  else
+    await expect(page.locator("#reviews")).toContainText(
+      /Здесь пока тихо/,
+    );
   await page.waitForTimeout(500);
   const metrics = await page.evaluate<BrowserMetrics>(() => {
     const state = window as typeof window & { __ficusinCLS?: number };
-    return { cls: state.__ficusinCLS || 0, interfaceMs: 0, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    return {
+      cls: state.__ficusinCLS || 0,
+      interfaceMs: 0,
+      overflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    };
   });
-  metrics.interfaceMs = interfaceMs; metrics.imageMs = imageMs;
-  console.log(`production metrics ${testInfo.project.name} product5 ${JSON.stringify(metrics)}`);
-  expect(failures).toEqual([]); expect(consoleErrors).toEqual([]); expect(metrics.overflow).toBe(0); expect(metrics.cls).toBeLessThan(0.25);
+  metrics.interfaceMs = interfaceMs;
+  metrics.imageMs = imageMs;
+  console.log(
+    `production metrics ${testInfo.project.name} product5 ${JSON.stringify(metrics)}`,
+  );
+  expect(failures).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  expect(metrics.overflow).toBe(0);
+  expect(metrics.cls).toBeLessThan(0.25);
 });
 
-test("production category and collection routes are real and unknown slugs are 404", async ({ page }) => {
-  const categoriesResponse = await page.request.get("/api/v1/categories"); expect(categoriesResponse.ok()).toBeTruthy();
-  const categories = (await categoriesResponse.json()).categories as Array<{ slug: string; name: string }>;
-  const category = categories.find((item) => item.slug === "plants") || categories[0]; expect(category?.slug).toBeTruthy();
-  await page.goto(`/catalog/${encodeURIComponent(category.slug)}`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".storefront-head h1")).toContainText(category.name); await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
-  const collectionsResponse = await page.request.get("/api/v1/collections"); expect(collectionsResponse.ok()).toBeTruthy();
-  const collections = (await collectionsResponse.json()).collections as Array<{ slug: string; title: string; count: number }>;
-  const collection = collections.find((item) => item.count > 0) || collections[0]; expect(collection?.slug).toBeTruthy();
-  await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: collection.title, exact: true })).toHaveCount(1);
-  await expect(page.locator(".storefront-head h1")).toHaveText(collection.title);
-  await expect(page.locator(".storefront-grid:not(.storefront-skeleton)")).toBeVisible();
-  if ((page.viewportSize()?.width ?? 0) <= 850) await expect(page.locator(".storefront-side")).toBeHidden();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-  await page.goto("/catalog/__production_unknown_category__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
-  await page.goto("/collections/__production_unknown_collection__", { waitUntil: "domcontentloaded" }); await expect(page.getByRole("heading", { name: "Здесь ничего не растёт" })).toBeVisible();
+test("production category and collection routes are real and unknown slugs are 404", async ({
+  page,
+}) => {
+  const categoriesResponse = await page.request.get("/api/v1/categories");
+  expect(categoriesResponse.ok()).toBeTruthy();
+  const categories = (await categoriesResponse.json()).categories as Array<{
+    slug: string;
+    name: string;
+  }>;
+  const category =
+    categories.find((item) => item.slug === "plants") || categories[0];
+  expect(category?.slug).toBeTruthy();
+  await page.goto(`/catalog/${encodeURIComponent(category.slug)}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.locator(".storefront-head h1")).toContainText(
+    category.name,
+  );
+  await expect(
+    page.locator(".storefront-grid:not(.storefront-skeleton)"),
+  ).toBeVisible();
+  const collectionsResponse = await page.request.get("/api/v1/collections");
+  expect(collectionsResponse.ok()).toBeTruthy();
+  const collections = (await collectionsResponse.json()).collections as Array<{
+    slug: string;
+    title: string;
+    count: number;
+  }>;
+  const collection =
+    collections.find((item) => item.count > 0) || collections[0];
+  expect(collection?.slug).toBeTruthy();
+  await page.goto(`/collections/${encodeURIComponent(collection.slug)}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page.getByRole("heading", { name: collection.title, exact: true }),
+  ).toHaveCount(1);
+  await expect(page.locator(".storefront-head h1")).toHaveText(
+    collection.title,
+  );
+  await expect(
+    page.locator(".storefront-grid:not(.storefront-skeleton)"),
+  ).toBeVisible();
+  if ((page.viewportSize()?.width ?? 0) <= 850)
+    await expect(page.locator(".storefront-side")).toBeHidden();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
+  await page.goto("/catalog/__production_unknown_category__", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page.getByRole("heading", { name: "Здесь ничего не растёт" }),
+  ).toBeVisible();
+  await page.goto("/collections/__production_unknown_collection__", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(
+    page.getByRole("heading", { name: "Здесь ничего не растёт" }),
+  ).toBeVisible();
 });
 
-test("production category filters stay scoped and reset keeps the route", async ({ page }) => {
-  await page.goto("/catalog/plants?filter.light_level=low_light", { waitUntil: "domcontentloaded" });
+test("production category filters stay scoped and reset keeps the route", async ({
+  page,
+}) => {
+  await page.goto("/catalog/plants?filter.light_level=low_light", {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.locator(".storefront-head h1")).toContainText("Растения");
   await page.getByRole("button", { name: /Фильтры/ }).click();
   const filters = page.locator(".storefront-attribute-filters").last();
-  await expect(filters.getByLabel("Уровень освещения",{exact:true})).toBeVisible();
+  await expect(
+    filters.getByLabel("Уровень освещения", { exact: true }),
+  ).toBeVisible();
   await expect(filters).not.toContainText("Тип кашпо");
   await expect(filters).not.toContainText("Материал");
   const reset = page.getByRole("button", { name: "Сбросить фильтры" }).last();
@@ -135,7 +276,9 @@ test("production category filters stay scoped and reset keeps the route", async 
   await expect(page).toHaveURL(/\/catalog\/plants$/);
 });
 
-test("production guest cart keeps an exact SKU and renders the server snapshot", async ({ page }) => {
+test("production guest cart keeps an exact SKU and renders the server snapshot", async ({
+  page,
+}) => {
   const catalogResponse = await page.request.get("/api/v1/catalog");
   expect(catalogResponse.ok()).toBeTruthy();
   const products = (await catalogResponse.json()).products as Array<{
@@ -144,7 +287,10 @@ test("production guest cart keeps an exact SKU and renders the server snapshot",
     stock: number;
   }>;
   const product = products.find((item) => item.stock > 0 && item.sku);
-  expect(product, "production needs one in-stock SKU for the cart synthetic").toBeTruthy();
+  expect(
+    product,
+    "production needs one in-stock SKU for the cart synthetic",
+  ).toBeTruthy();
   if (!product) return;
 
   try {
@@ -152,41 +298,78 @@ test("production guest cart keeps an exact SKU and renders the server snapshot",
       data: { items: { [product.sku]: 1 } },
     });
     expect(saved.ok()).toBeTruthy();
-    const cart = await saved.json() as {
+    const cart = (await saved.json()) as {
       items: Record<string, number>;
       lines: Array<{ sku: string; name: string; available: boolean }>;
     };
     expect(cart.items).toEqual({ [product.sku]: 1 });
     expect(cart.lines).toEqual([
-      expect.objectContaining({ sku: product.sku, name: product.name, available: true }),
+      expect.objectContaining({
+        sku: product.sku,
+        name: product.name,
+        available: true,
+      }),
     ]);
 
     await page.goto("/cart", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { level: 1, name: "Корзина" })).toBeVisible();
-    await expect(page.locator(".cart-line").filter({ hasText: product.name })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Оформить заказ/ }).first()).toBeVisible();
-    await page.getByRole("button", { name: /Оформить заказ/ }).first().click();
-    await expect(page.locator(".checkout-order-summary")).toContainText("Выберите способ получения");
-    await expect(page.locator(".checkout-order-summary")).toContainText("Растения, без доставки");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Корзина" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".cart-line").filter({ hasText: product.name }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Оформить заказ/ }).first(),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: /Оформить заказ/ })
+      .first()
+      .click();
+    await expect(page.locator(".checkout-order-summary")).toContainText(
+      "Выберите способ получения",
+    );
+    await expect(page.locator(".checkout-order-summary")).toContainText(
+      "Растения, без доставки",
+    );
     const contact = page.locator(".checkout-contact-section");
-    await contact.getByLabel("Имя", { exact: true }).fill("Проверка интерфейса");
+    await contact
+      .getByLabel("Имя", { exact: true })
+      .fill("Проверка интерфейса");
     await contact.getByLabel("Телефон", { exact: true }).fill("915123456");
     await expect(contact.locator("#phone-error")).toHaveCount(0);
     await contact.getByLabel("Телефон", { exact: true }).press("Tab");
-    await expect(contact.locator("#phone-error")).toHaveText("Укажите номер телефона");
+    await expect(contact.locator("#phone-error")).toHaveText(
+      "Укажите номер телефона",
+    );
     await contact.getByLabel("Телефон", { exact: true }).fill("9151234567");
     await contact.getByLabel("Email для чека", { exact: true }).fill("invalid");
     await contact.getByLabel("Email для чека", { exact: true }).press("Tab");
-    await expect(contact.locator("#email-error")).toHaveText("Укажите корректный email для чека");
-    await contact.getByLabel("Email для чека", { exact: true }).fill("smoke@example.invalid");
+    await expect(contact.locator("#email-error")).toHaveText(
+      "Укажите корректный email для чека",
+    );
+    await contact
+      .getByLabel("Email для чека", { exact: true })
+      .fill("smoke@example.invalid");
     await page.locator('input[name="delivery"][value="pickup"]').check();
-    await page.locator('input[name="paymentMethod"][value="on_delivery"]').check();
-    await expect(page.locator(".checkout-order-summary")).toContainText("Бесплатно");
+    await page
+      .locator('input[name="paymentMethod"][value="on_delivery"]')
+      .check();
+    await expect(page.locator(".checkout-order-summary")).toContainText(
+      "Бесплатно",
+    );
     await expect(page.locator('input[name="consent"]')).not.toBeChecked();
-    await expect(page.locator(".checkout-navigation button.primary-button")).toBeDisabled();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+    await expect(
+      page.locator(".checkout-navigation button.primary-button"),
+    ).toBeDisabled();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - innerWidth,
+      ),
+    ).toBe(0);
   } finally {
-    const cleared = await page.request.put("/api/v1/cart", { data: { items: {} } });
+    const cleared = await page.request.put("/api/v1/cart", {
+      data: { items: {} },
+    });
     expect(cleared.ok()).toBeTruthy();
   }
 });

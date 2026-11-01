@@ -28,6 +28,7 @@ type readinessChecker interface {
 }
 
 type Dependencies struct {
+	Environment      string
 	Catalog          catalogRepository
 	Auth             authService
 	Orders           orderRepository
@@ -124,7 +125,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/photos/{messageID}", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/attachments/{messageID}", chatAPI.serve)
 	}
-	callLimiter := newRateLimiter(5, 10*time.Minute)
+	callLimiter := newCallRateLimiter(dependencies.Environment)
 	verifyCallLimiter := newRateLimiter(120, time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)

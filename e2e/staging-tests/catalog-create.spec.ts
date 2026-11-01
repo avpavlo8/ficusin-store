@@ -93,7 +93,10 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
   await panel
     .getByRole("button", { name: "Создать в СБИС (тест)", exact: true })
     .click();
-  await expect(panel).toContainText("Тестовый прогон завершён");
+  // The durable queue deliberately verifies in a separate pass after 10 seconds.
+  await expect(panel).toContainText("Тестовый прогон завершён", {
+    timeout: 30_000,
+  });
   const verified = await (await context.request.get(endpoint)).json();
   expect(verified.state).toBe("synced");
   expect(verified.snapshot.sabyId).toMatch(/^STG-/);

@@ -231,6 +231,7 @@ func main() {
 	}
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
+		Environment:      cfg.Environment,
 		Catalog:          catalogRepository,
 		Auth:             authService,
 		Orders:           orderRepository,
