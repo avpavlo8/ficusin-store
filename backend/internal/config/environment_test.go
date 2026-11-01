@@ -35,6 +35,9 @@ func TestStagingDisablesCopiedProductionCredentials(t *testing.T) {
 	if cfg.ValidateDatabaseName("ficusin") == nil || cfg.ValidateDatabaseName("ficusin_staging_other") == nil {
 		t.Fatal("connection redirect accepted")
 	}
+	if cfg.Database.MaxConnections != 3 {
+		t.Fatal("staging must reserve cluster connection capacity for production")
+	}
 	if err := cfg.ValidateDatabaseName("ficusin_staging_20261031"); err != nil {
 		t.Fatal(err)
 	}
