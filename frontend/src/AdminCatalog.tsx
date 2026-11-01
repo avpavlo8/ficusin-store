@@ -414,17 +414,31 @@ export function Products({
   const setEditorDirty = useCallback((value: boolean) => {
     editorDirty.current = value;
   }, []);
+  const loadSequence = useRef(0);
+  const mutationRevision = useRef(0);
+  const locallyUpdated = useRef(new Map<number, number>());
   const reload = useCallback(async () => {
+    const request = ++loadSequence.current;
+    const revision = mutationRevision.current;
     setLoading(true);
     setError("");
     try {
       const data = await api<{ products: Product[] }>("/api/v1/admin/products");
-      setItems(data.products || []);
+      if (request !== loadSequence.current) return;
+      // A slow list response may predate a successful create/save. Keep those
+      // local results while still loading the rest of the server catalogue.
+      setItems((current) => {
+        const updated = current.filter(
+          (item) => (locallyUpdated.current.get(item.id) || 0) > revision,
+        );
+        const ids = new Set(updated.map((item) => item.id));
+        return [...updated, ...(data.products || []).filter((item) => !ids.has(item.id))];
+      });
       setSelected([]);
     } catch (error) {
-      setError((error as Error).message);
+      if (request === loadSequence.current) setError((error as Error).message);
     } finally {
-      setLoading(false);
+      if (request === loadSequence.current) setLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -1334,6 +1348,7 @@ export function Products({
           hasNext={filtered.some((x) => x.id !== editing.id && readiness.get(x.id)?.tasks.length)}
           onClose={close}
           onSaved={(product, next) => {
+            locallyUpdated.current.set(product.id, ++mutationRevision.current);
             setItems((current) => current.map((x) => (x.id === product.id ? product : x)));
             if (next) {
               const index = filtered.findIndex((x) => x.id === product.id);
@@ -1357,6 +1372,7 @@ export function Products({
         <NewProductDialog
           onClose={() => setCreating(false)}
           onCreated={(product) => {
+            locallyUpdated.current.set(product.id, ++mutationRevision.current);
             setCreating(false);
             setItems((current) => [product, ...current]);
             open(product.id, "variants");

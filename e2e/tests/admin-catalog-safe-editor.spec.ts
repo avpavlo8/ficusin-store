@@ -276,3 +276,28 @@ for(const screen of ['@desktop','@phone'])test(`${screen} СБИС: явная �
 });
 
 test('@desktop СБИС не отправляет несохранённые изменения',async({page})=>{await fixture(page);await open(page);const d=await edit(page);await d.getByRole('button',{name:'Размеры и цены',exact:true}).click();const panel=d.getByRole('region',{name:'СБИС: артикул 10'});await expect(panel.getByRole('button',{name:'Создать в СБИС',exact:true})).toBeEnabled();await d.getByLabel('Название размера').fill('Новый размер');await expect(panel.getByRole('button',{name:'Создать в СБИС',exact:true})).toBeDisabled();await expect(panel).toContainText('Сначала сохраните правки карточки');});
+
+test('@desktop @phone late catalog snapshot cannot remove a newly created draft', async ({page}) => {
+ await fixture(page);
+ let release!:()=>void;
+ const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products',async route=>{
+  if(route.request().method()!=='GET')return route.fallback();
+  await held;
+  await route.fulfill({json:{products:[product(1),product(2)]}});
+ });
+ await page.goto('/admin?section=products');
+ await page.getByRole('button',{name:'Добавить товар',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await dialog.getByLabel('Название товара',{exact:true}).fill('Новый фикус после задержки');
+ await dialog.getByLabel('Диаметр горшка, см',{exact:true}).fill('12');
+ await dialog.getByLabel('Высота растения, см',{exact:true}).fill('40');
+ await dialog.getByLabel('Цена на сайте, ₽',{exact:true}).fill('1500');
+ await dialog.getByRole('button',{name:'Создать карточку',exact:true}).click();
+ await expect(dialog.getByRole('button',{name:'Размеры и цены',exact:true})).toBeVisible();
+ const completed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/admin/products'&&r.request().method()==='GET');
+ release();await completed;
+ await expect(page.getByRole('dialog')).toBeVisible();
+ await dialog.getByRole('button',{name:'Основное',exact:true}).click();
+ await expect(dialog.getByLabel('Название',{exact:true})).toHaveValue('Новый фикус после задержки');
+});

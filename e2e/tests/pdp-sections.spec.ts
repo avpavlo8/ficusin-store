@@ -76,7 +76,7 @@ test("@desktop @phone длинное описание и отзывы с фот�
 });
 
 
-test("@desktop @phone все тексты загружены до кликов, видна только выбранная вкладка", async ({ page }) => {
+test("@desktop @phone все тексты загружены до кликов, видна только выбранная вкладка", async ({ page, isMobile }) => {
   await mockApi(page);
   let productRequests = 0;
   page.on("request", request => { if (new URL(request.url()).pathname === "/api/v1/products/1") productRequests++; });
@@ -89,7 +89,9 @@ test("@desktop @phone все тексты загружены до кликов, 
   await expect(page.getByRole("tabpanel")).toHaveCount(1);
   const loadedRequests = productRequests;
   await page.getByRole("tab", { name: "Вопросы", exact: true }).click();
-  await page.locator("#questions summary").first().click();
+  const summary = page.locator("#questions summary").first();
+  if (isMobile) await summary.tap(); else await summary.click();
+  await expect(page.locator("#questions details").first()).toHaveAttribute("open", "");
   await page.getByRole("tab", { name: "Уход", exact: true }).click();
   await expect(page.locator("#pdp-panel-care")).toBeVisible();
   await expect(page.locator("#pdp-panel-questions")).toBeHidden();
