@@ -69,7 +69,7 @@ else:
 admins_result = api('GET',f'/api/v1/databases/{CLUSTER}/admins')
 admins = admins_result.get('admins',[])
 admin = next((item for item in admins if item.get('login')==LOGIN),None)
-password = base64.urlsafe_b64encode(hmac.new(access.encode(),b'ficusin-stage-db-20261031',hashlib.sha256).digest()).decode().rstrip('=')+'Aa9!'
+password = hmac.new(access.encode(),b'ficusin-stage-db-20261031',hashlib.sha256).hexdigest()[:28]+'Aa9!'
 if admin:
     assert admin.get('description') == 'Ficusin staging database only', 'Existing role is not the scoped staging role'
 else:
