@@ -110,8 +110,10 @@ with connect(env) as destination:
             destination.execute("SELECT setval('ficusin_sku_seq',GREATEST(COALESCE(max(sku::bigint),0),1),true) FROM product_variants WHERE sku ~ '^[0-9]+$'")
             destination.execute("SELECT setval('ficusin_product_code_seq',GREATEST(COALESCE(max(product_code),0),1),true) FROM products")
         destination.execute('INSERT INTO staging_catalog_seed(id) VALUES(1)')
+        destination.commit()
     else: print('Catalog already initialized; preserving subsequent staging edits',flush=True)
-    destination.execute("INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES ('staging-owner@example.invalid','+70000000901','','Владелец проверки',now()) ON CONFLICT(email) DO NOTHING")
+    destination.execute("INSERT INTO customers(email,phone,password_hash,full_name,consent_at) SELECT 'staging-owner@example.invalid','+79990000901','','Владелец проверки',now() WHERE NOT EXISTS (SELECT 1 FROM customers WHERE email='staging-owner@example.invalid')")
+    destination.execute("UPDATE customers SET phone='+79990000901' WHERE email='staging-owner@example.invalid'")
     destination.execute("INSERT INTO admin_users(customer_id,role) SELECT id,'owner' FROM customers WHERE email='staging-owner@example.invalid' ON CONFLICT(customer_id) WHERE customer_id IS NOT NULL DO UPDATE SET role='owner'")
     access = os.environ['STAGING_ACCESS_TOKEN']
     session = hmac.new(access.encode(),b'ficusin-staging-owner-session',hashlib.sha256).hexdigest()
