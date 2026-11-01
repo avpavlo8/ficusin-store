@@ -4,7 +4,7 @@ on:
     inputs:
       operation:
         type: choice
-        options: [plan, provision]
+        options: [plan, provision, status, activate, seed]
         default: plan
       approved_monthly_rub:
         type: string
@@ -31,3 +31,20 @@ jobs:
           APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
           STAGING_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: python3 scripts/timeweb-staging-provision.py
+      - name: Inspect or activate only the isolated staging application
+        if: inputs.operation == 'status' || inputs.operation == 'activate'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          STAGING_OPERATION: ${{ inputs.operation }}
+          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
+          STAGING_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: python3 scripts/timeweb-staging-manage.py
+      - name: Prepare isolated catalog and synthetic owner
+        if: inputs.operation == 'seed'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          STAGING_ACCESS_TOKEN: ${{ secrets.STAGING_ACCESS_TOKEN }}
+          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
+        run: |
+          python3 -m pip install 'psycopg[binary]==3.2.12'
+          python3 scripts/timeweb-staging-seed.py
