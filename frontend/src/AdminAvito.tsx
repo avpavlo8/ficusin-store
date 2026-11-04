@@ -278,7 +278,7 @@ export function AdminAvito({ onError }: { onError: (value: string) => void }) {
       </div>
       {!state?.configured && (
         <div className="admin-message error">
-          Ключи AVITO_CLIENT_ID и AVITO_CLIENT_SECRET не видны приложению.
+          Авито не подключено: не заданы ключи доступа. Подключение настраивает владелец.
         </div>
       )}
       <section className={`avito-health ${systemHealthy ? "healthy" : "attention"}`}>

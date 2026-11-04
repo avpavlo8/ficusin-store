@@ -371,7 +371,7 @@
 .admin-page .ws-main h3 {
   font-family: inherit;
   letter-spacing: 0;
-  color: var(--ws-ink);
+  color: inherit;
 }
 .admin-page .ws-main h1 {
   margin: 0;
