@@ -134,11 +134,7 @@ export function Categories({
   };
   return (
     <>
-      <PageHeading
-        eyebrow="Структура каталога"
-        title="Категории"
-        text="Дерево товаров, характеристики и фильтры витрины"
-      />
+      <PageHeading title="Категории" text="Дерево товаров, характеристики и фильтры витрины" />
       <nav className="catalog-work-views" aria-label="Настройки структуры">
         {(
           [
@@ -678,11 +674,7 @@ export function Products({
   return (
     <div className="catalog-workspace">
       <div className="catalog-page-heading">
-        <PageHeading
-          eyebrow="Каталог"
-          title="Товары"
-          text="Цена и контент — на сайте. Остаток — из СБИС."
-        />
+        <PageHeading title="Товары" />
         {can("products.manage") && (
           <div>
             <button type="button" className="admin-action" onClick={() => setImporting(true)}>
@@ -694,32 +686,59 @@ export function Products({
           </div>
         )}
       </div>
-      <nav className="admin-product-link-tabs" aria-label="Товары и связи с каналами">
+      {/* Связи с каналами нужны редко и в основном владельцу, поэтому они
+          спрятаны за одну вкладку: по умолчанию сотрудник видит только
+          «Товары» и «Отзывы», а не шесть равноправных вкладок. */}
+      <nav className="admin-product-link-tabs" aria-label="Что показать">
         {(
           [
             { id: "catalog", label: "Товары" },
-            { id: "saby", label: "СБИС" },
-            { id: "wb", label: "Wildberries" },
-            { id: "ozon", label: "Ozon" },
-            { id: "avito", label: "Авито" },
             { id: "reviews", label: "Отзывы" },
+            { id: "saby", label: "Связи с каналами" },
           ] as const
-        ).map((x) => (
-          <button
-            type="button"
-            key={x.id}
-            aria-current={view === x.id ? "page" : undefined}
-            className={view === x.id ? "active" : ""}
-            onClick={() => {
-              setView(x.id);
-              setSelected([]);
-              setConfirmation(null);
-            }}
-          >
-            {x.label}
-          </button>
-        ))}
+        ).map((x) => {
+          const active =
+            x.id === "saby" ? ["saby", "wb", "ozon", "avito"].includes(view) : view === x.id;
+          return (
+            <button
+              type="button"
+              key={x.id}
+              aria-current={active ? "page" : undefined}
+              className={active ? "active" : ""}
+              onClick={() => {
+                if (active) return;
+                setView(x.id);
+                setSelected([]);
+                setConfirmation(null);
+              }}
+            >
+              {x.label}
+            </button>
+          );
+        })}
       </nav>
+      {["saby", "wb", "ozon", "avito"].includes(view) && (
+        <nav className="catalog-channel-switch" aria-label="Канал">
+          {(
+            [
+              { id: "saby", label: "СБИС" },
+              { id: "wb", label: "Wildberries" },
+              { id: "ozon", label: "Ozon" },
+              { id: "avito", label: "Авито" },
+            ] as const
+          ).map((x) => (
+            <button
+              type="button"
+              key={x.id}
+              aria-current={view === x.id ? "page" : undefined}
+              className={view === x.id ? "active" : ""}
+              onClick={() => setView(x.id)}
+            >
+              {x.label}
+            </button>
+          ))}
+        </nav>
+      )}
       {view === "catalog" ? (
         <>
           <div className="catalog-toolbar-search">
@@ -1176,9 +1195,7 @@ export function Products({
                                   </details>
                                 )}
                               </>
-                            ) : (
-                              <span className="catalog-no-tasks">Замечаний нет</span>
-                            )}
+                            ) : null}
                           </td>
                           <td data-label="Каналы и склад">
                             <span>
@@ -1192,17 +1209,6 @@ export function Products({
                                 .map((x) => channelLabels[x] || "Другая система")
                                 .join(" · ") || "Связей нет"}
                             </span>
-                            <details>
-                              <summary>Источник остатка: СБИС</summary>
-                              <p>
-                                {product.stockUpdatedAt
-                                  ? `Остаток получен ${new Date(product.stockUpdatedAt).toLocaleString("ru-RU")}`
-                                  : "Время подтверждённого обновления остатка неизвестно"}
-                              </p>
-                              <small>
-                                Обновление складских данных отдельно от контента карточки.
-                              </small>
-                            </details>
                           </td>
                         </tr>
                       );

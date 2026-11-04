@@ -25,6 +25,25 @@ type OperationsResponse = {
   };
 };
 
+// Коды проверок приходят из backend/internal/operations/probe.go. Сотруднику
+// нужен не код, а что случилось и что с этим делать.
+const checkLabels: Record<string, string> = {
+  inventory_overreserved: "Зарезервировано больше, чем есть в СБИС",
+  stale_pending_payment: "Заказы давно ждут оплаты",
+  metrika_delivery_review: "Метрика: нужно проверить отправку",
+  metrika_delivery_overdue: "Метрика: события не отправлены вовремя",
+  stale_outbox: "Обновления для каналов задерживаются",
+  exhausted_outbox: "Обновления для каналов не отправились",
+  cdek_manual_review: "СДЭК: отправления ждут ручной проверки",
+  cdek_retry_overdue: "СДЭК: повторная отправка задерживается",
+  payment_receipt_required: "Оплаты без чека прихода",
+  payment_settlement_receipt_required: "Нужен чек зачёта предоплаты",
+  refund_manual_review: "Возвраты денег ждут проверки",
+  refund_receipt_required: "Возвраты денег без чека",
+  expired_procurement_lock: "Закупка зависла в обработке",
+  duplicate_paid_payments: "Двойная оплата одного заказа",
+};
+
 export function AdminOperations({ onOpenProcurement }: { onOpenProcurement: () => void }) {
   const [operations, setOperations] = useState<OperationsResponse | null>(null);
   const [error, setError] = useState("");
@@ -49,28 +68,27 @@ export function AdminOperations({ onOpenProcurement }: { onOpenProcurement: () =
     <section className="workspace-panel" aria-label="Операционная диагностика">
       <header className="workspace-panel-heading">
         <div>
-          <p className="eyebrow">Контроль</p>
-          <h2>Остатки и поступления</h2>
+          <h2>Требует внимания</h2>
         </div>
       </header>
       {error && <p role="alert">Диагностика недоступна: {error}</p>}
       {!operations && !error && <p>Проверяем состояние…</p>}
       {operations && (
         <>
-          <p>
-            Состояние:{" "}
-            {operations.operations.status === "ok"
-              ? "без предупреждений"
-              : operations.operations.status === "degraded"
-                ? "нужна проверка"
-                : "критическая ошибка"}
-            .
-          </p>
-          {operations.operations.checks.map((check) => (
-            <p key={check.code}>
-              <strong>{check.code}</strong>: {check.affected}
-            </p>
-          ))}
+          {operations.operations.checks.every((check) => check.affected === 0) ? (
+            <p>Всё в порядке: проблем с остатками, оплатами и отправками нет.</p>
+          ) : (
+            <ul className="ws-checklist">
+              {operations.operations.checks
+                .filter((check) => check.affected > 0)
+                .map((check) => (
+                  <li key={check.code}>
+                    <span>{checkLabels[check.code] || "Другая проверка системы"}</span>
+                    <strong>{check.affected}</strong>
+                  </li>
+                ))}
+            </ul>
+          )}
           {operations.diagnostics?.overreserved.map((item) => (
             <article key={`${item.variantId}-${item.warehouseName}`} className="admin-alert">
               <div>

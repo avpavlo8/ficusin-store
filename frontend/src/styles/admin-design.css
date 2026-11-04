@@ -659,7 +659,16 @@
    зелёные плашки и жирный текст. */
 
 .admin-page .ws-main .workspace-catalog-nav::after,
-.admin-page .ws-main :is(.orders-status-tabs, .workspace-catalog-nav) {
+.admin-page
+  .ws-main
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .admin-product-link-tabs,
+    .catalog-work-views,
+    .catalog-channel-switch,
+    .procurement-tabs
+  ) {
   margin: 0 0 16px;
   padding: 3px;
   width: fit-content;
@@ -673,7 +682,16 @@
   background: var(--ws-soft);
   scrollbar-width: none;
 }
-.admin-page .ws-main :is(.orders-status-tabs, .workspace-catalog-nav) > :is(a, button) {
+.admin-page
+  .ws-main
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .admin-product-link-tabs,
+    .catalog-work-views,
+    .catalog-channel-switch
+  )
+  > :is(a, button) {
   min-height: 32px;
   padding: 0 12px;
   display: inline-flex;
@@ -694,7 +712,13 @@
 }
 .admin-page
   .ws-main
-  :is(.orders-status-tabs, .workspace-catalog-nav)
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .admin-product-link-tabs,
+    .catalog-work-views,
+    .catalog-channel-switch
+  )
   > :is(a, button):is([aria-current="page"], [aria-selected="true"], .active) {
   background: var(--ws-panel);
   color: var(--ws-ink);
@@ -1170,5 +1194,180 @@
   }
   .admin-page .order-status-control select {
     flex: 1;
+  }
+}
+
+/* ---------- Заголовок экрана и общие списки ---------- */
+
+.admin-page .ws-main .ws-page-heading {
+  margin: 0 0 16px;
+}
+.admin-page .ws-main .ws-page-heading p {
+  margin: 4px 0 0;
+  color: var(--ws-muted);
+}
+.admin-page .ws-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-page .ws-checklist li {
+  padding: 10px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--ws-line-soft);
+}
+.admin-page .ws-checklist li:last-child {
+  border-bottom: 0;
+}
+.admin-page .ws-checklist strong {
+  color: #8a3a22;
+}
+
+/* ---------- Каталог ---------- */
+
+/* Канал выбирается вторым, меньшим переключателем — только когда
+   открыта вкладка «Связи с каналами». */
+.admin-page .ws-main .catalog-channel-switch {
+  margin-top: -8px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ws-line);
+}
+.admin-page .ws-main .catalog-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.admin-page .ws-main .catalog-page-heading > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Меню «Ещё» ---------- */
+
+.admin-page .ws-more-menu {
+  position: relative;
+  flex: none;
+}
+.admin-page .ws-more-menu > summary {
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 550;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.admin-page .ws-more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.admin-page .ws-more-menu > summary::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+.admin-page .ws-more-menu[data-active] > summary {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow);
+}
+.admin-page .ws-more-menu-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  padding: 6px;
+  display: grid;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: 0 12px 32px rgba(34, 39, 31, 0.12);
+}
+.admin-page .ws-main .ws-more-menu-list > :is(button, a) {
+  min-height: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: none;
+  cursor: pointer;
+}
+.admin-page .ws-main .ws-more-menu-list > :is(button, a):hover:not(:disabled),
+.admin-page .ws-main .ws-more-menu-list > :is(button, a).active {
+  background: var(--ws-soft);
+}
+.admin-page .ws-main .ws-more-menu-list > button:disabled {
+  opacity: 0.5;
+}
+/* Внутри вкладок «Ещё» выглядит как ещё одна вкладка. */
+.admin-page .ws-main .procurement-tabs {
+  overflow: visible;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu > summary {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ws-text);
+  font-weight: 500;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu[data-active] > summary {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu-list {
+  left: 0;
+  right: auto;
+}
+.admin-page .ws-main .procurement-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-page .ws-main .procurement-inline-actions {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .admin-page .ws-main .procurement-tabs {
+    overflow-x: auto;
+  }
+  .admin-page .ws-more-menu-list {
+    position: fixed;
+    inset: auto 8px calc(var(--ws-tabbar) + 8px + env(safe-area-inset-bottom)) 8px;
+    top: auto;
+  }
+  .admin-page .ws-main .ws-more-menu-list > :is(button, a) {
+    min-height: 48px;
+    font-size: 16px;
   }
 }

@@ -220,10 +220,7 @@
   display: block;
   margin: 10px 0;
 }
-.catalog-no-tasks {
-  font-size: 13px;
-  color: #58734d;
-}
+
 .catalog-workspace td details p {
   font-size: 12px;
   margin: 8px 0;

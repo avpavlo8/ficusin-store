@@ -72,3 +72,31 @@ export function WorkspaceForm({
     </fieldset>
   );
 }
+
+/* «Ещё»: редкие действия и разделы прячутся сюда, чтобы на экране
+   оставались одна главная кнопка и самые частые вкладки. Сделано на
+   <details>, поэтому работает с клавиатуры и без JavaScript-состояния. */
+export function WorkspaceMore({
+  label = "Ещё",
+  active = false,
+  children,
+}: {
+  label?: string;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      className="ws-more-menu"
+      data-active={active || undefined}
+      onClick={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest(".ws-more-menu-list button, .ws-more-menu-list a"))
+          event.currentTarget.open = false;
+      }}
+    >
+      <summary>{label}</summary>
+      <div className="ws-more-menu-list">{children}</div>
+    </details>
+  );
+}

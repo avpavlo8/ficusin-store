@@ -66,18 +66,17 @@ export function Dashboard({ data, onNavigate }: { data: AdminData; onNavigate: N
   return (
     <>
       <div className="workspace-welcome">
-        <div>
-          <p className="eyebrow">
+        <div className="ws-page-heading">
+          <h1>
+            {greeting()}, {data.user.fullName.split(" ")[0]}
+          </h1>
+          <p>
             {new Date().toLocaleDateString("ru-RU", {
               weekday: "long",
               day: "numeric",
               month: "long",
             })}
           </p>
-          <h1>
-            Всё <em>растёт.</em>
-          </h1>
-          <p>{data.user.fullName.split(" ")[0]}, ваш магазин — в одном взгляде.</p>
         </div>
         {can("orders.read") && (
           <button type="button" className="workspace-primary" onClick={() => onNavigate("orders")}>
@@ -270,26 +269,16 @@ export function Dashboard({ data, onNavigate }: { data: AdminData; onNavigate: N
               </button>
             )}
           </section>
-          <section className="workspace-botanical" aria-label="Живые растения для живых людей">
-            <p className="eyebrow">Фикусин · с заботой</p>
-            <h2>
-              Больше зелени.
-              <br />
-              <em>Больше жизни.</em>
-            </h2>
-            <img src="/assets/redesign/home-hero-4k.webp" alt="" />
-            <span>
-              Живые растения
-              <br />
-              для живых людей ↗
-            </span>
-          </section>
-          <p className="workspace-rail-note">
-            Всё для вашего магазина.
-            <br />В одном пространстве.
-          </p>
         </aside>
       </div>
     </>
   );
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 5) return "Доброй ночи";
+  if (hour < 12) return "Доброе утро";
+  if (hour < 18) return "Добрый день";
+  return "Добрый вечер";
 }

@@ -466,69 +466,7 @@
   line-height: 1.6;
   margin-top: 7px;
 }
-.workspace-botanical {
-  position: relative;
-  overflow: hidden;
-  min-height: 294px;
-  border: 1px solid #dfd8ca;
-  border-radius: 8px;
-  padding: 22px 20px;
-  background: #ece6d8;
-  isolation: isolate;
-}
-.workspace-botanical > .eyebrow {
-  position: relative;
-  z-index: 1;
-  font-size: 8px;
-  letter-spacing: 0.14em;
-  color: #6c7562;
-}
-.workspace-botanical h2 {
-  position: relative;
-  z-index: 1;
-  font:
-    400 28px/1.05 Georgia,
-    serif;
-  letter-spacing: -0.8px;
-  color: #253f2b;
-}
-.workspace-botanical img {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 65% center;
-  opacity: 0.8;
-}
-.workspace-botanical:after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: linear-gradient(180deg, #f4eedee8 0%, #f4eedec9 26%, transparent 65%);
-  pointer-events: none;
-}
-.workspace-botanical > span {
-  position: absolute;
-  z-index: 1;
-  left: 20px;
-  bottom: 18px;
-  padding: 9px 12px;
-  border: 1px solid #f3ebd4;
-  background: #f8f1e5ed;
-  font-size: 9px;
-  line-height: 1.4;
-  letter-spacing: 0.05em;
-}
-.workspace-rail-note {
-  color: #68705f;
-  font-size: 10px;
-  line-height: 1.6;
-  text-align: center;
-  margin: -2px 0 0;
-}
+
 .workspace-shortcuts > div {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -589,11 +527,7 @@
   letter-spacing: 0.16em;
   margin-bottom: 10px;
 }
-.admin-page .account-title-note {
-  font-size: 12px;
-  line-height: 1.6;
-  max-width: 750px;
-}
+
 .admin-page .admin-block,
 .admin-page .admin-table-wrap,
 .admin-page .procurement-block,
@@ -729,12 +663,6 @@
     grid-template-columns: 1fr 1fr;
     align-items: stretch;
   }
-  .workspace-rail-note {
-    display: none;
-  }
-  .workspace-botanical {
-    min-height: 280px;
-  }
 
   .workspace-welcome {
     align-items: flex-start;
@@ -830,12 +758,7 @@
   .workspace-dashboard-rail {
     grid-template-columns: 1fr;
   }
-  .workspace-botanical {
-    min-height: 260px;
-  }
-  .workspace-botanical img {
-    object-position: center 55%;
-  }
+
   .workspace-panel {
     padding: 18px 14px;
   }

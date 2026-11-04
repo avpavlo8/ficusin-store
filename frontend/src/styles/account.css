@@ -30,11 +30,7 @@
   color: var(--green);
   font-weight: 700;
 }
-.account-title-note {
-  margin: 9px 0 0;
-  color: #707a72;
-  font-size: 13px;
-}
+
 .account-content > .account-title {
   margin-bottom: 26px;
 }

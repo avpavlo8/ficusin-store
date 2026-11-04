@@ -53,11 +53,7 @@ export function Customers({
   const openCard = (customer: Customer) => setEditing(customer);
   return (
     <>
-      <PageHeading
-        eyebrow="CRM"
-        title="Клиенты"
-        text="Профили, покупки, адреса, скидки и доступ сотрудников"
-      />
+      <PageHeading title="Клиенты" text="Покупатели, их заказы и скидки, доступ сотрудников." />
       <div className="admin-toolbar">
         <input
           aria-label="Поиск клиентов"
