@@ -15,6 +15,7 @@ import urllib.request
 
 CODE = "X380416519"
 NAME = "ТЕСТ API Фикусин — резерв и отмена 26.10.2026"
+FIXTURE_ORDERS = ("01a177ee-1ac4-780f-82d7-045b9fdfba13", "01a1a677-8e31-7df1-89a1-e1398cbbaeb6")
 evidence_path = Path("fixture-readback.json")
 evidence = {"readOnly": True, "fixture": CODE, "requests": []}
 
@@ -23,7 +24,7 @@ def record_fixture_read(url, status, result):
     """Keep complete fixture-only responses, never auth, headers or other SKUs."""
     parsed = urllib.parse.urlparse(url)
     params = urllib.parse.parse_qs(parsed.query)
-    fixture_state = parsed.path == "/retail/order/01a177ee-1ac4-780f-82d7-045b9fdfba13/state"
+    fixture_state = parsed.path in {"/retail/order/" + key + "/state" for key in FIXTURE_ORDERS}
     fixture_catalogue = parsed.path == "/retail/v2/nomenclature/list" and params.get("searchString") == [CODE]
     if not (fixture_state or fixture_catalogue):
         return
@@ -128,14 +129,15 @@ for price_list in dict.fromkeys((None, 6, 19, test_price_id)):
         print("fixture_fields", sorted(row))
 
 if os.environ.get("SABY_FIXTURE_RECONCILE") == "true":
-    # Fixed owner-authorized fixture order only. Never a write or a payment retry.
-    order_id = "01a177ee-1ac4-780f-82d7-045b9fdfba13"
-    state = get("/retail/order/" + order_id + "/state")
-    print("fixture_order_state", json.dumps(state, ensure_ascii=False))
-    order = get("/retail/order/" + order_id)
-    print("fixture_order_readback_fields", sorted(order))
-    print("fixture_order_number", order.get("number"), order.get("orderNumber"))
-    print("fixture_order_position_fields", [sorted(r) for r in order.get("nomenclatures") or []])
+    # Fixed owner-authorized fixture orders only. Never a write or payment retry.
+    for order_id in FIXTURE_ORDERS:
+        print("fixture_order_uuid", order_id)
+        state = get("/retail/order/" + order_id + "/state")
+        print("fixture_order_state", json.dumps(state, ensure_ascii=False))
+        order = get("/retail/order/" + order_id)
+        print("fixture_order_readback_fields", sorted(order))
+        print("fixture_order_number", order.get("number"), order.get("orderNumber"))
+        print("fixture_order_position_fields", [sorted(r) for r in order.get("nomenclatures") or []])
 
 evidence["fixturePriceListed"] = test_price_id == 19
 evidence["fixtureBankType"] = test_bank_type
