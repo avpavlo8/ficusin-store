@@ -2194,3 +2194,11 @@
   padding: 10px 12px;
   line-height: 22px;
 }
+.admin-page .ws-main .procurement-inline-actions .admin-primary {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .product-editor-dialog .product-editor-cover,
+.admin-page .product-editor-dialog .product-editor-cover * {
+  border-color: var(--ws-line) !important;
+}
