@@ -2175,3 +2175,14 @@
   font-weight: 700;
   letter-spacing: -0.02em;
 }
+
+/* Высота полей редактора задана в пикселях, а не через шрифт: на разных
+   системах шрифт разный, и поле «плавало» относительно переключателя рядом. */
+.admin-page
+  .product-editor-dialog
+  .admin-form-grid
+  :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 22px;
+}
