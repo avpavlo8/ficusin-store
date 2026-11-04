@@ -43,8 +43,11 @@
 }
 .returns-heading h2 {
   font:
-    42px/1.1 Georgia,
-    serif;
+    42px/1.1 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   color: #164e36;
   margin: 0 0 10px;
 }
@@ -528,8 +531,11 @@
 }
 .return-detail header h2 {
   font:
-    29px/1.15 Georgia,
-    serif;
+    29px/1.15 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   margin: 0 0 12px;
   overflow-wrap: anywhere;
   letter-spacing: -0.02em;
@@ -977,8 +983,11 @@
 }
 .return-create-dialog > header h2 {
   font:
-    30px/1.2 Georgia,
-    serif;
+    30px/1.2 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .return-create-dialog > header > button {
   width: 44px;

@@ -2161,3 +2161,17 @@
 .admin-page .ws-main .catalog-photo-empty {
   background-color: #f3f4f6;
 }
+
+/* Фокус переводится на окно редактора программно — рамка не нужна. */
+.admin-page .admin-dialog:focus {
+  outline: none;
+}
+.admin-page .product-editor-dialog .product-editor-cover > * {
+  border-color: var(--ws-line) !important;
+}
+/* Цифры на обзоре — тем же гротеском, что и весь интерфейс. */
+.admin-page .ws-main :is(.workspace-metrics strong, .workspace-revenue strong) {
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}

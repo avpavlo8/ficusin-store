@@ -99,8 +99,11 @@
 .workspace-welcome h1 {
   margin: 0 0 10px;
   font:
-    700 clamp(46px, 4.8vw, 76px) / 1 Georgia,
-    serif;
+    700 clamp(46px, 4.8vw, 76px) / 1 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   letter-spacing: -3px;
   color: #212224;
 }
@@ -166,8 +169,11 @@
 }
 .workspace-metrics strong {
   font:
-    400 40px/1.1 Georgia,
-    serif;
+    400 40px/1.1 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: -1px;
 }
@@ -220,8 +226,11 @@
 .workspace-panel-heading h2 {
   margin: 0;
   font:
-    400 27px/1.1 Georgia,
-    serif;
+    400 27px/1.1 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   letter-spacing: -0.6px;
 }
 .workspace-text-button {
@@ -266,8 +275,11 @@
 }
 .workspace-revenue-total > strong {
   font:
-    400 31px Georgia,
-    serif;
+    400 31px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.8px;
 }
@@ -410,8 +422,11 @@
 }
 .workspace-attention h2 {
   font:
-    400 28px Georgia,
-    serif;
+    400 28px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   margin-bottom: 20px;
 }
 .workspace-attention > button {
@@ -517,8 +532,11 @@
 .admin-page .account-title h2 {
   color: #164d35;
   font:
-    400 clamp(32px, 3.5vw, 48px) / 1.05 Georgia,
-    serif;
+    400 clamp(32px, 3.5vw, 48px) / 1.05 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   text-shadow: none;
 }
 .admin-page .account-title .eyebrow {
@@ -909,7 +927,7 @@
   align-items: center;
 }
 .integration-channel-grid article strong {
-  font-family: Georgia, serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 22px;
   color: var(--workspace-green);
 }

@@ -24,8 +24,11 @@
   margin: 4px 0 0;
   color: #25272a;
   font:
-    400 27px/1 Georgia,
-    serif;
+    400 27px/1 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-page .procurement-plan-close {
   width: 38px;
@@ -282,8 +285,11 @@
 .admin-page .procurement-recommendation-drawer > header h3 {
   margin: 3px 0 0;
   font:
-    400 23px/1.15 Georgia,
-    serif;
+    400 23px/1.15 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-page .procurement-recommendation-drawer > header small {
   display: block;

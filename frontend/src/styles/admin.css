@@ -276,8 +276,11 @@
   padding-bottom: 17px;
   border-bottom: 1px solid var(--line);
   font:
-    400 28px Georgia,
-    serif;
+    400 28px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 
 .legal-page {
@@ -397,15 +400,21 @@
   background: var(--green);
   color: white;
   font:
-    400 29px Georgia,
-    serif;
+    400 29px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .account-sidebar h1 {
   margin-bottom: 7px;
   color: var(--green);
   font:
-    400 27px Georgia,
-    serif;
+    400 27px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .account-sidebar > p {
   margin-bottom: 28px;
@@ -533,8 +542,11 @@
   margin: 6px 0 10px;
   color: var(--green);
   font:
-    400 28px Georgia,
-    serif;
+    400 28px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .orders-empty p {
   max-width: 480px;
@@ -599,8 +611,11 @@
 .admin-stats button strong {
   color: var(--green);
   font:
-    400 43px Georgia,
-    serif;
+    400 43px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-stats article small,
 .admin-stats button small {
@@ -779,8 +794,11 @@
 .procurement-zero strong {
   color: var(--green);
   font:
-    400 22px Georgia,
-    serif;
+    400 22px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .procurement-empty {
   min-height: 250px;
@@ -1117,8 +1135,11 @@
   margin: 0;
   color: var(--green);
   font:
-    400 22px Georgia,
-    serif;
+    400 22px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .procurement-batch-list {
   display: grid;
@@ -1513,8 +1534,11 @@
   margin: 0;
   color: var(--green);
   font:
-    400 32px Georgia,
-    serif;
+    400 32px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-block-heading button {
   padding: 11px 16px;
@@ -2529,8 +2553,11 @@
   margin: 2px 0 0;
   color: #185138;
   font:
-    600 24px Georgia,
-    serif;
+    600 24px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-collection-row {
   display: grid;
@@ -2684,8 +2711,11 @@
 .relationship-summary strong {
   color: #185138;
   font:
-    600 28px Georgia,
-    serif;
+    600 28px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .product-relationships > section {
   padding: 18px;
@@ -3001,8 +3031,11 @@
   margin: 0;
   color: #185138;
   font:
-    400 30px Georgia,
-    serif;
+    400 30px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .editor-section > header > span {
   max-width: 260px;
@@ -3072,8 +3105,11 @@
   margin: 0 0 14px;
   color: #185138;
   font:
-    600 17px Georgia,
-    serif;
+    600 17px -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .attribute-control-grid {
   display: grid;
