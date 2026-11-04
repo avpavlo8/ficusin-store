@@ -204,11 +204,13 @@ func main() {
 	).WithIntegrationRequestLimiter(procurementStore)
 	var catalogProvider catalogsync.Provider = sabyProcurementClient
 	if cfg.Environment == "staging" {
-		catalogProvider, err = catalogsync.NewStagingProvider(ctx, pool)
+		stagingProvider, err := catalogsync.NewStagingProvider(ctx, pool)
 		if err != nil {
 			logger.Error("staging catalogue configuration failed", "error", err)
 			os.Exit(1)
 		}
+		catalogProvider = stagingProvider
+		go stagingProvider.RunStagingStock(ctx, logger)
 	}
 	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), catalogProvider, logger)
 	go catalogExportService.Run(ctx)
