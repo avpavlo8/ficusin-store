@@ -1867,9 +1867,6 @@
   /* Выше затемнения диалога (111), иначе оно перехватывает клики. */
   z-index: 112;
 }
-.admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
-  background: #fff;
-}
 .admin-page .product-editor-dialog > header {
   width: min(100%, 1060px);
   box-sizing: border-box;
@@ -2095,4 +2092,53 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
+}
+
+/* На широком мониторе рабочая область по центру, как у Ozon Seller,
+   а не прижата к меню с пустотой справа. */
+.admin-page .workspace-body {
+  width: 100%;
+  max-width: 1360px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+/* Переключатель «Карточки · Отзывы · Связи» и кнопки — в одной строке. */
+.admin-page .ws-main .catalog-page-heading {
+  align-items: flex-end;
+}
+.admin-page .ws-main .catalog-page-heading .admin-product-link-tabs {
+  flex: 1 1 320px;
+  width: auto;
+  margin: 0;
+}
+
+/* Редактор товара: на всю высоту, содержимое по центру рабочей области,
+   меню слева остаётся видимым и доступным. */
+.admin-page .admin-dialog.product-editor-dialog {
+  height: auto !important;
+  align-items: center;
+}
+.admin-page
+  .product-editor-dialog
+  > :is(header, .catalog-editor-topline, .product-editor-shell, .product-editor-footer) {
+  margin-inline: auto;
+}
+.admin-page
+  .product-editor-dialog
+  :is(.product-editor-content, .catalog-editor-fields, .editor-section) {
+  background: transparent;
+}
+.admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
+  left: var(--ws-sidebar);
+  background: transparent;
+}
+@media (max-width: 1100px) {
+  .admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
+    left: 200px;
+  }
+}
+@media (max-width: 760px) {
+  .admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
+    left: 0;
+  }
 }
