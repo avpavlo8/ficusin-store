@@ -1,9 +1,14 @@
 import { AdminOrderProductSearch } from "./AdminOrderProductSearch";
 import { NumericInput } from "./NumericInput";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, money } from "./adminShared";
 import type { Order, Product } from "./adminTypes";
 import { AdminOrderPacking } from "./AdminOrderPacking";
+
+// Заказ показывается в одном из режимов. «summary» — только чтение, всё на
+// одном экране. Остальные — один блок правки, без соседних полей: сотрудник
+// нажал «Изменить» у состава и видит только состав.
+export type OrderView = "summary" | "items" | "delivery" | "payment" | "shipments";
 
 export type OrderReviewState = {
   hasPreorder: boolean;
@@ -151,6 +156,9 @@ export function AdminOrderEditor({
   onDirtyChange,
   onReviewState,
   disabled = false,
+  view = "summary",
+  onViewChange,
+  customerCard,
 }: {
   canRefund?: boolean;
   order: Order;
@@ -160,6 +168,9 @@ export function AdminOrderEditor({
   onDirtyChange?: (dirty: boolean) => void;
   onReviewState?: (state: OrderReviewState) => void;
   disabled?: boolean;
+  view?: OrderView;
+  onViewChange?: (view: OrderView) => void;
+  customerCard?: ReactNode;
 }) {
   const [adjustment, setAdjustment] = useState<Adjustment | null>(null);
   const [payment, setPayment] = useState<PaymentBalance>(emptyPayment);
@@ -470,6 +481,8 @@ export function AdminOrderEditor({
       setPayment(result.payment);
       setSaved(true);
       onSaved({ ...result.order, paymentStatus: result.payment.paymentStatus });
+      // Сохранили — возвращаем к просмотру: сотрудник сразу видит итог.
+      onViewChange?.("summary");
     } catch (error) {
       // Не откатываем черновик на экране: менеджер должен видеть, что именно
       // пытался сохранить, и иметь возможность повторить после исправления.
@@ -494,9 +507,190 @@ export function AdminOrderEditor({
       </div>
     );
 
+  const hasShipments = !!adjustment.shipmentOffers?.some(
+    (offer) =>
+      !["draft", "packaging_required", "stale", "cancelled", "expired"].includes(offer.status),
+  );
+  const hasMoneyHistory = payment.paid > 0 || (payment.refunds ?? []).length > 0;
+  const canEditDelivery =
+    !readOnly &&
+    order.deliveryMethod !== "pickup" &&
+    !(order.deliveryMethod !== "cdek" && packingFrozen);
+
+  if (view === "summary")
+    return (
+      <div className="admin-order-editor">
+        <section className="ws-card" aria-labelledby="order-items-title">
+          <div className="ws-card-head">
+            <h3 id="order-items-title">Состав</h3>
+            {compositionReadOnly ? (
+              <small>{packingFrozen ? "Упаковка подтверждена" : "Изменить уже нельзя"}</small>
+            ) : (
+              <button type="button" className="ws-button" onClick={() => onViewChange?.("items")}>
+                Изменить
+              </button>
+            )}
+          </div>
+          <ul className="ws-lines">
+            {adjustment.items.map((line, index) => (
+              <li key={`${line.sku}-${index}`}>
+                <span>
+                  {line.productName}
+                  <small>
+                    {[line.variantLabel, `${line.quantity} шт. × ${money.format(line.unitPrice)}`]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                </span>
+                <strong>{money.format(line.unitPrice * line.quantity)}</strong>
+              </li>
+            ))}
+          </ul>
+          <dl className="ws-facts order-summary-money">
+            <dt>Растения</dt>
+            <dd>{money.format(adjustment.subtotal)}</dd>
+            {(adjustment.discountAmount ?? 0) > 0 && (
+              <>
+                <dt>Скидка</dt>
+                <dd>−{money.format(adjustment.discountAmount ?? 0)}</dd>
+              </>
+            )}
+            {order.deliveryMethod !== "pickup" && (
+              <>
+                <dt>Доставка</dt>
+                <dd>
+                  {adjustment.deliveryFeePending
+                    ? "ещё не рассчитана"
+                    : adjustment.deliveryPayee === "carrier"
+                      ? `${money.format(adjustment.deliveryFee)}, покупатель платит перевозчику`
+                      : money.format(adjustment.deliveryFee)}
+                </dd>
+              </>
+            )}
+          </dl>
+          <div className="ws-total">
+            <span>Итого</span>
+            <span>{money.format(order.total)}</span>
+          </div>
+        </section>
+
+        {customerCard}
+
+        {order.deliveryMethod !== "pickup" && (
+          <section className="ws-card" aria-labelledby="order-delivery-title">
+            <div className="ws-card-head">
+              <h3 id="order-delivery-title">
+                {order.deliveryMethod === "cdek" ? "Коробки и доставка" : "Стоимость доставки"}
+              </h3>
+              {canEditDelivery && (
+                <button
+                  type="button"
+                  className="ws-button"
+                  onClick={() => onViewChange?.("delivery")}
+                >
+                  Изменить
+                </button>
+              )}
+            </div>
+            <p className="order-summary-note">
+              {order.deliveryMethod === "cdek"
+                ? packingFrozen
+                  ? "Коробки собраны и подтверждены."
+                  : adjustment.deliveryFeePending
+                    ? "Укажите коробки — после этого посчитается доставка."
+                    : "Коробки указаны, доставка рассчитана."
+                : adjustment.deliveryFeePending
+                  ? "Стоимость доставки ещё не указана."
+                  : `Доставка: ${money.format(adjustment.deliveryFee)}.`}
+            </p>
+          </section>
+        )}
+
+        <section className="ws-card" aria-labelledby="order-payment-title">
+          <div className="ws-card-head">
+            <h3 id="order-payment-title">Оплата</h3>
+            {hasMoneyHistory && (
+              <button type="button" className="ws-button" onClick={() => onViewChange?.("payment")}>
+                {canRefund ? "Возврат и чеки" : "Подробнее"}
+              </button>
+            )}
+          </div>
+          <dl className="ws-facts">
+            <dt>Получено</dt>
+            <dd>{money.format(payment.paid)}</dd>
+            {payment.refunded > 0 && (
+              <>
+                <dt>Возвращено</dt>
+                <dd>{money.format(payment.refunded)}</dd>
+              </>
+            )}
+            {payment.due > 0 && (
+              <>
+                <dt>Осталось оплатить</dt>
+                <dd>{money.format(payment.due)}</dd>
+              </>
+            )}
+          </dl>
+          {payment.overpaid > 0 && (
+            <p className="admin-flag">
+              Переплата {money.format(payment.overpaid)} — нужен возврат.
+            </p>
+          )}
+        </section>
+
+        {hasShipments && (
+          <section className="ws-card">
+            <div className="ws-card-head">
+              <h3>Отправления</h3>
+              <button
+                type="button"
+                className="ws-button"
+                onClick={() => onViewChange?.("shipments")}
+              >
+                Открыть · {adjustment.shipmentOffers.length}
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
+    );
+
+  const viewTitles: Record<Exclude<OrderView, "summary">, string> = {
+    items: "Изменить состав",
+    delivery: order.deliveryMethod === "cdek" ? "Коробки и доставка" : "Стоимость доставки",
+    payment: "Оплата, возвраты и чеки",
+    shipments: "Отправления",
+  };
+  const backToSummary = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Изменения не сохранены. Вернуться к заказу без сохранения?")
+    )
+      return;
+    discardChanges();
+    onViewChange?.("summary");
+  };
+
   return (
-    <div className="admin-order-editor">
-      {(payment.paid > 0 || (payment.refunds ?? []).length > 0) && (
+    <div className="admin-order-editor" data-view={view}>
+      <div className="ws-edit-head">
+        <button type="button" className="ws-back" disabled={busy} onClick={backToSummary}>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="m14 6-6 6 6 6" />
+          </svg>
+          К заказу
+        </button>
+        <h3>{viewTitles[view]}</h3>
+      </div>
+      {view === "payment" && (
         <section className="admin-block" aria-label="Оплата и возвраты">
           <h3>Оплата и возвраты</h3>
           <p>
@@ -602,7 +796,7 @@ export function AdminOrderEditor({
             </article>
           ))}
           {canRefund && payment.netPaid > 0 && (
-            <details>
+            <details open>
               <summary>Вернуть деньги покупателю</summary>
               {(payment.refunds ?? []).some((refund) => refund.status === "pending") && (
                 <p>Новый возврат доступен после завершения предыдущего.</p>
@@ -691,208 +885,187 @@ export function AdminOrderEditor({
           )}
         </section>
       )}
-      {order.deliveryMethod === "cdek" && readOnly && (
-        <section className="admin-block" aria-label="Стоимость заказа и доставки">
-          <dl className="order-packing-total">
-            <div>
-              <dt>Товары</dt>
-              <dd>{money.format(adjustment.subtotal)}</dd>
-            </div>
-            <div>
-              <dt>
-                Доставка{adjustment.deliveryPayee === "carrier" ? " · перевозчику отдельно" : ""}
-              </dt>
-              <dd>{money.format(adjustment.deliveryFee)}</dd>
-            </div>
-            <div>
-              <dt>Итого{adjustment.deliveryPayee === "carrier" ? "" : " с доставкой"}</dt>
-              <dd>
-                {money.format(
-                  adjustment.subtotal +
-                    (adjustment.deliveryPayee === "carrier" ? 0 : adjustment.deliveryFee),
-                )}
-              </dd>
-            </div>
-          </dl>
-        </section>
-      )}
       {order.deliveryMethod === "cdek" && !readOnly && (
-        <AdminOrderPacking
-          orderId={order.id}
-          items={adjustment.items}
-          subtotal={adjustment.subtotal}
-          netPaid={payment.netPaid}
-          email={order.email}
-          address={order.address}
-          disabled={disabled || busy}
-          compositionDirty={hasUnsavedChanges}
-          onDirtyChange={setPackingDirty}
-          onBoxesReadyChange={setPackingBoxesReady}
-          onBusyChange={setBusy}
-          onOrderUpdated={onSaved}
-          onStateChange={(state) => {
-            setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state));
-            if (state.state !== "draft") void load();
-          }}
-        />
-      )}
-      <section className="admin-block">
-        <div className="admin-block-heading">
-          <div>
-            <h3 id="order-composition" tabIndex={-1}>
-              Состав заказа
-            </h3>
-            {packingFrozen && <small>Упаковка подтверждена</small>}
-          </div>
-          <span className="order-line-count">Позиций: {lines.length}</span>
+        // Упаковка смонтирована всегда, даже в режиме просмотра: от её
+        // состояния зависит, можно ли менять состав, а повторная загрузка
+        // при каждом открытии сбрасывала бы черновик коробок.
+        <div hidden={view !== "delivery"}>
+          <AdminOrderPacking
+            orderId={order.id}
+            items={adjustment.items}
+            subtotal={adjustment.subtotal}
+            netPaid={payment.netPaid}
+            email={order.email}
+            address={order.address}
+            disabled={disabled || busy}
+            compositionDirty={hasUnsavedChanges}
+            onDirtyChange={setPackingDirty}
+            onBoxesReadyChange={setPackingBoxesReady}
+            onBusyChange={setBusy}
+            onOrderUpdated={onSaved}
+            onStateChange={(state) => {
+              setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state));
+              if (state.state !== "draft") void load();
+            }}
+          />
         </div>
-        {lines.map((line, index) => (
-          <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
-            <span>
-              <strong>{line.productName}</strong>
-              {line.variantLabel && <small>{line.variantLabel}</small>}
-              <small>{money.format(line.unitPrice)} / шт.</small>
-            </span>
-            <NumericInput
-              aria-label={`Количество ${line.productName}`}
-              min="1"
-              max="100"
-              value={line.quantity}
+      )}
+      {view === "items" && (
+        <section className="admin-block">
+          <div className="admin-block-heading">
+            <div>
+              <h3 id="order-composition" tabIndex={-1}>
+                Состав заказа
+              </h3>
+              {packingFrozen && <small>Упаковка подтверждена</small>}
+            </div>
+            <span className="order-line-count">Позиций: {lines.length}</span>
+          </div>
+          {lines.map((line, index) => (
+            <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
+              <span>
+                <strong>{line.productName}</strong>
+                {line.variantLabel && <small>{line.variantLabel}</small>}
+                <small>{money.format(line.unitPrice)} / шт.</small>
+              </span>
+              <NumericInput
+                aria-label={`Количество ${line.productName}`}
+                min="1"
+                max="100"
+                value={line.quantity}
+                disabled={formDisabled}
+                onChange={(event) => changeQuantity(index, Number(event.target.value))}
+              />
+              <strong>{money.format(line.unitPrice * line.quantity)}</strong>
+              <button
+                type="button"
+                className="admin-action"
+                disabled={formDisabled}
+                onClick={() => removeLine(index)}
+              >
+                Удалить
+              </button>
+            </div>
+          ))}
+          <div className="admin-order-add-line">
+            <AdminOrderProductSearch
+              products={availableProducts}
+              value={addProduct}
               disabled={formDisabled}
-              onChange={(event) => changeQuantity(index, Number(event.target.value))}
+              onChange={setAddProduct}
             />
-            <strong>{money.format(line.unitPrice * line.quantity)}</strong>
             <button
               type="button"
               className="admin-action"
-              disabled={formDisabled}
-              onClick={() => removeLine(index)}
+              disabled={formDisabled || !addProduct}
+              onClick={appendProduct}
             >
-              Удалить
+              Добавить
             </button>
           </div>
-        ))}
-        <div className="admin-order-add-line">
-          <AdminOrderProductSearch
-            products={availableProducts}
-            value={addProduct}
-            disabled={formDisabled}
-            onChange={setAddProduct}
-          />
-          <button
-            type="button"
-            className="admin-action"
-            disabled={formDisabled || !addProduct}
-            onClick={appendProduct}
-          >
-            Добавить
-          </button>
-        </div>
-        <div className="order-discount">
-          <label>
-            Скидка на товары
-            <NumericInput
-              aria-label="Скидка на заказ"
-              min="0"
-              max={discountType === "percent" ? 100 : draftSubtotal}
-              step="0.01"
-              value={discountValue}
+          <div className="order-discount">
+            <label>
+              Скидка на товары
+              <NumericInput
+                aria-label="Скидка на заказ"
+                min="0"
+                max={discountType === "percent" ? 100 : draftSubtotal}
+                step="0.01"
+                value={discountValue}
+                disabled={formDisabled || payment.paid > 0}
+                onChange={(event) => {
+                  setDiscountValue(Math.max(0, Number(event.target.value) || 0));
+                  compositionChanged();
+                }}
+              />
+            </label>
+            <select
+              aria-label="Единица скидки"
+              value={discountType}
               disabled={formDisabled || payment.paid > 0}
               onChange={(event) => {
-                setDiscountValue(Math.max(0, Number(event.target.value) || 0));
+                setDiscountType(event.target.value as "fixed" | "percent");
+                setDiscountValue(0);
                 compositionChanged();
               }}
-            />
-          </label>
-          <select
-            aria-label="Единица скидки"
-            value={discountType}
-            disabled={formDisabled || payment.paid > 0}
-            onChange={(event) => {
-              setDiscountType(event.target.value as "fixed" | "percent");
-              setDiscountValue(0);
-              compositionChanged();
-            }}
-          >
-            <option value="fixed">₽</option>
-            <option value="percent">%</option>
-          </select>
-          {discountAmount > 0 && <strong>−{money.format(discountAmount)}</strong>}
-        </div>
-        <div className="admin-order-draft-total">
-          <small>
-            {hasUnsavedChanges
-              ? "После сохранения эта сумма станет итогом заказа"
-              : adjustment.deliveryPayee === "carrier"
-                ? "Доставка оплачивается отдельно перевозчику"
-                : "Растения и доставка"}
-          </small>
-          <span>
-            {hasUnsavedChanges
-              ? adjustment.deliveryPayee === "carrier"
-                ? "Новая сумма к оплате за растения"
-                : "Новая сумма к оплате"
-              : "Сумма заказа"}
-          </span>
-          <strong>{money.format(draftTotal)}</strong>
-        </div>
-      </section>
-
-      {!["pickup", "cdek"].includes(order.deliveryMethod) && (
-        <details className="order-manual-actions">
-          <summary>Стоимость доставки вручную</summary>
-          <section className="admin-block">
-            <h3>Стоимость доставки</h3>
-            <div className="admin-form-grid">
-              <label>
-                {adjustment.deliveryPayee === "carrier"
-                  ? "Стоимость доставки, справочно, ₽"
-                  : "Стоимость доставки, ₽"}
-                <NumericInput
-                  min="0"
-                  step="1"
-                  value={deliveryFee}
-                  disabled={formDisabled}
-                  onChange={(event) => {
-                    setDeliveryFee(Math.max(0, Number(event.target.value)));
-                    compositionChanged();
-                  }}
-                />
-              </label>
-            </div>
+            >
+              <option value="fixed">₽</option>
+              <option value="percent">%</option>
+            </select>
+            {discountAmount > 0 && <strong>−{money.format(discountAmount)}</strong>}
+          </div>
+          <div className="admin-order-draft-total">
             <small>
-              {adjustment.deliveryPayee === "carrier"
-                ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений."
-                : "Стоимость доставки входит в сумму оплаты заказа."}
+              {hasUnsavedChanges
+                ? "После сохранения эта сумма станет итогом заказа"
+                : adjustment.deliveryPayee === "carrier"
+                  ? "Доставка оплачивается отдельно перевозчику"
+                  : "Растения и доставка"}
             </small>
-            {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && (
-              <p className="admin-flag">
-                СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной
-                отправки.
-              </p>
-            )}
-            {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && (
-              <p className="admin-flag">
-                {adjustment.cdekLastError?.includes("остатка растений недостаточно")
-                  ? `Отправка оплаченного заказа ${adjustment.orderNumber} остановлена: остатка растений недостаточно. Проверьте наличие и решите вручную.`
-                  : `Проверьте заказ ${adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.`}
-              </p>
-            )}
-            {order.deliveryMethod === "cdek" && adjustment.cdekStatus && (
-              <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>
-            )}
-            {order.deliveryMethod === "cdek" &&
-              adjustment.cdekLastError &&
-              ["unknown", "manual_review", "retry"].includes(adjustment.cdekCreateState) &&
-              !(
-                adjustment.cdekCreateState === "manual_review" &&
-                adjustment.cdekLastError.includes("остатка растений недостаточно")
-              ) && <small>{adjustment.cdekLastError}</small>}
-          </section>
-        </details>
+            <span>
+              {hasUnsavedChanges
+                ? adjustment.deliveryPayee === "carrier"
+                  ? "Новая сумма к оплате за растения"
+                  : "Новая сумма к оплате"
+                : "Сумма заказа"}
+            </span>
+            <strong>{money.format(draftTotal)}</strong>
+          </div>
+        </section>
       )}
 
-      {(hasUnsavedChanges || saved) && (
+      {view === "delivery" && !["pickup", "cdek"].includes(order.deliveryMethod) && (
+        <section className="admin-block">
+          <h3>Стоимость доставки</h3>
+          <div className="admin-form-grid">
+            <label>
+              {adjustment.deliveryPayee === "carrier"
+                ? "Стоимость доставки, справочно, ₽"
+                : "Стоимость доставки, ₽"}
+              <NumericInput
+                min="0"
+                step="1"
+                value={deliveryFee}
+                disabled={formDisabled}
+                onChange={(event) => {
+                  setDeliveryFee(Math.max(0, Number(event.target.value)));
+                  compositionChanged();
+                }}
+              />
+            </label>
+          </div>
+          <small>
+            {adjustment.deliveryPayee === "carrier"
+              ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений."
+              : "Стоимость доставки входит в сумму оплаты заказа."}
+          </small>
+          {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && (
+            <p className="admin-flag">
+              СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной
+              отправки.
+            </p>
+          )}
+          {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && (
+            <p className="admin-flag">
+              {adjustment.cdekLastError?.includes("остатка растений недостаточно")
+                ? `Отправка оплаченного заказа ${adjustment.orderNumber} остановлена: остатка растений недостаточно. Проверьте наличие и решите вручную.`
+                : `Проверьте заказ ${adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.`}
+            </p>
+          )}
+          {order.deliveryMethod === "cdek" && adjustment.cdekStatus && (
+            <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>
+          )}
+          {order.deliveryMethod === "cdek" &&
+            adjustment.cdekLastError &&
+            ["unknown", "manual_review", "retry"].includes(adjustment.cdekCreateState) &&
+            !(
+              adjustment.cdekCreateState === "manual_review" &&
+              adjustment.cdekLastError.includes("остатка растений недостаточно")
+            ) && <small>{adjustment.cdekLastError}</small>}
+        </section>
+      )}
+
+      {["items", "delivery"].includes(view) && (hasUnsavedChanges || saved) && (
         <div className="dialog-actions order-editor-savebar">
           <span role="status">
             {packingFrozen
@@ -918,19 +1091,9 @@ export function AdminOrderEditor({
         </div>
       )}
 
-      {adjustment.shipmentOffers?.some(
-        (offer) =>
-          !["draft", "packaging_required", "stale", "cancelled", "expired"].includes(offer.status),
-      ) && (
-        <details className="order-partial-shipments">
-          <summary>
-            <span>Отправления</span>
-            <small>
-              {adjustment.shipmentOffers?.length
-                ? `Отправок: ${adjustment.shipmentOffers.length}`
-                : "Если заказ нужно отправить по частям"}
-            </small>
-          </summary>
+      {view === "shipments" && hasShipments && (
+        <section className="admin-block order-partial-shipments">
+          <h3>Отправления · {adjustment.shipmentOffers.length}</h3>
           {hasUnsavedChanges && (
             <p className="admin-flag">Сохраните изменения состава перед подготовкой отправки.</p>
           )}
@@ -949,7 +1112,7 @@ export function AdminOrderEditor({
               onError={onError}
             />
           </Suspense>
-        </details>
+        </section>
       )}
     </div>
   );

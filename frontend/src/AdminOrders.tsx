@@ -115,8 +115,7 @@ export function Orders({
       document
         .querySelector<HTMLElement>(".admin-order-workspace h1, .admin-order-workspace h2")
         ?.focus();
-      if (!next.orderId) heading.current?.focus();
-      window.scrollTo({ top: 0 });
+      if (!next.orderId && !navigationRef.current.orderId) heading.current?.focus();
     });
   };
 
@@ -214,31 +213,28 @@ export function Orders({
 
   const selected = items.find((order) => String(order.id) === navigation.orderId);
   const listNavigation = { ...navigation, orderId: "" };
-  const back = (
-    <a
-      className="orders-back-link"
-      href={ordersUrl(listNavigation)}
-      onClick={(event) => follow(event, listNavigation)}
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        aria-hidden="true"
-      >
-        <path d="m14 6-6 6 6 6M8 12h12" />
-      </svg>
-      К заказам
-    </a>
-  );
+  const closeOrder = () => void navigate(listNavigation);
 
-  if (navigation.orderId)
-    return (
-      <>
-        {back}
+  // Заказ открывается окном поверх списка: сотрудник не теряет место в
+  // списке и закрывает окно крестиком, кнопкой «Назад» или клавишей Esc.
+  const drawer = navigation.orderId ? (
+    <>
+      <button
+        type="button"
+        className="ws-drawer-backdrop"
+        aria-label="Закрыть заказ"
+        tabIndex={-1}
+        onClick={closeOrder}
+      />
+      <section
+        className="ws-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={selected ? `Заказ ${selected.orderNumber}` : "Заказ"}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") closeOrder();
+        }}
+      >
         {loading ? (
           <WorkspaceState kind="loading" title="Загружаем заказ…" />
         ) : loadError ? (
@@ -249,6 +245,7 @@ export function Orders({
               canRefund={canRefund}
               key={selected.id}
               order={selected}
+              onClose={closeOrder}
               onSaved={updateOrder}
               onError={onError}
               onStatusChange={updateStatus}
@@ -256,14 +253,22 @@ export function Orders({
             />
           </Suspense>
         ) : (
-          <WorkspaceState
-            kind="empty"
-            title="Заказ не найден"
-            detail="Проверьте ссылку или вернитесь к списку заказов."
-          />
+          <div className="ws-drawer-body">
+            <WorkspaceState
+              kind="empty"
+              title="Заказ не найден"
+              detail="Возможно, ссылка устарела. Закройте окно и найдите заказ в списке."
+              action={
+                <button type="button" className="ws-button" onClick={closeOrder}>
+                  Закрыть
+                </button>
+              }
+            />
+          </div>
         )}
-      </>
-    );
+      </section>
+    </>
+  ) : null;
 
   const query = navigation.query.trim().toLocaleLowerCase("ru-RU");
   const visible = items.filter(
@@ -280,7 +285,6 @@ export function Orders({
         <h1 ref={heading} tabIndex={-1}>
           Заказы
         </h1>
-        <p>Откройте номер заказа, чтобы перейти к управлению.</p>
       </header>
       <nav className="orders-status-tabs" aria-label="Статусы заказов">
         {filters.map((filter) => {
@@ -352,7 +356,15 @@ export function Orders({
             {visible.map((order) => {
               const next = { ...navigation, orderId: String(order.id) };
               return (
-                <tr key={order.id}>
+                <tr
+                  key={order.id}
+                  className="clickable"
+                  aria-selected={navigation.orderId === String(order.id)}
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("a, button")) return;
+                    void navigate(next);
+                  }}
+                >
                   <td>
                     <a
                       className="orders-number-link"
@@ -416,6 +428,7 @@ export function Orders({
           </tbody>
         </WorkspaceTable>
       )}
+      {drawer}
     </section>
   );
 }

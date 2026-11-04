@@ -36,24 +36,7 @@
   display: flex;
   flex-direction: column;
 }
-.admin-page .workspace-brand {
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  min-height: 56px;
-}
-.admin-page .workspace-brand .ficusin-logo {
-  width: 160px;
-}
 
-.admin-page .account-sidebar .workspace-caption {
-  margin: 14px 10px 28px;
-  color: #68705f;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
-}
 .admin-page .account-sidebar nav {
   gap: 5px;
 }
@@ -83,56 +66,7 @@
   color: #fffaf0 !important;
   font-weight: 600;
 }
-.workspace-sidebar-bottom {
-  margin-top: auto;
-  padding-top: 30px;
-}
-.workspace-store-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px 10px;
-  font-size: 11px;
-  color: #666d5d;
-}
-.workspace-store-link svg {
-  width: 15px;
-  height: 15px;
-}
-.workspace-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-top: 1px solid var(--workspace-line);
-  padding: 18px 5px 0;
-}
-.workspace-profile > div {
-  min-width: 0;
-}
-.workspace-profile strong {
-  display: block;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.workspace-profile small {
-  display: block;
-  margin-top: 5px;
-  color: #68705f;
-  font-size: 10px;
-  line-height: 1.5;
-}
-.workspace-avatar {
-  width: 37px;
-  height: 37px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #60684f;
-  color: white;
-  font-size: 16px;
-}
+
 .admin-page .account-content {
   padding: 0;
   min-height: 100dvh;
@@ -145,98 +79,7 @@
 .admin-page .account-content:before {
   display: none;
 }
-.workspace-toolbar {
-  height: 66px;
-  padding: 0 30px;
-  border-bottom: 1px solid var(--workspace-line);
-  display: flex;
-  align-items: center;
-  gap: 26px;
-}
-.workspace-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  color: #68705f;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.workspace-breadcrumb span {
-  color: #b2b4a7;
-}
-.workspace-breadcrumb strong {
-  font-weight: 500;
-  color: #343c30;
-}
-.workspace-search {
-  position: relative;
-  width: 330px;
-  max-width: 42%;
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-}
-.workspace-search > svg {
-  position: absolute;
-  width: 17px;
-  height: 17px;
-  left: 12px;
-  color: #68705f;
-}
-.admin-page .workspace-search input {
-  width: 100%;
-  height: 36px;
-  padding: 8px 12px 8px 37px;
-  border: 1px solid var(--workspace-line);
-  border-radius: 6px;
-  background: #efeee7;
-  font-size: 12px;
-}
-.workspace-search-results {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  z-index: 30;
-  padding: 6px;
-  border: 1px solid var(--workspace-line);
-  border-radius: 8px;
-  background: #fffdf7;
-  box-shadow: 0 12px 36px #2737231a;
-}
-.workspace-search-results button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 40px;
-  border: 0;
-  padding: 10px;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font-size: 13px;
-}
-.workspace-search-results button:hover {
-  background: #eceee3;
-}
-.workspace-search-results svg {
-  width: 17px;
-  height: 17px;
-}
-.workspace-search-results svg:last-child {
-  margin-left: auto;
-}
-.workspace-search-results p {
-  padding: 14px;
-  margin: 0;
-  font-size: 12px;
-}
-.workspace-toolbar-store {
-  font-size: 12px;
-  white-space: nowrap;
-  color: #475c43;
-}
+
 .workspace-body {
   padding: 32px 30px 40px;
 }
@@ -796,11 +639,7 @@
   outline: 2px solid #ac492a;
   outline-offset: 3px;
 }
-.workspace-loading-brand {
-  display: block;
-  width: max-content;
-  padding: 28px;
-}
+
 @media (min-width: 1600px) {
   .admin-page .account-shell {
     grid-template-columns: 246px minmax(0, 1fr);
@@ -823,12 +662,7 @@
   .admin-page .account-sidebar {
     padding-inline: 12px;
   }
-  .admin-page .workspace-brand {
-    font-size: 31px;
-  }
-  .workspace-toolbar {
-    padding-inline: 22px;
-  }
+
   .workspace-body {
     padding: 26px 22px;
   }
@@ -901,9 +735,7 @@
   .workspace-botanical {
     min-height: 280px;
   }
-  .workspace-search {
-    max-width: 45%;
-  }
+
   .workspace-welcome {
     align-items: flex-start;
   }
@@ -931,14 +763,7 @@
     border-bottom: 1px solid var(--workspace-line);
     overflow: visible;
   }
-  .admin-page .workspace-brand {
-    padding: 0;
-    font-size: 31px;
-  }
-  .admin-page .account-sidebar .workspace-caption {
-    margin: 8px 0 16px;
-    font-size: 8px;
-  }
+
   .admin-page .account-sidebar nav {
     display: flex;
     gap: 5px;
@@ -958,35 +783,7 @@
     width: 16px;
     height: 16px;
   }
-  .workspace-sidebar-bottom {
-    display: none;
-  }
-  .workspace-toolbar {
-    height: 58px;
-    padding: 0 16px;
-    gap: 12px;
-  }
-  .workspace-breadcrumb {
-    font-size: 11px;
-    gap: 7px;
-  }
-  .workspace-breadcrumb > span {
-    display: none;
-  }
-  .workspace-breadcrumb {
-    font-size: 0;
-  }
-  .workspace-breadcrumb strong {
-    font-size: 11px;
-  }
-  .workspace-search {
-    max-width: none;
-    width: 180px;
-    flex: 1;
-  }
-  .workspace-toolbar-store {
-    font-size: 10px;
-  }
+
   .workspace-body {
     padding: 25px 16px 32px;
   }
@@ -1096,18 +893,6 @@
     transition: none !important;
     animation: none !important;
   }
-}
-
-.workspace-toolbar-profile {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #244734;
-  color: #fffaf0;
-  font-size: 12px;
 }
 
 .workspace-catalog-nav {
@@ -1270,15 +1055,6 @@
   }
 }
 
-.workspace-chat-count {
-  font-size: 11px;
-  margin-left: auto;
-  padding: 2px 6px;
-  border-radius: 99px;
-  background: var(--cream);
-  color: var(--green);
-}
-
 .admin-app-install {
   position: relative;
   flex-shrink: 0;
@@ -1328,14 +1104,6 @@
   min-height: 44px;
 }
 @media (max-width: 700px) {
-  .admin-page .workspace-toolbar {
-    flex-wrap: wrap;
-    height: auto;
-    min-height: 58px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    gap: 8px;
-  }
   .admin-app-install {
     order: 5;
     flex-basis: 100%;

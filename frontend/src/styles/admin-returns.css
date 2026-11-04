@@ -1385,9 +1385,7 @@
   white-space: nowrap;
   border: 0;
 }
-.workspace-mobile-navigation {
-  display: none;
-}
+
 @media (max-width: 1100px) {
   .returns-layout {
     grid-template-columns: minmax(260px, 0.85fr) minmax(330px, 1.15fr);
@@ -1570,73 +1568,6 @@
   }
 }
 @media (max-width: 600px) {
-  .returns-admin .account-sidebar {
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 12px 16px;
-    min-height: 0;
-    border-bottom: 1px solid #d6dccf;
-  }
-  .returns-admin .workspace-brand {
-    font-size: 28px;
-    line-height: 1;
-    margin: 0;
-    padding: 0;
-  }
-  .returns-admin .account-sidebar > nav,
-  .returns-admin .workspace-caption,
-  .returns-admin .workspace-sidebar-bottom {
-    display: none;
-  }
-  .returns-admin .workspace-mobile-navigation {
-    display: block;
-  }
-  .returns-admin .workspace-mobile-navigation summary {
-    font-size: 13px;
-    font-weight: 650;
-    cursor: pointer;
-    padding: 10px 12px;
-    background: #f8f8f0;
-    border: 1px solid #ccd6c2;
-    border-radius: 7px;
-    list-style: none;
-  }
-  .returns-admin .workspace-mobile-navigation summary:after {
-    content: " ▾";
-  }
-  .returns-admin .workspace-mobile-navigation nav {
-    position: absolute;
-    top: 100%;
-    left: 12px;
-    right: 12px;
-    padding: 10px;
-    z-index: 40;
-    background: #fffdf7;
-    border: 1px solid #cdd9c4;
-    border-radius: 9px;
-    box-shadow: 0 10px 28px #173b2526;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    max-height: 60dvh;
-    overflow: auto;
-  }
-  .returns-admin .workspace-toolbar {
-    min-height: 38px;
-    padding: 8px 16px;
-    justify-content: space-between;
-  }
-  .returns-admin .workspace-search,
-  .returns-admin .workspace-toolbar-profile,
-  .returns-admin .workspace-toolbar-store {
-    display: none;
-  }
-  .returns-admin .workspace-body {
-    padding: 18px 14px;
-  }
   .returns-heading {
     display: grid;
     grid-template-columns: 1fr;
@@ -1847,11 +1778,6 @@
 }
 .return-plant-picker > div:first-child input {
   border: 0;
-}
-
-.admin-page.returns-admin .account-sidebar .workspace-caption,
-.returns-admin .workspace-profile small {
-  color: #59654f;
 }
 
 .return-plant-picker > div:first-child:focus-within {

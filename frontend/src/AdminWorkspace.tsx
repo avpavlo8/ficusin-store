@@ -1,13 +1,14 @@
 import { useChatUnread } from "./lib/chat";
 import { BrandLogo } from "./BrandLogo";
-import { sections } from "./adminNavigation";
+import { mobilePrimarySections, sectionGroups, sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
 import { roleLabel } from "./adminShared";
 import { AdminAppInstall } from "./AdminAppInstall";
 
-export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
-  const paths: Record<Section | "search" | "arrow", string> = {
+type IconName = Section | "search" | "arrow" | "more";
+export function AdminIcon({ name }: { name: IconName }) {
+  const paths: Record<IconName, string> = {
     chat: "M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
     returns: "M4 8h10a6 6 0 0 1 0 12H9M4 8l5-5M4 8l5 5",
     marketplaces: "M8 16 16 8M9 5l2-2a5 5 0 0 1 7 7l-2 2M8 12l-2 2a5 5 0 0 0 7 7l2-2",
@@ -24,6 +25,7 @@ export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
     settings: "M4 7h16M4 17h16M8 4v6m8 4v6",
     search: "M21 21l-5-5M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14",
     arrow: "M5 12h14m-5-5 5 5-5 5",
+    more: "M4 6h16M4 12h16M4 18h16",
   };
   return (
     <svg
@@ -40,82 +42,163 @@ export function AdminIcon({ name }: { name: Section | "search" | "arrow" }) {
   );
 }
 
+function visibleSections(data: AdminData) {
+  return sections.filter(
+    (item) =>
+      !["categories", "collections"].includes(item.id) &&
+      (!item.permission || data.permissions.includes(item.permission)) &&
+      (!item.owner || data.role === "owner"),
+  );
+}
+const isActive = (item: Section, section: Section) =>
+  section === item || (item === "products" && ["categories", "collections"].includes(section));
+
+function SectionLink({
+  id,
+  label,
+  section,
+  unread,
+  onNavigate,
+}: {
+  id: Section;
+  label: string;
+  section: Section;
+  unread: number;
+  onNavigate: (section: Section) => void;
+}) {
+  const active = isActive(id, section);
+  return (
+    <a
+      href={`/admin?section=${id}`}
+      className="ws-nav-link"
+      aria-current={active ? "page" : undefined}
+      onClick={(event) => {
+        event.preventDefault();
+        onNavigate(id);
+      }}
+    >
+      <AdminIcon name={id} />
+      <span>{label}</span>
+      {id === "chat" && unread > 0 && (
+        <b className="ws-count" aria-label={`Непрочитанных: ${unread}`}>
+          {unread > 99 ? "99+" : unread}
+        </b>
+      )}
+    </a>
+  );
+}
+
+/* Боковая панель на компьютере и нижняя панель на телефоне — одна и та же
+   навигация. На телефоне сотрудник держит устройство одной рукой, поэтому
+   главные разделы внизу под большим пальцем, остальные — в «Ещё». */
 export function WorkspaceSidebar({
   data,
   section,
   onNavigate,
-  compact = false,
 }: {
   data: AdminData;
   section: Section;
   onNavigate: (section: Section) => void;
-  compact?: boolean;
 }) {
   const unread = useChatUnread(true, data.permissions.includes("chat.manage"));
-  const mobileMenu = useRef<HTMLDetailsElement>(null);
-  const links = sections
-    .filter((item) => !["categories", "collections"].includes(item.id))
-    .filter(
-      (item) =>
-        (!item.permission || data.permissions.includes(item.permission)) &&
-        (!item.owner || data.role === "owner"),
-    )
-    .map((item) => {
-      const active =
-        section === item.id ||
-        (item.id === "products" && ["categories", "collections"].includes(section));
-      return (
-        <button
+  const more = useRef<HTMLDialogElement>(null);
+  const available = visibleSections(data);
+  const go = (next: Section) => {
+    more.current?.close();
+    onNavigate(next);
+  };
+  const groups = sectionGroups
+    .map((group) => ({ ...group, items: available.filter((item) => item.group === group.id) }))
+    .filter((group) => group.items.length);
+  const groupedLinks = groups.map((group) => (
+    <div className="ws-nav-group" key={group.id}>
+      <p>{group.label}</p>
+      {group.items.map((item) => (
+        <SectionLink
           key={item.id}
-          type="button"
-          className={active ? "active" : ""}
-          aria-current={active ? "page" : undefined}
-          onClick={() => {
-            onNavigate(item.id);
-            if (mobileMenu.current) mobileMenu.current.open = false;
-          }}
-        >
-          <AdminIcon name={item.id} />
-          {item.label}
-          {item.id === "chat" && unread > 0 && (
-            <b className="workspace-chat-count" aria-label={`Непрочитанных: ${unread}`}>
-              {unread > 99 ? "99+" : unread}
-            </b>
-          )}
-        </button>
-      );
-    });
+          id={item.id}
+          label={item.label}
+          section={section}
+          unread={unread}
+          onNavigate={go}
+        />
+      ))}
+    </div>
+  ));
+  const primary = mobilePrimarySections
+    .map((id) => available.find((item) => item.id === id))
+    .filter((item) => !!item);
+  const moreActive = !primary.some((item) => isActive(item.id, section));
   return (
-    <aside className="account-sidebar">
-      <a className="workspace-skip" href="#workspace-content">
-        К содержимому
-      </a>
-      <a className="workspace-brand" href="/" aria-label="Фикусин — в магазин">
-        <BrandLogo decorative />
-      </a>
-      <p className="workspace-caption">Рабочее пространство</p>
-      {compact && (
-        <details ref={mobileMenu} className="workspace-mobile-navigation">
-          <summary>Разделы</summary>
-          <nav aria-label="Мобильные разделы управления">{links}</nav>
-        </details>
-      )}
-      <nav aria-label="Разделы управления">{links}</nav>
-      <div className="workspace-sidebar-bottom">
-        <a className="workspace-store-link" href="/">
-          Вернуться в магазин <AdminIcon name="arrow" />
+    <>
+      <aside className="ws-sidebar">
+        <a className="workspace-skip" href="#workspace-content">
+          К содержимому
         </a>
-        <a className="workspace-profile" href="/account">
-          <span className="workspace-avatar" aria-hidden="true">
-            {data.user.fullName.trim().charAt(0) || "Ф"}
-          </span>
-          <div>
-            <strong>{data.user.fullName}</strong>
-            <small>{roleLabel(data.role)} · Личный кабинет</small>
-          </div>
+        <a className="ws-brand" href="/" aria-label="Фикусин — в магазин">
+          <BrandLogo decorative />
         </a>
-      </div>
-    </aside>
+        <nav aria-label="Разделы управления">{groupedLinks}</nav>
+        <div className="ws-sidebar-bottom">
+          <AdminAppInstall />
+          <a className="ws-profile" href="/account">
+            <span className="ws-avatar" aria-hidden="true">
+              {data.user.fullName.trim().charAt(0) || "Ф"}
+            </span>
+            <span>
+              <strong>{data.user.fullName}</strong>
+              <small>{roleLabel(data.role)}</small>
+            </span>
+          </a>
+          <a className="ws-store-link" href="/">
+            Открыть магазин <AdminIcon name="arrow" />
+          </a>
+        </div>
+      </aside>
+      <nav className="ws-tabbar" aria-label="Главные разделы">
+        {primary.map((item) => (
+          <SectionLink
+            key={item.id}
+            id={item.id}
+            label={item.label}
+            section={section}
+            unread={unread}
+            onNavigate={go}
+          />
+        ))}
+        <button
+          type="button"
+          className="ws-nav-link"
+          aria-current={moreActive ? "page" : undefined}
+          onClick={() => more.current?.showModal()}
+        >
+          <AdminIcon name="more" />
+          <span>Ещё</span>
+        </button>
+      </nav>
+      <dialog
+        ref={more}
+        className="ws-more"
+        aria-label="Все разделы"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+      >
+        <div className="ws-more-sheet">
+          <header>
+            <strong>Все разделы</strong>
+            <button type="button" aria-label="Закрыть" onClick={() => more.current?.close()}>
+              ×
+            </button>
+          </header>
+          <nav aria-label="Все разделы управления">{groupedLinks}</nav>
+          <AdminAppInstall />
+          <a className="ws-store-link" href="/">
+            Открыть магазин <AdminIcon name="arrow" />
+          </a>
+        </div>
+      </dialog>
+    </>
   );
 }
 
@@ -146,13 +229,20 @@ export function WorkspaceToolbar({
     input.current?.focus();
   };
   return (
-    <header className="workspace-toolbar">
-      <div className="workspace-breadcrumb">
-        Магазин <span>/</span>{" "}
-        <strong>{sections.find((item) => item.id === section)?.label}</strong>
-      </div>
+    <header className="ws-topbar">
+      <a className="ws-topbar-brand" href="/" aria-label="Фикусин — в магазин">
+        <BrandLogo decorative />
+      </a>
+      <strong className="ws-topbar-title">
+        {
+          sections.find(
+            (item) =>
+              isActive(item.id, section) && item.id !== "categories" && item.id !== "collections",
+          )?.label
+        }
+      </strong>
       <div
-        className="workspace-search"
+        className="ws-search"
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
         }}
@@ -162,7 +252,7 @@ export function WorkspaceToolbar({
           ref={input}
           type="search"
           aria-label="Найти раздел"
-          placeholder="Найти раздел…"
+          placeholder="Перейти в раздел…"
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
@@ -178,7 +268,7 @@ export function WorkspaceToolbar({
           }}
         />
         {open && (
-          <div className="workspace-search-results" aria-label="Результаты поиска разделов">
+          <div className="ws-search-results" aria-label="Результаты поиска разделов">
             {results.length ? (
               results.map((item) => (
                 <button type="button" key={item.id} onClick={() => choose(item.id)}>
@@ -193,12 +283,8 @@ export function WorkspaceToolbar({
           </div>
         )}
       </div>
-      <AdminAppInstall />
-      <a className="workspace-toolbar-profile" href="/account" aria-label="Личный кабинет">
+      <a className="ws-avatar ws-topbar-profile" href="/account" aria-label="Личный кабинет">
         {data.user.fullName.trim().charAt(0) || "Ф"}
-      </a>
-      <a className="workspace-toolbar-store" href="/" title="Открыть магазин">
-        Магазин ↗
       </a>
     </header>
   );

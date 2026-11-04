@@ -1,0 +1,1174 @@
+/* Админка, направление «А · спокойный рабочий инструмент».
+
+   Почему отдельный файл: раньше каждый раздел дорисовывал свои кнопки,
+   вкладки и таблицы, и в 15 файлах накопилось около 1100 цветов,
+   прописанных вручную. Здесь — единый словарь: токены и базовые элементы,
+   которыми пользуются все разделы. Подключается после admin-workspace.css,
+   правила начинаются с .admin-page, чтобы перебивать старые одноклассовые.
+
+   Кто пользуется: сотрудники без технического образования, с компьютера
+   и с телефона (приложение «Управление» — та же страница). Отсюда правила:
+   крупные зоны нажатия (44px), поля 16px на телефоне (iOS не увеличивает
+   страницу при вводе), один акцентный цвет для главного действия. */
+
+.admin-page {
+  --ws-bg: #fbf9f5;
+  --ws-panel: #ffffff;
+  --ws-side: #f4f0e8;
+  --ws-soft: #f1ece2;
+  --ws-line: #e7e2d7;
+  --ws-line-soft: #efebe2;
+  --ws-ink: #22271f;
+  --ws-text: #4d554b;
+  /* #5f675d на #fbf9f5 даёт контраст 5.6:1 — подписи читаются и мелким кеглем. */
+  --ws-muted: #5f675d;
+  --ws-green: #2c4636;
+  --ws-green-dark: #1f3327;
+  --ws-green-soft: #e3eee5;
+  --ws-rust: #a2462e;
+  --ws-rust-soft: #fbe9e1;
+  --ws-blue-soft: #e6ebf3;
+  --ws-blue: #2f4a72;
+  --ws-warn-soft: #fbf1dc;
+  --ws-warn: #7a5410;
+  --ws-radius: 10px;
+  --ws-radius-sm: 8px;
+  --ws-shadow: 0 1px 2px rgba(34, 39, 31, 0.06);
+  --ws-sidebar: 232px;
+  --ws-topbar: 56px;
+  --ws-tabbar: 64px;
+  /* Старые переменные разделов указывают на новую палитру. */
+  --workspace-paper: var(--ws-bg);
+  --workspace-line: var(--ws-line);
+  --workspace-ink: var(--ws-ink);
+  --workspace-muted: var(--ws-muted);
+  --workspace-green: var(--ws-green);
+  --workspace-rust: var(--ws-rust);
+  --line: var(--ws-line);
+  --green: var(--ws-green);
+  margin: 0;
+  min-height: 100vh;
+  background: var(--ws-bg);
+  color: var(--ws-ink);
+  font-size: 14px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Каркас ---------- */
+
+.admin-page.ws-shell {
+  display: grid;
+  grid-template-columns: var(--ws-sidebar) minmax(0, 1fr);
+}
+.admin-page .ws-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.admin-page .workspace-body {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 28px 48px;
+  outline: none;
+}
+.admin-page.ws-loading {
+  display: grid;
+  place-content: center;
+  gap: 24px;
+  justify-items: center;
+}
+
+.admin-page .ws-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 18px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  background: var(--ws-side);
+  border-right: 1px solid var(--ws-line);
+}
+.admin-page .ws-brand {
+  display: block;
+  padding: 0 10px;
+  color: var(--ws-green);
+}
+.admin-page .ws-brand svg,
+.admin-page .ws-brand img {
+  height: 30px;
+  width: auto;
+}
+.admin-page .ws-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-page .ws-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.admin-page .ws-nav-group > p {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  color: var(--ws-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.admin-page .ws-nav-link {
+  min-height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-page .ws-nav-link svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ws-muted);
+}
+.admin-page .ws-nav-link:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.admin-page .ws-nav-link[aria-current="page"] {
+  background: var(--ws-panel);
+  box-shadow: 0 0 0 1px var(--ws-line);
+  color: var(--ws-green-dark);
+  font-weight: 600;
+}
+.admin-page .ws-nav-link[aria-current="page"] svg {
+  color: var(--ws-green);
+}
+.admin-page .ws-count {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--ws-rust);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.admin-page .ws-sidebar-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ws-line);
+}
+.admin-page .ws-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--ws-radius-sm);
+  color: var(--ws-ink);
+  text-decoration: none;
+}
+.admin-page .ws-profile:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.admin-page .ws-profile strong,
+.admin-page .ws-profile small {
+  display: block;
+}
+.admin-page .ws-profile small {
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .ws-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ws-green);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.admin-page .ws-store-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  color: var(--ws-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.admin-page .ws-store-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-page .ws-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--ws-topbar);
+  box-sizing: border-box;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(251, 249, 245, 0.94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--ws-line);
+}
+.admin-page .ws-topbar-brand {
+  display: none;
+  color: var(--ws-green);
+}
+.admin-page .ws-topbar-brand svg,
+.admin-page .ws-topbar-brand img {
+  height: 24px;
+  width: auto;
+}
+.admin-page .ws-topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.admin-page .ws-search {
+  position: relative;
+  margin-left: auto;
+  width: 280px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-muted);
+}
+.admin-page .ws-search svg {
+  width: 16px;
+  height: 16px;
+}
+.admin-page .ws-topbar .ws-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ws-ink);
+  font-size: 14px;
+}
+.admin-page .ws-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  padding: 6px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: 0 12px 32px rgba(34, 39, 31, 0.12);
+}
+.admin-page .ws-search-results button {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ws-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.admin-page .ws-search-results button:hover,
+.admin-page .ws-search-results button:focus-visible {
+  background: var(--ws-soft);
+}
+.admin-page .ws-search-results button svg:last-child {
+  margin-left: auto;
+}
+.admin-page .ws-search-results p {
+  margin: 8px;
+  color: var(--ws-muted);
+}
+
+/* Нижняя панель и «Ещё» — только на телефоне. */
+.admin-page .ws-tabbar {
+  display: none;
+}
+.admin-page .ws-more {
+  margin: auto 0 0;
+  width: 100%;
+  max-width: none;
+  max-height: 85vh;
+  padding: 0;
+  border: 0;
+  border-radius: 18px 18px 0 0;
+  background: var(--ws-bg);
+  color: var(--ws-ink);
+}
+.admin-page .ws-more::backdrop {
+  background: rgba(20, 24, 18, 0.4);
+}
+.admin-page .ws-more-sheet {
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-page .ws-more-sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  font-size: 17px;
+}
+.admin-page .ws-more-sheet header button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  font-size: 26px;
+  color: var(--ws-muted);
+}
+.admin-page .ws-more-sheet nav {
+  display: grid;
+  gap: 16px;
+}
+.admin-page .ws-more-sheet .ws-nav-link {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+/* ---------- Заголовки и текст ---------- */
+
+/* Журнальная антиква остаётся витрине. В рабочем инструменте заголовок —
+   короткая подпись экрана, а не обложка: так на первый экран помещается
+   работа, а не оформление. */
+.admin-page .ws-main h1,
+.admin-page .ws-main h2,
+.admin-page .ws-main h3 {
+  font-family: inherit;
+  letter-spacing: 0;
+  color: var(--ws-ink);
+}
+.admin-page .ws-main h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.admin-page .ws-main h2 {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.admin-page .ws-main h3 {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.admin-page .ws-main .eyebrow {
+  color: var(--ws-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.admin-page .ws-main .admin-hint,
+.admin-page .ws-main small {
+  color: var(--ws-muted);
+}
+.admin-page .ws-main .admin-hint {
+  font-size: 13px;
+}
+
+/* ---------- Кнопки ---------- */
+
+.admin-page
+  .ws-main
+  :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button) {
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font: inherit;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.admin-page .ws-main :is(.admin-action, .secondary-button, .ws-button):hover:not(:disabled) {
+  border-color: #d5cfc2;
+  background: #faf8f4;
+}
+.admin-page .ws-main :is(.admin-primary, button.primary, .ws-button.primary) {
+  border-color: var(--ws-green);
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .ws-main :is(.admin-primary, button.primary, .ws-button.primary):hover:not(:disabled) {
+  border-color: var(--ws-green-dark);
+  background: var(--ws-green-dark);
+}
+.admin-page .ws-main :is(.admin-action, .secondary-button, button).danger {
+  border-color: #e9c9bd;
+  background: var(--ws-panel);
+  color: var(--ws-rust);
+}
+.admin-page
+  .ws-main
+  :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-page .ws-main :is(.text-button, .workspace-text-button, .table-action) {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ws-green);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-page .ws-main :is(.text-button, .workspace-text-button, .table-action):hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.admin-page .ws-main :focus-visible {
+  outline: 2px solid var(--ws-green);
+  outline-offset: 2px;
+}
+
+/* ---------- Поля ---------- */
+
+.admin-page
+  .ws-main
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+    select,
+    textarea
+  ) {
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font: inherit;
+  font-size: 14px;
+  box-shadow: none;
+}
+.admin-page .ws-main :where(input, select, textarea):focus {
+  border-color: var(--ws-green);
+  outline: 2px solid rgba(44, 70, 54, 0.15);
+  outline-offset: 0;
+}
+.admin-page .ws-main input[type="checkbox"],
+.admin-page .ws-main input[type="radio"] {
+  accent-color: var(--ws-green);
+}
+.admin-page .ws-main .admin-form-grid label,
+.admin-page .ws-main .admin-field-label {
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+/* ---------- Блоки, таблицы, состояния ---------- */
+
+.admin-page .ws-main :is(.admin-block, .workspace-panel) {
+  padding: 18px 20px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: none;
+}
+.admin-page .ws-main .admin-block-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-page .ws-main .admin-block-heading h3,
+.admin-page .ws-main .admin-block > h3 {
+  margin: 0;
+}
+
+.admin-page .ws-main .workspace-scroll-hint {
+  display: none;
+}
+.admin-page .ws-main .admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: none;
+}
+.admin-page .ws-main .admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-page .ws-main .admin-table th {
+  padding: 10px 14px;
+  background: transparent;
+  border-bottom: 1px solid var(--ws-line);
+  color: var(--ws-muted);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  white-space: nowrap;
+}
+.admin-page .ws-main .admin-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ws-line-soft);
+  vertical-align: top;
+}
+.admin-page .ws-main .admin-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.admin-page .ws-main .admin-table td small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.admin-page .ws-main .workspace-state {
+  padding: 40px 20px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  border: 1px dashed var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: transparent;
+  text-align: center;
+}
+.admin-page .ws-main .workspace-state strong {
+  font-size: 15px;
+}
+.admin-page .ws-main .workspace-state p {
+  margin: 0;
+  color: var(--ws-muted);
+}
+
+/* Статусы: цвет различается и по яркости, а не только по оттенку. */
+.admin-page .ws-main .workspace-status,
+.admin-page .ws-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #efece4;
+  color: var(--ws-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-page .ws-main .workspace-status[data-status="new"],
+.admin-page .ws-pill[data-tone="attention"] {
+  background: var(--ws-rust-soft);
+  color: #8a3a22;
+}
+.admin-page .ws-main .workspace-status:is([data-status="paid"], [data-status="confirmed"]),
+.admin-page .ws-pill[data-tone="ok"] {
+  background: var(--ws-green-soft);
+  color: #25553a;
+}
+.admin-page
+  .ws-main
+  .workspace-status:is(
+    [data-status="packed"],
+    [data-status="assembling"],
+    [data-status="processing"]
+  ),
+.admin-page .ws-pill[data-tone="progress"] {
+  background: var(--ws-blue-soft);
+  color: var(--ws-blue);
+}
+.admin-page .ws-main .workspace-status[data-status="cancelled"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ws-line);
+  color: var(--ws-muted);
+}
+
+.admin-page .ws-main .admin-flag {
+  color: #8a3a22;
+}
+.admin-page .admin-message.error {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #ecc8bb;
+  border-radius: var(--ws-radius);
+  background: var(--ws-rust-soft);
+  color: #6e2d1a;
+}
+.admin-page .admin-message.error button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ---------- Вкладки ---------- */
+
+/* Один вид вкладок на всю админку: сегменты на светлой подложке.
+   Раньше одни и те же уровни навигации выглядели как подчёркивания,
+   зелёные плашки и жирный текст. */
+
+.admin-page .ws-main .workspace-catalog-nav::after,
+.admin-page .ws-main :is(.orders-status-tabs, .workspace-catalog-nav) {
+  margin: 0 0 16px;
+  padding: 3px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 9px;
+  background: var(--ws-soft);
+  scrollbar-width: none;
+}
+.admin-page .ws-main :is(.orders-status-tabs, .workspace-catalog-nav) > :is(a, button) {
+  min-height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ws-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+}
+.admin-page
+  .ws-main
+  :is(.orders-status-tabs, .workspace-catalog-nav)
+  > :is(a, button):is([aria-current="page"], [aria-selected="true"], .active) {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow);
+}
+.admin-page .ws-main .orders-status-tabs > a span {
+  color: var(--ws-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.admin-page .ws-main .orders-status-tabs::after {
+  content: none;
+}
+
+/* ---------- Окно (боковая панель поверх списка) ---------- */
+
+.admin-page .ws-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 60;
+  width: min(620px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--ws-bg);
+  box-shadow: -12px 0 40px rgba(34, 39, 31, 0.16);
+  animation: ws-drawer-in 0.18s ease-out;
+}
+.admin-page .ws-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  border: 0;
+  background: rgba(20, 24, 18, 0.28);
+  cursor: pointer;
+}
+.admin-page .ws-drawer-head {
+  min-height: 56px;
+  padding: 0 12px 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-panel);
+}
+.admin-page .ws-drawer-head > strong {
+  font-size: 16px;
+}
+.admin-page .ws-drawer-close {
+  margin-left: auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: var(--ws-muted);
+  font-size: 24px;
+  cursor: pointer;
+}
+.admin-page .ws-drawer-close:hover {
+  background: var(--ws-soft);
+}
+.admin-page .ws-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 20px 32px;
+}
+@keyframes ws-drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+/* Карточка «просмотр»: подпись слева, значение справа, «Изменить» в углу. */
+.admin-page .ws-card {
+  padding: 16px 18px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+}
+.admin-page .ws-card + .ws-card {
+  margin-top: 12px;
+}
+.admin-page .ws-card-head {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.admin-page .ws-card-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.admin-page .ws-card-head > :last-child:not(:first-child) {
+  margin-left: auto;
+}
+.admin-page .ws-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px 14px;
+}
+.admin-page .ws-facts dt {
+  color: var(--ws-muted);
+}
+.admin-page .ws-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.admin-page .ws-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-page .ws-lines li {
+  padding: 10px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--ws-line-soft);
+}
+.admin-page .ws-lines li:last-child {
+  border-bottom: 0;
+}
+.admin-page .ws-lines li > span {
+  flex: 1;
+  min-width: 0;
+}
+.admin-page .ws-lines small {
+  display: block;
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .ws-total {
+  margin-top: 8px;
+  padding-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--ws-line);
+  font-size: 15px;
+  font-weight: 650;
+}
+.admin-page .ws-todo {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  border-radius: var(--ws-radius);
+  background: var(--ws-warn-soft);
+  color: var(--ws-warn);
+  list-style: none;
+}
+.admin-page .ws-todo li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-page .ws-todo li strong {
+  flex: 1;
+  color: #5c3f0b;
+}
+.admin-page .ws-todo li p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+.admin-page .ws-edit-head {
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .ws-back {
+  min-height: 36px;
+  padding: 0 10px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: var(--ws-green);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-page .ws-back:hover {
+  background: var(--ws-soft);
+}
+
+/* ---------- Планшет и телефон ---------- */
+
+@media (max-width: 1100px) {
+  .admin-page {
+    --ws-sidebar: 200px;
+  }
+  .admin-page .workspace-body {
+    padding: 16px 20px 40px;
+  }
+  .admin-page .ws-search {
+    width: 220px;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-page.ws-shell {
+    display: block;
+    padding-bottom: calc(var(--ws-tabbar) + env(safe-area-inset-bottom));
+  }
+  .admin-page .ws-sidebar,
+  .admin-page .ws-search {
+    display: none;
+  }
+  .admin-page .ws-topbar {
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top);
+    height: calc(var(--ws-topbar) + env(safe-area-inset-top));
+  }
+  .admin-page .ws-topbar-brand {
+    display: block;
+  }
+  .admin-page .ws-topbar-profile {
+    margin-left: auto;
+  }
+  .admin-page .workspace-body {
+    padding: 14px 16px 24px;
+  }
+  .admin-page .ws-tabbar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    height: calc(var(--ws-tabbar) + env(safe-area-inset-bottom));
+    padding: 0 4px env(safe-area-inset-bottom);
+    box-sizing: border-box;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    border-top: 1px solid var(--ws-line);
+    background: rgba(251, 249, 245, 0.97);
+    backdrop-filter: blur(8px);
+  }
+  .admin-page .ws-tabbar .ws-nav-link {
+    position: relative;
+    min-height: var(--ws-tabbar);
+    padding: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--ws-muted);
+    font-size: 11px;
+    font-weight: 550;
+  }
+  .admin-page .ws-tabbar .ws-nav-link svg {
+    width: 22px;
+    height: 22px;
+  }
+  .admin-page .ws-tabbar .ws-nav-link[aria-current="page"] {
+    background: transparent;
+    box-shadow: none;
+    color: var(--ws-green-dark);
+  }
+  .admin-page .ws-tabbar .ws-count {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 6px);
+    margin: 0;
+  }
+  .admin-page .ws-main h1 {
+    font-size: 20px;
+  }
+  /* 16px: меньший шрифт в поле заставляет iPhone увеличивать страницу. */
+  .admin-page
+    .ws-main
+    :where(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+      select,
+      textarea
+    ) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .admin-page
+    .ws-main
+    :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button) {
+    min-height: 44px;
+  }
+  .admin-page .ws-main .workspace-scroll-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--ws-muted);
+  }
+  .admin-page .ws-drawer {
+    width: 100vw;
+    animation-name: ws-sheet-in;
+  }
+  .admin-page .ws-drawer-head {
+    padding-top: env(safe-area-inset-top);
+    min-height: calc(56px + env(safe-area-inset-top));
+  }
+  .admin-page .ws-drawer-body {
+    padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  .admin-page .ws-facts {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .admin-page .ws-facts dd {
+    margin-bottom: 8px;
+  }
+}
+@keyframes ws-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-page .ws-drawer {
+    animation: none;
+  }
+}
+
+/* Установка приложения живёт внизу меню, а не в шапке: это разовое
+   действие, ему не место рядом с ежедневной работой. */
+.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install > summary {
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--ws-green);
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+}
+.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install > summary::-webkit-details-marker {
+  display: none;
+}
+.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install-panel {
+  position: static;
+  width: auto;
+  margin: 4px 0 8px;
+  padding: 14px;
+  box-shadow: none;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+}
+
+/* Шапка: на компьютере название раздела уже есть в заголовке страницы. */
+@media (min-width: 761px) {
+  .admin-page .ws-topbar-title {
+    display: none;
+  }
+}
+
+/* ---------- Заказы ---------- */
+
+.admin-page .orders-list-heading {
+  margin-bottom: 16px;
+}
+.admin-page .ws-main .orders-search input {
+  flex: 1;
+  max-width: 420px;
+  border-color: var(--ws-line);
+}
+.admin-page .orders-list-page .admin-table tr.clickable {
+  cursor: pointer;
+}
+.admin-page .orders-list-page .admin-table tr.clickable:hover td {
+  background: #faf8f3;
+}
+.admin-page .orders-list-page .admin-table tr[aria-selected="true"] td {
+  background: #f3f0e8;
+}
+.admin-page .orders-list-page .admin-table tr[aria-selected="true"] td:first-child {
+  box-shadow: inset 3px 0 0 var(--ws-green);
+}
+.admin-page .orders-number-link {
+  color: var(--ws-ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+.admin-page .order-drawer-title {
+  margin: 0;
+  font-size: 17px;
+}
+.admin-page .order-drawer-meta {
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  color: var(--ws-muted);
+}
+.admin-page .order-status-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ws-text);
+  font-weight: 550;
+}
+.admin-page .order-status-control select {
+  min-width: 180px;
+}
+.admin-page .order-payment-state {
+  color: #8a3a22;
+  font-weight: 600;
+}
+.admin-page .order-payment-state[data-paid="true"] {
+  color: #25553a;
+}
+.admin-page .order-summary-money {
+  margin-top: 10px;
+}
+.admin-page .order-summary-note {
+  margin: 0;
+  color: var(--ws-text);
+}
+.admin-page .order-customer-comment {
+  white-space: pre-line;
+}
+
+@media (max-width: 760px) {
+  /* Таблица заказов на телефоне — список карточек: горизонтальная
+     прокрутка таблицы пальцем неудобна и прячет сумму и статус. */
+  .admin-page .orders-list-page .workspace-scroll-hint,
+  .admin-page .orders-list-page .admin-table thead {
+    display: none;
+  }
+  .admin-page .orders-list-page .admin-table,
+  .admin-page .orders-list-page .admin-table tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .admin-page .orders-list-page .admin-table tr {
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    border-bottom: 1px solid var(--ws-line-soft);
+  }
+  .admin-page .orders-list-page .admin-table td {
+    padding: 0;
+    border: 0;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(2) {
+    grid-column: 1;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(4) {
+    grid-row: 1;
+    grid-column: 2;
+    text-align: right;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(5) {
+    grid-row: 2;
+    grid-column: 2;
+    text-align: right;
+  }
+  .admin-page .orders-list-page .admin-table td a[href^="mailto"],
+  .admin-page .orders-list-page .admin-table td:nth-child(2) small,
+  .admin-page .orders-list-page .admin-table td:nth-child(3) small:not(.admin-flag) {
+    display: none;
+  }
+  .admin-page .order-status-control {
+    width: 100%;
+  }
+  .admin-page .order-status-control select {
+    flex: 1;
+  }
+}

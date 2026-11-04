@@ -14,71 +14,7 @@
 .admin-order-workspace :is(input, select) {
   caret-color: #244734;
 }
-.order-workspace-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-.order-workspace-title {
-  min-width: 0;
-}
-.order-workspace-title > div {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.admin-page .order-workspace-title h2 {
-  margin: 0;
-  color: #244734;
-  font-family: inherit;
-  font-size: 28px;
-  line-height: 1.25;
-  font-weight: 650;
-  letter-spacing: -0.025em;
-}
-.order-workspace-title > p {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 18px;
-  row-gap: 7px;
-  margin: 11px 0 0;
-  color: var(--order-muted);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.order-workspace-status {
-  display: grid;
-  gap: 7px;
-  max-width: 215px;
-  color: var(--order-muted);
-  font-size: 12px;
-}
-.admin-page .order-workspace-status select {
-  min-height: 42px;
-  padding: 9px 12px;
-  border: 1px solid var(--workspace-line);
-  border-radius: 7px;
-  font: inherit;
-  font-size: 14px;
-  color: #292a24;
-}
-.order-workspace-status small {
-  line-height: 1.4;
-}
-.order-workspace-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 278px;
-  align-items: start;
-  gap: 20px 24px;
-}
-.order-workspace-attention {
-  grid-column: 1;
-  padding: 0;
-  color: #a12f24;
-}
+
 .admin-order-workspace h3 {
   margin: 0;
   color: #2c3e2d;
@@ -87,88 +23,7 @@
   line-height: 1.4;
   font-weight: 650;
 }
-.order-workspace-attention ul {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.order-workspace-attention li strong {
-  color: #a12f24;
-  font-size: 17px;
-  font-weight: 650;
-}
-.order-workspace-attention li p {
-  max-width: 70ch;
-  margin: 4px 0 0;
-  color: #823d32;
-  font-size: 13px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.order-workspace-sidebar {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  min-width: 0;
-  padding: 2px 0 12px 22px;
-  border-left: 1px solid var(--workspace-line);
-}
-.order-workspace-sidebar section {
-  display: grid;
-  gap: 8px;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--workspace-line);
-}
-.order-workspace-sidebar section:first-child {
-  padding-top: 0;
-}
-.order-workspace-sidebar section:last-child {
-  border: 0;
-}
-.order-workspace-sidebar h3 {
-  margin-bottom: 4px;
-  font-size: 13px;
-  color: var(--order-muted);
-  font-weight: 500;
-}
-.order-workspace-sidebar :is(strong, a, p, dd) {
-  min-width: 0;
-  font-size: 14px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-.order-workspace-sidebar a {
-  width: fit-content;
-  color: #244734;
-  text-decoration: underline;
-  text-decoration-color: #a4b4a0;
-  text-underline-offset: 3px;
-}
-.order-workspace-sidebar a:hover {
-  text-decoration-color: #244734;
-}
-.order-workspace-sidebar .order-customer-name {
-  font-size: 16px;
-}
-.order-workspace-sidebar p {
-  margin: 0;
-}
-.order-workspace-sidebar dl {
-  margin: 2px 0 0;
-}
-.order-workspace-sidebar dt {
-  color: var(--order-muted);
-  font-size: 12px;
-}
-.order-workspace-sidebar dd {
-  margin: 3px 0 0;
-  font-variant-numeric: tabular-nums;
-}
-.order-workspace-sidebar .order-customer-request {
-  color: #7c552f;
-  font-size: 12px;
-}
+
 .order-customer-comment {
   white-space: pre-wrap;
 }
@@ -182,46 +37,11 @@
 .order-payment-state[data-paid="true"] {
   color: #345a36;
 }
-.order-workspace-items ul {
-  display: grid;
-  gap: 13px;
-  margin: 0 0 4px;
-  padding: 0;
-  list-style: none;
-}
-.order-workspace-items li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.order-workspace-items li small {
-  display: block;
-  margin-top: 3px;
-  color: var(--order-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.order-workspace-sidebar .order-workspace-items li strong {
-  padding-top: 2px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.order-workspace-sidebar .order-workspace-items a {
-  font-size: 12px;
-}
+
 #order-composition {
   scroll-margin-top: 20px;
 }
-.admin-page .order-workspace-body > .admin-order-editor {
-  grid-column: 1;
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-}
+
 .admin-page .admin-order-workspace .admin-order-editor > .admin-block {
   margin: 0;
   padding: 22px;
@@ -364,33 +184,7 @@
   border-radius: 8px;
   background: #eeece4;
 }
-.order-manual-actions {
-  min-width: 0;
-  padding: 16px 0;
-  border-top: 1px solid var(--workspace-line);
-}
-.order-manual-actions > summary {
-  cursor: pointer;
-  color: #244734;
-  font-size: 14px;
-}
-.order-manual-actions > summary small {
-  display: block;
-  margin: 6px 0 0 18px;
-  color: var(--order-muted);
-  font-size: 12px;
-}
-.order-manual-actions[open] > summary {
-  margin-bottom: 18px;
-}
-.admin-page .admin-order-workspace .order-manual-actions > .admin-block {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
+
 .admin-page .admin-order-workspace .admin-order-packing {
   border-color: #c6d3bd;
   background: #fffef9;
@@ -768,13 +562,6 @@
   margin: 0 0 9px;
 }
 @media (max-width: 1220px) {
-  .order-workspace-body {
-    grid-template-columns: minmax(0, 1fr) 230px;
-    gap: 20px;
-  }
-  .order-workspace-sidebar {
-    padding-left: 16px;
-  }
   .admin-page .admin-order-workspace .admin-order-edit-line {
     grid-template-columns: minmax(0, 1fr) 60px 88px;
   }
@@ -784,51 +571,7 @@
     min-height: 32px;
   }
 }
-@media (max-width: 960px) {
-  .order-workspace-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .order-workspace-sidebar {
-    grid-column: 1;
-    grid-row: 3;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    padding: 18px 0;
-    border-left: 0;
-    border-block: 1px solid var(--workspace-line);
-  }
-  .order-workspace-sidebar section {
-    padding: 0;
-    border: 0;
-    align-content: start;
-  }
-  .admin-page .order-workspace-body > .admin-order-editor {
-    grid-row: 2;
-  }
-}
 @media (max-width: 600px) {
-  .order-workspace-header {
-    display: grid;
-    gap: 18px;
-  }
-  .admin-page .order-workspace-title h2 {
-    font-size: 24px;
-  }
-  .order-workspace-status {
-    max-width: 100%;
-  }
-  .order-workspace-title > p {
-    column-gap: 12px;
-    font-size: 12px;
-  }
-  .order-workspace-attention {
-    padding: 16px;
-  }
-  .order-workspace-sidebar {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-  }
   .admin-page .admin-order-workspace .admin-order-editor > .admin-block {
     padding: 16px;
   }
