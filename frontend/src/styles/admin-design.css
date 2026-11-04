@@ -49,6 +49,14 @@
   --workspace-rust: var(--ws-rust);
   --line: var(--ws-line);
   --green: var(--ws-green);
+  /* Общие переменные сайта (кремовый, бумажный, шалфей) внутри админки
+     тоже нейтральные: ими пользуются старые стили разделов. */
+  --cream: #f3f4f6;
+  --paper: #ffffff;
+  --sage: #9aa0a8;
+  --muted: var(--ws-muted);
+  --ink: var(--ws-ink);
+  --green-dark: var(--ws-green-dark);
   margin: 0;
   min-height: 100vh;
   background: var(--ws-bg);
