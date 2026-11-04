@@ -128,7 +128,7 @@ export default function AdminPage() {
           )}
           {allowed && (
             <>
-              {["products", "categories", "collections"].includes(section) && (
+              {["categories", "collections"].includes(section) && (
                 <nav className="workspace-catalog-nav" aria-label="Каталог">
                   {(
                     [

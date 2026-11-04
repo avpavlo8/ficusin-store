@@ -1946,28 +1946,6 @@
   background: rgba(249, 249, 249, 0.96);
   backdrop-filter: blur(8px);
 }
-.admin-product-link-tabs {
-  display: flex;
-  gap: 8px;
-  margin: 0 0 18px;
-  overflow-x: auto;
-  border-bottom: 1px solid #f2d2a8;
-  padding-bottom: 9px;
-}
-.admin-product-link-tabs button {
-  flex: 0 0 auto;
-  padding: 10px 13px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: #4a4e56;
-  font-weight: 750;
-  cursor: pointer;
-}
-.admin-product-link-tabs button.active {
-  background: #185138;
-  color: #ffffff;
-}
 .admin-product-links-heading {
   margin-bottom: 16px;
 }

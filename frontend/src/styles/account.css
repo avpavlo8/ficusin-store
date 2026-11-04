@@ -632,27 +632,6 @@
   background: #eee9e5;
   color: #766b64;
 }
-.admin-product {
-  min-width: 270px;
-  display: grid;
-  grid-template-columns: 58px 1fr;
-  gap: 12px;
-}
-.admin-product img {
-  width: 58px;
-  height: 65px;
-  object-fit: cover;
-  border-radius: 8px;
-  background: var(--cream);
-}
-.admin-product div {
-  min-width: 0;
-}
-.admin-product a {
-  display: block;
-  color: #68766c;
-  font-size: 11px;
-}
 .review-moderation {
   margin-top: 32px;
 }

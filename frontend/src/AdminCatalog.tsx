@@ -10,6 +10,7 @@ import {
 import type { ProductEditorSection } from "./AdminCatalogDialogs";
 import "./styles/admin-catalog.css";
 import { PageHeading, api, money, statusLabels } from "./adminShared";
+import { WorkspaceMore } from "./WorkspaceUI";
 import { AttributeManager } from "./AdminPim";
 import { CollectionsV2 } from "./AdminCollectionsV2";
 import { AdminProductLinks, type LinkChannel } from "./AdminProductLinks";
@@ -19,7 +20,6 @@ import {
   channelLabels,
   normalizeCatalogQuery,
   readinessFor,
-  readinessLabels,
   rootCategory as findRootCategory,
   type ReadinessCode,
   type RegisterCatalogLeave,
@@ -671,50 +671,118 @@ export function Products({
   };
   const count = (code: ReadinessCode) =>
     scoped.filter((x) => readiness.get(x.id)?.codes.includes(code)).length;
+  const stockOf = (x: Product) => x.totalStock ?? x.stock;
+  const base = { status: "all", stock: "all", quality: "all" };
+  const statusTabs = [
+    {
+      id: "all",
+      label: "Все",
+      filters: base,
+      count: items.length,
+      active: filters.status === "all" && filters.stock === "all" && filters.quality === "all",
+    },
+    {
+      id: "published",
+      label: "На сайте",
+      filters: { ...base, status: "published" },
+      count: items.filter((x) => x.status === "published").length,
+      active:
+        filters.status === "published" && filters.stock === "all" && filters.quality === "all",
+    },
+    {
+      id: "draft",
+      label: "Черновики",
+      filters: { ...base, status: "draft" },
+      count: items.filter((x) => x.status === "draft").length,
+      active: filters.status === "draft" && filters.stock === "all" && filters.quality === "all",
+    },
+    {
+      id: "attention",
+      label: "Нужно доделать",
+      filters: { ...base, quality: "attention" },
+      count: items.filter((x) => readiness.get(x.id)?.tasks.length).length,
+      active: filters.quality === "attention",
+    },
+    {
+      id: "stock",
+      label: "Нет в наличии",
+      filters: { ...base, stock: "nonpositive" },
+      count: items.filter((x) => stockOf(x) <= 0).length,
+      active: filters.stock === "nonpositive",
+    },
+    {
+      id: "archived",
+      label: "Архив",
+      filters: { ...base, status: "archived" },
+      count: items.filter((x) => x.status === "archived").length,
+      active: filters.status === "archived",
+    },
+  ];
+  // Фильтры из панели: раздел, категория, сортировка и «что доделать».
+  const appliedFilters =
+    (["root", "category", "sort"] as const).filter((k) => filters[k] !== defaultFilters[k]).length +
+    (filters.quality !== "all" && filters.quality !== "attention" ? 1 : 0);
   return (
     <div className="catalog-workspace">
       <div className="catalog-page-heading">
-        {/* Связи с каналами нужны редко и в основном владельцу, поэтому они
-          спрятаны за одну вкладку: по умолчанию сотрудник видит только
-          «Карточки» и «Отзывы», а не шесть равноправных вкладок. */}
-        <nav className="admin-product-link-tabs" aria-label="Что показать">
-          {(
-            [
-              { id: "catalog", label: "Карточки" },
-              { id: "reviews", label: "Отзывы" },
-              { id: "saby", label: "Связи с каналами" },
-            ] as const
-          ).map((x) => {
-            const active =
-              x.id === "saby" ? ["saby", "wb", "ozon", "avito"].includes(view) : view === x.id;
-            return (
-              <button
-                type="button"
-                key={x.id}
-                aria-current={active ? "page" : undefined}
-                className={active ? "active" : ""}
-                onClick={() => {
-                  if (active) return;
-                  setView(x.id);
-                  setSelected([]);
-                  setConfirmation(null);
-                }}
-              >
-                {x.label}
+        <h1>
+          {view === "catalog"
+            ? "Список товаров"
+            : view === "reviews"
+              ? "Отзывы"
+              : "Связи с каналами"}
+        </h1>
+        <div>
+          {view !== "catalog" && (
+            <button
+              type="button"
+              className="admin-action"
+              onClick={() => {
+                setView("catalog");
+                setSelected([]);
+                setConfirmation(null);
+              }}
+            >
+              К списку товаров
+            </button>
+          )}
+          {view === "catalog" && can("products.manage") && (
+            <>
+              <button type="button" className="admin-action" onClick={() => setImporting(true)}>
+                Импорт из СБИС
               </button>
-            );
-          })}
-        </nav>
-        {can("products.manage") && (
-          <div>
-            <button type="button" className="admin-action" onClick={() => setImporting(true)}>
-              Импорт из СБИС
+              <button type="button" className="admin-primary" onClick={() => setCreating(true)}>
+                Добавить товар
+              </button>
+            </>
+          )}
+          {/* Редкие разделы каталога — в «Ещё», чтобы над списком не было
+            трёх этажей вкладок. */}
+          <WorkspaceMore>
+            <button
+              type="button"
+              onClick={() => {
+                setView("reviews");
+                setSelected([]);
+                setConfirmation(null);
+              }}
+            >
+              Отзывы
             </button>
-            <button type="button" className="admin-primary" onClick={() => setCreating(true)}>
-              Добавить товар
+            <button
+              type="button"
+              onClick={() => {
+                setView("saby");
+                setSelected([]);
+                setConfirmation(null);
+              }}
+            >
+              Связи с каналами
             </button>
-          </div>
-        )}
+            <a href="/admin?section=categories">Категории</a>
+            <a href="/admin?section=collections">Подборки</a>
+          </WorkspaceMore>
+        </div>
       </div>
       {["saby", "wb", "ozon", "avito"].includes(view) && (
         <nav className="catalog-channel-switch" aria-label="Канал">
@@ -740,190 +808,129 @@ export function Products({
       )}
       {view === "catalog" ? (
         <>
-          <div className="catalog-toolbar-search">
-            <input
-              aria-label="Поиск товаров"
-              value={filters.q}
-              placeholder="Название, артикул или внешний код"
-              onChange={(e) => changeFilters({ q: e.target.value })}
-            />
-            {filters.q && (
+          <nav className="catalog-status-tabs" aria-label="Состояние товаров">
+            {statusTabs.map((tab) => (
               <button
                 type="button"
-                className="text-button"
-                onClick={() => changeFilters({ q: "" })}
+                key={tab.id}
+                aria-current={tab.active ? "page" : undefined}
+                onClick={() => changeFilters(tab.filters)}
               >
-                Очистить поиск
-              </button>
-            )}
-          </div>
-          <nav className="catalog-work-views" aria-label="Рабочие списки">
-            <button
-              className={filters.status === "all" && filters.quality === "all" ? "active" : ""}
-              onClick={() => changeFilters({ status: "all", quality: "all" })}
-            >
-              Все товары · {items.length}
-            </button>
-            <button
-              className={filters.status === "draft" ? "active" : ""}
-              onClick={() => changeFilters({ status: "draft", quality: "all" })}
-            >
-              Черновики · {items.filter((x) => x.status === "draft").length}
-            </button>
-            <button
-              className={filters.quality === "attention" ? "active" : ""}
-              onClick={() => changeFilters({ quality: "attention" })}
-            >
-              Требуют внимания
-            </button>
-            <button
-              className={filters.status === "archived" ? "active" : ""}
-              onClick={() => changeFilters({ status: "archived", quality: "all" })}
-            >
-              Архив
-            </button>
-          </nav>
-          <details className="catalog-filters" open={undefined}>
-            <summary>
-              Фильтры
-              {Object.entries(filters).filter(
-                ([k, v]) =>
-                  !["q", "sort", "page", "size"].includes(k) &&
-                  v !== defaultFilters[k as keyof CatalogFilters],
-              ).length > 0
-                ? " · применены"
-                : ""}
-            </summary>
-            <div className="catalog-filter-fields">
-              <label>
-                Раздел
-                <select
-                  aria-label="Раздел каталога"
-                  value={filters.root}
-                  onChange={(e) => changeFilters({ root: e.target.value, category: "all" })}
-                >
-                  <option value="all">Все разделы</option>
-                  {categories
-                    .filter((x) => x.parentId === null)
-                    .sort((a, b) => a.sortOrder - b.sortOrder)
-                    .map((x) => (
-                      <option value={x.id} key={x.id}>
-                        {x.name}
-                      </option>
-                    ))}
-                  <option value="none">Без категории</option>
-                </select>
-              </label>
-              <label>
-                Категория
-                <select
-                  aria-label="Подкатегория"
-                  disabled={filters.root === "none"}
-                  value={filters.category}
-                  onChange={(e) => changeFilters({ category: e.target.value })}
-                >
-                  <option value="all">Все категории</option>
-                  {orderCategoryTree(categories)
-                    .filter(
-                      ({ item }) =>
-                        filters.root === "all" ||
-                        String(findRootCategory(categories, item.id)?.id) === filters.root,
-                    )
-                    .map(({ item }) => (
-                      <option key={item.id} value={item.id}>
-                        {categoryPath(categories, item.id)}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Статус
-                <select
-                  aria-label="Статус карточки"
-                  value={filters.status}
-                  onChange={(e) => changeFilters({ status: e.target.value })}
-                >
-                  <option value="all">Все статусы</option>
-                  <option value="draft">Черновик</option>
-                  <option value="published">Опубликован</option>
-                  <option value="archived">Архив</option>
-                </select>
-              </label>
-              <label>
-                Наличие
-                <select
-                  aria-label="Остаток"
-                  value={filters.stock}
-                  onChange={(e) => changeFilters({ stock: e.target.value })}
-                >
-                  <option value="all">Любое наличие</option>
-                  <option value="positive">Есть в наличии</option>
-                  <option value="nonpositive">Нет в наличии</option>
-                </select>
-              </label>
-              <label>
-                Требует внимания
-                <select
-                  aria-label="Готовность"
-                  value={filters.quality}
-                  onChange={(e) => changeFilters({ quality: e.target.value })}
-                >
-                  <option value="all">Без ограничений</option>
-                  <option value="attention">Любые замечания</option>
-                  {Object.entries(readinessLabels)
-                    .filter(([k]) => !["draft", "published"].includes(k))
-                    .map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-          </details>
-          <div className="admin-readiness-counters">
-            {(
-              [
-                { code: "no_photo", label: "Без фото" },
-                { code: "no_description", label: "Без описания" },
-                { code: "stage1_missing", label: "Характеристики" },
-                { code: "care_missing", label: "Без ухода" },
-                { code: "ready", label: "Черновики без замечаний" },
-              ] as const
-            ).map((x) => (
-              <button
-                type="button"
-                aria-pressed={filters.quality === x.code}
-                key={x.code}
-                onClick={() =>
-                  changeFilters({ quality: filters.quality === x.code ? "all" : x.code })
-                }
-              >
-                {x.label} <b>{count(x.code)}</b>
+                {tab.label} <span>{tab.count}</span>
               </button>
             ))}
-          </div>
-          <div className="catalog-list-controls">
-            <span>{filtered.length} товаров</span>
-            <div>
-              <label>
-                Сортировка
-                <select
-                  aria-label="Сортировка"
-                  value={filters.sort}
-                  onChange={(e) => changeFilters({ sort: e.target.value })}
-                >
-                  <option value="updated">Последние изменения</option>
-                  <option value="name">По названию</option>
-                  <option value="price">По цене ↑</option>
-                  <option value="stock">По остатку ↓</option>
-                  <option value="tasks">Сначала с замечаниями</option>
-                </select>
-              </label>
+          </nav>
+          <div className="catalog-toolbar-search">
+            <label>
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input
+                aria-label="Поиск товаров"
+                value={filters.q}
+                placeholder="Название, артикул, код СБИС"
+                onChange={(e) => changeFilters({ q: e.target.value })}
+              />
+            </label>
+            <details className="catalog-filters">
+              <summary>Фильтры{appliedFilters > 0 ? ` · ${appliedFilters}` : ""}</summary>
+              <div className="catalog-filters-panel">
+                <div className="catalog-filter-fields">
+                  <label>
+                    Раздел
+                    <select
+                      aria-label="Раздел каталога"
+                      value={filters.root}
+                      onChange={(e) => changeFilters({ root: e.target.value, category: "all" })}
+                    >
+                      <option value="all">Все разделы</option>
+                      {categories
+                        .filter((x) => x.parentId === null)
+                        .sort((a, b) => a.sortOrder - b.sortOrder)
+                        .map((x) => (
+                          <option value={x.id} key={x.id}>
+                            {x.name}
+                          </option>
+                        ))}
+                      <option value="none">Без категории</option>
+                    </select>
+                  </label>
+                  <label>
+                    Категория
+                    <select
+                      aria-label="Подкатегория"
+                      disabled={filters.root === "none"}
+                      value={filters.category}
+                      onChange={(e) => changeFilters({ category: e.target.value })}
+                    >
+                      <option value="all">Все категории</option>
+                      {orderCategoryTree(categories)
+                        .filter(
+                          ({ item }) =>
+                            filters.root === "all" ||
+                            String(findRootCategory(categories, item.id)?.id) === filters.root,
+                        )
+                        .map(({ item }) => (
+                          <option key={item.id} value={item.id}>
+                            {categoryPath(categories, item.id)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    Сортировка
+                    <select
+                      aria-label="Сортировка"
+                      value={filters.sort}
+                      onChange={(e) => changeFilters({ sort: e.target.value })}
+                    >
+                      <option value="updated">Последние изменения</option>
+                      <option value="name">По названию</option>
+                      <option value="price">По цене ↑</option>
+                      <option value="stock">По остатку ↓</option>
+                      <option value="tasks">Сначала с замечаниями</option>
+                    </select>
+                  </label>
+                </div>
+                <span className="catalog-filters-caption">Что доделать в карточке</span>
+                <div className="admin-readiness-counters">
+                  {(
+                    [
+                      { code: "no_photo", label: "Без фото" },
+                      { code: "no_description", label: "Без описания" },
+                      { code: "stage1_missing", label: "Характеристики" },
+                      { code: "care_missing", label: "Без ухода" },
+                      { code: "ready", label: "Черновики без замечаний" },
+                    ] as const
+                  ).map((x) => (
+                    <button
+                      type="button"
+                      aria-pressed={filters.quality === x.code}
+                      key={x.code}
+                      onClick={() =>
+                        changeFilters({ quality: filters.quality === x.code ? "all" : x.code })
+                      }
+                    >
+                      {x.label} <b>{count(x.code)}</b>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </details>
+            {(appliedFilters > 0 || filters.q) && (
               <button type="button" className="text-button" onClick={reset}>
                 Сбросить фильтры
               </button>
-            </div>
+            )}
           </div>
           {selectedProducts.length > 0 && (
             <section className="catalog-selection" aria-label="Выбранные товары">
@@ -1075,11 +1082,15 @@ export function Products({
                           }}
                         />
                       </th>
-                      <th>Товар и размеры</th>
-                      <th>Цена / наличие</th>
-                      <th>На сайте</th>
-                      <th>Требует внимания</th>
-                      <th>Каналы и склад</th>
+                      <th>Фото</th>
+                      <th>Товар</th>
+                      <th>Статус</th>
+                      <th>Цена</th>
+                      <th>В наличии</th>
+                      <th>Каналы</th>
+                      <th>
+                        <span className="chat-sr-only">Действия</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1105,109 +1116,121 @@ export function Products({
                               }}
                             />
                           </td>
-                          <td className="catalog-product-cell">
-                            <div className="admin-product">
-                              {product.image ? (
-                                <img loading="lazy" src={product.image} alt="" />
-                              ) : (
-                                <span className="catalog-photo-empty">Нет фото</span>
-                              )}
-                              <div>
-                                {can("products.edit") ? (
-                                  <a
-                                    className="catalog-product-name"
-                                    href={catalogURL({ product: String(product.id), tab: "main" })}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      open(product.id);
-                                    }}
-                                  >
-                                    {product.name}
-                                  </a>
-                                ) : (
-                                  <strong>{product.name}</strong>
-                                )}
-                                <small>
-                                  Артикул {product.sku} ·{" "}
-                                  {product.variantCount && product.variantCount > 1
-                                    ? `${product.variantCount} размеров`
-                                    : product.variantLabel}
-                                </small>
-                                {product.status === "published" && (
-                                  <a
-                                    href={`/product/${product.productCode || product.slug}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    На сайте ↗
-                                  </a>
-                                )}
-                              </div>
-                            </div>
+                          <td className="catalog-photo-cell">
+                            {product.image ? (
+                              <img loading="lazy" src={product.image} alt="" />
+                            ) : (
+                              <span className="catalog-photo-empty" aria-label="Нет фото" />
+                            )}
                           </td>
-                          <td data-label="Цена / наличие">
-                            <strong>
-                              {product.minPrice !== undefined &&
-                              product.maxPrice !== undefined &&
-                              product.maxPrice > product.minPrice
-                                ? `${money.format(product.minPrice)}–${money.format(product.maxPrice)}`
-                                : money.format(product.minPrice ?? product.price)}
-                            </strong>
+                          <td className="catalog-product-cell">
+                            {can("products.edit") ? (
+                              <a
+                                className="catalog-product-name"
+                                href={catalogURL({ product: String(product.id), tab: "main" })}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  open(product.id);
+                                }}
+                              >
+                                {product.name}
+                              </a>
+                            ) : (
+                              <strong className="catalog-product-name">{product.name}</strong>
+                            )}
                             <small>
-                              {(product.totalStock ?? product.stock) > 0
-                                ? `${product.totalStock ?? product.stock} шт. в наличии`
-                                : "Нет в наличии"}
+                              Артикул {product.sku} ·{" "}
                               {product.variantCount && product.variantCount > 1
-                                ? " · все активные размеры"
-                                : ""}
+                                ? `${product.variantCount} размеров`
+                                : product.variantLabel}
                             </small>
+                            {tasks.length > 0 && (
+                              <button
+                                type="button"
+                                className="catalog-task"
+                                disabled={!can("products.edit")}
+                                onClick={() => open(product.id, tasks[0].section)}
+                              >
+                                {tasks[0].label}
+                                {tasks.length > 1 ? ` и ещё ${tasks.length - 1}` : ""}
+                              </button>
+                            )}
                           </td>
                           <td data-label="Статус">
                             <span className={`admin-pill ${product.status}`}>
                               {statusLabels[product.status] || product.status}
                             </span>
                           </td>
-                          <td className="catalog-task-cell" data-label="Требует внимания">
-                            {tasks.length ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="catalog-task"
-                                  disabled={!can("products.edit")}
-                                  onClick={() => open(product.id, tasks[0].section)}
-                                >
-                                  {tasks[0].label} →
-                                </button>
-                                {tasks.length > 1 && (
-                                  <details>
-                                    <summary>Ещё {tasks.length - 1}</summary>
-                                    {tasks.slice(1).map((task, index) => (
-                                      <button
-                                        type="button"
-                                        className="catalog-task"
-                                        key={index}
-                                        onClick={() => open(product.id, task.section)}
-                                      >
-                                        {task.label} →
-                                      </button>
-                                    ))}
-                                  </details>
-                                )}
-                              </>
-                            ) : null}
+                          <td data-label="Цена" className="catalog-price-cell">
+                            {product.minPrice !== undefined &&
+                            product.maxPrice !== undefined &&
+                            product.maxPrice > product.minPrice
+                              ? `${money.format(product.minPrice)}–${money.format(product.maxPrice)}`
+                              : money.format(product.minPrice ?? product.price)}
                           </td>
-                          <td data-label="Каналы и склад">
-                            <span>
-                              {[
-                                ...new Set(
-                                  (product.externalIds || [])
-                                    .map((x) => x.provider)
-                                    .filter((x) => x !== "ficusin"),
-                                ),
-                              ]
-                                .map((x) => channelLabels[x] || "Другая система")
-                                .join(" · ") || "Связей нет"}
-                            </span>
+                          <td
+                            data-label="В наличии"
+                            data-empty={(product.totalStock ?? product.stock) <= 0 || undefined}
+                          >
+                            {(product.totalStock ?? product.stock) > 0
+                              ? `${product.totalStock ?? product.stock} шт.`
+                              : "0 шт."}
+                          </td>
+                          <td data-label="Каналы" className="catalog-channels-cell">
+                            {[
+                              ...new Set(
+                                (product.externalIds || [])
+                                  .map((x) => x.provider)
+                                  .filter((x) => x !== "ficusin"),
+                              ),
+                            ]
+                              .map((x) => channelLabels[x] || "Другая система")
+                              .join(", ") || "—"}
+                          </td>
+                          <td className="catalog-actions-cell">
+                            {can("products.edit") && (
+                              <button
+                                type="button"
+                                className="catalog-icon-button"
+                                aria-label={`Изменить ${product.name}`}
+                                title="Изменить"
+                                onClick={() => open(product.id)}
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  width="16"
+                                  height="16"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M4 20h4L19 9l-4-4L4 16z" />
+                                </svg>
+                              </button>
+                            )}
+                            {product.status === "published" && (
+                              <a
+                                className="catalog-icon-button"
+                                href={`/product/${product.productCode || product.slug}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label="На сайте ↗"
+                                title="Открыть на сайте"
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  width="16"
+                                  height="16"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+                                </svg>
+                              </a>
+                            )}
                           </td>
                         </tr>
                       );
