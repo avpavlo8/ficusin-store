@@ -40,7 +40,7 @@ try {
    expect((await api.patch(`/api/v1/admin/procurement/order-lines/${purchaseLine.id}`,{data:{invoiceLineIds:[purchaseLine.id]}})).status()).toBe(403);
    expect((await api.post(`/api/v1/admin/procurement/orders/${purchase.id}/batches`,{data:{kind:'receipt'}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/procurement/orders/${purchase.id}/status`,{data:{status:'cancelled'}})).status()).toBe(403);
-   for(const path of ['/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/finance/pnl?from=2026-09-01&to=2026-09-30','/api/v1/admin/finance/supplier-account','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
+   for(const path of ['/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
    for(const body of [{name:'Forbidden',priceMinor:1},{name:'Forbidden',stock:null},{name:'Forbidden',externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:body})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',priceMinor:1}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',attributes:{external_price:1}}})).status()).toBe(403);

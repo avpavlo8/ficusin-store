@@ -28,9 +28,7 @@ export function AdminReturns({
   can,
   onError,
   registerBeforeLeave,
-  canFinance = false,
 }: {
-  canFinance?: boolean;
   can: (permission: string) => boolean;
   onError: (message: string) => void;
   registerBeforeLeave?: (flush: () => Promise<boolean>) => () => void;
@@ -703,7 +701,6 @@ export function AdminReturns({
                 <ReturnDetails
                   key={selected.id}
                   item={selected}
-                  canFinance={canFinance}
                   canEdit={can("returns.edit")}
                   canReceipt={can("returns.receipt.create")}
                   onSaved={saved}

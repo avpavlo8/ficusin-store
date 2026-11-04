@@ -45,8 +45,6 @@ func guardAdminPages(handlers adminHandlers, next http.Handler) http.Handler {
 			permission = admin.PermissionIntegrationsEdit
 		case "settings":
 			permission = admin.PermissionIntegrationsEdit
-		case "finance":
-			permission = admin.PermissionFinanceRead
 		case "customers":
 			permission = admin.PermissionCustomersRead
 		case "orders":

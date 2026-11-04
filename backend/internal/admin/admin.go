@@ -38,8 +38,6 @@ const (
 	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
 	PermissionAnalyticsRead    = "analytics.read"
-	PermissionFinanceRead      = "finance.read"
-	PermissionFinanceEdit      = "finance.edit"
 )
 
 var ErrForbidden = errors.New("admin action is forbidden")

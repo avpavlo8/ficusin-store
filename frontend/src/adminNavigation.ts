@@ -11,7 +11,6 @@ export const sections: Array<{ id: Section; label: string; permission?: string; 
     { id: "returns", label: "Возвраты", permission: "returns.read" },
     { id: "marketplaces", label: "Маркетплейсы", permission: "integrations.edit" },
     { id: "avito", label: "Авито", permission: "integrations.edit" },
-    { id: "finance", label: "Финансы", owner: true },
     { id: "analytics", label: "Аналитика", permission: "analytics.read" },
     { id: "customers", label: "Клиенты", permission: "customers.read" },
     { id: "settings", label: "Настройки", owner: true },

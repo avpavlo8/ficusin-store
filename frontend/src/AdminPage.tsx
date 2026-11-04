@@ -21,9 +21,6 @@ const AdminMarketplaces = lazy(() =>
 const AdminReturns = lazy(() =>
   import("./AdminReturns").then((module) => ({ default: module.AdminReturns })),
 );
-const AdminFinance = lazy(() =>
-  import("./AdminFinance").then((module) => ({ default: module.AdminFinance })),
-);
 const AdminAvito = lazy(() =>
   import("./AdminAvito").then((module) => ({ default: module.AdminAvito })),
 );
@@ -187,16 +184,10 @@ export default function AdminPage() {
                     fallback={<WorkspaceState kind="loading" title="Загружаем возвраты…" />}
                   >
                     <AdminReturns
-                      canFinance={data.role === "owner"}
                       can={can}
                       onError={setError}
                       registerBeforeLeave={registerBeforeLeave}
                     />
-                  </Suspense>
-                )}
-                {section === "finance" && (
-                  <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем финансы…" />}>
-                    <AdminFinance onError={setError} />
                   </Suspense>
                 )}
                 {section === "marketplaces" && (

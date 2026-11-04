@@ -15,7 +15,6 @@ func TestRolePermissions(t *testing.T) {
 		{name: "owner can edit integrations", role: RoleOwner, permission: PermissionIntegrationsEdit, want: true},
 		{name: "administrator can edit procurement", role: RoleAdministrator, permission: PermissionProcurementEdit, want: true},
 		{name: "administrator cannot edit roles", role: RoleAdministrator, permission: PermissionRolesEdit, want: false},
-		{name: "administrator cannot access finance", role: RoleAdministrator, permission: PermissionFinanceRead, want: false},
 		{name: "administrator cannot edit integrations", role: RoleAdministrator, permission: PermissionIntegrationsEdit, want: false},
 		{name: "administrator can delete returns", role: RoleAdministrator, permission: PermissionReturnsDelete, want: true},
 		{name: "manager cannot delete returns", role: RoleManager, permission: PermissionReturnsDelete, want: false},

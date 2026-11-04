@@ -11,7 +11,6 @@ export function ReturnDetails({
   item,
   canEdit,
   canReceipt,
-  canFinance = false,
   onSaved,
   onSell,
   onDocument,
@@ -19,7 +18,6 @@ export function ReturnDetails({
   registerFlush,
 }: {
   item: MarketplaceReturn;
-  canFinance?: boolean;
   canEdit: boolean;
   canReceipt: boolean;
   onSaved: (item: MarketplaceReturn) => void;
@@ -451,14 +449,7 @@ export function ReturnDetails({
         {item.financialStatus !== "linked" && (
           <p>
             Возврат принят без привязки к исходной продаже.{" "}
-            {canFinance ? (
-              <>
-                Для проверки финансовых показателей перейдите в{" "}
-                <a href="/admin?section=finance">«Финансы»</a>.
-              </>
-            ) : (
-              "Для проверки финансовых показателей передайте владельцу RET-артикул экземпляра. Раздел финансов доступен владельцу."
-            )}
+            Чтобы сверить деньги, найдите исходную продажу по RET-артикулу экземпляра.
           </p>
         )}
         {item.channelComment && <p>{item.channelComment}</p>}
