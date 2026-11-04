@@ -24,12 +24,16 @@ test('@desktop @phone admin has independent app identity, install help and store
   expect(admin.icons[0].src).not.toBe(store.icons[0].src);
   expect(admin.shortcuts.map((item: {url: string}) => item.url)).toEqual(['/admin?section=orders', '/admin?section=procurement', '/admin?section=products']);
   for (const icon of admin.icons) expect((await request.get(icon.src)).ok()).toBeTruthy();
-  await page.locator('.admin-app-install summary').click();
-  await expect(page.locator('.admin-app-install-panel')).toBeVisible();
-  await expect(page.locator('.admin-app-install-panel')).toContainText('Фикусин — управление');
+  // Установка — внизу меню: на телефоне в листе «Ещё», на компьютере в боковой панели.
+  const phone = (page.viewportSize()?.width ?? 1280) <= 760;
+  if (phone) await page.getByRole('button', { name: 'Ещё', exact: true }).click();
+  const menu = page.locator(phone ? '.ws-more' : '.ws-sidebar');
+  await menu.locator('.admin-app-install summary').click();
+  await expect(menu.locator('.admin-app-install-panel')).toBeVisible();
+  await expect(menu.locator('.admin-app-install-panel')).toContainText('Фикусин — управление');
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
-  await page.locator('.admin-app-install summary').click();
-  await page.getByRole('link', { name: 'Магазин ↗' }).click();
+  await menu.locator('.admin-app-install summary').click();
+  await menu.getByRole('link', { name: 'Открыть магазин' }).click();
   await expect(page).toHaveURL('/');
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest?v=app-logo-v2');
 });
@@ -42,8 +46,8 @@ test('@desktop install prompt is captured before the lazy admin workspace opens'
     Object.assign(event, { prompt: async () => { (window as unknown as { prompted: boolean }).prompted = true; }, userChoice: Promise.resolve({outcome: 'accepted'}) });
     window.dispatchEvent(event);
   });
-  await page.locator('.admin-app-install summary').click();
-  await page.getByRole('button', {name: 'Установить', exact: true}).click();
+  await page.locator('.ws-sidebar .admin-app-install summary').click();
+  await page.locator('.ws-sidebar').getByRole('button', {name: 'Установить', exact: true}).click();
   await expect(page.locator('.admin-app-install')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as {prompted: boolean}).prompted)).toBe(true);
 });

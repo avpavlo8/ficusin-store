@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   clearAdminInstallPrompt,
   getAdminInstallPrompt,
@@ -11,6 +11,17 @@ export function AdminAppInstall() {
   const [installed, setInstalled] = useState(isStandalone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Предложение установки показано в двух местах (боковое меню и «Ещё»),
+  // поэтому об установке сообщаем всем экземплярам сразу.
+  useEffect(() => {
+    const hide = () => setInstalled(true);
+    window.addEventListener("admin:installed", hide);
+    window.addEventListener("appinstalled", hide);
+    return () => {
+      window.removeEventListener("admin:installed", hide);
+      window.removeEventListener("appinstalled", hide);
+    };
+  }, []);
   const install = async () => {
     if (!prompt) return;
     setBusy(true);
@@ -18,7 +29,7 @@ export function AdminAppInstall() {
     try {
       await prompt.prompt();
       const choice = await prompt.userChoice;
-      if (choice.outcome === "accepted") setInstalled(true);
+      if (choice.outcome === "accepted") window.dispatchEvent(new Event("admin:installed"));
       clearAdminInstallPrompt();
     } catch {
       setError("Не удалось открыть установку. Попробуйте через меню браузера.");

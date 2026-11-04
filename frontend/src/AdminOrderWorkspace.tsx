@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AdminOrderEditor, type OrderReviewState, type OrderView } from "./AdminOrderEditor";
 import { orderStatuses, paymentLabels, paymentMethodLabels, statusLabels } from "./adminShared";
 import type { Order } from "./adminTypes";
@@ -39,7 +39,21 @@ export function AdminOrderWorkspace({
   const [review, setReview] = useState<OrderReviewState | null>(null);
   const [dirty, setDirty] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
-  const [view, setView] = useState<OrderView>("summary");
+  // Режим правки живёт в адресе (&edit=items): кнопка «Назад» на телефоне
+  // возвращает к просмотру заказа, а ссылку на нужный блок можно переслать.
+  const [view, setViewState] = useState<OrderView>(readOrderView);
+  const setView = (next: OrderView) => {
+    const url = new URL(window.location.href);
+    if (next === "summary") url.searchParams.delete("edit");
+    else url.searchParams.set("edit", next);
+    window.history.pushState(null, "", url);
+    setViewState(next);
+  };
+  useEffect(() => {
+    const sync = () => setViewState(readOrderView());
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
   const closed = ["cancelled", "completed"].includes(order.status);
   const reasons = useMemo(() => {
     const result: Array<{ title: string; text: string; view?: OrderView }> = [];
@@ -243,29 +257,31 @@ export function AdminOrderWorkspace({
             </div>
             {changingStatus && <p role="status">Обновляем статус…</p>}
             {reasons.length > 0 && (
-              <ul className="ws-todo" aria-label="Что нужно сделать">
-                {reasons.map((reason) => (
-                  <li key={reason.title}>
-                    <span>
-                      <strong>{reason.title}</strong>
-                      {[
-                        "Проверить отправление СДЭК",
-                        "СДЭК ожидает повторной попытки",
-                        "Уточнить результат оплаты",
-                      ].includes(reason.title) && <p>{reason.text}</p>}
-                    </span>
-                    {reason.view && (
-                      <button
-                        type="button"
-                        className="ws-button"
-                        onClick={() => setView(reason.view!)}
-                      >
-                        Сделать
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <section aria-label="Что нужно сделать">
+                <ul className="ws-todo">
+                  {reasons.map((reason) => (
+                    <li key={reason.title}>
+                      <span>
+                        <strong>{reason.title}</strong>
+                        {[
+                          "Проверить отправление СДЭК",
+                          "СДЭК ожидает повторной попытки",
+                          "Уточнить результат оплаты",
+                        ].includes(reason.title) && <p>{reason.text}</p>}
+                      </span>
+                      {reason.view && (
+                        <button
+                          type="button"
+                          className="ws-button"
+                          onClick={() => setView(reason.view!)}
+                        >
+                          Сделать
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </>
         )}
@@ -292,4 +308,10 @@ function statusTone(status: string) {
   if (["paid", "confirmed", "completed"].includes(status)) return "ok";
   if (["assembling", "packed", "processing", "shipped"].includes(status)) return "progress";
   return undefined;
+}
+
+const orderViews: OrderView[] = ["summary", "items", "delivery", "payment", "shipments"];
+function readOrderView(): OrderView {
+  const value = new URLSearchParams(window.location.search).get("edit") as OrderView | null;
+  return value && orderViews.includes(value) ? value : "summary";
 }

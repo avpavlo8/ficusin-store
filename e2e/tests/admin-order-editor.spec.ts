@@ -211,6 +211,9 @@ test("@desktop скидка в рублях и процентах сохраня
  await expect(editor.getByText("Стоимость доставки вручную",{exact:true})).toHaveCount(0);
  await expect(editor.getByText("Частичные отправки",{exact:true})).toHaveCount(0);
  await expect(editor.getByText("Оплата и возвраты",{exact:true})).toHaveCount(0);
+ // Просмотр без полей ввода; правка состава — отдельным режимом.
+ await expect(editor.getByRole("textbox")).toHaveCount(0);
+ await page.getByRole("region",{name:"Состав"}).getByRole("button",{name:"Изменить",exact:true}).click();
  await editor.getByRole("combobox",{name:"Добавить товар в заказ"}).fill("1003");
  await editor.getByRole("option",{name:/Аглаонема/}).click();
  await editor.getByRole("button",{name:"Добавить",exact:true}).click();
@@ -220,8 +223,9 @@ test("@desktop скидка в рублях и процентах сохраня
  await editor.getByRole("textbox",{name:"Скидка на заказ"}).fill("10");
  await expect(editor.locator(".admin-order-draft-total")).toContainText(/2.?673/);
  await editor.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
- await expect(editor.getByRole("textbox",{name:"Скидка на заказ"})).toHaveValue("10");
- await expect(editor.locator(".admin-order-draft-total")).toContainText(/2.?673/);
+ // После сохранения окно возвращается к просмотру с новым итогом.
+ await expect(page).not.toHaveURL(/edit=/);
+ await expect(page.getByRole("region",{name:"Состав"})).toContainText(/Скидка/);
  expect(await state.savedEdit()).toMatchObject({discount:{type:"percent",value:10}});
  expect(await state.savedEdit()).not.toHaveProperty("deliveryFee");
  expect(await state.paymentLinkCalls()).toBe(0);
@@ -230,12 +234,12 @@ test("@desktop скидка в рублях и процентах сохраня
 test("@desktop админка объясняет остановку оплаченных отправок из-за остатка", async ({ page }) => {
   await mockOrderEditor(page, true);
   await page.goto("/admin");
-  await page.getByRole("button", { name: "Заказы", exact: true }).click();
+  await page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link", { name: "Заказы", exact: true }).click();
   await page.getByRole("link", { name: "0001-30", exact: true }).click();
 
   const editor = page.locator(".admin-order-editor");
-  await expect(page.getByRole("region", { name: "Почему требуется менеджер" })).toContainText("остатка растений недостаточно");
-  await editor.locator("summary").filter({ hasText: "Отправления" }).click();
+  await expect(page.getByRole("region", { name: "Что нужно сделать" })).toContainText("остатка растений недостаточно");
+  await editor.getByRole("button", { name: /^Открыть ·/ }).click();
   await expect(editor.getByText(/Отправка №73 оплачена, но остатка растений недостаточно/)).toBeVisible();
   await expect(editor.getByText(/Проверьте заказ 0001-30 в кабинете СДЭК/)).toHaveCount(0);
 });
@@ -244,7 +248,7 @@ test("@desktop известные размеры не подменяют неи�
   await mockOrderEditor(page, false, undefined, true);
   await page.goto("/admin?section=orders&order=30");
   await expect(page.locator(".admin-order-editor")).toBeVisible();
-  const reasons = page.getByRole("region", { name: "Почему требуется менеджер" });
+  const reasons = page.getByRole("region", { name: "Что нужно сделать" });
   await expect(reasons).toContainText("Рассчитать доставку");
   await expect(reasons).not.toContainText("Заполните размеры коробки");
   await expect(reasons).not.toContainText("Подтвердить наличие растений");
@@ -252,18 +256,19 @@ test("@desktop известные размеры не подменяют неи�
 
 test("@desktop несохранённый состав защищён при возврате к списку заказов", async ({ page }) => {
   const state = await mockOrderEditor(page);
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=items");
   const quantity = page.getByRole("textbox", { name: "Количество Азалия D9", exact: true });
   await quantity.fill("2");
-  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toBeDisabled();
+  // В режиме правки статус не показывается: менять его можно только из просмотра.
+  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveCount(0);
 
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("link", { name: "К заказам", exact: true }).click();
+  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
   await expect(quantity).toHaveValue("2");
   await expect(page).toHaveURL(/order=30/);
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("link", { name: "К заказам", exact: true }).click();
+  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
   await expect(page.getByRole("link", { name: "0001-30", exact: true })).toBeVisible();
   expect(await state.savedEdit()).toBeUndefined();
   expect(await state.paymentLinkCalls()).toBe(0);
@@ -292,7 +297,11 @@ test("@desktop упаковка регистрируется один раз и 
   const state = await mockOrderEditor(page, false, "success");
   await page.clock.install({ time: new Date("2026-10-22T12:30:00Z") });
   await page.goto("/admin?section=orders&order=30");
-  await expect(page.getByRole("region", { name: "Почему требуется менеджер" })).toContainText("Собрать в одну коробку и рассчитать доставку");
+  const todo = page.getByRole("region", { name: "Что нужно сделать" });
+  await expect(todo).toContainText("Собрать в одну коробку и рассчитать доставку");
+  // Кнопка «Сделать» ведёт прямо в правку коробок: сотруднику не нужно искать блок.
+  await todo.getByRole("button", { name: "Сделать", exact: true }).click();
+  await expect(page).toHaveURL(/edit=delivery/);
   const packing = await preparePacking(page);
 
   if (process.env.FICUSIN_PREVIEW_OUTPUT_DIR) {
@@ -302,7 +311,7 @@ test("@desktop упаковка регистрируется один раз и 
 
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("confirmed");
+  await expect(page.locator(".ws-drawer-head .ws-pill")).toHaveText("Подтверждён");
   await expect(packing.getByText("Отправка писем не настроена", { exact: true })).toBeVisible();
   await expect(packing.getByText("40 × 30 × 60 см", { exact: true })).toBeVisible();
   await expect(packing.getByText("Трек в процессе создания", { exact: true })).toBeVisible();
@@ -338,7 +347,7 @@ test("@desktop упаковка регистрируется один раз и 
 
 test("@desktop ошибка отправки сохраняет коробку и повтор использует тот же ключ", async ({ page }) => {
   const state = await mockOrderEditor(page, false, "retry");
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = await preparePacking(page);
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByRole("alert")).toContainText("Упаковка не сохранена, повторите попытку");
@@ -348,7 +357,7 @@ test("@desktop ошибка отправки сохраняет коробку �
   expect(await state.packingFinalizations()).toHaveLength(1);
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("confirmed");
+  await expect(page.locator(".ws-drawer-head .ws-pill")).toHaveText("Подтверждён");
   const requests = await state.packingFinalizations();
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);
@@ -356,7 +365,7 @@ test("@desktop ошибка отправки сохраняет коробку �
 
 test("@phone упаковка и выбор тарифа помещаются на экране телефона", async ({ page }, testInfo) => {
   await mockOrderEditor(page, false, "success");
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = await preparePacking(page);
   await expect(packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
@@ -368,7 +377,7 @@ test("@phone упаковка и выбор тарифа помещаются н
 
 test("@desktop заказ без пункта СДЭК требует выбора города и пункта до расчёта", async ({ page }) => {
   const state = await mockOrderEditor(page, false, "destination");
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = await fillPackingBox(page);
   await expect(packing.getByRole("button", { name: "Рассчитать доставку", exact: true })).toBeDisabled();
   await packing.getByRole("textbox", { name: "Город получения СДЭК", exact: true }).fill("Москва");
@@ -378,7 +387,7 @@ test("@desktop заказ без пункта СДЭК требует выбор
   await expect(packing.getByRole("radio")).toBeChecked();
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("confirmed");
+  await expect(page.locator(".ws-drawer-head .ws-pill")).toHaveText("Подтверждён");
   const requests = await state.packingFinalizations();
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({ cityCode: 44, officeCode: "MSK1", quotedDeliveryFee: 590 });
@@ -386,21 +395,25 @@ test("@desktop заказ без пункта СДЭК требует выбор
 
 test("@desktop число коробок ограничено числом позиций заказа", async ({ page }) => {
  await mockOrderEditor(page, false, "success");
- await page.goto("/admin?section=orders&order=30");
+ await page.goto("/admin?section=orders&order=30&edit=delivery");
  const packing=page.getByRole("region",{name:"Подготовить заказ к отправке"});
  await packing.getByRole("button",{name:"Добавить коробку",exact:true}).click();
  await expect(packing.locator(".order-packing-box")).toHaveCount(2);
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toHaveCount(0);
  await packing.getByRole("button",{name:"Удалить коробку",exact:true}).last().click();
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toBeVisible();
+ // Состав меняется в своём режиме: вернулись к заказу и открыли «Состав».
+ await page.getByRole("button",{name:"К заказу",exact:true}).click();
+ await page.getByRole("region",{name:"Состав"}).getByRole("button",{name:"Изменить",exact:true}).click();
  await page.getByRole("button",{name:"Удалить",exact:true}).last().click();
  await page.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
+ await page.getByRole("region",{name:"Коробки и доставка"}).getByRole("button",{name:"Изменить",exact:true}).click();
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toHaveCount(0);
 });
 
 test("@desktop дробный вес в килограммах сохраняется в граммах без округления до килограмма", async ({ page }) => {
  const state=await mockOrderEditor(page,false,"success");
- await page.goto("/admin?section=orders&order=30");
+ await page.goto("/admin?section=orders&order=30&edit=delivery");
  const packing=await fillPackingBox(page);
  const weight=packing.getByRole("textbox",{name:"Вес с упаковкой, кг",exact:true});
  await weight.fill(""); await weight.pressSequentially("0.125");
@@ -411,7 +424,8 @@ test("@desktop дробный вес в килограммах сохраняе�
  await expect(packing.getByText("Заказ принят в обработку",{exact:true})).toBeVisible();
  expect((await state.packingFinalizations())[0].boxes[0].weightGrams).toBe(125);
  const title=await page.getByRole("heading",{name:"Заказ 0001-30",exact:true}).boundingBox();
- const status=await page.getByRole("combobox",{name:"Статус заказа 0001-30",exact:true}).boundingBox();
+ // Статус показан рядом с номером в шапке окна.
+ const status=await page.locator(".ws-drawer-head .ws-pill").boundingBox();
  expect(Math.abs(title!.y-status!.y)).toBeLessThan(50);
  expect(status!.x-title!.x-title!.width).toBeLessThan(30);
 });
@@ -419,7 +433,7 @@ test("@desktop дробный вес в килограммах сохраняе�
 
 test("@desktop @phone размеры вводятся строкой, а вес с запятой передаётся в граммах", async ({page}, testInfo) => {
  const state = await mockOrderEditor(page, false, "success");
- await page.goto("/admin?section=orders&status=new&order=30");
+ await page.goto("/admin?section=orders&status=new&order=30&edit=delivery");
  const packing = await fillPackingBox(page);
  const length = packing.getByRole("textbox", {name:"Длина коробки, см",exact:true});
  await expect(length).toHaveAttribute("inputmode","numeric");
@@ -437,7 +451,7 @@ test("@desktop @phone размеры вводятся строкой, а вес 
 
 test("@desktop @phone возврат и чек ожидают отдельного подтверждения ЮKassa", async ({page},testInfo) => {
  await mockOrderEditor(page,false,undefined,false,"owner");
- await page.goto("/admin?section=orders&order=30");
+ await page.goto("/admin?section=orders&order=30&edit=payment");
  const section=page.getByRole("region",{name:"Оплата и возвраты"});
  await expect(section.getByText("Деньги возвращены",{exact:false})).toBeVisible();
  await expect(section.getByText("Ожидает подтверждения ЮKassa",{exact:false})).toBeVisible();
@@ -448,7 +462,7 @@ test("@desktop @phone возврат и чек ожидают отдельног
 });
 test("@desktop менеджер видит возврат без финансовых действий", async ({page})=>{
  await mockOrderEditor(page,false,undefined,false,"manager");
- await page.goto("/admin?section=orders&order=30");
+ await page.goto("/admin?section=orders&order=30&edit=payment");
  const section=page.getByRole("region",{name:"Оплата и возвраты"});
  await expect(section).toBeVisible();
  await expect(section.getByText("Вернуть деньги покупателю",{exact:true})).toHaveCount(0);
@@ -458,7 +472,7 @@ test("@desktop менеджер видит возврат без финансо�
 
 test("@desktop @phone распределение на две коробки исключает нули при расчёте и подтверждении", async ({ page }) => {
   const state = await mockOrderEditor(page, false, "success");
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = await fillPackingBox(page);
   await packing.getByRole("button", { name: "Добавить коробку", exact: true }).click();
   await packing.getByRole("textbox", { name: "Алоказия D6 в коробке 1", exact: true }).fill("0");
@@ -478,7 +492,7 @@ test("@desktop @phone распределение на две коробки ис
 
 test("@desktop @phone атрибуты заполняют отдельные коробки и сбрасывают прежний тариф", async ({ page }, testInfo) => {
   await mockOrderEditor(page, false, "success", true);
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = await fillPackingBox(page);
   await packing.getByRole("button", { name: "Рассчитать доставку", exact: true }).click();
   await expect(packing.getByRole("radio")).toBeChecked();
@@ -497,7 +511,7 @@ test("@desktop @phone атрибуты заполняют отдельные к�
 
 test("@desktop без атрибутов коробки распределены, но расчёт ждёт размеров и веса", async ({ page }) => {
   await mockOrderEditor(page, false, "success");
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = page.getByRole("region", { name: "Подготовить заказ к отправке" });
   await packing.getByRole("button", { name: "Заполнить из атрибутов растений", exact: true }).click();
   await expect(packing.locator(".order-packing-box")).toHaveCount(2);
@@ -524,7 +538,7 @@ test('@desktop @phone частичный возврат передаёт выб�
    return response;
   };
  });
- await page.goto('/admin?section=orders&order=30');
+ await page.goto('/admin?section=orders&order=30&edit=payment');
  const section=page.getByRole('region',{name:'Оплата и возвраты'});
  await section.getByText('Вернуть деньги покупателю',{exact:true}).click();
  await section.getByLabel('Вернуть: Растение из платежа, платёж 11').fill('1');
@@ -557,7 +571,7 @@ test('@desktop @phone чек зачёта ЮKassa создаётся тольк�
    return response;
   };
  });
- await page.goto('/admin?section=orders&order=30');
+ await page.goto('/admin?section=orders&order=30&edit=payment');
  const section=page.getByRole('region',{name:'Оплата и возвраты'});
  const button=section.getByRole('button',{name:'Сформировать чек зачёта в ЮKassa',exact:true});
  await expect(button).toBeVisible();
@@ -574,7 +588,7 @@ test('@desktop @phone чек зачёта ЮKassa создаётся тольк�
 
 test("@desktop @phone подготовленный заказ возвращается на редактирование и получает новую оплату", async ({ page }, testInfo) => {
   const state = await mockOrderEditor(page, false, "prepared");
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
   const packing = page.getByRole("region", { name: "Подготовить заказ к отправке" });
   const totals = packing.getByRole("definition").filter({ hasText: "680" });
   await expect(totals).toBeVisible();
@@ -607,7 +621,7 @@ test("@desktop @phone подготовленный заказ возвращае
 
 test("@desktop @phone поиск товара по названию и артикулу работает с клавиатуры", async ({ page }, testInfo) => {
   await mockOrderEditor(page);
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=items");
   const search = page.getByRole("combobox", { name: "Добавить товар в заказ", exact: true });
   await search.fill("мАРИЯ");
   const option = page.getByRole("option", { name: /Аглаонема Мария Кристина D12/ });
@@ -634,7 +648,7 @@ test("@desktop @phone поиск товара по названию и арти�
 
 test("@desktop @phone числовые поля без стрелок сохраняют дроби, запятую и проверки", async ({ page }) => {
   const state = await mockOrderEditor(page);
-  await page.goto("/admin?section=orders&order=30");
+  await page.goto("/admin?section=orders&order=30&edit=items");
   await expect(page.locator('input[type="number"]')).toHaveCount(0);
   const quantity = page.getByRole("textbox", { name: "Количество Азалия D9", exact: true });
   await expect(quantity).toHaveAttribute("type", "text");

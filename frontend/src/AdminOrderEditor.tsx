@@ -690,6 +690,9 @@ export function AdminOrderEditor({
         </button>
         <h3>{viewTitles[view]}</h3>
       </div>
+      {view === "delivery" && packingFrozen && (
+        <p className="ws-edit-note">Упаковка подтверждена</p>
+      )}
       {view === "payment" && (
         <section className="admin-block" aria-label="Оплата и возвраты">
           <h3>Оплата и возвраты</h3>
@@ -796,7 +799,7 @@ export function AdminOrderEditor({
             </article>
           ))}
           {canRefund && payment.netPaid > 0 && (
-            <details open>
+            <details>
               <summary>Вернуть деньги покупателю</summary>
               {(payment.refunds ?? []).some((refund) => refund.status === "pending") && (
                 <p>Новый возврат доступен после завершения предыдущего.</p>
@@ -1093,7 +1096,6 @@ export function AdminOrderEditor({
 
       {view === "shipments" && hasShipments && (
         <section className="admin-block order-partial-shipments">
-          <h3>Отправления · {adjustment.shipmentOffers.length}</h3>
           {hasUnsavedChanges && (
             <p className="admin-flag">Сохраните изменения состава перед подготовкой отправки.</p>
           )}

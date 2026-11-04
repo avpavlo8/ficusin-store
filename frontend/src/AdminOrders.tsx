@@ -222,7 +222,7 @@ export function Orders({
       <button
         type="button"
         className="ws-drawer-backdrop"
-        aria-label="Закрыть заказ"
+        aria-hidden="true"
         tabIndex={-1}
         onClick={closeOrder}
       />

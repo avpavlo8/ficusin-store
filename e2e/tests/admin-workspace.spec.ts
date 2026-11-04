@@ -21,13 +21,23 @@ async function setup(page: Page) {
   await page.route("**/api/v1/admin/analytics?days=*", route => route.fulfill({ json: analytics }));
 }
 
+// Приветствие зависит от времени суток.
+const greeting = /^(Доброе утро|Добрый день|Добрый вечер|Доброй ночи), /;
+
 test("@desktop @phone workspace preserves real navigation and filters recent orders", async ({ page }) => {
   await setup(page);
   await page.goto("/admin");
-  await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(10);
-  await expect(page.getByRole("button", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Склад", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: greeting })).toBeVisible();
+  // На телефоне все разделы — в листе «Ещё», на компьютере — в боковом меню.
+  const phone = (page.viewportSize()?.width ?? 1280) <= 760;
+  if (phone) await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  const menu = page.getByRole("navigation", { name: phone ? "Все разделы управления" : "Разделы управления" });
+  // Девять разделов: «Финансы» удалены владельцем.
+  await expect(menu.getByRole("link")).toHaveCount(9);
+  await expect(menu.getByRole("link", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
+  await expect(menu.getByRole("link", { name: "Склад", exact: true })).toHaveCount(0);
+  await expect(menu.getByRole("link", { name: "Финансы", exact: true })).toHaveCount(0);
+  if (phone) await page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "В работе", exact: true }).click();
   await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
   await expect(page.getByText("TEST-CANCELLED", { exact: true })).toHaveCount(0);
@@ -111,7 +121,7 @@ test("@desktop search opens permitted sections by keyboard", async ({ page }) =>
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Клиенты");
   await page.getByRole("searchbox", { name: "Найти раздел" }).press("Enter");
   await expect(page.getByRole("heading", { name: "Клиенты", exact: true })).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("button", { name: "Клиенты", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link", { name: "Клиенты", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
 test("@desktop restricted role has no inaccessible shortcuts or analytics requests", async ({ page }) => {
@@ -120,9 +130,9 @@ test("@desktop restricted role has no inaccessible shortcuts or analytics reques
   let analyticsRequests = 0;
   page.on("request", request => { if (request.url().includes("/admin/analytics")) analyticsRequests++; });
   await page.goto("/admin");
-  await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "Настройки", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: greeting })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "Настройки", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Открыть заказы" })).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Настройки");
   await expect(page.getByText("Раздел не найден")).toBeVisible();

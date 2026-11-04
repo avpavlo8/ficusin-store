@@ -51,7 +51,6 @@
   background: var(--ws-bg);
   color: var(--ws-ink);
   font-size: 14px;
-  line-height: 1.45;
   font-variant-numeric: tabular-nums;
 }
 
@@ -545,7 +544,7 @@
   font-size: 14px;
 }
 .admin-page .ws-main .admin-table th {
-  padding: 10px 14px;
+  padding: 10px 12px;
   background: transparent;
   border-bottom: 1px solid var(--ws-line);
   color: var(--ws-muted);
@@ -557,7 +556,7 @@
   white-space: nowrap;
 }
 .admin-page .ws-main .admin-table td {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--ws-line-soft);
   vertical-align: top;
 }
@@ -1370,4 +1369,25 @@
     min-height: 48px;
     font-size: 16px;
   }
+}
+.admin-page .ws-edit-note {
+  margin: -6px 0 12px;
+  color: var(--ws-muted);
+}
+
+/* В таблицах поля компактнее: строка с ценой, валютой и количеством
+   должна оставаться одной строкой таблицы, а не карточкой. */
+@media (min-width: 761px) {
+  .admin-page .ws-main table :where(input:not([type="checkbox"], [type="radio"]), select) {
+    min-height: 32px;
+    padding: 4px 8px;
+  }
+}
+/* Текстовым блокам — спокойный межстрочный интервал; таблицам и полям
+   оставляем плотный, иначе строки плана закупки вырастают вдвое. */
+.admin-page .ws-main :is(p, li, dd, .ws-card) {
+  line-height: 1.45;
+}
+.admin-page .procurement-plan-table td small {
+  line-height: 1.2;
 }
