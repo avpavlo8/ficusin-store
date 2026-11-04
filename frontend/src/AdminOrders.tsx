@@ -213,28 +213,20 @@ export function Orders({
 
   const selected = items.find((order) => String(order.id) === navigation.orderId);
   const listNavigation = { ...navigation, orderId: "" };
-  const closeOrder = () => void navigate(listNavigation);
 
-  // Заказ открывается окном поверх списка: сотрудник не теряет место в
-  // списке и закрывает окно крестиком, кнопкой «Назад» или клавишей Esc.
-  const drawer = navigation.orderId ? (
-    <>
-      <button
-        type="button"
-        className="ws-drawer-backdrop"
-        aria-hidden="true"
-        tabIndex={-1}
-        onClick={closeOrder}
-      />
-      <section
-        className="ws-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label={selected ? `Заказ ${selected.orderNumber}` : "Заказ"}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") closeOrder();
-        }}
-      >
+  // Заказ открывается отдельной страницей, как карточка в кабинете продавца
+  // Ozon: на ней достаточно места для пути заказа, «что сделать сейчас» и
+  // итога справа. «К заказам» возвращает в ту же очередь с тем же поиском.
+  if (navigation.orderId)
+    return (
+      <section className="order-page">
+        <a
+          className="order-page-back"
+          href={ordersUrl(listNavigation)}
+          onClick={(event) => follow(event, listNavigation)}
+        >
+          <span aria-hidden="true">← </span>К заказам
+        </a>
         {loading ? (
           <WorkspaceState kind="loading" title="Загружаем заказ…" />
         ) : loadError ? (
@@ -245,7 +237,6 @@ export function Orders({
               canRefund={canRefund}
               key={selected.id}
               order={selected}
-              onClose={closeOrder}
               onSaved={updateOrder}
               onError={onError}
               onStatusChange={updateStatus}
@@ -253,22 +244,14 @@ export function Orders({
             />
           </Suspense>
         ) : (
-          <div className="ws-drawer-body">
-            <WorkspaceState
-              kind="empty"
-              title="Заказ не найден"
-              detail="Возможно, ссылка устарела. Закройте окно и найдите заказ в списке."
-              action={
-                <button type="button" className="ws-button" onClick={closeOrder}>
-                  Закрыть
-                </button>
-              }
-            />
-          </div>
+          <WorkspaceState
+            kind="empty"
+            title="Заказ не найден"
+            detail="Возможно, ссылка устарела. Вернитесь к списку и найдите заказ поиском."
+          />
         )}
       </section>
-    </>
-  ) : null;
+    );
 
   const query = navigation.query.trim().toLocaleLowerCase("ru-RU");
   const visible = items.filter(
@@ -359,7 +342,6 @@ export function Orders({
                 <tr
                   key={order.id}
                   className="clickable"
-                  aria-selected={navigation.orderId === String(order.id)}
                   onClick={(event) => {
                     if ((event.target as HTMLElement).closest("a, button")) return;
                     void navigate(next);
@@ -428,7 +410,6 @@ export function Orders({
           </tbody>
         </WorkspaceTable>
       )}
-      {drawer}
     </section>
   );
 }

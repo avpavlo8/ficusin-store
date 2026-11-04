@@ -1,5 +1,4 @@
 import { useChatUnread } from "./lib/chat";
-import { BrandLogo } from "./BrandLogo";
 import { mobilePrimarySections, sectionGroups, sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
@@ -135,8 +134,8 @@ export function WorkspaceSidebar({
         <a className="workspace-skip" href="#workspace-content">
           К содержимому
         </a>
-        <a className="ws-brand" href="/" aria-label="Фикусин — в магазин">
-          <BrandLogo decorative />
+        <a className="ws-brand" href="/admin" aria-label="Фикусин — управление">
+          <WorkspaceMark />
         </a>
         <nav aria-label="Разделы управления">{groupedLinks}</nav>
         <div className="ws-sidebar-bottom">
@@ -230,8 +229,8 @@ export function WorkspaceToolbar({
   };
   return (
     <header className="ws-topbar">
-      <a className="ws-topbar-brand" href="/" aria-label="Фикусин — в магазин">
-        <BrandLogo decorative />
+      <a className="ws-topbar-brand" href="/admin" aria-label="Фикусин — управление">
+        <WorkspaceMark />
       </a>
       <strong className="ws-topbar-title">
         {
@@ -287,5 +286,17 @@ export function WorkspaceToolbar({
         {data.user.fullName.trim().charAt(0) || "Ф"}
       </a>
     </header>
+  );
+}
+
+/* Знак админки: зелёный квадрат с «ф» и подпись обычным шрифтом.
+   Логотип-антиква остаётся витрине, в рабочем инструменте он выглядел
+   декоративно. */
+export function WorkspaceMark() {
+  return (
+    <span className="ws-mark">
+      <span aria-hidden="true">ф</span>
+      Фикусин <small>Управление</small>
+    </span>
   );
 }

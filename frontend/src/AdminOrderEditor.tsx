@@ -1,7 +1,7 @@
 import { AdminOrderProductSearch } from "./AdminOrderProductSearch";
 import { NumericInput } from "./NumericInput";
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, money } from "./adminShared";
+import { api, money, paymentMethodLabels } from "./adminShared";
 import type { Order, Product } from "./adminTypes";
 import { AdminOrderPacking } from "./AdminOrderPacking";
 
@@ -158,7 +158,8 @@ export function AdminOrderEditor({
   disabled = false,
   view = "summary",
   onViewChange,
-  customerCard,
+  nowBlock,
+  statusControl,
 }: {
   canRefund?: boolean;
   order: Order;
@@ -170,7 +171,8 @@ export function AdminOrderEditor({
   disabled?: boolean;
   view?: OrderView;
   onViewChange?: (view: OrderView) => void;
-  customerCard?: ReactNode;
+  nowBlock?: ReactNode;
+  statusControl?: ReactNode;
 }) {
   const [adjustment, setAdjustment] = useState<Adjustment | null>(null);
   const [payment, setPayment] = useState<PaymentBalance>(emptyPayment);
@@ -517,141 +519,181 @@ export function AdminOrderEditor({
     order.deliveryMethod !== "pickup" &&
     !(order.deliveryMethod !== "cdek" && packingFrozen);
 
+  const deliveryLabel =
+    order.deliveryMethod === "cdek"
+      ? "СДЭК"
+      : order.deliveryMethod === "pickup"
+        ? "Самовывоз"
+        : order.deliveryMethod === "courier"
+          ? "Курьер"
+          : order.deliveryMethod;
+  const itemCount = adjustment.items.reduce((sum, line) => sum + line.quantity, 0);
+
+  // Просмотр заказа: слева — что сделать, что собрать, кому и куда;
+  // справа — деньги и редкие действия. Поля ввода появляются только
+  // после «Изменить» у нужного блока.
   if (view === "summary")
     return (
-      <div className="admin-order-editor">
-        <section className="ws-card" aria-labelledby="order-items-title">
-          <div className="ws-card-head">
-            <h3 id="order-items-title">Состав</h3>
-            {compositionReadOnly ? (
-              <small>{packingFrozen ? "Упаковка подтверждена" : "Изменить уже нельзя"}</small>
-            ) : (
-              <button type="button" className="ws-button" onClick={() => onViewChange?.("items")}>
-                Изменить
-              </button>
-            )}
-          </div>
-          <ul className="ws-lines">
-            {adjustment.items.map((line, index) => (
-              <li key={`${line.sku}-${index}`}>
-                <span>
-                  {line.productName}
-                  <small>
-                    {[line.variantLabel, `${line.quantity} шт. × ${money.format(line.unitPrice)}`]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </small>
-                </span>
-                <strong>{money.format(line.unitPrice * line.quantity)}</strong>
-              </li>
-            ))}
-          </ul>
-          <dl className="ws-facts order-summary-money">
-            <dt>Растения</dt>
-            <dd>{money.format(adjustment.subtotal)}</dd>
-            {(adjustment.discountAmount ?? 0) > 0 && (
-              <>
-                <dt>Скидка</dt>
-                <dd>−{money.format(adjustment.discountAmount ?? 0)}</dd>
-              </>
-            )}
-            {order.deliveryMethod !== "pickup" && (
-              <>
-                <dt>Доставка</dt>
-                <dd>
-                  {adjustment.deliveryFeePending
-                    ? "ещё не рассчитана"
-                    : adjustment.deliveryPayee === "carrier"
-                      ? `${money.format(adjustment.deliveryFee)}, покупатель платит перевозчику`
-                      : money.format(adjustment.deliveryFee)}
-                </dd>
-              </>
-            )}
-          </dl>
-          <div className="ws-total">
-            <span>Итого</span>
-            <span>{money.format(order.total)}</span>
-          </div>
-        </section>
+      <div className="admin-order-editor order-page-grid">
+        <div className="order-page-main">
+          {nowBlock}
 
-        {customerCard}
-
-        {order.deliveryMethod !== "pickup" && (
-          <section className="ws-card" aria-labelledby="order-delivery-title">
-            <div className="ws-card-head">
-              <h3 id="order-delivery-title">
-                {order.deliveryMethod === "cdek" ? "Коробки и доставка" : "Стоимость доставки"}
-              </h3>
-              {canEditDelivery && (
+          <section className="order-section" aria-labelledby="order-items-title">
+            <div className="order-section-head">
+              <h3 id="order-items-title">Что собрать</h3>
+              <span>{itemCount} шт.</span>
+              {compositionReadOnly ? (
+                <small>{packingFrozen ? "Упаковка подтверждена" : "Состав уже не меняется"}</small>
+              ) : (
                 <button
                   type="button"
-                  className="ws-button"
-                  onClick={() => onViewChange?.("delivery")}
+                  className="ws-link-button"
+                  onClick={() => onViewChange?.("items")}
                 >
-                  Изменить
+                  Изменить состав
                 </button>
               )}
             </div>
-            <p className="order-summary-note">
-              {order.deliveryMethod === "cdek"
-                ? packingFrozen
-                  ? "Коробки собраны и подтверждены."
-                  : adjustment.deliveryFeePending
-                    ? "Укажите коробки — после этого посчитается доставка."
-                    : "Коробки указаны, доставка рассчитана."
-                : adjustment.deliveryFeePending
-                  ? "Стоимость доставки ещё не указана."
-                  : `Доставка: ${money.format(adjustment.deliveryFee)}.`}
-            </p>
+            <ul className="order-pick-list">
+              {adjustment.items.map((line, index) => (
+                <li key={`${line.sku}-${index}`}>
+                  <span className="order-item-photo" aria-hidden="true" />
+                  <span className="order-item-name">
+                    <strong>{line.productName}</strong>
+                    <small>
+                      {[line.variantLabel, `артикул ${line.sku}`].filter(Boolean).join(" · ")}
+                    </small>
+                  </span>
+                  <span className="order-item-qty">× {line.quantity}</span>
+                  <strong className="order-item-sum">
+                    {money.format(line.unitPrice * line.quantity)}
+                  </strong>
+                </li>
+              ))}
+            </ul>
           </section>
-        )}
 
-        <section className="ws-card" aria-labelledby="order-payment-title">
-          <div className="ws-card-head">
-            <h3 id="order-payment-title">Оплата</h3>
-            {hasMoneyHistory && (
-              <button type="button" className="ws-button" onClick={() => onViewChange?.("payment")}>
-                {canRefund ? "Возврат и чеки" : "Подробнее"}
-              </button>
-            )}
-          </div>
-          <dl className="ws-facts">
-            <dt>Получено</dt>
-            <dd>{money.format(payment.paid)}</dd>
-            {payment.refunded > 0 && (
-              <>
-                <dt>Возвращено</dt>
-                <dd>{money.format(payment.refunded)}</dd>
-              </>
-            )}
-            {payment.due > 0 && (
-              <>
-                <dt>Осталось оплатить</dt>
-                <dd>{money.format(payment.due)}</dd>
-              </>
-            )}
-          </dl>
-          {payment.overpaid > 0 && (
-            <p className="admin-flag">
-              Переплата {money.format(payment.overpaid)} — нужен возврат.
-            </p>
-          )}
-        </section>
-
-        {hasShipments && (
-          <section className="ws-card">
-            <div className="ws-card-head">
-              <h3>Отправления</h3>
-              <button
-                type="button"
-                className="ws-button"
-                onClick={() => onViewChange?.("shipments")}
-              >
-                Открыть · {adjustment.shipmentOffers.length}
-              </button>
+          <section className="order-section" aria-labelledby="order-who-title">
+            <div className="order-section-head">
+              <h3 id="order-who-title">Кому и куда</h3>
+            </div>
+            <div className="order-who">
+              <div>
+                <small>Покупатель</small>
+                <strong>{order.customerName || "Имя не указано"}</strong>
+                {order.phone && <a href={`tel:${order.phone}`}>{order.phone}</a>}
+                {order.email && <span>{order.email}</span>}
+                {order.comment && <p className="order-customer-comment">«{order.comment}»</p>}
+              </div>
+              <div>
+                <small>
+                  Доставка
+                  {canEditDelivery && (
+                    <button
+                      type="button"
+                      className="ws-link-button"
+                      onClick={() => onViewChange?.("delivery")}
+                    >
+                      {order.deliveryMethod === "cdek" ? "Коробки и доставка" : "Изменить"}
+                    </button>
+                  )}
+                </small>
+                <strong>{deliveryLabel}</strong>
+                {order.address && <span>{order.address}</span>}
+                {order.trackNumber ? (
+                  <span>Трек: {order.trackNumber}</span>
+                ) : order.deliveryMethod === "cdek" ? (
+                  <span className="order-muted">
+                    {packingFrozen
+                      ? "Коробки подтверждены"
+                      : adjustment.deliveryFeePending
+                        ? "Коробки ещё не указаны"
+                        : "Коробки указаны"}
+                  </span>
+                ) : null}
+                {order.repackRequested && <span>Просьба: собрать в одну коробку</span>}
+              </div>
             </div>
           </section>
-        )}
+        </div>
+
+        <aside className="order-page-aside" aria-label="Итог заказа">
+          <section className="order-total-card">
+            <div>
+              <span>Растения, {itemCount} шт.</span>
+              <span>{money.format(adjustment.subtotal)}</span>
+            </div>
+            {(adjustment.discountAmount ?? 0) > 0 && (
+              <div>
+                <span>Скидка</span>
+                <span>−{money.format(adjustment.discountAmount ?? 0)}</span>
+              </div>
+            )}
+            {order.deliveryMethod !== "pickup" && (
+              <div>
+                <span>Доставка</span>
+                <span>
+                  {adjustment.deliveryFeePending
+                    ? "посчитаем"
+                    : adjustment.deliveryPayee === "carrier"
+                      ? "покупатель платит СДЭК"
+                      : money.format(adjustment.deliveryFee)}
+                </span>
+              </div>
+            )}
+            <div className="order-total-sum">
+              <span>Итого</span>
+              <span>{money.format(order.total)}</span>
+            </div>
+            <dl>
+              <dt>Как платит</dt>
+              <dd>
+                {paymentMethodLabels[order.paymentMethod || ""] ||
+                  (order.paymentMethod === "online" ? "Онлайн на сайте" : "Не указано")}
+              </dd>
+              <dt>Получено</dt>
+              <dd>{money.format(payment.paid)}</dd>
+              {payment.refunded > 0 && (
+                <>
+                  <dt>Возвращено</dt>
+                  <dd>{money.format(payment.refunded)}</dd>
+                </>
+              )}
+              {payment.due > 0 && (
+                <>
+                  <dt>Осталось</dt>
+                  <dd>{money.format(payment.due)}</dd>
+                </>
+              )}
+            </dl>
+            {payment.overpaid > 0 && (
+              <p className="admin-flag">
+                Переплата {money.format(payment.overpaid)} — нужен возврат.
+              </p>
+            )}
+          </section>
+          <section className="order-aside-actions">
+            {hasMoneyHistory && (
+              <button
+                type="button"
+                className="ws-link-button"
+                onClick={() => onViewChange?.("payment")}
+              >
+                {canRefund ? "Оплата, возврат и чеки" : "Подробнее об оплате"}
+              </button>
+            )}
+            {hasShipments && (
+              <button
+                type="button"
+                className="ws-link-button"
+                onClick={() => onViewChange?.("shipments")}
+              >
+                Отправления · {adjustment.shipmentOffers.length}
+              </button>
+            )}
+            {statusControl}
+          </section>
+        </aside>
       </div>
     );
 

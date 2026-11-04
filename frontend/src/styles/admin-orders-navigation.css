@@ -11,7 +11,7 @@
 }
 .orders-list-heading p {
   margin: 0;
-  color: #62695d;
+  color: #5b606b;
   font-size: 14px;
 }
 
@@ -25,7 +25,7 @@
   gap: 14px;
 }
 .orders-search > span {
-  color: #62695d;
+  color: #5b606b;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -37,7 +37,7 @@
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 4px;
-  text-decoration-color: #9aa794;
+  text-decoration-color: #969ba5;
 }
 .orders-list-page .orders-number-link:hover {
   color: var(--workspace-rust);

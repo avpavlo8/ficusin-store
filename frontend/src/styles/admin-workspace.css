@@ -1,11 +1,11 @@
 /* The existing account shell stays shared; this skin is scoped to admin only. */
 .admin-page {
-  --workspace-paper: #f8f5ee;
-  --workspace-line: #e0dbd0;
-  --workspace-ink: #292a24;
-  --workspace-muted: #72756b;
-  --workspace-green: #244734;
-  --workspace-rust: #ab4129;
+  --workspace-paper: #f3f3f3;
+  --workspace-line: #d6d7da;
+  --workspace-ink: #252629;
+  --workspace-muted: #676d79;
+  --workspace-green: #185339;
+  --workspace-rust: #7d4f12;
   background: var(--workspace-paper);
   color: var(--workspace-ink);
   overflow-x: clip;
@@ -30,7 +30,7 @@
   border: 0;
   border-right: 1px solid var(--workspace-line);
   border-radius: 0;
-  background: #f1eee5;
+  background: #eaebec;
   color: var(--workspace-ink);
   box-shadow: none;
   display: flex;
@@ -48,7 +48,7 @@
   padding: 11px 14px;
   border-radius: 7px !important;
   font-size: 13px;
-  color: #40473b;
+  color: #3d4045;
   transition:
     background 0.15s,
     color 0.15s;
@@ -59,11 +59,11 @@
 }
 .admin-page .account-sidebar nav button:hover {
   transform: none;
-  background: #e6e6d9;
+  background: #dedfe1;
 }
 .admin-page .account-sidebar nav button.active {
   background: var(--workspace-green) !important;
-  color: #fffaf0 !important;
+  color: #fef8f1 !important;
   font-weight: 600;
 }
 
@@ -102,7 +102,7 @@
     700 clamp(46px, 4.8vw, 76px) / 1 Georgia,
     serif;
   letter-spacing: -3px;
-  color: #23271e;
+  color: #212224;
 }
 .workspace-welcome h1 em {
   color: var(--workspace-green);
@@ -111,7 +111,7 @@
 .workspace-welcome p:last-child {
   margin: 0;
   font-size: 13px;
-  color: #68705f;
+  color: #5f6570;
 }
 .workspace-primary {
   display: flex;
@@ -120,14 +120,14 @@
   border: 1px solid var(--workspace-rust);
   border-radius: 6px;
   background: var(--workspace-rust);
-  color: #fffaf2;
+  color: #fef9f3;
   padding: 12px 16px;
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
 }
 .workspace-primary:hover {
-  background: #90341f;
+  background: #7d4f12;
 }
 .workspace-primary svg {
   width: 18px;
@@ -161,7 +161,7 @@
   color: var(--workspace-rust);
 }
 .workspace-metrics span {
-  color: #626a5b;
+  color: #5b606a;
   font-size: 12px;
 }
 .workspace-metrics strong {
@@ -173,7 +173,7 @@
 }
 .workspace-metrics small {
   font-size: 10px;
-  color: #68705f;
+  color: #5f6570;
   line-height: 1.4;
 }
 .workspace-metrics svg {
@@ -182,7 +182,7 @@
   position: absolute;
   right: 18px;
   top: 7px;
-  color: #909784;
+  color: #848a97;
 }
 .workspace-dashboard-grid {
   display: grid;
@@ -200,7 +200,7 @@
   padding: 22px;
   border: 1px solid var(--workspace-line);
   border-radius: 8px;
-  background: #fcfaf5;
+  background: #f8f8f9;
   min-width: 0;
 }
 .workspace-panel-heading {
@@ -215,7 +215,7 @@
   margin: 0 0 8px;
   font-size: 9px;
   letter-spacing: 0.15em;
-  color: #68705f;
+  color: #5f6570;
 }
 .workspace-panel-heading h2 {
   margin: 0;
@@ -246,13 +246,13 @@
   padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: 5px;
-  color: #6d7467;
-  background: #eeeee6;
+  color: #646a77;
+  background: #e9eaeb;
   font-size: 11px;
   cursor: pointer;
 }
 .workspace-filters button[aria-pressed="true"] {
-  color: #fffaf0;
+  color: #fef8f1;
   background: var(--workspace-green);
 }
 .workspace-revenue-body {
@@ -272,7 +272,7 @@
   letter-spacing: -0.8px;
 }
 .workspace-revenue-total > span {
-  color: #68705f;
+  color: #5f6570;
   font-size: 10px;
   line-height: 1.6;
 }
@@ -287,17 +287,17 @@
   justify-content: space-between;
   padding: 0 12px 15px 24px;
   font-size: 10px;
-  color: #68705f;
+  color: #5f6570;
 }
 .workspace-empty {
   padding: 28px 8px;
-  color: #68705f;
+  color: #5f6570;
   font-size: 12px;
   line-height: 1.7;
 }
 .workspace-empty strong {
   display: block;
-  color: #4f5e47;
+  color: #4d5158;
   font-size: 16px;
 }
 .workspace-empty p {
@@ -317,7 +317,7 @@
   gap: 12px;
   padding: 22px 0 10px;
   border-bottom: 1px solid var(--workspace-line);
-  color: #68705f;
+  color: #5f6570;
   font-size: 10px;
 }
 .admin-page .workspace-recent .admin-order-list {
@@ -333,13 +333,13 @@
   width: 100%;
   padding: 12px 0;
   border: 0;
-  border-bottom: 1px solid #e8e4da;
+  border-bottom: 1px solid #fce5c6;
   border-radius: 0;
   background: transparent;
   font-size: 12px;
 }
 .admin-page .workspace-recent .admin-order-list button:hover {
-  background: #f1f0e7;
+  background: #ebeced;
 }
 .admin-page .workspace-recent .admin-order-list button > div {
   min-width: 0;
@@ -347,12 +347,12 @@
 .admin-page .workspace-recent .admin-order-list strong {
   display: block;
   overflow-wrap: anywhere;
-  color: #36402f;
+  color: #34363b;
   font-size: 12px;
 }
 .admin-page .workspace-recent .admin-order-list small {
   display: block;
-  color: #68705f;
+  color: #5f6570;
   font-size: 11px;
   margin-top: 6px;
   overflow-wrap: anywhere;
@@ -368,42 +368,42 @@
   border-radius: 5px;
   font-size: 10px;
   font-weight: 500;
-  background: #eeeee7;
-  color: #76796e;
+  background: #eaeaeb;
+  color: #6a707d;
   white-space: nowrap;
 }
 .admin-page .workspace-recent .workspace-status[data-status="new"] {
-  background: #f4e1d5;
-  color: #983d22;
+  background: #fce8cd;
+  color: #7d4f12;
 }
 .admin-page .workspace-recent .workspace-status[data-status="assembling"],
 .admin-page .workspace-recent .workspace-status[data-status="confirmed"] {
-  background: #e2e9db;
-  color: #3f5b35;
+  background: #d5efe4;
+  color: #1f6b4a;
 }
 .admin-page .workspace-recent .workspace-status[data-status="ready"],
 .admin-page .workspace-recent .workspace-status[data-status="completed"] {
-  background: #2e4c39;
-  color: #fffaf0;
+  background: #1b5f42;
+  color: #fef8f1;
 }
 .workspace-recent .admin-order-list svg {
   width: 14px;
   height: 14px;
-  color: #8a927e;
+  color: #7e8592;
 }
 .workspace-table-note {
   margin: 13px 0 0;
-  color: #68705f;
+  color: #5f6570;
   font-size: 10px;
 }
 .workspace-attention {
   border-radius: 8px;
-  background: #244432;
-  color: #f9f5e9;
+  background: #175138;
+  color: #f0f1f2;
   padding: 24px 20px 8px;
 }
 .workspace-attention > .eyebrow {
-  color: #b9c3aa;
+  color: #b2b5bb;
   font-size: 9px;
   letter-spacing: 0.18em;
   margin-bottom: 9px;
@@ -429,7 +429,7 @@
   cursor: pointer;
 }
 .workspace-attention > button:hover strong {
-  color: #e2dba7;
+  color: #f0ca99;
 }
 .workspace-attention strong {
   display: block;
@@ -438,7 +438,7 @@
 }
 .workspace-attention small {
   display: block;
-  color: #c1ccb8;
+  color: #bec1c6;
   font-size: 11px;
   line-height: 1.5;
   margin-top: 7px;
@@ -456,12 +456,12 @@
   background: transparent;
 }
 .admin-page .workspace-attention .admin-alert strong {
-  color: #f5f1df;
+  color: #e9eaeb;
   font-size: 14px;
   font-weight: 500;
 }
 .admin-page .workspace-attention .admin-alert p {
-  color: #bbc9b0;
+  color: #b8bbc1;
   font-size: 11px;
   line-height: 1.6;
   margin-top: 7px;
@@ -485,7 +485,7 @@
 .workspace-shortcuts button > svg:first-child {
   width: 22px;
   height: 22px;
-  color: #5b7350;
+  color: #5a5f69;
   grid-column: 1/-1;
   margin-bottom: 4px;
 }
@@ -495,14 +495,14 @@
   font-weight: 500;
 }
 .workspace-shortcuts span {
-  color: #68705f;
+  color: #5f6570;
   font-size: 10px;
   line-height: 1.5;
 }
 .workspace-shortcuts svg:last-child {
   width: 14px;
   height: 14px;
-  color: #a3aa96;
+  color: #999ea7;
 }
 .workspace-shortcuts button:hover strong {
   color: var(--workspace-rust);
@@ -515,7 +515,7 @@
   align-items: start;
 }
 .admin-page .account-title h2 {
-  color: #253e2c;
+  color: #164d35;
   font:
     400 clamp(32px, 3.5vw, 48px) / 1.05 Georgia,
     serif;
@@ -523,7 +523,7 @@
 }
 .admin-page .account-title .eyebrow {
   font-size: 9px;
-  color: #808874;
+  color: #737a89;
   letter-spacing: 0.16em;
   margin-bottom: 10px;
 }
@@ -534,20 +534,20 @@
 .admin-page .admin-setting {
   border-color: var(--workspace-line);
   border-radius: 8px;
-  background: #fcfaf5;
+  background: #f8f8f9;
   box-shadow: none;
 }
 .admin-page .admin-block-heading h2 {
   font-size: 28px;
 }
 .admin-page .admin-table th {
-  background: #eeede5;
-  color: #6c7562;
+  background: #e9e9ea;
+  color: #636974;
   font-size: 10px;
   letter-spacing: 0.035em;
 }
 .admin-page .admin-table td {
-  border-color: #e7e3d8;
+  border-color: #fce3c3;
 }
 .admin-page .admin-stats {
   gap: 12px;
@@ -570,7 +570,7 @@
   box-shadow: none;
 }
 .admin-page :where(button, a, input, select, textarea):focus-visible {
-  outline: 2px solid #ac492a;
+  outline: 2px solid #7d4f12;
   outline-offset: 3px;
 }
 
@@ -827,36 +827,36 @@
 }
 .workspace-catalog-nav a {
   padding: 12px 18px;
-  color: #344e40;
+  color: #3d4045;
   text-decoration: none;
   border-bottom: 3px solid transparent;
 }
 .workspace-catalog-nav a[aria-current="page"] {
-  border-color: #24533c;
+  border-color: #1b5c40;
   font-weight: 700;
 }
 .workspace-state {
   padding: 24px;
   border: 1px solid var(--workspace-line);
   border-radius: 8px;
-  background: #fcfaf5;
+  background: #f8f8f9;
   margin-block: 12px;
 }
 .workspace-state strong {
   display: block;
   font-size: 18px;
-  color: #24432f;
+  color: #175037;
 }
 .workspace-state p {
   line-height: 1.6;
-  color: #526152;
+  color: #535760;
 }
 .workspace-state[data-kind="error"],
 .workspace-state[data-kind="restricted"] {
-  border-left: 3px solid #a34f32;
+  border-left: 3px solid #7d4f12;
 }
 .workspace-scroll-hint {
-  color: #56634f;
+  color: #525760;
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -869,9 +869,9 @@
 .workspace-form:disabled input,
 .workspace-form:disabled select {
   opacity: 1;
-  color: #304236;
-  -webkit-text-fill-color: #304236;
-  background: #f4f2ea;
+  color: #36383c;
+  -webkit-text-fill-color: #36383c;
+  background: #eeeff0;
 }
 .workspace-tasks {
   display: grid;
@@ -918,11 +918,11 @@
   color: var(--workspace-muted);
 }
 .integration-channel-grid article.connected span {
-  color: #217253;
+  color: #1f6b4a;
 }
 .integration-channel-grid article.attention span,
 .sync-error {
-  color: #a3462e;
+  color: #7d4f12;
 }
 .integration-channel-grid button {
   justify-self: start;
@@ -943,17 +943,17 @@
   height: 8px;
   margin-right: 8px;
   border-radius: 50%;
-  background: #98a0a8;
+  background: #999ea7;
 }
 .sync-ok::before {
-  background: #217253;
+  background: #1f6b4a;
 }
 .sync-running::before,
 .sync-queued::before {
-  background: #d58b16;
+  background: #814f0d;
 }
 .sync-error::before {
-  background: #bd4b33;
+  background: #7d4f12;
 }
 @media (max-width: 600px) {
   .workspace-catalog-nav a {
@@ -991,7 +991,7 @@
   border-radius: 7px;
 }
 .admin-app-install > summary:hover {
-  background: #e6e6d9;
+  background: #dedfe1;
 }
 .admin-app-install > summary:focus-visible {
   outline: 2px solid var(--workspace-green);

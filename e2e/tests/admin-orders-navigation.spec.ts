@@ -130,14 +130,14 @@ test("@desktop поиск, страница заказа и возврат со�
   await expect(number).toHaveAttribute("href", /order=52/);
   await number.click();
   await expect(page.getByRole("heading", { name: "Заказ 0001-52", exact: true })).toBeVisible();
-  // Заказ открыт окном поверх списка: список и поиск остаются на месте.
-  await expect(page.getByRole("dialog", { name: "Заказ 0001-52" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Найти заказ" })).toHaveCount(0);
+  await expect(orderLinks(page)).toHaveCount(0);
   await expect(page.locator(".admin-order-editor")).toBeVisible();
   await expect(page).toHaveURL(/order=52/);
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "Заказ 0001-52", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
+  await page.getByRole("link", { name: "К заказам", exact: true }).click();
   await expect(page.getByRole("searchbox", { name: "Найти заказ" })).toHaveValue("Марина");
   await expect(orderLinks(page)).toHaveText(["0001-52", "0001-55"]);
   expect(new URL(page.url()).searchParams.get("status")).toBe("in_progress");
@@ -156,12 +156,11 @@ test("@desktop прямая и старая ссылки открывают за
   await mockOrders(page);
   await page.goto("/admin?section=orders&order=56");
   await expect(page.getByRole("heading", { name: "Заказ 0001-56", exact: true })).toBeVisible();
-  // Заказ открыт окном поверх списка: список и поиск остаются на месте.
-  await expect(page.getByRole("dialog", { name: "Заказ 0001-56" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Найти заказ" })).toHaveCount(0);
 
   await page.goto("/admin?section=orders&customerOrderId=57");
   await expect(page.getByRole("heading", { name: "Заказ 0001-57", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
+  await page.getByRole("link", { name: "К заказам", exact: true }).click();
   await expect(page.getByRole("searchbox", { name: "Найти заказ" })).toBeVisible();
   expect(new URL(page.url()).searchParams.has("customerOrderId")).toBe(false);
   await expectNoWrites(page);
@@ -172,7 +171,7 @@ test("@desktop неизвестный заказ объясняет ошибку
   await page.goto("/admin?section=orders&status=all&order=9999");
   await expect(page.getByText(/Заказ не найден/)).toBeVisible();
   await expect(page.locator(".admin-order-editor")).toHaveCount(0);
-  await page.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await page.getByRole("link", { name: "К заказам", exact: true }).click();
   await expect(orderLinks(page)).toHaveCount(7);
   await page.getByRole("searchbox", { name: "Найти заказ" }).fill("несуществующий заказ");
   await expect(page.getByText("Заказы не найдены", { exact: true })).toBeVisible();
@@ -180,14 +179,14 @@ test("@desktop неизвестный заказ объясняет ошибку
   await expectNoWrites(page);
 });
 
-test("@phone заказ открывается окном на весь экран без горизонтального переполнения", async ({ page }) => {
+test("@phone заказ открывается отдельной страницей без горизонтального переполнения", async ({ page }) => {
   await mockOrders(page);
   await page.goto("/admin?section=orders");
   await page.getByRole("link", { name: "0001-51", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Заказ 0001-51", exact: true })).toBeVisible();
   await expect(page.locator(".admin-order-editor")).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
-  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
+  await page.getByRole("link", { name: "К заказам", exact: true }).click();
   await expect(orderLinks(page)).toHaveText(["0001-51"]);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
   await expectNoWrites(page);

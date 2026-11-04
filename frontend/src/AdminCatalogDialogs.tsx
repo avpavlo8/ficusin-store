@@ -842,7 +842,7 @@ export function ProductDialog({
             {form.image ? <img src={form.image} alt="" /> : <span>Нет фото</span>}
           </div>
           <nav className="product-editor-nav" aria-label="Разделы карточки">
-            {sections.map((x) => (
+            {sections.map((x, index) => (
               <button
                 type="button"
                 className={section === x.id ? "active" : ""}
@@ -850,14 +850,17 @@ export function ProductDialog({
                 key={x.id}
                 onClick={() => changeSection(x.id)}
               >
+                {/* Номер шага — только визуальная подсказка, в имя кнопки не входит. */}
+                <span className="product-editor-step" aria-hidden="true">
+                  {index + 1}
+                </span>
                 {x.label}
               </button>
             ))}
           </nav>
           <p className="catalog-source-note">
-            Остаток — из СБИС.
-            <br />
-            Цена, фото и контент — на сайте.
+            Остаток приходит из СБИС — здесь его не меняют. Название, цену, фото и описание меняют
+            здесь.
           </p>
         </aside>
         <form

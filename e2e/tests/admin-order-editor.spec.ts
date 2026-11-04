@@ -213,7 +213,7 @@ test("@desktop скидка в рублях и процентах сохраня
  await expect(editor.getByText("Оплата и возвраты",{exact:true})).toHaveCount(0);
  // Просмотр без полей ввода; правка состава — отдельным режимом.
  await expect(editor.getByRole("textbox")).toHaveCount(0);
- await page.getByRole("region",{name:"Состав"}).getByRole("button",{name:"Изменить",exact:true}).click();
+ await page.getByRole("region",{name:"Что собрать"}).getByRole("button",{name:"Изменить состав",exact:true}).click();
  await editor.getByRole("combobox",{name:"Добавить товар в заказ"}).fill("1003");
  await editor.getByRole("option",{name:/Аглаонема/}).click();
  await editor.getByRole("button",{name:"Добавить",exact:true}).click();
@@ -225,7 +225,7 @@ test("@desktop скидка в рублях и процентах сохраня
  await editor.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
  // После сохранения окно возвращается к просмотру с новым итогом.
  await expect(page).not.toHaveURL(/edit=/);
- await expect(page.getByRole("region",{name:"Состав"})).toContainText(/Скидка/);
+ await expect(page.getByRole("complementary",{name:"Итог заказа"})).toContainText(/Скидка/);
  expect(await state.savedEdit()).toMatchObject({discount:{type:"percent",value:10}});
  expect(await state.savedEdit()).not.toHaveProperty("deliveryFee");
  expect(await state.paymentLinkCalls()).toBe(0);
@@ -239,7 +239,7 @@ test("@desktop админка объясняет остановку оплаче
 
   const editor = page.locator(".admin-order-editor");
   await expect(page.getByRole("region", { name: "Что нужно сделать" })).toContainText("остатка растений недостаточно");
-  await editor.getByRole("button", { name: /^Открыть ·/ }).click();
+  await editor.getByRole("button", { name: /^Отправления ·/ }).click();
   await expect(editor.getByText(/Отправка №73 оплачена, но остатка растений недостаточно/)).toBeVisible();
   await expect(editor.getByText(/Проверьте заказ 0001-30 в кабинете СДЭК/)).toHaveCount(0);
 });
@@ -263,12 +263,12 @@ test("@desktop несохранённый состав защищён при в�
   await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveCount(0);
 
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
+  await page.getByRole("link", { name: "К заказам", exact: true }).click();
   await expect(quantity).toHaveValue("2");
   await expect(page).toHaveURL(/order=30/);
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Закрыть заказ", exact: true }).click();
+  await page.getByRole("link", { name: "К заказам", exact: true }).click();
   await expect(page.getByRole("link", { name: "0001-30", exact: true })).toBeVisible();
   expect(await state.savedEdit()).toBeUndefined();
   expect(await state.paymentLinkCalls()).toBe(0);
@@ -311,7 +311,7 @@ test("@desktop упаковка регистрируется один раз и 
 
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
-  await expect(page.locator(".ws-drawer-head .ws-pill")).toHaveText("Подтверждён");
+  await expect(page.locator(".order-page-title .ws-pill")).toHaveText("Подтверждён");
   await expect(packing.getByText("Отправка писем не настроена", { exact: true })).toBeVisible();
   await expect(packing.getByText("40 × 30 × 60 см", { exact: true })).toBeVisible();
   await expect(packing.getByText("Трек в процессе создания", { exact: true })).toBeVisible();
@@ -357,7 +357,7 @@ test("@desktop ошибка отправки сохраняет коробку �
   expect(await state.packingFinalizations()).toHaveLength(1);
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
-  await expect(page.locator(".ws-drawer-head .ws-pill")).toHaveText("Подтверждён");
+  await expect(page.locator(".order-page-title .ws-pill")).toHaveText("Подтверждён");
   const requests = await state.packingFinalizations();
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);
@@ -387,7 +387,7 @@ test("@desktop заказ без пункта СДЭК требует выбор
   await expect(packing.getByRole("radio")).toBeChecked();
   await packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true }).click();
   await expect(packing.getByText("Заказ принят в обработку", { exact: true })).toBeVisible();
-  await expect(page.locator(".ws-drawer-head .ws-pill")).toHaveText("Подтверждён");
+  await expect(page.locator(".order-page-title .ws-pill")).toHaveText("Подтверждён");
   const requests = await state.packingFinalizations();
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({ cityCode: 44, officeCode: "MSK1", quotedDeliveryFee: 590 });
@@ -404,10 +404,10 @@ test("@desktop число коробок ограничено числом по�
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toBeVisible();
  // Состав меняется в своём режиме: вернулись к заказу и открыли «Состав».
  await page.getByRole("button",{name:"К заказу",exact:true}).click();
- await page.getByRole("region",{name:"Состав"}).getByRole("button",{name:"Изменить",exact:true}).click();
+ await page.getByRole("region",{name:"Что собрать"}).getByRole("button",{name:"Изменить состав",exact:true}).click();
  await page.getByRole("button",{name:"Удалить",exact:true}).last().click();
  await page.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
- await page.getByRole("region",{name:"Коробки и доставка"}).getByRole("button",{name:"Изменить",exact:true}).click();
+ await page.getByRole("region",{name:"Кому и куда"}).getByRole("button",{name:"Коробки и доставка",exact:true}).click();
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toHaveCount(0);
 });
 
@@ -425,7 +425,7 @@ test("@desktop дробный вес в килограммах сохраняе�
  expect((await state.packingFinalizations())[0].boxes[0].weightGrams).toBe(125);
  const title=await page.getByRole("heading",{name:"Заказ 0001-30",exact:true}).boundingBox();
  // Статус показан рядом с номером в шапке окна.
- const status=await page.locator(".ws-drawer-head .ws-pill").boundingBox();
+ const status=await page.locator(".order-page-title .ws-pill").boundingBox();
  expect(Math.abs(title!.y-status!.y)).toBeLessThan(50);
  expect(status!.x-title!.x-title!.width).toBeLessThan(30);
 });

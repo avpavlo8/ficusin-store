@@ -1,23 +1,23 @@
 .admin-order-workspace {
-  --order-muted: #64695e;
-  color: var(--workspace-ink, #292a24);
+  --order-muted: #5c616b;
+  color: var(--workspace-ink, #252629);
   min-width: 0;
 }
 .admin-order-workspace ::selection {
-  background: #dbe7d4;
-  color: #244734;
+  background: #ceede0;
+  color: #185339;
 }
 .admin-order-workspace :is(a, button, input, select, summary):focus-visible {
-  outline: 2px solid #376448;
+  outline: 2px solid #1f6b4a;
   outline-offset: 3px;
 }
 .admin-order-workspace :is(input, select) {
-  caret-color: #244734;
+  caret-color: #185339;
 }
 
 .admin-order-workspace h3 {
   margin: 0;
-  color: #2c3e2d;
+  color: #323438;
   font-family: inherit;
   font-size: 16px;
   line-height: 1.4;
@@ -30,12 +30,12 @@
 .order-payment-state {
   width: fit-content;
   padding: 4px 0;
-  color: #795433;
+  color: #7d4f12;
   font-size: 12px;
   font-weight: 600;
 }
 .order-payment-state[data-paid="true"] {
-  color: #345a36;
+  color: #1f6b4a;
 }
 
 #order-composition {
@@ -47,7 +47,7 @@
   padding: 22px;
   border: 1px solid var(--workspace-line);
   border-radius: 10px;
-  background: #fffdf8;
+  background: #fffcf8;
   box-shadow: none;
 }
 .admin-page .admin-order-workspace .admin-block-heading {
@@ -128,19 +128,19 @@
   padding: 10px 14px;
   border: 1px solid var(--workspace-line);
   border-radius: 7px;
-  background: #fffdf8;
-  color: #244734;
+  background: #fffcf8;
+  color: #185339;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
 }
 .admin-page .admin-order-workspace .order-editor-savebar .primary {
-  background: #244734;
-  border-color: #244734;
-  color: #fff;
+  background: #185339;
+  border-color: #185339;
+  color: #ffffff;
 }
 .admin-page .admin-order-workspace .order-editor-savebar .primary:hover:not(:disabled) {
-  background: #183b28;
+  background: #13402d;
 }
 .admin-page .admin-order-workspace button:disabled {
   opacity: 0.5;
@@ -154,7 +154,7 @@
 .order-partial-shipments > summary {
   cursor: pointer;
   font-size: 14px;
-  color: #244734;
+  color: #185339;
 }
 .order-partial-shipments > summary small {
   display: block;
@@ -182,12 +182,12 @@
 .order-workspace-skeleton {
   height: 100px;
   border-radius: 8px;
-  background: #eeece4;
+  background: #e8e9ea;
 }
 
 .admin-page .admin-order-workspace .admin-order-packing {
-  border-color: #c6d3bd;
-  background: #fffef9;
+  border-color: #c5c7cb;
+  background: #fffcf9;
 }
 .admin-order-packing p {
   max-width: 70ch;
@@ -198,8 +198,8 @@
   margin-bottom: 18px;
   padding: 14px 16px;
   border-radius: 7px;
-  background: #fcf1e4;
-  color: #785435;
+  background: #fef2e2;
+  color: #7d4f12;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -211,9 +211,9 @@
 }
 .order-packing-warning {
   padding: 12px 14px;
-  border: 1px solid #e3d2b8;
+  border: 1px solid #f3d2a8;
   border-radius: 7px;
-  color: #785435;
+  color: #7d4f12;
 }
 .order-packing-destination {
   display: flex;
@@ -230,7 +230,7 @@
 }
 .order-packing-destination p {
   margin: 4px 0;
-  color: #4d564b;
+  color: #4b4f56;
 }
 .order-packing-destination small {
   color: var(--order-muted);
@@ -248,14 +248,14 @@
 }
 .order-packing-destination-form legend {
   margin-bottom: 12px;
-  color: #244734;
+  color: #185339;
   font-size: 13px;
   font-weight: 600;
 }
 .order-packing-destination-form > label {
   display: grid;
   gap: 6px;
-  color: #4b5848;
+  color: #4a4e56;
   font-size: 12px;
 }
 .admin-page .order-packing-destination-form :is(input, select) {
@@ -265,7 +265,7 @@
   padding: 9px 11px;
   border: 1px solid var(--workspace-line);
   border-radius: 7px;
-  color: #292a24;
+  color: #252629;
   font: inherit;
   font-size: 14px;
 }
@@ -288,8 +288,8 @@
   padding: 10px 12px;
   border: 0;
   border-bottom: 1px solid var(--workspace-line);
-  background: #fff;
-  color: #244734;
+  background: #ffffff;
+  color: #185339;
   text-align: left;
   cursor: pointer;
 }
@@ -297,11 +297,11 @@
   border: 0;
 }
 .order-packing-city-results button:hover {
-  background: #edf1e7;
+  background: #ebeced;
 }
 .admin-order-packing .order-packing-instruction {
   margin: 0 0 16px;
-  color: #4e594b;
+  color: #4c5058;
 }
 .order-packing-box {
   min-width: 0;
@@ -312,7 +312,7 @@
 }
 .order-packing-box legend {
   padding: 0 12px 0 0;
-  color: #244734;
+  color: #185339;
   font-size: 13px;
   font-weight: 600;
 }
@@ -324,7 +324,7 @@
 .order-packing-dimensions label {
   display: grid;
   gap: 7px;
-  color: #505d4b;
+  color: #4e525a;
   font-size: 12px;
 }
 .admin-page .order-packing-dimensions input {
@@ -332,15 +332,15 @@
   width: 100%;
   min-height: 44px;
   padding: 9px 10px;
-  border: 1px solid #becbb5;
+  border: 1px solid #bcbfc4;
   border-radius: 7px;
-  color: #292a24;
+  color: #252629;
   font: inherit;
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 .admin-page .order-packing-dimensions input::placeholder {
-  color: #777d71;
+  color: #6d7481;
 }
 .admin-order-packing .order-packing-contents {
   margin: 12px 0 0;
@@ -357,7 +357,7 @@
   grid-template-columns: minmax(0, 1fr) 65px;
   gap: 12px;
   align-items: center;
-  color: #374630;
+  color: #373a3f;
   font-size: 13px;
 }
 .order-packing-allocation small {
@@ -385,7 +385,7 @@
   margin-bottom: 18px;
 }
 .order-packing-tools > small {
-  color: #795433;
+  color: #7d4f12;
   font-size: 12px;
 }
 .order-packing-quote-action {
@@ -404,7 +404,7 @@
   font-size: 13px;
 }
 .order-packing-quote-action > .order-packing-warning {
-  color: #a12f24;
+  color: #7d4f12;
 }
 .order-packing-quote-action > small {
   color: var(--order-muted);
@@ -413,25 +413,25 @@
 .admin-page .order-packing-button {
   min-height: 43px;
   padding: 10px 15px;
-  border: 1px solid #aabda0;
+  border: 1px solid #a9adb4;
   border-radius: 7px;
-  background: #edf2e8;
-  color: #244734;
+  background: #ecedee;
+  color: #185339;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 .admin-page .order-packing-button:hover:not(:disabled) {
-  background: #e1ead8;
+  background: #d3eee2;
 }
 .admin-page .order-packing-button.primary {
-  border-color: #244734;
-  background: #244734;
+  border-color: #185339;
+  background: #185339;
   color: white;
 }
 .admin-page .order-packing-button.primary:hover:not(:disabled) {
-  background: #193927;
+  background: #12402c;
 }
 .order-packing-quotes {
   display: grid;
@@ -440,7 +440,7 @@
 }
 .order-packing-quotes h4 {
   margin: 0 0 3px;
-  color: #244734;
+  color: #185339;
   font-size: 13px;
 }
 .order-packing-quotes > label {
@@ -454,12 +454,12 @@
   cursor: pointer;
 }
 .order-packing-quotes > label:has(input:checked) {
-  border-color: #799570;
-  background: #f0f5ea;
+  border-color: #777f8e;
+  background: #efeff0;
 }
 .order-packing-quotes input {
   margin: 0;
-  accent-color: #244734;
+  accent-color: #185339;
 }
 .order-packing-quotes strong {
   font-size: 13px;
@@ -478,7 +478,7 @@
 }
 .order-packing-submit p {
   margin: 0 0 14px;
-  color: #3d5037;
+  color: #3f4248;
   overflow-wrap: anywhere;
 }
 .order-packing-total {
@@ -490,14 +490,14 @@
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  color: #505d4b;
+  color: #4e525a;
   font-size: 13px;
 }
 .order-packing-total > div:nth-child(3) {
   padding-top: 9px;
   margin-top: 3px;
   border-top: 1px solid var(--workspace-line);
-  color: #244734;
+  color: #185339;
   font-size: 15px;
   font-weight: 650;
 }
@@ -519,7 +519,7 @@
   min-width: 0;
 }
 .order-packing-progress {
-  color: #2c4d31;
+  color: #1b5e41;
 }
 .order-packing-progress > strong {
   display: block;
@@ -541,7 +541,7 @@
 }
 .order-packing-progress dd {
   margin: 0;
-  color: #3e5036;
+  color: #3f4247;
   font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -553,10 +553,10 @@
 .order-packing-error {
   margin-top: 16px;
   padding: 13px 15px;
-  border: 1px solid #e4cbbd;
+  border: 1px solid #f3d5ae;
   border-radius: 7px;
-  background: #fff2e9;
-  color: #8f412b;
+  background: #fef5ea;
+  color: #7d4f12;
 }
 .order-packing-error p {
   margin: 0 0 9px;
@@ -626,13 +626,13 @@
   gap: 7px;
   margin: 0;
   min-width: 0;
-  color: #64695e;
+  color: #5c616b;
   font-size: 13px;
 }
 .order-discount strong {
   align-self: end;
   padding-bottom: 14px;
-  color: #244734;
+  color: #185339;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }

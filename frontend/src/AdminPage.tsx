@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { BrandLogo } from "./BrandLogo";
 import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";
 import { Categories, Collections, Products } from "./AdminCatalog";
@@ -8,7 +7,7 @@ const Procurement = lazy(() =>
   import("./AdminProcurement").then((module) => ({ default: module.Procurement })),
 );
 import { Dashboard } from "./AdminDashboard";
-import { WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
+import { WorkspaceMark, WorkspaceSidebar, WorkspaceToolbar } from "./AdminWorkspace";
 import "./styles/admin-workspace.css";
 import "./styles/admin-design.css";
 import { Settings } from "./AdminSettings";
@@ -100,9 +99,9 @@ export default function AdminPage() {
   if (!data)
     return (
       <main className="admin-page ws-loading">
-        <a className="ws-brand" href="/" aria-label="Фикусин — в магазин">
-          <BrandLogo decorative />
-        </a>
+        <span className="ws-brand">
+          <WorkspaceMark />
+        </span>
         <WorkspaceState kind={error ? "error" : "loading"} title={error || "Загружаем…"} />
       </main>
     );

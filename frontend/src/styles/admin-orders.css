@@ -36,10 +36,10 @@
 .admin-page .admin-order-editor > .admin-block {
   margin: 0;
   padding: 22px;
-  border: 1px solid #ddcfbd;
+  border: 1px solid #f2d2a8;
   border-radius: 18px;
-  background: rgba(255, 253, 248, 0.96);
-  box-shadow: 0 8px 24px rgba(70, 52, 34, 0.04);
+  background: rgba(255, 252, 248, 0.96);
+  box-shadow: 0 8px 24px rgba(91, 57, 13, 0.04);
 }
 .admin-page .admin-order-editor .admin-block-heading {
   margin-bottom: 16px;
@@ -47,13 +47,13 @@
 }
 .admin-page .admin-order-editor .admin-block-heading strong,
 .admin-page .admin-order-editor > .admin-block > strong {
-  color: #294326;
+  color: #185138;
   font: 700 15px/1.25 inherit;
 }
 .admin-page .admin-order-editor .admin-block-heading small {
   display: block;
   margin-top: 4px;
-  color: #858b84;
+  color: #7d8492;
   font-size: 12px;
   font-weight: 400;
 }
@@ -65,7 +65,7 @@
   gap: 14px;
   align-items: center;
   padding: 14px 0;
-  border-top: 1px solid #eadfce;
+  border-top: 1px solid #fbe0bd;
 }
 .admin-page .admin-order-edit-line:first-of-type {
   border-top: 0;
@@ -77,13 +77,13 @@
 }
 .admin-page .admin-order-edit-line > span strong {
   overflow: hidden;
-  color: #2f302c;
+  color: #2b2d31;
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .admin-page .admin-order-edit-line > span small {
-  color: #858b84;
+  color: #7d8492;
   font-size: 12px;
 }
 .admin-page .admin-order-edit-line > input {
@@ -95,7 +95,7 @@
   font-weight: 700;
 }
 .admin-page .admin-order-edit-line > strong {
-  color: #294326;
+  color: #185138;
   font-size: 14px;
   text-align: right;
   white-space: nowrap;
@@ -103,15 +103,15 @@
 .admin-page .admin-order-edit-line > .admin-action {
   min-width: 86px;
   padding: 9px 12px;
-  border: 1px solid #e0c9bb;
+  border: 1px solid #f3d2a8;
   border-radius: 10px;
-  background: #fff8f3;
-  color: #9a4f34;
+  background: #fefaf4;
+  color: #7d4f12;
   font-weight: 700;
 }
 .admin-page .admin-order-edit-line > .admin-action:hover {
-  border-color: #cf9f87;
-  background: #f8e8de;
+  border-color: #eab36c;
+  background: #fdedd9;
 }
 
 .admin-page .admin-order-add-line {
@@ -120,7 +120,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  border-top: 1px solid #eadfce;
+  border-top: 1px solid #fbe0bd;
 }
 .admin-page .admin-order-add-line select {
   width: 100%;
@@ -133,8 +133,8 @@
   padding: 10px 18px;
   border: 0;
   border-radius: 11px;
-  background: #294326;
-  color: #fff;
+  background: #185138;
+  color: #ffffff;
   font-weight: 700;
 }
 .admin-page .admin-order-add-line .admin-action:disabled {
@@ -153,7 +153,7 @@
 .admin-page .admin-order-editor .admin-form-grid label:not(.admin-checkbox) {
   display: grid;
   gap: 6px;
-  color: #666b65;
+  color: #606570;
   font-size: 12px;
   font-weight: 700;
 }
@@ -168,7 +168,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #515851;
+  color: #4e525b;
   font-size: 13px;
   font-weight: 600;
 }
@@ -176,7 +176,7 @@
   width: 19px;
   height: 19px;
   flex: none;
-  accent-color: #294326;
+  accent-color: #185138;
 }
 
 .admin-page .admin-order-editor > .dialog-actions {
@@ -189,33 +189,33 @@
   padding: 12px 20px;
   border: 0;
   border-radius: 11px;
-  background: #294326;
-  color: #fff;
+  background: #185138;
+  color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 8px 18px rgba(41, 67, 38, 0.14);
+  box-shadow: 0 8px 18px rgba(24, 81, 56, 0.14);
 }
 
 /* Payment is a distinct financial card. */
 .admin-page .admin-order-editor > .admin-block:last-child {
-  border-color: #cfd9ca;
-  background: #f4f7f0;
+  border-color: #cfd1d4;
+  background: #f3f3f4;
 }
 .admin-page .admin-order-editor > .admin-block:last-child > p {
   margin: 12px 0 0;
-  color: #626b61;
+  color: #5e636e;
   line-height: 1.55;
 }
 .admin-page .admin-order-editor > .admin-block:last-child > p:first-of-type {
   padding: 13px 15px;
   border-radius: 12px;
-  background: #fff;
+  background: #ffffff;
 }
 .admin-page .admin-order-editor > .admin-block:last-child .admin-action {
   padding: 10px 14px;
-  border: 1px solid #c9d3c5;
+  border: 1px solid #c9cbcf;
   border-radius: 10px;
-  background: #fff;
-  color: #294326;
+  background: #ffffff;
+  color: #185138;
   font-weight: 700;
 }
 
