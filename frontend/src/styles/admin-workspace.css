@@ -63,7 +63,7 @@
 }
 .admin-page .account-sidebar nav button.active {
   background: var(--workspace-green) !important;
-  color: #fef8f1 !important;
+  color: #f7f7f8 !important;
   font-weight: 600;
 }
 
@@ -120,7 +120,7 @@
   border: 1px solid var(--workspace-rust);
   border-radius: 6px;
   background: var(--workspace-rust);
-  color: #fef9f3;
+  color: #f8f8f9;
   padding: 12px 16px;
   cursor: pointer;
   font-size: 12px;
@@ -252,7 +252,7 @@
   cursor: pointer;
 }
 .workspace-filters button[aria-pressed="true"] {
-  color: #fef8f1;
+  color: #f7f7f8;
   background: var(--workspace-green);
 }
 .workspace-revenue-body {
@@ -333,7 +333,7 @@
   width: 100%;
   padding: 12px 0;
   border: 0;
-  border-bottom: 1px solid #fce5c6;
+  border-bottom: 1px solid #dfe0e3;
   border-radius: 0;
   background: transparent;
   font-size: 12px;
@@ -373,7 +373,7 @@
   white-space: nowrap;
 }
 .admin-page .workspace-recent .workspace-status[data-status="new"] {
-  background: #fce8cd;
+  background: #e2e4e7;
   color: #7d4f12;
 }
 .admin-page .workspace-recent .workspace-status[data-status="assembling"],
@@ -384,7 +384,7 @@
 .admin-page .workspace-recent .workspace-status[data-status="ready"],
 .admin-page .workspace-recent .workspace-status[data-status="completed"] {
   background: #1b5f42;
-  color: #fef8f1;
+  color: #f7f7f8;
 }
 .workspace-recent .admin-order-list svg {
   width: 14px;
@@ -547,7 +547,7 @@
   letter-spacing: 0.035em;
 }
 .admin-page .admin-table td {
-  border-color: #fce3c3;
+  border-color: #dddfe2;
 }
 .admin-page .admin-stats {
   gap: 12px;

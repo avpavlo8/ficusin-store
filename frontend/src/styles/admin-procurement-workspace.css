@@ -22,7 +22,7 @@
   padding: 9px 14px;
   border: 1px solid #d1d3d6;
   border-radius: 10px;
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #3f4247;
   font-family: inherit;
   font-size: 14px;
@@ -100,7 +100,7 @@
   :is(button.primary, button.admin-primary) {
   background: #3f4247 !important;
   border-color: #3f4247 !important;
-  color: #fffcf8 !important;
+  color: #fbfbfc !important;
   box-shadow: none !important;
 }
 .admin-page
@@ -154,7 +154,7 @@
   padding: 10px 12px;
   border: 1px solid #ccced2;
   border-radius: 9px;
-  background: #fffcf9;
+  background: #fcfcfc;
   color: #323439;
   font: inherit;
   font-size: 14px;
@@ -358,7 +358,7 @@
   padding: 10px 14px;
   border: 1px solid #d1d3d6;
   border-radius: 10px;
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #3f4247;
   cursor: pointer;
   font-size: 13px;
@@ -372,7 +372,7 @@
 }
 .admin-page .procurement-checklist.blocked {
   border: 1px solid #f1cd9d;
-  background: #fef6ec;
+  background: #f4f5f6;
   color: #7d4f12;
 }
 .admin-page .procurement-checklist ul {
@@ -721,7 +721,7 @@
     grid-template-columns: 1fr 1fr;
   }
   .admin-page .procurement-order-lines .procurement-row-mismatch {
-    background: #fef6ec;
+    background: #f4f5f6;
   }
 }
 .admin-page .procurement-row-more .sr-only {
@@ -788,7 +788,7 @@
 .admin-page .procurement-line-tabs button[aria-selected="true"] {
   background: #3f4247;
   border-color: #3f4247;
-  color: #fffcf8;
+  color: #fbfbfc;
 }
 .admin-page .procurement-line-tabs button[aria-selected="true"]:hover {
   background: #19553b;

@@ -22,7 +22,7 @@
   padding: 10px 14px;
   border: 1px solid #cdcfd2;
   border-radius: 8px;
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #3f4247;
   font-size: 14px;
 }
@@ -53,7 +53,7 @@
   border-radius: 7px;
 }
 .admin-page .procurement-tabs button.active {
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #7d4f12;
   box-shadow: 0 1px 4px #322b2112;
 }
@@ -88,7 +88,7 @@
 .admin-page .procurement-filter-bar select {
   min-height: 42px;
   padding: 9px 12px;
-  background: #fffcf8;
+  background: #fbfbfc;
   border: 1px solid #bfc1c6;
   border-radius: 8px;
   font-size: 14px;
@@ -287,8 +287,8 @@
   padding: 12px 48px 12px 14px;
   border: 1px solid #7d4f12;
   border-radius: 8px;
-  background: #fef5e9;
-  color: #7d4f11;
+  background: #f3f3f4;
+  color: #7d4e11;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -383,7 +383,7 @@
     margin-bottom: 12px;
     border: 1px solid #ccced1;
     border-radius: 12px;
-    background: #fffcf8;
+    background: #fbfbfc;
   }
   .admin-page .procurement-plan-table td {
     display: block;
@@ -565,7 +565,7 @@
 
 .admin-page .procurement-page-heading .admin-primary,
 .admin-page .procurement-content .admin-primary {
-  color: #fffcf8;
+  color: #fbfbfc;
   background: #7d4f12;
 }
 .admin-page .procurement-warning small {

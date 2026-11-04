@@ -15,7 +15,7 @@
   overflow-y: auto;
   border: 1px solid var(--workspace-line, #d3d4d7);
   border-radius: 8px;
-  background: #fffcf8;
+  background: #fbfbfc;
   box-shadow: 0 8px 20px #24473418;
 }
 .admin-product-search-menu button {

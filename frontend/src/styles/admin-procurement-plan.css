@@ -33,7 +33,7 @@
   padding: 0;
   border: 1px solid #cbcdd0;
   border-radius: 50%;
-  background: #fffcf8;
+  background: #fbfbfc;
   font-size: 22px;
 }
 .admin-page .procurement-plan-settings {
@@ -69,7 +69,7 @@
   padding: 0 13px;
   border: 1px solid #c6c8cc;
   border-radius: 9px;
-  background: #fffcf8;
+  background: #fbfbfc;
   font-weight: 700;
 }
 .admin-page .procurement-plan-tools > span {
@@ -79,7 +79,7 @@
 .admin-page .procurement-plan-tools button.admin-primary,
 .admin-page .procurement-recommendation-list button.admin-primary {
   background: #7d4f12;
-  color: #fef8f1;
+  color: #f7f7f8;
 }
 .admin-page .procurement-plan-table-wrap {
   flex: 1 1 0;
@@ -221,7 +221,7 @@
   padding: 11px 13px;
   border: 0;
   border-radius: 9px;
-  background: #fce7cc;
+  background: #e2e3e6;
   color: #6b727f;
   font-size: 11px;
 }
@@ -268,7 +268,7 @@
   border: 0;
   border-left: 1px solid #f4d7b1;
   border-radius: 0;
-  background: #fffcf8;
+  background: #fbfbfc;
   box-shadow: -18px 0 45px rgba(47, 49, 53, 0.09);
 }
 .admin-page .procurement-recommendation-drawer > header {
@@ -295,7 +295,7 @@
   padding: 14px 18px 12px;
   display: grid;
   gap: 6px;
-  border-bottom: 1px solid #fce2c1;
+  border-bottom: 1px solid #dcdee1;
   color: #5f6570;
   font-size: 11px;
   font-weight: 700;
@@ -327,7 +327,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  border-bottom: 1px solid #fce5c6;
+  border-bottom: 1px solid #dfe0e3;
 }
 .admin-page .procurement-recommendation-list article > div {
   min-width: 0;
@@ -361,7 +361,7 @@
 .admin-page .procurement-saby-title > span {
   padding: 3px 6px;
   border-radius: 999px;
-  background: #fce6c9;
+  background: #e0e2e5;
   color: #7d4f12;
   font-size: 9px;
   font-weight: 700;
@@ -521,10 +521,10 @@
   font-weight: 700;
 }
 .admin-page .procurement-folder-row:hover {
-  background: #fce8ce;
+  background: #e3e4e7;
 }
 .admin-page .procurement-folder-row.active {
-  background: #fbe0bd;
+  background: #d9dbdf;
   color: #7d4f12;
 }
 .admin-page .procurement-folder-row small {
@@ -561,7 +561,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border: 1px solid #fbdeb8;
+  border: 1px solid #d6d8dc;
   border-radius: 9px;
   background: #f6f6f6;
 }

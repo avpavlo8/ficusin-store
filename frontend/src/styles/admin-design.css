@@ -2142,3 +2142,22 @@
     left: 0;
   }
 }
+
+/* Метки статуса товара: нейтральная, зелёная «опубликован», серая «архив». */
+.admin-page .ws-main .admin-pill {
+  background: #f0f1f4;
+  color: var(--ws-text);
+  font-weight: 600;
+}
+.admin-page .ws-main .admin-pill.published {
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+}
+.admin-page .ws-main .admin-pill.archived {
+  background: #f0f1f4;
+  color: var(--ws-muted);
+}
+.admin-page .ws-main :is(.catalog-product-cell, .catalog-photo-empty) img,
+.admin-page .ws-main .catalog-photo-empty {
+  background-color: #f3f4f6;
+}

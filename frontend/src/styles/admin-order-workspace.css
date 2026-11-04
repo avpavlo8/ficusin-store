@@ -47,7 +47,7 @@
   padding: 22px;
   border: 1px solid var(--workspace-line);
   border-radius: 10px;
-  background: #fffcf8;
+  background: #fbfbfc;
   box-shadow: none;
 }
 .admin-page .admin-order-workspace .admin-block-heading {
@@ -128,7 +128,7 @@
   padding: 10px 14px;
   border: 1px solid var(--workspace-line);
   border-radius: 7px;
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #185339;
   font: inherit;
   font-size: 13px;
@@ -187,7 +187,7 @@
 
 .admin-page .admin-order-workspace .admin-order-packing {
   border-color: #c5c7cb;
-  background: #fffcf9;
+  background: #fcfcfc;
 }
 .admin-order-packing p {
   max-width: 70ch;
@@ -198,7 +198,7 @@
   margin-bottom: 18px;
   padding: 14px 16px;
   border-radius: 7px;
-  background: #fef2e2;
+  background: #eff0f1;
   color: #7d4f12;
   font-size: 12px;
   line-height: 1.5;
@@ -555,7 +555,7 @@
   padding: 13px 15px;
   border: 1px solid #f3d5ae;
   border-radius: 7px;
-  background: #fef5ea;
+  background: #f3f4f5;
   color: #7d4f12;
 }
 .order-packing-error p {

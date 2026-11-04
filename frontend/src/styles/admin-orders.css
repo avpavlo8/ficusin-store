@@ -38,7 +38,7 @@
   padding: 22px;
   border: 1px solid #f2d2a8;
   border-radius: 18px;
-  background: rgba(255, 252, 248, 0.96);
+  background: rgba(251, 251, 252, 0.96);
   box-shadow: 0 8px 24px rgba(91, 57, 13, 0.04);
 }
 .admin-page .admin-order-editor .admin-block-heading {
@@ -65,7 +65,7 @@
   gap: 14px;
   align-items: center;
   padding: 14px 0;
-  border-top: 1px solid #fbe0bd;
+  border-top: 1px solid #d9dbdf;
 }
 .admin-page .admin-order-edit-line:first-of-type {
   border-top: 0;
@@ -105,13 +105,13 @@
   padding: 9px 12px;
   border: 1px solid #f3d2a8;
   border-radius: 10px;
-  background: #fefaf4;
+  background: #f9f9f9;
   color: #7d4f12;
   font-weight: 700;
 }
 .admin-page .admin-order-edit-line > .admin-action:hover {
   border-color: #eab36c;
-  background: #fdedd9;
+  background: #e9eaed;
 }
 
 .admin-page .admin-order-add-line {
@@ -120,7 +120,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  border-top: 1px solid #fbe0bd;
+  border-top: 1px solid #d9dbdf;
 }
 .admin-page .admin-order-add-line select {
   width: 100%;

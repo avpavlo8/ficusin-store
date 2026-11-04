@@ -95,7 +95,7 @@
   min-height: 44px;
   border: 1px solid var(--return-line);
   border-radius: 9px;
-  background: #fef9f3;
+  background: #f8f8f9;
   color: var(--return-ink);
   font-size: 18px;
 }
@@ -105,7 +105,7 @@
   top: 100%;
   z-index: 20;
   min-width: 260px;
-  background: #fffcf8;
+  background: #fbfbfc;
   border: 1px solid var(--return-line);
   border-radius: 10px;
   box-shadow: 0 12px 32px #183b3020;
@@ -159,7 +159,7 @@
 .returns-tabs button {
   padding: 9px 12px;
   min-height: 40px;
-  background: #fffbf7;
+  background: #fbfbfb;
   border: 1px solid var(--return-line);
   border-radius: 8px;
   color: var(--return-muted);
@@ -234,7 +234,7 @@
   gap: 12px;
   min-width: 245px;
   padding: 16px;
-  background: #fffcf8;
+  background: #fbfbfc;
   border: 1px solid var(--return-line);
   border-radius: 10px;
   box-shadow: 0 8px 30px #193c3020;
@@ -308,7 +308,7 @@
   padding: 10px 14px;
   border: 1px solid #c5c7cb;
   border-radius: 8px;
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #1c6244;
   font-size: 14px;
   font-weight: 650;
@@ -349,7 +349,7 @@
 }
 .returns-list,
 .return-detail {
-  background: #fffcf9;
+  background: #fcfcfc;
   border: 1px solid var(--return-line);
   border-radius: 12px;
   min-width: 0;
@@ -409,7 +409,7 @@
 }
 .state-inspection {
   color: #7d4f12;
-  background: #fdebd4;
+  background: #e7e8ea;
 }
 .state-ready {
   color: #1f6b4a;
@@ -421,7 +421,7 @@
 }
 .state-dead {
   color: #7d4f12;
-  background: #fdf1e2;
+  background: #eeeff1;
 }
 .return-card-main {
   min-width: 0;
@@ -474,7 +474,7 @@
 }
 .return-receipt-badge {
   color: #794c11;
-  background: #fdead1;
+  background: #e5e6e9;
 }
 .receipt-draft_created {
   color: #4b4f57;
@@ -487,7 +487,7 @@
 .receipt-failed,
 .receipt-correction_required {
   color: #7d4f12;
-  background: #fdeeda;
+  background: #eaebed;
 }
 .receipt-queued,
 .receipt-checking {
@@ -563,7 +563,7 @@
 .return-price > span {
   font-size: 13px;
   color: #7d4f12;
-  background: #fdedd8;
+  background: #e9eaec;
   padding: 5px 7px;
   border-radius: 5px;
 }
@@ -609,7 +609,7 @@
   align-items: start;
   gap: 8px;
   text-align: left;
-  background: #fffcf9;
+  background: #fcfcfc;
   color: var(--return-ink);
 }
 .return-condition-grid button svg {
@@ -739,7 +739,7 @@
   width: 100%;
   border: 1px solid #c5c7cb;
   border-radius: 7px;
-  background: #fffcf8;
+  background: #fbfbfc;
   color: #1c6244;
 }
 .return-add-photo {
@@ -792,7 +792,7 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
-  background: #fffcf9;
+  background: #fcfcfc;
   border-top: 1px solid #d7d8db;
   border-radius: 0 0 12px 12px;
   box-shadow: 0 -6px 12px #26422908;
@@ -859,7 +859,7 @@
 .return-notice {
   padding: 12px 14px;
   border: 1px solid #f2cfa1;
-  background: #fdf0de;
+  background: #ecedef;
   color: #754a11;
   border-radius: 8px;
   margin: 12px 0;
@@ -885,7 +885,7 @@
   display: flex;
   gap: 12px;
   padding: 16px;
-  background: #fffcf9;
+  background: #fcfcfc;
   border: 1px solid var(--return-line);
   border-radius: 11px;
   margin: 10px 0;
@@ -944,7 +944,7 @@
   gap: 12px;
   border: 1px solid var(--return-line);
   border-radius: 9px;
-  background: #fffcf9;
+  background: #fcfcfc;
   padding: 14px;
   margin: 9px 0;
 }
@@ -967,7 +967,7 @@
   padding: 0 !important;
   overflow: hidden;
   color: #164c35;
-  background: #fefaf4;
+  background: #f9f9f9;
 }
 .return-create-dialog > header {
   padding: 20px 24px 16px;
@@ -1155,7 +1155,7 @@
   font-size: 24px;
 }
 .return-row-invalid td {
-  background: #fef5ea;
+  background: #f3f4f5;
 }
 .return-row-invalid [aria-invalid="true"] {
   outline: 2px solid #7d4f12;
@@ -1187,7 +1187,7 @@
   grid-template-columns: 1fr;
   gap: 10px;
   padding: 14px 24px;
-  background: #fefaf4;
+  background: #f9f9f9;
   border-top: 1px solid #d4d5d8;
   box-shadow: 0 -5px 12px #253c2708;
   flex: 0 0 auto;
@@ -1227,7 +1227,7 @@
 }
 .return-intake-error {
   padding: 10px 12px;
-  background: #fdf0e0;
+  background: #edeef0;
   color: #7d4f12;
   border: 1px solid #f2d0a4;
   border-radius: 8px;
@@ -1323,7 +1323,7 @@
 .return-document-units button {
   min-height: 42px;
   padding: 8px 12px;
-  background: #fffcf8;
+  background: #fbfbfc;
   border: 1px solid #c3c5c9;
   border-radius: 7px;
   color: #1e6948;
@@ -1433,7 +1433,7 @@
   .return-detail-toolbar {
     position: sticky;
     top: 0;
-    background: #fffcf9;
+    background: #fcfcfc;
     padding: 8px 0;
     z-index: 3;
   }
@@ -1483,7 +1483,7 @@
     margin-bottom: 12px;
     border: 1px solid #d5d7da;
     border-radius: 10px;
-    background: #fffcf9;
+    background: #fcfcfc;
     position: relative;
   }
   .return-intake-table td {
