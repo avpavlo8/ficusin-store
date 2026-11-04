@@ -1245,19 +1245,16 @@
   letter-spacing: -0.01em;
   text-decoration: none;
 }
-.admin-page .ws-mark > span:first-child {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--ws-green);
-  color: #fff;
-  font-size: 15px;
+.admin-page .ws-mark .ficusin-logo {
+  display: block;
+  width: auto;
+  height: 26px;
 }
 .admin-page .ws-mark small {
+  padding-left: 10px;
+  border-left: 1px solid var(--ws-line);
   color: var(--ws-muted);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -1846,12 +1843,11 @@
   border-top: 0;
 }
 @media (max-width: 760px) {
-  .admin-page .ws-topbar .ws-mark small,
-  .admin-page .ws-topbar .ws-mark {
-    font-size: 0;
+  .admin-page .ws-topbar .ws-mark small {
+    display: none;
   }
-  .admin-page .ws-topbar .ws-mark > span:first-child {
-    font-size: 15px;
+  .admin-page .ws-topbar .ws-mark .ficusin-logo {
+    height: 22px;
   }
 }
 

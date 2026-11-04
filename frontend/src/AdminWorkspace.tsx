@@ -1,5 +1,6 @@
+import { BrandLogo } from "./BrandLogo";
 import { useChatUnread } from "./lib/chat";
-import { mobilePrimarySections, sectionGroups, sections } from "./adminNavigation";
+import { mobilePrimarySections, sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
 import { roleLabel } from "./adminShared";
@@ -106,13 +107,11 @@ export function WorkspaceSidebar({
     more.current?.close();
     onNavigate(next);
   };
-  const groups = sectionGroups
-    .map((group) => ({ ...group, items: available.filter((item) => item.group === group.id) }))
-    .filter((group) => group.items.length);
-  const groupedLinks = groups.map((group) => (
-    <div className="ws-nav-group" key={group.id}>
-      <p>{group.label}</p>
-      {group.items.map((item) => (
+  // Одним списком, без подписей групп: разделов немного, а заголовки
+  // «Сегодня», «Растения» только добавляли слов. Порядок задан в sections.
+  const groupedLinks = (
+    <div className="ws-nav-group">
+      {available.map((item) => (
         <SectionLink
           key={item.id}
           id={item.id}
@@ -123,7 +122,7 @@ export function WorkspaceSidebar({
         />
       ))}
     </div>
-  ));
+  );
   const primary = mobilePrimarySections
     .map((id) => available.find((item) => item.id === id))
     .filter((item) => !!item);
@@ -289,14 +288,13 @@ export function WorkspaceToolbar({
   );
 }
 
-/* Знак админки: зелёный квадрат с «ф» и подпись обычным шрифтом.
-   Логотип-антиква остаётся витрине, в рабочем инструменте он выглядел
-   декоративно. */
+/* Знак админки: настоящий логотип Фикусина (те же контуры, что на сайте)
+   и подпись «Управление», чтобы было видно, что это рабочий кабинет. */
 export function WorkspaceMark() {
   return (
     <span className="ws-mark">
-      <span aria-hidden="true">ф</span>
-      Фикусин <small>Управление</small>
+      <BrandLogo />
+      <small>Управление</small>
     </span>
   );
 }

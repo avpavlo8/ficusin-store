@@ -41,7 +41,7 @@
 | Что | Файл |
 | --- | --- |
 | Токены, каркас, кнопки, поля, таблицы, вкладки, статусы, окно, «Ещё» | `frontend/src/styles/admin-design.css` |
-| Группы меню и нижняя панель телефона | `frontend/src/adminNavigation.ts`, `AdminWorkspace.tsx` |
+| Меню (одним списком) и нижняя панель телефона | `frontend/src/adminNavigation.ts`, `AdminWorkspace.tsx` |
 | Страница заказа и режимы просмотра/правки | `AdminOrders.tsx`, `AdminOrderWorkspace.tsx`, `AdminOrderEditor.tsx` (`OrderView`) |
 | Заголовок экрана | `PageHeading` в `adminShared.tsx` |
 

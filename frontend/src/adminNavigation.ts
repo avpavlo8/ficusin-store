@@ -1,34 +1,23 @@
 import type { AdminData, Section } from "./adminTypes";
-// Группы повторяют то, как сотрудник думает о работе, а не устройство
-// системы: «что горит сегодня», «растения», «каналы продаж», «люди».
-// Порядок внутри группы — по частоте использования.
-export type SectionGroup = "today" | "plants" | "channels" | "people";
-export const sectionGroups: Array<{ id: SectionGroup; label: string }> = [
-  { id: "today", label: "Сегодня" },
-  { id: "plants", label: "Растения" },
-  { id: "channels", label: "Каналы" },
-  { id: "people", label: "Люди и цифры" },
-];
 export const sections: Array<{
   id: Section;
   label: string;
-  group: SectionGroup;
   permission?: string;
   owner?: boolean;
 }> = [
-  { id: "dashboard", label: "Обзор", group: "today" },
-  { id: "orders", label: "Заказы", group: "today", permission: "orders.read" },
-  { id: "chat", label: "Чат", group: "today", permission: "chat.manage" },
-  { id: "products", label: "Каталог", group: "plants", permission: "products.read" },
-  { id: "categories", label: "Категории", group: "plants", permission: "products.read" },
-  { id: "collections", label: "Подборки", group: "plants", permission: "products.read" },
-  { id: "procurement", label: "Закупки", group: "plants", permission: "procurement.read" },
-  { id: "returns", label: "Возвраты", group: "plants", permission: "returns.read" },
-  { id: "marketplaces", label: "Маркетплейсы", group: "channels", permission: "integrations.edit" },
-  { id: "avito", label: "Авито", group: "channels", permission: "integrations.edit" },
-  { id: "customers", label: "Клиенты", group: "people", permission: "customers.read" },
-  { id: "analytics", label: "Аналитика", group: "people", permission: "analytics.read" },
-  { id: "settings", label: "Настройки", group: "people", owner: true },
+  { id: "dashboard", label: "Обзор" },
+  { id: "orders", label: "Заказы", permission: "orders.read" },
+  { id: "chat", label: "Чат", permission: "chat.manage" },
+  { id: "products", label: "Каталог", permission: "products.read" },
+  { id: "categories", label: "Категории", permission: "products.read" },
+  { id: "collections", label: "Подборки", permission: "products.read" },
+  { id: "procurement", label: "Закупки", permission: "procurement.read" },
+  { id: "returns", label: "Возвраты", permission: "returns.read" },
+  { id: "marketplaces", label: "Маркетплейсы", permission: "integrations.edit" },
+  { id: "avito", label: "Авито", permission: "integrations.edit" },
+  { id: "customers", label: "Клиенты", permission: "customers.read" },
+  { id: "analytics", label: "Аналитика", permission: "analytics.read" },
+  { id: "settings", label: "Настройки", owner: true },
 ];
 // На телефоне внизу помещается четыре кнопки и «Ещё». Сюда попадают
 // разделы, с которыми сотрудник работает руками каждый день.
